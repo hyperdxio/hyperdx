@@ -357,7 +357,7 @@ export const getLogLevelClass = (lvl: string | undefined) => {
 // Mirrors `packages/app/src/theme/themes/_chart-tokens.scss`. Hex changes
 // must update both this object and the SCSS partial.
 // https://observablehq.com/@d3/color-schemes
-const CHART_PALETTE = {
+export const CHART_PALETTE = {
   blue: '#437eef',
   orange: '#efb118',
   red: '#ff725c',
@@ -379,7 +379,7 @@ const CHART_PALETTE = {
 // turn maps to `--color-chart-{kebab-case name}` in `_chart-tokens.scss`.
 // To re-order how slots are assigned, change this array — no SCSS edit
 // required.
-const CATEGORICAL_ORDER = [
+export const CATEGORICAL_ORDER = [
   'blue',
   'orange',
   'red',
@@ -397,10 +397,44 @@ const CATEGORICAL_ORDER = [
 // value of `var(--color-chart-{CATEGORICAL_ORDER[i]})`.
 export const COLORS = CATEGORICAL_ORDER.map(name => CHART_PALETTE[name]);
 
-// Convert a camelCase palette key to its CSS-var slug (e.g. `lightBlue`
+type CategoricalChartColorName = (typeof CATEGORICAL_ORDER)[number];
+
+// Convert a camelCase categorical key to its CSS-var slug (e.g. `lightBlue`
 // becomes `light-blue`).
-function paletteKeyToCssSlug(name: keyof typeof CHART_PALETTE): string {
+function paletteKeyToCssSlug(name: CategoricalChartColorName): string {
   return name.replace(/([A-Z])/g, '-$1').toLowerCase();
+}
+
+/**
+ * Brand-specific info log / chart colors. Mirrors `hyperdx/_tokens.scss`
+ * (`--mantine-color-green-6` / `-7`) and `clickstack/_tokens.scss`
+ * (`--color-chart-blue`), and `hyperdx/mantineTheme.ts` green scale.
+ */
+export const CHART_INFO_HEX_BY_BRAND = {
+  hyperdx: {
+    dark: '#00a475',
+    light: '#008362',
+  },
+  clickstack: {
+    dark: CHART_PALETTE.blue,
+    light: CHART_PALETTE.blue,
+  },
+} as const;
+
+function getChartInfoBrandFallback(): string {
+  if (typeof document === 'undefined') {
+    return CHART_INFO_HEX_BY_BRAND.hyperdx.dark;
+  }
+
+  const root = document.documentElement;
+  const brand = root.classList.contains('theme-clickstack')
+    ? 'clickstack'
+    : 'hyperdx';
+  const scheme =
+    root.getAttribute('data-mantine-color-scheme') === 'light'
+      ? 'light'
+      : 'dark';
+  return CHART_INFO_HEX_BY_BRAND[brand][scheme];
 }
 
 /**
@@ -484,9 +518,12 @@ export function getChartColorError(): string {
   return getSemanticChartColor('--color-chart-error', CHART_PALETTE.red);
 }
 
-/** Info-level logs (see `getLogLevelClass`): `--color-chart-info` (green on HyperDX, blue on ClickStack). */
+/** Info-level logs (see `getLogLevelClass`): `--color-chart-info` (HyperDX Mantine greens, ClickStack chart blue). */
 export function getChartColorInfo(): string {
-  return getSemanticChartColor('--color-chart-info', CHART_PALETTE.green);
+  return getSemanticChartColor(
+    '--color-chart-info',
+    getChartInfoBrandFallback(),
+  );
 }
 
 export function getChartColorSuccessHighlight(): string {
@@ -545,24 +582,26 @@ export function getLogLevelColorOrder(
   return [colorForLevel('info'), colorForLevel('warn'), colorForLevel('error')];
 }
 
-const getLevelColor = (logLevel?: string) => {
-  if (logLevel == null) {
-    return;
-  }
-  return logLevel === 'error'
-    ? getChartColorError()
-    : logLevel === 'warn'
-      ? getChartColorWarning()
-      : getChartColorInfo();
-};
+/** Build a `getColorProps`-style resolver with an optional log-level color fn (e.g. from `useLogLevelColor`). */
+export function makeGetColorProps(
+  resolveLogLevelColor: typeof logLevelColor = logLevelColor,
+): (index: number, level: string) => string {
+  return (index: number, level: string) => {
+    const logLevel = getLogLevelClass(level);
+    if (logLevel == null) {
+      return getColorFromCSSVariable(index);
+    }
+    if (logLevel === 'error') {
+      return resolveLogLevelColor('error');
+    }
+    if (logLevel === 'warn') {
+      return resolveLogLevelColor('warn');
+    }
+    return resolveLogLevelColor('info');
+  };
+}
 
-export const getColorProps = (index: number, level: string): string => {
-  const logLevel = getLogLevelClass(level);
-  const colorOverride = getLevelColor(logLevel);
-
-  // Use CSS variable for theme-aware colors, fallback to hardcoded array
-  return colorOverride ?? getColorFromCSSVariable(index);
-};
+export const getColorProps = makeGetColorProps();
 
 export const truncateMiddle = (str: string, maxLen = 10) => {
   const coercedStr = `${str}`;

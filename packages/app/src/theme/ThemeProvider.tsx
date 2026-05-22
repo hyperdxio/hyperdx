@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
 } from 'react';
@@ -131,11 +132,9 @@ export function AppThemeProvider({
     [theme, setTheme, toggleTheme, clearThemeOverride],
   );
 
-  // Apply theme CSS class to <html> synchronously during render so descendants
-  // that read CSS variables in the same commit (e.g. chart formatting via
-  // getComputedStyle) see the correct theme. useEffect runs too late — after
-  // children have already rendered with the previous class still on the document.
-  if (typeof document !== 'undefined') {
+  // Apply brand theme class before paint so chart code reading CSS vars in
+  // useLayoutEffect / first client render sees the active brand.
+  useLayoutEffect(() => {
     const html = document.documentElement;
     const nextClass = theme.cssClass;
     for (const t of Object.values(themes)) {
@@ -146,7 +145,7 @@ export function AppThemeProvider({
     if (!html.classList.contains(nextClass)) {
       html.classList.add(nextClass);
     }
-  }
+  }, [theme]);
 
   // Dev mode: expose theme API to window (namespaced to avoid global pollution)
   useEffect(() => {

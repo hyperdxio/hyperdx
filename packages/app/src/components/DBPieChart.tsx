@@ -13,10 +13,11 @@ import {
   formatResponseForPieChart,
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useLogLevelColor } from '@/hooks/useLogLevelColor';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
-import { formatNumber, getColorProps, truncateMiddle } from '@/utils';
+import { formatNumber, makeGetColorProps, truncateMiddle } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
@@ -145,6 +146,12 @@ export const DBPieChart = ({
     },
   );
 
+  const resolveLogLevelColor = useLogLevelColor();
+  const getPieSliceColor = useMemo(
+    () => makeGetColorProps(resolveLogLevelColor),
+    [resolveLogLevelColor],
+  );
+
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
 
@@ -190,11 +197,11 @@ export const DBPieChart = ({
   const [pieChartData, responseFormatError] = useMemo(() => {
     if (!data) return [[], null];
     try {
-      return [formatResponseForPieChart(data, getColorProps), null];
+      return [formatResponseForPieChart(data, getPieSliceColor), null];
     } catch (error) {
       return [[], error instanceof Error ? error : new Error(String(error))];
     }
-  }, [data]);
+  }, [data, getPieSliceColor]);
 
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>

@@ -11,7 +11,7 @@ import {
   formatResponseForPieChart,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
-import { COLORS, getChartColorError, getChartColorInfo } from '@/utils';
+import { CHART_INFO_HEX_BY_BRAND, CHART_PALETTE, COLORS } from '@/utils';
 
 describe('ChartUtils', () => {
   describe('formatResponseForTimeChart', () => {
@@ -306,7 +306,7 @@ describe('ChartUtils', () => {
 
       expect(actual.lineData).toEqual([
         {
-          color: getChartColorInfo(),
+          color: CHART_INFO_HEX_BY_BRAND.hyperdx.dark,
           dataKey: 'info',
           currentPeriodKey: 'info',
           previousPeriodKey: 'info (previous)',
@@ -315,7 +315,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: getChartColorInfo(),
+          color: CHART_INFO_HEX_BY_BRAND.hyperdx.dark,
           dataKey: 'debug',
           currentPeriodKey: 'debug',
           previousPeriodKey: 'debug (previous)',
@@ -324,7 +324,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: getChartColorError(),
+          color: CHART_PALETTE.red,
           dataKey: 'error',
           currentPeriodKey: 'error',
           previousPeriodKey: 'error (previous)',

@@ -1,9 +1,12 @@
+import fs from 'fs';
+import path from 'path';
 import { NumericUnit, TSource } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 import { act, renderHook } from '@testing-library/react';
 
 import { MetricsDataType, NumberFormat } from '../types';
 import * as utils from '../utils';
+import { CATEGORICAL_ORDER, CHART_PALETTE } from '../utils';
 import {
   formatAttributeClause,
   formatDurationMs,
@@ -1200,5 +1203,41 @@ describe('formatDurationMsCompact', () => {
   it('formats hours (>= 1 hour)', () => {
     expect(formatDurationMsCompact(3_600_000)).toBe('1h');
     expect(formatDurationMsCompact(7_200_000)).toBe('2h');
+  });
+});
+
+describe('CHART_PALETTE sync with _chart-tokens.scss', () => {
+  const scssPath = path.join(__dirname, '../theme/themes/_chart-tokens.scss');
+  const scss = fs.readFileSync(scssPath, 'utf8');
+
+  const scssHexByVar = Object.fromEntries(
+    [...scss.matchAll(/--color-chart-([\w-]+):\s*(#[0-9a-fA-F]{6})/g)].map(
+      ([, slug, hex]) => [slug, hex.toLowerCase()],
+    ),
+  );
+
+  const paletteKeyToSlug = (name: (typeof CATEGORICAL_ORDER)[number]) =>
+    name.replace(/([A-Z])/g, '-$1').toLowerCase();
+
+  it('keeps categorical slots aligned with CHART_PALETTE', () => {
+    for (const name of CATEGORICAL_ORDER) {
+      const slug = paletteKeyToSlug(name);
+      expect(scssHexByVar[slug]).toBe(CHART_PALETTE[name].toLowerCase());
+    }
+  });
+
+  it('keeps semantic chart colors aligned with CHART_PALETTE', () => {
+    expect(scssHexByVar.success).toBe(CHART_PALETTE.green.toLowerCase());
+    expect(scssHexByVar.warning).toBe(CHART_PALETTE.orange.toLowerCase());
+    expect(scssHexByVar.error).toBe(CHART_PALETTE.red.toLowerCase());
+    expect(scssHexByVar['success-highlight']).toBe(
+      CHART_PALETTE.greenHighlight.toLowerCase(),
+    );
+    expect(scssHexByVar['warning-highlight']).toBe(
+      CHART_PALETTE.orangeHighlight.toLowerCase(),
+    );
+    expect(scssHexByVar['error-highlight']).toBe(
+      CHART_PALETTE.redHighlight.toLowerCase(),
+    );
   });
 });

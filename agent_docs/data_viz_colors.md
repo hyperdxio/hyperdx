@@ -114,15 +114,16 @@ the values in lockstep without sacrificing specificity.
 ### Semantic chart colors
 
 ```text
---color-chart-success            # success / OK / ingested / info-level fills
+--color-chart-success            # success / OK / ingested (not log "info")
 --color-chart-warning            # warnings, throttling, slowdowns
 --color-chart-error              # failures, errors, alerts firing
+--color-chart-info               # log / chart "info" severity — brand-specific
 --color-chart-success-highlight  # hover/selected variants (lighter shades)
 --color-chart-warning-highlight
 --color-chart-error-highlight
 ```
 
-Also defined in `_chart-tokens.scss`. Identical across themes:
+Shared semantic vars in `_chart-tokens.scss` (identical across themes):
 
 | Var                                | Hex       |
 | ---------------------------------- | --------- |
@@ -132,6 +133,21 @@ Also defined in `_chart-tokens.scss`. Identical across themes:
 | `--color-chart-success-highlight`  | `#80d9b3` |
 | `--color-chart-warning-highlight`  | `#f5c94d` |
 | `--color-chart-error-highlight`    | `#ffa090` |
+
+**`--color-chart-info`** is the only semantic chart token that **varies by
+brand**. It is **not** in the shared partial; each theme sets it in
+`_tokens.scss` after `@include chart-tokens`:
+
+| Brand      | Token value |
+| ---------- | ----------- |
+| HyperDX dark  | `var(--mantine-color-green-6)` → `#00a475` |
+| HyperDX light | `var(--mantine-color-green-7)` → `#008362` |
+| ClickStack | `var(--color-chart-blue)` → `#437eef` |
+
+`CHART_INFO_HEX_BY_BRAND` in `utils.ts` mirrors these for SSR / failed
+`getComputedStyle` reads. Time and pie charts on HyperDX also resolve info
+from `useMantineTheme().colors.green` via `useLogLevelColor()` so brand
+switches do not read stale nested Mantine CSS vars.
 
 Note that `--color-chart-success` (`#3ca951`) is **not** the same var as
 `--color-chart-green` (`#3ca951`) — they happen to coincide today but
@@ -164,13 +180,16 @@ These are the only functions React code should call:
 | Function                         | Returns                                              |
 | -------------------------------- | ---------------------------------------------------- |
 | `getColorProps(index, level)`    | Categorical color, with log-level override applied   |
+| `makeGetColorProps(fn)`          | Same as above with a custom log-level resolver       |
 | `semanticKeyedColor(key, index)` | Same, but driven by `key` (e.g. series name)         |
 | `getChartColorSuccess()`         | `var(--color-chart-success)` resolved to a hex string|
 | `getChartColorWarning()`         | `var(--color-chart-warning)` resolved                |
 | `getChartColorError()`           | `var(--color-chart-error)` resolved                  |
+| `getChartColorInfo()`            | `var(--color-chart-info)` — brand-specific fallback  |
 | `getChartColor*Highlight()`      | Hover/selected variants                              |
 | `logLevelColor(key)`             | Maps `'error' \| 'warn' \| 'info'` → semantic color  |
-| `getLogLevelColorOrder()`        | Stable ordering for log-level series                 |
+| `useLogLevelColor()`             | Hook: HyperDX info from Mantine greens; else DOM path |
+| `getLogLevelColorOrder(fn?)`     | Stable ordering for log-level series                 |
 
 Internals worth knowing:
 
