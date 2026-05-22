@@ -1618,12 +1618,29 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [dashboard?.containers],
   );
 
+  // URL-based collapse state: tracks which containers the current viewer has
+  // explicitly collapsed/expanded. Falls back to the DB-stored default.
+  const [urlCollapsedIds, setUrlCollapsedIds] = useQueryState(
+    'collapsed',
+    parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
+  );
+  const [urlExpandedIds, setUrlExpandedIds] = useQueryState(
+    'expanded',
+    parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
+  );
+
   // Section-level navigation helpers: scroll-to-section, deep-link copy, and
   // batch collapse/expand. Consumed by the view-options menu (collapseAll /
   // expandAll), the per-container header (copySectionLink), the TOC rail
   // (scrollToContainer), and the hash-on-load effect (scrollToContainer).
+  // The hook takes the URL setters from above so there is only ever one
+  // useQueryState subscriber per `collapsed`/`expanded` key in this tree.
   const { scrollToContainer, copySectionLink, collapseAll, expandAll } =
-    useDashboardSectionNav({ containers });
+    useDashboardSectionNav({
+      containers,
+      setUrlCollapsedIds,
+      setUrlExpandedIds,
+    });
 
   // Per-user preference for whether the sticky table-of-contents rail is shown.
   // Defaults to false (off) so dashboard behavior is unchanged for users who
@@ -1651,17 +1668,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         return { id: c.id, title: label };
       }),
     [containers],
-  );
-
-  // URL-based collapse state: tracks which containers the current viewer has
-  // explicitly collapsed/expanded. Falls back to the DB-stored default.
-  const [urlCollapsedIds, setUrlCollapsedIds] = useQueryState(
-    'collapsed',
-    parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
-  );
-  const [urlExpandedIds, setUrlExpandedIds] = useQueryState(
-    'expanded',
-    parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
   );
   // Per-viewer active tab selection: `{ [containerId]: tabId }`.
   // Falls back to the first tab for any container not in the map.

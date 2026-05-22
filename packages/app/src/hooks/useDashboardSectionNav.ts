@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 import produce from 'immer';
-import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
 import { notifications } from '@mantine/notifications';
 
 import {
@@ -9,6 +8,10 @@ import {
 } from '@/utils/clipboard';
 
 type SectionNavContainer = { id: string };
+
+type UrlIdsSetter = (
+  updater: string[] | null | ((prev: string[] | null) => string[] | null),
+) => void;
 
 /**
  * Navigation API for dashboard containers ("sections"):
@@ -19,24 +22,22 @@ type SectionNavContainer = { id: string };
  * - `copySectionLink` — writes a shareable `#container-<id>` deep link to the
  *   clipboard and surfaces a confirmation notification.
  *
- * State lives entirely in URL query params (`collapsed`, `expanded`) so any
- * navigation taken here is shareable via the dashboard's URL like every other
- * piece of dashboard state.
+ * The collapse-state setters are passed in from the caller rather than
+ * subscribed to internally so that there is exactly one `useQueryState`
+ * subscriber per URL param across the dashboard page (DBDashboardPage owns
+ * the canonical subscription). This avoids any subtle interaction between
+ * multiple subscribers that could affect router hydration on the saved
+ * dashboard page.
  */
 export function useDashboardSectionNav({
   containers,
+  setUrlCollapsedIds,
+  setUrlExpandedIds,
 }: {
   containers: SectionNavContainer[];
+  setUrlCollapsedIds: UrlIdsSetter;
+  setUrlExpandedIds: UrlIdsSetter;
 }) {
-  const [, setUrlCollapsedIds] = useQueryState(
-    'collapsed',
-    parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
-  );
-  const [, setUrlExpandedIds] = useQueryState(
-    'expanded',
-    parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
-  );
-
   const expandContainer = useCallback(
     (containerId: string) => {
       setUrlExpandedIds(prev =>

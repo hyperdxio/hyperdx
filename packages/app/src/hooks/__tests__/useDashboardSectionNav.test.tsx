@@ -2,34 +2,27 @@ import { act, renderHook } from '@testing-library/react';
 
 import { useDashboardSectionNav } from '../useDashboardSectionNav';
 
-// Mock nuqs with a per-key state store so `collapsed` and `expanded` are
-// independent, mirroring how DBDashboardPage uses these two URL params.
-const mockState: Record<string, string[] | null> = {
-  collapsed: null,
-  expanded: null,
-};
-const mockSetters: Record<string, jest.Mock> = {};
-
-jest.mock('nuqs', () => ({
-  useQueryState: (key: string) => {
-    if (!mockSetters[key]) {
-      mockSetters[key] = jest.fn(
-        (
-          updater:
-            | string[]
-            | null
-            | ((prev: string[] | null) => string[] | null),
-        ) => {
-          mockState[key] =
-            typeof updater === 'function' ? updater(mockState[key]) : updater;
-        },
-      );
-    }
-    return [mockState[key], mockSetters[key]];
-  },
-  parseAsArrayOf: () => ({ withOptions: () => ({}) }),
-  parseAsString: {},
-}));
+// Stand-in for the URL setter the hook receives from its caller. Stores the
+// current value and supports both absolute writes and functional updates so
+// the hook's `produce(prev ?? [], ...)` and `(prev ?? []).filter(...)` paths
+// can be observed.
+function makeMockSetter() {
+  let current: string[] | null = null;
+  const setter = jest.fn(
+    (
+      updater: string[] | null | ((prev: string[] | null) => string[] | null),
+    ) => {
+      current = typeof updater === 'function' ? updater(current) : updater;
+    },
+  );
+  return Object.assign(setter, {
+    get: () => current,
+    reset: () => {
+      current = null;
+      setter.mockClear();
+    },
+  });
+}
 
 const mockNotificationsShow = jest.fn();
 jest.mock('@mantine/notifications', () => ({
@@ -46,11 +39,12 @@ jest.mock('@/utils/clipboard', () => ({
 
 describe('useDashboardSectionNav', () => {
   const containers = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  let setUrlCollapsedIds: ReturnType<typeof makeMockSetter>;
+  let setUrlExpandedIds: ReturnType<typeof makeMockSetter>;
 
   beforeEach(() => {
-    mockState.collapsed = null;
-    mockState.expanded = null;
-    Object.values(mockSetters).forEach(fn => fn.mockClear());
+    setUrlCollapsedIds = makeMockSetter();
+    setUrlExpandedIds = makeMockSetter();
     mockNotificationsShow.mockClear();
     mockCopyTextToClipboard.mockReset();
   });
@@ -58,38 +52,51 @@ describe('useDashboardSectionNav', () => {
   describe('collapseAll', () => {
     it('sets every container id as collapsed and clears the expanded set', () => {
       const { result } = renderHook(() =>
-        useDashboardSectionNav({ containers }),
+        useDashboardSectionNav({
+          containers,
+          setUrlCollapsedIds,
+          setUrlExpandedIds,
+        }),
       );
       act(() => {
         result.current.collapseAll();
       });
-      expect(mockState.collapsed).toEqual(['a', 'b', 'c']);
-      expect(mockState.expanded).toBeNull();
+      expect(setUrlCollapsedIds.get()).toEqual(['a', 'b', 'c']);
+      expect(setUrlExpandedIds.get()).toBeNull();
     });
 
     it('clears both sets when there are no containers', () => {
       const { result } = renderHook(() =>
-        useDashboardSectionNav({ containers: [] }),
+        useDashboardSectionNav({
+          containers: [],
+          setUrlCollapsedIds,
+          setUrlExpandedIds,
+        }),
       );
       act(() => {
         result.current.collapseAll();
       });
-      expect(mockState.collapsed).toBeNull();
-      expect(mockState.expanded).toBeNull();
+      expect(setUrlCollapsedIds.get()).toBeNull();
+      expect(setUrlExpandedIds.get()).toBeNull();
     });
   });
 
   describe('expandAll', () => {
     it('sets every container id as expanded and clears the collapsed set', () => {
-      mockState.collapsed = ['a', 'b'];
+      setUrlCollapsedIds(['a', 'b']);
+      setUrlCollapsedIds.mockClear();
       const { result } = renderHook(() =>
-        useDashboardSectionNav({ containers }),
+        useDashboardSectionNav({
+          containers,
+          setUrlCollapsedIds,
+          setUrlExpandedIds,
+        }),
       );
       act(() => {
         result.current.expandAll();
       });
-      expect(mockState.expanded).toEqual(['a', 'b', 'c']);
-      expect(mockState.collapsed).toBeNull();
+      expect(setUrlExpandedIds.get()).toEqual(['a', 'b', 'c']);
+      expect(setUrlCollapsedIds.get()).toBeNull();
     });
   });
 
@@ -104,7 +111,8 @@ describe('useDashboardSectionNav', () => {
       document.body.appendChild(target);
 
       // Drive requestAnimationFrame synchronously so we can assert the scroll
-      // call without juggling timers.
+      // call without juggling timers. The hook uses double-rAF, so the mock
+      // is invoked twice.
       const rafSpy = jest
         .spyOn(window, 'requestAnimationFrame')
         .mockImplementation((cb: FrameRequestCallback) => {
@@ -112,17 +120,22 @@ describe('useDashboardSectionNav', () => {
           return 0;
         });
 
-      mockState.collapsed = ['b'];
+      setUrlCollapsedIds(['b']);
+      setUrlCollapsedIds.mockClear();
       const { result } = renderHook(() =>
-        useDashboardSectionNav({ containers }),
+        useDashboardSectionNav({
+          containers,
+          setUrlCollapsedIds,
+          setUrlExpandedIds,
+        }),
       );
 
       act(() => {
         result.current.scrollToContainer('b');
       });
 
-      expect(mockState.expanded).toContain('b');
-      expect(mockState.collapsed).toBeNull();
+      expect(setUrlExpandedIds.get()).toContain('b');
+      expect(setUrlCollapsedIds.get()).toBeNull();
       expect(scrollIntoView).toHaveBeenCalledWith({
         behavior: 'smooth',
         block: 'start',
@@ -141,7 +154,11 @@ describe('useDashboardSectionNav', () => {
         });
 
       const { result } = renderHook(() =>
-        useDashboardSectionNav({ containers }),
+        useDashboardSectionNav({
+          containers,
+          setUrlCollapsedIds,
+          setUrlExpandedIds,
+        }),
       );
       expect(() => {
         act(() => {
@@ -172,7 +189,11 @@ describe('useDashboardSectionNav', () => {
       mockCopyTextToClipboard.mockResolvedValue(true);
 
       const { result } = renderHook(() =>
-        useDashboardSectionNav({ containers }),
+        useDashboardSectionNav({
+          containers,
+          setUrlCollapsedIds,
+          setUrlExpandedIds,
+        }),
       );
 
       await act(async () => {
@@ -191,7 +212,11 @@ describe('useDashboardSectionNav', () => {
       mockCopyTextToClipboard.mockResolvedValue(false);
 
       const { result } = renderHook(() =>
-        useDashboardSectionNav({ containers }),
+        useDashboardSectionNav({
+          containers,
+          setUrlCollapsedIds,
+          setUrlExpandedIds,
+        }),
       );
 
       await act(async () => {
