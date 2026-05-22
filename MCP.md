@@ -108,7 +108,8 @@ with:
 
 | Tool                          | Description                                                                                  |
 | ----------------------------- | -------------------------------------------------------------------------------------------- |
-| `hyperdx_list_sources`        | List all data sources and database connections, including column schemas and attribute keys   |
+| `hyperdx_list_sources`        | List all data sources and connections as a lightweight catalog (IDs, names, kinds)            |
+| `hyperdx_describe_source`     | Full column schema, attribute keys, and sampled low-cardinality values for a single source    |
 | `hyperdx_timeseries`          | Plot metrics over time as a line or stacked bar chart                                        |
 | `hyperdx_table`               | Compute aggregated metrics as a table, single number, or pie chart                           |
 | `hyperdx_search`              | Browse individual log, event, or trace rows                                                  |

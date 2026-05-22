@@ -61,7 +61,7 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
         'Plot metrics over time as a line or stacked bar chart. ' +
         'Use this when you need to visualize trends, compare time-series, ' +
         'or monitor metric changes over a time window.\n\n' +
-        'Requires sourceId — call hyperdx_list_sources first. ' +
+        'Requires sourceId — call hyperdx_list_sources then hyperdx_describe_source first. ' +
         'Each select item defines one plotted series.\n\n' +
         'Column naming: top-level columns are PascalCase (Duration, StatusCode). ' +
         "Map attributes use bracket syntax: SpanAttributes['http.method'].",
