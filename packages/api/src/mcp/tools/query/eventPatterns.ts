@@ -59,7 +59,7 @@ export function registerEventPatterns(server: McpServer, context: McpContext) {
         '"recurring messages", or log noise analysis.\n\n' +
         'Each pattern includes a "whereSnippet" — use it as the "where" parameter in ' +
         'a follow-up hyperdx_search call to browse matching raw events.\n\n' +
-        'Requires sourceId — call hyperdx_list_sources first.\n\n' +
+        'Requires sourceId — call hyperdx_list_sources then hyperdx_describe_source first.\n\n' +
         'When to use which tool:\n' +
         '  - hyperdx_event_patterns: clustering / recurring shapes / noise analysis\n' +
         '  - hyperdx_search: raw individual rows\n' +
