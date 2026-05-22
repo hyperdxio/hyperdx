@@ -7,6 +7,10 @@ export const SOURCE_LOGS_TABLE = 'otel_logs';
 export type ScenarioTables = {
   traces: string;
   logs: string;
+  tracesKvRollup: string;
+  tracesKeyRollup: string;
+  logsKvRollup: string;
+  logsKeyRollup: string;
 };
 
 function scenarioSlug(scenario: string): string {
@@ -18,6 +22,10 @@ export function scenarioTables(scenario: string): ScenarioTables {
   return {
     traces: `eval_${slug}_otel_traces`,
     logs: `eval_${slug}_otel_logs`,
+    tracesKvRollup: `eval_${slug}_otel_traces_kv_rollup_15m`,
+    tracesKeyRollup: `eval_${slug}_otel_traces_key_rollup_15m`,
+    logsKvRollup: `eval_${slug}_otel_logs_kv_rollup_15m`,
+    logsKeyRollup: `eval_${slug}_otel_logs_key_rollup_15m`,
   };
 }
 
@@ -71,6 +79,11 @@ export async function ensureScenarioTables(
   await removeTtlIfPresent(client, tables.traces);
   await removeTtlIfPresent(client, tables.logs);
 
+  // Create KV/Key rollup tables and materialized views so the HyperDX MCP
+  // can use fast metadata discovery instead of scanning the full raw tables.
+  // MVs are created *before* seeding so they capture inserts as they happen.
+  await ensureRollupTables(client, tables);
+
   return tables;
 }
 
@@ -94,6 +107,19 @@ export async function truncateScenarioTables(
   scenario: string,
 ): Promise<void> {
   const tables = scenarioTables(scenario);
+  // Truncate rollup tables alongside raw tables.
+  await client.command({
+    query: `TRUNCATE TABLE IF EXISTS ${EVAL_DATABASE}.${tables.tracesKvRollup}`,
+  });
+  await client.command({
+    query: `TRUNCATE TABLE IF EXISTS ${EVAL_DATABASE}.${tables.tracesKeyRollup}`,
+  });
+  await client.command({
+    query: `TRUNCATE TABLE IF EXISTS ${EVAL_DATABASE}.${tables.logsKvRollup}`,
+  });
+  await client.command({
+    query: `TRUNCATE TABLE IF EXISTS ${EVAL_DATABASE}.${tables.logsKeyRollup}`,
+  });
   await client.command({
     query: `TRUNCATE TABLE IF EXISTS ${EVAL_DATABASE}.${tables.traces}`,
   });
@@ -107,10 +133,210 @@ export async function dropScenarioTables(
   scenario: string,
 ): Promise<void> {
   const tables = scenarioTables(scenario);
+  // Drop MVs first (they depend on the tables), then rollup tables, then raw.
+  await dropRollupTables(client, tables);
   await client.command({
     query: `DROP TABLE IF EXISTS ${EVAL_DATABASE}.${tables.traces}`,
   });
   await client.command({
     query: `DROP TABLE IF EXISTS ${EVAL_DATABASE}.${tables.logs}`,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Rollup tables & materialized views
+// ---------------------------------------------------------------------------
+
+const ROLLUP_TABLE_DDL = `(
+    \`Timestamp\` DateTime,
+    \`ColumnIdentifier\` LowCardinality(String),
+    \`Key\` LowCardinality(String),
+    \`Value\` String,
+    \`count\` UInt64,
+    INDEX idx_count_minmax count TYPE minmax GRANULARITY 1,
+    INDEX idx_timestamp_minmax Timestamp TYPE minmax GRANULARITY 1
+)
+ENGINE = SummingMergeTree
+PARTITION BY toDate(Timestamp)
+ORDER BY (ColumnIdentifier, Key, Timestamp, Value)
+SETTINGS index_granularity = 8192`;
+
+const KEY_ROLLUP_TABLE_DDL = `(
+    \`Timestamp\` DateTime,
+    \`ColumnIdentifier\` LowCardinality(String),
+    \`Key\` LowCardinality(String),
+    \`count\` UInt64,
+    INDEX idx_count_minmax count TYPE minmax GRANULARITY 1,
+    INDEX idx_timestamp_minmax Timestamp TYPE minmax GRANULARITY 1
+)
+ENGINE = SummingMergeTree
+PARTITION BY toDate(Timestamp)
+ORDER BY (ColumnIdentifier, Key, Timestamp)
+SETTINGS index_granularity = 8192`;
+
+function mvName(rollupTable: string): string {
+  return `${rollupTable}_mv`;
+}
+
+function keyMvName(keyRollupTable: string): string {
+  return `${keyRollupTable}_mv`;
+}
+
+/** Build the KV rollup MV SELECT for a traces table. */
+function tracesKvMvSelect(db: string, rawTable: string): string {
+  return `
+WITH elements AS (
+    SELECT
+        'ResourceAttributes' AS ColumnIdentifier,
+        toStartOfFifteenMinutes(Timestamp) AS Timestamp,
+        replaceRegexpAll(entry.1, '\\\\[\\\\d+\\\\]', '[*]') AS Key,
+        CAST(entry.2 AS String) AS Value
+    FROM ${db}.${rawTable}
+    ARRAY JOIN ResourceAttributes AS entry
+    UNION ALL
+    SELECT
+        'SpanAttributes' AS ColumnIdentifier,
+        toStartOfFifteenMinutes(Timestamp) AS Timestamp,
+        replaceRegexpAll(entry.1, '\\\\[\\\\d+\\\\]', '[*]') AS Key,
+        CAST(entry.2 AS String) AS Value
+    FROM ${db}.${rawTable}
+    ARRAY JOIN SpanAttributes AS entry
+    UNION ALL
+    SELECT 'NativeColumn', toStartOfFifteenMinutes(Timestamp), 'ServiceName', CAST(ServiceName AS String) FROM ${db}.${rawTable}
+    UNION ALL
+    SELECT 'NativeColumn', toStartOfFifteenMinutes(Timestamp), 'SpanName', CAST(SpanName AS String) FROM ${db}.${rawTable}
+    UNION ALL
+    SELECT 'NativeColumn', toStartOfFifteenMinutes(Timestamp), 'SpanKind', CAST(SpanKind AS String) FROM ${db}.${rawTable}
+    UNION ALL
+    SELECT 'NativeColumn', toStartOfFifteenMinutes(Timestamp), 'StatusCode', CAST(StatusCode AS String) FROM ${db}.${rawTable}
+    UNION ALL
+    SELECT 'NativeColumn', toStartOfFifteenMinutes(Timestamp), 'ScopeName', CAST(ScopeName AS String) FROM ${db}.${rawTable}
+    UNION ALL
+    SELECT 'NativeColumn', toStartOfFifteenMinutes(Timestamp), 'ScopeVersion', CAST(ScopeVersion AS String) FROM ${db}.${rawTable}
+)
+SELECT Timestamp, ColumnIdentifier, Key, Value, count() AS count FROM elements
+GROUP BY Timestamp, ColumnIdentifier, Key, Value`;
+}
+
+/** Build the KV rollup MV SELECT for a logs table. */
+function logsKvMvSelect(db: string, rawTable: string): string {
+  return `
+WITH elements AS (
+    SELECT
+        'ResourceAttributes' AS ColumnIdentifier,
+        toStartOfFifteenMinutes(Timestamp) AS Timestamp,
+        replaceRegexpAll(entry.1, '\\\\[\\\\d+\\\\]', '[*]') AS Key,
+        CAST(entry.2 AS String) AS Value
+    FROM ${db}.${rawTable}
+    ARRAY JOIN ResourceAttributes AS entry
+    UNION ALL
+    SELECT
+        'LogAttributes' AS ColumnIdentifier,
+        toStartOfFifteenMinutes(Timestamp) AS Timestamp,
+        replaceRegexpAll(entry.1, '\\\\[\\\\d+\\\\]', '[*]') AS Key,
+        CAST(entry.2 AS String) AS Value
+    FROM ${db}.${rawTable}
+    ARRAY JOIN LogAttributes AS entry
+    UNION ALL
+    SELECT
+        'ScopeAttributes' AS ColumnIdentifier,
+        toStartOfFifteenMinutes(Timestamp) AS Timestamp,
+        replaceRegexpAll(entry.1, '\\\\[\\\\d+\\\\]', '[*]') AS Key,
+        CAST(entry.2 AS String) AS Value
+    FROM ${db}.${rawTable}
+    ARRAY JOIN ScopeAttributes AS entry
+    UNION ALL
+    SELECT 'NativeColumn', toStartOfFifteenMinutes(Timestamp), 'SeverityText', CAST(SeverityText AS String) FROM ${db}.${rawTable}
+    UNION ALL
+    SELECT 'NativeColumn', toStartOfFifteenMinutes(Timestamp), 'ServiceName', CAST(ServiceName AS String) FROM ${db}.${rawTable}
+    UNION ALL
+    SELECT 'NativeColumn', toStartOfFifteenMinutes(Timestamp), 'ScopeName', CAST(ScopeName AS String) FROM ${db}.${rawTable}
+    UNION ALL
+    SELECT 'NativeColumn', toStartOfFifteenMinutes(Timestamp), 'ScopeVersion', CAST(ScopeVersion AS String) FROM ${db}.${rawTable}
+    UNION ALL
+    SELECT 'NativeColumn', toStartOfFifteenMinutes(Timestamp), 'ResourceSchemaUrl', CAST(ResourceSchemaUrl AS String) FROM ${db}.${rawTable}
+    UNION ALL
+    SELECT 'NativeColumn', toStartOfFifteenMinutes(Timestamp), 'ScopeSchemaUrl', CAST(ScopeSchemaUrl AS String) FROM ${db}.${rawTable}
+)
+SELECT Timestamp, ColumnIdentifier, Key, Value, count() AS count FROM elements
+GROUP BY Timestamp, ColumnIdentifier, Key, Value`;
+}
+
+/** Key rollup MV SELECT (shared for both traces and logs). */
+function keyRollupMvSelect(db: string, kvRollupTable: string): string {
+  return `
+SELECT
+    Timestamp,
+    ColumnIdentifier,
+    Key,
+    sum(count) as count
+FROM ${db}.${kvRollupTable}
+GROUP BY ColumnIdentifier, Key, Timestamp`;
+}
+
+async function ensureRollupTables(
+  client: ClickHouseClient,
+  tables: ScenarioTables,
+): Promise<void> {
+  const db = EVAL_DATABASE;
+
+  // -- Traces rollups --
+  await client.command({
+    query: `CREATE TABLE IF NOT EXISTS ${db}.${tables.tracesKvRollup} ${ROLLUP_TABLE_DDL}`,
+  });
+  await client.command({
+    query: `CREATE TABLE IF NOT EXISTS ${db}.${tables.tracesKeyRollup} ${KEY_ROLLUP_TABLE_DDL}`,
+  });
+  // KV rollup MV: raw traces → kv rollup
+  await client.command({
+    query: `CREATE MATERIALIZED VIEW IF NOT EXISTS ${db}.${mvName(tables.tracesKvRollup)} TO ${db}.${tables.tracesKvRollup} AS ${tracesKvMvSelect(db, tables.traces)}`,
+  });
+  // Key rollup MV: kv rollup → key rollup
+  await client.command({
+    query: `CREATE MATERIALIZED VIEW IF NOT EXISTS ${db}.${keyMvName(tables.tracesKeyRollup)} TO ${db}.${tables.tracesKeyRollup} AS ${keyRollupMvSelect(db, tables.tracesKvRollup)}`,
+  });
+
+  // -- Logs rollups --
+  await client.command({
+    query: `CREATE TABLE IF NOT EXISTS ${db}.${tables.logsKvRollup} ${ROLLUP_TABLE_DDL}`,
+  });
+  await client.command({
+    query: `CREATE TABLE IF NOT EXISTS ${db}.${tables.logsKeyRollup} ${KEY_ROLLUP_TABLE_DDL}`,
+  });
+  // KV rollup MV: raw logs → kv rollup
+  await client.command({
+    query: `CREATE MATERIALIZED VIEW IF NOT EXISTS ${db}.${mvName(tables.logsKvRollup)} TO ${db}.${tables.logsKvRollup} AS ${logsKvMvSelect(db, tables.logs)}`,
+  });
+  // Key rollup MV: kv rollup → key rollup
+  await client.command({
+    query: `CREATE MATERIALIZED VIEW IF NOT EXISTS ${db}.${keyMvName(tables.logsKeyRollup)} TO ${db}.${tables.logsKeyRollup} AS ${keyRollupMvSelect(db, tables.logsKvRollup)}`,
+  });
+}
+
+async function dropRollupTables(
+  client: ClickHouseClient,
+  tables: ScenarioTables,
+): Promise<void> {
+  const db = EVAL_DATABASE;
+  // Drop MVs first (they reference the tables).
+  for (const mv of [
+    mvName(tables.tracesKvRollup),
+    keyMvName(tables.tracesKeyRollup),
+    mvName(tables.logsKvRollup),
+    keyMvName(tables.logsKeyRollup),
+  ]) {
+    await client.command({
+      query: `DROP VIEW IF EXISTS ${db}.${mv}`,
+    });
+  }
+  for (const tbl of [
+    tables.tracesKvRollup,
+    tables.tracesKeyRollup,
+    tables.logsKvRollup,
+    tables.logsKeyRollup,
+  ]) {
+    await client.command({
+      query: `DROP TABLE IF EXISTS ${db}.${tbl}`,
+    });
+  }
 }

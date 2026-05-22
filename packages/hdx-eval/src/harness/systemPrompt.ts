@@ -6,6 +6,7 @@ export function buildSystemPrompt(
   mcp: McpKind,
   anchorTimeIso?: string,
   variant: PromptVariant = 'baseline',
+  maxTurns?: number,
 ): string {
   const { traces, logs } = scenarioTables(scenario);
   const sharedSchema = '';
@@ -84,10 +85,32 @@ ${anchorBlock}
 ${sharedSchema}
 
 ${playbookBlock}
+TOOL ENVIRONMENT: Only MCP query tools and the Read tool are available.
+There are NO shell, write, or search tools (Bash, Write, Edit, Glob, Grep,
+etc.). The Read tool is restricted to your working directory — you can only
+use it to read files that were saved there by oversized tool responses.
+If a tool response is too large and gets saved to a file, use Read to
+retrieve its contents. Do NOT ToolSearch for Bash or other file tools.
+If the saved file is still too large for Read, re-run the query with
+narrower filters or smaller limits.
+
+TURN BUDGET: You have a limited number of tool calls. Manage them wisely:
+- After ~${maxTurns ?? 15} tool calls, if you have identified a primary root cause with
+  supporting evidence, write your final answer. You can note additional
+  areas worth investigating without exhaustively querying them.
+- Do not keep exploring tangential signals once you have a strong causal
+  chain for the user's reported symptom.
+- High log/error volume alone does not indicate relevance. Before
+  investigating a service further, verify it is in the causal chain of
+  the user's reported symptom — not just noisy in the same time window.
+
 Investigate the user's question. In your final answer, identify:
 - the specific service(s) and operation(s) involved
 - the root cause (or, for cleanup-style questions, the top concrete actions)
 - supporting evidence from the data (counts, time ranges, sample messages)
+- a brief "What's not the cause" section that explicitly names any
+  investigated signals you ruled out and why — this helps the reader
+  trust your conclusion
 
 Stay open to the possibility that what looks like one issue is actually
 multiple independent issues — when two components look similarly degraded,

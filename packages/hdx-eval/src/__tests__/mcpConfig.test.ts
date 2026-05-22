@@ -3,7 +3,11 @@ import {
   buildMcpConfig,
   MCP_CLICKHOUSE_VERSION,
 } from '../harness/mcpConfig';
-import { buildSettings, DENIED_BUILT_IN_TOOLS } from '../harness/settingsFile';
+import {
+  buildSettings,
+  DENIED_BUILT_IN_TOOLS,
+  deniedToolsFor,
+} from '../harness/settingsFile';
 import type { EvalConfig } from '../hyperdx/config';
 
 const cfg: EvalConfig = {
@@ -73,11 +77,11 @@ describe('allowedToolsPattern', () => {
 });
 
 describe('buildSettings', () => {
-  it("allowlists only the run condition's MCP tools", () => {
+  it("allowlists only the run condition's MCP tools when no tempdir given", () => {
     expect(buildSettings('hyperdx')).toEqual({
       permissions: {
         allow: ['mcp__hyperdx__*'],
-        deny: [...DENIED_BUILT_IN_TOOLS],
+        deny: [...deniedToolsFor('baseline', 'hyperdx')],
       },
     });
     expect(buildSettings('clickhouse')).toEqual({
@@ -88,12 +92,28 @@ describe('buildSettings', () => {
     });
   });
 
-  it('denies the built-in filesystem/shell tools so the agent cannot read prior runs', () => {
+  it('adds a scoped Read allow rule when tempdir is provided', () => {
+    const settings = buildSettings(
+      'hyperdx',
+      'baseline',
+      '/tmp/hdx-eval-abc',
+    ) as {
+      permissions: { allow: string[] };
+    };
+    expect(settings.permissions.allow).toEqual([
+      'mcp__hyperdx__*',
+      'Read(/tmp/hdx-eval-abc/*)',
+    ]);
+  });
+
+  it('denies the built-in filesystem/shell tools so the agent cannot access the source tree', () => {
     const settings = buildSettings('hyperdx') as {
       permissions: { deny: string[] };
     };
     expect(settings.permissions.deny).toEqual(
-      expect.arrayContaining(['Bash', 'Read', 'Glob', 'Grep', 'Write', 'Edit']),
+      expect.arrayContaining(['Bash', 'Glob', 'Grep', 'Write', 'Edit']),
     );
+    // Read is NOT denied — it is allowed with a path scope via the allow list
+    expect(settings.permissions.deny).not.toContain('Read');
   });
 });

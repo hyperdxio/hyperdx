@@ -10,18 +10,19 @@ describe('buildSystemPrompt', () => {
   it('includes generic tool-environment guidance for both MCPs', () => {
     const hdx = buildSystemPrompt('latency-spike', 'hyperdx');
     const ch = buildSystemPrompt('noisy-signals', 'clickhouse');
-    // Both prompts should warn that Read/Bash/Grep are unavailable
+    // Both prompts should explain tool environment and Read availability
     for (const p of [hdx, ch]) {
       expect(p).toContain('TOOL ENVIRONMENT');
-      expect(p).toContain('NO');
-      expect(p).toContain('file-reading tools');
+      expect(p).toContain('Read tool');
+      expect(p).toContain('oversized tool responses');
     }
   });
 
-  it('asks for service, operation, and root cause in the final answer', () => {
+  it('asks for service, operation, root cause, and ruled-out section', () => {
     const p = buildSystemPrompt('error-root-cause', 'clickhouse');
     expect(p.toLowerCase()).toContain('service');
     expect(p.toLowerCase()).toContain('operation');
     expect(p.toLowerCase()).toContain('root cause');
+    expect(p.toLowerCase()).toContain("what's not the cause");
   });
 });

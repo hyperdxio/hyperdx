@@ -51,7 +51,7 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
   const promptVariant: PromptVariant = opts.promptVariant ?? 'baseline';
   writeFileSync(
     settingsPath,
-    JSON.stringify(buildSettings(opts.mcp, promptVariant), null, 2),
+    JSON.stringify(buildSettings(opts.mcp, promptVariant, tempdir), null, 2),
   );
 
   const argv = [
@@ -59,7 +59,7 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
     '--mcp-config',
     mcpConfigPath,
     '--allowedTools',
-    allowedToolsPattern(opts.mcp),
+    `${allowedToolsPattern(opts.mcp)},Read(${tempdir}/*)`,
     '--disallowedTools',
     deniedToolsFor(promptVariant, opts.mcp).join(','),
     '--dangerously-skip-permissions',

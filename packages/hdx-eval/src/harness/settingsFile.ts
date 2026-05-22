@@ -4,8 +4,13 @@ import type { McpKind, PromptVariant } from './types';
 /**
  * Filesystem / shell / built-in tools we never want the eval agent to use.
  * The agent's working directory is a fresh tempdir (no answer key) — but
- * Bash/Read/Glob/Grep would still let it shell out to /home/ and read prior
+ * Bash/Glob/Grep would still let it shell out to /home/ and read prior
  * runs or the source tree. Lock it to the MCP tools only.
+ *
+ * Read is NOT denied here — it is allowed with a path scope restricted to
+ * the agent's tempdir so the agent can recover oversized tool responses
+ * that Claude Code saves to disk. The scoped allow rule is added in
+ * buildSettings() using the concrete tempdir path.
  *
  * `Task` (Claude Code's subagent-spawning tool) is denied by default but
  * ALLOWED in the `hypothesis` prompt variant — that variant explicitly
@@ -14,7 +19,6 @@ import type { McpKind, PromptVariant } from './types';
  */
 export const DENIED_BUILT_IN_TOOLS_BASE = [
   'Bash',
-  'Read',
   'Write',
   'Edit',
   'MultiEdit',
@@ -68,10 +72,20 @@ export function deniedToolsFor(
 export function buildSettings(
   kind: McpKind,
   variant: PromptVariant = 'baseline',
+  tempdir?: string,
 ): Record<string, unknown> {
+  const allow: string[] = [allowedToolsPattern(kind)];
+
+  // Allow Read scoped to the agent's tempdir so it can recover oversized
+  // tool responses that Claude Code saves to disk. The tempdir is an
+  // empty mkdtemp directory — no ground truth, source, or prior runs.
+  if (tempdir) {
+    allow.push(`Read(${tempdir}/*)`);
+  }
+
   return {
     permissions: {
-      allow: [allowedToolsPattern(kind)],
+      allow,
       deny: [...deniedToolsFor(variant, kind)],
     },
   };

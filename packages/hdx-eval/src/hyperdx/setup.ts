@@ -88,7 +88,10 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
     let traceSource = sourcesByName.get(traceName);
     if (!traceSource) {
       traceSource = await api.createSource(
-        buildTraceSourceBody(traceName, connection._id, tables.traces),
+        buildTraceSourceBody(traceName, connection._id, tables.traces, {
+          kvRollupTable: tables.tracesKvRollup,
+          keyRollupTable: tables.tracesKeyRollup,
+        }),
       );
       created.push(traceName);
     }
@@ -96,7 +99,10 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
     let logSource = sourcesByName.get(logName);
     if (!logSource) {
       logSource = await api.createSource(
-        buildLogSourceBody(logName, connection._id, tables.logs),
+        buildLogSourceBody(logName, connection._id, tables.logs, {
+          kvRollupTable: tables.logsKvRollup,
+          keyRollupTable: tables.logsKeyRollup,
+        }),
       );
       created.push(logName);
     }
@@ -141,6 +147,7 @@ function buildTraceSourceBody(
   name: string,
   connectionId: string,
   tableName: string,
+  rollup: { kvRollupTable: string; keyRollupTable: string },
 ): Record<string, unknown> {
   return {
     name,
@@ -163,6 +170,11 @@ function buildTraceSourceBody(
     eventAttributesExpression: 'SpanAttributes',
     implicitColumnExpression: 'SpanName',
     querySettings: EVAL_QUERY_SETTINGS,
+    metadataMaterializedViews: {
+      keyRollupTable: rollup.keyRollupTable,
+      kvRollupTable: rollup.kvRollupTable,
+      granularity: '15 minute',
+    },
   };
 }
 
@@ -170,6 +182,7 @@ function buildLogSourceBody(
   name: string,
   connectionId: string,
   tableName: string,
+  rollup: { kvRollupTable: string; keyRollupTable: string },
 ): Record<string, unknown> {
   return {
     name,
@@ -187,6 +200,11 @@ function buildLogSourceBody(
     eventAttributesExpression: 'LogAttributes',
     implicitColumnExpression: 'Body',
     querySettings: EVAL_QUERY_SETTINGS,
+    metadataMaterializedViews: {
+      keyRollupTable: rollup.keyRollupTable,
+      kvRollupTable: rollup.kvRollupTable,
+      granularity: '15 minute',
+    },
   };
 }
 
