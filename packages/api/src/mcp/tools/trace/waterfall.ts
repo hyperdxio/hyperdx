@@ -57,7 +57,7 @@ const traceSchema = z.object({
     .describe(
       'How to choose which trace to return when traceId is not provided.\n' +
         '  slowest – trace with the longest single span (use for latency investigations)\n' +
-        '  first_error – earliest trace whose root span has STATUS_CODE_ERROR\n' +
+        '  first_error – earliest trace containing a span with STATUS_CODE_ERROR\n' +
         '  most_recent – the most recent trace matching pickFilter',
     ),
   startTime: z

@@ -414,6 +414,184 @@ describe('MCP Trace Tools', () => {
         const output = JSON.parse(getFirstText(result));
         expect(output.traceId).toBe(TRACE_ID);
       });
+
+      it('should apply pickFilter with sql language', async () => {
+        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+          sourceId: traceSource._id.toString(),
+          pickFilter: `ServiceName = '${WF_SVC}'`,
+          pickFilterLanguage: 'sql',
+          pickBy: 'most_recent',
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.traceId).toBe(TRACE_ID);
+        expect(output.spanCount).toBeGreaterThan(0);
+      });
+    });
+
+    describe('first_error pick mode', () => {
+      const ERROR_TRACE_ID = 'ffff0000eeee1111dddd2222cccc3333';
+      const now = new Date();
+      const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+      beforeEach(async () => {
+        await bulkInsertTraces([
+          {
+            Timestamp: fiveMinAgo,
+            TraceId: ERROR_TRACE_ID,
+            SpanId: 'err_root_span01',
+            ParentSpanId: '',
+            SpanName: 'GET /wf-test-err/fail',
+            SpanKind: 'SPAN_KIND_SERVER',
+            ServiceName: 'wf-test-err-svc',
+            Duration: 100_000_000,
+            StatusCode: 'STATUS_CODE_ERROR',
+            StatusMessage: 'Internal Server Error',
+          },
+        ]);
+      });
+
+      it('should auto-pick trace with an error span', async () => {
+        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+          sourceId: traceSource._id.toString(),
+          pickFilter: 'ServiceName:wf-test-err-svc',
+          pickBy: 'first_error',
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.traceId).toBe(ERROR_TRACE_ID);
+        expect(output.spanCount).toBeGreaterThan(0);
+      });
+    });
+
+    describe('logSource edge cases', () => {
+      it('should handle missing logSourceId gracefully (no logs section)', async () => {
+        // Create a trace source WITHOUT logSourceId
+        const noLogTraceSource = await Source.create({
+          kind: SourceKind.Trace,
+          team: team._id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_TRACES_TABLE,
+          },
+          timestampValueExpression: 'Timestamp',
+          connection: connection._id,
+          name: 'Traces No Log Link',
+          traceIdExpression: 'TraceId',
+          spanIdExpression: 'SpanId',
+          parentSpanIdExpression: 'ParentSpanId',
+          spanNameExpression: 'SpanName',
+          spanKindExpression: 'SpanKind',
+          durationExpression: 'Duration',
+          durationPrecision: 9,
+          serviceNameExpression: 'ServiceName',
+          statusCodeExpression: 'StatusCode',
+          statusMessageExpression: 'StatusMessage',
+          eventAttributesExpression: 'SpanAttributes',
+          // logSourceId intentionally omitted
+        });
+
+        const TRACE_ID = 'aaaabbbbccccddddeeeeffffgggghhhh';
+        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+          sourceId: noLogTraceSource._id.toString(),
+          traceId: TRACE_ID,
+          includeLogs: true,
+          startTime: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(Date.now() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        // Should succeed without a logs section
+        expect(output.logs).toBeUndefined();
+      });
+
+      it('should note when logSourceId points to a non-existent source', async () => {
+        const badLogTraceSource = await Source.create({
+          kind: SourceKind.Trace,
+          team: team._id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_TRACES_TABLE,
+          },
+          timestampValueExpression: 'Timestamp',
+          connection: connection._id,
+          name: 'Traces Bad Log Link',
+          traceIdExpression: 'TraceId',
+          spanIdExpression: 'SpanId',
+          parentSpanIdExpression: 'ParentSpanId',
+          spanNameExpression: 'SpanName',
+          spanKindExpression: 'SpanKind',
+          durationExpression: 'Duration',
+          durationPrecision: 9,
+          serviceNameExpression: 'ServiceName',
+          statusCodeExpression: 'StatusCode',
+          statusMessageExpression: 'StatusMessage',
+          eventAttributesExpression: 'SpanAttributes',
+          logSourceId: '000000000000000000000000',
+        });
+
+        const TRACE_ID = 'aaaabbbbccccddddeeeeffffgggghhhh';
+        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+          sourceId: badLogTraceSource._id.toString(),
+          traceId: TRACE_ID,
+          includeLogs: true,
+          startTime: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(Date.now() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.logsNote).toBeDefined();
+        expect(output.logsNote).toContain('not found');
+      });
+
+      it('should note when logSourceId points to a non-log source', async () => {
+        // Point logSourceId at the trace source itself (wrong kind)
+        const wrongKindTraceSource = await Source.create({
+          kind: SourceKind.Trace,
+          team: team._id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_TRACES_TABLE,
+          },
+          timestampValueExpression: 'Timestamp',
+          connection: connection._id,
+          name: 'Traces Wrong Kind Log',
+          traceIdExpression: 'TraceId',
+          spanIdExpression: 'SpanId',
+          parentSpanIdExpression: 'ParentSpanId',
+          spanNameExpression: 'SpanName',
+          spanKindExpression: 'SpanKind',
+          durationExpression: 'Duration',
+          durationPrecision: 9,
+          serviceNameExpression: 'ServiceName',
+          statusCodeExpression: 'StatusCode',
+          statusMessageExpression: 'StatusMessage',
+          eventAttributesExpression: 'SpanAttributes',
+          logSourceId: traceSource._id.toString(), // points to a trace source, not log
+        });
+
+        const TRACE_ID = 'aaaabbbbccccddddeeeeffffgggghhhh';
+        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+          sourceId: wrongKindTraceSource._id.toString(),
+          traceId: TRACE_ID,
+          includeLogs: true,
+          startTime: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(Date.now() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.logsNote).toBeDefined();
+        expect(output.logsNote).toContain('not "log"');
+      });
     });
   });
 

@@ -38,6 +38,7 @@ const traceBreakdownSchema = z.object({
     ),
   parentFilter: z
     .string()
+    .max(4096)
     .describe(
       'SQL WHERE clause that selects the PARENT spans you want to break ' +
         'down. The tool finds the distinct TraceIds matching this filter, ' +
@@ -244,7 +245,7 @@ SELECT
   ${spanNameExpr} AS operation,
   sum(${durationExpr}) / {divisor:Float64} AS total_time_ms,
   count() AS calls,
-  count(DISTINCT ${traceIdExpr}) AS in_parents,
+  uniqExact(${traceIdExpr}) AS in_parents,
   quantile(0.5)(${durationExpr}) / {divisor:Float64} AS p50_ms,
   quantile(0.99)(${durationExpr}) / {divisor:Float64} AS p99_ms
 FROM \`${dbName}\`.\`${tableName}\`
