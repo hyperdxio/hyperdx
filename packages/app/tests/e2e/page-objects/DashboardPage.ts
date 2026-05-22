@@ -432,6 +432,7 @@ export class DashboardPage {
     sourceName: string,
     expression: string,
     metricType?: string,
+    appliesToSourceNames?: string[],
   ) {
     const filterNameInput = this.page.getByTestId('filter-name-input');
     await filterNameInput.fill(name);
@@ -451,6 +452,20 @@ export class DashboardPage {
         .click();
     }
 
+    if (appliesToSourceNames && appliesToSourceNames.length > 0) {
+      const appliesToSelector = this.page.getByTestId(
+        'applies-to-source-selector',
+      );
+      for (const appliesName of appliesToSourceNames) {
+        await appliesToSelector.click();
+        await this.page
+          .getByRole('option', { name: appliesName, exact: true })
+          .click();
+      }
+      // Close the dropdown so the save button is clickable.
+      await this.page.keyboard.press('Escape');
+    }
+
     const saveFilterButton = this.page.getByTestId('save-filter-button');
     await saveFilterButton.click();
   }
@@ -460,10 +475,21 @@ export class DashboardPage {
     sourceName: string,
     expression: string,
     metricType?: string,
+    appliesToSourceNames?: string[],
   ) {
     await this.addFiltersButton.click();
 
-    await this.fillFilterForm(name, sourceName, expression, metricType);
+    await this.fillFilterForm(
+      name,
+      sourceName,
+      expression,
+      metricType,
+      appliesToSourceNames,
+    );
+  }
+
+  getFilterLabel(name: string) {
+    return this.page.getByTestId(`dashboard-filter-help-${name}`);
   }
 
   async deleteFilterFromDashboard(name: string) {
