@@ -18,37 +18,6 @@ export function buildSystemPrompt(
   //   SeverityText, SeverityNumber, Body, plus Map(String,String) columns
   //   ResourceAttributes and LogAttributes.`;
 
-  const mcpSpecific =
-    mcp === 'hyperdx'
-      ? `HyperDX Sources are pre-configured for these tables (named
-\`eval-${scenario}-traces\` and \`eval-${scenario}-logs\`). Call
-\`hyperdx_list_sources\` first to discover source IDs.
-
-Available HyperDX investigation tools (call directly — names + purposes
-below so you don't need to ToolSearch every tool):
-- hyperdx_list_sources       Catalog: sources + connections (their IDs, kinds, key columns)
-- hyperdx_describe_source    Full column schema + map attribute keys + low-cardinality values for one source
-- hyperdx_timeseries         Plot a metric over time; supports groupBy + granularity
-- hyperdx_table              Group-by aggregations. Can take MULTIPLE select items in one call (count + p50 + p99 in one shot). Map attributes work in both groupBy and valueExpression — \`SpanAttributes['<key>']\` is a valid groupBy expression. Default shape="table" works for everything; only use number for a single scalar.
-- hyperdx_search             Browse individual rows ordered by timestamp
-- hyperdx_sql                Raw ClickHouse SQL. Only reach for this when the builder tools genuinely cannot express the query — multi-aggregate and attribute-map access are both supported by hyperdx_table.
-- hyperdx_log_patterns       Cluster log bodies into Drain templates, ranked by frequency, with per-pattern trend buckets
-- hyperdx_event_deltas       *** PREFER THIS over manual GROUP BYs when the question is "which attribute separates these two row groups". Examples: errors vs successes, slow vs fast spans, after-deploy vs before-deploy, one cohort vs the rest. One call ranks ALL attributes by signal strength. Whenever you find yourself running a sequence of GROUP BYs on different columns trying to find a discriminator, that's the cue to use event_deltas instead.
-- hyperdx_trace_waterfall    Full span tree for ONE trace (by TraceId or auto-picked via pickFilter + pickBy)
-- hyperdx_trace_top_time_consuming_operations
-                             Aggregate child-span breakdown across MANY traces matching a parent filter. Ranks operations by total time spent — answers "where is the time going inside these slow requests?"
-
-ToolSearch is still needed to load the full input schema for tools you've
-never used in this session, but you don't need to ToolSearch for the
-list itself — the catalog above is complete.`
-      : `Use \`run_query\` to issue SQL against the tables above. Schema
-introspection is available via \`list_databases\` and \`list_tables\`.
-
-Note: ClickHouse will NOT implicitly cast a bare ISO-8601 string to
-\`DateTime64\`. \`WHERE Timestamp >= '<ISO>'\` fails with "Cannot convert
-string ... to type DateTime64(9)". Wrap with
-\`parseDateTime64BestEffortOrNull('<ISO>')\` or use \`toDateTime64('<YYYY-MM-DD HH:MM:SS>', 9)\`.`;
-
   // When the harness anchors a run to a fixed past time, the agent must use
   // that anchor as "now" for any relative window in the user's prompt. Without
   // this, the model uses today's date and queries an empty future window.
@@ -114,7 +83,6 @@ observability data. The OpenTelemetry data lives in ClickHouse:
 ${anchorBlock}
 ${sharedSchema}
 
-${mcpSpecific}
 ${playbookBlock}
 Investigate the user's question. In your final answer, identify:
 - the specific service(s) and operation(s) involved

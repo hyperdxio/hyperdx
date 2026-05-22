@@ -7,24 +7,15 @@ describe('buildSystemPrompt', () => {
     expect(p).toContain('default.eval_error_root_cause_otel_logs');
   });
 
-  it('hints HyperDX MCP tools when condition is hyperdx', () => {
-    const p = buildSystemPrompt('latency-spike', 'hyperdx');
-    // The prompt now ships a small tools catalog so the agent doesn't have
-    // to ToolSearch every tool by name. The catalog covers list_sources,
-    // describe_source, and the four investigation tools we want the agent
-    // to know about.
-    expect(p).toContain('hyperdx_list_sources');
-    expect(p).toContain('hyperdx_describe_source');
-    expect(p).toContain('hyperdx_event_deltas');
-    expect(p).toContain('hyperdx_log_patterns');
-    expect(p).not.toContain('run_query');
-  });
-
-  it('hints ClickHouse MCP tools when condition is clickhouse', () => {
-    const p = buildSystemPrompt('noisy-signals', 'clickhouse');
-    expect(p).toContain('run_query');
-    expect(p).toContain('list_tables');
-    expect(p).not.toContain('hyperdx_query');
+  it('includes generic tool-environment guidance for both MCPs', () => {
+    const hdx = buildSystemPrompt('latency-spike', 'hyperdx');
+    const ch = buildSystemPrompt('noisy-signals', 'clickhouse');
+    // Both prompts should warn that Read/Bash/Grep are unavailable
+    for (const p of [hdx, ch]) {
+      expect(p).toContain('TOOL ENVIRONMENT');
+      expect(p).toContain('NO');
+      expect(p).toContain('file-reading tools');
+    }
   });
 
   it('asks for service, operation, and root cause in the final answer', () => {

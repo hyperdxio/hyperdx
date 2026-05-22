@@ -38,6 +38,7 @@ export async function runCell(opts: RunCellOptions): Promise<RunRecord> {
     opts.mcp,
     opts.anchorTimeIso,
     promptVariant,
+    opts.maxTurns,
   );
 
   const result = await runClaude({

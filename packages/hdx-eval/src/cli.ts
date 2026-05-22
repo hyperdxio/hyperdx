@@ -4,7 +4,11 @@ import { resolve } from 'path';
 
 import { createEvalClient, defaultClickHouseUrl } from './clickhouse/client';
 import { dropScenarioTables, scenarioTables } from './clickhouse/schema';
-import { gradeBatch, resolveBatchDir } from './grading/grade';
+import {
+  gradeBatch,
+  type GradeBatchOptions,
+  resolveBatchDir,
+} from './grading/grade';
 import { runCell } from './harness/runRun';
 import type { McpKind, PromptVariant } from './harness/types';
 import { configExists, configPath, readConfig } from './hyperdx/config';
@@ -330,6 +334,17 @@ program
       'denies it.',
     'baseline',
   )
+  .option('--no-grade', 'Skip automatic grading after runs complete')
+  .option('--no-report', 'Skip automatic report generation after grading')
+  .option(
+    '--judge-model <id>',
+    'Judge model ID (used when auto-grading)',
+    'claude-opus-4-7',
+  )
+  .option(
+    '--no-judge',
+    'Run programmatic checks only during auto-grading (skip LLM judge)',
+  )
   .action(
     async (
       scenarioName: string,
@@ -344,6 +359,10 @@ program
         anchorTime?: string;
         concurrency: string;
         promptVariant: string;
+        grade: boolean;
+        report: boolean;
+        judgeModel: string;
+        judge: boolean;
       },
     ) => {
       const opts = program.opts<GlobalOpts>();
@@ -507,6 +526,36 @@ program
         console.log(
           `  ${row.mcp.padEnd(10)} #${row.i}  ${row.termination.padEnd(13)}  tools=${row.toolCalls}  tokens=${row.inputTokens}+${row.outputTokens}  ${row.durationS}s`,
         );
+      }
+
+      // ─── Auto-grade ──────────────────────────────────────────────
+      if (cmdOpts.grade !== false) {
+        console.log('\n--- Auto-grading ---');
+        const gradeOpts: GradeBatchOptions = {
+          judgeModel: cmdOpts.judgeModel,
+          skipJudge: cmdOpts.judge === false,
+        };
+        const gradeResult = await gradeBatch(batchDir, gradeOpts);
+        console.log(
+          `\nGraded ${gradeResult.graded.length} run${gradeResult.graded.length === 1 ? '' : 's'}; ${gradeResult.errors.length} error${gradeResult.errors.length === 1 ? '' : 's'}.`,
+        );
+        if (gradeResult.errors.length > 0) {
+          for (const e of gradeResult.errors)
+            console.log('  -', e.runPath, e.error);
+        }
+
+        // ─── Auto-report ────────────────────────────────────────────
+        if (cmdOpts.report !== false && gradeResult.graded.length > 0) {
+          console.log('\n--- Auto-report ---');
+          const resolvedDir = resolveBatchDir(batchDir);
+          const outPath = `${resolvedDir}/_summary.md`;
+          const reportResult = writeBatchSummary(resolvedDir, outPath);
+          console.log(`Wrote ${reportResult.mdPath}`);
+          console.log(`Wrote ${reportResult.jsonPath}`);
+          console.log(
+            `Aggregated ${reportResult.pairsCount} run${reportResult.pairsCount === 1 ? '' : 's'}.`,
+          );
+        }
       }
     },
   );

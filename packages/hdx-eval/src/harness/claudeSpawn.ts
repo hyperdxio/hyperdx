@@ -61,7 +61,7 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
     '--allowedTools',
     allowedToolsPattern(opts.mcp),
     '--disallowedTools',
-    deniedToolsFor(promptVariant).join(','),
+    deniedToolsFor(promptVariant, opts.mcp).join(','),
     '--dangerously-skip-permissions',
     '--setting-sources',
     'local',

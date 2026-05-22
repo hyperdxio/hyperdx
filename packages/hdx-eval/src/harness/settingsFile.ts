@@ -32,10 +32,37 @@ export const DENIED_BUILT_IN_TOOLS = [
   'Task',
 ] as const;
 
-export function deniedToolsFor(variant: PromptVariant): readonly string[] {
-  return variant === 'hypothesis'
-    ? DENIED_BUILT_IN_TOOLS_BASE
-    : DENIED_BUILT_IN_TOOLS;
+/**
+ * HyperDX MCP tools that are irrelevant to eval investigation scenarios.
+ * Denying these reduces the total visible tool count so Claude Code is more
+ * likely to load schemas eagerly (instead of deferring them behind
+ * ToolSearch), saving 1-2 turns per run.
+ */
+const DENIED_HYPERDX_NON_INVESTIGATION_TOOLS = [
+  'mcp__hyperdx__hyperdx_delete_dashboard',
+  'mcp__hyperdx__hyperdx_get_dashboard',
+  'mcp__hyperdx__hyperdx_save_dashboard',
+  'mcp__hyperdx__hyperdx_query_tile',
+  'mcp__hyperdx__hyperdx_get_saved_search',
+  'mcp__hyperdx__hyperdx_save_saved_search',
+  'mcp__hyperdx__hyperdx_get_alert',
+  'mcp__hyperdx__hyperdx_get_webhook',
+  'mcp__hyperdx__hyperdx_save_alert',
+] as const;
+
+export function deniedToolsFor(
+  variant: PromptVariant,
+  kind?: McpKind,
+): readonly string[] {
+  const builtIn =
+    variant === 'hypothesis'
+      ? DENIED_BUILT_IN_TOOLS_BASE
+      : DENIED_BUILT_IN_TOOLS;
+
+  if (kind === 'hyperdx') {
+    return [...builtIn, ...DENIED_HYPERDX_NON_INVESTIGATION_TOOLS];
+  }
+  return builtIn;
 }
 
 export function buildSettings(
@@ -45,7 +72,7 @@ export function buildSettings(
   return {
     permissions: {
       allow: [allowedToolsPattern(kind)],
-      deny: [...deniedToolsFor(variant)],
+      deny: [...deniedToolsFor(variant, kind)],
     },
   };
 }
