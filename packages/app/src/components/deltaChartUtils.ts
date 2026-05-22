@@ -13,7 +13,6 @@
 export {
   computeComparisonScore,
   computeEffectiveSampleSize,
-  flattenData,
   getBaseColumnName,
   getPropertyStatistics,
   getStableSampleExpression,
@@ -22,9 +21,7 @@ export {
   isIdField,
   isTimestampArrayField,
   MAX_SAMPLE_SIZE,
-  MIN_PROPERTY_OCCURENCES,
   MIN_SAMPLE_SIZE,
-  rankProperties,
   SAMPLE_RATIO,
   SAMPLE_SIZE,
   semanticBoost,

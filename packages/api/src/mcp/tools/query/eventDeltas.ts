@@ -18,7 +18,6 @@ import { z } from 'zod';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 
-import { asMcpText } from '../../utils/toon';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 
@@ -519,7 +518,9 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
         };
 
         return {
-          content: [asMcpText(output)],
+          content: [
+            { type: 'text' as const, text: JSON.stringify(output, null, 2) },
+          ],
         };
       },
     ),
