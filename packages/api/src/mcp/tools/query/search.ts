@@ -53,7 +53,7 @@ export function registerSearch(server: McpServer, context: McpContext) {
         'Browse individual log/event/trace rows. ' +
         'Use this when you need to see raw events, investigate specific log lines, ' +
         'or drill into individual records matching a filter.\n\n' +
-        'Requires sourceId — call hyperdx_list_sources first.\n\n' +
+        'Requires sourceId — call hyperdx_list_sources then hyperdx_describe_source first.\n\n' +
         'For aggregated metrics, use hyperdx_table instead. ' +
         'For pattern discovery, use hyperdx_event_patterns instead.\n\n' +
         'Column naming: top-level columns are PascalCase (Duration, StatusCode). ' +

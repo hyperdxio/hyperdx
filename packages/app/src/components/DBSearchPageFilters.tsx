@@ -4,7 +4,10 @@ import {
   TableMetadata,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { FilterState } from '@hyperdx/common-utils/dist/filters';
+import {
+  FilterState,
+  filtersToQuery,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
   SourceKind,
@@ -1347,10 +1350,18 @@ const DBSearchPageFiltersComponent = ({
           });
           newValues = results[0] ? results[0].value : [];
         } else {
+          // Drop this key's own filter from the WHERE clause so "Load more"
+          // can surface alternative values when the dropdown has self-restricted
+          // to the user's current selection (exact filter mode, with selections
+          // on this key). Other dimensions' filters and the free-text where
+          // stay applied so counts remain search-aware for unrelated fields.
+          const strippedFilterState: FilterState = { ...filterState };
+          delete strippedFilterState[key];
           const newKeyVals = await metadata.getKeyValuesWithMVs({
             chartConfig: {
               ...chartConfig,
               dateRange,
+              filters: filtersToQuery(strippedFilterState),
             },
             keys: [key],
             limit: LOAD_MORE_LOAD_LIMIT,
@@ -1379,6 +1390,7 @@ const DBSearchPageFiltersComponent = ({
       chartConfig,
       setExtraFacets,
       dateRange,
+      filterState,
       metadata,
       source,
       useExactPipeline,
