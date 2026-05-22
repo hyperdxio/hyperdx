@@ -3,6 +3,8 @@
 import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
+import { mergePath } from '@/utils';
+
 // Clean ClickHouse expressions to extract clean property paths
 export function cleanClickHouseExpression(key: string): string {
   // Remove toString() wrapper if present
@@ -141,11 +143,13 @@ export function getFilterStateEntry(
 
 // Coerce a filterState key into a ClickHouse expression suitable for raw SQL.
 // A dot-form Map sub-key like `LogAttributes.host.name` is rewritten to bracket
-// form `LogAttributes['host.name']`. Bracket form, backtick-quoted JSON paths,
-// `toString(...)` wrappers, and plain column names are returned unchanged. Use
-// this when handing a filterState key off to a SQL caller (e.g. "Load more"
-// via metadata.getKeyValues), since `setFilterValue` normalizes Map sub-keys
-// to dot form which ClickHouse cannot resolve as map access.
+// form `LogAttributes['host.name']` via `mergePath` so the conversion stays
+// consistent with the keys produced by the facet-discovery path. Bracket form,
+// backtick-quoted JSON paths, `toString(...)` wrappers, and plain column names
+// are returned unchanged. Use this when handing a filterState key off to a SQL
+// caller (e.g. "Load more" via metadata.getKeyValues), since `setFilterValue`
+// normalizes Map sub-keys to dot form which ClickHouse cannot resolve as map
+// access.
 export function toClickHouseKeyExpression(key: string): string {
   if (
     key.includes("['") ||
@@ -157,5 +161,5 @@ export function toClickHouseKeyExpression(key: string): string {
   }
   const parsed = parseMapFieldName(key);
   if (!parsed) return key;
-  return `${parsed.baseName}['${parsed.propertyPath}']`;
+  return mergePath([parsed.baseName, parsed.propertyPath]);
 }
