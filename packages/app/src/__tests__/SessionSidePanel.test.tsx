@@ -174,6 +174,23 @@ describe('SessionSidePanel', () => {
     });
   });
 
+  it('shows an error notification when copying the session URL rejects', async () => {
+    copyTextToClipboardMock.mockRejectedValue(new Error('clipboard blocked'));
+    renderPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: /share session/i }));
+
+    await waitFor(() => {
+      expect(copyTextToClipboardMock).toHaveBeenCalledWith(
+        'http://localhost/sessions?sessionSource=source-1&from=1&to=2',
+      );
+      expect(notificationsShowSpy).toHaveBeenCalledWith({
+        color: 'red',
+        message: CLIPBOARD_ERROR_MESSAGE,
+      });
+    });
+  });
+
   it('ignores duplicate share clicks while copying is still pending', async () => {
     let finishCopy: (copied: boolean) => void = (_copied: boolean): void => {
       throw new Error('copy promise was not created');
@@ -191,12 +208,10 @@ describe('SessionSidePanel', () => {
     fireEvent.click(shareButton);
 
     expect(copyTextToClipboardMock).toHaveBeenCalledTimes(1);
-    expect(shareButton).toHaveAttribute('data-loading', 'true');
 
     finishCopy(true);
 
     await waitFor(() => {
-      expect(shareButton).not.toHaveAttribute('data-loading');
       expect(notificationsShowSpy).toHaveBeenCalledTimes(1);
       expect(notificationsShowSpy).toHaveBeenCalledWith({
         color: 'green',

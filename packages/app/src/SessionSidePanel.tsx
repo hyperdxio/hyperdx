@@ -57,6 +57,7 @@ export default function SessionSidePanel({
   const isMountedRef = useRef(true);
 
   useEffect(() => {
+    // React 18 StrictMode runs cleanup before re-mounting this effect.
     isMountedRef.current = true;
 
     return () => {
@@ -82,6 +83,8 @@ export default function SessionSidePanel({
     let copied = false;
     try {
       copied = await copyTextToClipboard(window.location.href);
+    } catch {
+      copied = false;
     } finally {
       isSharingSessionRef.current = false;
       if (isMountedRef.current) {
