@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Field,
+  TableConnection,
   TableConnectionChoice,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
@@ -32,6 +33,12 @@ export class LuceneLanguageFormatter implements ILanguageFormatter {
 }
 
 const luceneLanguageFormatter = new LuceneLanguageFormatter();
+
+function stableTableConnectionToKey(tc: TableConnection | undefined): string {
+  if (!tc) return '';
+  return `${tc.connectionId}|${tc.databaseName}|${tc.tableName}`;
+}
+
 export default function SearchInputV2({
   tableConnection,
   tableConnections,
@@ -87,17 +94,40 @@ export default function SearchInputV2({
     },
   );
 
+  // Callers commonly pass an inline `tcFromSource(source)` for `tableConnection`,
+  // which produces a fresh object reference on every parent render. Without
+  // stabilizing here, the explanation effect below would re-run continuously,
+  // re-triggering schema queries and (when the underlying ClickHouse database
+  // doesn't exist) setting the same string state in a tight loop, eventually
+  // tripping React's "Maximum update depth exceeded" guard.
+  const stableTableConnectionKey = stableTableConnectionToKey(tableConnection);
+  const stableTableConnection = useMemo<TableConnection | undefined>(
+    () => tableConnection,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stableTableConnectionKey],
+  );
+
   useEffect(() => {
-    if (tableConnection) {
-      genEnglishExplanation({
-        query: value,
-        tableConnection,
-        metadata,
-      }).then(q => {
-        setParsedEnglishQuery(q);
+    if (!stableTableConnection) return;
+    let cancelled = false;
+    genEnglishExplanation({
+      query: value,
+      tableConnection: stableTableConnection,
+      metadata,
+    })
+      .then(q => {
+        if (!cancelled) setParsedEnglishQuery(q);
+      })
+      .catch(err => {
+        // Schema lookups can fail for sources whose database/table no longer
+        // exists. Swallow these so a stale source doesn't surface as an
+        // unhandled rejection that contributes to render-loop crashes.
+        console.warn('Failed to compute lucene query explanation:', err);
       });
-    }
-  }, [value, tableConnection, metadata]);
+    return () => {
+      cancelled = true;
+    };
+  }, [value, stableTableConnection, metadata]);
 
   useHotkeys(
     ['/', 's'],
