@@ -15,9 +15,11 @@ import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
+import { parseTimeRange } from './helpers';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -96,23 +98,6 @@ const deltasSchema = z.object({
 type DeltasInput = z.infer<typeof deltasSchema>;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function parseGroupTimeRange(group: {
-  startTime: string;
-  endTime: string;
-}): { error: string } | { startDate: Date; endDate: Date } {
-  const startDate = new Date(group.startTime);
-  const endDate = new Date(group.endTime);
-  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-    return {
-      error: `Invalid startTime/endTime — must be valid ISO 8601 strings.`,
-    };
-  }
-  if (endDate.getTime() <= startDate.getTime()) {
-    return { error: `endTime must be greater than startTime.` };
-  }
-  return { startDate, endDate };
-}
 
 function topDeltasForProperty(
   targetValues: Map<string, number>,
@@ -215,7 +200,10 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
       'hyperdx_event_deltas',
       context,
       async (input: DeltasInput) => {
-        const targetRange = parseGroupTimeRange(input.target);
+        const targetRange = parseTimeRange(
+          input.target.startTime,
+          input.target.endTime,
+        );
         if ('error' in targetRange) {
           return {
             isError: true as const,
@@ -227,7 +215,10 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
             ],
           };
         }
-        const baselineRange = parseGroupTimeRange(input.baseline);
+        const baselineRange = parseTimeRange(
+          input.baseline.startTime,
+          input.baseline.endTime,
+        );
         if ('error' in baselineRange) {
           return {
             isError: true as const,
@@ -535,8 +526,15 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
             'are dropped by default — set includeHidden:true to inspect them.',
         };
 
+        const trimmedOutput = trimToolResponse(output);
+
         return {
-          content: [{ type: 'text' as const, text: JSON.stringify(output) }],
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify(trimmedOutput, null, 2),
+            },
+          ],
         };
       },
     ),
