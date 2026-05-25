@@ -12,7 +12,6 @@ import {
   OnClickSearchSchema,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
-  SQLIntervalSchema,
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
   WebhookService,
@@ -250,10 +249,6 @@ const externalDashboardTimeChartConfigSchema = z.object({
   alignDateRangeToGranularity: z.boolean().optional(),
   fillNulls: z.boolean().optional(),
   numberFormat: NumberFormatSchema.optional(),
-  // Time bucket size for the chart, e.g. "1 minute", "5 minute", "1 hour".
-  // Without this, the chart builder aggregates the entire window into a
-  // single row per group instead of a per-bucket series.
-  granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
 });
 
 const externalDashboardLineChartConfigSchema =
@@ -268,7 +263,6 @@ const externalDashboardLineRawSqlChartConfigSchema =
     compareToPreviousPeriod: z.boolean().optional(),
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
-    granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
   });
 
 const externalDashboardBarChartConfigSchema =
@@ -281,7 +275,6 @@ const externalDashboardBarRawSqlChartConfigSchema =
     displayType: z.literal('stacked_bar'),
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
-    granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
   });
 
 const externalDashboardTableChartConfigSchema = z.object({
