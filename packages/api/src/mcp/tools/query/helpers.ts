@@ -26,23 +26,36 @@ import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
 // ─── Where merging ───────────────────────────────────────────────────────────
 
+export interface MergeWhereResult<T> {
+  items: T[];
+  /** Non-empty when items were skipped due to language mismatch. */
+  warnings: string[];
+}
+
 /**
  * Merge a top-level `where` filter into each select item so it becomes part
  * of the per-item aggCondition. Table/line/number/pie display types don't have
  * a chart-level where — filtering is per-select-item.
  *
  * When the top-level and item-level languages differ, the item's own filter
- * takes precedence (we can't easily merge Lucene + SQL).
+ * takes precedence (we can't easily merge Lucene + SQL). A warning is returned
+ * so callers can surface it in the response.
  */
 export function mergeWhereIntoSelectItems<
   T extends {
     where?: string;
     whereLanguage?: 'lucene' | 'sql';
   },
->(items: T[], topWhere: string, topLang: 'lucene' | 'sql'): T[] {
-  if (!topWhere) return items;
+>(
+  items: T[],
+  topWhere: string,
+  topLang: 'lucene' | 'sql',
+): MergeWhereResult<T> {
+  if (!topWhere) return { items, warnings: [] };
 
-  return items.map(item => {
+  const warnings: string[] = [];
+
+  const merged = items.map((item, idx) => {
     const itemWhere = item.where || '';
     const itemLang = item.whereLanguage || 'lucene';
 
@@ -59,8 +72,14 @@ export function mergeWhereIntoSelectItems<
 
     // Languages differ — keep item's where unchanged (can't easily merge
     // Lucene + SQL). The item's own filter takes precedence.
+    warnings.push(
+      `select[${idx}]: top-level where (${topLang}) was NOT applied because this item uses whereLanguage:"${itemLang}". ` +
+        `Set the item's whereLanguage to "${topLang}" or rewrite the top-level where in ${itemLang} to apply both filters.`,
+    );
     return item;
   });
+
+  return { items: merged, warnings };
 }
 
 // ─── Tile construction ───────────────────────────────────────────────────────
@@ -369,7 +388,8 @@ function clickHouseErrorResult(e: unknown): {
   };
 }
 
-function errorHint(msg: string): string | null {
+/** @internal Exported for testing only. */
+export function errorHint(msg: string): string | null {
   if (
     /Cannot (convert|parse) string .* (to|as) (type )?DateTime64/i.test(msg)
   ) {

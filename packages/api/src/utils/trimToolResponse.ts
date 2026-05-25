@@ -29,13 +29,17 @@ export function trimToolResponse<T = any>(
 
   // Handle different data structures
   if (Array.isArray(data)) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- trimArray preserves the array structure
-    return { data: trimArray(data, maxSize) as T, isTrimmed: true };
+    const trimmed =
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      trimArray(data, maxSize) as T;
+    return { data: trimmed, isTrimmed: true };
   }
 
   if (typeof data === 'object' && data !== null) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- trimObject preserves the object structure
-    return { data: trimObject(data, maxSize) as T, isTrimmed: true };
+    const trimmed =
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      trimObject(data, maxSize) as T;
+    return { data: trimmed, isTrimmed: true };
   }
 
   return { data, isTrimmed: false };

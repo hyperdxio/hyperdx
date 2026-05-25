@@ -93,11 +93,12 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
 
       // Inject top-level where into each select item (timeseries uses
       // per-select-item aggCondition, not chart-level where)
-      const selectItems = mergeWhereIntoSelectItems(
-        input.select,
-        input.where,
-        input.whereLanguage,
-      );
+      const { items: selectItems, warnings: mergeWarnings } =
+        mergeWhereIntoSelectItems(
+          input.select,
+          input.where,
+          input.whereLanguage,
+        );
 
       const tile = buildTile('MCP Timeseries', 12, 4, {
         displayType: input.shape,
@@ -114,6 +115,18 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
         startDate,
         endDate,
       );
+
+      // Surface language-mismatch warnings so the agent knows the top-level
+      // where was not applied to every select item.
+      if (mergeWarnings.length > 0 && result.content?.[0]?.type === 'text') {
+        try {
+          const parsed = JSON.parse(result.content[0].text);
+          parsed.warnings = mergeWarnings;
+          result.content[0].text = JSON.stringify(parsed, null, 2);
+        } catch {
+          // leave result unmodified
+        }
+      }
 
       // Detect single-bucket collapse: when a timeseries query returns only
       // 1 row, the data likely collapsed into a single time bucket. Add a
@@ -132,7 +145,7 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
               `The queried range was ${startDate.toISOString()} to ${endDate.toISOString()}. ` +
               `If this looks wrong, adjust startTime/endTime to match the actual data range, ` +
               `or try a coarser granularity.`;
-            result.content[0].text = JSON.stringify(parsed);
+            result.content[0].text = JSON.stringify(parsed, null, 2);
           }
         } catch {
           // If parsing fails, return the original result unmodified

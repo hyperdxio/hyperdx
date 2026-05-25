@@ -60,8 +60,11 @@ const tableSchema = z.object({
 
 // ─── orderBy resolution ──────────────────────────────────────────────────────
 
-/** Aggregation function names that ClickHouse cannot resolve as bare identifiers in ORDER BY. */
-const AGG_FN_NAMES: ReadonlySet<string> = new Set(MCP_AGG_FN_OPTIONS);
+/** Aggregation function names that ClickHouse cannot resolve as bare identifiers in ORDER BY.
+ *  'none' is excluded — it passes a raw expression through unchanged and has no synthesizable form. */
+const AGG_FN_NAMES: ReadonlySet<string> = new Set(
+  MCP_AGG_FN_OPTIONS.filter(fn => fn !== 'none'),
+);
 
 /**
  * Resolve an orderBy value that matches a bare aggregation function name
@@ -79,7 +82,8 @@ const AGG_FN_NAMES: ReadonlySet<string> = new Set(MCP_AGG_FN_OPTIONS);
  *      otherwise synthesize the ClickHouse expression (e.g. `count()`)
  *   3. Otherwise → pass through unchanged
  */
-function resolveOrderBy(
+/** @internal Exported for testing only. */
+export function resolveOrderBy(
   orderBy: string | undefined,
   selectItems: {
     aggFn: string;
@@ -171,11 +175,12 @@ export function registerTable(server: McpServer, context: McpContext) {
       // Inject top-level where into each select item so it becomes part
       // of the aggCondition for every metric. Table/line/number/pie display
       // types don't have a chart-level where — filtering is per-select-item.
-      const selectItems = mergeWhereIntoSelectItems(
-        input.select,
-        input.where,
-        input.whereLanguage,
-      );
+      const { items: selectItems, warnings: mergeWarnings } =
+        mergeWhereIntoSelectItems(
+          input.select,
+          input.where,
+          input.whereLanguage,
+        );
 
       const tile = buildTile('MCP Table', 12, 4, {
         displayType,
@@ -185,7 +190,26 @@ export function registerTable(server: McpServer, context: McpContext) {
         orderBy: resolveOrderBy(input.orderBy, selectItems),
       });
 
-      return runConfigTile(teamId.toString(), tile, startDate, endDate);
+      const result = await runConfigTile(
+        teamId.toString(),
+        tile,
+        startDate,
+        endDate,
+      );
+
+      // Surface language-mismatch warnings so the agent knows the top-level
+      // where was not applied to every select item.
+      if (mergeWarnings.length > 0 && result.content?.[0]?.type === 'text') {
+        try {
+          const parsed = JSON.parse(result.content[0].text);
+          parsed.warnings = mergeWarnings;
+          result.content[0].text = JSON.stringify(parsed, null, 2);
+        } catch {
+          // leave result unmodified
+        }
+      }
+
+      return result;
     }),
   );
 }
