@@ -21,10 +21,10 @@ import User from '@/models/user';
 // would otherwise create a worker thread that keeps Jest from exiting cleanly.
 // The logger is only instantiated when usage stats are actually reported,
 // which is gated by USAGE_STATS_ENABLED && !IS_CI in api-app.ts.
-let _logger: pino.Logger | null = null;
-function getLogger(): pino.Logger {
-  if (!_logger) {
-    _logger = pino({
+let usageStatsLogger: pino.Logger | null = null;
+function getUsageStatsLogger(): pino.Logger {
+  if (!usageStatsLogger) {
+    usageStatsLogger = pino({
       level: 'info',
       transport: {
         targets: [
@@ -39,7 +39,7 @@ function getLogger(): pino.Logger {
       },
     });
   }
-  return _logger;
+  return usageStatsLogger;
 }
 
 function extractTableNames(source: SourceDocument): string[] {
@@ -145,7 +145,7 @@ async function getUsageStats() {
       getClickhouseTableSize(),
     ]);
     const clusterId = team[0]?._id.toString();
-    getLogger().info(
+    getUsageStatsLogger().info(
       {
         clusterId,
         version: config.CODE_VERSION,
