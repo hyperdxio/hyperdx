@@ -210,6 +210,13 @@ describe('errorHint', () => {
     expect(hint).toBeNull();
   });
 
+  it('should NOT match lowercase "as" in cast expressions', () => {
+    const hint = errorHint(
+      'Syntax error: cannot cast as Float64 near token...',
+    );
+    expect(hint).toBeNull();
+  });
+
   it('should match V8 string length overflow', () => {
     const hint = errorHint(
       'response length exceeds the maximum allowed size of V8 String',
@@ -241,6 +248,15 @@ describe('resolveOrderBy', () => {
     );
   });
 
+  it('should return canonical alias case for case-insensitive match', () => {
+    expect(resolveOrderBy('total', [{ aggFn: 'count', alias: 'Total' }])).toBe(
+      'Total',
+    );
+    expect(
+      resolveOrderBy('TOTAL DESC', [{ aggFn: 'count', alias: 'Total' }]),
+    ).toBe('Total DESC');
+  });
+
   it('should synthesize count()', () => {
     expect(resolveOrderBy('count', [{ aggFn: 'count' }])).toBe('count()');
   });
@@ -270,6 +286,22 @@ describe('resolveOrderBy', () => {
     expect(
       resolveOrderBy('AVG', [{ aggFn: 'avg', valueExpression: 'Duration' }]),
     ).toBe('avg(Duration)');
+  });
+
+  it('should synthesize count(DISTINCT ...) for count_distinct', () => {
+    expect(
+      resolveOrderBy('count_distinct', [
+        { aggFn: 'count_distinct', valueExpression: 'UserId' },
+      ]),
+    ).toBe('count(DISTINCT UserId)');
+  });
+
+  it('should synthesize count(DISTINCT ...) with direction', () => {
+    expect(
+      resolveOrderBy('count_distinct DESC', [
+        { aggFn: 'count_distinct', valueExpression: 'UserId' },
+      ]),
+    ).toBe('count(DISTINCT UserId) DESC');
   });
 
   it('should NOT synthesize for "none" aggFn', () => {

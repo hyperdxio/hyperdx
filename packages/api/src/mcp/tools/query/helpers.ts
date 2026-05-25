@@ -375,7 +375,7 @@ export async function runConfigTile(
  * e.g. "Cannot convert string '...Z' to type DateTime64(9)" leaves the agent
  * guessing about the right format. Catch common patterns and append a hint.
  */
-function clickHouseErrorResult(e: unknown): {
+export function clickHouseErrorResult(e: unknown): {
   isError: true;
   content: [{ type: 'text'; text: string }];
 } {
@@ -400,7 +400,7 @@ export function errorHint(msg: string): string | null {
       'Bare ISO 8601 strings will NOT auto-cast to DateTime64.'
     );
   }
-  if (/Syntax error.*\bAS\b/i.test(msg)) {
+  if (/Syntax error.*\bAS\b/.test(msg)) {
     return (
       'Quote the alias if it contains reserved words or special chars: ' +
       '`expr AS "alias"`. The MCP builder tools accept `alias` as a ' +

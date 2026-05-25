@@ -102,9 +102,13 @@ export function resolveOrderBy(
 
   const lower = identifier.toLowerCase();
 
-  // Already matches an alias? No fixup needed.
-  if (selectItems.some(s => s.alias && s.alias.toLowerCase() === lower)) {
-    return orderBy;
+  // Already matches an alias? Return the canonical alias case so
+  // ClickHouse's case-sensitive identifier resolution works correctly.
+  const aliasMatch = selectItems.find(
+    s => s.alias && s.alias.toLowerCase() === lower,
+  );
+  if (aliasMatch) {
+    return `${aliasMatch.alias}${direction}`;
   }
 
   // Matches an aggFn name? Resolve to that item's alias or synthesize.
@@ -115,8 +119,14 @@ export function resolveOrderBy(
       if (match.alias) {
         return `${match.alias}${direction}`;
       }
+
       // Synthesize the ClickHouse expression so ORDER BY works
       if (match.aggFn === 'count') return `count()${direction}`;
+      // count_distinct compiles to count(DISTINCT expr) in ClickHouse,
+      // not count_distinct(expr) which is not a valid function.
+      if (match.aggFn === 'count_distinct' && match.valueExpression) {
+        return `count(DISTINCT ${match.valueExpression})${direction}`;
+      }
       if (
         match.aggFn === 'quantile' &&
         match.level != null &&

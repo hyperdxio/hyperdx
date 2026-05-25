@@ -12,6 +12,8 @@ import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
+import { clickHouseErrorResult } from './helpers';
+
 // ─── Source helpers ──────────────────────────────────────────────────────────
 
 interface SourceBodyFields {
@@ -67,7 +69,10 @@ export async function runEventPatterns(
     return {
       isError: true as const,
       content: [
-        { type: 'text' as const, text: `Source not found: ${sourceId}` },
+        {
+          type: 'text' as const,
+          text: `Source not found: ${sourceId}. Call hyperdx_list_sources to discover available source IDs.`,
+        },
       ],
     };
   }
@@ -83,7 +88,7 @@ export async function runEventPatterns(
       content: [
         {
           type: 'text' as const,
-          text: `Connection not found for source: ${sourceId}`,
+          text: `Connection not found for source: ${sourceId}. Call hyperdx_list_sources to discover available source IDs.`,
         },
       ],
     };
@@ -210,16 +215,7 @@ export async function runEventPatterns(
       }),
     ]);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text: `ClickHouse query failed: ${message}`,
-        },
-      ],
-    };
+    return clickHouseErrorResult(err);
   }
 
   const sampleRows = sampleResult.data;
