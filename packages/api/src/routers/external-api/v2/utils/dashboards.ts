@@ -157,6 +157,7 @@ const convertToExternalTileChartConfig = (
           sourceId: config.source,
           alignDateRangeToGranularity: config.alignDateRangeToGranularity,
           fillNulls: config.fillNulls !== false,
+          granularity: config.granularity,
           numberFormat: config.numberFormat,
           compareToPreviousPeriod: config.compareToPreviousPeriod,
         };
@@ -169,6 +170,7 @@ const convertToExternalTileChartConfig = (
           sourceId: config.source,
           alignDateRangeToGranularity: config.alignDateRangeToGranularity,
           fillNulls: config.fillNulls !== false,
+          granularity: config.granularity,
           numberFormat: config.numberFormat,
         };
       case DisplayType.Table:
@@ -233,6 +235,7 @@ const convertToExternalTileChartConfig = (
           config.select.length == 2,
         alignDateRangeToGranularity: config.alignDateRangeToGranularity,
         fillNulls: config.fillNulls !== false,
+        granularity: config.granularity,
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         select: Array.isArray(config.select)
           ? config.select.map(convertToExternalSelectItem)
@@ -250,6 +253,7 @@ const convertToExternalTileChartConfig = (
           config.select.length == 2,
         alignDateRangeToGranularity: config.alignDateRangeToGranularity,
         fillNulls: config.fillNulls !== false,
+        granularity: config.granularity,
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         select: Array.isArray(config.select)
           ? config.select.map(convertToExternalSelectItem)
@@ -516,6 +520,7 @@ export function convertToInternalTileConfig(
         internalConfig = {
           configType: 'sql',
           ...pick(externalConfig, [
+            'granularity',
             'numberFormat',
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',

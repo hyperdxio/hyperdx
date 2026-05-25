@@ -279,4 +279,23 @@ describe('resolveOrderBy', () => {
       ]),
     ).toBe('none');
   });
+
+  it('should handle trailing ASC/DESC', () => {
+    expect(resolveOrderBy('count DESC', [{ aggFn: 'count' }])).toBe(
+      'count() DESC',
+    );
+    expect(
+      resolveOrderBy('avg ASC', [
+        { aggFn: 'avg', valueExpression: 'Duration' },
+      ]),
+    ).toBe('avg(Duration) ASC');
+  });
+
+  it('should pass through quantile without level unchanged', () => {
+    expect(
+      resolveOrderBy('quantile', [
+        { aggFn: 'quantile', valueExpression: 'Duration' },
+      ]),
+    ).toBe('quantile');
+  });
 });

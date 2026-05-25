@@ -235,7 +235,7 @@ export async function runEventPatterns(
               summary: {
                 totalCount,
                 sampledCount: 0,
-                sampleMultiplier: 0,
+                sampleMultiplier: 1,
                 clusterCount: 0,
                 patternsReturned: 0,
                 bodyColumn,

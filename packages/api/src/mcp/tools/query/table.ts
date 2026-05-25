@@ -94,7 +94,13 @@ export function resolveOrderBy(
 ): string | undefined {
   if (!orderBy) return undefined;
 
-  const lower = orderBy.toLowerCase();
+  // Strip an optional trailing ASC/DESC so we can resolve the identifier,
+  // then re-append the direction after resolution.
+  const dirMatch = orderBy.match(/^(.+?)\s+(ASC|DESC)\s*$/i);
+  const identifier = dirMatch ? dirMatch[1] : orderBy;
+  const direction = dirMatch ? ` ${dirMatch[2].toUpperCase()}` : '';
+
+  const lower = identifier.toLowerCase();
 
   // Already matches an alias? No fixup needed.
   if (selectItems.some(s => s.alias && s.alias.toLowerCase() === lower)) {
@@ -107,19 +113,24 @@ export function resolveOrderBy(
     if (match) {
       // Prefer the explicit alias if set
       if (match.alias) {
-        return match.alias;
+        return `${match.alias}${direction}`;
       }
       // Synthesize the ClickHouse expression so ORDER BY works
-      if (match.aggFn === 'count') return 'count()';
+      if (match.aggFn === 'count') return `count()${direction}`;
       if (
         match.aggFn === 'quantile' &&
         match.level != null &&
         match.valueExpression
       ) {
-        return `quantile(${match.level})(${match.valueExpression})`;
+        return `quantile(${match.level})(${match.valueExpression})${direction}`;
+      }
+      // Skip synthesis for quantile without level — let it pass through
+      // rather than generating invalid SQL like quantile(Duration)
+      if (match.aggFn === 'quantile') {
+        return orderBy;
       }
       if (match.valueExpression) {
-        return `${match.aggFn}(${match.valueExpression})`;
+        return `${match.aggFn}(${match.valueExpression})${direction}`;
       }
     }
   }

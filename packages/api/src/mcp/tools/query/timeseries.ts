@@ -19,6 +19,7 @@ import {
   whereLanguageSchema,
   whereSchema,
 } from './schemas';
+import { resolveOrderBy } from './table';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
         sourceId: input.sourceId,
         select: selectItems,
         groupBy: input.groupBy,
-        orderBy: input.orderBy,
+        orderBy: resolveOrderBy(input.orderBy, selectItems),
         ...(input.granularity ? { granularity: input.granularity } : {}),
       });
 
