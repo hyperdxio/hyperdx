@@ -3,7 +3,12 @@ import { z } from 'zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
-import { buildTile, parseTimeRange, runConfigTile } from './helpers';
+import {
+  buildTile,
+  mergeWhereIntoSelectItems,
+  parseTimeRange,
+  runConfigTile,
+} from './helpers';
 import {
   endTimeSchema,
   groupBySchema,
@@ -11,6 +16,8 @@ import {
   orderBySchema,
   sourceIdSchema,
   startTimeSchema,
+  whereLanguageSchema,
+  whereSchema,
 } from './schemas';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
@@ -32,6 +39,13 @@ const timeseriesSchema = z.object({
     .describe(
       'Chart shape. "line" for line chart (default), "stacked_bar" for stacked bar chart.',
     ),
+  where: whereSchema.describe(
+    'Row filter applied to ALL select items. ' +
+      'Scopes the entire query — use to restrict by service, severity, etc. ' +
+      'Each select item can also have its own per-metric "where" for cohort comparisons. ' +
+      'When both are set, they are ANDed together.',
+  ),
+  whereLanguage: whereLanguageSchema,
   groupBy: groupBySchema,
   orderBy: orderBySchema,
   granularity: z
@@ -77,16 +91,55 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
       }
       const { startDate, endDate } = timeRange;
 
+      // Inject top-level where into each select item (timeseries uses
+      // per-select-item aggCondition, not chart-level where)
+      const selectItems = mergeWhereIntoSelectItems(
+        input.select,
+        input.where,
+        input.whereLanguage,
+      );
+
       const tile = buildTile('MCP Timeseries', 12, 4, {
         displayType: input.shape,
         sourceId: input.sourceId,
-        select: input.select,
+        select: selectItems,
         groupBy: input.groupBy,
         orderBy: input.orderBy,
         ...(input.granularity ? { granularity: input.granularity } : {}),
       });
 
-      return runConfigTile(teamId.toString(), tile, startDate, endDate);
+      const result = await runConfigTile(
+        teamId.toString(),
+        tile,
+        startDate,
+        endDate,
+      );
+
+      // Detect single-bucket collapse: when a timeseries query returns only
+      // 1 row, the data likely collapsed into a single time bucket. Add a
+      // hint so the agent knows to adjust the time range.
+      if (
+        result.content?.[0]?.type === 'text' &&
+        !('isError' in result && result.isError)
+      ) {
+        try {
+          const parsed = JSON.parse(result.content[0].text);
+          const data = parsed?.result?.data;
+          if (Array.isArray(data) && data.length === 1 && input.granularity) {
+            parsed.hint =
+              `Timeseries returned only 1 time bucket. ` +
+              `All data may have collapsed into a single "${input.granularity}" bucket. ` +
+              `The queried range was ${startDate.toISOString()} to ${endDate.toISOString()}. ` +
+              `If this looks wrong, adjust startTime/endTime to match the actual data range, ` +
+              `or try a coarser granularity.`;
+            result.content[0].text = JSON.stringify(parsed);
+          }
+        } catch {
+          // If parsing fails, return the original result unmodified
+        }
+      }
+
+      return result;
     }),
   );
 }

@@ -138,6 +138,7 @@ describe('MCP Query Tools', () => {
       expect(props).toContain('sourceId');
       expect(props).toContain('where');
       expect(props).toContain('sampleSize');
+      expect(props).toContain('topN');
       expect(props).toContain('bodyExpression');
       expect(tool!.inputSchema.required).toContain('sourceId');
     });

@@ -568,6 +568,7 @@ export function convertToInternalTileConfig(
         internalConfig = {
           ...pick(externalConfig, [
             'groupBy',
+            'granularity',
             'numberFormat',
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',

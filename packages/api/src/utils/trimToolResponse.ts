@@ -1,15 +1,26 @@
 import logger from '@/utils/logger';
 
+export interface TrimResult<T = any> {
+  data: T;
+  isTrimmed: boolean;
+}
+
 /**
  * Trims large data structures to prevent "Request Entity Too Large" errors
  * when multiple tool calls accumulate data in the conversation history.
+ *
+ * Returns `{ data, isTrimmed }` so callers can cheaply check whether the
+ * response was truncated without re-serializing.
  */
-export function trimToolResponse(data: any, maxSize: number = 50000): any {
+export function trimToolResponse<T = any>(
+  data: T,
+  maxSize: number = 50000,
+): TrimResult<T> {
   const serialized = JSON.stringify(data);
 
   // If data is within acceptable size, return as-is
   if (serialized.length <= maxSize) {
-    return data;
+    return { data, isTrimmed: false };
   }
 
   logger.warn(
@@ -18,14 +29,16 @@ export function trimToolResponse(data: any, maxSize: number = 50000): any {
 
   // Handle different data structures
   if (Array.isArray(data)) {
-    return trimArray(data, maxSize);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- trimArray preserves the array structure
+    return { data: trimArray(data, maxSize) as T, isTrimmed: true };
   }
 
   if (typeof data === 'object' && data !== null) {
-    return trimObject(data, maxSize);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- trimObject preserves the object structure
+    return { data: trimObject(data, maxSize) as T, isTrimmed: true };
   }
 
-  return data;
+  return { data, isTrimmed: false };
 }
 
 function trimArray(arr: any[], maxSize: number): any[] {
