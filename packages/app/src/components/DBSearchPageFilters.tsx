@@ -84,7 +84,11 @@ import {
   PinShareMenu,
 } from './DBSearchPageFilters/PinShareMenu';
 import { SharedFiltersSection } from './DBSearchPageFilters/SharedFilters';
-import { groupFacetsByBaseName } from './DBSearchPageFilters/utils';
+import {
+  getFilterStateEntry,
+  groupFacetsByBaseName,
+  toClickHouseKeyExpression,
+} from './DBSearchPageFilters/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
@@ -1336,13 +1340,20 @@ const DBSearchPageFiltersComponent = ({
     async (key: string) => {
       setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
       try {
+        // Coerce dot-form Map sub-keys (LogAttributes.foo) into bracket form
+        // (LogAttributes['foo']) before handing them to ClickHouse. Bracket
+        // form is the canonical SQL key produced by mergePath; dot form ends
+        // up in filterState after setFilterValue's parseKeyPath().join('.')
+        // normalization or after a Lucene URL round-trip, and ClickHouse
+        // cannot resolve it as map access.
+        const sqlKey = toClickHouseKeyExpression(key);
         let newValues: string[];
         if (!useExactPipeline) {
           const results = await metadata.getAllKeyValues({
             databaseName: chartConfig.from.databaseName,
             tableName: chartConfig.from.tableName,
             connectionId: chartConfig.connection,
-            keyExpressions: [key],
+            keyExpressions: [sqlKey],
             maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
             metadataMVs: sourceTableConnection.metadataMVs,
             dateRange,
@@ -1355,15 +1366,18 @@ const DBSearchPageFiltersComponent = ({
           // to the user's current selection (exact filter mode, with selections
           // on this key). Other dimensions' filters and the free-text where
           // stay applied so counts remain search-aware for unrelated fields.
+          // Strip under both bracket and dot forms since filterState may carry
+          // either depending on how the filter was authored.
           const strippedFilterState: FilterState = { ...filterState };
           delete strippedFilterState[key];
+          if (sqlKey !== key) delete strippedFilterState[sqlKey];
           const newKeyVals = await metadata.getKeyValuesWithMVs({
             chartConfig: {
               ...chartConfig,
               dateRange,
               filters: filtersToQuery(strippedFilterState),
             },
-            keys: [key],
+            keys: [sqlKey],
             limit: LOAD_MORE_LOAD_LIMIT,
             disableRowLimit: true,
             source,
@@ -1660,7 +1674,10 @@ const DBSearchPageFiltersComponent = ({
               name={group.key}
               childFilters={group.children}
               selectedValues={group.children.reduce((acc, child) => {
-                acc[child.key] = filterState[child.key] ?? {
+                acc[child.key] = getFilterStateEntry(
+                  filterState,
+                  child.key,
+                ) ?? {
                   included: new Set(),
                   excluded: new Set(),
                 };
@@ -1702,14 +1719,15 @@ const DBSearchPageFiltersComponent = ({
               )}
               isDefaultExpanded={
                 forceExpanded ??
-                group.children.some(
-                  child =>
-                    (filterState[child.key] &&
-                      (filterState[child.key].included.size > 0 ||
-                        filterState[child.key].excluded.size > 0)) ||
+                group.children.some(child => {
+                  const entry = getFilterStateEntry(filterState, child.key);
+                  return (
+                    (entry &&
+                      (entry.included.size > 0 || entry.excluded.size > 0)) ||
                     isFieldPinned(child.key) ||
-                    isSharedFieldPinned(child.key),
-                )
+                    isSharedFieldPinned(child.key)
+                  );
+                })
               }
               chartConfig={chartConfig}
               isLive={isLive}
@@ -1727,7 +1745,7 @@ const DBSearchPageFiltersComponent = ({
               }))}
               optionsLoading={isFacetsLoading}
               selectedValues={
-                filterState[facet.key] ?? {
+                getFilterStateEntry(filterState, facet.key) ?? {
                   included: new Set(),
                   excluded: new Set(),
                 }
@@ -1747,16 +1765,19 @@ const DBSearchPageFiltersComponent = ({
               onLoadMore={loadMoreFilterValuesForKey}
               loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
               hasLoadedMore={Boolean(extraFacets[facet.key])}
-              isDefaultExpanded={
-                forceExpanded ??
-                (isFieldPrimary(tableMetadata, facet.key) ||
-                  isFieldPinned(facet.key) ||
-                  isSharedFieldPinned(facet.key) ||
-                  (filterState[facet.key] != null &&
-                    (filterState[facet.key].included.size > 0 ||
-                      filterState[facet.key].excluded.size > 0 ||
-                      filterState[facet.key].range != null)))
-              }
+              isDefaultExpanded={(() => {
+                const entry = getFilterStateEntry(filterState, facet.key);
+                return (
+                  forceExpanded ??
+                  (isFieldPrimary(tableMetadata, facet.key) ||
+                    isFieldPinned(facet.key) ||
+                    isSharedFieldPinned(facet.key) ||
+                    (entry != null &&
+                      (entry.included.size > 0 ||
+                        entry.excluded.size > 0 ||
+                        entry.range != null)))
+                );
+              })()}
               chartConfig={chartConfig}
               isLive={isLive}
               onRangeChange={range => setFilterRange(facet.key, range)}

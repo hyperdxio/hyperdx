@@ -114,6 +114,7 @@ with:
 | `hyperdx_table`               | Compute aggregated metrics as a table, single number, or pie chart                           |
 | `hyperdx_search`              | Browse individual log, event, or trace rows                                                  |
 | `hyperdx_event_patterns`      | Discover the most common log messages and event patterns using Drain clustering               |
+| `hyperdx_event_deltas`        | Compare two row groups and rank properties by how their value distributions differ            |
 | `hyperdx_sql`                 | Execute raw ClickHouse SQL for advanced queries (JOINs, CTEs, sub-queries)                   |
 | `hyperdx_get_dashboard`       | List all dashboards or get full detail for a specific dashboard                              |
 | `hyperdx_save_dashboard`      | Create or update a dashboard with tiles (charts, tables, numbers, search, markdown)          |
