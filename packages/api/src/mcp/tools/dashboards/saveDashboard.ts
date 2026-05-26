@@ -49,7 +49,8 @@ export function registerSaveDashboard(
         'Call hyperdx_list_sources first to obtain sourceId and connectionId values. ' +
         'IMPORTANT: After saving a dashboard, always run hyperdx_query_tile on each tile ' +
         'to confirm the queries work and return expected data. Tiles can silently fail ' +
-        'due to incorrect filter syntax, missing attributes, or wrong column names.',
+        'due to incorrect filter syntax, missing attributes, or wrong column names. ' +
+        'TIP: To update a single tile without resubmitting all tiles, use hyperdx_patch_dashboard instead.',
       inputSchema: z.object({
         id: z
           .string()

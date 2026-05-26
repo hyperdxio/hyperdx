@@ -598,7 +598,7 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-const mcpTileSchema = z.union([
+export const mcpTileSchema = z.union([
   mcpLineTileSchema,
   mcpBarTileSchema,
   mcpTableTileSchema,
@@ -608,6 +608,43 @@ const mcpTileSchema = z.union([
   mcpSearchTileSchema,
   mcpMarkdownTileSchema,
   mcpSqlTileSchema,
+]);
+
+// Layout schema without defaults for the patch tool: layout fields stay
+// truly `undefined` when omitted so the merge logic can fall back to the
+// existing tile's values instead of Zod filling in 0/12/4.
+const mcpPatchTileLayoutSchema = z.object({
+  name: z.string().describe('Tile title shown on the dashboard'),
+  x: z.number().min(0).max(23).optional(),
+  y: z.number().min(0).optional(),
+  w: z.number().min(1).max(24).optional(),
+  h: z.number().min(1).optional(),
+  id: z.string().max(36).optional(),
+  containerId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
+  tabId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
+});
+
+// Build the patch tile union by extending the default-free layout with
+// each tile type's config shape. We only need the `config` field from
+// each tile schema; the layout wrapper is replaced.
+export const mcpPatchTileSchema = z.union([
+  mcpPatchTileLayoutSchema.extend({ config: mcpLineTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpBarTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpTableTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpNumberTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpPieTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpHeatmapTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpSearchTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpMarkdownTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpSqlTileSchema.shape.config }),
 ]);
 
 export const mcpTilesParam = z
