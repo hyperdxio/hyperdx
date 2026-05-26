@@ -122,6 +122,7 @@ import {
 import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
+import { useDashboardSectionNav } from '@/hooks/useDashboardSectionNav';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer from './components/charts/ChartContainer';
@@ -1627,6 +1628,19 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     'expanded',
     parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
   );
+
+  // DEBUG: bisect step 4 — last suspect. useDashboardSectionNav is just
+  // five useCallback wrappers, no useState / useEffect, but it's the only
+  // remaining piece of my changes still pending. If the bug returns with
+  // this addition, the cause is something subtle about the hook itself
+  // (probably useCallback identity churn cascading into other effects).
+  const _bisectSectionNav = useDashboardSectionNav({
+    containers,
+    setUrlCollapsedIds,
+    setUrlExpandedIds,
+  });
+  void _bisectSectionNav;
+
   // Per-viewer active tab selection: `{ [containerId]: tabId }`.
   // Falls back to the first tab for any container not in the map.
   const [urlActiveTabs, setUrlActiveTabs] = useQueryState(
