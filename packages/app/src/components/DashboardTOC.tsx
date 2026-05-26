@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Box, ScrollArea, Stack, Text, UnstyledButton } from '@mantine/core';
 import { useScrollSpy } from '@mantine/hooks';
 
@@ -20,10 +20,24 @@ type DashboardTOCProps = {
  * "Show table of contents" view-option, so this UI is invisible by default.
  */
 export function DashboardTOC({ containers, onJump }: DashboardTOCProps) {
+  // The app layout puts page content inside #app-content-scroll-container,
+  // which is what actually scrolls (the window does not). useScrollSpy
+  // defaults to listening on `window`, so without this it never sees the
+  // scroll events the dashboard generates and `active` stays at 0 forever.
+  // Resolve the element after mount because it doesn't exist during SSR.
+  const [scrollHost, setScrollHost] = useState<HTMLElement | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    const el = document.getElementById('app-content-scroll-container');
+    if (el) setScrollHost(el);
+  }, []);
+
   const { active, reinitialize } = useScrollSpy({
     selector: '[id^="container-"]',
     getDepth: () => 1,
     getValue: el => el.id,
+    scrollHost,
   });
 
   // `useScrollSpy` walks the DOM once at mount. Re-scan whenever the set of
