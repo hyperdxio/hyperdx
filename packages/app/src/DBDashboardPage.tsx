@@ -1284,10 +1284,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const brandName = useBrandDisplayName();
   const confirm = useConfirm();
 
-  // DEBUG: bisect — re-introducing only the top-level useUserPreferences()
-  // subscription. If the saved-dashboard refresh bug returns with this single
-  // addition, the cause is this hook's Jotai/atomWithStorage subscription
-  // racing the post-hydration router state transition.
+  // DEBUG: bisect step 2 — useUserPreferences was confirmed safe in step 1.
+  // Now adding the hash-on-load useEffect (the only top-level useEffect my
+  // changes introduced). If the bug returns, this effect is the cause.
   const { userPreferences: _bisectUserPreferences } = useUserPreferences();
   void _bisectUserPreferences;
 
@@ -1698,6 +1697,29 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     getActiveTabId,
     setUrlActiveTabs,
   ]);
+
+  // DEBUG: bisect step 2 — the hash-on-load useEffect.
+  // No `scrollToContainer` body so this is the pure effect-and-listener
+  // shape, isolated from any of my other code.
+  const initialHashScrolledForDashboardRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !dashboard) return;
+    if (!dashboard.containers || dashboard.containers.length === 0) return;
+
+    const handleHash = () => {
+      const match = window.location.hash.match(/^#container-(.+)$/);
+      if (!match) return;
+      // Bisect: no scroll, just confirm parse path exists.
+      void match[1];
+    };
+
+    if (initialHashScrolledForDashboardRef.current !== dashboard.id) {
+      initialHashScrolledForDashboardRef.current = dashboard.id;
+      handleHash();
+    }
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, [dashboard]);
 
   // Valid move targets: groups and individual tabs within groups
   const moveTargetContainers = useMemo<MoveTarget[]>(() => {
