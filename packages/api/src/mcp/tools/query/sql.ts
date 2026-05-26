@@ -63,7 +63,8 @@ export function registerSql(server: McpServer, context: McpContext) {
         'Execute raw ClickHouse SQL. ' +
         'ADVANCED: only use this when you need capabilities the builder tools cannot express — ' +
         'JOINs, sub-queries, CTEs, or querying tables not registered as sources.\n\n' +
-        'Requires connectionId (not sourceId) — call hyperdx_list_sources to find connections.\n\n' +
+        'Requires connectionId (not sourceId) — call hyperdx_list_sources to find connections. ' +
+        'Call hyperdx_describe_source to discover column names before writing SQL.\n\n' +
         'Results are always returned as table rows — for time-series semantics, ' +
         'include a time column and ORDER BY it in your SQL.\n\n' +
         'For standard aggregations use hyperdx_table. ' +

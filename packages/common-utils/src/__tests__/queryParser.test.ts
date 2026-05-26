@@ -8,6 +8,7 @@ import {
   parseKvItemsExpression,
   SearchQueryBuilder,
 } from '@/queryParser';
+import { UseTextIndex } from '@/types';
 
 // Suppress expected console.error/warn noise from mocked setting fetches
 // and parse failures in edge-case tests
@@ -1174,6 +1175,340 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
 
     // Should fallback to hasToken (full text index disabled)
     expect(sql).toBe("((hasToken(lower(Body), lower('foo'))))");
+  });
+
+  describe('lower(Body) text index (no preprocessor)', () => {
+    it('should use hasAllTokens(lower(Body), lower(...)) when index expression is lower(Body)', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_lower_body',
+          type: 'text',
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+          expression: 'lower(Body)',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+      });
+
+      const builder = new SearchQueryBuilder('Foo', serializer);
+      const sql = await builder.build();
+
+      expect(sql).toBe("((hasAllTokens(lower(Body), lower('Foo'))))");
+    });
+
+    it('should use hasAllTokens(lower(Body), lower(...)) for multi-token terms', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_lower_body',
+          type: 'text',
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+          expression: 'lower(Body)',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+      });
+
+      const builder = new SearchQueryBuilder('"Foo Bar"', serializer);
+      const sql = await builder.build();
+
+      expect(sql).toContain("hasAllTokens(lower(Body), lower('Foo Bar'))");
+      expect(sql).toContain("(lower(Body) LIKE lower('%Foo Bar%'))");
+    });
+
+    it('should handle negated searches with lower(Body) index', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_lower_body',
+          type: 'text',
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+          expression: 'lower(Body)',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+      });
+
+      const builder = new SearchQueryBuilder('-Foo', serializer);
+      const sql = await builder.build();
+
+      expect(sql).toBe("((NOT hasAllTokens(lower(Body), lower('Foo'))))");
+    });
+
+    it('should NOT use lower() when index is directly on Body', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_body_text',
+          type: 'text',
+          typeFull: 'text(tokenizer=splitByNonAlpha)',
+          expression: 'Body',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+      });
+
+      const builder = new SearchQueryBuilder('Foo', serializer);
+      const sql = await builder.build();
+
+      expect(sql).toBe("((hasAllTokens(Body, 'Foo')))");
+    });
+
+    it('should batch tokens with lower() when index is on lower(Body)', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_lower_body',
+          type: 'text',
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+          expression: 'lower(Body)',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+      });
+
+      const builder = new SearchQueryBuilder('FOO NOT BAR BAZ', serializer);
+      const sql = await builder.build();
+
+      expect(sql).toContain("hasAllTokens(lower(Body), lower('FOO'))");
+      expect(sql).toContain("NOT (hasAllTokens(lower(Body), lower('BAR')))");
+      expect(sql).toContain("hasAllTokens(lower(Body), lower('BAZ'))");
+    });
+
+    it('should detect LOWER(Body) case-insensitively', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_lower_body',
+          type: 'text',
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+          expression: 'LOWER(Body)',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+      });
+
+      const builder = new SearchQueryBuilder('foo', serializer);
+      const sql = await builder.build();
+
+      expect(sql).toBe("((hasAllTokens(lower(Body), lower('foo'))))");
+    });
+  });
+
+  describe('useTextIndexForImplicitColumn source preference', () => {
+    it('Auto preserves the existing detection behavior when a text index is found', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_body_text',
+          type: 'text',
+          typeFull: 'text(tokenizer=splitByNonAlpha)',
+          expression: 'Body',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Auto,
+      });
+
+      const sql = await new SearchQueryBuilder('foo', serializer).build();
+      expect(sql).toBe("((hasAllTokens(Body, 'foo')))");
+    });
+
+    it('Auto falls back to hasToken when no text index is found', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Auto,
+      });
+
+      const sql = await new SearchQueryBuilder('foo', serializer).build();
+      expect(sql).toBe("((hasToken(lower(Body), lower('foo'))))");
+    });
+
+    it('Enabled emits hasAllTokens even when no text index is detected', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Enabled,
+      });
+
+      const sql = await new SearchQueryBuilder('foo', serializer).build();
+      expect(sql).toBe("((hasAllTokens(Body, 'foo')))");
+    });
+
+    it('Enabled emits hasAllTokens even when enable_full_text_index = 0', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+      metadata.getSetting = jest
+        .fn()
+        .mockImplementation(async ({ settingName }) => {
+          if (settingName === 'enable_full_text_index') {
+            return '0';
+          }
+          return undefined;
+        });
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Enabled,
+      });
+
+      const sql = await new SearchQueryBuilder('"foo bar"', serializer).build();
+      expect(sql).toContain("hasAllTokens(Body, 'foo bar')");
+      expect(sql).toContain("(lower(Body) LIKE lower('%foo bar%'))");
+    });
+
+    it('Disabled skips hasAllTokens even when a covering text index exists', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_body_text',
+          type: 'text',
+          typeFull: 'text(tokenizer=splitByNonAlpha)',
+          expression: 'Body',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Disabled,
+      });
+
+      const sql = await new SearchQueryBuilder('foo', serializer).build();
+      // Falls all the way through to hasToken (no text index branch)
+      expect(sql).not.toContain('hasAllTokens');
+      expect(sql).toBe("((hasToken(lower(Body), lower('foo'))))");
+    });
+
+    it('Disabled still permits a bloom_filter tokens() index path', async () => {
+      // Source-level disable only suppresses the text-index hasAllTokens branch.
+      // Bloom filter tokens() optimization is still allowed to run.
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_body_bloom',
+          type: 'bloom_filter',
+          typeFull: 'bloom_filter',
+          expression: 'tokens(lower(Body))',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Disabled,
+      });
+
+      const sql = await new SearchQueryBuilder('foo', serializer).build();
+      expect(sql).not.toContain('hasAllTokens');
+      expect(sql).toBe("((hasAll(tokens(lower(Body)), tokens(lower('foo')))))");
+    });
+
+    it('Enabled uses lower() wrapping when a lower(Body) text index exists', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_lower_body',
+          type: 'text',
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+          expression: 'lower(Body)',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Enabled,
+      });
+
+      const sql = await new SearchQueryBuilder('foo', serializer).build();
+      expect(sql).toBe("((hasAllTokens(lower(Body), lower('foo'))))");
+    });
+
+    it('Enabled with a multi-token term still falls back to LIKE when separators exist', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Enabled,
+      });
+
+      // Hyphenated terms are tokenized to ['foo', 'bar'], joined back as 'foo bar'
+      // for hasAllTokens, with a LIKE fallback against the original separator-y term.
+      const sql = await new SearchQueryBuilder('"foo-bar"', serializer).build();
+      expect(sql).toContain("hasAllTokens(Body, 'foo bar')");
+      expect(sql).toContain("(lower(Body) LIKE lower('%foo-bar%'))");
+    });
   });
 });
 

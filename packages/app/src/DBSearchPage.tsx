@@ -1314,6 +1314,14 @@ export function DBSearchPage() {
     };
   }, [chartConfig, searchedTimeRange]);
 
+  // Stable key for persisting column widths in localStorage. Scoped per saved
+  // search when one is loaded, else per source for ad-hoc searches.
+  const columnSizeTableId = savedSearchId
+    ? `db-search-saved-${savedSearchId}`
+    : searchedConfig.source
+      ? `db-search-source-${searchedConfig.source}`
+      : undefined;
+
   const displayedColumns = useMemo(() => {
     // `select` is typed as `string | DerivedColumn[]` upstream, but in the
     // search page we always supply a string. Guard for type safety.
@@ -1839,6 +1847,7 @@ export function DBSearchPage() {
               size="xs"
               allowMultiline
               dateRange={searchedTimeRange}
+              sourceId={inputSource}
             />
           </Box>
           <Box style={{ maxWidth: 400, width: '20%' }}>
@@ -1851,6 +1860,7 @@ export function DBSearchPage() {
               label="ORDER BY"
               size="xs"
               dateRange={searchedTimeRange}
+              sourceId={inputSource}
             />
           </Box>
           <>
@@ -1915,6 +1925,7 @@ export function DBSearchPage() {
             data-testid="search-input"
             minWidth="min(600px, 100%)"
             dateRange={searchedTimeRange}
+            sourceId={inputSource}
           />
           <Flex
             gap="sm"
@@ -2281,6 +2292,7 @@ export function DBSearchPage() {
                             context={rowTableContext}
                             config={dbSqlRowTableConfig}
                             sourceId={searchedConfig.source}
+                            tableId={columnSizeTableId}
                             onSidebarOpen={onSidebarOpen}
                             onExpandedRowsChange={onExpandedRowsChange}
                             enabled={isReady}

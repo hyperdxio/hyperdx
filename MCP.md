@@ -108,11 +108,13 @@ with:
 
 | Tool                          | Description                                                                                  |
 | ----------------------------- | -------------------------------------------------------------------------------------------- |
-| `hyperdx_list_sources`        | List all data sources and database connections, including column schemas and attribute keys   |
+| `hyperdx_list_sources`        | List all data sources and connections as a lightweight catalog (IDs, names, kinds)            |
+| `hyperdx_describe_source`     | Full column schema, attribute keys, and sampled low-cardinality values for a single source    |
 | `hyperdx_timeseries`          | Plot metrics over time as a line or stacked bar chart                                        |
 | `hyperdx_table`               | Compute aggregated metrics as a table, single number, or pie chart                           |
 | `hyperdx_search`              | Browse individual log, event, or trace rows                                                  |
 | `hyperdx_event_patterns`      | Discover the most common log messages and event patterns using Drain clustering               |
+| `hyperdx_event_deltas`        | Compare two row groups and rank properties by how their value distributions differ            |
 | `hyperdx_sql`                 | Execute raw ClickHouse SQL for advanced queries (JOINs, CTEs, sub-queries)                   |
 | `hyperdx_get_dashboard`       | List all dashboards or get full detail for a specific dashboard                              |
 | `hyperdx_save_dashboard`      | Create or update a dashboard with tiles (charts, tables, numbers, search, markdown)          |

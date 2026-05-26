@@ -130,17 +130,19 @@ export function useMultipleAllFields(
   tableConnections: TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>> & {
     dateRange?: [Date, Date];
+    timestampValueExpression?: string;
   },
 ) {
   const metadata = useMetadataWithSettings();
   const { data: me, isFetched } = api.useMe();
-  const { dateRange, ...queryOptions } = options ?? {};
+  const { dateRange, timestampValueExpression, ...queryOptions } =
+    options ?? {};
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useMultipleAllFields',
       ...tableConnections.map(tc => ({ ...tc })),
-      dateRange?.[0]?.getTime(),
-      dateRange?.[1]?.getTime(),
+      dateRange ? [dateRange[0].getTime(), dateRange[1].getTime()] : undefined,
+      timestampValueExpression,
     ],
     queryFn: async () => {
       const team = me?.team;
@@ -149,7 +151,9 @@ export function useMultipleAllFields(
       }
 
       const promiseResults = await Promise.allSettled(
-        tableConnections.map(tc => metadata.getAllFields({ ...tc, dateRange })),
+        tableConnections.map(tc =>
+          metadata.getAllFields({ ...tc, dateRange, timestampValueExpression }),
+        ),
       );
 
       const fields2d: Field[][] = promiseResults.map(result => {
@@ -182,6 +186,7 @@ export function useAllFields(
   tableConnection: TableConnection | undefined,
   options?: Partial<UseQueryOptions<Field[]>> & {
     dateRange?: [Date, Date];
+    timestampValueExpression?: string;
   },
 ) {
   return useMultipleAllFields(
@@ -279,20 +284,16 @@ export function useMultipleGetKeyValues(
         const connectionId = firstConfig.connection;
         const dateRange = firstConfig.dateRange;
 
-        return Promise.all(
-          keys.slice(0, maxKeys).map(async keyExpression => {
-            const value = await metadata.getAllKeyValues({
-              databaseName,
-              tableName,
-              keyExpression,
-              connectionId,
-              metadataMVs,
-              dateRange,
-              signal,
-            });
-            return { key: keyExpression, value };
-          }),
-        );
+        return metadata.getAllKeyValues({
+          databaseName,
+          tableName,
+          keyExpressions: keys.slice(0, maxKeys),
+          connectionId,
+          metadataMVs,
+          dateRange,
+          timestampValueExpression: firstConfig.timestampValueExpression,
+          signal,
+        });
       }
 
       // 'exact' mode
@@ -390,6 +391,75 @@ export function useGetKeyValues(
     },
     options,
   );
+}
+
+/**
+ * Combined key + value discovery in a single rollup query.
+ * Returns all fields and their top N values without needing a separate
+ * useAllFields + useGetKeyValues chain.
+ */
+export function useAllFieldsAndValues(
+  {
+    databaseName,
+    tableName,
+    connectionId,
+    metadataMVs,
+    dateRange,
+    maxValuesPerKey,
+    maxKeys,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    metadataMVs?: MetadataMaterializedViews;
+    dateRange?: [Date, Date];
+    maxValuesPerKey?: number;
+    maxKeys?: number;
+  },
+  options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
+) {
+  const metadata = useMetadataWithSettings();
+  const { data: me } = api.useMe();
+  const { enabled = true } = options || {};
+  const fieldMetadataDisabled = !!me?.team?.fieldMetadataDisabled;
+
+  return useQuery<{ key: string; value: string[] }[]>({
+    queryKey: [
+      'useMetadata.useAllFieldsAndValues',
+      databaseName,
+      tableName,
+      connectionId,
+      metadataMVs,
+      dateRange?.[0]?.getTime(),
+      dateRange?.[1]?.getTime(),
+      maxValuesPerKey,
+      maxKeys,
+    ],
+    queryFn: async ({ signal }) => {
+      if (fieldMetadataDisabled) {
+        return [];
+      }
+      return metadata.getAllFieldsAndValues({
+        databaseName,
+        tableName,
+        connectionId,
+        metadataMVs,
+        dateRange,
+        maxValuesPerKey,
+        maxKeys,
+        signal,
+      });
+    },
+    staleTime: 1000 * 60 * 5,
+    placeholderData: keepPreviousData,
+    ...options,
+    enabled:
+      !!enabled &&
+      !fieldMetadataDisabled &&
+      !!databaseName &&
+      !!tableName &&
+      !!connectionId,
+  });
 }
 
 export function deduplicateArray<T extends object>(array: T[]): T[] {
