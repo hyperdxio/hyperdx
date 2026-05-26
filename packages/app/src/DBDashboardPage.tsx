@@ -104,8 +104,6 @@ import {
   DashboardDndProvider,
   type DragHandleProps,
 } from '@/components/DashboardDndContext';
-import { DashboardTOC } from '@/components/DashboardTOC';
-import { DashboardViewOptions } from '@/components/DashboardViewOptions';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
@@ -124,7 +122,6 @@ import {
 import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
-import { useDashboardSectionNav } from '@/hooks/useDashboardSectionNav';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer from './components/charts/ChartContainer';
@@ -1191,7 +1188,6 @@ function DashboardContainerRow({
   onDeleteTab,
   onRenameContainer,
   onTabChange,
-  onCopyLink,
   dragHandleProps,
   makeLayoutChangeHandler,
   tileToLayoutItem,
@@ -1213,7 +1209,6 @@ function DashboardContainerRow({
   onDeleteTab: (tabId: string, action: TabDeleteAction) => void;
   onRenameContainer: (newTitle: string) => void;
   onTabChange: (tabId: string) => void;
-  onCopyLink: () => void;
   dragHandleProps: DragHandleProps;
   makeLayoutChangeHandler: (tiles: Tile[]) => (newLayout: RGL.Layout[]) => void;
   tileToLayoutItem: (tile: Tile) => RGL.Layout;
@@ -1253,7 +1248,6 @@ function DashboardContainerRow({
       onRenameTab={onRenameTab}
       onDeleteTab={onDeleteTab}
       onRename={onRenameContainer}
-      onCopyLink={onCopyLink}
       dragHandleProps={dragHandleProps}
       alertingTabIds={alertingTabIds}
     >
@@ -1617,7 +1611,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     () => dashboard?.containers ?? [],
     [dashboard?.containers],
   );
-
   // URL-based collapse state: tracks which containers the current viewer has
   // explicitly collapsed/expanded. Falls back to the DB-stored default.
   const [urlCollapsedIds, setUrlCollapsedIds] = useQueryState(
@@ -1627,47 +1620,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [urlExpandedIds, setUrlExpandedIds] = useQueryState(
     'expanded',
     parseAsArrayOf(parseAsString).withOptions({ history: 'replace' }),
-  );
-
-  // Section-level navigation helpers: scroll-to-section, deep-link copy, and
-  // batch collapse/expand. Consumed by the view-options menu (collapseAll /
-  // expandAll), the per-container header (copySectionLink), the TOC rail
-  // (scrollToContainer), and the hash-on-load effect (scrollToContainer).
-  // The hook takes the URL setters from above so there is only ever one
-  // useQueryState subscriber per `collapsed`/`expanded` key in this tree.
-  const { scrollToContainer, copySectionLink, collapseAll, expandAll } =
-    useDashboardSectionNav({
-      containers,
-      setUrlCollapsedIds,
-      setUrlExpandedIds,
-    });
-
-  // Per-user preference for whether the sticky table-of-contents rail is shown.
-  // Defaults to false (off) so dashboard behavior is unchanged for users who
-  // never opt in via the view-options menu.
-  const { userPreferences, setUserPreference } = useUserPreferences();
-  const tocVisible = userPreferences.tocVisible ?? false;
-  const toggleToc = useCallback(
-    () => setUserPreference({ tocVisible: !tocVisible }),
-    [tocVisible, setUserPreference],
-  );
-
-  // Lightweight projection of containers (id + label) for the TOC rail.
-  // The label mirrors what the user perceives as the section name:
-  //   - 1-tab container: the visible header is the first tab's title (the
-  //     header rename flow in DashboardContainer redirects to the first tab),
-  //     so use that.
-  //   - Multi-tab container: the visible header is the tab bar showing every
-  //     tab; `container.title` is the section-level name that doesn't move
-  //     when the active tab changes, so use that as the TOC label.
-  const tocContainers = useMemo(
-    () =>
-      containers.map(c => {
-        const tabs = c.tabs ?? [];
-        const label = tabs.length >= 2 ? c.title : (tabs[0]?.title ?? c.title);
-        return { id: c.id, title: label };
-      }),
-    [containers],
   );
   // Per-viewer active tab selection: `{ [containerId]: tabId }`.
   // Falls back to the first tab for any container not in the map.
@@ -1739,37 +1691,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     getActiveTabId,
     setUrlActiveTabs,
   ]);
-
-  // Hash-based deep links to dashboard sections (e.g. `#container-abc123`).
-  // Runs an initial scroll once per dashboard load (re-armed when the user
-  // navigates between dashboards in the SPA), then keeps a hashchange listener
-  // attached so in-page hash navigation also scrolls. Unknown containers
-  // (deleted sections, stale links) are silently ignored.
-  const initialHashScrolledForDashboardRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (typeof window === 'undefined' || !dashboard) return;
-    // Wait until containers are available so the existence check below can
-    // distinguish "unknown container" from "containers still loading".
-    if (!dashboard.containers || dashboard.containers.length === 0) return;
-
-    const handleHash = () => {
-      const match = window.location.hash.match(/^#container-(.+)$/);
-      if (!match) return;
-      const containerId = match[1];
-      const exists = dashboard.containers?.some(c => c.id === containerId);
-      if (!exists) return;
-      scrollToContainer(containerId);
-    };
-
-    // Fire the initial scroll once per dashboard.id so SPA navigation between
-    // dashboards (same component instance) re-arms the deep-link behavior.
-    if (initialHashScrolledForDashboardRef.current !== dashboard.id) {
-      initialHashScrolledForDashboardRef.current = dashboard.id;
-      handleHash();
-    }
-    window.addEventListener('hashchange', handleHash);
-    return () => window.removeEventListener('hashchange', handleHash);
-  }, [dashboard, scrollToContainer]);
 
   // Valid move targets: groups and individual tabs within groups
   const moveTargetContainers = useMemo<MoveTarget[]>(() => {
@@ -2545,14 +2466,6 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             <IconFilterEdit size={18} />
           </ActionIcon>
         </Tooltip>
-        {containers.length > 0 && (
-          <DashboardViewOptions
-            onCollapseAll={collapseAll}
-            onExpandAll={expandAll}
-            tocVisible={tocVisible}
-            onToggleToc={toggleToc}
-          />
-        )}
         <Button
           data-testid="search-submit-button"
           variant="primary"
@@ -2615,111 +2528,92 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           </Flex>
         </Paper>
       )}
-      <Flex gap="md" align="flex-start" mt="sm">
-        <Box flex={1} miw={0}>
-          {dashboard != null && dashboard.tiles != null ? (
-            <ErrorBoundary
-              onError={console.error}
-              fallback={
-                <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
-                  An error occurred while rendering the dashboard.
-                </div>
-              }
-            >
-              <DashboardDndProvider
-                containers={containers}
-                onReorderContainers={handleReorderContainers}
-              >
-                {ungroupedTiles.length > 0 && (
-                  <ReactGridLayout
-                    layout={ungroupedTiles.map(tileToLayoutItem)}
-                    containerPadding={[0, 0]}
-                    onLayoutChange={onUngroupedLayoutChange}
-                    cols={24}
-                    rowHeight={32}
-                  >
-                    {ungroupedTiles.map(renderTileComponent)}
-                  </ReactGridLayout>
-                )}
-                {containers.map(container => (
-                  <SortableContainerWrapper
-                    key={container.id}
-                    containerId={container.id}
-                    containerTitle={container.title}
-                  >
-                    {(dragHandleProps: DragHandleProps) => (
-                      <DashboardContainerRow
-                        container={container}
-                        containerTiles={
-                          tilesByContainerId.get(container.id) ?? []
-                        }
-                        isCollapsed={isContainerCollapsed(container)}
-                        activeTabId={getActiveTabId(container)}
-                        alertingTabIds={alertingTabIdsByContainer.get(
-                          container.id,
-                        )}
-                        onToggleCollapse={() =>
-                          handleToggleCollapse(container.id)
-                        }
-                        onToggleDefaultCollapsed={() =>
-                          handleToggleDefaultCollapsed(container.id)
-                        }
-                        onToggleCollapsible={() =>
-                          handleToggleCollapsible(container.id)
-                        }
-                        onToggleBordered={() =>
-                          handleToggleBordered(container.id)
-                        }
-                        onDeleteContainer={action =>
-                          handleDeleteContainer(container.id, action)
-                        }
-                        onAddTile={onAddTile}
-                        onAddTab={() => {
-                          const newTabId = handleAddTab(container.id);
-                          if (newTabId) handleTabChange(container.id, newTabId);
-                        }}
-                        onRenameTab={(tabId, title) =>
-                          handleRenameTab(container.id, tabId, title)
-                        }
-                        onDeleteTab={(tabId, action) =>
-                          handleDeleteTab(container.id, tabId, action)
-                        }
-                        onRenameContainer={title =>
-                          handleRenameContainer(container.id, title)
-                        }
-                        onTabChange={tabId =>
-                          handleTabChange(container.id, tabId)
-                        }
-                        onCopyLink={() => copySectionLink(container.id)}
-                        dragHandleProps={dragHandleProps}
-                        makeLayoutChangeHandler={makeOnLayoutChange}
-                        tileToLayoutItem={tileToLayoutItem}
-                        renderTileComponent={renderTileComponent}
-                      />
-                    )}
-                  </SortableContainerWrapper>
-                ))}
-              </DashboardDndProvider>
-            </ErrorBoundary>
-          ) : null}
-        </Box>
-        {tocVisible && (
-          <Box
-            w={180}
-            visibleFrom="md"
-            style={{
-              position: 'sticky',
-              top: 16,
-              alignSelf: 'flex-start',
-            }}
+      <Box mt="sm">
+        {dashboard != null && dashboard.tiles != null ? (
+          <ErrorBoundary
+            onError={console.error}
+            fallback={
+              <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
+                An error occurred while rendering the dashboard.
+              </div>
+            }
           >
-            <DashboardTOC
-              containers={tocContainers}
-              onJump={scrollToContainer}
-            />
-          </Box>
-        )}
-      </Flex>
+            <DashboardDndProvider
+              containers={containers}
+              onReorderContainers={handleReorderContainers}
+            >
+              {ungroupedTiles.length > 0 && (
+                <ReactGridLayout
+                  layout={ungroupedTiles.map(tileToLayoutItem)}
+                  containerPadding={[0, 0]}
+                  onLayoutChange={onUngroupedLayoutChange}
+                  cols={24}
+                  rowHeight={32}
+                >
+                  {ungroupedTiles.map(renderTileComponent)}
+                </ReactGridLayout>
+              )}
+              {containers.map(container => (
+                <SortableContainerWrapper
+                  key={container.id}
+                  containerId={container.id}
+                  containerTitle={container.title}
+                >
+                  {(dragHandleProps: DragHandleProps) => (
+                    <DashboardContainerRow
+                      container={container}
+                      containerTiles={
+                        tilesByContainerId.get(container.id) ?? []
+                      }
+                      isCollapsed={isContainerCollapsed(container)}
+                      activeTabId={getActiveTabId(container)}
+                      alertingTabIds={alertingTabIdsByContainer.get(
+                        container.id,
+                      )}
+                      onToggleCollapse={() =>
+                        handleToggleCollapse(container.id)
+                      }
+                      onToggleDefaultCollapsed={() =>
+                        handleToggleDefaultCollapsed(container.id)
+                      }
+                      onToggleCollapsible={() =>
+                        handleToggleCollapsible(container.id)
+                      }
+                      onToggleBordered={() =>
+                        handleToggleBordered(container.id)
+                      }
+                      onDeleteContainer={action =>
+                        handleDeleteContainer(container.id, action)
+                      }
+                      onAddTile={onAddTile}
+                      onAddTab={() => {
+                        const newTabId = handleAddTab(container.id);
+                        if (newTabId) handleTabChange(container.id, newTabId);
+                      }}
+                      onRenameTab={(tabId, title) =>
+                        handleRenameTab(container.id, tabId, title)
+                      }
+                      onDeleteTab={(tabId, action) =>
+                        handleDeleteTab(container.id, tabId, action)
+                      }
+                      onRenameContainer={title =>
+                        handleRenameContainer(container.id, title)
+                      }
+                      onTabChange={tabId =>
+                        handleTabChange(container.id, tabId)
+                      }
+                      dragHandleProps={dragHandleProps}
+                      makeLayoutChangeHandler={makeOnLayoutChange}
+                      tileToLayoutItem={tileToLayoutItem}
+                      renderTileComponent={renderTileComponent}
+                    />
+                  )}
+                </SortableContainerWrapper>
+              ))}
+            </DashboardDndProvider>
+          </ErrorBoundary>
+        ) : null}
+      </Box>
       <Menu position="top" width={200}>
         <Menu.Target>
           <Button
