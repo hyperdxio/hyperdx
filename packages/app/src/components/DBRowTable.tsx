@@ -1530,6 +1530,7 @@ function DBSqlRowTableComponent({
   initialSortBy,
   variant = 'default',
   enableSmallFirstWindow,
+  tableId,
 }: {
   config: BuilderChartConfigWithDateRange;
   sourceId?: string;
@@ -1554,6 +1555,7 @@ function DBSqlRowTableComponent({
   onSortingChange?: (v: SortingState | null) => void;
   variant?: DBRowTableVariant;
   enableSmallFirstWindow?: boolean;
+  tableId?: string;
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
@@ -1863,6 +1865,7 @@ function DBSqlRowTableComponent({
         getRowWhere={getRowWhere}
         variant={variant}
         onRemoveColumn={toggleColumn ? onRemoveColumnFromTable : undefined}
+        tableId={tableId}
       />
     </>
   );
