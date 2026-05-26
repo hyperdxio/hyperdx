@@ -22,7 +22,7 @@
  */
 export function flattenData(data: Record<string, any>): Record<string, any> {
   const result: Record<string, any> = {};
-  // eslint-disable-next-line security/detect-object-injection -- prop is built from known object keys via recursion, not user input
+
   function recurse(cur: Record<string, any>, prop: string) {
     if (Object(cur) !== cur) {
       result[prop] = cur; // eslint-disable-line security/detect-object-injection
