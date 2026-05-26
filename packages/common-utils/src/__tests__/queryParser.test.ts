@@ -2570,6 +2570,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items version gate', () => {
 
   function buildSerializer(
     serverVersion: readonly [number, number, number, number] | undefined,
+    defaultType: 'ALIAS' | 'MATERIALIZED' = 'ALIAS',
   ) {
     const metadata = getMetadata(
       new ClickhouseClient({ host: 'http://localhost:8123' }),
@@ -2595,7 +2596,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items version gate', () => {
       {
         name: 'LogAttributeItems',
         type: 'Array(String)',
-        default_type: 'ALIAS',
+        default_type: defaultType,
         default_expression:
           "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
       },
@@ -2623,8 +2624,9 @@ describe('CustomSchemaSQLSerializerV2 - KV items version gate', () => {
 
   async function buildSql(
     serverVersion: readonly [number, number, number, number] | undefined,
+    defaultType: 'ALIAS' | 'MATERIALIZED' = 'ALIAS',
   ) {
-    const serializer = buildSerializer(serverVersion);
+    const serializer = buildSerializer(serverVersion, defaultType);
     const builder = new SearchQueryBuilder(
       'LogAttributes.service.name:"my-app"',
       serializer,
@@ -2635,7 +2637,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items version gate', () => {
   const HAS_FORM =
     "has(`LogAttributeItems`, concat('service.name', '=', 'my-app'))";
 
-  describe('emits has() direct_read form on supported versions', () => {
+  describe('ALIAS items column - emits has() on supported versions', () => {
     it.each<readonly [number, number, number, number]>([
       [26, 2, 19, 43],
       [26, 2, 20, 0],
@@ -2647,12 +2649,12 @@ describe('CustomSchemaSQLSerializerV2 - KV items version gate', () => {
       [26, 6, 0, 0],
       [27, 0, 0, 0],
     ])('%j', async (...version) => {
-      const sql = await buildSql(version);
+      const sql = await buildSql(version, 'ALIAS');
       expect(sql).toContain(HAS_FORM);
     });
   });
 
-  describe('falls back to Map subscript on unsupported versions', () => {
+  describe('ALIAS items column - falls back on unsupported versions', () => {
     it.each<readonly [number, number, number, number]>([
       [26, 2, 19, 42],
       [26, 2, 0, 0],
@@ -2664,15 +2666,43 @@ describe('CustomSchemaSQLSerializerV2 - KV items version gate', () => {
       [26, 1, 99, 99],
       [25, 12, 0, 0],
     ])('%j', async (...version) => {
-      const sql = await buildSql(version);
+      const sql = await buildSql(version, 'ALIAS');
       expect(sql).not.toContain('has(`LogAttributeItems`');
       expect(sql).toContain("= 'my-app'");
     });
   });
 
-  it('falls back when server version is unknown', async () => {
-    const sql = await buildSql(undefined);
+  it('ALIAS items column falls back when server version is unknown', async () => {
+    const sql = await buildSql(undefined, 'ALIAS');
     expect(sql).not.toContain('has(`LogAttributeItems`');
     expect(sql).toContain("= 'my-app'");
+  });
+
+  describe('MATERIALIZED items column - emits has() on EVERY version', () => {
+    it.each<readonly [number, number, number, number]>([
+      [26, 2, 19, 43],
+      [26, 2, 19, 42],
+      [26, 2, 0, 0],
+      [26, 3, 12, 3],
+      [26, 3, 12, 2],
+      [26, 3, 0, 0],
+      [26, 4, 3, 37],
+      [26, 4, 3, 36],
+      [26, 4, 1, 3],
+      [26, 4, 0, 99],
+      [26, 1, 99, 99],
+      [26, 0, 0, 0],
+      [25, 12, 0, 0],
+      [26, 5, 0, 0],
+      [27, 0, 0, 0],
+    ])('%j', async (...version) => {
+      const sql = await buildSql(version, 'MATERIALIZED');
+      expect(sql).toContain(HAS_FORM);
+    });
+  });
+
+  it('MATERIALIZED items column emits has() even when server version is unknown', async () => {
+    const sql = await buildSql(undefined, 'MATERIALIZED');
+    expect(sql).toContain(HAS_FORM);
   });
 });
