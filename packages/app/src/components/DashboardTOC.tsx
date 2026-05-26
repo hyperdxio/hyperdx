@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, ScrollArea, Stack, Text, UnstyledButton } from '@mantine/core';
 import { useScrollSpy } from '@mantine/hooks';
 
@@ -58,6 +58,54 @@ export function DashboardTOC({ containers, onJump }: DashboardTOCProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerSignature]);
 
+  // Click-overrides-spy. The spy reports the section whose top is closest to
+  // the viewport top — which is what you want most of the time, but it has a
+  // common dead zone: when the user clicks a section that is already visible
+  // but cannot be scroll-pinned at the top (e.g. the last section in a
+  // dashboard short enough that the bottom hits the scroll end before the
+  // section's top reaches the viewport top), the spy never updates and the
+  // highlight stays on whatever was previously active. Treating a click as
+  // explicit user intent fixes the dead zone: we override the spy's `active`
+  // with the clicked entry, then hand control back to the spy when the user
+  // next scrolls manually.
+  const [clickedId, setClickedId] = useState<string | null>(null);
+  const clickArmTimerRef = useRef<number | null>(null);
+
+  const handleEntryClick = useCallback(
+    (id: string) => {
+      setClickedId(id);
+      onJump(id);
+    },
+    [onJump],
+  );
+
+  // When a click override is set, wait long enough for the smooth scroll
+  // triggered by the click to settle (~700ms), then arm a one-time scroll
+  // listener that clears the override on the next user-initiated scroll.
+  useEffect(() => {
+    if (clickedId === null) return;
+    const host = scrollHost ?? window;
+    let cleanup: (() => void) | null = null;
+    clickArmTimerRef.current = window.setTimeout(() => {
+      const clear = () => setClickedId(null);
+      host.addEventListener('scroll', clear, { once: true });
+      cleanup = () => host.removeEventListener('scroll', clear);
+      clickArmTimerRef.current = null;
+    }, 700);
+    return () => {
+      if (clickArmTimerRef.current !== null) {
+        window.clearTimeout(clickArmTimerRef.current);
+        clickArmTimerRef.current = null;
+      }
+      if (cleanup) cleanup();
+    };
+  }, [clickedId, scrollHost]);
+
+  const clickedIndex = clickedId
+    ? containers.findIndex(c => c.id === clickedId)
+    : -1;
+  const activeIndex = clickedIndex >= 0 ? clickedIndex : active;
+
   if (containers.length === 0) return null;
 
   return (
@@ -76,11 +124,11 @@ export function DashboardTOC({ containers, onJump }: DashboardTOCProps) {
       <ScrollArea.Autosize mah="calc(100vh - 160px)" type="hover">
         <Stack gap={0}>
           {containers.map((c, i) => {
-            const isActive = i === active;
+            const isActive = i === activeIndex;
             return (
               <UnstyledButton
                 key={c.id}
-                onClick={() => onJump(c.id)}
+                onClick={() => handleEntryClick(c.id)}
                 data-testid={`toc-entry-${c.id}`}
                 data-active={isActive || undefined}
                 style={{
