@@ -29,10 +29,20 @@ export function DashboardTOC({ containers, onJump }: DashboardTOCProps) {
   // `useScrollSpy` walks the DOM once at mount. Re-scan whenever the set of
   // containers changes so renames / additions / removals don't leave us
   // pointing at a stale index.
+  //
+  // `reinitialize` is deliberately NOT in the dep array: in Mantine v9 its
+  // identity changes every render. If it's a dep, the effect re-fires each
+  // render → reinitialize schedules a state update inside useScrollSpy →
+  // component re-renders → reinitialize has a new identity → effect fires
+  // again — infinite loop, "Maximum update depth exceeded", and React
+  // never reaches the post-hydration commit that would populate
+  // `router.query.dashboardId` on the dashboard page (manifesting as a
+  // stuck "Temporary Dashboard" banner on saved-dashboard URLs).
   const containerSignature = containers.map(c => c.id).join('|');
   useEffect(() => {
     reinitialize();
-  }, [containerSignature, reinitialize]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [containerSignature]);
 
   if (containers.length === 0) return null;
 
