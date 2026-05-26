@@ -4,12 +4,11 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
-import Dashboard, { IDashboard } from '@/models/dashboard';
+import Dashboard from '@/models/dashboard';
 import {
-  cleanupDashboardAlerts,
   collectTileContainerRefIssues,
-  convertExternalTilesToInternal,
   convertToExternalDashboard,
+  convertToInternalTileConfig,
   fetchSourcesForValidation,
   filterChangedHeatmapTiles,
   getHeatmapTilesWithIncompatibleSources,
@@ -17,6 +16,7 @@ import {
   getMissingConnections,
   getMissingOnClickDashboards,
   getMissingSources,
+  isConfigTile,
 } from '@/routers/external-api/v2/utils/dashboards';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
@@ -122,16 +122,33 @@ export function registerPatchDashboard(
           };
         }
 
-        const externalDashboard = convertToExternalDashboard(existingDashboard);
-        let patchedTiles = externalDashboard.tiles;
+        // Build the $set payload. Start with metadata-only fields;
+        // tile patching adds the targeted tile element below.
+        const setPayload: Record<string, unknown> = {};
+
+        if (name !== undefined) {
+          setPayload.name = name;
+        }
+        if (tags !== undefined) {
+          setPayload.tags = uniq(tags);
+        }
+
         let patchedTile: ExternalDashboardTileWithId | undefined;
 
         // ── Tile-level patch ─────────────────────────────────────────
         if (tileId !== undefined && inputTile !== undefined) {
-          const tileIndex = externalDashboard.tiles.findIndex(
-            t => t.id === tileId,
-          );
+          // Work directly with the persisted internal tiles array so
+          // untouched tiles are never round-tripped through the external
+          // converter (which would strip orphaned container refs from
+          // unrelated tiles).
+          const internalTiles =
+            (existingDashboard.tiles as { id: string }[]) ?? [];
+          const tileIndex = internalTiles.findIndex(t => t.id === tileId);
           if (tileIndex === -1) {
+            // Build a human-readable list of available tile IDs.
+            // Convert only for the error message (read-only, no write-back).
+            const externalDashboard =
+              convertToExternalDashboard(existingDashboard);
             return {
               isError: true,
               content: [
@@ -143,27 +160,40 @@ export function registerPatchDashboard(
             };
           }
 
-          const existingTile = externalDashboard.tiles[tileIndex];
+          // Read the existing tile's layout and container refs from the
+          // persisted internal format so fallback values are accurate
+          // regardless of the external converter's self-healing logic.
+          const existingInternalTile = internalTiles[tileIndex] as {
+            id: string;
+            x?: number;
+            y?: number;
+            w?: number;
+            h?: number;
+            containerId?: string;
+            tabId?: string;
+            config?: { name?: string };
+          };
 
           // Merge: the incoming tile definition replaces config/name,
           // but layout and container refs fall back to the existing tile
           // when omitted so the LLM doesn't have to re-specify them.
-          // Cast once; the Zod schema already validated the shape.
           const incoming = inputTile as Partial<ExternalDashboardTileWithId>;
           const mergedTile: ExternalDashboardTileWithId = {
-            ...existingTile,
-            ...incoming,
-            id: tileId, // preserve the original tile ID
-            x: incoming.x ?? existingTile.x,
-            y: incoming.y ?? existingTile.y,
-            w: incoming.w ?? existingTile.w,
-            h: incoming.h ?? existingTile.h,
+            id: tileId,
+            name: incoming.name ?? existingInternalTile.config?.name ?? '',
+            x: incoming.x ?? existingInternalTile.x ?? 0,
+            y: incoming.y ?? existingInternalTile.y ?? 0,
+            w: incoming.w ?? existingInternalTile.w ?? 12,
+            h: incoming.h ?? existingInternalTile.h ?? 4,
             containerId:
               'containerId' in incoming
                 ? incoming.containerId
-                : existingTile.containerId,
-            tabId: 'tabId' in incoming ? incoming.tabId : existingTile.tabId,
-          };
+                : existingInternalTile.containerId,
+            tabId:
+              'tabId' in incoming ? incoming.tabId : existingInternalTile.tabId,
+            // The config comes from the incoming tile (validated by Zod).
+            config: incoming.config,
+          } as ExternalDashboardTileWithId;
 
           // Validate the patched tile: sources, connections, heatmap,
           // onClick, container refs — same checks as the full update
@@ -268,31 +298,23 @@ export function registerPatchDashboard(
             };
           }
 
-          // Replace the tile in the full array.
-          patchedTiles = [...externalDashboard.tiles];
-          patchedTiles[tileIndex] = mergedTile;
+          // Convert only the patched tile to internal format, then
+          // target it with a positional $set so concurrent patches on
+          // different tiles don't clobber each other.
+          if (!isConfigTile(mergedTile)) {
+            return {
+              isError: true,
+              content: [
+                {
+                  type: 'text' as const,
+                  text: 'Tile must have a config block.',
+                },
+              ],
+            };
+          }
+          const internalTile = convertToInternalTileConfig(mergedTile);
+          setPayload[`tiles.${tileIndex}`] = internalTile;
           patchedTile = mergedTile;
-        }
-
-        // ── Build the $set payload ──────────────────────────────────
-        const existingTileIds = new Set(
-          (existingDashboard.tiles ?? []).map((t: { id: string }) => t.id),
-        );
-        const internalTiles = convertExternalTilesToInternal(
-          patchedTiles,
-          existingTileIds,
-        );
-
-        const setPayload: Partial<IDashboard> = {};
-
-        if (name !== undefined) {
-          setPayload.name = name;
-        }
-        if (tags !== undefined) {
-          setPayload.tags = uniq(tags);
-        }
-        if (tileId !== undefined) {
-          setPayload.tiles = internalTiles;
         }
 
         const updatedDashboard = await Dashboard.findOneAndUpdate(
@@ -306,17 +328,6 @@ export function registerPatchDashboard(
             isError: true,
             content: [{ type: 'text' as const, text: 'Dashboard not found' }],
           };
-        }
-
-        // Clean up alerts for tiles that were removed or converted to
-        // unsupported config types.
-        if (tileId !== undefined) {
-          await cleanupDashboardAlerts({
-            dashboardId,
-            teamId,
-            internalTiles,
-            existingTileIds,
-          });
         }
 
         // Return a lightweight response: the patched tile (if any) plus

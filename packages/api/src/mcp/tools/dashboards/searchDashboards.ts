@@ -7,6 +7,11 @@ import Dashboard from '@/models/dashboard';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 
+/** Escape regex metacharacters so user input is treated as a literal substring. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export function registerSearchDashboards(
   server: McpServer,
   context: McpContext,
@@ -25,9 +30,10 @@ export function registerSearchDashboards(
       inputSchema: z.object({
         query: z
           .string()
+          .max(200)
           .optional()
           .describe(
-            'Search term to match against dashboard names (case-insensitive partial match).',
+            'Search term to match against dashboard names (case-insensitive substring match).',
           ),
         tags: z
           .array(z.string())
@@ -54,31 +60,45 @@ export function registerSearchDashboards(
         const filter: Record<string, unknown> = { team: teamId };
 
         if (query) {
-          filter.name = { $regex: query, $options: 'i' };
+          filter.name = { $regex: escapeRegExp(query), $options: 'i' };
         }
         if (tags && tags.length > 0) {
           filter.tags = { $all: tags };
         }
 
-        const dashboards = await Dashboard.find(filter)
-          .select({ name: 1, tags: 1 })
-          .lean();
+        try {
+          const dashboards = await Dashboard.find(filter)
+            .select({ name: 1, tags: 1 })
+            .lean();
 
-        const output = dashboards.map(d => ({
-          id: d._id.toString(),
-          name: d.name,
-          tags: d.tags,
-          ...(frontendUrl ? { url: `${frontendUrl}/dashboards/${d._id}` } : {}),
-        }));
+          const output = dashboards.map(d => ({
+            id: d._id.toString(),
+            name: d.name,
+            tags: d.tags,
+            ...(frontendUrl
+              ? { url: `${frontendUrl}/dashboards/${d._id}` }
+              : {}),
+          }));
 
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify(output, null, 2),
-            },
-          ],
-        };
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify(output, null, 2),
+              },
+            ],
+          };
+        } catch (err) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: 'text' as const,
+                text: `Search failed: ${err instanceof Error ? err.message : String(err)}`,
+              },
+            ],
+          };
+        }
       },
     ),
   );
