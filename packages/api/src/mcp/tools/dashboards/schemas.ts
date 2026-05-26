@@ -598,7 +598,7 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
-export const mcpTileSchema = z.union([
+const mcpTileSchema = z.union([
   mcpLineTileSchema,
   mcpBarTileSchema,
   mcpTableTileSchema,
