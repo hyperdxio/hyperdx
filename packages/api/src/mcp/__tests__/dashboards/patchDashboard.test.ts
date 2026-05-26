@@ -270,6 +270,89 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
     expect(getFirstText(result)).toContain('source');
   });
 
+  it('should not modify other tiles in the database (positional update)', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      name: 'Positional Update Test',
+      tiles: [
+        {
+          name: 'Tile A',
+          x: 0,
+          y: 0,
+          w: 6,
+          h: 3,
+          config: {
+            displayType: 'line',
+            sourceId,
+            select: [{ aggFn: 'count' }],
+          },
+        },
+        {
+          name: 'Tile B',
+          x: 6,
+          y: 0,
+          w: 6,
+          h: 3,
+          config: {
+            displayType: 'number',
+            sourceId,
+            select: [{ aggFn: 'count' }],
+          },
+        },
+        {
+          name: 'Tile C',
+          x: 0,
+          y: 3,
+          w: 12,
+          h: 4,
+          config: {
+            displayType: 'table',
+            sourceId,
+            select: [{ aggFn: 'count' }],
+          },
+        },
+      ],
+    });
+    const created = JSON.parse(getFirstText(createResult));
+    const dashboardId = created.id;
+
+    // Snapshot the raw tiles from the DB before patching
+    const beforePatch = await Dashboard.findById(dashboardId).lean();
+    const tilesBeforePatch = (beforePatch as any).tiles;
+    const tileBBefore = tilesBeforePatch[1];
+    const tileCBefore = tilesBeforePatch[2];
+
+    // Patch only tile A (index 0)
+    const patchResult = await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
+      dashboardId,
+      tileId: created.tiles[0].id,
+      tile: {
+        name: 'Tile A Patched',
+        config: {
+          displayType: 'line',
+          sourceId,
+          select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+        },
+      },
+    });
+    expect(patchResult.isError).toBeFalsy();
+
+    // Read raw DB tiles again — tiles B and C should be byte-identical
+    const afterPatch = await Dashboard.findById(dashboardId).lean();
+    const tilesAfterPatch = (afterPatch as any).tiles;
+
+    expect(tilesAfterPatch).toHaveLength(3);
+    // Tile B (index 1) and Tile C (index 2) should be untouched
+    expect(JSON.stringify(tilesAfterPatch[1])).toBe(
+      JSON.stringify(tileBBefore),
+    );
+    expect(JSON.stringify(tilesAfterPatch[2])).toBe(
+      JSON.stringify(tileCBefore),
+    );
+    // Tile A (index 0) should have changed
+    expect(tilesAfterPatch[0].config.name).toBe('Tile A Patched');
+  });
+
   it('should round-trip: patch then get_dashboard_tile', async () => {
     const sourceId = ctx.traceSource._id.toString();
     const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
