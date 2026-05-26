@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { McpContext, ToolDefinition } from '../types';
+import { registerEventDeltas } from './eventDeltas';
 import { registerEventPatterns } from './eventPatterns';
 import { registerSearch } from './search';
 import { registerSql } from './sql';
@@ -12,6 +13,7 @@ const queryTools: ToolDefinition = (server: McpServer, context: McpContext) => {
   registerTable(server, context);
   registerSearch(server, context);
   registerEventPatterns(server, context);
+  registerEventDeltas(server, context);
   registerSql(server, context);
 };
 

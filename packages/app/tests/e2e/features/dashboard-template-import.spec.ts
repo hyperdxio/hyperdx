@@ -511,6 +511,95 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
   );
 
   test(
+    'should map filter appliesToSourceIds to selected source ids on import',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Import Filter Applies-To ${ts}`;
+      const tileName = `Logs Number ${ts}`;
+      // Use a name that matches the workspace logs source so the filter's
+      // applies-to entry auto-resolves on the import screen.
+      const template = {
+        version: '0.1.0',
+        name: dashboardName,
+        tiles: [
+          {
+            id: 'tile-1',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: tileName,
+              source: DEFAULT_LOGS_SOURCE_NAME,
+              displayType: 'number',
+              granularity: 'auto',
+              select: [{ aggFn: 'count', valueExpression: '' }],
+              where: '',
+              whereLanguage: 'sql',
+            },
+          },
+        ],
+        filters: [
+          {
+            id: 'filter-1',
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            source: DEFAULT_LOGS_SOURCE_NAME,
+            whereLanguage: 'sql',
+            appliesToSourceIds: [DEFAULT_LOGS_SOURCE_NAME],
+          },
+        ],
+      };
+
+      const templatePath = writeTempTemplate(template);
+
+      await test.step('Upload the template and wait for mapping step', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadTemplateFile(templatePath);
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+        await expect(dashboardImportPage.dashboardNameInput).toHaveValue(
+          dashboardName,
+        );
+      });
+
+      await test.step('Verify the applies-to row is rendered alongside the filter source row', async () => {
+        await expect(
+          dashboardImportPage.getMappingRow('Service (Filter)', 'Data Source'),
+        ).toBeVisible();
+        await expect(
+          dashboardImportPage.getMappingRow(
+            'Service (Filter)',
+            'Applies to Sources',
+          ),
+        ).toBeVisible();
+      });
+
+      await test.step('Finish import (auto-resolved mappings)', async () => {
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify the saved filter resolves appliesToSourceIds to the matching workspace source id', async () => {
+        const logSources = await getSources(page, 'log');
+        const logsSourceId = logSources.find(
+          (s: { name: string }) => s.name === DEFAULT_LOGS_SOURCE_NAME,
+        ).id;
+
+        const dashboardId = dashboardPage.getCurrentDashboardId();
+        const dashboard = await fetchDashboardById(page, dashboardId);
+        expect(dashboard.filters).toHaveLength(1);
+        expect(dashboard.filters[0].source).toBe(logsSourceId);
+        expect(dashboard.filters[0].appliesToSourceIds).toEqual([logsSourceId]);
+      });
+    },
+  );
+
+  test(
     'should drop an unmapped onClick from the imported tile',
     { tag: '@full-stack' },
     async ({ page }) => {
