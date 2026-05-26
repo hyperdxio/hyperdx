@@ -1652,6 +1652,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     [tocVisible, setUserPreference],
   );
 
+  // When the TOC mounts/unmounts the flex child holding the tile grid
+  // changes width. ReactGridLayout's WidthProvider listens for window
+  // resize events to re-measure, so dispatch one whenever `tocVisible`
+  // flips. Without this the RGL columns keep their old pixel widths and
+  // tiles either overflow under the TOC (when toggling on) or leave a
+  // gap (when toggling off) until the next page refresh.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new Event('resize'));
+  }, [tocVisible]);
+
   // Lightweight projection of containers (id + label) for the TOC rail.
   // The label mirrors what the user perceives as the section name:
   //   - 1-tab container: the visible header is the first tab's title (the
