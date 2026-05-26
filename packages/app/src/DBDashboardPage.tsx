@@ -1712,9 +1712,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setUrlActiveTabs,
   ]);
 
-  // DEBUG: bisect step 2 — the hash-on-load useEffect.
-  // No `scrollToContainer` body so this is the pure effect-and-listener
-  // shape, isolated from any of my other code.
+  // DEBUG: bisect step 5 — the FULL hash effect, now with scrollToContainer
+  // in the dependency array. If nuqs v1 setters change identity each render,
+  // expandContainer → scrollToContainer → this effect all re-run on every
+  // render, thrashing hashchange listener attach/detach. If the bug returns
+  // with this commit, the cause is the effect+identity-churn interaction.
   const initialHashScrolledForDashboardRef = useRef<string | null>(null);
   useEffect(() => {
     if (typeof window === 'undefined' || !dashboard) return;
@@ -1723,8 +1725,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     const handleHash = () => {
       const match = window.location.hash.match(/^#container-(.+)$/);
       if (!match) return;
-      // Bisect: no scroll, just confirm parse path exists.
-      void match[1];
+      const containerId = match[1];
+      const exists = dashboard.containers?.some(c => c.id === containerId);
+      if (!exists) return;
+      _bisectSectionNav.scrollToContainer(containerId);
     };
 
     if (initialHashScrolledForDashboardRef.current !== dashboard.id) {
@@ -1733,7 +1737,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     }
     window.addEventListener('hashchange', handleHash);
     return () => window.removeEventListener('hashchange', handleHash);
-  }, [dashboard]);
+  }, [dashboard, _bisectSectionNav]);
 
   // Valid move targets: groups and individual tabs within groups
   const moveTargetContainers = useMemo<MoveTarget[]>(() => {
