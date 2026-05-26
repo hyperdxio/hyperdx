@@ -1058,6 +1058,9 @@ export const DashboardFilterSchema = z.object({
   sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
   where: z.string().optional(),
   whereLanguage: SearchConditionLanguageSchema,
+  // Sources this filter applies to. Undefined / missing means the filter
+  // applies to all tiles.
+  appliesToSourceIds: z.array(z.string().min(1)).optional(),
 });
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;

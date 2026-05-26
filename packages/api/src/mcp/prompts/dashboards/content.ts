@@ -102,7 +102,7 @@ Apply these before calling hyperdx_save_dashboard. Each rule is enforced by the 
 
 8. HEATMAPS FOR DISTRIBUTIONS. Trace duration buckets, payload size buckets. Trace sources only. Set numberFormat: { output: "duration", factor: 0.000000001 } on the chart config so the y-axis reads in human time.
 
-9. FOR FOCUSED PER-DIMENSION DASHBOARDS, DECLARE A DASHBOARD-LEVEL FILTER. Pass filters: [{ type: "QUERY_EXPRESSION", name, expression, sourceId }] at the top level. The user gets a dropdown in the dashboard header; every tile on the same source re-scopes when a value is picked. Do NOT hardcode the dimension into each tile's where clause.
+9. FOR FOCUSED PER-DIMENSION DASHBOARDS, DECLARE A DASHBOARD-LEVEL FILTER. Pass filters: [{ type: "QUERY_EXPRESSION", name, expression, sourceId }] at the top level. The user gets a dropdown in the dashboard header; by default every tile is re-scoped when a value is picked. On mixed-source dashboards add appliesToSourceIds: ["<id>", ...] to restrict the filter to only the tiles whose source carries that column. Omit the field to keep the broadcast-to-all-tiles default. Do NOT hardcode the dimension into each tile's where clause.
 
 10. UPDATE IS REPLACE, NOT MERGE. hyperdx_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call hyperdx_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
 
@@ -958,24 +958,36 @@ to plot the first as a ratio of the second. Useful for error rates:
 
 == DASHBOARD FILTERS ==
 
-Optional dashboard-level filter declarations. Each entry adds a dropdown to the dashboard header that scopes every tile against the same source. Use this for focused per-dimension dashboards (per-service, per-tenant, per-endpoint) instead of hardcoding the dimension into every tile's where clause.
+Optional dashboard-level filter declarations. Each entry adds a dropdown to the dashboard header that scopes tiles against the filter's expression. Use this for focused per-dimension dashboards (per-service, per-tenant, per-endpoint) instead of hardcoding the dimension into every tile's where clause.
 
 Filter shape:
-  { type, name, expression, sourceId, where?, whereLanguage? }
+  { type, name, expression, sourceId, where?, whereLanguage?, appliesToSourceIds? }
 
-  type             "QUERY_EXPRESSION" (the only currently supported type).
-  name             Human label shown in the filter dropdown (e.g. "Service").
-  expression       Column or attribute path the filter scopes (e.g. "ServiceName" or "SpanAttributes['tenant.id']").
-  sourceId         Which source the expression resolves against. Tiles on a different source are NOT scoped by the filter.
-  where            Optional pre-filter that narrows the set of distinct values offered in the dropdown.
-  whereLanguage    "lucene" or "sql". Defaults to "lucene".
+  type                 "QUERY_EXPRESSION" (the only currently supported type).
+  name                 Human label shown in the filter dropdown (e.g. "Service").
+  expression           Column or attribute path the filter scopes (e.g. "ServiceName" or "SpanAttributes['tenant.id']").
+  sourceId             Which source the dropdown VALUES are queried from. Independent of which tiles get filtered (see appliesToSourceIds below).
+  where                Optional pre-filter that narrows the set of distinct values offered in the dropdown.
+  whereLanguage        "lucene" or "sql". Defaults to "lucene".
+  appliesToSourceIds   Optional list of source IDs the filter applies to. Omit (or pass undefined) to apply the filter to EVERY tile regardless of source (the recommended default). Pass a non-empty array to restrict the filter to tiles whose source is in that list, useful on mixed-source dashboards where the column only exists on some sources.
 
-Example:
+Example (broadcast to every tile, the common case):
   filters: [
     { type: "QUERY_EXPRESSION", name: "Service", expression: "ServiceName", sourceId: "<trace-source-id>" }
   ]
 
-When a value is picked in the dropdown, the renderer combines it with each tile's existing where clause via AND. Tiles do NOT need to reference the filter name; the source match alone is enough.
+Example (scoped to the trace source only on a mixed log/trace/metric dashboard):
+  filters: [
+    {
+      type: "QUERY_EXPRESSION",
+      name: "Service",
+      expression: "SpanName",
+      sourceId: "<trace-source-id>",
+      appliesToSourceIds: ["<trace-source-id>"]
+    }
+  ]
+
+When a value is picked in the dropdown, the renderer combines it with each in-scope tile's existing where clause via AND. Tiles do NOT need to reference the filter name; matching the scope (or no scope set) is enough.
 
 == TABLE TILE LINKING (config.onClick) ==
 
@@ -1197,7 +1209,7 @@ Example: find top patterns for production services over the last 4 hours:
 7. Hardcoding a focus dimension into every tile's where clause
    Wrong:   five tiles, each with where: "ServiceName:checkout"
    Correct: filters: [{ type: "QUERY_EXPRESSION", name: "Service", expression: "ServiceName", sourceId: "<id>" }]
-   The dashboard filter applies globally; tiles do not need the literal.
+   The dashboard filter applies globally; tiles do not need the literal. On mixed-source dashboards where only some tiles carry the column, add appliesToSourceIds: ["<id>", ...] to scope the filter to just those sources instead of breaking the unrelated tiles.
 
 8. Forgetting to validate tiles after saving
    Always call hyperdx_query_tile on EVERY tile after hyperdx_save_dashboard, not just one. Save validates input shape but not query semantics. Several known gaps (Lucene comparison/wildcard on map attributes, builder tiles on metric sources, malformed having) pass save and fail at render time. A dashboard with one bad tile renders the whole page in a degraded state; the user sees "Error loading chart" with no way to know which tile broke unless you validated. If query_tile returns an error, fix the where / SQL and re-save before declaring the dashboard ready.

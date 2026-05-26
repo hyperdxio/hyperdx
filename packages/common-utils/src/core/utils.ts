@@ -534,6 +534,14 @@ export function convertToDashboardTemplate(
     // Extract name from source or default to '' if not found
     filter.source =
       sources.find(source => source.id === input.source)?.name ?? '';
+    if (input.appliesToSourceIds?.length) {
+      const remapped = input.appliesToSourceIds
+        .map(id => sources.find(source => source.id === id)?.name)
+        .filter((name): name is string => !!name && name.length > 0);
+      filter.appliesToSourceIds = remapped.length > 0 ? remapped : undefined;
+    } else {
+      filter.appliesToSourceIds = undefined;
+    }
     return filter;
   };
 

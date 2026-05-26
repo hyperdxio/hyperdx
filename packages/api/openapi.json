@@ -2349,6 +2349,16 @@
             "description": "Language of the where condition",
             "default": "sql",
             "example": "lucene"
+          },
+          "appliesToSourceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional list of source IDs this filter applies to. Omit or provide\nan empty array to apply the filter to ALL tiles regardless of source.\nA non-empty array restricts the filter to only tiles whose source ID\nis in the list; tiles using other sources are not affected by the\nselected filter value(s).\n",
+            "example": [
+              "65f5e4a3b9e77c001a111111"
+            ]
           }
         }
       },

@@ -114,6 +114,7 @@ with:
 | `hyperdx_table`               | Compute aggregated metrics as a table, single number, or pie chart                           |
 | `hyperdx_search`              | Browse individual log, event, or trace rows                                                  |
 | `hyperdx_event_patterns`      | Discover the most common log messages and event patterns using Drain clustering               |
+| `hyperdx_event_deltas`        | Compare two row groups and rank properties by how their value distributions differ            |
 | `hyperdx_sql`                 | Execute raw ClickHouse SQL for advanced queries (JOINs, CTEs, sub-queries)                   |
 | `hyperdx_get_dashboard`       | List all dashboards or get full detail for a specific dashboard                              |
 | `hyperdx_save_dashboard`      | Create or update a dashboard with tiles (charts, tables, numbers, search, markdown)          |
@@ -123,4 +124,6 @@ with:
 | `hyperdx_save_saved_search`   | Create or update a saved search (reusable query against a data source)                       |
 | `hyperdx_get_alert`           | List alerts (summary) or get full detail with evaluation history; filter by state             |
 | `hyperdx_save_alert`          | Create a new alert or update an existing one                                                 |
+| `hyperdx_trace_waterfall`     | Fetch all spans in a single trace as a parent/child waterfall tree with optional correlated logs |
+| `hyperdx_trace_top_time_consuming_operations` | Aggregate breakdown of child operations by cumulative time across matching parent traces |
 | `hyperdx_get_webhook`         | List available webhook destinations for use as alert notification channels                    |
