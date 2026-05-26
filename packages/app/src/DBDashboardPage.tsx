@@ -1284,6 +1284,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const brandName = useBrandDisplayName();
   const confirm = useConfirm();
 
+  // DEBUG: bisect — re-introducing only the top-level useUserPreferences()
+  // subscription. If the saved-dashboard refresh bug returns with this single
+  // addition, the cause is this hook's Jotai/atomWithStorage subscription
+  // racing the post-hydration router state transition.
+  const { userPreferences: _bisectUserPreferences } = useUserPreferences();
+  void _bisectUserPreferences;
+
   const router = useRouter();
   const dashboardId = router.query.dashboardId as string | undefined;
 
