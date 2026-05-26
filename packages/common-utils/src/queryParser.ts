@@ -9,6 +9,7 @@ import {
   extractInnerCHArrayJSType,
   JSDataType,
 } from '@/clickhouse';
+import { supportsDirectReadMap } from '@/core/clickhouseVersion';
 import {
   Metadata,
   parseKeyPath,
@@ -1131,6 +1132,13 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
    * a text(tokenizer=array) skip index.
    */
   private async buildKvItemsLookup(): Promise<KvItemsLookup> {
+    const serverVersion = await this.metadata.getServerVersion({
+      connectionId: this.connectionId,
+    });
+    if (!supportsDirectReadMap(serverVersion)) {
+      return new Map();
+    }
+
     const [columns, skipIndices] = await Promise.all([
       this.metadata.getColumns({
         databaseName: this.databaseName,
@@ -1161,15 +1169,14 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       if (!parsed) continue;
 
       // Check if this column has a text(tokenizer=array) skip index
+      const candidateName = normalizeChExpression(candidate.name);
+      const candidateExpr = normalizeChExpression(candidate.default_expression);
       const hasArrayTextIndex = skipIndices.some(idx => {
         if (idx.type !== 'text') return false;
         const tokenizer = parseTokenizerFromTextIndex(idx);
         if (tokenizer?.type !== 'array') return false;
-        // Require exact match: has() won't benefit from a transformed index like lower(col)
-        return (
-          normalizeChExpression(idx.expression) ===
-          normalizeChExpression(candidate.name)
-        );
+        const idxExpr = normalizeChExpression(idx.expression);
+        return idxExpr === candidateName || idxExpr === candidateExpr;
       });
 
       if (hasArrayTextIndex) {

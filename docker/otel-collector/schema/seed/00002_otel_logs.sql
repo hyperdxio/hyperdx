@@ -25,13 +25,16 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_logs
   `__hdx_materialized_k8s.pod.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.pod.name'] CODEC(ZSTD(1)),
   `__hdx_materialized_k8s.pod.uid` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.pod.uid'] CODEC(ZSTD(1)),
   `__hdx_materialized_deployment.environment.name` LowCardinality(String) MATERIALIZED ResourceAttributes['deployment.environment.name'] CODEC(ZSTD(1)),
+  `ResourceAttributeItems` Array(String) ALIAS arrayMap((arr) -> concat(arr.1, '=', arr.2), ResourceAttributes::Array(Tuple(String, String))),
+  `ScopeAttributeItems` Array(String) ALIAS arrayMap((arr) -> concat(arr.1, '=', arr.2), ScopeAttributes::Array(Tuple(String, String))),
+  `LogAttributeItems` Array(String) ALIAS arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String))),
   INDEX idx_trace_id TraceId TYPE text(tokenizer = 'array'),
   INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE text(tokenizer = 'array'),
-  INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE text(tokenizer = 'array'),
+  INDEX idx_res_attr_items ResourceAttributeItems TYPE text(tokenizer = 'array'),
   INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE text(tokenizer = 'array'),
-  INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE text(tokenizer = 'array'),
+  INDEX idx_scope_attr_items ScopeAttributeItems TYPE text(tokenizer = 'array'),
   INDEX idx_log_attr_key mapKeys(LogAttributes) TYPE text(tokenizer = 'array'),
-  INDEX idx_log_attr_value mapValues(LogAttributes) TYPE text(tokenizer = 'array'),
+  INDEX idx_log_attr_items LogAttributeItems TYPE text(tokenizer = 'array'),
   INDEX idx_lower_body lower(Body) TYPE text(tokenizer = 'splitByNonAlpha')
 )
 ENGINE = MergeTree
