@@ -145,6 +145,28 @@ describe('prometheus router', () => {
 
       expect(mockFetch).not.toHaveBeenCalled();
     });
+
+    it('returns 400 with Prometheus-compatible error when resolution exceeds 11,000 points', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedClickHouseConnection(team._id);
+
+      const res = await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '0',
+          end: '1700000000',
+          step: '1s',
+          connectionId: conn._id.toString(),
+        })
+        .expect(400);
+      expect(res.body).toMatchObject({
+        status: 'error',
+        errorType: 'bad_data',
+        error: expect.stringContaining('11,000 points'),
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /v1/prometheus/query', () => {

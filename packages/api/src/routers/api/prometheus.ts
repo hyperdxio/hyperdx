@@ -120,6 +120,10 @@ export function formatVectorResponse(
 // --------------------------
 
 const PROMETHEUS_PROXY_TIMEOUT_MS = 30_000;
+const PROMETHEUS_CH_TIMEOUT_MS = 30_000;
+const PROMETHEUS_MAX_EXECUTION_SEC = 30;
+const PROMETHEUS_MAX_RESULT_ROWS = '100000';
+const PROMETHEUS_MAX_RESOLUTION = 11_000;
 
 async function proxyToPrometheus(
   prometheusEndpoint: string,
@@ -179,7 +183,11 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
     }
 
     // Resolve connection to determine backend (Prometheus or ClickHouse)
-    const connection = await getConnectionById(teamId.toString(), connectionId);
+    const connection = await getConnectionById(
+      teamId.toString(),
+      connectionId,
+      true,
+    );
     if (!connection) {
       return res.status(404).json({
         status: 'error',
@@ -205,22 +213,40 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
     const database = params.database ?? 'default';
     const table = params.table ?? 'otel_metrics_ts';
 
+    if (step <= 0 || (end - start) / step > PROMETHEUS_MAX_RESOLUTION) {
+      return res.status(400).json({
+        status: 'error',
+        errorType: 'bad_data',
+        error: `exceeded maximum resolution of ${PROMETHEUS_MAX_RESOLUTION.toLocaleString('en-US')} points per timeseries. Try decreasing the query resolution (?step=XX)`,
+      });
+    }
+
     const client = new ClickhouseClient({
       host: connection.host,
       username: connection.username,
       password: connection.password,
+      requestTimeout: PROMETHEUS_CH_TIMEOUT_MS,
     });
 
-    const durationSec = Math.max(Math.floor(end - start), 60);
-    const rangeExpr = `(${query})[${durationSec}s:${Math.floor(step)}s]`;
+    const startMs = Math.floor(start * 1000);
     const endMs = Math.floor(end * 1000);
+    const stepSec = Math.max(Math.floor(step), 1);
 
     const resp = await client.query({
-      query: `SELECT tags, time_series FROM prometheusQuery({db:String}, {table:String}, {expr:String}, fromUnixTimestamp64Milli({endMs:Int64})) SETTINGS allow_experimental_time_series_table = 1`,
-      query_params: { db: database, table, expr: rangeExpr, endMs },
+      query: `SELECT tags, time_series FROM prometheusQueryRange({db:String}, {table:String}, {expr:String}, fromUnixTimestamp64Milli({startMs:Int64}), fromUnixTimestamp64Milli({endMs:Int64}), toIntervalSecond({stepSec:UInt32})) SETTINGS allow_experimental_time_series_table = 1`,
+      query_params: {
+        db: database,
+        table,
+        expr: query,
+        startMs,
+        endMs,
+        stepSec,
+      },
       format: 'JSON',
       clickhouse_settings: {
         allow_experimental_time_series_table: 1,
+        max_execution_time: PROMETHEUS_MAX_EXECUTION_SEC,
+        max_result_rows: PROMETHEUS_MAX_RESULT_ROWS,
       },
     });
 
@@ -273,7 +299,11 @@ const queryHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
-    const connection = await getConnectionById(teamId.toString(), connectionId);
+    const connection = await getConnectionById(
+      teamId.toString(),
+      connectionId,
+      true,
+    );
     if (!connection) {
       return res.status(404).json({
         status: 'error',
@@ -299,6 +329,7 @@ const queryHandler: express.RequestHandler = async (req, res) => {
       host: connection.host,
       username: connection.username,
       password: connection.password,
+      requestTimeout: PROMETHEUS_CH_TIMEOUT_MS,
     });
 
     const evalMs = time ? Math.floor(time * 1000) : Date.now();
@@ -309,6 +340,8 @@ const queryHandler: express.RequestHandler = async (req, res) => {
       format: 'JSON',
       clickhouse_settings: {
         allow_experimental_time_series_table: 1,
+        max_execution_time: PROMETHEUS_MAX_EXECUTION_SEC,
+        max_result_rows: PROMETHEUS_MAX_RESULT_ROWS,
       },
     });
 
@@ -353,7 +386,11 @@ router.get('/label/:name/values', async (req, res) => {
       });
     }
 
-    const connection = await getConnectionById(teamId.toString(), connectionId);
+    const connection = await getConnectionById(
+      teamId.toString(),
+      connectionId,
+      true,
+    );
     if (!connection) {
       return res.status(404).json({
         status: 'error',
@@ -379,6 +416,7 @@ router.get('/label/:name/values', async (req, res) => {
       host: connection.host,
       username: connection.username,
       password: connection.password,
+      requestTimeout: PROMETHEUS_CH_TIMEOUT_MS,
     });
 
     const tagsQuery =
@@ -392,6 +430,8 @@ router.get('/label/:name/values', async (req, res) => {
       format: 'JSON',
       clickhouse_settings: {
         allow_experimental_time_series_table: 1,
+        max_execution_time: PROMETHEUS_MAX_EXECUTION_SEC,
+        max_result_rows: PROMETHEUS_MAX_RESULT_ROWS,
       },
     });
     const json = await resp.json<any>();
