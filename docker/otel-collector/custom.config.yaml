@@ -22,13 +22,6 @@ exporters:
     headers:
       authorization: "super-secure-ingestion-api-key"
     compression: gzip
-  # Prometheus remote_write to ClickHouse TimeSeries table
-  prometheusremotewrite:
-    endpoint: http://ch-server:9363/write
-    tls:
-      insecure: true
-    resource_to_telemetry_conversion:
-      enabled: true
 service:
   pipelines:
     metrics/hostmetrics:
@@ -39,15 +32,6 @@ service:
         - batch
       receivers:
         - hostmetrics
-    metrics/promql:
-      exporters:
-        - prometheusremotewrite
-      processors:
-        - memory_limiter
-        - batch
-      receivers:
-        - hostmetrics
-        - otlp/hyperdx
     traces/json:
       exporters:
         - otlphttp/json
