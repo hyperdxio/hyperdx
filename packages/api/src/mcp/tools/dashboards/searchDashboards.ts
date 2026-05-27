@@ -45,13 +45,16 @@ export function registerSearchDashboards(
       'hyperdx_search_dashboards',
       context,
       async ({ query, tags }) => {
-        if (query === undefined && tags === undefined) {
+        const hasQuery = typeof query === 'string' && query.length > 0;
+        const hasTags = Array.isArray(tags) && tags.length > 0;
+
+        if (!hasQuery && !hasTags) {
           return {
             isError: true,
             content: [
               {
                 type: 'text' as const,
-                text: 'Provide at least one of: query or tags.',
+                text: 'Provide at least one of: query (non-empty string) or tags (non-empty array).',
               },
             ],
           };
@@ -59,10 +62,10 @@ export function registerSearchDashboards(
 
         const filter: Record<string, unknown> = { team: teamId };
 
-        if (query) {
-          filter.name = { $regex: escapeRegExp(query), $options: 'i' };
+        if (hasQuery) {
+          filter.name = { $regex: escapeRegExp(query!), $options: 'i' };
         }
-        if (tags && tags.length > 0) {
+        if (hasTags) {
           filter.tags = { $all: tags };
         }
 

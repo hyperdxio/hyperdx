@@ -309,7 +309,7 @@ const mcpOnClickSchema = z
   );
 
 const mcpTileLayoutSchema = z.object({
-  name: z.string().describe('Tile title shown on the dashboard'),
+  name: z.string().min(1).describe('Tile title shown on the dashboard'),
   x: z
     .number()
     .min(0)
@@ -614,7 +614,11 @@ const mcpTileSchema = z.union([
 // truly `undefined` when omitted so the merge logic can fall back to the
 // existing tile's values instead of Zod filling in 0/12/4.
 const mcpPatchTileLayoutSchema = z.object({
-  name: z.string().describe('Tile title shown on the dashboard'),
+  name: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Tile title. Omit to keep the existing title.'),
   x: z.number().min(0).max(23).optional(),
   y: z.number().min(0).optional(),
   w: z.number().min(1).max(24).optional(),

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import * as config from '@/config';
 import Dashboard from '@/models/dashboard';
 import {
+  cleanupDashboardAlerts,
   collectTileContainerRefIssues,
   convertToExternalDashboard,
   convertToInternalTileConfig,
@@ -65,8 +66,8 @@ export function registerPatchDashboard(
           .optional()
           .describe(
             'The full replacement tile definition. Replaces the tile matched by tileId. ' +
-              'Layout fields (x, y, w, h) and containerId/tabId default to the existing ' +
-              "tile's values when omitted, so you only need to specify what changed.",
+              'Layout fields (x, y, w, h), name, and containerId/tabId default to the ' +
+              "existing tile's values when omitted, so you only need to specify what changed.",
           ),
       }),
     },
@@ -122,9 +123,14 @@ export function registerPatchDashboard(
           };
         }
 
-        // Build the $set payload. Start with metadata-only fields;
-        // tile patching adds the targeted tile element below.
+        // Build the $set payload and the query filter. Metadata fields
+        // are simple top-level $set entries; the tile patch uses the
+        // positional $ operator matched by 'tiles.id' in the filter.
         const setPayload: Record<string, unknown> = {};
+        const queryFilter: Record<string, unknown> = {
+          _id: dashboardId,
+          team: teamId,
+        };
 
         if (name !== undefined) {
           setPayload.name = name;
@@ -143,8 +149,8 @@ export function registerPatchDashboard(
           // unrelated tiles).
           const internalTiles =
             (existingDashboard.tiles as { id: string }[]) ?? [];
-          const tileIndex = internalTiles.findIndex(t => t.id === tileId);
-          if (tileIndex === -1) {
+          const existingIdx = internalTiles.findIndex(t => t.id === tileId);
+          if (existingIdx === -1) {
             // Build a human-readable list of available tile IDs.
             // Convert only for the error message (read-only, no write-back).
             const externalDashboard =
@@ -163,7 +169,7 @@ export function registerPatchDashboard(
           // Read the existing tile's layout and container refs from the
           // persisted internal format so fallback values are accurate
           // regardless of the external converter's self-healing logic.
-          const existingInternalTile = internalTiles[tileIndex] as {
+          const existingInternalTile = internalTiles[existingIdx] as {
             id: string;
             x?: number;
             y?: number;
@@ -236,8 +242,6 @@ export function registerPatchDashboard(
             };
           }
 
-          // Heatmap source-kind gate, scoped to tiles whose source or
-          // displayType changed from the existing version.
           const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
             sources,
             filterChangedHeatmapTiles(
@@ -280,7 +284,6 @@ export function registerPatchDashboard(
             };
           }
 
-          // Container/tab ref validation against the dashboard's containers.
           const effectiveContainers = existingDashboard.containers ?? [];
           const tileRefIssues = collectTileContainerRefIssues(
             effectiveContainers,
@@ -298,9 +301,7 @@ export function registerPatchDashboard(
             };
           }
 
-          // Convert only the patched tile to internal format, then
-          // target it with a positional $set so concurrent patches on
-          // different tiles don't clobber each other.
+          // Convert only the patched tile to internal format.
           if (!isConfigTile(mergedTile)) {
             return {
               isError: true,
@@ -313,21 +314,60 @@ export function registerPatchDashboard(
             };
           }
           const internalTile = convertToInternalTileConfig(mergedTile);
-          setPayload[`tiles.${tileIndex}`] = internalTile;
+
+          // Use the positional $ operator matched by 'tiles.id' in the
+          // query filter. This targets the tile by its id field rather
+          // than a captured numeric index, so a concurrent save_dashboard
+          // that replaces the whole tiles array can't cause us to
+          // overwrite an unrelated tile at a stale index.
+          queryFilter['tiles.id'] = tileId;
+          setPayload['tiles.$'] = internalTile;
           patchedTile = mergedTile;
         }
 
         const updatedDashboard = await Dashboard.findOneAndUpdate(
-          { _id: dashboardId, team: teamId },
+          queryFilter,
           { $set: setPayload },
           { new: true },
         );
 
         if (!updatedDashboard) {
+          // When a tile patch is in flight, a null result means the tile
+          // was removed or the dashboard was deleted between our read
+          // and this write.
+          if (tileId !== undefined) {
+            return {
+              isError: true,
+              content: [
+                {
+                  type: 'text' as const,
+                  text: `Tile ${tileId} was not found at write time (it may have been removed by a concurrent update).`,
+                },
+              ],
+            };
+          }
           return {
             isError: true,
             content: [{ type: 'text' as const, text: 'Dashboard not found' }],
           };
+        }
+
+        // Reconcile alerts: if the tile's displayType changed to one
+        // that doesn't support alerts (e.g. raw SQL line/pie), clean up
+        // stale alert documents. Scope to just the patched tile — pass
+        // it as both the "new" tiles and "existing" ids so the helper
+        // checks whether the updated config still supports alerts.
+        if (tileId !== undefined) {
+          const existingTileIds = new Set([tileId]);
+          const patchedTileInDb = updatedDashboard.tiles.filter(
+            t => t.id === tileId,
+          );
+          await cleanupDashboardAlerts({
+            dashboardId,
+            teamId,
+            internalTiles: patchedTileInDb,
+            existingTileIds,
+          });
         }
 
         // Return a lightweight response: the patched tile (if any) plus
