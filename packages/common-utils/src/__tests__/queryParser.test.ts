@@ -493,6 +493,19 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       "((hasToken(lower(concatWithSeparator(';',Body,OtherColumn)), lower('foo'))) AND (hasToken(lower(concatWithSeparator(';',Body,OtherColumn)), lower('bar'))))";
     expect(actualSql).toBe(expectedSql);
   });
+
+  it('"Add to Filters" repro: JSON column path + value with colons and slashes emits valid SQL', async () => {
+    const lucene =
+      'ResourceAttributesJSON.endpoint:"grpc://auth-svc:50051/Verify"';
+    const builder = new SearchQueryBuilder(lucene, serializer);
+    const actualSql = await builder.build();
+    expect(actualSql).toContain(
+      'toString(`ResourceAttributesJSON`.`endpoint`)',
+    );
+    expect(actualSql).toContain('grpc://auth-svc:50051/Verify');
+    expect(actualSql).not.toContain('http_COLON_');
+    expect(actualSql).not.toContain('HDX_COLON');
+  });
 });
 
 describe('CustomSchemaSQLSerializerV2 - bloom_filter tokens() indices', () => {
