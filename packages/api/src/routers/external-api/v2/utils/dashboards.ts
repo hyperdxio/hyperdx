@@ -375,6 +375,18 @@ function convertTileToExternalChart(
   containerById: Map<string, DashboardContainer>,
   dashboardId: string,
 ): ExternalDashboardTileWithId | undefined {
+  // PromQL tiles have no external schema representation yet. Dropping them on
+  // read (and letting the caller filter undefined) is safer than falling
+  // through to defaultTileConfig — that would silently overwrite the PromQL
+  // config with an empty Line tile on a GET → PUT round-trip.
+  if (isPromqlSavedChartConfig(tile.config)) {
+    logger.warn(
+      { dashboardId, tileId: tile.id },
+      'Skipping PromQL tile in external API response (not yet supported)',
+    );
+    return undefined;
+  }
+
   // Returned in case of a failure converting the saved chart config
   const defaultTileConfig: ExternalDashboardTileConfig =
     isRawSqlSavedChartConfig(tile.config)
