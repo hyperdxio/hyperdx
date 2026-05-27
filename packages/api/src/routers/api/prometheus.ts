@@ -15,7 +15,7 @@ router.use(express.urlencoded({ extended: true }));
 // --------------------------
 
 /** Parse a Prometheus timestamp: RFC3339 string or unix seconds (float) */
-function parseTimestamp(value: string | number): number {
+export function parseTimestamp(value: string | number): number {
   if (typeof value === 'number') return value;
   const num = Number(value);
   if (!isNaN(num)) return num;
@@ -25,7 +25,7 @@ function parseTimestamp(value: string | number): number {
 }
 
 /** Parse a Prometheus duration string (e.g. "15s", "1m", "1h") to seconds */
-function parseDuration(value: string | number): number {
+export function parseDuration(value: string | number): number {
   if (typeof value === 'number') return value;
   const num = Number(value);
   if (!isNaN(num)) return num;
@@ -78,7 +78,7 @@ type PrometheusVectorResult = {
 // ClickHouse → Prometheus response formatters
 // --------------------------
 
-function formatMatrixResponse(
+export function formatMatrixResponse(
   rows: { tags: [string, string][]; time_series: [string, number][] }[],
 ): PrometheusMatrixResult[] {
   return rows.map(row => {
@@ -99,7 +99,7 @@ function formatMatrixResponse(
   });
 }
 
-function formatVectorResponse(
+export function formatVectorResponse(
   rows: { tags: [string, string][]; timestamp: string; value: number }[],
 ): PrometheusVectorResult[] {
   return rows.map(row => {
@@ -119,6 +119,8 @@ function formatVectorResponse(
 // Prometheus proxy (for real Prometheus backends)
 // --------------------------
 
+const PROMETHEUS_PROXY_TIMEOUT_MS = 30_000;
+
 async function proxyToPrometheus(
   prometheusEndpoint: string,
   path: string,
@@ -126,11 +128,22 @@ async function proxyToPrometheus(
 ): Promise<any> {
   const url = new URL(path, prometheusEndpoint);
   for (const [k, v] of Object.entries(params)) {
-    // Skip HyperDX-specific params
     if (['connectionId', 'database', 'table'].includes(k)) continue;
     if (v != null) url.searchParams.set(k, v);
   }
-  const resp = await fetch(url.toString());
+  let resp: Response;
+  try {
+    resp = await fetch(url.toString(), {
+      signal: AbortSignal.timeout(PROMETHEUS_PROXY_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'TimeoutError') {
+      throw new Error(
+        `Prometheus request timed out after ${PROMETHEUS_PROXY_TIMEOUT_MS}ms`,
+      );
+    }
+    throw err;
+  }
   if (!resp.ok) {
     const text = await resp.text();
     throw new Error(`Prometheus returned ${resp.status}: ${text}`);
