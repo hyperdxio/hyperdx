@@ -124,4 +124,6 @@ with:
 | `hyperdx_save_saved_search`   | Create or update a saved search (reusable query against a data source)                       |
 | `hyperdx_get_alert`           | List alerts (summary) or get full detail with evaluation history; filter by state             |
 | `hyperdx_save_alert`          | Create a new alert or update an existing one                                                 |
+| `hyperdx_trace_waterfall`     | Fetch all spans in a single trace as a parent/child waterfall tree with optional correlated logs |
+| `hyperdx_trace_top_time_consuming_operations` | Aggregate breakdown of child operations by cumulative time across matching parent traces |
 | `hyperdx_get_webhook`         | List available webhook destinations for use as alert notification channels                    |

@@ -17,6 +17,7 @@ Instead of stuffing all instructions into `AGENTS.md` (which goes into every con
 - **`development.md`** - Development workflows, testing strategy, common tasks, debugging
 - **`code_style.md`** - Code patterns and best practices (read only when actively coding)
 - **`data_viz_colors.md`** - Chart, heatmap, and semantic status colors. Read before adding or changing any color in a chart, sparkline, heatmap, legend, or status pill.
+- **`themes.md`** - How the brand theme system (HyperDX vs ClickStack) and color mode (light/dark/system) work. Read before changing anything in `packages/app/src/theme/`, adding semantic CSS variables, or touching brand-conditional UI.
 
 ## Usage Pattern
 

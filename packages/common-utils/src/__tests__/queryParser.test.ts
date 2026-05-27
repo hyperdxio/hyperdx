@@ -2159,6 +2159,9 @@ describe('CustomSchemaSQLSerializerV2 - KV items index optimization', () => {
     },
   ]);
   metadata.getSetting = jest.fn().mockImplementation(async () => '0');
+  metadata.getServerVersion = jest
+    .fn()
+    .mockImplementation(async () => [26, 5, 0, 0] as const);
 
   const serializer = new CustomSchemaSQLSerializerV2({
     metadata,
@@ -2271,6 +2274,9 @@ describe('CustomSchemaSQLSerializerV2 - KV items with MATERIALIZED column', () =
     },
   ]);
   metadata.getSetting = jest.fn().mockImplementation(async () => '0');
+  metadata.getServerVersion = jest
+    .fn()
+    .mockImplementation(async () => [26, 5, 0, 0] as const);
 
   const serializer = new CustomSchemaSQLSerializerV2({
     metadata,
@@ -2292,6 +2298,78 @@ describe('CustomSchemaSQLSerializerV2 - KV items with MATERIALIZED column', () =
   });
 });
 
+describe('CustomSchemaSQLSerializerV2 - KV items with ALIAS column (expanded index expr)', () => {
+  // ClickHouse expands the skip-index `expr` for ALIAS columns to the full
+  // default_expression, instead of keeping it as the bare column name like it
+  // does for MATERIALIZED columns. This matches what the FTS schema emits.
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+  const databaseName = 'default';
+  const tableName = 'otel_logs';
+  const connectionId = 'test';
+  const aliasDefaultExpression =
+    "arrayMap(arr -> concat(arr.1, '=', arr.2), CAST(LogAttributes, 'Array(Tuple(String, String))'))";
+
+  metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+    if (column === 'LogAttributes') {
+      return { name: 'LogAttributes', type: 'Map(String, String)' };
+    } else if (column === 'Body') {
+      return { name: 'Body', type: 'String' };
+    }
+    return undefined;
+  });
+  metadata.getMaterializedColumnsLookupTable = jest
+    .fn()
+    .mockResolvedValue(new Map());
+  metadata.getColumns = jest.fn().mockResolvedValue([
+    {
+      name: 'LogAttributes',
+      type: 'Map(String, String)',
+      default_type: '',
+      default_expression: '',
+    },
+    {
+      name: 'LogAttributeItems',
+      type: 'Array(String)',
+      default_type: 'ALIAS',
+      default_expression: aliasDefaultExpression,
+    },
+  ]);
+  metadata.getSkipIndices = jest.fn().mockResolvedValue([
+    {
+      name: 'idx_log_attr_items',
+      type: 'text',
+      typeFull: 'text(tokenizer=array)',
+      expression: aliasDefaultExpression,
+      granularity: 1,
+    },
+  ]);
+  metadata.getSetting = jest.fn().mockResolvedValue('0');
+  metadata.getServerVersion = jest
+    .fn()
+    .mockResolvedValue([26, 5, 0, 0] as const);
+
+  const serializer = new CustomSchemaSQLSerializerV2({
+    metadata,
+    databaseName,
+    tableName,
+    connectionId,
+    implicitColumnExpression: 'Body',
+  });
+
+  it('matches the index by its expanded ALIAS expression', async () => {
+    const builder = new SearchQueryBuilder(
+      'LogAttributes.error.message:"Failed to fetch"',
+      serializer,
+    );
+    const sql = await builder.build();
+    expect(sql).toBe(
+      "((has(`LogAttributeItems`, concat('error.message', '=', 'Failed to fetch'))))",
+    );
+  });
+});
+
 describe('CustomSchemaSQLSerializerV2 - KV items fallback cases', () => {
   const databaseName = 'default';
   const tableName = 'otel_logs';
@@ -2301,6 +2379,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items fallback cases', () => {
     columns?: any[];
     skipIndices?: any[];
     getColumn?: (opts: { column: string }) => any;
+    serverVersion?: readonly [number, number, number, number] | undefined;
   }) {
     const metadata = getMetadata(
       new ClickhouseClient({ host: 'http://localhost:8123' }),
@@ -2325,6 +2404,15 @@ describe('CustomSchemaSQLSerializerV2 - KV items fallback cases', () => {
       .fn()
       .mockImplementation(async () => overrides.skipIndices ?? []);
     metadata.getSetting = jest.fn().mockImplementation(async () => '0');
+    const serverVersion = Object.prototype.hasOwnProperty.call(
+      overrides,
+      'serverVersion',
+    )
+      ? overrides.serverVersion
+      : ([26, 5, 0, 0] as const);
+    metadata.getServerVersion = jest
+      .fn()
+      .mockImplementation(async () => serverVersion);
 
     return new CustomSchemaSQLSerializerV2({
       metadata,
@@ -2472,5 +2560,149 @@ describe('CustomSchemaSQLSerializerV2 - KV items fallback cases', () => {
     // Should use CAST for numeric comparison, not has()
     expect(sql).not.toContain('has(');
     expect(sql).toContain('CAST');
+  });
+});
+
+describe('CustomSchemaSQLSerializerV2 - KV items version gate', () => {
+  const databaseName = 'default';
+  const tableName = 'otel_logs';
+  const connectionId = 'test';
+
+  function buildSerializer(
+    serverVersion: readonly [number, number, number, number] | undefined,
+    defaultType: 'ALIAS' | 'MATERIALIZED' = 'ALIAS',
+  ) {
+    const metadata = getMetadata(
+      new ClickhouseClient({ host: 'http://localhost:8123' }),
+    );
+    metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+      if (column === 'LogAttributes') {
+        return { name: 'LogAttributes', type: 'Map(String, String)' };
+      } else if (column === 'Body') {
+        return { name: 'Body', type: 'String' };
+      }
+      return undefined;
+    });
+    metadata.getMaterializedColumnsLookupTable = jest
+      .fn()
+      .mockResolvedValue(new Map());
+    metadata.getColumns = jest.fn().mockResolvedValue([
+      {
+        name: 'LogAttributes',
+        type: 'Map(String, String)',
+        default_type: '',
+        default_expression: '',
+      },
+      {
+        name: 'LogAttributeItems',
+        type: 'Array(String)',
+        default_type: defaultType,
+        default_expression:
+          "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
+      },
+    ]);
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_log_attr_items',
+        type: 'text',
+        typeFull: 'text(tokenizer=array)',
+        expression: 'LogAttributeItems',
+        granularity: 1,
+      },
+    ]);
+    metadata.getSetting = jest.fn().mockResolvedValue('0');
+    metadata.getServerVersion = jest.fn().mockResolvedValue(serverVersion);
+
+    return new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+  }
+
+  async function buildSql(
+    serverVersion: readonly [number, number, number, number] | undefined,
+    defaultType: 'ALIAS' | 'MATERIALIZED' = 'ALIAS',
+  ) {
+    const serializer = buildSerializer(serverVersion, defaultType);
+    const builder = new SearchQueryBuilder(
+      'LogAttributes.service.name:"my-app"',
+      serializer,
+    );
+    return builder.build();
+  }
+
+  const HAS_FORM =
+    "has(`LogAttributeItems`, concat('service.name', '=', 'my-app'))";
+
+  describe('ALIAS items column - emits has() on supported versions', () => {
+    it.each<readonly [number, number, number, number]>([
+      [26, 2, 19, 43],
+      [26, 2, 20, 0],
+      [26, 3, 12, 3],
+      [26, 3, 13, 0],
+      [26, 4, 3, 37],
+      [26, 4, 99, 99],
+      [26, 5, 0, 0],
+      [26, 6, 0, 0],
+      [27, 0, 0, 0],
+    ])('%j', async (...version) => {
+      const sql = await buildSql(version, 'ALIAS');
+      expect(sql).toContain(HAS_FORM);
+    });
+  });
+
+  describe('ALIAS items column - falls back on unsupported versions', () => {
+    it.each<readonly [number, number, number, number]>([
+      [26, 2, 19, 42],
+      [26, 2, 0, 0],
+      [26, 3, 12, 2],
+      [26, 3, 0, 0],
+      [26, 4, 3, 36],
+      [26, 4, 1, 3],
+      [26, 4, 0, 99],
+      [26, 1, 99, 99],
+      [25, 12, 0, 0],
+    ])('%j', async (...version) => {
+      const sql = await buildSql(version, 'ALIAS');
+      expect(sql).not.toContain('has(`LogAttributeItems`');
+      expect(sql).toContain("= 'my-app'");
+    });
+  });
+
+  it('ALIAS items column falls back when server version is unknown', async () => {
+    const sql = await buildSql(undefined, 'ALIAS');
+    expect(sql).not.toContain('has(`LogAttributeItems`');
+    expect(sql).toContain("= 'my-app'");
+  });
+
+  describe('MATERIALIZED items column - emits has() on EVERY version', () => {
+    it.each<readonly [number, number, number, number]>([
+      [26, 2, 19, 43],
+      [26, 2, 19, 42],
+      [26, 2, 0, 0],
+      [26, 3, 12, 3],
+      [26, 3, 12, 2],
+      [26, 3, 0, 0],
+      [26, 4, 3, 37],
+      [26, 4, 3, 36],
+      [26, 4, 1, 3],
+      [26, 4, 0, 99],
+      [26, 1, 99, 99],
+      [26, 0, 0, 0],
+      [25, 12, 0, 0],
+      [26, 5, 0, 0],
+      [27, 0, 0, 0],
+    ])('%j', async (...version) => {
+      const sql = await buildSql(version, 'MATERIALIZED');
+      expect(sql).toContain(HAS_FORM);
+    });
+  });
+
+  it('MATERIALIZED items column emits has() even when server version is unknown', async () => {
+    const sql = await buildSql(undefined, 'MATERIALIZED');
+    expect(sql).toContain(HAS_FORM);
   });
 });
