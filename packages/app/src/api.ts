@@ -554,12 +554,12 @@ export default api;
 // --------------------------
 // Prometheus API
 // --------------------------
-export type PrometheusMetric = Record<string, string>;
-export type PrometheusMatrixResult = {
+type PrometheusMetric = Record<string, string>;
+type PrometheusMatrixResult = {
   metric: PrometheusMetric;
   values: [number, string][];
 };
-export type PrometheusQueryRangeResponse = {
+type PrometheusQueryRangeResponse = {
   status: 'success' | 'error';
   data?: {
     resultType: 'matrix';
@@ -567,7 +567,7 @@ export type PrometheusQueryRangeResponse = {
   };
   error?: string;
 };
-export type PrometheusLabelValuesResponse = {
+type PrometheusLabelValuesResponse = {
   status: 'success' | 'error';
   data?: string[];
   error?: string;
