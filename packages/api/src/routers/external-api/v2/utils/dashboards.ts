@@ -73,7 +73,7 @@ export type ConfigTile = ExternalDashboardTileWithId & {
   config: Exclude<ExternalDashboardTileWithId['config'], undefined>;
 };
 
-export function isRawSqlExternalTileConfig(
+function isRawSqlExternalTileConfig(
   config: ExternalDashboardTileConfig,
 ): config is ExternalDashboardRawSqlTileConfig {
   return 'configType' in config && config.configType === 'sql';
@@ -753,15 +753,13 @@ export function convertToInternalTileConfig(
  * router can pass a single fetched array into multiple helpers without
  * pulling in `controllers/sources` for the type alone.
  */
-export type SourceForValidation = Awaited<
-  ReturnType<typeof getSources>
->[number];
+type SourceForValidation = Awaited<ReturnType<typeof getSources>>[number];
 
 /** Fetches sources for a team. Re-exports the controller call so callers
  * outside `controllers/sources` don't need a second import for the
  * validation flow. The return type is the awaited shape of `getSources`
  * (an array of Source documents) so callers can `await` it directly. */
-export async function fetchSourcesForValidation(
+async function fetchSourcesForValidation(
   team: string | mongoose.Types.ObjectId,
 ): Promise<SourceForValidation[]> {
   return getSources(team.toString());
@@ -778,7 +776,7 @@ function getTileOnClick(tile: ExternalDashboardTileWithId) {
 }
 
 /** Returns source IDs referenced in tiles/filters that do not exist for the team */
-export function getMissingSources(
+function getMissingSources(
   sources: SourceForValidation[],
   tiles: ExternalDashboardTileWithId[],
   filters?: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[],
@@ -826,7 +824,7 @@ export function getMissingSources(
  * `packages/common-utils/src/guards.ts` and `ChartEditorControls.tsx`), so
  * UI and API gates move together.
  */
-export function getHeatmapTilesWithIncompatibleSources(
+function getHeatmapTilesWithIncompatibleSources(
   sources: SourceForValidation[],
   tiles: ExternalDashboardTileWithId[],
 ): string[] {
@@ -860,7 +858,7 @@ export function getHeatmapTilesWithIncompatibleSources(
  * tiles, tiles whose displayType just changed to heatmap, and tiles
  * whose `sourceId` changed all flow through the check.
  */
-export function filterChangedHeatmapTiles(
+function filterChangedHeatmapTiles(
   requestTiles: ExternalDashboardTileWithId[],
   existingTiles: DashboardDocument['tiles'],
 ): ExternalDashboardTileWithId[] {
@@ -904,7 +902,7 @@ export function filterChangedHeatmapTiles(
  * Sources that don't exist are ignored here, getMissingSources handles that
  * case separately with a clearer error message.
  */
-export async function getInvalidOnClickSearchSources(
+async function getInvalidOnClickSearchSources(
   team: string | mongoose.Types.ObjectId,
   tiles: ExternalDashboardTileWithId[],
 ): Promise<string[]> {
@@ -929,7 +927,7 @@ export async function getInvalidOnClickSearchSources(
  * Returns dashboard IDs referenced by tile OnClick link-outs (mode=id,
  * type=dashboard) that do not exist for the team.
  */
-export async function getMissingOnClickDashboards(
+async function getMissingOnClickDashboards(
   team: string | mongoose.Types.ObjectId,
   tiles: ExternalDashboardTileWithId[],
 ): Promise<string[]> {
@@ -955,7 +953,7 @@ export async function getMissingOnClickDashboards(
 }
 
 /** Returns connection IDs referenced in tiles that do not belong to the team */
-export async function getMissingConnections(
+async function getMissingConnections(
   team: string | mongoose.Types.ObjectId,
   tiles: ExternalDashboardTileWithId[],
 ): Promise<string[]> {
@@ -1064,7 +1062,7 @@ export function convertExternalFiltersToInternal(
  * the source's persisted connection. Catches copy-paste errors where
  * the LLM mixes up sourceId and connectionId from different sources.
  */
-export function getSourceConnectionMismatches(
+function getSourceConnectionMismatches(
   sources: SourceForValidation[],
   tiles: ExternalDashboardTileWithId[],
 ): string[] {
