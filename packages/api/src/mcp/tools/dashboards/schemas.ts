@@ -623,7 +623,6 @@ const mcpPatchTileLayoutSchema = z.object({
   y: z.number().min(0).optional(),
   w: z.number().min(1).max(24).optional(),
   h: z.number().min(1).optional(),
-  id: z.string().max(36).optional(),
   containerId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
   tabId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
 });

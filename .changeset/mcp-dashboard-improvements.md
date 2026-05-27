@@ -14,3 +14,8 @@ Add three new MCP dashboard tools for granular operations:
 Fix empty parameter schema on patch/search tools caused by Zod
 `.refine()` wrapping. Document Lucene substring matching limitations
 prominently in tool descriptions and query guide prompt.
+
+**Breaking (minor):** Tile `name` on `hyperdx_save_dashboard` now requires
+at least 1 character (`.min(1)`). Previously empty string `""` was accepted
+and silently persisted as a blank title. Callers sending `name: ""` will
+now receive a validation error.

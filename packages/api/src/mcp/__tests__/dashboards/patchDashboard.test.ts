@@ -343,14 +343,109 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
 
     expect(tilesAfterPatch).toHaveLength(3);
     // Tile B (index 1) and Tile C (index 2) should be untouched
-    expect(JSON.stringify(tilesAfterPatch[1])).toBe(
-      JSON.stringify(tileBBefore),
-    );
-    expect(JSON.stringify(tilesAfterPatch[2])).toBe(
-      JSON.stringify(tileCBefore),
-    );
+    expect(tilesAfterPatch[1]).toEqual(tileBBefore);
+    expect(tilesAfterPatch[2]).toEqual(tileCBefore);
     // Tile A (index 0) should have changed
     expect(tilesAfterPatch[0].config.name).toBe('Tile A Patched');
+  });
+
+  it('should preserve tile name when omitted from patch (config-only patch)', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      name: 'Name Preservation Test',
+      tiles: [
+        {
+          name: 'Original Title',
+          config: {
+            displayType: 'line',
+            sourceId,
+            select: [{ aggFn: 'count' }],
+          },
+        },
+      ],
+    });
+    const created = JSON.parse(getFirstText(createResult));
+    const tileId = created.tiles[0].id;
+
+    // Patch config only — no name field at all
+    const patchResult = await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
+      dashboardId: created.id,
+      tileId,
+      tile: {
+        config: {
+          displayType: 'table',
+          sourceId,
+          select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+        },
+      },
+    });
+
+    expect(patchResult.isError).toBeFalsy();
+    const patched = JSON.parse(getFirstText(patchResult));
+    expect(patched.patchedTile.name).toBe('Original Title');
+    expect(patched.patchedTile.config.displayType).toBe('table');
+
+    // Verify via get
+    const getResult = await callTool(
+      ctx.client!,
+      'hyperdx_get_dashboard_tile',
+      { dashboardId: created.id, tileId },
+    );
+    const tile = JSON.parse(getFirstText(getResult));
+    expect(tile.name).toBe('Original Title');
+  });
+
+  it('should return error when tile is removed between read and write', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      name: 'Concurrent Delete Test',
+      tiles: [
+        {
+          name: 'Tile A',
+          config: {
+            displayType: 'line',
+            sourceId,
+            select: [{ aggFn: 'count' }],
+          },
+        },
+        {
+          name: 'Tile B',
+          config: {
+            displayType: 'number',
+            sourceId,
+            select: [{ aggFn: 'count' }],
+          },
+        },
+      ],
+    });
+    const created = JSON.parse(getFirstText(createResult));
+    const tileAId = created.tiles[0].id;
+
+    // Simulate a concurrent save_dashboard that removes tile A by
+    // directly updating the DB to drop it from the array.
+    await Dashboard.findByIdAndUpdate(created.id, {
+      $pull: { tiles: { id: tileAId } },
+    });
+
+    // Now try to patch tile A — it no longer exists in the array.
+    const patchResult = await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
+      dashboardId: created.id,
+      tileId: tileAId,
+      tile: {
+        name: 'Patched A',
+        config: {
+          displayType: 'line',
+          sourceId,
+          select: [{ aggFn: 'count' }],
+        },
+      },
+    });
+
+    expect(patchResult.isError).toBe(true);
+    // Could be "Tile not found" (caught at read) or "was not found at
+    // write time" (caught by positional $ miss). Either is acceptable.
+    const text = getFirstText(patchResult);
+    expect(text).toMatch(/not found|was not found/i);
   });
 
   it('should round-trip: patch then get_dashboard_tile', async () => {

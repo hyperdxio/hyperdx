@@ -183,7 +183,13 @@ export function registerPatchDashboard(
           // Merge: the incoming tile definition replaces config/name,
           // but layout and container refs fall back to the existing tile
           // when omitted so the LLM doesn't have to re-specify them.
+          // Coerce legacy empty-string containerId/tabId to undefined so
+          // they don't trip the container-ref validator (mirrors the
+          // self-heal in convertTileToExternalChart).
           const incoming = inputTile as Partial<ExternalDashboardTileWithId>;
+          const existingContainerId =
+            existingInternalTile.containerId || undefined;
+          const existingTabId = existingInternalTile.tabId || undefined;
           const mergedTile: ExternalDashboardTileWithId = {
             id: tileId,
             name: incoming.name ?? existingInternalTile.config?.name ?? '',
@@ -194,9 +200,8 @@ export function registerPatchDashboard(
             containerId:
               'containerId' in incoming
                 ? incoming.containerId
-                : existingInternalTile.containerId,
-            tabId:
-              'tabId' in incoming ? incoming.tabId : existingInternalTile.tabId,
+                : existingContainerId,
+            tabId: 'tabId' in incoming ? incoming.tabId : existingTabId,
             // The config comes from the incoming tile (validated by Zod).
             config: incoming.config,
           } as ExternalDashboardTileWithId;
@@ -341,7 +346,9 @@ export function registerPatchDashboard(
               content: [
                 {
                   type: 'text' as const,
-                  text: `Tile ${tileId} was not found at write time (it may have been removed by a concurrent update).`,
+                  text:
+                    `Tile ${tileId} was not found at write time (it may have been removed by a concurrent update). ` +
+                    'The entire update was rejected — name/tags changes (if any) were not applied. Resubmit.',
                 },
               ],
             };

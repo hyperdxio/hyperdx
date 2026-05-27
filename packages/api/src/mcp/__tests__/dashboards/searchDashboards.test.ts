@@ -192,6 +192,46 @@ describe('MCP Dashboard Tools - hyperdx_search_dashboards', () => {
     expect(output[0].name).toBe('api.v2.service');
   });
 
+  it('should reject empty query string', async () => {
+    await new Dashboard({
+      name: 'Should Not Appear',
+      tiles: [],
+      team: ctx.team._id,
+    }).save();
+
+    const result = await callTool(ctx.client!, 'hyperdx_search_dashboards', {
+      query: '',
+    });
+
+    expect(result.isError).toBe(true);
+    expect(getFirstText(result)).toContain('at least one');
+  });
+
+  it('should reject empty tags array', async () => {
+    await new Dashboard({
+      name: 'Should Not Appear',
+      tiles: [],
+      team: ctx.team._id,
+    }).save();
+
+    const result = await callTool(ctx.client!, 'hyperdx_search_dashboards', {
+      tags: [],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(getFirstText(result)).toContain('at least one');
+  });
+
+  it('should reject empty query with empty tags', async () => {
+    const result = await callTool(ctx.client!, 'hyperdx_search_dashboards', {
+      query: '',
+      tags: [],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(getFirstText(result)).toContain('at least one');
+  });
+
   it('should only return dashboards for the current team', async () => {
     await new Dashboard({
       name: 'My Dashboard',

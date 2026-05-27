@@ -1,16 +1,15 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { escapeRegExp } from 'lodash';
 import { z } from 'zod';
 
 import * as config from '@/config';
 import Dashboard from '@/models/dashboard';
+import logger from '@/utils/logger';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 
-/** Escape regex metacharacters so user input is treated as a literal substring. */
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+const SEARCH_RESULTS_LIMIT = 100;
 
 export function registerSearchDashboards(
   server: McpServer,
@@ -36,7 +35,7 @@ export function registerSearchDashboards(
             'Search term to match against dashboard names (case-insensitive substring match).',
           ),
         tags: z
-          .array(z.string())
+          .array(z.string().min(1))
           .optional()
           .describe('Filter to dashboards that have ALL of these tags.'),
       }),
@@ -63,7 +62,7 @@ export function registerSearchDashboards(
         const filter: Record<string, unknown> = { team: teamId };
 
         if (hasQuery) {
-          filter.name = { $regex: escapeRegExp(query!), $options: 'i' };
+          filter.name = { $regex: escapeRegExp(query), $options: 'i' };
         }
         if (hasTags) {
           filter.tags = { $all: tags };
@@ -72,9 +71,15 @@ export function registerSearchDashboards(
         try {
           const dashboards = await Dashboard.find(filter)
             .select({ name: 1, tags: 1 })
+            .limit(SEARCH_RESULTS_LIMIT + 1)
             .lean();
 
-          const output = dashboards.map(d => ({
+          const truncated = dashboards.length > SEARCH_RESULTS_LIMIT;
+          const results = truncated
+            ? dashboards.slice(0, SEARCH_RESULTS_LIMIT)
+            : dashboards;
+
+          const output = results.map(d => ({
             id: d._id.toString(),
             name: d.name,
             tags: d.tags,
@@ -87,11 +92,25 @@ export function registerSearchDashboards(
             content: [
               {
                 type: 'text' as const,
-                text: JSON.stringify(output, null, 2),
+                text: JSON.stringify(
+                  truncated
+                    ? {
+                        results: output,
+                        truncated: true,
+                        hint: `Returned first ${SEARCH_RESULTS_LIMIT} results. Narrow your query or tags to see more.`,
+                      }
+                    : output,
+                  null,
+                  2,
+                ),
               },
             ],
           };
         } catch (err) {
+          logger.error(
+            { err, teamId, query, tags },
+            'hyperdx_search_dashboards: query failed',
+          );
           return {
             isError: true,
             content: [
