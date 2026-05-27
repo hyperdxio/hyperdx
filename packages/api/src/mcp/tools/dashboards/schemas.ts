@@ -688,6 +688,18 @@ const mcpDashboardFilterSchema = z
     whereLanguage: SearchConditionLanguageSchema.describe(
       'Filter language for `where` ("lucene" or "sql"). Optional, but set it explicitly.',
     ),
+    appliesToSourceIds: z
+      .array(objectIdSchema)
+      .optional()
+      .describe(
+        'Optional list of source IDs that this filter is applied to. ' +
+          'Omit (or pass `undefined`) to apply the filter to ALL tiles regardless of source ' +
+          '— this is the recommended default. ' +
+          'A non-empty array restricts the filter to only tiles whose source ID is in the list; ' +
+          'tiles on other sources are not affected by the dropdown value at all. ' +
+          'Useful on mixed-source dashboards where a column (e.g. SpanName) only exists on ' +
+          'a subset of sources.',
+      ),
   })
   .describe(
     'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
@@ -704,10 +716,20 @@ export const mcpFiltersParam = z
       'If another tile\'s onClick targets THIS dashboard with `filters: [{ expression: "X", ... }]`, ' +
       'this array MUST declare a filter whose `expression` is "X". Otherwise the value is ' +
       'dropped on arrival and the destination opens unfiltered.\n\n' +
-      'Example:\n' +
+      'By default a filter applies to every tile on the dashboard. On mixed-source dashboards, ' +
+      'use the optional `appliesToSourceIds` field to restrict a filter to only the tiles whose ' +
+      'source carries the referenced column — leave `appliesToSourceIds` omitted to keep the ' +
+      'broadcast-to-all-tiles default.\n\n' +
+      'Example (broadcast to every tile):\n' +
       '[\n' +
       '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
       '    "sourceId": "<trace-source-id>", "whereLanguage": "sql" }\n' +
+      ']\n\n' +
+      'Example (scoped on a mixed log/trace/metric dashboard):\n' +
+      '[\n' +
+      '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "SpanName",\n' +
+      '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
+      '    "appliesToSourceIds": ["<trace-source-id>"] }\n' +
       ']',
   );
 

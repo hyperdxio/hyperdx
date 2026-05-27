@@ -7,6 +7,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
+  isPromqlChartConfig,
   isRawSqlChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -483,7 +484,8 @@ function DBTimeChartComponent({
       if (
         clickedActiveLabelDate == null ||
         source == null ||
-        isRawSqlChartConfig(config)
+        isRawSqlChartConfig(config) ||
+        isPromqlChartConfig(config)
       ) {
         return null;
       }

@@ -457,6 +457,22 @@ describe('filters', () => {
       expect(parsed?.[0].included).toEqual(['my-app']);
     });
 
+    it('round-trips a JSON column dot-path with colons and slashes in value', () => {
+      const state: FilterState = {
+        'Metadata.endpoint': {
+          included: new Set<string | boolean>(['grpc://thingy:8888/Verify']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      const filters = filtersToQuery(state);
+      const condition = getCondition(filters[0]);
+      expect(condition).not.toMatch(/^toString\(/);
+      expect(condition).not.toMatch(/`/);
+      const parsed = parseLuceneFilter(condition);
+      expect(parsed?.[0].key).toBe('Metadata.endpoint');
+      expect(parsed?.[0].included).toEqual(['grpc://thingy:8888/Verify']);
+    });
+
     it('round-trips mixed included and excluded for same field', () => {
       const state: FilterState = {
         env: {

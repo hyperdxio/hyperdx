@@ -1,7 +1,10 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isBuilderSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import type {
   ChartConfigWithDateRange,
   MetricTable,
@@ -120,8 +123,8 @@ export function parseTimeRange(
       error: 'Invalid startTime or endTime: must be valid ISO 8601 strings',
     };
   }
-  if (startDate > endDate) {
-    return { error: 'startTime must not be after endTime' };
+  if (startDate >= endDate) {
+    return { error: 'endTime must be greater than startTime' };
   }
   return { startDate, endDate };
 }
@@ -189,7 +192,7 @@ export async function runConfigTile(
   const internalTile = convertToInternalTileConfig(tile);
   const savedConfig = internalTile.config;
 
-  if (!isRawSqlSavedChartConfig(savedConfig)) {
+  if (isBuilderSavedChartConfig(savedConfig)) {
     const builderConfig = savedConfig;
 
     if (

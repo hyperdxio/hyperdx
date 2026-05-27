@@ -24,6 +24,19 @@ const escapeLuceneQuotedTerm = (s: string) => {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 };
 
+/**
+ * Escape backslashes and colons so the field name survives Lucene parsing.
+ * Map sub-keys can legitimately contain `:` (e.g. `LogAttributes['foo:bar']`
+ * normalizes to `LogAttributes.foo:bar` via parseKeyPath().join('.')), and
+ * `:` is the Lucene field/value separator. Backslashes are escaped first so
+ * the inserted `\:` survives `encodeSpecialTokens`' `\\` → backslash-literal
+ * substitution; the encoder's matching `\:` → HDX_COLON rule then makes the
+ * colon opaque to the parser, and `decodeSpecialTokens` restores the
+ * original key on the consumer side.
+ */
+const escapeLuceneFieldName = (key: string): string =>
+  key.replace(/\\/g, '\\\\').replace(/:/g, '\\:');
+
 export const filtersToQuery = (filters: FilterState): Filter[] => {
   return Object.entries(filters)
     .filter(
@@ -34,7 +47,7 @@ export const filtersToQuery = (filters: FilterState): Filter[] => {
     )
     .flatMap(([key, values]) => {
       const conditions: Filter[] = [];
-      const luceneField = parseKeyPath(key).join('.');
+      const luceneField = escapeLuceneFieldName(parseKeyPath(key).join('.'));
 
       if (values.included.size > 0) {
         const terms = Array.from(values.included).map(
@@ -79,10 +92,10 @@ function collectFromAst(
   if (isNodeTerm(ast)) {
     if (!ast.quoted) return;
     const negated = ast.field.startsWith('-');
-    const field = negated ? ast.field.slice(1) : ast.field;
+    const field = decodeSpecialTokens(negated ? ast.field.slice(1) : ast.field);
     terms.push({ field, value: decodeSpecialTokens(ast.term), negated });
   } else if (isNodeRangedTerm(ast)) {
-    const field = ast.field;
+    const field = decodeSpecialTokens(ast.field);
     const min = parseFloat(ast.term_min);
     const max = parseFloat(ast.term_max);
     if (!isNaN(min) && !isNaN(max)) {
