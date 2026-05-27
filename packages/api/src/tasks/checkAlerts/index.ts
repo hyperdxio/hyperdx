@@ -27,6 +27,7 @@ import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
@@ -570,7 +571,7 @@ const getChartConfigFromAlert = (
     }
 
     // PromQL tiles don't support alerts yet
-    if (!isBuilderSavedChartConfig(tile.config)) {
+    if (isPromqlSavedChartConfig(tile.config)) {
       return undefined;
     }
 
