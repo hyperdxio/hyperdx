@@ -79,6 +79,14 @@ describe('DashboardContainer', () => {
     });
   });
 
+  describe('anchor id', () => {
+    it('exposes a stable DOM id for TOC scroll targeting', () => {
+      renderDashboardContainer();
+      const container = screen.getByTestId('group-container-g1');
+      expect(container.id).toBe('dashboard-section-g1');
+    });
+  });
+
   describe('bordered behavior', () => {
     it('renders border by default', () => {
       renderDashboardContainer();

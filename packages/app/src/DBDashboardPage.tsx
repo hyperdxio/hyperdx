@@ -104,6 +104,9 @@ import {
   DashboardDndProvider,
   type DragHandleProps,
 } from '@/components/DashboardDndContext';
+import DashboardTableOfContents, {
+  dashboardSectionAnchorId,
+} from '@/components/DashboardTableOfContents';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
@@ -1958,6 +1961,52 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     ],
   );
 
+  // Bulk per-viewer expand: mark every container as expanded in the URL.
+  // Does not touch the DB default.
+  const handleExpandAllContainers = useCallback(() => {
+    if (containers.length === 0) return;
+    const ids = containers.map(c => c.id);
+    setUrlExpandedIds(ids);
+    setUrlCollapsedIds(null);
+  }, [containers, setUrlExpandedIds, setUrlCollapsedIds]);
+
+  // Bulk per-viewer collapse: mark every collapsible container as collapsed in
+  // the URL. Containers with `collapsible: false` are skipped — they cannot be
+  // collapsed.
+  const handleCollapseAllContainers = useCallback(() => {
+    const ids = containers.filter(c => c.collapsible !== false).map(c => c.id);
+    setUrlCollapsedIds(ids.length > 0 ? ids : null);
+    setUrlExpandedIds(null);
+  }, [containers, setUrlCollapsedIds, setUrlExpandedIds]);
+
+  // Navigate to a section: expand it if collapsed, then scroll it into view.
+  const handleNavigateToContainer = useCallback(
+    (containerId: string) => {
+      const container = containers.find(c => c.id === containerId);
+      if (container && isContainerCollapsed(container)) {
+        addToUrlSet(setUrlExpandedIds, containerId);
+        removeFromUrlSet(setUrlCollapsedIds, containerId);
+      }
+      // Defer scroll so the section has time to expand and re-render.
+      requestAnimationFrame(() => {
+        const el = document.getElementById(
+          dashboardSectionAnchorId(containerId),
+        );
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    },
+    [
+      containers,
+      isContainerCollapsed,
+      addToUrlSet,
+      removeFromUrlSet,
+      setUrlExpandedIds,
+      setUrlCollapsedIds,
+    ],
+  );
+
   // Toggle the DB-stored default collapsed state (menu action).
   // This changes what all viewers see by default when opening the dashboard.
   const handleToggleDefaultCollapsed = useCallback(
@@ -2502,6 +2551,15 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         onSetFilterValue={setFilterValue}
         dateRange={searchedTimeRange}
       />
+      {hasContainers && (
+        <DashboardTableOfContents
+          containers={containers}
+          isContainerCollapsed={isContainerCollapsed}
+          onNavigate={handleNavigateToContainer}
+          onExpandAll={handleExpandAllContainers}
+          onCollapseAll={handleCollapseAllContainers}
+        />
+      )}
       {/* Selection indicator */}
       {selectedTileIds.size > 0 && (
         <Paper p="xs" mt="sm" withBorder>
