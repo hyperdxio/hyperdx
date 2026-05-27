@@ -7,17 +7,10 @@ import * as config from '@/config';
 import Dashboard from '@/models/dashboard';
 import {
   cleanupDashboardAlerts,
-  collectTileContainerRefIssues,
   convertToExternalDashboard,
   convertToInternalTileConfig,
-  fetchSourcesForValidation,
-  filterChangedHeatmapTiles,
-  getHeatmapTilesWithIncompatibleSources,
-  getInvalidOnClickSearchSources,
-  getMissingConnections,
-  getMissingOnClickDashboards,
-  getMissingSources,
   isConfigTile,
+  validateDashboardTiles,
 } from '@/routers/external-api/v2/utils/dashboards';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
@@ -206,103 +199,17 @@ export function registerPatchDashboard(
             config: incoming.config,
           } as ExternalDashboardTileWithId;
 
-          // Validate the patched tile: sources, connections, heatmap,
-          // onClick, container refs — same checks as the full update
-          // path, but scoped to the single changed tile.
-          const tilesToValidate = [mergedTile];
-
-          const [
-            sources,
-            missingConnections,
-            missingOnClickDashboards,
-            invalidOnClickSearchSources,
-          ] = await Promise.all([
-            fetchSourcesForValidation(teamId),
-            getMissingConnections(teamId, tilesToValidate),
-            getMissingOnClickDashboards(teamId, tilesToValidate),
-            getInvalidOnClickSearchSources(teamId, tilesToValidate),
-          ]);
-
-          const missingSources = getMissingSources(sources, tilesToValidate);
-          if (missingSources.length > 0) {
+          // Validate the patched tile using the shared validation helper.
+          const validationError = await validateDashboardTiles({
+            teamId,
+            tiles: [mergedTile],
+            existingTiles: existingDashboard.tiles ?? [],
+            containers: existingDashboard.containers ?? [],
+          });
+          if (validationError) {
             return {
               isError: true,
-              content: [
-                {
-                  type: 'text' as const,
-                  text: `Could not find source IDs: ${missingSources.join(', ')}`,
-                },
-              ],
-            };
-          }
-          if (missingConnections.length > 0) {
-            return {
-              isError: true,
-              content: [
-                {
-                  type: 'text' as const,
-                  text: `Could not find connection IDs: ${missingConnections.join(', ')}`,
-                },
-              ],
-            };
-          }
-
-          const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
-            sources,
-            filterChangedHeatmapTiles(
-              tilesToValidate,
-              existingDashboard.tiles ?? [],
-            ),
-          );
-          if (heatmapNonTraceSources.length > 0) {
-            return {
-              isError: true,
-              content: [
-                {
-                  type: 'text' as const,
-                  text: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`,
-                },
-              ],
-            };
-          }
-
-          if (missingOnClickDashboards.length > 0) {
-            return {
-              isError: true,
-              content: [
-                {
-                  type: 'text' as const,
-                  text: `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(', ')}`,
-                },
-              ],
-            };
-          }
-          if (invalidOnClickSearchSources.length > 0) {
-            return {
-              isError: true,
-              content: [
-                {
-                  type: 'text' as const,
-                  text: `The following onClick search source IDs are not log or trace sources: ${invalidOnClickSearchSources.join(', ')}`,
-                },
-              ],
-            };
-          }
-
-          const effectiveContainers = existingDashboard.containers ?? [];
-          const tileRefIssues = collectTileContainerRefIssues(
-            effectiveContainers,
-            tilesToValidate,
-          );
-          if (tileRefIssues.length > 0) {
-            return {
-              isError: true,
-              content: [
-                {
-                  type: 'text' as const,
-                  text: `Validation error: ${tileRefIssues.join('; ')}`,
-                },
-              ],
+              content: [{ type: 'text' as const, text: validationError }],
             };
           }
 

@@ -1,9 +1,13 @@
-import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  displayTypeSupportsBuilderAlerts,
+  displayTypeSupportsRawSqlAlerts,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   validateDashboardContainersStructure,
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
 import {
+  isBuilderSavedChartConfig,
   isHeatmapCompatibleSource,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
@@ -1056,8 +1060,122 @@ export function convertExternalFiltersToInternal(
 }
 
 /**
- * Delete alerts for tiles that were removed or converted to raw SQL
- * (which doesn't support alerts).
+ * Returns source IDs on raw SQL tiles whose connection doesn't match
+ * the source's persisted connection. Catches copy-paste errors where
+ * the LLM mixes up sourceId and connectionId from different sources.
+ */
+export function getSourceConnectionMismatches(
+  sources: SourceForValidation[],
+  tiles: ExternalDashboardTileWithId[],
+): string[] {
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
+
+  const mismatched: string[] = [];
+  for (const tile of tiles) {
+    if (
+      isConfigTile(tile) &&
+      isRawSqlExternalTileConfig(tile.config) &&
+      tile.config.sourceId
+    ) {
+      const source = sourceById.get(tile.config.sourceId);
+      if (source && source.connection.toString() !== tile.config.connectionId) {
+        mismatched.push(tile.config.sourceId);
+      }
+    }
+  }
+
+  return mismatched;
+}
+
+// ── Shared tile validation ───────────────────────────────────────────────
+
+export type TileValidationContext = {
+  teamId: string;
+  tiles: ExternalDashboardTileWithId[];
+  /** Filters to check for missing source IDs (create/full-update paths). */
+  filters?: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[];
+  /** Existing internal tiles for scoping heatmap change detection (update paths). */
+  existingTiles?: DashboardDocument['tiles'];
+  /** Container set to validate tile containerId/tabId refs against. */
+  containers: DashboardContainer[];
+};
+
+/**
+ * Run the full suite of tile validation checks (sources, connections,
+ * heatmap source-kind, onClick targets, container/tab refs). Returns
+ * `null` when all checks pass, or an error message string on failure.
+ *
+ * Consolidates the ~95-line validation block that was previously
+ * duplicated across REST v2 POST/PUT, MCP save (create/update), and
+ * MCP patch handlers.
+ */
+export async function validateDashboardTiles(
+  ctx: TileValidationContext,
+): Promise<string | null> {
+  const { teamId, tiles, filters, existingTiles, containers } = ctx;
+
+  // Container/tab ref resolution.
+  const tileRefIssues = collectTileContainerRefIssues(containers, tiles);
+  if (tileRefIssues.length > 0) {
+    return tileRefIssues.join('; ');
+  }
+
+  // Fetch sources/connections/onClick targets in parallel.
+  const [
+    sources,
+    missingConnections,
+    missingOnClickDashboards,
+    invalidOnClickSearchSources,
+  ] = await Promise.all([
+    fetchSourcesForValidation(teamId),
+    getMissingConnections(teamId, tiles),
+    getMissingOnClickDashboards(teamId, tiles),
+    getInvalidOnClickSearchSources(teamId, tiles),
+  ]);
+
+  const missingSources = getMissingSources(sources, tiles, filters);
+  if (missingSources.length > 0) {
+    return `Could not find the following source IDs: ${missingSources.join(', ')}`;
+  }
+  if (missingConnections.length > 0) {
+    return `Could not find the following connection IDs: ${missingConnections.join(', ')}`;
+  }
+
+  const sourceConnectionMismatches = getSourceConnectionMismatches(
+    sources,
+    tiles,
+  );
+  if (sourceConnectionMismatches.length > 0) {
+    return `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(', ')}`;
+  }
+
+  // Heatmap source-kind gate. On create (no existingTiles), validate all
+  // tiles. On update, scope to tiles whose sourceId/displayType changed.
+  const heatmapTilesToCheck = existingTiles
+    ? filterChangedHeatmapTiles(tiles, existingTiles)
+    : tiles;
+  const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
+    sources,
+    heatmapTilesToCheck,
+  );
+  if (heatmapNonTraceSources.length > 0) {
+    return `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`;
+  }
+
+  if (missingOnClickDashboards.length > 0) {
+    return `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(', ')}`;
+  }
+  if (invalidOnClickSearchSources.length > 0) {
+    return `The following onClick search source IDs are not log or trace sources: ${invalidOnClickSearchSources.join(', ')}`;
+  }
+
+  return null;
+}
+
+/**
+ * Delete alerts for tiles that were removed or whose config no longer
+ * supports alerts (raw SQL with incompatible displayType, or builder
+ * tiles with incompatible displayType like Pie/Table/Heatmap/etc.).
  */
 export async function cleanupDashboardAlerts({
   dashboardId,
@@ -1072,13 +1190,19 @@ export async function cleanupDashboardAlerts({
 }) {
   const newTileIdSet = new Set(internalTiles.map(t => t.id));
   const tileIdsToDeleteAlerts = [
+    // Tiles whose config no longer supports alerts (raw SQL or builder).
     ...internalTiles
-      .filter(
-        tile =>
-          isRawSqlSavedChartConfig(tile.config) &&
-          !displayTypeSupportsRawSqlAlerts(tile.config.displayType),
-      )
+      .filter(tile => {
+        if (isRawSqlSavedChartConfig(tile.config)) {
+          return !displayTypeSupportsRawSqlAlerts(tile.config.displayType);
+        }
+        if (isBuilderSavedChartConfig(tile.config)) {
+          return !displayTypeSupportsBuilderAlerts(tile.config.displayType);
+        }
+        return false;
+      })
       .map(tile => tile.id),
+    // Tiles that were completely removed.
     ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
   ];
   if (tileIdsToDeleteAlerts.length > 0) {
