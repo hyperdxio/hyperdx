@@ -372,7 +372,6 @@ router.get('/label/:name/values', async (req, res) => {
       return res.json(result);
     }
 
-    // ClickHouse: query inner TimeSeries tags table
     const database = params.database ?? 'default';
     const table = params.table ?? 'otel_metrics_ts';
 
@@ -382,40 +381,21 @@ router.get('/label/:name/values', async (req, res) => {
       password: connection.password,
     });
 
-    // Find the inner tags table for the TimeSeries table
-    const tagsResp = await client.query({
-      query: `SELECT name FROM system.tables WHERE database = {db:String} AND name LIKE concat('.inner_id.tags.', (SELECT toString(uuid) FROM system.tables WHERE database = {db:String} AND name = {table:String}))`,
-      query_params: { db: database, table },
+    const tagsQuery =
+      labelName === '__name__'
+        ? `SELECT DISTINCT metric_name AS val FROM timeSeriesTags({db:String}, {table:String}) ORDER BY val SETTINGS allow_experimental_time_series_table = 1`
+        : `SELECT DISTINCT all_tags[{label:String}] AS val FROM timeSeriesTags({db:String}, {table:String}) WHERE mapContains(all_tags, {label:String}) ORDER BY val SETTINGS allow_experimental_time_series_table = 1`;
+
+    const resp = await client.query({
+      query: tagsQuery,
+      query_params: { db: database, table, label: labelName },
       format: 'JSON',
       clickhouse_settings: {
         allow_experimental_time_series_table: 1,
       },
     });
-    const tagsJson = await tagsResp.json<any>();
-    const tagsTableName = tagsJson.data?.[0]?.name;
-
-    if (!tagsTableName) {
-      return res.json({ status: 'success', data: [] });
-    }
-
-    let values: string[];
-    if (labelName === '__name__') {
-      const resp = await client.query({
-        query: `SELECT DISTINCT metric_name FROM {tagsTable:Identifier} ORDER BY metric_name`,
-        query_params: { tagsTable: tagsTableName },
-        format: 'JSON',
-      });
-      const json = await resp.json<any>();
-      values = json.data.map((r: any) => r.metric_name);
-    } else {
-      const resp = await client.query({
-        query: `SELECT DISTINCT all_tags[{label:String}] AS val FROM {tagsTable:Identifier} WHERE mapContains(all_tags, {label:String}) ORDER BY val`,
-        query_params: { tagsTable: tagsTableName, label: labelName },
-        format: 'JSON',
-      });
-      const json = await resp.json<any>();
-      values = json.data.map((r: any) => r.val);
-    }
+    const json = await resp.json<any>();
+    const values: string[] = json.data.map((r: any) => r.val);
 
     return res.json({ status: 'success', data: values });
   } catch (e) {
