@@ -31,7 +31,6 @@ import {
 } from '@tanstack/react-query';
 
 import { prometheusApi } from '@/api';
-
 import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';

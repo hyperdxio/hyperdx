@@ -24,11 +24,7 @@ import {
   splitAndTrimWithBracket,
 } from '@/core/utils';
 import { isBuilderChartConfig } from '@/guards';
-import {
-  ChartConfigWithOptDateRange,
-  QuerySettings,
-  SourceFilters,
-} from '@/types';
+import { ChartConfigWithOptDateRange, QuerySettings } from '@/types';
 
 // export @clickhouse/client-common types
 export type {

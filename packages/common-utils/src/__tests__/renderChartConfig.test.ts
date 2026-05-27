@@ -2777,7 +2777,6 @@ describe('renderChartConfig', () => {
         promqlConfig,
         mockMetadata,
         undefined,
-        undefined,
       );
 
       // PromQL configs return empty SQL — queries go through the Prometheus API route

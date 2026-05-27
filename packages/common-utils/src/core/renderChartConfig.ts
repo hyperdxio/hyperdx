@@ -833,7 +833,7 @@ async function renderWhereExpressionStr({
   metadata: Metadata;
   from: BuilderChartConfigWithDateRange['from'];
   implicitColumnExpression?: string;
-  useTextIndexForImplicitColumn?: ChartConfigWithOptDateRangeEx['useTextIndexForImplicitColumn'];
+  useTextIndexForImplicitColumn?: BuilderChartConfigWithDateRange['useTextIndexForImplicitColumn'];
   connectionId: string;
   with?: BuilderChartConfigWithDateRange['with'];
 }): Promise<string> {

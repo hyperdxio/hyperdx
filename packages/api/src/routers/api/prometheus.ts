@@ -1,6 +1,6 @@
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import express from 'express';
 
-import { createClickHouseClient } from '@/controllers/ai';
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import logger from '@/utils/logger';
@@ -192,10 +192,11 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
     const database = params.database ?? 'default';
     const table = params.table ?? 'otel_metrics_ts';
 
-    const client = await createClickHouseClient(
-      teamId.toString(),
-      connectionId,
-    );
+    const client = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
 
     const durationSec = Math.max(Math.floor(end - start), 60);
     const rangeExpr = `(${query})[${durationSec}s:${Math.floor(step)}s]`;
@@ -281,10 +282,11 @@ const queryHandler: express.RequestHandler = async (req, res) => {
     const database = params.database ?? 'default';
     const table = params.table ?? 'otel_metrics_ts';
 
-    const client = await createClickHouseClient(
-      teamId.toString(),
-      connectionId,
-    );
+    const client = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
 
     const evalMs = time ? Math.floor(time * 1000) : Date.now();
 
@@ -361,10 +363,11 @@ router.get('/label/:name/values', async (req, res) => {
     const database = params.database ?? 'default';
     const table = params.table ?? 'otel_metrics_ts';
 
-    const client = await createClickHouseClient(
-      teamId.toString(),
-      connectionId,
-    );
+    const client = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
 
     // Find the inner tags table for the TimeSeries table
     const tagsResp = await client.query({
