@@ -34,6 +34,7 @@ function renderTOC(props: RenderProps = {}) {
     onNavigate: jest.fn(),
     onExpandAll: jest.fn(),
     onCollapseAll: jest.fn(),
+    onClose: jest.fn(),
     ...props,
   };
   return {
@@ -94,6 +95,15 @@ describe('DashboardTableOfContents', () => {
       renderTOC({ onNavigate });
       fireEvent.click(screen.getByTestId('dashboard-toc-item-b'));
       expect(onNavigate).toHaveBeenCalledWith('b');
+    });
+  });
+
+  describe('close button', () => {
+    it('calls onClose when the close button is clicked', () => {
+      const onClose = jest.fn();
+      renderTOC({ onClose });
+      fireEvent.click(screen.getByTestId('dashboard-toc-close'));
+      expect(onClose).toHaveBeenCalledTimes(1);
     });
   });
 
