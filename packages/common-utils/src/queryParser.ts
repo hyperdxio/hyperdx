@@ -9,6 +9,7 @@ import {
   extractInnerCHArrayJSType,
   JSDataType,
 } from '@/clickhouse';
+import { supportsDirectReadMap } from '@/core/clickhouseVersion';
 import {
   Metadata,
   parseKeyPath,
@@ -1129,9 +1130,17 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
    * A KV items column is an ALIAS/MATERIALIZED column whose expression is
    * arrayMap((k,v)->concat(k,'=',v), mapKeys(X), mapValues(X)) and which has
    * a text(tokenizer=array) skip index.
+   *
+   * The version gate (`supportsDirectReadMap`) only applies to ALIAS items
+   * columns: ALIAS columns are computed at query time, so `has(items, ...)`
+   * against an ALIAS only realizes its speedup when the server can perform a
+   * direct_read against the underlying Map's tuple storage. MATERIALIZED items
+   * columns are physically stored on disk, so `has()` reads them directly and
+   * is fast on any ClickHouse version that supports the text index itself.
    */
   private async buildKvItemsLookup(): Promise<KvItemsLookup> {
-    const [columns, skipIndices] = await Promise.all([
+    const [serverVersion, columns, skipIndices] = await Promise.all([
+      this.metadata.getServerVersion({ connectionId: this.connectionId }),
       this.metadata.getColumns({
         databaseName: this.databaseName,
         tableName: this.tableName,
@@ -1140,9 +1149,10 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       this.skipIndicesPromise ?? Promise.resolve([]),
     ]);
 
+    const directReadSupported = supportsDirectReadMap(serverVersion);
+
     const lookup: KvItemsLookup = new Map();
 
-    // Find columns that are ALIAS or MATERIALIZED with KV items expressions
     const kvItemsCandidates = columns.filter(
       c =>
         (c.default_type === 'ALIAS' || c.default_type === 'MATERIALIZED') &&
@@ -1150,6 +1160,10 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     );
 
     for (const candidate of kvItemsCandidates) {
+      if (candidate.default_type === 'ALIAS' && !directReadSupported) {
+        continue;
+      }
+
       const parsed = (() => {
         let parsed: { mapColumn: string; separator: string } | undefined;
         for (const strategy of KV_ITEMS_STRATEGIES) {
@@ -1160,16 +1174,14 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       })();
       if (!parsed) continue;
 
-      // Check if this column has a text(tokenizer=array) skip index
+      const candidateName = normalizeChExpression(candidate.name);
+      const candidateExpr = normalizeChExpression(candidate.default_expression);
       const hasArrayTextIndex = skipIndices.some(idx => {
         if (idx.type !== 'text') return false;
         const tokenizer = parseTokenizerFromTextIndex(idx);
         if (tokenizer?.type !== 'array') return false;
-        // Require exact match: has() won't benefit from a transformed index like lower(col)
-        return (
-          normalizeChExpression(idx.expression) ===
-          normalizeChExpression(candidate.name)
-        );
+        const idxExpr = normalizeChExpression(idx.expression);
+        return idxExpr === candidateName || idxExpr === candidateExpr;
       });
 
       if (hasArrayTextIndex) {

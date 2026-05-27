@@ -1043,6 +1043,9 @@ describe('searchFilters', () => {
       },
     ]);
     metadata.getSetting = jest.fn().mockResolvedValue('0');
+    metadata.getServerVersion = jest
+      .fn()
+      .mockResolvedValue([26, 5, 0, 0] as const);
 
     const serializer = new CustomSchemaSQLSerializerV2({
       metadata,
