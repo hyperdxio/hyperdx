@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Box, ScrollArea, Stack, Text, UnstyledButton } from '@mantine/core';
-import { useScrollSpy } from '@mantine/hooks';
 
 type TOCContainer = { id: string; title: string };
 
@@ -9,102 +8,70 @@ type DashboardTOCProps = {
   onJump: (containerId: string) => void;
 };
 
+const SCROLL_HOST_ID = 'app-content-scroll-container';
+const CONTAINER_ID_PREFIX = 'container-';
+
 /**
- * In-flow table-of-contents rail listing dashboard sections (containers) for
- * quick navigation. Designed to be mounted inside a sticky sidebar slot in
- * `DBDashboardPage` so it sits next to the dashboard content rather than
- * overlaying it.
+ * In-flow table-of-contents rail listing dashboard sections (containers).
  *
- * Uses Mantine's `useScrollSpy` to highlight the section currently closest to
- * the top of the viewport. Mounted only when the user has opted in via the
- * "Show table of contents" view-option, so this UI is invisible by default.
+ * The active highlight follows whichever section has the highest viewport
+ * visibility — computed via an `IntersectionObserver` rooted at the actual
+ * scroll container (the app layout puts page content inside #app-content-
+ * scroll-container; the window does not scroll). That rule is what users
+ * naturally expect ("highlight what I'm looking at") and it handles two
+ * cases that the more common "closest-to-viewport-top" heuristic fails on:
+ *
+ *  - Clicking a section that already fits in the viewport but cannot be
+ *    scroll-pinned to the top (e.g. the last section when the dashboard's
+ *    bottom hits the scroll end first). After `scrollIntoView` settles
+ *    that section IS the most-visible one, so it ends up highlighted.
+ *  - Sections smaller than the viewport: whichever one occupies the most
+ *    pixels wins, which matches what the user sees.
  */
 export function DashboardTOC({ containers, onJump }: DashboardTOCProps) {
-  // The app layout puts page content inside #app-content-scroll-container,
-  // which is what actually scrolls (the window does not). useScrollSpy
-  // defaults to listening on `window`, so without this it never sees the
-  // scroll events the dashboard generates and `active` stays at 0 forever.
-  // Resolve the element after mount because it doesn't exist during SSR.
-  const [scrollHost, setScrollHost] = useState<HTMLElement | undefined>(
-    undefined,
-  );
-  useEffect(() => {
-    const el = document.getElementById('app-content-scroll-container');
-    if (el) setScrollHost(el);
-  }, []);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
-  const { active, reinitialize } = useScrollSpy({
-    selector: '[id^="container-"]',
-    getDepth: () => 1,
-    getValue: el => el.id,
-    scrollHost,
-  });
+  // Containers' identity is used as the effect's dep. We also depend on the
+  // referenced id strings, not the array reference, so a parent re-render
+  // that produces a new array but the same ids doesn't churn the observer.
+  const containersKey = containers.map(c => c.id).join('|');
 
-  // `useScrollSpy` walks the DOM once at mount. Re-scan whenever the set of
-  // containers changes so renames / additions / removals don't leave us
-  // pointing at a stale index.
-  //
-  // `reinitialize` is deliberately NOT in the dep array: in Mantine v9 its
-  // identity changes every render. If it's a dep, the effect re-fires each
-  // render → reinitialize schedules a state update inside useScrollSpy →
-  // component re-renders → reinitialize has a new identity → effect fires
-  // again — infinite loop, "Maximum update depth exceeded", and React
-  // never reaches the post-hydration commit that would populate
-  // `router.query.dashboardId` on the dashboard page (manifesting as a
-  // stuck "Temporary Dashboard" banner on saved-dashboard URLs).
-  const containerSignature = containers.map(c => c.id).join('|');
   useEffect(() => {
-    reinitialize();
+    if (containers.length === 0) return;
+
+    const root = document.getElementById(SCROLL_HOST_ID);
+    const visibility = new Map<string, number>();
+
+    const observer = new IntersectionObserver(
+      entries => {
+        for (const entry of entries) {
+          const id = entry.target.id.slice(CONTAINER_ID_PREFIX.length);
+          visibility.set(id, entry.intersectionRatio);
+        }
+        let bestId: string | null = null;
+        let bestRatio = -1;
+        for (const [id, ratio] of visibility) {
+          if (ratio > bestRatio) {
+            bestId = id;
+            bestRatio = ratio;
+          }
+        }
+        setActiveId(bestId);
+      },
+      { root, threshold: [0, 0.25, 0.5, 0.75, 1] },
+    );
+
+    for (const c of containers) {
+      const el = document.getElementById(`${CONTAINER_ID_PREFIX}${c.id}`);
+      if (el) observer.observe(el);
+    }
+
+    return () => observer.disconnect();
+    // `containers` itself is fine to omit — `containersKey` captures the
+    // identity we care about and lets the effect re-run when the id list
+    // changes without churning on unrelated parent re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [containerSignature]);
-
-  // Click-overrides-spy. The spy reports the section whose top is closest to
-  // the viewport top — which is what you want most of the time, but it has a
-  // common dead zone: when the user clicks a section that is already visible
-  // but cannot be scroll-pinned at the top (e.g. the last section in a
-  // dashboard short enough that the bottom hits the scroll end before the
-  // section's top reaches the viewport top), the spy never updates and the
-  // highlight stays on whatever was previously active. Treating a click as
-  // explicit user intent fixes the dead zone: we override the spy's `active`
-  // with the clicked entry, then hand control back to the spy when the user
-  // next scrolls manually.
-  const [clickedId, setClickedId] = useState<string | null>(null);
-  const clickArmTimerRef = useRef<number | null>(null);
-
-  const handleEntryClick = useCallback(
-    (id: string) => {
-      setClickedId(id);
-      onJump(id);
-    },
-    [onJump],
-  );
-
-  // When a click override is set, wait long enough for the smooth scroll
-  // triggered by the click to settle (~700ms), then arm a one-time scroll
-  // listener that clears the override on the next user-initiated scroll.
-  useEffect(() => {
-    if (clickedId === null) return;
-    const host = scrollHost ?? window;
-    let cleanup: (() => void) | null = null;
-    clickArmTimerRef.current = window.setTimeout(() => {
-      const clear = () => setClickedId(null);
-      host.addEventListener('scroll', clear, { once: true });
-      cleanup = () => host.removeEventListener('scroll', clear);
-      clickArmTimerRef.current = null;
-    }, 700);
-    return () => {
-      if (clickArmTimerRef.current !== null) {
-        window.clearTimeout(clickArmTimerRef.current);
-        clickArmTimerRef.current = null;
-      }
-      if (cleanup) cleanup();
-    };
-  }, [clickedId, scrollHost]);
-
-  const clickedIndex = clickedId
-    ? containers.findIndex(c => c.id === clickedId)
-    : -1;
-  const activeIndex = clickedIndex >= 0 ? clickedIndex : active;
+  }, [containersKey]);
 
   if (containers.length === 0) return null;
 
@@ -123,12 +90,12 @@ export function DashboardTOC({ containers, onJump }: DashboardTOCProps) {
       </Text>
       <ScrollArea.Autosize mah="calc(100vh - 160px)" type="hover">
         <Stack gap={0}>
-          {containers.map((c, i) => {
-            const isActive = i === activeIndex;
+          {containers.map(c => {
+            const isActive = c.id === activeId;
             return (
               <UnstyledButton
                 key={c.id}
-                onClick={() => handleEntryClick(c.id)}
+                onClick={() => onJump(c.id)}
                 data-testid={`toc-entry-${c.id}`}
                 data-active={isActive || undefined}
                 style={{
