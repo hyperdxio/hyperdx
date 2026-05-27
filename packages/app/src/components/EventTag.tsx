@@ -5,6 +5,7 @@ import { SearchConditionLanguage } from '@hyperdx/common-utils/dist/types';
 import { Button, Group, Popover, Stack, Text, Tooltip } from '@mantine/core';
 import { IconCirclePlus, IconLink, IconSearch } from '@tabler/icons-react';
 
+import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/utils';
 import { isLinkableUrl } from '@/utils/highlightedAttributes';
 
 export default function EventTag({
@@ -105,7 +106,10 @@ export default function EventTag({
               size="xs"
               rightSection={<IconCirclePlus size={14} />}
               onClick={() => {
-                onPropertyAddClick(sqlExpression, value);
+                onPropertyAddClick(
+                  cleanClickHouseExpression(sqlExpression),
+                  value,
+                );
                 setOpened(false);
               }}
             >
