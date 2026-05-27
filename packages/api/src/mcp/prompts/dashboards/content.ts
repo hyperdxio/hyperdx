@@ -17,16 +17,17 @@ export function buildCreateDashboardPrompt(
 ${userContext}
 ${sourceSummary}
 
-IMPORTANT: Call hyperdx_list_sources first to get the full column schema and attribute keys for each source. The source IDs above are correct, but you need the schema details to write accurate queries.
+IMPORTANT: Call hyperdx_list_sources first to get source IDs, then hyperdx_describe_source for each source you plan to query. This gives you the full column schema, attribute keys, and sampled values (e.g. SeverityText, StatusCode). The source IDs above are correct, but you need the schema details to write accurate queries.
 
 == WORKFLOW ==
 
-1. Call hyperdx_list_sources to discover source IDs, column schemas, and attribute keys.
-2. Call hyperdx_get_dashboard (no id) to list existing dashboards. If any exist, fetch one or two with their id and skim them to pick up local idioms (naming style, time ranges, common groupings) before adding new ones. Skip when the workspace is empty.
-3. Pick the right source kind for the question. Trace data for request volume / latency / errors. Log data for severity / messages. Metric data for system telemetry.
-4. Sketch tiles, THEN group them into 2-4 containers (Overview / Trends / Errors is a sane default for a service-health pattern) before assembling the save payload. Ungrouped tiles render as a flat sprawl that fails the readability test at five or more tiles.
-5. Call hyperdx_save_dashboard with the tiles, containers, and dashboard-level filters.
-6. Call hyperdx_query_tile on EVERY tile (not just one) to confirm queries return data and the dashboard is not silently degraded.
+1. Call hyperdx_list_sources to discover source IDs and connection IDs.
+2. Call hyperdx_describe_source for each source you plan to query to get column schema, attribute keys, and sampled low-cardinality values (SeverityText, StatusCode, ServiceName, etc.).
+3. Call hyperdx_get_dashboard (no id) to list existing dashboards. If any exist, fetch one or two with their id and skim them to pick up local idioms (naming style, time ranges, common groupings) before adding new ones. Skip when the workspace is empty.
+4. Pick the right source kind for the question. Trace data for request volume / latency / errors. Log data for severity / messages. Metric data for system telemetry.
+5. Sketch tiles, THEN group them into 2-4 containers (Overview / Trends / Errors is a sane default for a service-health pattern) before assembling the save payload. Ungrouped tiles render as a flat sprawl that fails the readability test at five or more tiles.
+6. Call hyperdx_save_dashboard with the tiles, containers, and dashboard-level filters.
+7. Call hyperdx_query_tile on EVERY tile (not just one) to confirm queries return data and the dashboard is not silently degraded.
 
 == UPDATING AN EXISTING DASHBOARD ==
 
@@ -71,11 +72,11 @@ Use RAW SQL tiles (with connectionId) only for queries the builder cannot expres
 
 - Top-level columns use PascalCase by default: Duration, StatusCode, SpanName, Body, SeverityText, ServiceName, SpanKind.
   NOTE: These are defaults for the standard HyperDX schema. Custom sources may use different names.
-  Always call hyperdx_list_sources to get the real column names and keyColumns for each source.
+  Always call hyperdx_describe_source to get the real column names, keyColumns, and sampled values for each source.
 - Map-type columns use bracket syntax: SpanAttributes['http.method'], ResourceAttributes['service.name'].
   NEVER use dot notation for Map columns. Always use brackets.
 - JSON-type columns use dot notation: JsonColumn.key.subkey.
-  Check the jsType returned by hyperdx_list_sources to decide which a column is.
+  Check the jsType returned by hyperdx_describe_source to determine whether a column is Map or JSON.
 
 == DESIGN CHECKLIST ==
 
@@ -101,7 +102,7 @@ Apply these before calling hyperdx_save_dashboard. Each rule is enforced by the 
 
 8. HEATMAPS FOR DISTRIBUTIONS. Trace duration buckets, payload size buckets. Trace sources only. Set numberFormat: { output: "duration", factor: 0.000000001 } on the chart config so the y-axis reads in human time.
 
-9. FOR FOCUSED PER-DIMENSION DASHBOARDS, DECLARE A DASHBOARD-LEVEL FILTER. Pass filters: [{ type: "QUERY_EXPRESSION", name, expression, sourceId }] at the top level. The user gets a dropdown in the dashboard header; every tile on the same source re-scopes when a value is picked. Do NOT hardcode the dimension into each tile's where clause.
+9. FOR FOCUSED PER-DIMENSION DASHBOARDS, DECLARE A DASHBOARD-LEVEL FILTER. Pass filters: [{ type: "QUERY_EXPRESSION", name, expression, sourceId }] at the top level. The user gets a dropdown in the dashboard header; by default every tile is re-scoped when a value is picked. On mixed-source dashboards add appliesToSourceIds: ["<id>", ...] to restrict the filter to only the tiles whose source carries that column. Omit the field to keep the broadcast-to-all-tiles default. Do NOT hardcode the dimension into each tile's where clause.
 
 10. UPDATE IS REPLACE, NOT MERGE. hyperdx_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call hyperdx_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
 
@@ -128,6 +129,11 @@ Apply these before calling hyperdx_save_dashboard. Each rule is enforced by the 
 
 The dashboard_examples prompt returns concrete example shapes. Read them as patterns to adapt to the user's actual request and schema, not as literal templates to substitute names into. Specifically: the literal "ServiceName", "StatusCode:STATUS_CODE_ERROR", "Duration" come from the standard HyperDX schema. Real source schemas may use different column names and status values; always verify with hyperdx_list_sources before reusing literals.
 
+IMPORTANT: The exact values for StatusCode and SeverityText vary by deployment.
+Do NOT assume values like "STATUS_CODE_ERROR", "Ok", "error", or "fatal".
+Always call hyperdx_describe_source first and inspect the lowCardinalityValues
+returned for each source to discover the real values used in your data.
+
 == DEFAULT TIME WINDOW ==
 
 Dashboards open with a 15-minute default window. There is no dashboard-level field to change this default today; it is a user-side control in the header. For overview / starter dashboards on intermittent or batch-ingested data, the 15-minute window may show empty tiles even when the queries are correct. After save, tell the user the default is 15 minutes and that widening to 1h or 24h is the first thing to try if a tile looks empty. Do NOT compensate by hardcoding a wider time range into individual tiles; that desynchronizes them from the dashboard time picker.
@@ -137,12 +143,12 @@ Dashboards open with a 15-minute default window. There is no dashboard-level fie
 - Using valueExpression with aggFn "count" (count takes no valueExpression).
 - Forgetting valueExpression for non-count aggFns (avg, sum, min, max, quantile all require it).
 - Using dot notation for Map-type attributes (always use SpanAttributes['key'] bracket syntax).
-- Skipping hyperdx_list_sources (you need real source IDs and real column names).
+- Skipping hyperdx_list_sources + hyperdx_describe_source (you need real source IDs, column names, and values).
 - Skipping hyperdx_query_tile after save (tiles can silently fail on syntax or attribute mismatches).
 - Setting chart-level numberFormat on a table that mixes counts and durations (counts render as 0:00:00).
 - Multiple select items on number / pie / heatmap tiles (each takes exactly one).
 - Missing level on aggFn "quantile" (must specify 0.5, 0.9, 0.95, or 0.99).
-- Assuming StatusCode or SeverityText values (always inspect real values from hyperdx_list_sources).
+- Assuming StatusCode or SeverityText values (always inspect lowCardinalityValues from hyperdx_describe_source).
 - Heatmap on a non-Trace source (heatmap is Trace-only today).
 - Hardcoding a focus dimension into every tile's where clause (use a dashboard-level filter instead).`;
 }
@@ -788,7 +794,7 @@ Top-level columns (PascalCase defaults, use directly in valueExpression and grou
   Duration, StatusCode, SpanName, ServiceName, SpanKind, Body, SeverityText,
   Timestamp, TraceId, SpanId, ParentSpanId
   NOTE: These are defaults for the standard HyperDX schema. Custom sources may
-  use different column names. Always verify with hyperdx_list_sources, which returns
+  use different column names. Always verify with hyperdx_describe_source, which returns
   the real column names and keyColumns expressions for each source.
 
 Map-type columns (bracket syntax, access keys via ['key']):
@@ -804,7 +810,7 @@ IMPORTANT: Always use bracket syntax for Map-type columns. Never use dot notatio
 
 JSON-type columns (dot notation, access nested keys via dot path):
   JsonColumn.key.subkey
-  NOTE: Check the jsType field returned by hyperdx_list_sources to decide
+  NOTE: Check the jsType field returned by hyperdx_describe_source to determine
   whether a column is Map (use brackets) or JSON (use dots).
 
 == LUCENE FILTER SYNTAX ==
@@ -952,24 +958,36 @@ to plot the first as a ratio of the second. Useful for error rates:
 
 == DASHBOARD FILTERS ==
 
-Optional dashboard-level filter declarations. Each entry adds a dropdown to the dashboard header that scopes every tile against the same source. Use this for focused per-dimension dashboards (per-service, per-tenant, per-endpoint) instead of hardcoding the dimension into every tile's where clause.
+Optional dashboard-level filter declarations. Each entry adds a dropdown to the dashboard header that scopes tiles against the filter's expression. Use this for focused per-dimension dashboards (per-service, per-tenant, per-endpoint) instead of hardcoding the dimension into every tile's where clause.
 
 Filter shape:
-  { type, name, expression, sourceId, where?, whereLanguage? }
+  { type, name, expression, sourceId, where?, whereLanguage?, appliesToSourceIds? }
 
-  type             "QUERY_EXPRESSION" (the only currently supported type).
-  name             Human label shown in the filter dropdown (e.g. "Service").
-  expression       Column or attribute path the filter scopes (e.g. "ServiceName" or "SpanAttributes['tenant.id']").
-  sourceId         Which source the expression resolves against. Tiles on a different source are NOT scoped by the filter.
-  where            Optional pre-filter that narrows the set of distinct values offered in the dropdown.
-  whereLanguage    "lucene" or "sql". Defaults to "lucene".
+  type                 "QUERY_EXPRESSION" (the only currently supported type).
+  name                 Human label shown in the filter dropdown (e.g. "Service").
+  expression           Column or attribute path the filter scopes (e.g. "ServiceName" or "SpanAttributes['tenant.id']").
+  sourceId             Which source the dropdown VALUES are queried from. Independent of which tiles get filtered (see appliesToSourceIds below).
+  where                Optional pre-filter that narrows the set of distinct values offered in the dropdown.
+  whereLanguage        "lucene" or "sql". Defaults to "lucene".
+  appliesToSourceIds   Optional list of source IDs the filter applies to. Omit (or pass undefined) to apply the filter to EVERY tile regardless of source (the recommended default). Pass a non-empty array to restrict the filter to tiles whose source is in that list, useful on mixed-source dashboards where the column only exists on some sources.
 
-Example:
+Example (broadcast to every tile, the common case):
   filters: [
     { type: "QUERY_EXPRESSION", name: "Service", expression: "ServiceName", sourceId: "<trace-source-id>" }
   ]
 
-When a value is picked in the dropdown, the renderer combines it with each tile's existing where clause via AND. Tiles do NOT need to reference the filter name; the source match alone is enough.
+Example (scoped to the trace source only on a mixed log/trace/metric dashboard):
+  filters: [
+    {
+      type: "QUERY_EXPRESSION",
+      name: "Service",
+      expression: "SpanName",
+      sourceId: "<trace-source-id>",
+      appliesToSourceIds: ["<trace-source-id>"]
+    }
+  ]
+
+When a value is picked in the dropdown, the renderer combines it with each in-scope tile's existing where clause via AND. Tiles do NOT need to reference the filter name; matching the scope (or no scope set) is enough.
 
 == TABLE TILE LINKING (config.onClick) ==
 
@@ -1172,7 +1190,7 @@ Example: find top patterns for production services over the last 4 hours:
 3. Using dot notation for Map-type attributes in valueExpression or groupBy
    Wrong:   groupBy: "SpanAttributes.http.method"
    Correct: groupBy: "SpanAttributes['http.method']"
-   NOTE: JSON-type columns DO use dot notation. Check jsType from hyperdx_list_sources.
+   NOTE: JSON-type columns DO use dot notation. Check jsType from hyperdx_describe_source.
 
 4. Multiple select items on number / pie / heatmap tiles
    Wrong:   displayType: "number", select: [{ aggFn: "count" }, { aggFn: "avg", ... }]
@@ -1191,7 +1209,7 @@ Example: find top patterns for production services over the last 4 hours:
 7. Hardcoding a focus dimension into every tile's where clause
    Wrong:   five tiles, each with where: "ServiceName:checkout"
    Correct: filters: [{ type: "QUERY_EXPRESSION", name: "Service", expression: "ServiceName", sourceId: "<id>" }]
-   The dashboard filter applies globally; tiles do not need the literal.
+   The dashboard filter applies globally; tiles do not need the literal. On mixed-source dashboards where only some tiles carry the column, add appliesToSourceIds: ["<id>", ...] to scope the filter to just those sources instead of breaking the unrelated tiles.
 
 8. Forgetting to validate tiles after saving
    Always call hyperdx_query_tile on EVERY tile after hyperdx_save_dashboard, not just one. Save validates input shape but not query semantics. Several known gaps (Lucene comparison/wildcard on map attributes, builder tiles on metric sources, malformed having) pass save and fail at render time. A dashboard with one bad tile renders the whole page in a degraded state; the user sees "Error loading chart" with no way to know which tile broke unless you validated. If query_tile returns an error, fix the where / SQL and re-save before declaring the dashboard ready.
@@ -1202,7 +1220,7 @@ Example: find top patterns for production services over the last 4 hours:
 
 10. Assuming StatusCode or SeverityText values
     Values like STATUS_CODE_ERROR, Ok, error, fatal vary by deployment.
-    Always call hyperdx_list_sources and inspect real keyValues from the source
+    Always call hyperdx_describe_source and inspect the lowCardinalityValues
     before writing filters that depend on these columns.
 
 11. Heatmap tile on a non-Trace source
