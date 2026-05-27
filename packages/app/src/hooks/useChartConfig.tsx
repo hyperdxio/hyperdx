@@ -73,7 +73,7 @@ const shouldUseChunking = (
   granularity: string;
 } => {
   // Avoid chunking for raw SQL charts since they can include arbitrary window functions, etc.
-  if (isRawSqlChartConfig(config)) return false;
+  if (isRawSqlChartConfig(config) || isPromqlChartConfig(config)) return false;
 
   // Granularity is required for chunking, otherwise we could break other group-bys.
   if (!isUsingGranularity(config)) return false;
