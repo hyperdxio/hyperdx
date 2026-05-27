@@ -114,7 +114,8 @@ export function useRowData({
               },
             ]
           : []),
-        ...(source.resourceAttributesExpression
+        ...('resourceAttributesExpression' in source &&
+        source.resourceAttributesExpression
           ? [
               {
                 valueExpression: source.resourceAttributesExpression,

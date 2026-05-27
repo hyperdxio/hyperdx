@@ -156,7 +156,9 @@ export function useSessions(
             ...(where && {
               filters: [
                 {
-                  type: whereLanguage ?? 'lucene',
+                  type:
+                    (whereLanguage === 'promql' ? 'lucene' : whereLanguage) ??
+                    'lucene',
                   condition: where,
                 },
               ],
