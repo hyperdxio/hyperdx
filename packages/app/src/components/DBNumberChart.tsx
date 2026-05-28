@@ -7,7 +7,10 @@ import {
   isBuilderChartConfig,
   isRawSqlChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithDateRange,
+  isChartPaletteToken,
+} from '@hyperdx/common-utils/dist/types';
 import { Flex, Text } from '@mantine/core';
 
 import {
@@ -17,7 +20,7 @@ import {
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
-import { formatNumber } from '@/utils';
+import { formatNumber, getColorFromCSSToken } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
@@ -89,6 +92,14 @@ export default function DBNumberChart({
     id: config.source,
   });
 
+  // Tile-level color override resolved at render time so token choices
+  // reflow correctly across light / dark / IDE themes. Unknown tokens
+  // (legacy strings, schema gaps) fall back to the default text color.
+  const tileColor =
+    config.color && isChartPaletteToken(config.color)
+      ? getColorFromCSSToken(config.color)
+      : undefined;
+
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
 
@@ -147,7 +158,9 @@ export default function DBNumberChart({
         </div>
       ) : (
         <Flex align="center" justify="center" h="100%" style={{ flexGrow: 1 }}>
-          <Text size="4rem">{formattedValue ?? 'N/A'}</Text>
+          <Text size="4rem" c={tileColor}>
+            {formattedValue ?? 'N/A'}
+          </Text>
         </Flex>
       )}
     </ChartContainer>

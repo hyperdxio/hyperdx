@@ -223,6 +223,7 @@ export default function EditTimeChartForm({
     compareToPreviousPeriod,
     numberFormat,
     groupByColumnsOnLeft,
+    color,
   ] = useWatch({
     control,
     name: [
@@ -231,6 +232,7 @@ export default function EditTimeChartForm({
       'compareToPreviousPeriod',
       'numberFormat',
       'groupByColumnsOnLeft',
+      'color',
     ],
   });
 
@@ -250,6 +252,7 @@ export default function EditTimeChartForm({
       compareToPreviousPeriod,
       numberFormat,
       groupByColumnsOnLeft,
+      color,
     }),
     [
       alignDateRangeToGranularity,
@@ -257,6 +260,7 @@ export default function EditTimeChartForm({
       compareToPreviousPeriod,
       numberFormat,
       groupByColumnsOnLeft,
+      color,
     ],
   );
 
@@ -536,12 +540,14 @@ export default function EditTimeChartForm({
       fillNulls,
       compareToPreviousPeriod,
       groupByColumnsOnLeft,
+      color,
     }: ChartConfigDisplaySettings) => {
       setValue('numberFormat', numberFormat);
       setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
+      setValue('color', color);
       onSubmit();
     },
     [setValue, onSubmit],
