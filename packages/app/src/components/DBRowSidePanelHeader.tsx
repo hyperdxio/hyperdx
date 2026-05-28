@@ -130,6 +130,12 @@ export default function DBRowSidePanelHeader({
   attributes,
   mainContent = '',
   mainContentHeader,
+  // When `true`, the source has a body column configured. An empty value
+  // for that column renders a soft empty-state paper. When `false` (the
+  // source has neither body nor implicit column configured), the body
+  // paper is suppressed entirely; the header still shows timestamp,
+  // severity, and highlighted attributes.
+  bodyConfigured = true,
   date,
   severityText,
   rowData,
@@ -141,6 +147,7 @@ export default function DBRowSidePanelHeader({
   date: Date;
   mainContent?: string;
   mainContentHeader?: string;
+  bodyConfigured?: boolean;
   attributes?: HighlightedAttribute[];
   severityText?: string;
   rowData?: Record<string, any>;
@@ -239,7 +246,7 @@ export default function DBRowSidePanelHeader({
           />
         )}
       </Flex>
-      {mainContent ? (
+      {!bodyConfigured ? null : mainContent ? (
         <Paper
           p="xs"
           mt="sm"
@@ -289,8 +296,8 @@ export default function DBRowSidePanelHeader({
         </Paper>
       ) : (
         <Paper p="xs" mt="sm">
-          <Text size="xs" mb="xs">
-            [Empty]
+          <Text size="xs" c="dimmed">
+            No body for this event.
           </Text>
         </Paper>
       )}

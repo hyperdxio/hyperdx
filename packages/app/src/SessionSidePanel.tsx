@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from 'react';
-import CopyToClipboard from 'react-copy-to-clipboard';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   DateRange,
@@ -17,6 +16,10 @@ import {
   getInitialDrawerWidthPercent,
 } from '@/components/DrawerUtils';
 import useResizable from '@/hooks/useResizable';
+import {
+  CLIPBOARD_ERROR_MESSAGE,
+  copyTextToClipboard,
+} from '@/utils/clipboard';
 
 import { Session } from './sessions';
 import SessionSubpanel from './SessionSubpanel';
@@ -125,24 +128,25 @@ export default function SessionSidePanel({
                   isFullWidth={isFullWidth}
                   onToggle={toggleFullWidth}
                 />
-                <CopyToClipboard
-                  text={window.location.href}
-                  onCopy={() => {
-                    notifications.show({
-                      color: 'green',
-                      message: 'Copied link to clipboard',
-                    });
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leftSection={<IconLink size={14} />}
+                  style={{ fontSize: '12px' }}
+                  onClick={async () => {
+                    const ok = await copyTextToClipboard(window.location.href);
+                    notifications.show(
+                      ok
+                        ? {
+                            color: 'green',
+                            message: 'Copied link to clipboard',
+                          }
+                        : { color: 'red', message: CLIPBOARD_ERROR_MESSAGE },
+                    );
                   }}
                 >
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    leftSection={<IconLink size={14} />}
-                    style={{ fontSize: '12px' }}
-                  >
-                    Share Session
-                  </Button>
-                </CopyToClipboard>
+                  Share Session
+                </Button>
                 <ActionIcon variant="secondary" size="md" onClick={onClose}>
                   <IconX size={14} />
                 </ActionIcon>

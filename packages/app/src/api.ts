@@ -550,3 +550,86 @@ const api = {
   },
 };
 export default api;
+
+// --------------------------
+// Prometheus API
+// --------------------------
+type PrometheusMetric = Record<string, string>;
+type PrometheusMatrixResult = {
+  metric: PrometheusMetric;
+  values: [number, string][];
+};
+type PrometheusQueryRangeResponse = {
+  status: 'success' | 'error';
+  data?: {
+    resultType: 'matrix';
+    result: PrometheusMatrixResult[];
+  };
+  error?: string;
+};
+type PrometheusLabelValuesResponse = {
+  status: 'success' | 'error';
+  data?: string[];
+  error?: string;
+};
+
+async function prometheusFetch<T>(
+  path: string,
+  searchParams: Record<string, string>,
+): Promise<T> {
+  try {
+    return await server.post(path, { searchParams }).json();
+  } catch (e: any) {
+    // ky throws HTTPError on non-2xx — read the response body for the real error
+    if (e?.response) {
+      try {
+        const body = await e.response.json();
+        if (body?.error) {
+          throw new Error(body.error);
+        }
+      } catch (parseErr) {
+        if (parseErr instanceof Error && parseErr.message !== e.message) {
+          throw parseErr;
+        }
+      }
+    }
+    throw e;
+  }
+}
+
+export const prometheusApi = {
+  queryRange: (params: {
+    query: string;
+    start: number;
+    end: number;
+    step: string;
+    connectionId: string;
+    database: string;
+    table: string;
+  }): Promise<PrometheusQueryRangeResponse> =>
+    prometheusFetch('v1/prometheus/query_range', {
+      query: params.query,
+      start: String(params.start),
+      end: String(params.end),
+      step: params.step,
+      connectionId: params.connectionId,
+      database: params.database,
+      table: params.table,
+    }),
+
+  labelValues: (params: {
+    label: string;
+    connectionId: string;
+    database?: string;
+    table?: string;
+  }): Promise<PrometheusLabelValuesResponse> =>
+    server
+      .get(`v1/prometheus/label/${params.label}/values`, {
+        searchParams: {
+          connectionId: params.connectionId,
+          ...(params.database ? { database: params.database } : {}),
+          ...(params.table ? { table: params.table } : {}),
+        },
+      })
+      .json(),
+};

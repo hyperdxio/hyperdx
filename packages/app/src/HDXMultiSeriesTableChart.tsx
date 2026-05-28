@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import cx from 'classnames';
-import { UnstyledButton } from '@mantine/core';
+import { Tooltip, UnstyledButton } from '@mantine/core';
 import { IconDownload, IconTextWrap } from '@tabler/icons-react';
 import {
   flexRender,
@@ -20,10 +21,13 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { CsvExportButton } from './components/CsvExportButton';
 import TableHeader from './components/DBTable/TableHeader';
 import { useCsvExport } from './hooks/useCsvExport';
+import type { RowAction } from './hooks/useOnClickLinkBuilder';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { NumberFormat } from './types';
 import { formatNumber } from './utils';
+
+import focusStyles from '../styles/focus.module.scss';
 
 export type TableVariant = 'default' | 'muted';
 
@@ -34,7 +38,8 @@ export const Table = ({
   data,
   groupColumnName,
   columns,
-  onRowClick,
+  getRowAction,
+  getRowSearchLink,
   tableBottom,
   enableClientSideSorting = false,
   sorting,
@@ -53,7 +58,18 @@ export const Table = ({
     sortingFn?: SortingFnOption<any>;
   }[];
   groupColumnName?: string;
-  onRowClick?: (row: any, e?: React.MouseEvent) => void;
+  // Returns the row click destination + a hover-hint description. When
+  // set, the cell becomes an <a> wrapped in a HoverCard. The resolved
+  // URL goes straight in the href so the browser handles cmd-click,
+  // middle-click, right-click, status bar preview, and keyboard
+  // activation natively. Rows whose templates fail (`url: null`) fall
+  // back to a click handler that fires a notification, preserving the
+  // pre-existing #2140 / #2141 / #2146 / #2148 behavior.
+  getRowAction?: (row: any) => RowAction;
+  // Legacy single-tile drilldown: bare URL, no hint, no HoverCard.
+  // Used outside the dashboard onClick path (event side panel, services
+  // dashboard, etc.). Only consulted when getRowAction is not provided.
+  getRowSearchLink?: (row: any) => string | null;
   tableBottom?: React.ReactNode;
   enableClientSideSorting?: boolean;
   sorting: SortingState;
@@ -146,38 +162,74 @@ export const Table = ({
                 'text-truncate': !wrapLinesEnabled,
               });
 
-              if (onRowClick) {
+              // Native <a href> covers cmd-click (new tab), middle-click
+              // (new tab), right-click ("Open in New Tab" / "Copy Link
+              // Address"), Enter key activation, and the browser status
+              // bar URL preview. No manual handlers required.
+              const interactiveClassName = cx(
+                className,
+                'd-block text-reset text-decoration-none w-100 text-start',
+                focusStyles.focusRing,
+              );
+
+              if (getRowAction) {
+                // The hook memoizes per-row results internally, so calling
+                // this once per cell is cheap and the row-level HoverCard
+                // in the <tbody> loop below sees the same identity.
+                const action = getRowAction(row.original);
+                if (action.url) {
+                  // Use prefetch={false} so virtualization scroll doesn't
+                  // trigger an N-row prefetch storm against /search? and
+                  // /dashboards/ routes the user usually never opens.
+                  return (
+                    <Link
+                      href={action.url}
+                      prefetch={false}
+                      className={interactiveClassName}
+                      data-testid="dashboard-table-row-action"
+                      data-shape="link"
+                    >
+                      {formattedValue}
+                    </Link>
+                  );
+                }
+                // Row's templates failed to resolve. Use a real <button> so
+                // cmd-click, middle-click, and right-click "Open Link in
+                // New Tab" stay disabled (a # anchor would silently open
+                // a meaningless new tab on auxclick before our onClick
+                // handler runs). The button still surfaces the existing
+                // notification toast on left-click. focusStyles.cellButton
+                // resets the user-agent button defaults (padding, font,
+                // color, text-align, line-height) so the wrapper renders
+                // identically to the success-row <Link>.
                 return (
-                  <div
-                    role="link"
-                    tabIndex={0}
-                    className={className}
-                    style={{ cursor: 'pointer' }}
-                    // Left-click: fires onClick with button === 0. The parent
-                    // handler detects meta/ctrl for cmd/ctrl-click → new tab.
-                    onClick={e => onRowClick(row.original, e)}
-                    // Middle-click (button === 1) fires onAuxClick but NOT
-                    // onClick on non-anchor elements.
-                    onAuxClick={e => {
-                      if (e.button === 1) {
-                        e.preventDefault();
-                        onRowClick(row.original, e);
-                      }
-                    }}
-                    // Suppress the browser's middle-click autoscroll cursor on non-anchor elements.
-                    onMouseDown={e => {
-                      if (e.button === 1) e.preventDefault();
-                    }}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onRowClick(row.original);
-                      }
-                    }}
+                  <button
+                    type="button"
+                    className={cx(interactiveClassName, focusStyles.cellButton)}
+                    onClick={action.onClickError}
+                    data-testid="dashboard-table-row-action"
+                    data-shape="button"
                   >
                     {formattedValue}
-                  </div>
+                  </button>
                 );
+              }
+
+              if (getRowSearchLink) {
+                const url = getRowSearchLink(row.original);
+                if (url) {
+                  return (
+                    <Link
+                      href={url}
+                      prefetch={false}
+                      className={interactiveClassName}
+                      data-testid="dashboard-table-row-action"
+                      data-shape="link"
+                    >
+                      {formattedValue}
+                    </Link>
+                  );
+                }
               }
 
               return <div className={className}>{formattedValue}</div>;
@@ -327,7 +379,11 @@ export const Table = ({
           )}
           {items.map(virtualRow => {
             const row = rows[virtualRow.index] as TableRow<any>;
-            return (
+            // Compute the action once per row so the row-level HoverCard
+            // sees the same description and per-cell renders share the
+            // memoized result from useOnClickLinkBuilder.
+            const rowAction = getRowAction ? getRowAction(row.original) : null;
+            const tr = (
               <tr
                 key={virtualRow.key}
                 className="bg-muted-hover"
@@ -346,6 +402,27 @@ export const Table = ({
                 })}
               </tr>
             );
+            // Row-level Tooltip.Floating so the hint follows the cursor
+            // and anchors near the cell the user is over, not at the row's
+            // center-top. Tooltip.Floating tracks the cursor via floating-ui
+            // and stays within the row's bounding box; one tooltip per row
+            // means no flicker as the cursor moves between cells.
+            //
+            // The hint is suppressed when rowAction.url === null because
+            // the click only fires an error toast on those rows, so showing
+            // "Open in search" would mislead the user.
+            if (rowAction && rowAction.url) {
+              return (
+                <Tooltip.Floating
+                  key={virtualRow.key}
+                  label={rowAction.description}
+                  withinPortal
+                >
+                  {tr}
+                </Tooltip.Floating>
+              );
+            }
+            return tr;
           })}
           {paddingBottom > 0 && (
             <tr>

@@ -54,7 +54,11 @@ import {
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
-import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
+import {
+  IS_METRICS_ENABLED,
+  IS_PROMQL_ENABLED,
+  IS_SESSIONS_ENABLED,
+} from '@/config';
 import { useConnections } from '@/connection';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
@@ -147,6 +151,8 @@ function setCorrelationFieldValue(
         return { ...source, [field]: value };
       }
       return source;
+    case SourceKind.Promql:
+      return source;
   }
 }
 
@@ -199,6 +205,7 @@ const CORRELATION_FIELD_MAP: Record<
       { targetKind: SourceKind.Log, targetField: 'metricSourceId' },
     ],
   },
+  [SourceKind.Promql]: {},
 };
 
 function FormRow({
@@ -1897,6 +1904,19 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
   );
 }
 
+function PromqlTableModelForm({
+  control: _control,
+  setValue,
+}: TableModelProps) {
+  useEffect(() => {
+    setValue('timestampValueExpression' as any, 'timestamp');
+  }, [setValue]);
+
+  // PromQL sources use the standard database + table fields from BaseSourceSchema.
+  // No additional fields needed — the table should point to the TimeSeries engine table.
+  return null;
+}
+
 function TableModelForm({
   control,
   setValue,
@@ -1915,6 +1935,8 @@ function TableModelForm({
       return <SessionTableModelForm control={control} setValue={setValue} />;
     case SourceKind.Metric:
       return <MetricTableModelForm control={control} setValue={setValue} />;
+    case SourceKind.Promql:
+      return <PromqlTableModelForm control={control} setValue={setValue} />;
   }
 }
 
@@ -2379,6 +2401,9 @@ export function TableSourceForm({
                   )}
                   {IS_SESSIONS_ENABLED && (
                     <Radio value={SourceKind.Session} label="Session" />
+                  )}
+                  {IS_PROMQL_ENABLED && (
+                    <Radio value={SourceKind.Promql} label="PromQL" />
                   )}
                 </Group>
               </Radio.Group>

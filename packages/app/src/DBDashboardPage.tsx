@@ -29,6 +29,7 @@ import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
@@ -75,12 +76,16 @@ import {
   IconArrowsMaximize,
   IconBell,
   IconChartBar,
+  IconChevronsDown,
+  IconChevronsUp,
   IconCopy,
   IconCornerDownRight,
   IconDeviceFloppy,
   IconDotsVertical,
   IconDownload,
   IconFilterEdit,
+  IconLayoutSidebarRightCollapse,
+  IconLayoutSidebarRightExpand,
   IconPencil,
   IconPlayerPlay,
   IconPlus,
@@ -104,6 +109,7 @@ import {
   DashboardDndProvider,
   type DragHandleProps,
 } from '@/components/DashboardDndContext';
+import DashboardTableOfContents from '@/components/DashboardTableOfContents';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
@@ -169,7 +175,7 @@ import {
 import { useConfirm } from './useConfirm';
 import { FormatTime } from './useFormatTime';
 import { useUserPreferences } from './useUserPreferences';
-import { getMetricTableName } from './utils';
+import { getMetricTableName, useLocalStorage } from './utils';
 import { useZIndex, ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
@@ -463,6 +469,19 @@ const Tile = forwardRef(
       !chart.config.source;
 
     useEffect(() => {
+      if (isPromqlSavedChartConfig(chart.config)) {
+        if (source != null) {
+          setQueriedConfig({
+            ...chart.config,
+            from: source.from,
+            connection: source.connection,
+            dateRange,
+            granularity,
+          });
+        }
+        return;
+      }
+
       if (isRawSqlSavedChartConfig(chart.config)) {
         // Some raw SQL charts don't have a source
         if (!chart.config.source) {
@@ -1611,6 +1630,22 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     () => dashboard?.containers ?? [],
     [dashboard?.containers],
   );
+  // Persisted right-rail Table of Contents visibility. Off by default;
+  // discoverable via the dashboard "View" menu.
+  const [tocVisible, setTocVisible] = useLocalStorage<boolean>(
+    'dashboard-toc-visible',
+    false,
+  );
+  // react-grid-layout's WidthProvider only listens to window resize events,
+  // so when the TOC rail toggles and the grid's column width changes via
+  // Flex, RGL keeps drawing tiles at the old width. Nudge it after the
+  // layout has committed.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [tocVisible]);
   // URL-based collapse state: tracks which containers the current viewer has
   // explicitly collapsed/expanded. Falls back to the DB-stored default.
   const [urlCollapsedIds, setUrlCollapsedIds] = useQueryState(
@@ -1957,6 +1992,28 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       setUrlExpandedIds,
     ],
   );
+
+  // Collapsible-only subset, used both for bulk collapse/expand and for
+  // disabling the menu items when nothing can be toggled.
+  const collapsibleContainers = useMemo(
+    () => containers.filter(c => c.collapsible !== false),
+    [containers],
+  );
+
+  // Bulk collapse: write all collapsible container IDs into the URL
+  // `collapsed` set, clearing `expanded`. Per-viewer only — does not mutate
+  // the dashboard's stored defaults.
+  const handleCollapseAll = useCallback(() => {
+    const ids = collapsibleContainers.map(c => c.id);
+    setUrlCollapsedIds(ids.length > 0 ? ids : null);
+    setUrlExpandedIds(null);
+  }, [collapsibleContainers, setUrlCollapsedIds, setUrlExpandedIds]);
+
+  const handleExpandAll = useCallback(() => {
+    const ids = collapsibleContainers.map(c => c.id);
+    setUrlExpandedIds(ids.length > 0 ? ids : null);
+    setUrlCollapsedIds(null);
+  }, [collapsibleContainers, setUrlCollapsedIds, setUrlExpandedIds]);
 
   // Toggle the DB-stored default collapsed state (menu action).
   // This changes what all viewers see by default when opening the dashboard.
@@ -2312,6 +2369,43 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               </Menu.Target>
 
               <Menu.Dropdown>
+                {containers.length > 0 && (
+                  <>
+                    <Menu.Label>View</Menu.Label>
+                    <Menu.Item
+                      leftSection={
+                        tocVisible ? (
+                          <IconLayoutSidebarRightCollapse size={16} />
+                        ) : (
+                          <IconLayoutSidebarRightExpand size={16} />
+                        )
+                      }
+                      onClick={() => setTocVisible(v => !v)}
+                      data-testid="toggle-toc-menu-item"
+                    >
+                      {tocVisible
+                        ? 'Hide table of contents'
+                        : 'Show table of contents'}
+                    </Menu.Item>
+                    <Menu.Item
+                      leftSection={<IconChevronsUp size={16} />}
+                      onClick={handleCollapseAll}
+                      disabled={collapsibleContainers.length === 0}
+                      data-testid="collapse-all-sections-menu-item"
+                    >
+                      Collapse all sections
+                    </Menu.Item>
+                    <Menu.Item
+                      leftSection={<IconChevronsDown size={16} />}
+                      onClick={handleExpandAll}
+                      disabled={collapsibleContainers.length === 0}
+                      data-testid="expand-all-sections-menu-item"
+                    >
+                      Expand all sections
+                    </Menu.Item>
+                    <Menu.Divider />
+                  </>
+                )}
                 {hasTiles && (
                   <Menu.Item
                     leftSection={<IconDownload size={16} />}
@@ -2528,123 +2622,138 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           </Flex>
         </Paper>
       )}
-      <Box mt="sm">
-        {dashboard != null && dashboard.tiles != null ? (
-          <ErrorBoundary
-            onError={console.error}
-            fallback={
-              <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
-                An error occurred while rendering the dashboard.
-              </div>
-            }
-          >
-            <DashboardDndProvider
-              containers={containers}
-              onReorderContainers={handleReorderContainers}
-            >
-              {ungroupedTiles.length > 0 && (
-                <ReactGridLayout
-                  layout={ungroupedTiles.map(tileToLayoutItem)}
-                  containerPadding={[0, 0]}
-                  onLayoutChange={onUngroupedLayoutChange}
-                  cols={24}
-                  rowHeight={32}
+      <Flex gap="md" align="flex-start" mt="sm">
+        <Box style={{ flex: 1, minWidth: 0 }}>
+          <Box>
+            {dashboard != null && dashboard.tiles != null ? (
+              <ErrorBoundary
+                onError={console.error}
+                fallback={
+                  <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
+                    An error occurred while rendering the dashboard.
+                  </div>
+                }
+              >
+                <DashboardDndProvider
+                  containers={containers}
+                  onReorderContainers={handleReorderContainers}
                 >
-                  {ungroupedTiles.map(renderTileComponent)}
-                </ReactGridLayout>
-              )}
-              {containers.map(container => (
-                <SortableContainerWrapper
-                  key={container.id}
-                  containerId={container.id}
-                  containerTitle={container.title}
-                >
-                  {(dragHandleProps: DragHandleProps) => (
-                    <DashboardContainerRow
-                      container={container}
-                      containerTiles={
-                        tilesByContainerId.get(container.id) ?? []
-                      }
-                      isCollapsed={isContainerCollapsed(container)}
-                      activeTabId={getActiveTabId(container)}
-                      alertingTabIds={alertingTabIdsByContainer.get(
-                        container.id,
-                      )}
-                      onToggleCollapse={() =>
-                        handleToggleCollapse(container.id)
-                      }
-                      onToggleDefaultCollapsed={() =>
-                        handleToggleDefaultCollapsed(container.id)
-                      }
-                      onToggleCollapsible={() =>
-                        handleToggleCollapsible(container.id)
-                      }
-                      onToggleBordered={() =>
-                        handleToggleBordered(container.id)
-                      }
-                      onDeleteContainer={action =>
-                        handleDeleteContainer(container.id, action)
-                      }
-                      onAddTile={onAddTile}
-                      onAddTab={() => {
-                        const newTabId = handleAddTab(container.id);
-                        if (newTabId) handleTabChange(container.id, newTabId);
-                      }}
-                      onRenameTab={(tabId, title) =>
-                        handleRenameTab(container.id, tabId, title)
-                      }
-                      onDeleteTab={(tabId, action) =>
-                        handleDeleteTab(container.id, tabId, action)
-                      }
-                      onRenameContainer={title =>
-                        handleRenameContainer(container.id, title)
-                      }
-                      onTabChange={tabId =>
-                        handleTabChange(container.id, tabId)
-                      }
-                      dragHandleProps={dragHandleProps}
-                      makeLayoutChangeHandler={makeOnLayoutChange}
-                      tileToLayoutItem={tileToLayoutItem}
-                      renderTileComponent={renderTileComponent}
-                    />
+                  {ungroupedTiles.length > 0 && (
+                    <ReactGridLayout
+                      layout={ungroupedTiles.map(tileToLayoutItem)}
+                      containerPadding={[0, 0]}
+                      onLayoutChange={onUngroupedLayoutChange}
+                      cols={24}
+                      rowHeight={32}
+                    >
+                      {ungroupedTiles.map(renderTileComponent)}
+                    </ReactGridLayout>
                   )}
-                </SortableContainerWrapper>
-              ))}
-            </DashboardDndProvider>
-          </ErrorBoundary>
-        ) : null}
-      </Box>
-      <Menu position="top" width={200}>
-        <Menu.Target>
-          <Button
-            data-testid="add-dropdown-button"
-            variant={dashboard?.tiles.length === 0 ? 'primary' : 'secondary'}
-            mt="sm"
-            fw={400}
-            w="100%"
-            leftSection={<IconPlus size={16} />}
-          >
-            Add
-          </Button>
-        </Menu.Target>
-        <Menu.Dropdown>
-          <Menu.Item
-            data-testid="add-new-tile-menu-item"
-            leftSection={<IconChartBar size={16} />}
-            onClick={() => onAddTile()}
-          >
-            New Tile
-          </Menu.Item>
-          <Menu.Divider />
-          <Menu.Item
-            data-testid="add-new-group-menu-item"
-            leftSection={<IconSquaresDiagonal size={16} />}
-            onClick={() => handleAddContainer()}
-          >
-            New Group
-          </Menu.Item>
-        </Menu.Dropdown>
-      </Menu>
+                  {containers.map(container => (
+                    <SortableContainerWrapper
+                      key={container.id}
+                      containerId={container.id}
+                      containerTitle={container.title}
+                    >
+                      {(dragHandleProps: DragHandleProps) => (
+                        <DashboardContainerRow
+                          container={container}
+                          containerTiles={
+                            tilesByContainerId.get(container.id) ?? []
+                          }
+                          isCollapsed={isContainerCollapsed(container)}
+                          activeTabId={getActiveTabId(container)}
+                          alertingTabIds={alertingTabIdsByContainer.get(
+                            container.id,
+                          )}
+                          onToggleCollapse={() =>
+                            handleToggleCollapse(container.id)
+                          }
+                          onToggleDefaultCollapsed={() =>
+                            handleToggleDefaultCollapsed(container.id)
+                          }
+                          onToggleCollapsible={() =>
+                            handleToggleCollapsible(container.id)
+                          }
+                          onToggleBordered={() =>
+                            handleToggleBordered(container.id)
+                          }
+                          onDeleteContainer={action =>
+                            handleDeleteContainer(container.id, action)
+                          }
+                          onAddTile={onAddTile}
+                          onAddTab={() => {
+                            const newTabId = handleAddTab(container.id);
+                            if (newTabId)
+                              handleTabChange(container.id, newTabId);
+                          }}
+                          onRenameTab={(tabId, title) =>
+                            handleRenameTab(container.id, tabId, title)
+                          }
+                          onDeleteTab={(tabId, action) =>
+                            handleDeleteTab(container.id, tabId, action)
+                          }
+                          onRenameContainer={title =>
+                            handleRenameContainer(container.id, title)
+                          }
+                          onTabChange={tabId =>
+                            handleTabChange(container.id, tabId)
+                          }
+                          dragHandleProps={dragHandleProps}
+                          makeLayoutChangeHandler={makeOnLayoutChange}
+                          tileToLayoutItem={tileToLayoutItem}
+                          renderTileComponent={renderTileComponent}
+                        />
+                      )}
+                    </SortableContainerWrapper>
+                  ))}
+                </DashboardDndProvider>
+              </ErrorBoundary>
+            ) : null}
+          </Box>
+          <Menu position="top" width={200}>
+            <Menu.Target>
+              <Button
+                data-testid="add-dropdown-button"
+                variant={
+                  dashboard?.tiles.length === 0 ? 'primary' : 'secondary'
+                }
+                mt="sm"
+                fw={400}
+                w="100%"
+                leftSection={<IconPlus size={16} />}
+              >
+                Add
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item
+                data-testid="add-new-tile-menu-item"
+                leftSection={<IconChartBar size={16} />}
+                onClick={() => onAddTile()}
+              >
+                New Tile
+              </Menu.Item>
+              <Menu.Divider />
+              <Menu.Item
+                data-testid="add-new-group-menu-item"
+                leftSection={<IconSquaresDiagonal size={16} />}
+                onClick={() => handleAddContainer()}
+              >
+                New Group
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        </Box>
+        {tocVisible && (
+          <DashboardTableOfContents
+            containers={containers}
+            isCollapsed={isContainerCollapsed}
+            onToggleCollapse={handleToggleCollapse}
+            onClose={() => setTocVisible(false)}
+          />
+        )}
+      </Flex>
       <DashboardFiltersModal
         opened={showFiltersModal}
         onClose={() => setShowFiltersModal(false)}

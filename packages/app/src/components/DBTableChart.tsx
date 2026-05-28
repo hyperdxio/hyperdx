@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useRouter } from 'next/router';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { isRatioChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   isBuilderChartConfig,
+  isPromqlChartConfig,
   isRawSqlChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
@@ -76,6 +76,7 @@ export default function DBTableChart({
 
   const queriedConfig = useMemo(() => {
     if (isRawSqlChartConfig(config)) return config;
+    if (isPromqlChartConfig(config)) return config;
 
     const _config = convertToTableChartConfig(config);
 
@@ -103,7 +104,7 @@ export default function DBTableChart({
 
   // Returns an array of aliases, so we can check if something is using an alias
   const aliasMap = useMemo(() => {
-    if (isRawSqlChartConfig(config)) {
+    if (isRawSqlChartConfig(config) || isPromqlChartConfig(config)) {
       return [];
     }
 
@@ -217,32 +218,10 @@ export default function DBTableChart({
     queriedConfig,
   ]);
 
-  const getOnClickLink = useOnClickLinkBuilder({
+  const getRowAction = useOnClickLinkBuilder({
     onClick: config.onClick,
     dateRange: queriedConfig.dateRange,
   });
-
-  const router = useRouter();
-  const hasOnRowClick = !!getOnClickLink || !!getRowSearchLink;
-  const onRowClick = useCallback(
-    (row: Record<string, unknown>, e?: React.MouseEvent) => {
-      const url = getOnClickLink
-        ? getOnClickLink(row)
-        : getRowSearchLink
-          ? getRowSearchLink(row)
-          : null;
-
-      // getOnClickLink will surface any errors notifications
-      if (!url) return;
-
-      if (e?.metaKey || e?.ctrlKey || e?.button === 1) {
-        window.open(url, '_blank');
-      } else {
-        router.push(url);
-      }
-    },
-    [getOnClickLink, getRowSearchLink, router],
-  );
 
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
@@ -285,7 +264,8 @@ export default function DBTableChart({
         <Table
           data={data?.data ?? []}
           columns={columns}
-          onRowClick={hasOnRowClick ? onRowClick : undefined}
+          getRowAction={getRowAction ?? undefined}
+          getRowSearchLink={getRowAction ? undefined : getRowSearchLink}
           sorting={effectiveSort}
           enableClientSideSorting={isRawSqlChartConfig(config)}
           onSortingChange={handleSortingChange}
