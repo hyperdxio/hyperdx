@@ -52,12 +52,23 @@ const localDashboards = createEntityStore<Dashboard>('hdx-local-dashboards');
  * into their hue-named equivalents. Applied at fetch time so every
  * downstream consumer (renderers, the color picker, save mutations)
  * sees the canonical hue tokens that `ChartPaletteTokenSchema`
- * accepts. Unknown strings are left untouched so we don't accidentally
- * erase forward-compat values; hue tokens already match the resolver
- * and pass through unchanged. The returned tile array preserves
- * identity where nothing changed so React reconciliation stays cheap.
+ * accepts, AND at write time so dashboards constructed outside the
+ * fetch path (JSON imports via `DBDashboardImportPage`, presets, MCP
+ * payloads) don't trip the strict server-side enum validator and
+ * return a Zod 400. Symmetric application also lets the DB-side data
+ * converge on next save instead of holding legacy tokens forever.
+ *
+ * Unknown strings are left untouched so we don't accidentally erase
+ * forward-compat values; hue tokens already match the resolver and
+ * pass through unchanged. The returned tile array preserves identity
+ * where nothing changed so React reconciliation stays cheap and the
+ * helper is safe to call on payloads that omit `tiles` entirely
+ * (partial PATCHes).
  */
-function normalizeDashboardTileColors(dashboard: Dashboard): Dashboard {
+function normalizeDashboardTileColors<T extends { tiles?: Tile[] }>(
+  dashboard: T,
+): T {
+  if (!dashboard.tiles || dashboard.tiles.length === 0) return dashboard;
   let changed = false;
   const tiles = dashboard.tiles.map(tile => {
     const config = tile.config as { color?: unknown };
@@ -74,7 +85,7 @@ function normalizeDashboardTileColors(dashboard: Dashboard): Dashboard {
   return changed ? { ...dashboard, tiles } : dashboard;
 }
 
-async function fetchDashboards(): Promise<Dashboard[]> {
+export async function fetchDashboards(): Promise<Dashboard[]> {
   if (IS_LOCAL_MODE) {
     return localDashboards.getAll().map(normalizeDashboardTileColors);
   }
@@ -89,14 +100,15 @@ export function useUpdateDashboard() {
     mutationFn: async (
       dashboard: Partial<Dashboard> & { id: Dashboard['id'] },
     ) => {
+      const normalized = normalizeDashboardTileColors(dashboard);
       if (IS_LOCAL_MODE) {
-        const { id, ...updates } = dashboard;
+        const { id, ...updates } = normalized;
         localDashboards.update(id, updates);
         return;
       }
-      await hdxServer(`dashboards/${dashboard.id}`, {
+      await hdxServer(`dashboards/${normalized.id}`, {
         method: 'PATCH',
-        json: dashboard,
+        json: normalized,
       });
     },
     onSuccess: () => {
@@ -110,12 +122,13 @@ export function useCreateDashboard() {
 
   return useMutation({
     mutationFn: async (dashboard: Omit<Dashboard, 'id'>) => {
+      const normalized = normalizeDashboardTileColors(dashboard);
       if (IS_LOCAL_MODE) {
-        return localDashboards.create(dashboard);
+        return localDashboards.create(normalized);
       }
       return hdxServer('dashboards', {
         method: 'POST',
-        json: dashboard,
+        json: normalized,
       }).json<Dashboard>();
     },
     onSuccess: () => {

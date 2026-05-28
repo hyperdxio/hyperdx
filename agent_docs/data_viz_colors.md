@@ -180,10 +180,21 @@ chart-10 -> chart-gray
 ```
 
 It preserves the HyperDX slot ordering from #2265, so HyperDX users see no
-visual change. ClickStack users (whose stored `chart-1` historically rendered as
-Observable blue at runtime) now see Observable green for that token after
-migration — by design, since the slot now means a hue, not "brand primary." Use
-`chart-info` semantic if you need the brand-primary appearance.
+visual change.
+
+> **⚠️ ClickStack legacy color caveat.** Pre-rename ClickStack used a different
+> slot ordering than HyperDX (`--color-chart-1` was brand blue `#437eef`, not
+> brand green; `--color-chart-2` was orange, not blue; etc.). Because the
+> migration map preserves HyperDX slot ordering, any ClickStack dashboard saved
+> via #2265 will visually shift: stored `chart-1` flips from brand blue to
+> Observable green, `chart-2` flips from orange to blue, and so on. We chose
+> this trade-off deliberately over branching the legacy map by active theme:
+> `LEGACY_CHART_PALETTE_TOKEN_MAP` lives in `common-utils` (shared with the
+> API), and migration is one-shot persisted on next save — theme-branching would
+> couple common-utils to browser DOM state and still produce wrong results for
+> users whose active theme changed since the original pick. Affected users can
+> manually re-pick the desired hue via the (now hue-labeled) color picker. Use
+> `chart-info` semantic if you need the brand-primary appearance.
 
 **`ChartPaletteTokenSchema` itself stays strict** (a plain `z.enum`). Wrapping
 it in `z.preprocess` would force the schema's `z.input` type to `unknown`, which
@@ -193,16 +204,19 @@ important than a one-line runtime migration buried in the schema.
 
 Migration happens at two complementary layers instead:
 
-1. **Fetch-time** — `normalizeDashboardTileColors` in
-   `packages/app/src/dashboard.ts` walks every tile in the response from
-   `useDashboards` / `fetchLocalDashboards` and rewrites any legacy
-   `config.color` to its hue-named equivalent via `resolveChartPaletteToken`.
-   This heals the in-memory copy immediately; the persisted copy is updated the
-   next time the user saves the dashboard for any reason (color or otherwise).
+1. **Fetch-time _and_ write-time** — `normalizeDashboardTileColors` in
+   `packages/app/src/dashboard.ts` walks every tile and rewrites any legacy
+   `config.color` to its hue-named equivalent via `resolveChartPaletteToken`. It
+   runs on every read (`useDashboards` / `fetchLocalDashboards`) and on every
+   write (`useUpdateDashboard` / `useCreateDashboard`). The write-time pass is
+   what lets JSON imports (`DBDashboardImportPage`), presets, and
+   MCP-constructed payloads pass the strict server-side validator, and it
+   converges the DB-side data on next save instead of leaving legacy tokens in
+   storage forever.
 2. **Render-time** — `DBNumberChart` and `ColorSwatchInput` also call
-   `resolveChartPaletteToken` as belt-and-suspenders for any code path that
-   bypasses the fetch normalizer (e.g. a tile constructed in memory from a
-   `Tile` literal).
+   `resolveChartPaletteToken` as belt-and-suspenders for tiles constructed in
+   memory between fetch and save (e.g. `ChartEditor` form state, unit-test
+   fixtures, hand-rolled `Tile` literals).
 
 `LEGACY_CHART_PALETTE_TOKEN_MAP` and `resolveChartPaletteToken` live in
 `packages/common-utils/src/types.ts` next to the enum.

@@ -887,12 +887,15 @@ function isLegacyChartPaletteToken(
  *
  * Use this at every render-time consumption point (dashboard tile
  * renderers like `DBNumberChart`, the color picker's `safeValue` guard
- * in `ColorSwatchInput`, etc.). The app's fetch-time normalizer
+ * in `ColorSwatchInput`, etc.). The app's normalizer
  * (`normalizeDashboardTileColors` in `packages/app/src/dashboard.ts`)
- * heals dashboards loaded via `useDashboards` / `fetchLocalDashboards`,
- * but tiles constructed in memory (presets, `ChartEditor` form state,
- * unit-test fixtures) bypass that path, so render-time consumers still
- * need this helper as defense in depth.
+ * heals dashboards both on fetch (`useDashboards` /
+ * `fetchLocalDashboards`) and on write (`useUpdateDashboard` /
+ * `useCreateDashboard`), so the DB-side data converges on next save
+ * and JSON imports / preset constructions don't trip the strict
+ * `ChartPaletteTokenSchema`. Render-time consumers still call this
+ * helper as defense in depth for tiles built in memory between fetch
+ * and save (`ChartEditor` form state, unit-test fixtures).
  */
 export function resolveChartPaletteToken(
   value: unknown,
