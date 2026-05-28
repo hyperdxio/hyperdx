@@ -1,4 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "yarn install --immutable",
+  "buildCommand": "yarn workspace @hyperdx/common-utils build && yarn workspace @hyperdx/app storybook:build",
+  "outputDirectory": "storybook-static",
   "ignoreCommand": "git -C \"$(git rev-parse --show-toplevel)\" diff --quiet HEAD^ HEAD packages/app packages/api packages/common-utils"
 }
