@@ -1521,6 +1521,55 @@ function TraceTableModelForm(props: TableModelProps) {
                   ]}
                   value={value}
                   onChange={onChange}
+                  // Mantine 9's Slider styles use the pattern
+                  // `:where([data-orientation="vertical"]) .<part>`,
+                  // which matches when ANY ancestor has
+                  // `data-orientation="vertical"`. Mantine Card sets
+                  // `data-orientation="vertical"` by default, and the
+                  // SourceForm renders inside a Card, so the slider's
+                  // trackContainer/track/bar/thumb/markWrapper/
+                  // markLabel all pick up the vertical-orientation
+                  // styling: the track collapses to 8px wide and the
+                  // four marks stack on top of each other. Override
+                  // every affected part back to its horizontal
+                  // default so the slider renders correctly inside
+                  // the Card.
+                  styles={{
+                    trackContainer: {
+                      width: '100%',
+                      flexDirection: 'row',
+                      height: 'calc(var(--slider-size) * 2)',
+                    },
+                    track: {
+                      width: '100%',
+                      height: 'var(--slider-size)',
+                    },
+                    bar: {
+                      top: 0,
+                      bottom: 0,
+                      height: '100%',
+                      insetInlineStart: 'var(--slider-bar-offset)',
+                      width: 'var(--slider-bar-width)',
+                    },
+                    thumb: {
+                      left: 'var(--slider-thumb-offset)',
+                      top: '50%',
+                      right: 'auto',
+                      bottom: 'auto',
+                      transform: 'translate(-50%, -50%)',
+                    },
+                    markWrapper: {
+                      insetInlineStart:
+                        'calc(var(--mark-offset) - var(--slider-size) / 2)',
+                      top: 0,
+                      bottom: 'auto',
+                      width: 'auto',
+                    },
+                    markLabel: {
+                      transform:
+                        'translate(calc(-50% + var(--slider-size) / 2), calc(var(--mantine-spacing-xs) / 2))',
+                    },
+                  }}
                 />
               </div>
             )}
@@ -1913,7 +1962,7 @@ function PromqlTableModelForm({
   }, [setValue]);
 
   // PromQL sources use the standard database + table fields from BaseSourceSchema.
-  // No additional fields needed — the table should point to the TimeSeries engine table.
+  // No additional fields needed; the table should point to the TimeSeries engine table.
   return null;
 }
 
