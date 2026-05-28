@@ -1761,11 +1761,16 @@ export function DBSearchPage() {
 
   // `Manage sources`: open the all-sources list view. Only wired in
   // non-local mode; local has no list-view surface so the menu item
-  // hides itself when this prop is undefined.
+  // hides itself when this prop is undefined. We use `window.location`
+  // for a hard navigation instead of `router.push` so the page's
+  // `useQueryStates` (source/where/select/whereLanguage/filters/orderBy)
+  // can't restore its state into the new URL during the client-side
+  // transition; otherwise `SourcesList` auto-expands the leaked
+  // `?source=` and Manage Sources behaves like Edit source.
   const onManageSources = useMemo(() => {
     if (IS_LOCAL_MODE) return undefined;
     return () => {
-      router.push('/team');
+      window.location.assign('/team');
     };
   }, []);
 
