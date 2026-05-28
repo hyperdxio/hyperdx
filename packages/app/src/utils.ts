@@ -356,20 +356,29 @@ export const getLogLevelClass = (lvl: string | undefined) => {
 };
 
 /**
- * Chart Categorical Palette - Observable 10, unified across themes.
- * https://observablehq.com/@d3/color-schemes
+ * Chart Categorical Palette - ten distinguishable hues based on
+ * Observable 10 (https://observablehq.com/@d3/color-schemes), with
+ * `chart-blue` swapped to `#437eef` to match the brand link color
+ * (`--click-global-color-text-link-default`). All other hues are
+ * straight from Observable 10. Unified across themes.
  *
- * Both HyperDX and ClickStack resolve `--color-chart-{hue}` to the
- * same hex; per-brand identity carries through the semantic chart
- * tokens below and through non-chart UI chrome (Mantine accent,
- * sidebar gradient, etc.).
+ * **JS is the source of truth for categorical hues.** Both HyperDX and
+ * ClickStack resolve `--color-chart-{hue}` to the same hex today, so
+ * the JS readers (`getColorFromCSSVariable`, `getColorFromCSSToken`)
+ * return values directly from this object without round-tripping
+ * through `getComputedStyle`. The matching `--color-chart-{hue}` CSS
+ * vars in `_tokens.scss` exist as a stylesheet-author affordance only
+ * (inline `var()` use, devtools inspection); they are NOT read back by
+ * the React rendering path. Per-brand identity is carried by the
+ * semantic chart tokens below and by non-chart UI chrome (Mantine
+ * accent, sidebar gradient, etc.).
  *
  * Keep in sync with `CATEGORICAL_PALETTE_TOKENS` in
  * `@hyperdx/common-utils/dist/types` and with the `--color-chart-{hue}`
  * vars in both `packages/app/src/theme/themes/{hyperdx,clickstack}/_tokens.scss`.
  */
 const CATEGORICAL_HEX_BY_TOKEN = {
-  'chart-blue': '#4269d0',
+  'chart-blue': '#437eef',
   'chart-orange': '#efb118',
   'chart-red': '#ff725c',
   'chart-cyan': '#6cc5b0',
@@ -401,7 +410,7 @@ const SEMANTIC_CHART_PALETTE = {
     success: '#3ca951',
     warning: '#efb118',
     error: '#ff725c',
-    info: '#4269d0',
+    info: '#437eef',
     successHighlight: '#80d9b3',
     warningHighlight: '#f5c94d',
     errorHighlight: '#ffa090',
@@ -413,8 +422,9 @@ type SemanticChartColorKey = keyof typeof SEMANTIC_CHART_PALETTE.hyperdx;
 /**
  * Ordered hex array for positional series assignment.
  * `COLORS[i]` === `CATEGORICAL_HEX_BY_TOKEN[CATEGORICAL_PALETTE_TOKENS[i]]`.
- * SSR fallback only; in the browser, `getColorFromCSSVariable()` reads
- * from the matching `--color-chart-{hue}` CSS variable.
+ * Returned directly by `getColorFromCSSVariable(i)` on both server and
+ * client — the categorical palette is unified across themes, so there's
+ * no benefit to reading the matching CSS var via `getComputedStyle`.
  */
 export const COLORS: string[] = CATEGORICAL_PALETTE_TOKENS.map(
   token =>
@@ -460,53 +470,48 @@ function detectActiveTheme(): 'clickstack' | 'hyperdx' {
 }
 
 /**
- * Reads a categorical chart color from a CSS variable by index.
+ * Returns the Nth categorical chart hex by series index. Index wraps
+ * modulo `CATEGORICAL_PALETTE_TOKENS.length`.
  *
- * Index N maps to the Nth token in `CATEGORICAL_PALETTE_TOKENS`, which
- * in turn maps to `--color-chart-{hue}` in each theme's `_tokens.scss`.
- * Falls back to `COLORS[N]` (the same hex the var resolves to, since
- * the categorical palette is now unified across themes) when running
- * server-side or when `getComputedStyle` fails.
+ * Reads from the JS palette directly. The matching `--color-chart-{hue}`
+ * CSS var resolves to the same hex on every theme today, so the
+ * previous `getComputedStyle` round-trip added a layout read per series
+ * with no functional benefit. If a future brand wants to override hues,
+ * reintroduce the DOM read here (and add per-brand entries to
+ * `CATEGORICAL_HEX_BY_TOKEN`).
  */
 function getColorFromCSSVariable(index: number): string {
   const i = index % CATEGORICAL_PALETTE_TOKENS.length;
-  const token = CATEGORICAL_PALETTE_TOKENS[i];
-
-  if (typeof window === 'undefined') {
-    return COLORS[i];
-  }
-
-  try {
-    const cssVarName = `--color-${token}`;
-    const computedStyle = getComputedStyle(document.documentElement);
-    const color = computedStyle.getPropertyValue(cssVarName).trim();
-    if (color && color !== '') {
-      return color;
-    }
-  } catch {
-    // Fallback if getComputedStyle fails
-  }
-
   return COLORS[i];
 }
 
 /**
- * Reads a chart color from a palette token by resolving the matching
- * CSS variable (`--color-{token}`).
+ * Resolves a chart palette token to a hex string.
  *
- * Falls back to the unified categorical palette (for hue tokens) or
- * the active theme's semantic palette (for `chart-success` / `-warning`
- * / `-error`) when running server-side or when `getComputedStyle` fails.
+ * Categorical hue tokens (`chart-blue`, `chart-orange`, ...) come
+ * straight from `CATEGORICAL_HEX_BY_TOKEN` — the palette is unified
+ * across themes, so the matching `--color-chart-{hue}` CSS var would
+ * always resolve to the same value, and skipping `getComputedStyle`
+ * avoids an unnecessary layout read per series.
+ *
+ * Semantic tokens (`chart-success`, `-warning`, `-error`) DO vary per
+ * brand, so they read the matching CSS var (`--color-chart-{name}`)
+ * via `getComputedStyle` and fall back to the active theme's entry in
+ * `SEMANTIC_CHART_PALETTE` for SSR / `getComputedStyle` failures.
  *
  * @example
  *   getColorFromCSSToken('chart-blue')     // Observable blue (both themes)
  *   getColorFromCSSToken('chart-warning')  // theme-aware warning
  */
 export function getColorFromCSSToken(token: ChartPaletteToken): string {
+  if (isCategoricalChartPaletteToken(token)) {
+    return CATEGORICAL_HEX_BY_TOKEN[token];
+  }
+
   const cssVarName = `--color-${token}`;
 
   if (typeof window === 'undefined') {
-    return paletteTokenSSRFallback(token);
+    return semanticTokenFallback(token);
   }
 
   try {
@@ -519,10 +524,16 @@ export function getColorFromCSSToken(token: ChartPaletteToken): string {
     // Fallback if getComputedStyle fails
   }
 
-  return paletteTokenSSRFallback(token);
+  return semanticTokenFallback(token);
 }
 
-function paletteTokenSSRFallback(token: ChartPaletteToken): string {
+function isCategoricalChartPaletteToken(
+  token: ChartPaletteToken,
+): token is keyof typeof CATEGORICAL_HEX_BY_TOKEN {
+  return Object.prototype.hasOwnProperty.call(CATEGORICAL_HEX_BY_TOKEN, token);
+}
+
+function semanticTokenFallback(token: ChartPaletteToken): string {
   switch (token) {
     case 'chart-success':
     case 'chart-warning':
@@ -535,11 +546,8 @@ function paletteTokenSSRFallback(token: ChartPaletteToken): string {
       return SEMANTIC_CHART_PALETTE[theme][key];
     }
     default:
-      return (
-        CATEGORICAL_HEX_BY_TOKEN[
-          token as keyof typeof CATEGORICAL_HEX_BY_TOKEN
-        ] ?? COLORS[0]
-      );
+      // Unknown token; fall back to brand-primary so we render *something*.
+      return COLORS[0];
   }
 }
 

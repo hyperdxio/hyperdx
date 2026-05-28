@@ -92,14 +92,23 @@
   --color-json-array: var(--mantine-color-green-3);
   --color-json-punctuation: var(--mantine-color-dark-4);
 
-  /* Chart Categorical Palette - Observable 10, unified across themes.
-     Hue-named tokens (chart-blue, chart-orange, ...) keep stored chart
-     configs self-documenting and resolve to the same hex on both
-     HyperDX and ClickStack so a user's color choice means the same
-     thing regardless of brand. Brand identity carries through the
-     semantic --color-chart-success / -info tokens below, plus the
-     Mantine accent and chrome elsewhere. */
-  --color-chart-blue: #4269d0;
+  /*
+   * Chart Categorical Palette - based on Observable 10, with
+   * `chart-blue` swapped to the brand link color (#437eef). Unified
+   * across themes.
+   *
+   * Stylesheet-author affordance only. The React rendering path reads
+   * these hues from `CATEGORICAL_HEX_BY_TOKEN` in `utils.ts` directly
+   * (`getColorFromCSSVariable` / `getColorFromCSSToken` skip
+   * `getComputedStyle` for categorical tokens) — the palette is the
+   * same on every theme, so the round-trip would add a layout read per
+   * series for no functional gain. These vars exist so SCSS modules
+   * and inline `var()` consumers can reference hues without importing
+   * from JS, and for devtools inspection. If you change a hex here,
+   * update `CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts`
+   * to match — they are intentionally duplicated.
+   */
+  --color-chart-blue: #437eef;
   --color-chart-orange: #efb118;
   --color-chart-red: #ff725c;
   --color-chart-cyan: #6cc5b0;
@@ -110,7 +119,13 @@
   --color-chart-brown: #9c6b4e;
   --color-chart-gray: #9498a0;
 
-  /* Chart Semantic Colors - per-brand (HyperDX brand green for success / info) */
+  /*
+   * Chart Semantic Colors - per-brand. Unlike the categorical hues
+   * above, these vary by theme, so `getChartColor{Success,Warning,...}`
+   * in `utils.ts` reads them via `getComputedStyle` and reacts to a
+   * runtime theme switch without a React re-render. Inline `var()`
+   * consumers (e.g. `LogLevel.tsx`) get the same benefit for free.
+   */
   --color-chart-success: #00c28a;
   --color-chart-warning: #efb118;
   --color-chart-error: #ff725c;
@@ -211,10 +226,10 @@
   --color-json-array: var(--mantine-color-green-7);
   --color-json-punctuation: var(--mantine-color-dark-5);
 
-  /* Chart Categorical Palette - Observable 10, unified across themes.
-     Duplicated from the dark block: CSS specificity requires the chart
+  /* Chart Categorical Palette - see dark block above for the canonical
+     comment. Duplicated here because CSS specificity requires the chart
      vars to live inside each [data-mantine-color-scheme] selector. */
-  --color-chart-blue: #4269d0;
+  --color-chart-blue: #437eef;
   --color-chart-orange: #efb118;
   --color-chart-red: #ff725c;
   --color-chart-cyan: #6cc5b0;

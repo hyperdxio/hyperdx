@@ -173,18 +173,27 @@
   --color-json-punctuation: #666980;
 
   /*
-   * Chart Categorical Palette - Observable 10, unified across themes.
-   * Hue-named tokens resolve to the same hex on both HyperDX and
-   * ClickStack so a user's color choice means the same thing
-   * regardless of brand. Brand identity carries through the semantic
-   * --color-chart-success / -info tokens below and the Click UI accents.
+   * Chart Categorical Palette - based on Observable 10, with
+   * `chart-blue` swapped to the ClickStack brand link color (#437eef).
+   * Unified across themes.
+   *
+   * Stylesheet-author affordance only. The React rendering path reads
+   * these hues from `CATEGORICAL_HEX_BY_TOKEN` in `utils.ts` directly
+   * (`getColorFromCSSVariable` / `getColorFromCSSToken` skip
+   * `getComputedStyle` for categorical tokens) — the palette is the
+   * same on every theme, so the round-trip would add a layout read per
+   * series for no functional gain. These vars exist so SCSS modules
+   * and inline `var()` consumers can reference hues without importing
+   * from JS, and for devtools inspection. If you change a hex here,
+   * update `CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts`
+   * to match — they are intentionally duplicated.
    *
    * NOTE: Duplicated across dark and light mode sections by design.
    * CSS specificity requires them to live inside each
    * [data-mantine-color-scheme] selector; a shared .theme-clickstack
    * section would have lower specificity and could be overridden.
    */
-  --color-chart-blue: #4269d0;
+  --color-chart-blue: #437eef;
   --color-chart-orange: #efb118;
   --color-chart-red: #ff725c;
   --color-chart-cyan: #6cc5b0;
@@ -195,11 +204,20 @@
   --color-chart-brown: #9c6b4e;
   --color-chart-gray: #9498a0;
 
-  /* Chart Semantic Colors - per-brand (ClickStack blue for info, Observable green for success) */
+  /*
+   * Chart Semantic Colors - per-brand. Unlike the categorical hues
+   * above, these vary by theme, so `getChartColor{Success,Warning,...}`
+   * in `utils.ts` reads them via `getComputedStyle` and reacts to a
+   * runtime theme switch without a React re-render. Inline `var()`
+   * consumers (e.g. `LogLevel.tsx`) get the same benefit for free.
+   * ClickStack uses the brand blue (#437eef, same hue as
+   * `--click-global-color-text-link-default` and the categorical
+   * `chart-blue`) for `info` and Observable green for `success`.
+   */
   --color-chart-success: #3ca951;
   --color-chart-warning: #efb118;
   --color-chart-error: #ff725c;
-  --color-chart-info: #4269d0;
+  --color-chart-info: #437eef;
 
   /* Chart Semantic Colors - Highlighted (for hover/selection states) */
   --color-chart-success-highlight: #80d9b3;
@@ -385,10 +403,10 @@
   --color-json-array: #997300;
   --color-json-punctuation: #868e96;
 
-  /* Chart Categorical Palette - Observable 10, unified across themes.
-     Duplicated from the dark block: CSS specificity requires the chart
+  /* Chart Categorical Palette - see dark block above for the canonical
+     comment. Duplicated here because CSS specificity requires the chart
      vars to live inside each [data-mantine-color-scheme] selector. */
-  --color-chart-blue: #4269d0;
+  --color-chart-blue: #437eef;
   --color-chart-orange: #efb118;
   --color-chart-red: #ff725c;
   --color-chart-cyan: #6cc5b0;
@@ -399,11 +417,11 @@
   --color-chart-brown: #9c6b4e;
   --color-chart-gray: #9498a0;
 
-  /* Chart Semantic Colors - per-brand (ClickStack blue for info, Observable green for success) */
+  /* Chart Semantic Colors - per-brand (ClickStack brand blue #437eef for info, Observable green for success) */
   --color-chart-success: #3ca951;
   --color-chart-warning: #efb118;
   --color-chart-error: #ff725c;
-  --color-chart-info: #4269d0;
+  --color-chart-info: #437eef;
 
   /* Chart Semantic Colors - Highlighted (for hover/selection states) */
   --color-chart-success-highlight: #80d9b3;

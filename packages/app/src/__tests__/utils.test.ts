@@ -1214,13 +1214,19 @@ describe('getColorFromCSSToken', () => {
     jest.restoreAllMocks();
   });
 
-  it('returns the CSS variable value when getComputedStyle provides one', () => {
-    jest.spyOn(global, 'getComputedStyle').mockReturnValue({
-      getPropertyValue: (name: string) =>
-        name === '--color-chart-blue' ? '#custom-blue' : '',
-    } as unknown as CSSStyleDeclaration);
+  it('returns the categorical hex directly from CATEGORICAL_HEX_BY_TOKEN without reading CSS', () => {
+    // Categorical tokens are unified across themes, so the resolver
+    // intentionally skips getComputedStyle to avoid a per-series
+    // layout read. A CSS-var override has no effect on the returned
+    // value (and shouldn't be relied upon by JS callers).
+    const getComputedStyleSpy = jest
+      .spyOn(global, 'getComputedStyle')
+      .mockReturnValue({
+        getPropertyValue: () => '#should-be-ignored',
+      } as unknown as CSSStyleDeclaration);
 
-    expect(getColorFromCSSToken('chart-blue')).toBe('#custom-blue');
+    expect(getColorFromCSSToken('chart-blue')).toBe(COLORS[0]);
+    expect(getComputedStyleSpy).not.toHaveBeenCalled();
   });
 
   it('returns the CSS variable value for semantic tokens when provided', () => {
@@ -1232,39 +1238,19 @@ describe('getColorFromCSSToken', () => {
     expect(getColorFromCSSToken('chart-success')).toBe('#theme-green');
   });
 
-  it('falls back to COLORS[0] for chart-blue when the CSS variable is empty', () => {
-    jest.spyOn(global, 'getComputedStyle').mockReturnValue({
-      getPropertyValue: () => '',
-    } as unknown as CSSStyleDeclaration);
-
-    expect(getColorFromCSSToken('chart-blue')).toBe(COLORS[0]);
-  });
-
-  it('falls back to the SSR palette when getComputedStyle throws', () => {
+  it('falls back to SEMANTIC_CHART_PALETTE when getComputedStyle throws for semantic tokens', () => {
     jest.spyOn(global, 'getComputedStyle').mockImplementation(() => {
       throw new Error('getComputedStyle unavailable');
     });
 
-    // Semantic tokens fall back to the active theme's SEMANTIC_CHART_PALETTE
-    // entry (defaults to HyperDX in jsdom because the document has no
-    // theme-clickstack class).
+    // Defaults to HyperDX in jsdom because the document has no
+    // theme-clickstack class.
     expect(getColorFromCSSToken('chart-success')).toBe('#00c28a');
     expect(getColorFromCSSToken('chart-warning')).toBe('#efb118');
     expect(getColorFromCSSToken('chart-error')).toBe('#ff725c');
-    // Categorical tokens fall back to their canonical hex in the unified
-    // Observable 10 palette.
-    expect(getColorFromCSSToken('chart-blue')).toBe(COLORS[0]);
-    expect(getColorFromCSSToken('chart-gray')).toBe(COLORS[9]);
   });
 
-  it('falls back to the SSR palette for every categorical token in CATEGORICAL_PALETTE_TOKENS', () => {
-    // The throw-branch exercises the same paletteTokenSSRFallback code as the
-    // SSR branch (window === undefined), which jsdom prevents from being
-    // simulated via Object.defineProperty.
-    jest.spyOn(global, 'getComputedStyle').mockImplementation(() => {
-      throw new Error('not available');
-    });
-
+  it('returns the canonical hex for every categorical token in CATEGORICAL_PALETTE_TOKENS', () => {
     utils.CATEGORICAL_PALETTE_TOKENS.forEach((token, i) => {
       expect(getColorFromCSSToken(token)).toBe(COLORS[i]);
     });
