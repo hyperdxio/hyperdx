@@ -247,10 +247,11 @@ export const buildOtelCollectorConfig = (
       // The pipeline `processors:` lists are intentionally declared in the
       // bootstrap config (docker/otel-collector/config.yaml) instead of here,
       // so that users can swap them via CUSTOM_OTELCOL_CONFIG_FILE. See
-      // HDX-4090: when the OpAMP remote config sets `processors:` on a
-      // pipeline, it overwrites the bootstrap+custom merge, which prevents
-      // users from substituting their own processor (e.g. a memory_limiter
-      // with limit_percentage instead of limit_mib).
+      // https://github.com/hyperdxio/hyperdx/pull/2351: when the OpAMP
+      // remote config sets `processors:` on a pipeline, it overwrites the
+      // bootstrap+custom merge, which prevents users from substituting
+      // their own processor (e.g. a memory_limiter with limit_percentage
+      // instead of limit_mib).
       pipelines: {
         traces: {
           receivers: ['nop'],

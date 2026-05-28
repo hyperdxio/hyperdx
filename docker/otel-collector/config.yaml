@@ -94,7 +94,7 @@ service:
   # CUSTOM_OTELCOL_CONFIG_FILE (e.g. to swap memory_limiter for a custom
   # version with limit_percentage). The OpAMP remote config intentionally
   # does NOT set `processors:` on these pipelines so the bootstrap+custom
-  # merge wins. See HDX-4090.
+  # merge wins. See https://github.com/hyperdxio/hyperdx/pull/2351.
   pipelines:
     traces:
       processors: [memory_limiter, batch]

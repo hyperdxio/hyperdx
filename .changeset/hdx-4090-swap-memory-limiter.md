@@ -12,7 +12,7 @@ sent by the API (`packages/api/src/opamp/controllers/opampController.ts`).
 That meant the remote config overwrote any pipeline `processors:` list a
 user supplied via `CUSTOM_OTELCOL_CONFIG_FILE`, making it impossible to
 substitute the default `memory_limiter` with one configured for
-`limit_percentage`/`spike_limit_percentage` mode (HDX-4090).
+`limit_percentage`/`spike_limit_percentage` mode (#2145).
 
 The pipeline `processors:` lists now live in the bootstrap config
 (`docker/otel-collector/config.yaml` for supervisor mode, and
