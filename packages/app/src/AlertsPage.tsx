@@ -358,7 +358,7 @@ export default function AlertsPage() {
       <Head>
         <title>Alerts - {brandName}</title>
       </Head>
-      <PageHeader>Alerts</PageHeader>
+      <PageHeader title="Alerts" />
       <div className="my-4" style={{ flex: 1 }}>
         {isLoading ? (
           <div className="text-center my-4 fs-8">Loading...</div>

@@ -184,7 +184,7 @@ export default function DashboardsListPage() {
       <Head>
         <title>Dashboards - {brandName}</title>
       </Head>
-      <PageHeader>Dashboards</PageHeader>
+      <PageHeader title="Dashboards" />
       <Container
         maw={1200}
         py="lg"
