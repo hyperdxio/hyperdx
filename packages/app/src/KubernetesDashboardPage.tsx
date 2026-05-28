@@ -1318,6 +1318,376 @@ function KubernetesDashboardPage() {
     </Breadcrumbs>
   );
 
+  // Extracted for the same reason as `headerLeading` / `headerActions` /
+  // `pageBreadcrumbs` above: keeps the `<PageLayout>` return shallow and
+  // prevents the ~380-line tab/chart tree below from being wrapped in
+  // an extra indentation level, which would otherwise force the deeply
+  // nested `convertV1ChartConfigToV2({...})` calls to wrap further.
+  const dashboardBody = (
+    <>
+      <Head>
+        <title>Kubernetes Dashboard – {brandName}</title>
+      </Head>
+      <OnboardingModal requireSource={false} />
+      {metricSource && logSource && (
+        <PodDetailsSidePanel
+          logSource={logSource}
+          metricSource={metricSource}
+        />
+      )}
+      {metricSource && logSource && (
+        <NodeDetailsSidePanel
+          metricSource={metricSource}
+          logSource={logSource}
+        />
+      )}
+      {metricSource && logSource && (
+        <NamespaceDetailsSidePanel
+          metricSource={metricSource}
+          logSource={logSource}
+        />
+      )}
+      {metricSource && (
+        <KubernetesFilters
+          dateRange={dateRange}
+          metricSource={metricSource}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+        />
+      )}
+
+      <Tabs
+        mt="md"
+        keepMounted={false}
+        defaultValue="pods"
+        // @ts-ignore
+        onChange={setActiveTab}
+        value={activeTab}
+      >
+        <Tabs.List>
+          <Tabs.Tab value="pods">Pods</Tabs.Tab>
+          <Tabs.Tab value="nodes">Nodes</Tabs.Tab>
+          <Tabs.Tab value="namespaces">Namespaces</Tabs.Tab>
+          {/* <Tabs.Tab value="clusters">Clusters</Tabs.Tab> */}
+        </Tabs.List>
+
+        <div className="p-3">
+          <Tabs.Panel value="pods">
+            <Grid>
+              <Grid.Col span={6}>
+                <Card p="md" data-testid="pod-cpu-usage-chart">
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    {metricSource && (
+                      <DBTimeChart
+                        title="CPU Usage"
+                        config={convertV1ChartConfigToV2(
+                          {
+                            dateRange,
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
+                            seriesReturnType: 'column',
+                            series: [
+                              {
+                                type: 'time',
+                                groupBy: ['k8s.pod.name'],
+                                where: whereClause,
+                                table: 'metrics',
+                                aggFn: 'avg',
+                                field: 'k8s.pod.cpu.utilization - Gauge',
+                                numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                              },
+                            ],
+                          },
+                          {
+                            log: logSource,
+                            metric: metricSource,
+                          },
+                        )}
+                        showDisplaySwitcher={false}
+                      />
+                    )}
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Card p="md" data-testid="pod-memory-usage-chart">
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    {metricSource && (
+                      <DBTimeChart
+                        title="Memory Usage"
+                        config={convertV1ChartConfigToV2(
+                          {
+                            dateRange,
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
+                            seriesReturnType: 'column',
+                            series: [
+                              {
+                                type: 'time',
+                                groupBy: ['k8s.pod.name'],
+                                where: whereClause,
+                                table: 'metrics',
+                                aggFn: 'avg',
+                                field: 'k8s.pod.memory.usage - Gauge',
+                                numberFormat: K8S_MEM_NUMBER_FORMAT,
+                              },
+                            ],
+                          },
+                          {
+                            log: logSource,
+                            metric: metricSource,
+                          },
+                        )}
+                        showDisplaySwitcher={false}
+                      />
+                    )}
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={12}>
+                {metricSource && (
+                  <InfraPodsStatusTable
+                    metricSource={metricSource}
+                    dateRange={dateRange}
+                    where={whereClause}
+                  />
+                )}
+              </Grid.Col>
+              <Grid.Col span={12}>
+                <Card p="md" data-testid="k8s-warning-events-table">
+                  <Card.Section p="md" py="xs">
+                    <Flex justify="space-between">
+                      Latest Kubernetes Warning Events
+                    </Flex>
+                  </Card.Section>
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    {logSource && eventAttributeExpressions && (
+                      <DBSqlRowTableWithSideBar
+                        sourceId={logSource.id}
+                        config={{
+                          ...logSource,
+                          where: `${
+                            whereClause.trim().length > 0
+                              ? `(${whereClause.trim()}) `
+                              : ''
+                          }(${logSource.eventAttributesExpression}.k8s.resource.name:"events" -Severity:"Normal")`,
+                          whereLanguage: 'lucene',
+                          select: [
+                            {
+                              valueExpression:
+                                logSource.timestampValueExpression,
+                              alias: 'Timestamp',
+                            },
+                            {
+                              valueExpression:
+                                eventAttributeExpressions.Severity,
+                              alias: 'Severity',
+                            },
+                            {
+                              valueExpression: eventAttributeExpressions.Kind,
+                              alias: 'Kind',
+                            },
+                            {
+                              valueExpression: eventAttributeExpressions.Name,
+                              alias: 'Name',
+                            },
+                            {
+                              valueExpression:
+                                eventAttributeExpressions.Message,
+                              alias: 'Message',
+                            },
+                          ],
+                          orderBy: [
+                            {
+                              valueExpression:
+                                logSource.timestampValueExpression,
+                              ordering: 'DESC',
+                            },
+                          ],
+                          limit: { limit: 200, offset: 0 },
+                          dateRange,
+                        }}
+                        isLive={false}
+                        queryKeyPrefix="k8s-dashboard-events"
+                      />
+                    )}
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+            </Grid>
+          </Tabs.Panel>
+          <Tabs.Panel value="nodes">
+            <Grid>
+              <Grid.Col span={6}>
+                <Card p="md" data-testid="nodes-cpu-usage-chart">
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    {metricSource && (
+                      <DBTimeChart
+                        title="CPU Usage"
+                        config={convertV1ChartConfigToV2(
+                          {
+                            dateRange,
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
+                            seriesReturnType: 'column',
+                            series: [
+                              {
+                                type: 'time',
+                                groupBy: ['k8s.node.name'],
+                                where: whereClause,
+                                table: 'metrics',
+                                aggFn: 'avg',
+                                field: 'k8s.node.cpu.utilization - Gauge',
+                                numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                              },
+                            ],
+                          },
+                          {
+                            log: logSource,
+                            metric: metricSource,
+                          },
+                        )}
+                        showDisplaySwitcher={false}
+                      />
+                    )}
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Card p="md" data-testid="nodes-memory-usage-chart">
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    {metricSource && (
+                      <DBTimeChart
+                        title="Memory Usage"
+                        config={convertV1ChartConfigToV2(
+                          {
+                            dateRange,
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
+                            seriesReturnType: 'column',
+                            series: [
+                              {
+                                type: 'time',
+                                groupBy: ['k8s.node.name'],
+                                where: whereClause,
+                                table: 'metrics',
+                                aggFn: 'avg',
+                                field: 'k8s.node.memory.usage - Gauge',
+                                numberFormat: K8S_MEM_NUMBER_FORMAT,
+                              },
+                            ],
+                          },
+                          {
+                            log: logSource,
+                            metric: metricSource,
+                          },
+                        )}
+                        showDisplaySwitcher={false}
+                      />
+                    )}
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={12}>
+                {metricSource && (
+                  <NodesTable
+                    metricSource={metricSource}
+                    dateRange={dateRange}
+                    where={whereClause}
+                  />
+                )}
+              </Grid.Col>
+            </Grid>
+          </Tabs.Panel>
+          <Tabs.Panel value="namespaces">
+            <Grid>
+              <Grid.Col span={6}>
+                <Card p="md" data-testid="namespaces-cpu-usage-chart">
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    {metricSource && (
+                      <DBTimeChart
+                        title="CPU Usage"
+                        config={convertV1ChartConfigToV2(
+                          {
+                            dateRange,
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
+                            seriesReturnType: 'column',
+                            series: [
+                              {
+                                type: 'time',
+                                groupBy: ['k8s.namespace.name'],
+                                where: whereClause,
+                                table: 'metrics',
+                                aggFn: 'sum',
+                                field: 'k8s.pod.cpu.utilization - Gauge',
+                                numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
+                              },
+                            ],
+                          },
+                          {
+                            log: logSource,
+                            metric: metricSource,
+                          },
+                        )}
+                        showDisplaySwitcher={false}
+                      />
+                    )}
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Card p="md" data-testid="namespaces-memory-usage-chart">
+                  <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
+                    {metricSource && (
+                      <DBTimeChart
+                        title="Memory Usage"
+                        config={convertV1ChartConfigToV2(
+                          {
+                            dateRange,
+                            granularity:
+                              convertDateRangeToGranularityString(dateRange),
+                            seriesReturnType: 'column',
+                            series: [
+                              {
+                                type: 'time',
+                                groupBy: ['k8s.namespace.name'],
+                                where: whereClause,
+                                table: 'metrics',
+                                aggFn: 'sum',
+                                field: 'k8s.pod.memory.usage - Gauge',
+                                numberFormat: K8S_MEM_NUMBER_FORMAT,
+                              },
+                            ],
+                          },
+                          {
+                            log: logSource,
+                            metric: metricSource,
+                          },
+                        )}
+                        showDisplaySwitcher={false}
+                      />
+                    )}
+                  </Card.Section>
+                </Card>
+              </Grid.Col>
+              <Grid.Col span={12}>
+                {metricSource && (
+                  <NamespacesTable
+                    dateRange={dateRange}
+                    metricSource={metricSource}
+                    where={whereClause}
+                  />
+                )}
+              </Grid.Col>
+            </Grid>
+          </Tabs.Panel>
+          <Tabs.Panel value="clusters">Clusters</Tabs.Panel>
+        </div>
+      </Tabs>
+    </>
+  );
+
   return (
     <PageLayout
       data-testid="kubernetes-dashboard-page"
@@ -1325,387 +1695,7 @@ function KubernetesDashboardPage() {
       leading={headerLeading}
       actions={headerActions}
       padded
-      content={
-        <>
-          <Head>
-            <title>Kubernetes Dashboard – {brandName}</title>
-          </Head>
-          <OnboardingModal requireSource={false} />
-          {metricSource && logSource && (
-            <PodDetailsSidePanel
-              logSource={logSource}
-              metricSource={metricSource}
-            />
-          )}
-          {metricSource && logSource && (
-            <NodeDetailsSidePanel
-              metricSource={metricSource}
-              logSource={logSource}
-            />
-          )}
-          {metricSource && logSource && (
-            <NamespaceDetailsSidePanel
-              metricSource={metricSource}
-              logSource={logSource}
-            />
-          )}
-          {metricSource && (
-            <KubernetesFilters
-              dateRange={dateRange}
-              metricSource={metricSource}
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-            />
-          )}
-
-          <Tabs
-            mt="md"
-            keepMounted={false}
-            defaultValue="pods"
-            // @ts-ignore
-            onChange={setActiveTab}
-            value={activeTab}
-          >
-            <Tabs.List>
-              <Tabs.Tab value="pods">Pods</Tabs.Tab>
-              <Tabs.Tab value="nodes">Nodes</Tabs.Tab>
-              <Tabs.Tab value="namespaces">Namespaces</Tabs.Tab>
-              {/* <Tabs.Tab value="clusters">Clusters</Tabs.Tab> */}
-            </Tabs.List>
-
-            <div className="p-3">
-              <Tabs.Panel value="pods">
-                <Grid>
-                  <Grid.Col span={6}>
-                    <Card p="md" data-testid="pod-cpu-usage-chart">
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        {metricSource && (
-                          <DBTimeChart
-                            title="CPU Usage"
-                            config={convertV1ChartConfigToV2(
-                              {
-                                dateRange,
-                                granularity:
-                                  convertDateRangeToGranularityString(
-                                    dateRange,
-                                  ),
-                                seriesReturnType: 'column',
-                                series: [
-                                  {
-                                    type: 'time',
-                                    groupBy: ['k8s.pod.name'],
-                                    where: whereClause,
-                                    table: 'metrics',
-                                    aggFn: 'avg',
-                                    field: 'k8s.pod.cpu.utilization - Gauge',
-                                    numberFormat:
-                                      K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                                  },
-                                ],
-                              },
-                              {
-                                log: logSource,
-                                metric: metricSource,
-                              },
-                            )}
-                            showDisplaySwitcher={false}
-                          />
-                        )}
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={6}>
-                    <Card p="md" data-testid="pod-memory-usage-chart">
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        {metricSource && (
-                          <DBTimeChart
-                            title="Memory Usage"
-                            config={convertV1ChartConfigToV2(
-                              {
-                                dateRange,
-                                granularity:
-                                  convertDateRangeToGranularityString(
-                                    dateRange,
-                                  ),
-                                seriesReturnType: 'column',
-                                series: [
-                                  {
-                                    type: 'time',
-                                    groupBy: ['k8s.pod.name'],
-                                    where: whereClause,
-                                    table: 'metrics',
-                                    aggFn: 'avg',
-                                    field: 'k8s.pod.memory.usage - Gauge',
-                                    numberFormat: K8S_MEM_NUMBER_FORMAT,
-                                  },
-                                ],
-                              },
-                              {
-                                log: logSource,
-                                metric: metricSource,
-                              },
-                            )}
-                            showDisplaySwitcher={false}
-                          />
-                        )}
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={12}>
-                    {metricSource && (
-                      <InfraPodsStatusTable
-                        metricSource={metricSource}
-                        dateRange={dateRange}
-                        where={whereClause}
-                      />
-                    )}
-                  </Grid.Col>
-                  <Grid.Col span={12}>
-                    <Card p="md" data-testid="k8s-warning-events-table">
-                      <Card.Section p="md" py="xs">
-                        <Flex justify="space-between">
-                          Latest Kubernetes Warning Events
-                        </Flex>
-                      </Card.Section>
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        {logSource && eventAttributeExpressions && (
-                          <DBSqlRowTableWithSideBar
-                            sourceId={logSource.id}
-                            config={{
-                              ...logSource,
-                              where: `${
-                                whereClause.trim().length > 0
-                                  ? `(${whereClause.trim()}) `
-                                  : ''
-                              }(${logSource.eventAttributesExpression}.k8s.resource.name:"events" -Severity:"Normal")`,
-                              whereLanguage: 'lucene',
-                              select: [
-                                {
-                                  valueExpression:
-                                    logSource.timestampValueExpression,
-                                  alias: 'Timestamp',
-                                },
-                                {
-                                  valueExpression:
-                                    eventAttributeExpressions.Severity,
-                                  alias: 'Severity',
-                                },
-                                {
-                                  valueExpression:
-                                    eventAttributeExpressions.Kind,
-                                  alias: 'Kind',
-                                },
-                                {
-                                  valueExpression:
-                                    eventAttributeExpressions.Name,
-                                  alias: 'Name',
-                                },
-                                {
-                                  valueExpression:
-                                    eventAttributeExpressions.Message,
-                                  alias: 'Message',
-                                },
-                              ],
-                              orderBy: [
-                                {
-                                  valueExpression:
-                                    logSource.timestampValueExpression,
-                                  ordering: 'DESC',
-                                },
-                              ],
-                              limit: { limit: 200, offset: 0 },
-                              dateRange,
-                            }}
-                            isLive={false}
-                            queryKeyPrefix="k8s-dashboard-events"
-                          />
-                        )}
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                </Grid>
-              </Tabs.Panel>
-              <Tabs.Panel value="nodes">
-                <Grid>
-                  <Grid.Col span={6}>
-                    <Card p="md" data-testid="nodes-cpu-usage-chart">
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        {metricSource && (
-                          <DBTimeChart
-                            title="CPU Usage"
-                            config={convertV1ChartConfigToV2(
-                              {
-                                dateRange,
-                                granularity:
-                                  convertDateRangeToGranularityString(
-                                    dateRange,
-                                  ),
-                                seriesReturnType: 'column',
-                                series: [
-                                  {
-                                    type: 'time',
-                                    groupBy: ['k8s.node.name'],
-                                    where: whereClause,
-                                    table: 'metrics',
-                                    aggFn: 'avg',
-                                    field: 'k8s.node.cpu.utilization - Gauge',
-                                    numberFormat:
-                                      K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                                  },
-                                ],
-                              },
-                              {
-                                log: logSource,
-                                metric: metricSource,
-                              },
-                            )}
-                            showDisplaySwitcher={false}
-                          />
-                        )}
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={6}>
-                    <Card p="md" data-testid="nodes-memory-usage-chart">
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        {metricSource && (
-                          <DBTimeChart
-                            title="Memory Usage"
-                            config={convertV1ChartConfigToV2(
-                              {
-                                dateRange,
-                                granularity:
-                                  convertDateRangeToGranularityString(
-                                    dateRange,
-                                  ),
-                                seriesReturnType: 'column',
-                                series: [
-                                  {
-                                    type: 'time',
-                                    groupBy: ['k8s.node.name'],
-                                    where: whereClause,
-                                    table: 'metrics',
-                                    aggFn: 'avg',
-                                    field: 'k8s.node.memory.usage - Gauge',
-                                    numberFormat: K8S_MEM_NUMBER_FORMAT,
-                                  },
-                                ],
-                              },
-                              {
-                                log: logSource,
-                                metric: metricSource,
-                              },
-                            )}
-                            showDisplaySwitcher={false}
-                          />
-                        )}
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={12}>
-                    {metricSource && (
-                      <NodesTable
-                        metricSource={metricSource}
-                        dateRange={dateRange}
-                        where={whereClause}
-                      />
-                    )}
-                  </Grid.Col>
-                </Grid>
-              </Tabs.Panel>
-              <Tabs.Panel value="namespaces">
-                <Grid>
-                  <Grid.Col span={6}>
-                    <Card p="md" data-testid="namespaces-cpu-usage-chart">
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        {metricSource && (
-                          <DBTimeChart
-                            title="CPU Usage"
-                            config={convertV1ChartConfigToV2(
-                              {
-                                dateRange,
-                                granularity:
-                                  convertDateRangeToGranularityString(
-                                    dateRange,
-                                  ),
-                                seriesReturnType: 'column',
-                                series: [
-                                  {
-                                    type: 'time',
-                                    groupBy: ['k8s.namespace.name'],
-                                    where: whereClause,
-                                    table: 'metrics',
-                                    aggFn: 'sum',
-                                    field: 'k8s.pod.cpu.utilization - Gauge',
-                                    numberFormat:
-                                      K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                                  },
-                                ],
-                              },
-                              {
-                                log: logSource,
-                                metric: metricSource,
-                              },
-                            )}
-                            showDisplaySwitcher={false}
-                          />
-                        )}
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={6}>
-                    <Card p="md" data-testid="namespaces-memory-usage-chart">
-                      <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
-                        {metricSource && (
-                          <DBTimeChart
-                            title="Memory Usage"
-                            config={convertV1ChartConfigToV2(
-                              {
-                                dateRange,
-                                granularity:
-                                  convertDateRangeToGranularityString(
-                                    dateRange,
-                                  ),
-                                seriesReturnType: 'column',
-                                series: [
-                                  {
-                                    type: 'time',
-                                    groupBy: ['k8s.namespace.name'],
-                                    where: whereClause,
-                                    table: 'metrics',
-                                    aggFn: 'sum',
-                                    field: 'k8s.pod.memory.usage - Gauge',
-                                    numberFormat: K8S_MEM_NUMBER_FORMAT,
-                                  },
-                                ],
-                              },
-                              {
-                                log: logSource,
-                                metric: metricSource,
-                              },
-                            )}
-                            showDisplaySwitcher={false}
-                          />
-                        )}
-                      </Card.Section>
-                    </Card>
-                  </Grid.Col>
-                  <Grid.Col span={12}>
-                    {metricSource && (
-                      <NamespacesTable
-                        dateRange={dateRange}
-                        metricSource={metricSource}
-                        where={whereClause}
-                      />
-                    )}
-                  </Grid.Col>
-                </Grid>
-              </Tabs.Panel>
-              <Tabs.Panel value="clusters">Clusters</Tabs.Panel>
-            </div>
-          </Tabs>
-        </>
-      }
+      content={dashboardBody}
     />
   );
 }

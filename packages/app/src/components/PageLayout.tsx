@@ -4,13 +4,37 @@ import { PageHeader, type PageHeaderProps } from './PageHeader';
 
 import styles from './PageLayout.module.scss';
 
+/**
+ * Two valid composition forms — pick the one that matches your page,
+ * preferring the structured slots whenever possible:
+ *
+ * 1. **Structured slots** — pass `title` / `leading` / `actions` /
+ *    `breadcrumbs` directly to `PageLayout`. These forward into an
+ *    internal `<PageHeader>`. Preferred for the standard
+ *    title-or-breadcrumb + horizontal-toolbar layout
+ *    (see `KubernetesDashboardPage`).
+ *
+ * 2. **Custom `header`** — pass a fully-formed `<PageHeader>{...}`
+ *    (or any node) when the toolbar can't be expressed as leading +
+ *    actions (see `SessionsPage`'s full-width source/search/time/run
+ *    row). Reach for this only when the structured slots actively
+ *    misrepresent the layout.
+ *
+ * See `PageHeaderProps` for the underlying slot semantics.
+ */
 export type PageLayoutProps = Pick<
   PageHeaderProps,
   'title' | 'leading' | 'actions' | 'breadcrumbs' | 'children'
 > & {
   /** Page content below the header. */
   content: React.ReactNode;
-  /** Custom header when `title` / `leading` / `actions` are not enough. */
+  /**
+   * Escape hatch for pages whose header doesn't fit the structured
+   * `title` / `leading` / `actions` / `breadcrumbs` slots. Pass a
+   * fully-formed `<PageHeader>{...}>` (or any node) here; the
+   * structured-slot props above are ignored when `header` is set.
+   * Prefer the structured slots when the layout fits.
+   */
   header?: React.ReactNode;
   className?: string;
   contentClassName?: string;
