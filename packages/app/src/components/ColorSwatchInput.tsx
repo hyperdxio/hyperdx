@@ -74,10 +74,10 @@ export const ColorSwatchInput = ({
   const [opened, setOpened] = React.useState(false);
 
   // Accept both current hue-named tokens and legacy `chart-1`..`chart-10`
-  // values from #2265 so an existing tile's color shows correctly the first
-  // time its drawer is opened (the dashboard fetch path doesn't run the
-  // Zod schema, so the legacy preprocess wouldn't have fired). Truly
-  // unknown values still fall through to "no selection".
+  // values from #2265. The fetch normalizer in `dashboard.ts` usually
+  // heals stored data before it reaches us, but in-memory tiles or
+  // preset configs can still arrive with legacy values. Truly unknown
+  // values fall through to "no selection".
   const safeValue = resolveChartPaletteToken(value);
 
   const handleChange = (next?: ChartPaletteToken) => {

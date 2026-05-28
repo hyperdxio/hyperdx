@@ -35,6 +35,89 @@ describe('fetchLocalDashboards', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(dashboards));
     expect(fetchLocalDashboards()).toHaveLength(2);
   });
+
+  describe('legacy tile color migration (fetch-time normalizer)', () => {
+    // Stored configs from #2265 (the initial number-tile color picker)
+    // contain `color: 'chart-1'..'chart-10'`. The rename refactor swapped
+    // those numeric tokens for hue-named ones and kept `ChartPaletteToken
+    // Schema` strict, so legacy values must be healed at load time.
+    const storeDashboardWithTileColor = (color: unknown) => {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify([
+          {
+            id: 'a',
+            name: 'A',
+            tiles: [
+              {
+                id: 't1',
+                x: 0,
+                y: 0,
+                w: 4,
+                h: 4,
+                config: { color },
+              },
+            ],
+            tags: [],
+          },
+        ]),
+      );
+    };
+
+    it('migrates chart-1..10 to their HyperDX-slot-order hue equivalents', () => {
+      storeDashboardWithTileColor('chart-1');
+      expect(fetchLocalDashboards()[0].tiles[0].config).toMatchObject({
+        color: 'chart-green',
+      });
+
+      storeDashboardWithTileColor('chart-2');
+      expect(fetchLocalDashboards()[0].tiles[0].config).toMatchObject({
+        color: 'chart-blue',
+      });
+
+      storeDashboardWithTileColor('chart-10');
+      expect(fetchLocalDashboards()[0].tiles[0].config).toMatchObject({
+        color: 'chart-gray',
+      });
+    });
+
+    it('passes through hue-named tokens unchanged', () => {
+      storeDashboardWithTileColor('chart-orange');
+      expect(fetchLocalDashboards()[0].tiles[0].config).toMatchObject({
+        color: 'chart-orange',
+      });
+    });
+
+    it('leaves unknown strings alone (no silent data loss)', () => {
+      // A forward-compat or hand-edited value should survive the
+      // normalizer untouched; render-time consumers can decide to
+      // ignore it. The alternative — erasing the value — would be
+      // worse than leaving it.
+      storeDashboardWithTileColor('chart-future-magenta');
+      expect(fetchLocalDashboards()[0].tiles[0].config).toMatchObject({
+        color: 'chart-future-magenta',
+      });
+    });
+
+    it('does not touch tiles whose config has no color field', () => {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify([
+          {
+            id: 'a',
+            name: 'A',
+            tiles: [
+              { id: 't1', x: 0, y: 0, w: 4, h: 4, config: { displayType: 1 } },
+            ],
+            tags: [],
+          },
+        ]),
+      );
+      expect(fetchLocalDashboards()[0].tiles[0].config).toEqual({
+        displayType: 1,
+      });
+    });
+  });
 });
 
 describe('getLocalDashboardTags', () => {

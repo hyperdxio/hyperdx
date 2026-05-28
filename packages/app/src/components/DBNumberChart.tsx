@@ -93,11 +93,13 @@ export default function DBNumberChart({
   });
 
   // Tile-level color override resolved at render time so token choices
-  // reflow correctly across light / dark / IDE themes. `resolveChartPaletteToken`
-  // accepts both current hue-named tokens and legacy `chart-1`..`chart-10`
-  // values from stored configs (the dashboard fetch path raw-casts the API
-  // response and bypasses `ChartPaletteTokenSchema`'s preprocess, so this
-  // call is the last guarantee that legacy tokens still render correctly).
+  // reflow correctly across light / dark / IDE themes.
+  // `resolveChartPaletteToken` accepts both current hue-named tokens and
+  // legacy `chart-1`..`chart-10` values from stored configs. The fetch
+  // path (`normalizeDashboardTileColors`) already heals stored data, so
+  // in practice this resolver only ever sees the migrated hue tokens —
+  // but we keep the call as defense in depth against any tile that gets
+  // constructed in memory without going through the fetch normalizer.
   // Unknown strings fall back to the default text color.
   const resolvedColorToken = resolveChartPaletteToken(config.color);
   const tileColor = resolvedColorToken

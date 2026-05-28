@@ -199,10 +199,11 @@ describe('isChartPaletteToken', () => {
     expect(isChartPaletteToken('chart-error')).toBe(true);
   });
 
-  it('returns false for legacy numeric tokens (handled by Zod preprocess, not the guard)', () => {
-    // The guard checks the current ChartPaletteToken enum strictly; the
-    // ChartPaletteTokenSchema preprocess is responsible for migrating
-    // legacy chart-1..10 values from stored configs.
+  it('returns false for legacy numeric tokens (handled by resolveChartPaletteToken, not the guard)', () => {
+    // The guard checks the current ChartPaletteToken enum strictly.
+    // Migration of legacy `chart-1`..`chart-10` is owned by
+    // `resolveChartPaletteToken` (render-time) and
+    // `normalizeDashboardTileColors` (fetch-time, in the app package).
     expect(isChartPaletteToken('chart-1')).toBe(false);
     expect(isChartPaletteToken('chart-10')).toBe(false);
   });
@@ -244,33 +245,30 @@ describe('isChartPaletteToken', () => {
   });
 });
 
-describe('ChartPaletteTokenSchema legacy migration', () => {
-  it('migrates each chart-1..10 to its HyperDX-slot-order hue equivalent', () => {
-    const expected = [
-      'chart-green', // 1 (HyperDX brand green)
-      'chart-blue', // 2
-      'chart-orange', // 3
-      'chart-red', // 4
-      'chart-cyan', // 5
-      'chart-pink', // 6
-      'chart-purple', // 7
-      'chart-light-blue', // 8
-      'chart-brown', // 9
-      'chart-gray', // 10
-    ];
-    expected.forEach((target, i) => {
-      expect(ChartPaletteTokenSchema.parse(`chart-${i + 1}`)).toBe(target);
-    });
-  });
-
-  it('passes through valid hue tokens unchanged', () => {
+describe('ChartPaletteTokenSchema', () => {
+  it('accepts current hue-named and semantic tokens', () => {
     expect(ChartPaletteTokenSchema.parse('chart-blue')).toBe('chart-blue');
+    expect(ChartPaletteTokenSchema.parse('chart-light-blue')).toBe(
+      'chart-light-blue',
+    );
     expect(ChartPaletteTokenSchema.parse('chart-success')).toBe(
       'chart-success',
     );
   });
 
-  it('rejects unknown strings even after preprocess', () => {
+  it('rejects legacy chart-1..10 — migration is owned by the app-side normalizer, not the schema', () => {
+    // Keeping the schema strict (no `z.preprocess`) keeps its `z.input`
+    // type equal to its `z.output` type. Wrapping the enum in
+    // `z.preprocess` would force the input to `unknown`, which
+    // poisons `validateRequest`'s `req.body` inference all the way
+    // up to `Dashboard.tiles[i].config.color`. Stored legacy values
+    // are healed at fetch time by `normalizeDashboardTileColors` in
+    // `packages/app/src/dashboard.ts`.
+    expect(() => ChartPaletteTokenSchema.parse('chart-1')).toThrow();
+    expect(() => ChartPaletteTokenSchema.parse('chart-10')).toThrow();
+  });
+
+  it('rejects unknown strings', () => {
     expect(() => ChartPaletteTokenSchema.parse('chart-magenta')).toThrow();
     expect(() => ChartPaletteTokenSchema.parse('chart-11')).toThrow();
     expect(() => ChartPaletteTokenSchema.parse('#ff0000')).toThrow();

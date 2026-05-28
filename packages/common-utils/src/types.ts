@@ -902,17 +902,22 @@ export function resolveChartPaletteToken(
 }
 
 /**
- * Zod schema for the curated palette tokens, transparently migrating
- * legacy numeric tokens (`chart-1` .. `chart-10`) to their hue-named
- * equivalents at parse time so stored configs from #2265 keep working.
+ * Strict Zod schema for the curated palette tokens. Intentionally
+ * does NOT accept legacy numeric tokens (`chart-1` .. `chart-10`)
+ * from #2265 — wrapping the enum in `z.preprocess` would force the
+ * schema's input type to `unknown`, which breaks downstream `z.infer`
+ * consumers (e.g. `validateRequest` in the API handlers infers
+ * `req.body` as `unknown` for any field reached through this schema).
+ *
+ * Legacy data is healed at load time instead: see
+ * `normalizeDashboardTileColors` in `packages/app/src/dashboard.ts`,
+ * which walks `tiles[i].config.color` and replaces any legacy token
+ * with its hue-named equivalent via `resolveChartPaletteToken`.
+ * Render-time consumers also call `resolveChartPaletteToken` as
+ * belt-and-suspenders against any data path that bypasses the
+ * fetch-time normalizer.
  */
-export const ChartPaletteTokenSchema = z.preprocess(
-  value =>
-    isLegacyChartPaletteToken(value)
-      ? LEGACY_CHART_PALETTE_TOKEN_MAP[value]
-      : value,
-  z.enum(CHART_PALETTE_TOKENS),
-);
+export const ChartPaletteTokenSchema = z.enum(CHART_PALETTE_TOKENS);
 
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).

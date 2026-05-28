@@ -132,8 +132,7 @@ tokens (`chart-1` … `chart-10`). Renamed here to hue-named tokens so
 stored configs and the upcoming external API surface are
 self-documenting.
 
-Existing stored configs keep working transparently via a Zod `preprocess`
-on `ChartPaletteTokenSchema` that maps the legacy values:
+Existing stored configs keep working. The mapping:
 
 ```text
 chart-1  -> chart-green       (was HyperDX brand green at slot 1)
@@ -143,14 +142,35 @@ chart-3  -> chart-orange
 chart-10 -> chart-gray
 ```
 
-The mapping preserves the HyperDX slot ordering from #2265, so HyperDX
-users see no visual change. ClickStack users (whose stored `chart-1`
-historically rendered as Observable blue at runtime) now see Observable
-green for that token after migration — by design, since the slot now
-means a hue, not "brand primary." Use `chart-info` semantic if you need
-the brand-primary appearance.
+It preserves the HyperDX slot ordering from #2265, so HyperDX users see
+no visual change. ClickStack users (whose stored `chart-1` historically
+rendered as Observable blue at runtime) now see Observable green for
+that token after migration — by design, since the slot now means a hue,
+not "brand primary." Use `chart-info` semantic if you need the
+brand-primary appearance.
 
-`LEGACY_CHART_PALETTE_TOKEN_MAP` lives in
+**`ChartPaletteTokenSchema` itself stays strict** (a plain `z.enum`).
+Wrapping it in `z.preprocess` would force the schema's `z.input` type
+to `unknown`, which poisons `validateRequest`'s `req.body` inference
+in the API package all the way up to `Dashboard.tiles[i].config.color`.
+Strict input/output equality is more important than a one-line
+runtime migration buried in the schema.
+
+Migration happens at two complementary layers instead:
+
+1. **Fetch-time** — `normalizeDashboardTileColors` in
+   `packages/app/src/dashboard.ts` walks every tile in the response
+   from `useDashboards` / `fetchLocalDashboards` and rewrites any
+   legacy `config.color` to its hue-named equivalent via
+   `resolveChartPaletteToken`. This heals the in-memory copy
+   immediately; the persisted copy is updated the next time the user
+   saves the dashboard for any reason (color or otherwise).
+2. **Render-time** — `DBNumberChart` and `ColorSwatchInput` also call
+   `resolveChartPaletteToken` as belt-and-suspenders for any code path
+   that bypasses the fetch normalizer (e.g. a tile constructed in
+   memory from a `Tile` literal).
+
+`LEGACY_CHART_PALETTE_TOKEN_MAP` and `resolveChartPaletteToken` live in
 `packages/common-utils/src/types.ts` next to the enum.
 
 ### Heatmap palette (component-local)

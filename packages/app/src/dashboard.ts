@@ -4,6 +4,7 @@ import {
   DashboardContainer,
   DashboardFilter,
   Filter,
+  resolveChartPaletteToken,
   SavedChartConfig,
   SearchConditionLanguage,
 } from '@hyperdx/common-utils/dist/types';
@@ -46,11 +47,39 @@ export type Dashboard = {
 
 const localDashboards = createEntityStore<Dashboard>('hdx-local-dashboards');
 
+/**
+ * Heal legacy `chart-1`..`chart-10` colors stored on tiles by #2265
+ * into their hue-named equivalents. Applied at fetch time so every
+ * downstream consumer (renderers, the color picker, save mutations)
+ * sees the canonical hue tokens that `ChartPaletteTokenSchema`
+ * accepts. Unknown strings are left untouched so we don't accidentally
+ * erase forward-compat values; hue tokens already match the resolver
+ * and pass through unchanged. The returned tile array preserves
+ * identity where nothing changed so React reconciliation stays cheap.
+ */
+function normalizeDashboardTileColors(dashboard: Dashboard): Dashboard {
+  let changed = false;
+  const tiles = dashboard.tiles.map(tile => {
+    const config = tile.config as { color?: unknown };
+    const current = config?.color;
+    if (typeof current !== 'string') return tile;
+    const resolved = resolveChartPaletteToken(current);
+    if (resolved === undefined || resolved === current) return tile;
+    changed = true;
+    return {
+      ...tile,
+      config: { ...tile.config, color: resolved } as Tile['config'],
+    };
+  });
+  return changed ? { ...dashboard, tiles } : dashboard;
+}
+
 async function fetchDashboards(): Promise<Dashboard[]> {
   if (IS_LOCAL_MODE) {
-    return localDashboards.getAll();
+    return localDashboards.getAll().map(normalizeDashboardTileColors);
   }
-  return hdxServer('dashboards').json<Dashboard[]>();
+  const dashboards = await hdxServer('dashboards').json<Dashboard[]>();
+  return dashboards.map(normalizeDashboardTileColors);
 }
 
 export function useUpdateDashboard() {
@@ -196,7 +225,7 @@ export function useDashboard({
 }
 
 export function fetchLocalDashboards(): Dashboard[] {
-  return localDashboards.getAll();
+  return localDashboards.getAll().map(normalizeDashboardTileColors);
 }
 
 export function getLocalDashboardTags(): string[] {

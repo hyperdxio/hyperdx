@@ -1270,13 +1270,15 @@ describe('getColorFromCSSToken', () => {
     });
   });
 
-  it('migrates legacy numeric tokens (chart-1..10) to hue-named tokens via the Zod schema', () => {
-    // Tokens like `chart-1` are not part of the new ChartPaletteToken type
-    // but stored configs from #2265 still contain them; Zod's preprocess
-    // remaps them to their HyperDX-slot-order hue equivalents.
-    const parsed = ChartPaletteTokenSchema.parse('chart-1');
-    expect(parsed).toBe('chart-green');
-    expect(ChartPaletteTokenSchema.parse('chart-2')).toBe('chart-blue');
-    expect(ChartPaletteTokenSchema.parse('chart-10')).toBe('chart-gray');
+  it('schema rejects legacy chart-1..10; render-time consumers rely on resolveChartPaletteToken instead', () => {
+    // The schema is deliberately strict (no `z.preprocess`) so that
+    // its `z.input` type matches its `z.output` type — otherwise
+    // `validateRequest` in the API would infer `req.body.tiles[i]
+    // .config.color` as `unknown`. Legacy migration for stored
+    // configs from #2265 happens at fetch time via
+    // `normalizeDashboardTileColors` and at render time via
+    // `resolveChartPaletteToken`.
+    expect(() => ChartPaletteTokenSchema.parse('chart-1')).toThrow();
+    expect(() => ChartPaletteTokenSchema.parse('chart-10')).toThrow();
   });
 });

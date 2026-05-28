@@ -140,11 +140,12 @@ describe('ColorSwatchInput', () => {
   });
 
   it('migrates a legacy chart-1..10 value to the matching hue swatch', async () => {
-    // Regression: dashboards saved through #2265 store `chart-1`..`chart-10`.
-    // The fetch path raw-casts API responses so ChartPaletteTokenSchema's
-    // legacy preprocess never runs. The picker must still show the
-    // migrated selection so users don't see "no color" when reopening a
-    // tile's Display Settings drawer.
+    // Defense in depth: `normalizeDashboardTileColors` heals stored
+    // legacy tokens at fetch time, so the picker should usually only
+    // see hue-named values. But preset / in-memory tiles or any code
+    // path that bypasses the fetch normalizer can still pass a
+    // legacy `chart-1` here, so the picker also resolves it before
+    // matching against the swatches.
     const user = userEvent.setup();
     renderWithMantine(
       <ColorSwatchInput

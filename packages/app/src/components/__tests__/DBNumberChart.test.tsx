@@ -350,12 +350,13 @@ describe('DBNumberChart', () => {
     });
 
     it('migrates legacy chart-1..10 tokens to their hue-named equivalent at render time', () => {
-      // Regression: useDashboards raw-casts the API response so saved configs
-      // from #2265 (`color: 'chart-1'`, etc.) never go through
-      // ChartPaletteTokenSchema. The renderer must apply the same legacy
-      // migration via resolveChartPaletteToken before the CSS-token lookup,
-      // otherwise tileColor silently resolves to undefined until the user
-      // re-saves the dashboard.
+      // Defense in depth: in practice `normalizeDashboardTileColors` in
+      // `packages/app/src/dashboard.ts` heals legacy tokens at fetch
+      // time, so renderers should always see hue-named values. But any
+      // tile constructed in memory (e.g. from a preset or a unit test)
+      // can still carry a legacy `chart-1`, so the renderer also
+      // resolves through `resolveChartPaletteToken` before the
+      // CSS-token lookup.
       const config = {
         ...baseTestConfig,
         color: 'chart-1' as any,
