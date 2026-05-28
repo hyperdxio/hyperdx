@@ -45,3 +45,28 @@ service:
 The default `memory_limiter` block defined in the base config is left in
 the merged config but is no longer referenced by any pipeline; the
 collector only instantiates `memory_limiter/custom` at runtime.
+
+The same swap pattern works for the `batch` processor (and any other base
+processor). For example, to lower the export timeout on a specific
+pipeline:
+
+```yaml
+processors:
+  batch/lowlatency:
+    send_batch_size: 1000
+    send_batch_max_size: 2000
+    timeout: 500ms
+
+service:
+  pipelines:
+    traces:
+      processors: [memory_limiter, batch/lowlatency]
+    logs/out-default:
+      processors: [memory_limiter, transform, batch/lowlatency]
+```
+
+Lighter-weight env-var tuning is also available for the default `batch`
+processor without writing a custom config file:
+`HYPERDX_OTEL_BATCH_SEND_BATCH_SIZE`,
+`HYPERDX_OTEL_BATCH_SEND_BATCH_MAX_SIZE`, and `HYPERDX_OTEL_BATCH_TIMEOUT`.
+See the README for details.

@@ -31,6 +31,22 @@ receivers:
 #       processors: [memory_limiter/custom, transform, batch]
 #     logs/out-rrweb:
 #       processors: [memory_limiter/custom, batch]
+#
+# Example: tune `batch` for lower-latency exports.
+# (See packages/otel-collector/README.md for env-var alternatives.)
+#
+# processors:
+#   batch/lowlatency:
+#     send_batch_size: 1000
+#     send_batch_max_size: 2000
+#     timeout: 500ms
+#
+# service:
+#   pipelines:
+#     traces:
+#       processors: [memory_limiter, batch/lowlatency]
+#     logs/out-default:
+#       processors: [memory_limiter, transform, batch/lowlatency]
 exporters:
   # fork data to otel-collector-json service (DEV ONLY)
   otlphttp/json:
