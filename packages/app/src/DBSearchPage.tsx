@@ -1742,13 +1742,32 @@ export function DBSearchPage() {
     setModelFormExpanded(false);
   }, [setModelFormExpanded]);
 
-  const onEditSources = useCallback(() => {
+  // `Edit source` (singular): operate on the currently selected source.
+  // Local mode opens the inline edit modal seeded with `inputSource`;
+  // non-local navigates to the team page deep-linked to that source so
+  // `<SourcesList>` auto-expands it. Both modes converge on "edit the
+  // source you were looking at" in one click.
+  const onEditCurrentSource = useCallback(() => {
     if (IS_LOCAL_MODE) {
-      setModelFormExpanded(v => !v);
+      setModelFormExpanded(true);
+      return;
+    }
+    if (inputSource) {
+      router.push({ pathname: '/team', query: { source: inputSource } });
     } else {
       router.push('/team');
     }
-  }, [setModelFormExpanded]);
+  }, [inputSource, setModelFormExpanded]);
+
+  // `Manage sources`: open the all-sources list view. Only wired in
+  // non-local mode; local has no list-view surface so the menu item
+  // hides itself when this prop is undefined.
+  const onManageSources = useMemo(() => {
+    if (IS_LOCAL_MODE) return undefined;
+    return () => {
+      router.push('/team');
+    };
+  }, []);
 
   const setNewSourceModalClosed = useCallback(
     () => setNewSourceModalOpened(false),
@@ -1885,7 +1904,8 @@ export function DBSearchPage() {
             control={control}
             name="source"
             onCreate={openNewSourceModal}
-            onEdit={onEditSources}
+            onEdit={onEditCurrentSource}
+            onManageSources={onManageSources}
             onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
             isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(
               inputSourceObj,

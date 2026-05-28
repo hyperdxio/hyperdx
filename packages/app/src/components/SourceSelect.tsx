@@ -13,6 +13,7 @@ import {
 import {
   IconCode,
   IconDotsVertical,
+  IconPencil,
   IconPlus,
   IconSettings,
   IconStack,
@@ -32,23 +33,40 @@ interface SourceManagementMenuProps {
   hasSelection: boolean;
   onSchemaPreview?: () => void;
   isSchemaPreviewEnabled?: boolean;
+  /**
+   * Open the edit form for the currently selected source. Should act
+   * on `hasSelection ? currentSourceId : null`. Hidden from the menu
+   * when no handler is passed.
+   */
   onEdit?: () => void;
+  /**
+   * Open the list view of all sources (e.g. `/team#sources`). Hidden
+   * from the menu when no handler is passed; typically the case in
+   * local mode where no list-view surface exists.
+   */
+  onManageSources?: () => void;
   onCreate?: () => void;
 }
 
 /**
  * Adjacent kebab menu that consolidates source-management actions:
- * View schema, Edit sources, Create new source.
+ * View schema, Edit source, Manage sources, Create new source.
+ *
+ * `Edit source` operates on the current selection; `Manage sources`
+ * opens the all-sources list view. Each item hides if its handler
+ * isn't wired, so callers can pick the right combination for their
+ * surface (local mode, for example, has no list view and should leave
+ * `onManageSources` unset).
  *
  * Exposed so non-`SourceSelectControlled` callers (e.g. `DBTableSelect`)
- * can attach the same surface if needed. The menu hides itself when
- * none of the actions are wired up.
+ * can attach the same surface if needed.
  */
 export const SourceManagementMenu = ({
   hasSelection,
   onSchemaPreview,
   isSchemaPreviewEnabled = true,
   onEdit,
+  onManageSources,
   onCreate,
 }: SourceManagementMenuProps) => {
   const items: React.ReactNode[] = [];
@@ -69,11 +87,24 @@ export const SourceManagementMenu = ({
   if (onEdit) {
     items.push(
       <Menu.Item
-        key="edit-sources"
-        leftSection={<IconSettings size={14} />}
+        key="edit-source"
+        leftSection={<IconPencil size={14} />}
         onClick={onEdit}
+        disabled={!hasSelection}
       >
-        Edit sources
+        Edit source
+      </Menu.Item>,
+    );
+  }
+
+  if (onManageSources) {
+    items.push(
+      <Menu.Item
+        key="manage-sources"
+        leftSection={<IconSettings size={14} />}
+        onClick={onManageSources}
+      >
+        Manage sources
       </Menu.Item>,
     );
   }
@@ -120,6 +151,7 @@ function SourceSelectControlledComponent({
   size,
   onCreate,
   onEdit,
+  onManageSources,
   onSchemaPreview,
   isSchemaPreviewEnabled,
   allowedSourceKinds,
@@ -130,6 +162,7 @@ function SourceSelectControlledComponent({
   size?: string;
   onCreate?: () => void;
   onEdit?: () => void;
+  onManageSources?: () => void;
   onSchemaPreview?: () => void;
   isSchemaPreviewEnabled?: boolean;
   allowedSourceKinds?: SourceKind[];
@@ -174,7 +207,8 @@ function SourceSelectControlledComponent({
   });
 
   const hasSelection = !!selectedSourceId;
-  const hasMenu = !!onCreate || !!onEdit || !!onSchemaPreview;
+  const hasMenu =
+    !!onCreate || !!onEdit || !!onManageSources || !!onSchemaPreview;
 
   return (
     <Group
@@ -205,6 +239,7 @@ function SourceSelectControlledComponent({
           onSchemaPreview={onSchemaPreview}
           isSchemaPreviewEnabled={isSchemaPreviewEnabled}
           onEdit={onEdit}
+          onManageSources={onManageSources}
           onCreate={onCreate}
         />
       )}
