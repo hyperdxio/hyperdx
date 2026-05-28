@@ -38,9 +38,10 @@ jest.mock('@/utils', () => ({
     keys.forEach((key: string) => delete result[key]);
     return result;
   }),
-  // The renderer resolves palette tokens through getColorFromCSSToken;
-  // returning a predictable string keeps the assertion theme-independent.
-  getColorFromCSSToken: jest.fn((token: string) => `resolved(${token})`),
+  // The renderer resolves palette tokens through getColorFromCSSToken.
+  // Return a valid CSS hex so Mantine applies it as an inline color style,
+  // letting us assert that the resolved value reaches the DOM element.
+  getColorFromCSSToken: jest.fn(() => '#00ff00'),
 }));
 
 jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
@@ -320,7 +321,11 @@ describe('DBNumberChart', () => {
       renderWithMantine(<DBNumberChart config={config} />);
 
       expect(mockGetColorFromCSSToken).toHaveBeenCalledWith('chart-success');
-      expect(screen.getByText('1234')).toBeInTheDocument();
+      // Verify the resolved color reaches the <Text> DOM element so a
+      // regression that drops the `c` prop or passes undefined is caught.
+      const textEl = screen.getByText('1234');
+      expect(textEl).toBeInTheDocument();
+      expect(textEl).toHaveStyle({ color: 'rgb(0, 255, 0)' });
     });
 
     it('does not resolve a color when config.color is unset', () => {
