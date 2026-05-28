@@ -3,7 +3,11 @@ import {
   isBuilderSavedChartConfig,
   isRawSqlSavedChartConfig,
 } from '@/guards';
-import { DisplayType, isChartPaletteToken } from '@/types';
+import {
+  ChartPaletteTokenSchema,
+  DisplayType,
+  isChartPaletteToken,
+} from '@/types';
 
 describe('isRawSqlSavedChartConfig', () => {
   it('returns true when configType is "sql"', () => {
@@ -170,9 +174,21 @@ describe('displayTypeRequiresSource', () => {
 });
 
 describe('isChartPaletteToken', () => {
-  it('returns true for all categorical tokens', () => {
-    for (let i = 1; i <= 10; i++) {
-      expect(isChartPaletteToken(`chart-${i}`)).toBe(true);
+  it('returns true for every hue-named categorical token', () => {
+    const hues = [
+      'chart-blue',
+      'chart-orange',
+      'chart-red',
+      'chart-cyan',
+      'chart-green',
+      'chart-pink',
+      'chart-purple',
+      'chart-light-blue',
+      'chart-brown',
+      'chart-gray',
+    ];
+    for (const token of hues) {
+      expect(isChartPaletteToken(token)).toBe(true);
     }
   });
 
@@ -180,6 +196,14 @@ describe('isChartPaletteToken', () => {
     expect(isChartPaletteToken('chart-success')).toBe(true);
     expect(isChartPaletteToken('chart-warning')).toBe(true);
     expect(isChartPaletteToken('chart-error')).toBe(true);
+  });
+
+  it('returns false for legacy numeric tokens (handled by Zod preprocess, not the guard)', () => {
+    // The guard checks the current ChartPaletteToken enum strictly; the
+    // ChartPaletteTokenSchema preprocess is responsible for migrating
+    // legacy chart-1..10 values from stored configs.
+    expect(isChartPaletteToken('chart-1')).toBe(false);
+    expect(isChartPaletteToken('chart-10')).toBe(false);
   });
 
   it('returns false for a raw hex string', () => {
@@ -202,19 +226,52 @@ describe('isChartPaletteToken', () => {
   });
 
   it('is case-sensitive (no uppercase matches)', () => {
-    expect(isChartPaletteToken('Chart-1')).toBe(false);
+    expect(isChartPaletteToken('Chart-Blue')).toBe(false);
     expect(isChartPaletteToken('CHART-SUCCESS')).toBe(false);
     expect(isChartPaletteToken('chart-Success')).toBe(false);
   });
 
-  it('returns false for an out-of-range categorical index', () => {
-    expect(isChartPaletteToken('chart-0')).toBe(false);
-    expect(isChartPaletteToken('chart-11')).toBe(false);
+  it('returns false for an out-of-range categorical hue', () => {
+    expect(isChartPaletteToken('chart-magenta')).toBe(false);
+    expect(isChartPaletteToken('chart-teal')).toBe(false);
   });
 
   it('returns false for strings that look similar but are not tokens', () => {
     expect(isChartPaletteToken('chart-')).toBe(false);
     expect(isChartPaletteToken('chart')).toBe(false);
     expect(isChartPaletteToken('chart-neutral')).toBe(false);
+  });
+});
+
+describe('ChartPaletteTokenSchema legacy migration', () => {
+  it('migrates each chart-1..10 to its HyperDX-slot-order hue equivalent', () => {
+    const expected = [
+      'chart-green', // 1 (HyperDX brand green)
+      'chart-blue', // 2
+      'chart-orange', // 3
+      'chart-red', // 4
+      'chart-cyan', // 5
+      'chart-pink', // 6
+      'chart-purple', // 7
+      'chart-light-blue', // 8
+      'chart-brown', // 9
+      'chart-gray', // 10
+    ];
+    expected.forEach((target, i) => {
+      expect(ChartPaletteTokenSchema.parse(`chart-${i + 1}`)).toBe(target);
+    });
+  });
+
+  it('passes through valid hue tokens unchanged', () => {
+    expect(ChartPaletteTokenSchema.parse('chart-blue')).toBe('chart-blue');
+    expect(ChartPaletteTokenSchema.parse('chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('rejects unknown strings even after preprocess', () => {
+    expect(() => ChartPaletteTokenSchema.parse('chart-magenta')).toThrow();
+    expect(() => ChartPaletteTokenSchema.parse('chart-11')).toThrow();
+    expect(() => ChartPaletteTokenSchema.parse('#ff0000')).toThrow();
   });
 });

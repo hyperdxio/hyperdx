@@ -795,8 +795,8 @@ export function isOnClickDashboardById(
  *
  * Tokens map to CSS variables in
  * `packages/app/src/theme/themes/<theme>/_tokens.scss`:
- *   chart-1 .. chart-10        -> --color-chart-1 .. --color-chart-10
- *   chart-success/warning/error -> --color-chart-{success|warning|error}
+ *   chart-{hue}                 -> --color-chart-{hue}                    (10 hues, unified across themes)
+ *   chart-success/warning/error -> --color-chart-{success|warning|error}  (per-brand semantic)
  *
  * Storing tokens (not hex) lets user choices reflow correctly across
  * themes and color modes; see notes/repo-conventions/hyperdx/tile-styling.md.
@@ -807,16 +807,16 @@ export function isOnClickDashboardById(
  * `getComputedStyle(document.documentElement)`.
  */
 export const CHART_PALETTE_TOKENS = [
-  'chart-1',
-  'chart-2',
-  'chart-3',
-  'chart-4',
-  'chart-5',
-  'chart-6',
-  'chart-7',
-  'chart-8',
-  'chart-9',
-  'chart-10',
+  'chart-blue',
+  'chart-orange',
+  'chart-red',
+  'chart-cyan',
+  'chart-green',
+  'chart-pink',
+  'chart-purple',
+  'chart-light-blue',
+  'chart-brown',
+  'chart-gray',
   'chart-success',
   'chart-warning',
   'chart-error',
@@ -824,7 +824,7 @@ export const CHART_PALETTE_TOKENS = [
 
 export type ChartPaletteToken = (typeof CHART_PALETTE_TOKENS)[number];
 
-/** Categorical tokens (chart-1 .. chart-10). */
+/** Categorical tokens (10 hues). */
 export const CATEGORICAL_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
   0,
   10,
@@ -834,6 +834,32 @@ export const CATEGORICAL_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
 export const SEMANTIC_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
   10,
 ) as readonly ChartPaletteToken[];
+
+/**
+ * Legacy numeric tokens (`chart-1` .. `chart-10`) shipped in the initial
+ * release of the number-tile color picker (#2265). Renamed to hue-named
+ * tokens here to make stored configs and the external API schema
+ * self-documenting; mapped at parse time so saved tiles keep working.
+ *
+ * Mapping preserves the HyperDX slot ordering from #2265 (slot 1 was
+ * brand green, slot 2 was blue, and so on through the Observable 10
+ * palette).
+ */
+export const LEGACY_CHART_PALETTE_TOKEN_MAP = {
+  'chart-1': 'chart-green',
+  'chart-2': 'chart-blue',
+  'chart-3': 'chart-orange',
+  'chart-4': 'chart-red',
+  'chart-5': 'chart-cyan',
+  'chart-6': 'chart-pink',
+  'chart-7': 'chart-purple',
+  'chart-8': 'chart-light-blue',
+  'chart-9': 'chart-brown',
+  'chart-10': 'chart-gray',
+} as const satisfies Record<string, ChartPaletteToken>;
+
+export type LegacyChartPaletteToken =
+  keyof typeof LEGACY_CHART_PALETTE_TOKEN_MAP;
 
 /** Type guard for runtime validation of an unknown token string. */
 export function isChartPaletteToken(
@@ -845,8 +871,27 @@ export function isChartPaletteToken(
   );
 }
 
-/** Zod schema that accepts only the curated palette tokens above. */
-export const ChartPaletteTokenSchema = z.enum(CHART_PALETTE_TOKENS);
+function isLegacyChartPaletteToken(
+  value: unknown,
+): value is LegacyChartPaletteToken {
+  return (
+    typeof value === 'string' &&
+    Object.prototype.hasOwnProperty.call(LEGACY_CHART_PALETTE_TOKEN_MAP, value)
+  );
+}
+
+/**
+ * Zod schema for the curated palette tokens, transparently migrating
+ * legacy numeric tokens (`chart-1` .. `chart-10`) to their hue-named
+ * equivalents at parse time so stored configs from #2265 keep working.
+ */
+export const ChartPaletteTokenSchema = z.preprocess(
+  value =>
+    isLegacyChartPaletteToken(value)
+      ? LEGACY_CHART_PALETTE_TOKEN_MAP[value]
+      : value,
+  z.enum(CHART_PALETTE_TOKENS),
+);
 
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).

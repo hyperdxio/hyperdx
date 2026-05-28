@@ -93,7 +93,7 @@ import {
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import {
-  COLORS,
+  getChartColorInfo,
   getLogLevelClass,
   logLevelColor,
   useLocalStorage,
@@ -269,16 +269,9 @@ const PatternTrendChart = ({
               isAnimationActive={false}
               dataKey="count"
               stackId="a"
-              fill={color || COLORS[0]}
+              fill={color || getChartColorInfo()}
               maxBarSize={24}
             />
-            {/* <Line
-              key={'count'}
-              type="monotone"
-              dataKey={'count'}
-              stroke={COLORS[0]}
-              dot={false}
-            /> */}
             <Tooltip content={<PatternTrendChartTooltip />} />
           </BarChart>
         </ResponsiveContainer>

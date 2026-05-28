@@ -92,24 +92,29 @@
   --color-json-array: var(--mantine-color-green-3);
   --color-json-punctuation: var(--mantine-color-dark-4);
 
-  /* Chart Colors - Brand green first, then Observable palette
-     Note: 1-indexed CSS vars map to 0-indexed COLORS array in utils.ts
-     e.g., --color-chart-1 corresponds to COLORS[0] */
-  --color-chart-1: #00c28a; /* Green - Brand (primary) */
-  --color-chart-2: #4269d0; /* Blue */
-  --color-chart-3: #efb118; /* Orange */
-  --color-chart-4: #ff725c; /* Red */
-  --color-chart-5: #6cc5b0; /* Cyan */
-  --color-chart-6: #ff8ab7; /* Pink */
-  --color-chart-7: #a463f2; /* Purple */
-  --color-chart-8: #97bbf5; /* Light Blue */
-  --color-chart-9: #9c6b4e; /* Brown */
-  --color-chart-10: #9498a0; /* Gray */
+  /* Chart Categorical Palette - Observable 10, unified across themes.
+     Hue-named tokens (chart-blue, chart-orange, ...) keep stored chart
+     configs self-documenting and resolve to the same hex on both
+     HyperDX and ClickStack so a user's color choice means the same
+     thing regardless of brand. Brand identity carries through the
+     semantic --color-chart-success / -info tokens below, plus the
+     Mantine accent and chrome elsewhere. */
+  --color-chart-blue: #4269d0;
+  --color-chart-orange: #efb118;
+  --color-chart-red: #ff725c;
+  --color-chart-cyan: #6cc5b0;
+  --color-chart-green: #3ca951;
+  --color-chart-pink: #ff8ab7;
+  --color-chart-purple: #a463f2;
+  --color-chart-light-blue: #97bbf5;
+  --color-chart-brown: #9c6b4e;
+  --color-chart-gray: #9498a0;
 
-  /* Chart Semantic Colors */
-  --color-chart-success: #00c28a; /* Green - Brand */
-  --color-chart-warning: #efb118; /* Orange */
-  --color-chart-error: #ff725c; /* Red */
+  /* Chart Semantic Colors - per-brand (HyperDX brand green for success / info) */
+  --color-chart-success: #00c28a;
+  --color-chart-warning: #efb118;
+  --color-chart-error: #ff725c;
+  --color-chart-info: #00c28a;
 
   /* Chart Semantic Colors - Highlighted (for hover/selection states) */
   --color-chart-success-highlight: #80d9b3;
@@ -206,22 +211,25 @@
   --color-json-array: var(--mantine-color-green-7);
   --color-json-punctuation: var(--mantine-color-dark-5);
 
-  /* Chart Colors - Brand green first, then Observable palette (same for light mode) */
-  --color-chart-1: #00c28a; /* Green - Brand (primary) */
-  --color-chart-2: #4269d0; /* Blue */
-  --color-chart-3: #efb118; /* Orange */
-  --color-chart-4: #ff725c; /* Red */
-  --color-chart-5: #6cc5b0; /* Cyan */
-  --color-chart-6: #ff8ab7; /* Pink */
-  --color-chart-7: #a463f2; /* Purple */
-  --color-chart-8: #97bbf5; /* Light Blue */
-  --color-chart-9: #9c6b4e; /* Brown */
-  --color-chart-10: #9498a0; /* Gray */
+  /* Chart Categorical Palette - Observable 10, unified across themes.
+     Duplicated from the dark block: CSS specificity requires the chart
+     vars to live inside each [data-mantine-color-scheme] selector. */
+  --color-chart-blue: #4269d0;
+  --color-chart-orange: #efb118;
+  --color-chart-red: #ff725c;
+  --color-chart-cyan: #6cc5b0;
+  --color-chart-green: #3ca951;
+  --color-chart-pink: #ff8ab7;
+  --color-chart-purple: #a463f2;
+  --color-chart-light-blue: #97bbf5;
+  --color-chart-brown: #9c6b4e;
+  --color-chart-gray: #9498a0;
 
-  /* Chart Semantic Colors */
-  --color-chart-success: #00c28a; /* Green - Brand */
-  --color-chart-warning: #efb118; /* Orange */
-  --color-chart-error: #ff725c; /* Red */
+  /* Chart Semantic Colors - per-brand (HyperDX brand green for success / info) */
+  --color-chart-success: #00c28a;
+  --color-chart-warning: #efb118;
+  --color-chart-error: #ff725c;
+  --color-chart-info: #00c28a;
 
   /* Chart Semantic Colors - Highlighted (for hover/selection states) */
   --color-chart-success-highlight: #80d9b3;

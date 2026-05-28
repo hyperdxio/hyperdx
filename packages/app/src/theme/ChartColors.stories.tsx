@@ -1,19 +1,20 @@
 import React from 'react';
 
 import {
+  CATEGORICAL_PALETTE_TOKENS,
   COLORS,
   getChartColorError,
   getChartColorSuccess,
   getChartColorWarning,
 } from '@/utils';
 
-// Labels for chart colors - brand green first, then Observable palette
+// Pretty labels for the picker UI, in the same order as CATEGORICAL_PALETTE_TOKENS.
 const COLOR_LABELS = [
-  'Green (Brand)',
   'Blue',
   'Orange',
   'Red',
   'Cyan',
+  'Green',
   'Pink',
   'Purple',
   'Light Blue',
@@ -21,11 +22,12 @@ const COLOR_LABELS = [
   'Gray',
 ];
 
-// Derive chart colors from the single source of truth in utils.ts
-const CHART_COLORS = COLORS.map((hex, i) => ({
-  name: `color-chart-${i + 1}`,
-  hex,
-  label: COLOR_LABELS[i] || `Color ${i + 1}`,
+// Derive chart colors from the single source of truth in utils.ts; the token
+// (e.g. `chart-blue`) is the CSS-var slug too.
+const CHART_COLORS = CATEGORICAL_PALETTE_TOKENS.map((token, i) => ({
+  name: `color-${token}`,
+  hex: COLORS[i],
+  label: COLOR_LABELS[i] ?? token,
 }));
 
 const SEMANTIC_CHART_COLORS = [
@@ -352,7 +354,7 @@ export const AccessibilityCheck = () => (
         border: '1px solid var(--color-border)',
       }}
     >
-      {CHART_COLORS.map(({ hex, label }, i) => (
+      {CHART_COLORS.map(({ hex, label }) => (
         <div
           key={label}
           style={{
@@ -370,8 +372,7 @@ export const AccessibilityCheck = () => (
             gap: 2,
           }}
         >
-          <span>{i + 1}</span>
-          <span style={{ fontSize: 9, fontWeight: 400 }}>{label}</span>
+          <span style={{ fontSize: 11 }}>{label}</span>
         </div>
       ))}
     </div>

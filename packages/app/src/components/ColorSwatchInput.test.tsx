@@ -25,7 +25,7 @@ describe('ColorSwatchInput', () => {
     await user.click(screen.getByTestId('color-swatch-input-trigger'));
 
     expect(
-      await screen.findByTestId('color-swatch-option-chart-1'),
+      await screen.findByTestId('color-swatch-option-chart-blue'),
     ).toBeInTheDocument();
     expect(
       screen.getByTestId('color-swatch-option-chart-success'),
@@ -72,12 +72,14 @@ describe('ColorSwatchInput', () => {
 
   it('marks only the selected swatch as pressed', async () => {
     const user = userEvent.setup();
-    renderWithMantine(<ColorSwatchInput value="chart-2" />);
+    renderWithMantine(<ColorSwatchInput value="chart-orange" />);
 
     await user.click(screen.getByTestId('color-swatch-input-trigger'));
 
-    const selected = await screen.findByTestId('color-swatch-option-chart-2');
-    const other = await screen.findByTestId('color-swatch-option-chart-3');
+    const selected = await screen.findByTestId(
+      'color-swatch-option-chart-orange',
+    );
+    const other = await screen.findByTestId('color-swatch-option-chart-red');
     expect(selected).toHaveAttribute('aria-pressed', 'true');
     expect(other).toHaveAttribute('aria-pressed', 'false');
   });
@@ -85,7 +87,9 @@ describe('ColorSwatchInput', () => {
   it('clears the selection via the Clear button', async () => {
     const onChange = jest.fn();
     const user = userEvent.setup();
-    renderWithMantine(<ColorSwatchInput value="chart-1" onChange={onChange} />);
+    renderWithMantine(
+      <ColorSwatchInput value="chart-blue" onChange={onChange} />,
+    );
 
     await user.click(screen.getByTestId('color-swatch-input-trigger'));
     await user.click(await screen.findByTestId('color-swatch-input-clear'));
@@ -101,7 +105,7 @@ describe('ColorSwatchInput', () => {
     await user.click(screen.getByTestId('color-swatch-input-trigger'));
 
     expect(
-      await screen.findByTestId('color-swatch-option-chart-1'),
+      await screen.findByTestId('color-swatch-option-chart-blue'),
     ).toBeInTheDocument();
     expect(
       screen.queryByTestId('color-swatch-input-clear'),
@@ -144,7 +148,7 @@ describe('ColorSwatchInput', () => {
 
     await user.click(trigger);
     expect(
-      screen.queryByTestId('color-swatch-option-chart-1'),
+      screen.queryByTestId('color-swatch-option-chart-blue'),
     ).not.toBeInTheDocument();
   });
 
@@ -153,11 +157,13 @@ describe('ColorSwatchInput', () => {
     renderWithMantine(<ColorSwatchInput />);
 
     await user.click(screen.getByTestId('color-swatch-input-trigger'));
-    await user.click(await screen.findByTestId('color-swatch-option-chart-3'));
+    await user.click(
+      await screen.findByTestId('color-swatch-option-chart-red'),
+    );
 
     await waitFor(() => {
       expect(
-        screen.queryByTestId('color-swatch-option-chart-3'),
+        screen.queryByTestId('color-swatch-option-chart-red'),
       ).not.toBeInTheDocument();
     });
   });
@@ -180,11 +186,11 @@ describe('ColorSwatchInput', () => {
     fireEvent.click(trigger);
 
     const firstSwatch = await screen.findByTestId(
-      'color-swatch-option-chart-1',
+      'color-swatch-option-chart-blue',
     );
     firstSwatch.focus();
     fireEvent.click(firstSwatch);
 
-    expect(onChange).toHaveBeenCalledWith('chart-1');
+    expect(onChange).toHaveBeenCalledWith('chart-blue');
   });
 });

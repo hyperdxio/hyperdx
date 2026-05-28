@@ -11,7 +11,7 @@ import {
   formatResponseForPieChart,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
-import { COLORS, getChartColorError } from '@/utils';
+import { COLORS, getChartColorError, getChartColorInfo } from '@/utils';
 
 describe('ChartUtils', () => {
   describe('formatResponseForTimeChart', () => {
@@ -306,7 +306,7 @@ describe('ChartUtils', () => {
 
       expect(actual.lineData).toEqual([
         {
-          color: COLORS[0],
+          color: getChartColorInfo(),
           dataKey: 'info',
           currentPeriodKey: 'info',
           previousPeriodKey: 'info (previous)',
@@ -315,7 +315,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: COLORS[0],
+          color: getChartColorInfo(),
           dataKey: 'debug',
           currentPeriodKey: 'debug',
           previousPeriodKey: 'debug (previous)',

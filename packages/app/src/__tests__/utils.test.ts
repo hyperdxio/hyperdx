@@ -1,4 +1,8 @@
-import { NumericUnit, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartPaletteTokenSchema,
+  NumericUnit,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 import { act, renderHook } from '@testing-library/react';
 
@@ -1213,10 +1217,10 @@ describe('getColorFromCSSToken', () => {
   it('returns the CSS variable value when getComputedStyle provides one', () => {
     jest.spyOn(global, 'getComputedStyle').mockReturnValue({
       getPropertyValue: (name: string) =>
-        name === '--color-chart-1' ? '#custom-green' : '',
+        name === '--color-chart-blue' ? '#custom-blue' : '',
     } as unknown as CSSStyleDeclaration);
 
-    expect(getColorFromCSSToken('chart-1')).toBe('#custom-green');
+    expect(getColorFromCSSToken('chart-blue')).toBe('#custom-blue');
   });
 
   it('returns the CSS variable value for semantic tokens when provided', () => {
@@ -1228,12 +1232,12 @@ describe('getColorFromCSSToken', () => {
     expect(getColorFromCSSToken('chart-success')).toBe('#theme-green');
   });
 
-  it('falls back to COLORS[0] for chart-1 when the CSS variable is empty', () => {
+  it('falls back to COLORS[0] for chart-blue when the CSS variable is empty', () => {
     jest.spyOn(global, 'getComputedStyle').mockReturnValue({
       getPropertyValue: () => '',
     } as unknown as CSSStyleDeclaration);
 
-    expect(getColorFromCSSToken('chart-1')).toBe(COLORS[0]);
+    expect(getColorFromCSSToken('chart-blue')).toBe(COLORS[0]);
   });
 
   it('falls back to the SSR palette when getComputedStyle throws', () => {
@@ -1241,18 +1245,19 @@ describe('getColorFromCSSToken', () => {
       throw new Error('getComputedStyle unavailable');
     });
 
-    // Semantic tokens fall back to their designated palette colors.
-    // These hex values are the CHART_PALETTE constants used in paletteTokenSSRFallback.
+    // Semantic tokens fall back to the active theme's SEMANTIC_CHART_PALETTE
+    // entry (defaults to HyperDX in jsdom because the document has no
+    // theme-clickstack class).
     expect(getColorFromCSSToken('chart-success')).toBe('#00c28a');
     expect(getColorFromCSSToken('chart-warning')).toBe('#efb118');
     expect(getColorFromCSSToken('chart-error')).toBe('#ff725c');
-    // Categorical token falls back to the COLORS array by index.
-    expect(getColorFromCSSToken('chart-1')).toBe(COLORS[0]);
-    expect(getColorFromCSSToken('chart-10')).toBe(COLORS[9]);
+    // Categorical tokens fall back to their canonical hex in the unified
+    // Observable 10 palette.
+    expect(getColorFromCSSToken('chart-blue')).toBe(COLORS[0]);
+    expect(getColorFromCSSToken('chart-gray')).toBe(COLORS[9]);
   });
 
-  it('falls back to the SSR palette for all categorical indices (chart-1 through chart-10)', () => {
-    // Verify every categorical token resolves to its expected COLORS entry.
+  it('falls back to the SSR palette for every categorical token in CATEGORICAL_PALETTE_TOKENS', () => {
     // The throw-branch exercises the same paletteTokenSSRFallback code as the
     // SSR branch (window === undefined), which jsdom prevents from being
     // simulated via Object.defineProperty.
@@ -1260,8 +1265,18 @@ describe('getColorFromCSSToken', () => {
       throw new Error('not available');
     });
 
-    for (let i = 1; i <= 10; i++) {
-      expect(getColorFromCSSToken(`chart-${i}` as any)).toBe(COLORS[i - 1]);
-    }
+    utils.CATEGORICAL_PALETTE_TOKENS.forEach((token, i) => {
+      expect(getColorFromCSSToken(token)).toBe(COLORS[i]);
+    });
+  });
+
+  it('migrates legacy numeric tokens (chart-1..10) to hue-named tokens via the Zod schema', () => {
+    // Tokens like `chart-1` are not part of the new ChartPaletteToken type
+    // but stored configs from #2265 still contain them; Zod's preprocess
+    // remaps them to their HyperDX-slot-order hue equivalents.
+    const parsed = ChartPaletteTokenSchema.parse('chart-1');
+    expect(parsed).toBe('chart-green');
+    expect(ChartPaletteTokenSchema.parse('chart-2')).toBe('chart-blue');
+    expect(ChartPaletteTokenSchema.parse('chart-10')).toBe('chart-gray');
   });
 });

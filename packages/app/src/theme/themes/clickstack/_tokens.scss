@@ -173,27 +173,33 @@
   --color-json-punctuation: #666980;
 
   /*
-   * Chart Colors - Observable 10 categorical palette
-   * NOTE: These colors are intentionally duplicated in both dark and light mode sections.
-   * CSS specificity requires them to be defined within each [data-mantine-color-scheme] selector
-   * to ensure they're applied correctly. A shared .theme-clickstack section would have lower
-   * specificity and could be overridden by other styles.
+   * Chart Categorical Palette - Observable 10, unified across themes.
+   * Hue-named tokens resolve to the same hex on both HyperDX and
+   * ClickStack so a user's color choice means the same thing
+   * regardless of brand. Brand identity carries through the semantic
+   * --color-chart-success / -info tokens below and the Click UI accents.
+   *
+   * NOTE: Duplicated across dark and light mode sections by design.
+   * CSS specificity requires them to live inside each
+   * [data-mantine-color-scheme] selector; a shared .theme-clickstack
+   * section would have lower specificity and could be overridden.
    */
-  --color-chart-1: #437eef; /* Blue - Primary */
-  --color-chart-2: #efb118; /* Orange */
-  --color-chart-3: #ff725c; /* Red */
-  --color-chart-4: #6cc5b0; /* Cyan */
-  --color-chart-5: #3ca951; /* Green */
-  --color-chart-6: #ff8ab7; /* Pink */
-  --color-chart-7: #a463f2; /* Purple */
-  --color-chart-8: #97bbf5; /* Light Blue */
-  --color-chart-9: #9c6b4e; /* Brown */
-  --color-chart-10: #9498a0; /* Gray */
+  --color-chart-blue: #4269d0;
+  --color-chart-orange: #efb118;
+  --color-chart-red: #ff725c;
+  --color-chart-cyan: #6cc5b0;
+  --color-chart-green: #3ca951;
+  --color-chart-pink: #ff8ab7;
+  --color-chart-purple: #a463f2;
+  --color-chart-light-blue: #97bbf5;
+  --color-chart-brown: #9c6b4e;
+  --color-chart-gray: #9498a0;
 
-  /* Chart Semantic Colors */
-  --color-chart-success: #3ca951; /* Green */
-  --color-chart-warning: #efb118; /* Orange */
-  --color-chart-error: #ff725c; /* Red */
+  /* Chart Semantic Colors - per-brand (ClickStack blue for info, Observable green for success) */
+  --color-chart-success: #3ca951;
+  --color-chart-warning: #efb118;
+  --color-chart-error: #ff725c;
+  --color-chart-info: #4269d0;
 
   /* Chart Semantic Colors - Highlighted (for hover/selection states) */
   --color-chart-success-highlight: #80d9b3;
@@ -379,22 +385,25 @@
   --color-json-array: #997300;
   --color-json-punctuation: #868e96;
 
-  /* Chart Colors - See dark mode section for explanation of why duplication is required */
-  --color-chart-1: #437eef; /* Blue - Primary */
-  --color-chart-2: #efb118; /* Orange */
-  --color-chart-3: #ff725c; /* Red */
-  --color-chart-4: #6cc5b0; /* Cyan */
-  --color-chart-5: #3ca951; /* Green */
-  --color-chart-6: #ff8ab7; /* Pink */
-  --color-chart-7: #a463f2; /* Purple */
-  --color-chart-8: #97bbf5; /* Light Blue */
-  --color-chart-9: #9c6b4e; /* Brown */
-  --color-chart-10: #9498a0; /* Gray */
+  /* Chart Categorical Palette - Observable 10, unified across themes.
+     Duplicated from the dark block: CSS specificity requires the chart
+     vars to live inside each [data-mantine-color-scheme] selector. */
+  --color-chart-blue: #4269d0;
+  --color-chart-orange: #efb118;
+  --color-chart-red: #ff725c;
+  --color-chart-cyan: #6cc5b0;
+  --color-chart-green: #3ca951;
+  --color-chart-pink: #ff8ab7;
+  --color-chart-purple: #a463f2;
+  --color-chart-light-blue: #97bbf5;
+  --color-chart-brown: #9c6b4e;
+  --color-chart-gray: #9498a0;
 
-  /* Chart Semantic Colors */
-  --color-chart-success: #3ca951; /* Green */
-  --color-chart-warning: #efb118; /* Orange */
-  --color-chart-error: #ff725c; /* Red */
+  /* Chart Semantic Colors - per-brand (ClickStack blue for info, Observable green for success) */
+  --color-chart-success: #3ca951;
+  --color-chart-warning: #efb118;
+  --color-chart-error: #ff725c;
+  --color-chart-info: #4269d0;
 
   /* Chart Semantic Colors - Highlighted (for hover/selection states) */
   --color-chart-success-highlight: #80d9b3;
