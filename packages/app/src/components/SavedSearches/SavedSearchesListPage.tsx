@@ -129,7 +129,7 @@ export default function SavedSearchesListPage() {
       <Head>
         <title>Saved Searches - {brandName}</title>
       </Head>
-      <PageHeader>Saved Searches</PageHeader>
+      <PageHeader title="Saved Searches" />
       <Container
         maw={1200}
         py="lg"

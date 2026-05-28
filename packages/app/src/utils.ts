@@ -6,6 +6,7 @@ import type { SetStateAction } from 'react';
 import TimestampNano from 'timestamp-nano';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  ChartPaletteToken,
   NumericUnit,
   SourceKind,
   TMetricSource,
@@ -409,6 +410,23 @@ export const COLORS = [
 ];
 
 /**
+ * Palette token types and runtime guards live in common-utils so the
+ * Zod schema in `SharedChartSettingsSchema` can reference them; the
+ * theme-aware CSS resolver `getColorFromCSSToken` below stays in app
+ * because it depends on `getComputedStyle(document.documentElement)`.
+ *
+ * Re-exported here so existing app-side imports from `@/utils` keep
+ * working unchanged.
+ */
+export {
+  CATEGORICAL_PALETTE_TOKENS,
+  CHART_PALETTE_TOKENS,
+  isChartPaletteToken,
+  SEMANTIC_PALETTE_TOKENS,
+} from '@hyperdx/common-utils/dist/types';
+export type { ChartPaletteToken };
+
+/**
  * Detects the active theme by checking for theme classes on documentElement.
  * Returns 'clickstack' if theme-clickstack class is present, 'hyperdx' otherwise.
  * Note: classList.contains() is O(1) and fast - no caching needed.
@@ -463,6 +481,55 @@ function getColorFromCSSVariable(index: number): string {
 
   // Fallback to default colors
   return COLORS[index % colorArrayLength];
+}
+
+/**
+ * Reads a chart color from a palette token by resolving the matching
+ * CSS variable (`--color-chart-<token-without-prefix>` for categorical
+ * tokens, `--color-chart-{success|warning|error}` for semantic tokens).
+ *
+ * Falls back to the appropriate slot in `COLORS` (categorical) or the
+ * HyperDX semantic palette (success / warning / error) when running
+ * server-side or when `getComputedStyle` fails.
+ *
+ * @example
+ *   getColorFromCSSToken('chart-1')        // brand green
+ *   getColorFromCSSToken('chart-warning')  // theme-aware warning
+ */
+export function getColorFromCSSToken(token: ChartPaletteToken): string {
+  const cssVarName = `--color-${token}`;
+
+  if (typeof window === 'undefined') {
+    return paletteTokenSSRFallback(token);
+  }
+
+  try {
+    const computedStyle = getComputedStyle(document.documentElement);
+    const color = computedStyle.getPropertyValue(cssVarName).trim();
+    if (color && color !== '') {
+      return color;
+    }
+  } catch {
+    // Fallback if getComputedStyle fails
+  }
+
+  return paletteTokenSSRFallback(token);
+}
+
+function paletteTokenSSRFallback(token: ChartPaletteToken): string {
+  switch (token) {
+    case 'chart-success':
+      return CHART_PALETTE.green;
+    case 'chart-warning':
+      return CHART_PALETTE.orange;
+    case 'chart-error':
+      return CHART_PALETTE.red;
+    default: {
+      // Categorical token: chart-N where N is 1..10
+      const index = Number(token.slice('chart-'.length)) - 1;
+      return COLORS[index] ?? COLORS[0];
+    }
+  }
 }
 
 export function hashCode(str: string) {
