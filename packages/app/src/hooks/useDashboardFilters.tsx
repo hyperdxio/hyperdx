@@ -1,5 +1,6 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQueryState } from 'nuqs';
+import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   FilterState,
   filtersToQuery,
@@ -21,19 +22,19 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     (expression: string, values: string[]) => {
       setFilterQueries(prev => {
         const { filters: filterValues } = parseQuery(prev ?? []);
+        // Normalize the expression to dot notation so it matches the keys
+        // returned by parseQuery (which converts bracket notation to dots).
+        const key = parseKeyPath(expression).join('.');
         if (values.length === 0) {
-          delete filterValues[expression];
+          delete filterValues[key];
         } else {
-          filterValues[expression] = {
+          filterValues[key] = {
             included: new Set(values),
             excluded: new Set(),
           };
         }
 
-        return filtersToQuery(
-          filterValues,
-          { stringifyKeys: false }, // Don't wrap keys with toString(), to preserve exact key names in URL query parameters
-        );
+        return filtersToQuery(filterValues);
       });
     },
     [setFilterQueries],
@@ -43,34 +44,98 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     valuesForExistingFilters,
     queriesForExistingFilters,
     ignoredExpressions,
+    filtersByExpression,
   } = useMemo(() => {
     const { filters: parsedFilters } = parseQuery(filterQueries ?? []);
     const valuesForExistingFilters: FilterState = {};
-    const knownExpressions = new Set(filters.map(f => f.expression));
     const ignored: string[] = [];
 
+    // Build a normalized lookup so bracket-notation expressions
+    // (e.g. SpanAttributes['k8s.pod.name']) match the dot-notation keys
+    // returned by parseLuceneFilter (e.g. SpanAttributes.k8s.pod.name).
+    const normalizeKey = (k: string) => parseKeyPath(k).join('.');
+    const normalizedParsed = new Map(
+      Object.entries(parsedFilters).map(([k, v]) => [normalizeKey(k), v]),
+    );
+    const knownNormalized = new Set(
+      filters.map(f => normalizeKey(f.expression)),
+    );
+
     for (const { expression } of filters) {
-      if (expression in parsedFilters) {
-        valuesForExistingFilters[expression] = parsedFilters[expression];
+      const norm = normalizeKey(expression);
+      const match = normalizedParsed.get(norm);
+      if (match) {
+        valuesForExistingFilters[expression] = match;
       }
     }
     for (const key of Object.keys(parsedFilters)) {
-      if (!knownExpressions.has(key)) {
+      if (!knownNormalized.has(normalizeKey(key))) {
         ignored.push(key);
+      }
+    }
+
+    // Multiple filter definitions may share the same expression but each
+    // declare a different `appliesToSourceIds` scope.
+    const filtersByExpression = new Map<string, DashboardFilter[]>();
+    for (const f of filters) {
+      const existing = filtersByExpression.get(f.expression);
+      if (existing) {
+        existing.push(f);
+      } else {
+        filtersByExpression.set(f.expression, [f]);
       }
     }
 
     return {
       valuesForExistingFilters,
-      queriesForExistingFilters: filtersToQuery(
-        valuesForExistingFilters,
-        // Wrap keys in `toString()` to support JSON/Dynamic-type columns.
-        // All keys can be stringified, since filter select values are stringified as well.
-        { stringifyKeys: true },
-      ),
+      queriesForExistingFilters: filtersToQuery(valuesForExistingFilters),
       ignoredExpressions: ignored,
+      filtersByExpression,
     };
   }, [filterQueries, filters]);
+
+  // Return only the filter queries that should be applied to a tile whose
+  // source is `sourceId`. When multiple filter definitions share the same
+  // expression, their scopes are unioned: the filter value applies if ANY
+  // sibling is unscoped or includes `sourceId`. A filter with no
+  // `appliesToSourceIds` (or an empty array) is treated as "applies to all".
+  // If `sourceId` is undefined (e.g. a RawSQL tile with no resolvable
+  // source), scoped filters are skipped and only unscoped filters are
+  // returned.
+  const getFilterQueriesForSource = useCallback(
+    (sourceId: string | undefined): Filter[] => {
+      const scoped: FilterState = {};
+      for (const [expression, state] of Object.entries(
+        valuesForExistingFilters,
+      )) {
+        const definitions = filtersByExpression.get(expression) ?? [];
+        const applies = definitions.some(def => {
+          const appliesTo = def.appliesToSourceIds;
+          if (!appliesTo || appliesTo.length === 0) return true;
+          return !!sourceId && appliesTo.includes(sourceId);
+        });
+        if (applies) {
+          scoped[expression] = state;
+        }
+      }
+      return filtersToQuery(scoped);
+    },
+    [valuesForExistingFilters, filtersByExpression],
+  );
+
+  // Migrate legacy SQL filters in the URL to Lucene on load
+  const hasMigratedRef = useRef(false);
+  useEffect(() => {
+    if (hasMigratedRef.current || !filterQueries) return;
+    const hasSqlFilters = filterQueries.some(
+      f => 'condition' in f && f.type === 'sql',
+    );
+    if (hasSqlFilters) {
+      hasMigratedRef.current = true;
+      const { filters: parsed, passthroughFilters } = parseQuery(filterQueries);
+      setFilterQueries([...filtersToQuery(parsed), ...passthroughFilters]);
+    }
+  }, [filterQueries, setFilterQueries]);
 
   return {
     filterValues: valuesForExistingFilters,
@@ -83,6 +148,13 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
      * be silently dropped. Callers can surface a warning.
      */
     ignoredFilterExpressions: ignoredExpressions,
+    /**
+     * Returns the subset of filter queries that should apply to a tile whose
+     * source is `sourceId`. Filters with no `appliesToSourceIds` apply to all
+     * tiles. Filters with `appliesToSourceIds` defined apply only to tiles
+     * whose source ID is in the list.
+     */
+    getFilterQueriesForSource,
   };
 };
 

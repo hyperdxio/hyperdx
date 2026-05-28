@@ -11,6 +11,22 @@ export enum MetricsDataType {
 
 export const MetricsDataTypeSchema = z.nativeEnum(MetricsDataType);
 
+/**
+ * Controls whether lucene rendering uses ClickHouse text/skip indices
+ * (e.g. hasAllTokens()) when matching the implicit column.
+ *
+ * - `auto` (default): detect a covering text/bloom_filter index at query time
+ * - `enabled`: always emit hasAllTokens(), even when no index is detected
+ * - `disabled`: never use a text index; fall back to LIKE/hasToken
+ */
+export enum UseTextIndex {
+  Auto = 'auto',
+  Enabled = 'enabled',
+  Disabled = 'disabled',
+}
+
+export const UseTextIndexSchema = z.nativeEnum(UseTextIndex);
+
 // --------------------------
 //  UI
 // --------------------------
@@ -132,7 +148,7 @@ export const SQLIntervalSchema = z
   .regex(/^\d+ (second|minute|hour|day)$/);
 export const SearchConditionSchema = z.string();
 export const SearchConditionLanguageSchema = z
-  .enum(['sql', 'lucene'])
+  .enum(['sql', 'lucene', 'promql'])
   .optional();
 export const AggregateFunctionSchema = z.enum([
   'avg',
@@ -859,6 +875,7 @@ const SharedChartSettingsSchema = z.object({
 export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
+  useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
   sampleWeightExpression: z.string().optional(),
   markdown: z.string().optional(),
   filtersLogicalOperator: z.enum(['AND', 'OR']).optional(),
@@ -930,14 +947,35 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
   implicitColumnExpression: z.string().optional(),
+  useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
   metricTables: MetricTableSchema.optional(),
 });
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
 
+/** Base schema for PromQL chart configs (persisted fields) */
+const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
+  configType: z.literal('promql'),
+  promqlExpression: z.string(),
+  connection: z.string(),
+  source: z.string().optional(),
+  step: z.string().optional(),
+});
+
+/** Schema describing PromQL chart configs with runtime-only fields */
+const PromqlChartConfigSchema = PromqlBaseChartConfigSchema.extend({
+  filters: z.array(FilterSchema).optional(),
+  from: z
+    .object({ databaseName: z.string(), tableName: z.string() })
+    .optional(),
+});
+
+export type PromqlChartConfig = z.infer<typeof PromqlChartConfigSchema>;
+
 export const ChartConfigSchema = z.union([
   BuilderChartConfigSchema,
   RawSqlChartConfigSchema,
+  PromqlChartConfigSchema,
 ]);
 
 export type ChartConfig = z.infer<typeof ChartConfigSchema>;
@@ -951,6 +989,7 @@ export type DateRange = {
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
 export type BuilderChartConfigWithDateRange = BuilderChartConfig & DateRange;
 export type RawSqlConfigWithDateRange = RawSqlChartConfig & DateRange;
+export type PromqlConfigWithDateRange = PromqlChartConfig & DateRange;
 
 export type BuilderChartConfigWithOptTimestamp = Omit<
   BuilderChartConfigWithDateRange,
@@ -961,7 +1000,8 @@ export type BuilderChartConfigWithOptTimestamp = Omit<
 
 export type ChartConfigWithOptTimestamp =
   | BuilderChartConfigWithOptTimestamp
-  | RawSqlConfigWithDateRange;
+  | RawSqlConfigWithDateRange
+  | PromqlConfigWithDateRange;
 
 // For non-time-based searches (ex. grab 1 row)
 export type BuilderChartConfigWithOptDateRange = Omit<
@@ -973,7 +1013,8 @@ export type BuilderChartConfigWithOptDateRange = Omit<
 
 export type ChartConfigWithOptDateRange =
   | BuilderChartConfigWithOptDateRange
-  | (RawSqlChartConfig & Partial<DateRange>);
+  | (RawSqlChartConfig & Partial<DateRange>)
+  | (PromqlChartConfig & Partial<DateRange>);
 
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
@@ -1020,13 +1061,31 @@ const RawSqlSavedChartConfigSchema =
     ]),
   });
 
+const PromqlSavedChartConfigWithoutAlertSchema =
+  PromqlBaseChartConfigSchema.extend({
+    name: z.string().optional(),
+  });
+
+const PromqlSavedChartConfigSchema =
+  PromqlSavedChartConfigWithoutAlertSchema.extend({
+    alert: z.union([
+      AlertBaseSchema.optional(),
+      ChartAlertBaseSchema.optional(),
+    ]),
+  });
+
 export const SavedChartConfigSchema = z.union([
   BuilderSavedChartConfigSchema,
   RawSqlSavedChartConfigSchema,
+  PromqlSavedChartConfigSchema,
 ]);
 
 export type RawSqlSavedChartConfig = z.infer<
   typeof RawSqlSavedChartConfigSchema
+>;
+
+export type PromqlSavedChartConfig = z.infer<
+  typeof PromqlSavedChartConfigSchema
 >;
 
 export type SavedChartConfig = z.infer<typeof SavedChartConfigSchema>;
@@ -1049,6 +1108,7 @@ export const TileTemplateSchema = TileSchema.extend({
   config: z.union([
     BuilderSavedChartConfigWithoutAlertSchema,
     RawSqlSavedChartConfigWithoutAlertSchema,
+    PromqlSavedChartConfigWithoutAlertSchema,
   ]),
 });
 
@@ -1107,6 +1167,9 @@ export const DashboardFilterSchema = z.object({
   sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
   where: z.string().optional(),
   whereLanguage: SearchConditionLanguageSchema,
+  // Sources this filter applies to. Undefined / missing means the filter
+  // applies to all tiles.
+  appliesToSourceIds: z.array(z.string().min(1)).optional(),
 });
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
@@ -1203,6 +1266,7 @@ export const ConnectionSchema = z.object({
     .regex(/^[a-z0-9_]+$/i)
     .optional()
     .nullable(),
+  prometheusEndpoint: z.string().url().optional(),
 });
 
 export type Connection = z.infer<typeof ConnectionSchema>;
@@ -1215,6 +1279,19 @@ export const TeamClickHouseSettingsSchema = z.object({
   parallelizeWhenPossible: z.boolean().optional(),
   filterKeysFetchLimit: z.number().optional(),
 });
+
+/** Accepts null to unset (reset to default) a setting. */
+export const TeamClickHouseSettingsUpdateSchema = z.object({
+  fieldMetadataDisabled: z.boolean().nullish(),
+  searchRowLimit: z.number().nullish(),
+  queryTimeout: z.number().nullish(),
+  metadataMaxRowsToRead: z.number().nullish(),
+  parallelizeWhenPossible: z.boolean().nullish(),
+  filterKeysFetchLimit: z.number().nullish(),
+});
+export type TeamClickHouseSettingsUpdate = z.infer<
+  typeof TeamClickHouseSettingsUpdateSchema
+>;
 export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
 >;
@@ -1240,6 +1317,7 @@ export enum SourceKind {
   Trace = 'trace',
   Session = 'session',
   Metric = 'metric',
+  Promql = 'promql',
 }
 
 // --------------------------
@@ -1357,6 +1435,7 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
   metadataMaterializedViews: MetadataMaterializedViewsSchema.optional(),
   orderByExpression: z.string().optional(),
+  useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
 });
 
 // Trace source form schema
@@ -1397,6 +1476,7 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   materializedViews: z.array(MaterializedViewConfigurationSchema).optional(),
   metadataMaterializedViews: MetadataMaterializedViewsSchema.optional(),
   orderByExpression: z.string().optional(),
+  useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
 });
 
 // Session source form schema
@@ -1432,12 +1512,18 @@ export const MetricSourceSchema = BaseSourceSchema.extend({
   logSourceId: z.string().optional(),
 });
 
+// PromQL source form schema
+export const PromqlSourceSchema = BaseSourceSchema.extend({
+  kind: z.literal(SourceKind.Promql),
+});
+
 // Union of all source form schemas for validation
 export const SourceSchema = z.discriminatedUnion('kind', [
   LogSourceSchema,
   TraceSourceSchema,
   SessionSourceSchema,
   MetricSourceSchema,
+  PromqlSourceSchema,
 ]);
 export type TSource = z.infer<typeof SourceSchema>;
 
@@ -1446,6 +1532,7 @@ export const SourceSchemaNoId = z.discriminatedUnion('kind', [
   TraceSourceSchema.omit({ id: true }),
   SessionSourceSchema.omit({ id: true }),
   MetricSourceSchema.omit({ id: true }),
+  PromqlSourceSchema.omit({ id: true }),
 ]);
 export type TSourceNoId = z.infer<typeof SourceSchemaNoId>;
 
@@ -1454,6 +1541,7 @@ export type TLogSource = Extract<TSource, { kind: SourceKind.Log }>;
 export type TTraceSource = Extract<TSource, { kind: SourceKind.Trace }>;
 export type TSessionSource = Extract<TSource, { kind: SourceKind.Session }>;
 export type TMetricSource = Extract<TSource, { kind: SourceKind.Metric }>;
+export type TPromqlSource = Extract<TSource, { kind: SourceKind.Promql }>;
 
 // Type guards for narrowing TSource by kind
 export function isLogSource(source: TSource): source is TLogSource {
@@ -1467,6 +1555,9 @@ export function isSessionSource(source: TSource): source is TSessionSource {
 }
 export function isMetricSource(source: TSource): source is TMetricSource {
   return source.kind === SourceKind.Metric;
+}
+export function isPromqlSource(source: TSource): source is TPromqlSource {
+  return source.kind === SourceKind.Promql;
 }
 export function isSearchableSource(source: TSource): boolean {
   return isLogSource(source) || isTraceSource(source);

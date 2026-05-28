@@ -45,6 +45,7 @@ export default function SearchInputV2({
   additionalSuggestions,
   queryHistoryType,
   dateRange,
+  sourceId,
   'data-testid': dataTestId,
   ...props
 }: {
@@ -58,6 +59,7 @@ export default function SearchInputV2({
   additionalSuggestions?: string[];
   queryHistoryType?: string;
   dateRange?: [Date, Date];
+  sourceId?: string;
   'data-testid'?: string;
 } & UseControllerProps<any> &
   TableConnectionChoice) {
@@ -80,6 +82,7 @@ export default function SearchInputV2({
       tableConnection: tableConnection ? tableConnection : tableConnections,
       additionalSuggestions,
       dateRange,
+      sourceId,
       inputRef: ref,
     },
   );

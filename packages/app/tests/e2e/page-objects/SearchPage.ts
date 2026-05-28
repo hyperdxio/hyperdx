@@ -295,6 +295,18 @@ export class SearchPage {
     await this.page.mouse.up();
   }
 
+  /**
+   * Returns a locator for the yellow Mantine notification shown when one or
+   * more sidebar filters are dropped because they don't exist on the newly
+   * selected source's schema.
+   *
+   * The message format from DBSearchPage.tsx:
+   *   "N filter(s) didn't apply to this source and was/were removed."
+   */
+  getDroppedFiltersToast() {
+    return this.page.getByText(/filter.* didn't apply to this source/i);
+  }
+
   // Getters for assertions in spec files
 
   get form() {

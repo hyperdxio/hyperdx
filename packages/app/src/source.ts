@@ -22,6 +22,7 @@ import {
   SourceSchema,
   TLogSource,
   TMetricSource,
+  TPromqlSource,
   TSessionSource,
   TSource,
   TSourceNoId,
@@ -264,7 +265,8 @@ type InferredSourceConfig =
   | TStrippedSource<TLogSource>
   | TStrippedSource<TTraceSource>
   | TStrippedSource<TMetricSource>
-  | TStrippedSource<TSessionSource>;
+  | TStrippedSource<TSessionSource>
+  | TStrippedSource<TPromqlSource>;
 
 export async function inferTableSourceConfig({
   databaseName,
@@ -307,6 +309,10 @@ export async function inferTableSourceConfig({
       : {}),
     kind,
   };
+
+  if (kind === SourceKind.Promql) {
+    return baseConfig as TStrippedSource<TPromqlSource>;
+  }
 
   if (kind === SourceKind.Session) {
     const isSessionSchema =

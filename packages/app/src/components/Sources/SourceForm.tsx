@@ -21,6 +21,7 @@ import {
   SourceSchema,
   SourceSchemaNoId,
   TSource,
+  UseTextIndex,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -53,7 +54,11 @@ import {
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
-import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
+import {
+  IS_METRICS_ENABLED,
+  IS_PROMQL_ENABLED,
+  IS_SESSIONS_ENABLED,
+} from '@/config';
 import { useConnections } from '@/connection';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
@@ -146,6 +151,8 @@ function setCorrelationFieldValue(
         return { ...source, [field]: value };
       }
       return source;
+    case SourceKind.Promql:
+      return source;
   }
 }
 
@@ -198,6 +205,7 @@ const CORRELATION_FIELD_MAP: Record<
       { targetKind: SourceKind.Log, targetField: 'metricSourceId' },
     ],
   },
+  [SourceKind.Promql]: {},
 };
 
 function FormRow({
@@ -1155,6 +1163,38 @@ function OrderByFormRow({
   );
 }
 
+const USE_TEXT_INDEX_OPTIONS = [
+  {
+    value: UseTextIndex.Auto,
+    label: 'Auto (detect from schema)',
+  },
+  {
+    value: UseTextIndex.Enabled,
+    label: 'Force enable',
+  },
+  {
+    value: UseTextIndex.Disabled,
+    label: 'Force disable',
+  },
+];
+
+function UseTextIndexFormRow({ control }: { control: Control<TSource> }) {
+  return (
+    <FormRow
+      label="Use Text Index"
+      helpText='Whether Lucene-based searches should emit hasAllTokens() when searching the implicit column. "Auto" (the default) detects a covering text index from skip-index metadata at query time; "Force enable" always emits hasAllTokens(), and is useful when querying a table using the merge table engine; "Force disable" falls back to hasToken().'
+    >
+      <SelectControlled
+        control={control}
+        name="useTextIndexForImplicitColumn"
+        data={USE_TEXT_INDEX_OPTIONS}
+        placeholder={USE_TEXT_INDEX_OPTIONS[0].label}
+        allowDeselect={false}
+      />
+    </FormRow>
+  );
+}
+
 function LogTableModelForm(props: TableModelProps) {
   const { control } = props;
   const brandName = useBrandDisplayName();
@@ -1374,6 +1414,7 @@ function LogTableModelForm(props: TableModelProps) {
             placeholder="Body"
           />
         </FormRow>
+        <UseTextIndexFormRow control={control} />
         <Divider />
         <HighlightedAttributeExpressionsFormRow
           {...props}
@@ -1670,6 +1711,7 @@ function TraceTableModelForm(props: TableModelProps) {
           placeholder="SpanName"
         />
       </FormRow>
+      <UseTextIndexFormRow control={control} />
       <FormRow
         label={'Displayed Timestamp Column'}
         helpText="This DateTime column is used to display and order search results."
@@ -1862,6 +1904,19 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
   );
 }
 
+function PromqlTableModelForm({
+  control: _control,
+  setValue,
+}: TableModelProps) {
+  useEffect(() => {
+    setValue('timestampValueExpression' as any, 'timestamp');
+  }, [setValue]);
+
+  // PromQL sources use the standard database + table fields from BaseSourceSchema.
+  // No additional fields needed — the table should point to the TimeSeries engine table.
+  return null;
+}
+
 function TableModelForm({
   control,
   setValue,
@@ -1880,6 +1935,8 @@ function TableModelForm({
       return <SessionTableModelForm control={control} setValue={setValue} />;
     case SourceKind.Metric:
       return <MetricTableModelForm control={control} setValue={setValue} />;
+    case SourceKind.Promql:
+      return <PromqlTableModelForm control={control} setValue={setValue} />;
   }
 }
 
@@ -2344,6 +2401,9 @@ export function TableSourceForm({
                   )}
                   {IS_SESSIONS_ENABLED && (
                     <Radio value={SourceKind.Session} label="Session" />
+                  )}
+                  {IS_PROMQL_ENABLED && (
+                    <Radio value={SourceKind.Promql} label="PromQL" />
                   )}
                 </Group>
               </Radio.Group>

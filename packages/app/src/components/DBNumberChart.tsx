@@ -8,9 +8,8 @@ import {
   isRawSqlChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
-  BuilderChartConfigWithDateRange,
+  ChartConfigWithDateRange,
   isChartPaletteToken,
-  RawSqlConfigWithDateRange,
 } from '@hyperdx/common-utils/dist/types';
 import { Flex, Text } from '@mantine/core';
 
@@ -39,7 +38,7 @@ export default function DBNumberChart({
   showMVOptimizationIndicator = true,
   errorVariant,
 }: {
-  config: BuilderChartConfigWithDateRange | RawSqlConfigWithDateRange;
+  config: ChartConfigWithDateRange;
   queryKeyPrefix?: string;
   enabled?: boolean;
   title?: React.ReactNode;

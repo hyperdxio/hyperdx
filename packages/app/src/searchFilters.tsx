@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import produce from 'immer';
+import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  coerceBooleanValue,
   type FilterState,
   filtersToQuery,
+  parseLuceneFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 
@@ -297,6 +300,8 @@ export const parseQuery = (
   q: Filter[],
 ): {
   filters: FilterState;
+  /** Filters that could not be parsed into FilterState (preserved for re-emission) */
+  passthroughFilters: Filter[];
 } => {
   const state = new Map<
     string,
@@ -306,7 +311,29 @@ export const parseQuery = (
       range?: { min: number; max: number };
     }
   >();
+  const passthroughFilters: Filter[] = [];
   for (const filter of q) {
+    if (filter.type === 'lucene') {
+      const parsedFields = parseLuceneFilter(filter.condition);
+      if (parsedFields === undefined) {
+        // Parse failure — preserve so it isn't silently lost
+        if (filter.condition.trim()) {
+          passthroughFilters.push(filter);
+        }
+      } else {
+        for (const { key, included, excluded, range } of parsedFields) {
+          if (!state.has(key)) {
+            state.set(key, { included: new Set(), excluded: new Set() });
+          }
+          const sets = state.get(key)!;
+          for (const v of included) sets.included.add(v);
+          for (const v of excluded) sets.excluded.add(v);
+          if (range) sets.range = range;
+        }
+      }
+      continue;
+    }
+
     if (filter.type !== 'sql') continue;
 
     // Check for BETWEEN condition (only when BETWEEN appears outside quotes)
@@ -352,7 +379,7 @@ export const parseQuery = (
       });
     }
   }
-  return { filters: Object.fromEntries(state) };
+  return { filters: Object.fromEntries(state), passthroughFilters };
 };
 
 export const useSearchPageFilterState = ({
@@ -367,7 +394,7 @@ export const useSearchPageFilterState = ({
       return parseQuery(searchQuery);
     } catch (e) {
       console.error(e);
-      return { filters: {} };
+      return { filters: {}, passthroughFilters: [] };
     }
   }, [searchQuery]);
 
@@ -381,11 +408,32 @@ export const useSearchPageFilterState = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsedQuery.filters]);
 
+  // Migrate legacy SQL filters to Lucene on load so URLs become canonical
+  const hasMigratedRef = useRef(false);
+  useEffect(() => {
+    if (hasMigratedRef.current) return;
+    const hasSqlFilters = searchQuery?.some(
+      f => 'condition' in f && f.type === 'sql',
+    );
+    if (hasSqlFilters && Object.keys(parsedQuery.filters).length > 0) {
+      hasMigratedRef.current = true;
+      onFilterChange([
+        ...filtersToQuery(parsedQuery.filters),
+        ...parsedQuery.passthroughFilters,
+      ]);
+    }
+  }, [searchQuery, parsedQuery, onFilterChange]);
+
   const updateFilterQuery = useCallback(
     (newFilters: FilterState) => {
-      onFilterChange(filtersToQuery(newFilters));
+      // Preserve unparseable filters so they aren't silently lost when
+      // the user toggles a sidebar facet.
+      onFilterChange([
+        ...filtersToQuery(newFilters),
+        ...parsedQuery.passthroughFilters,
+      ]);
     },
-    [onFilterChange],
+    [onFilterChange, parsedQuery.passthroughFilters],
   );
 
   const setFilterValue = useCallback(
@@ -394,15 +442,21 @@ export const useSearchPageFilterState = ({
       value: string | boolean,
       action?: 'only' | 'exclude' | 'include',
     ) => {
+      // Normalize bracket notation to dot notation so the key matches
+      // what parseQuery returns after a Lucene round-trip.
+      const key = parseKeyPath(property).join('.');
+      // Normalize "true"/"false" strings to booleans so the value matches
+      // what parseLuceneFilter returns after a Lucene round-trip.
+      const normalizedValue = coerceBooleanValue(value);
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
-          if (!draft[property]) {
-            draft[property] = { included: new Set(), excluded: new Set() };
+          if (!draft[key]) {
+            draft[key] = { included: new Set(), excluded: new Set() };
           }
 
           if (action === 'only') {
-            draft[property] = {
-              included: new Set([value]),
+            draft[key] = {
+              included: new Set([normalizedValue]),
               excluded: new Set(),
             };
             return;
@@ -410,22 +464,22 @@ export const useSearchPageFilterState = ({
 
           if (action === 'exclude') {
             // Remove from included if it was there
-            draft[property].included.delete(value);
+            draft[key].included.delete(normalizedValue);
             // Toggle in excluded
-            if (draft[property].excluded.has(value)) {
-              draft[property].excluded.delete(value);
+            if (draft[key].excluded.has(normalizedValue)) {
+              draft[key].excluded.delete(normalizedValue);
             } else {
-              draft[property].excluded.add(value);
+              draft[key].excluded.add(normalizedValue);
             }
             return;
           }
 
           // Regular toggle (include)
-          draft[property].excluded.delete(value);
-          if (draft[property].included.has(value)) {
-            draft[property].included.delete(value);
+          draft[key].excluded.delete(normalizedValue);
+          if (draft[key].included.has(normalizedValue)) {
+            draft[key].included.delete(normalizedValue);
           } else {
-            draft[property].included.add(value);
+            draft[key].included.add(normalizedValue);
           }
         });
         updateFilterQuery(newFilters);
@@ -437,12 +491,13 @@ export const useSearchPageFilterState = ({
 
   const setFilterRange = useCallback(
     (property: string, range: { min: number; max: number }) => {
+      const key = parseKeyPath(property).join('.');
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
-          if (!draft[property]) {
-            draft[property] = { included: new Set(), excluded: new Set() };
+          if (!draft[key]) {
+            draft[key] = { included: new Set(), excluded: new Set() };
           }
-          draft[property].range = range;
+          draft[key].range = range;
         });
         updateFilterQuery(newFilters);
         return newFilters;
@@ -453,9 +508,10 @@ export const useSearchPageFilterState = ({
 
   const clearFilter = useCallback(
     (property: string) => {
+      const key = parseKeyPath(property).join('.');
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
-          delete draft[property];
+          delete draft[key];
         });
         updateFilterQuery(newFilters);
         return newFilters;
@@ -469,6 +525,34 @@ export const useSearchPageFilterState = ({
     updateFilterQuery({});
   }, [updateFilterQuery]);
 
+  // Keep only filters whose root column appears in `allowedColumnNames`.
+  // Returns the keys of the filters that were dropped so callers can surface
+  // a notice when filter state was thrown away (e.g. on source change).
+  const retainFiltersByColumns = useCallback(
+    (allowedColumnNames: Set<string>): string[] => {
+      const dropped: string[] = [];
+      const kept: FilterState = {};
+      for (const [key, value] of Object.entries(filters)) {
+        // Filter keys are dot-normalized — top-level columns are stored as-is,
+        // nested JSON/Map keys as `Root.nested.path`. An exact match handles
+        // the rare case of a column with dots in its name.
+        const dotIdx = key.indexOf('.');
+        const rootColumn = dotIdx > 0 ? key.slice(0, dotIdx) : key;
+        if (allowedColumnNames.has(key) || allowedColumnNames.has(rootColumn)) {
+          kept[key] = value;
+        } else {
+          dropped.push(key);
+        }
+      }
+      if (dropped.length > 0) {
+        setFilters(kept);
+        updateFilterQuery(kept);
+      }
+      return dropped;
+    },
+    [filters, updateFilterQuery],
+  );
+
   return {
     filters,
     setFilters,
@@ -476,6 +560,7 @@ export const useSearchPageFilterState = ({
     setFilterRange,
     clearFilter,
     clearAllFilters,
+    retainFiltersByColumns,
   };
 };
 

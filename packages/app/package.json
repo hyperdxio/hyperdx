@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/app",
-  "version": "2.26.0",
+  "version": "2.27.0",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -47,6 +47,7 @@
     "@mantine/hooks": "^9.0.0",
     "@mantine/notifications": "^9.0.0",
     "@mantine/spotlight": "^9.0.0",
+    "@prometheus-io/codemirror-promql": "^0.311.3",
     "@tabler/icons-react": "^3.39.0",
     "@tanstack/react-query": "^5.56.2",
     "@tanstack/react-query-devtools": "^5.56.2",

@@ -43,7 +43,7 @@ interface ChartDisplaySettingsDrawerProps {
   defaultNumberFormat?: NumberFormat;
   displayType: DisplayType;
   /** 'sql' for raw SQL chart configs; anything else is treated as a builder config. */
-  configType?: 'sql' | 'builder';
+  configType?: 'sql' | 'builder' | 'promql';
   previousDateRange?: [Date, Date];
   onChange: (settings: ChartConfigDisplaySettings) => void;
   onClose: () => void;

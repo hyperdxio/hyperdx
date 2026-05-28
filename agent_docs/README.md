@@ -1,10 +1,10 @@
 # Agent Documentation Directory
 
-This directory contains detailed documentation for AI coding agents working on the HyperDX codebase. These files use **progressive disclosure** - they're referenced from `CLAUDE.md` but only read when needed.
+This directory contains detailed documentation for AI coding agents working on the HyperDX codebase. These files use **progressive disclosure** - they're referenced from `AGENTS.md` but only read when needed.
 
 ## Purpose
 
-Instead of stuffing all instructions into `CLAUDE.md` (which goes into every conversation), we keep detailed, task-specific information here. This ensures:
+Instead of stuffing all instructions into `AGENTS.md` (which goes into every conversation), we keep detailed, task-specific information here. This ensures:
 
 1. **Better focus**: Only relevant context gets loaded per task
 2. **Improved performance**: Smaller context window = better instruction following
@@ -16,12 +16,14 @@ Instead of stuffing all instructions into `CLAUDE.md` (which goes into every con
 - **`tech_stack.md`** - Technology choices, UI component patterns, library usage
 - **`development.md`** - Development workflows, testing strategy, common tasks, debugging
 - **`code_style.md`** - Code patterns and best practices (read only when actively coding)
+- **`page_layout.md`** - PageHeader, PageLayout, and consistent page chrome (titles, actions, tool pages)
 - **`data_viz_colors.md`** - Chart, heatmap, and semantic status colors. Read before adding or changing any color in a chart, sparkline, heatmap, legend, or status pill.
+- **`themes.md`** - How the brand theme system (HyperDX vs ClickStack) and color mode (light/dark/system) work. Read before changing anything in `packages/app/src/theme/`, adding semantic CSS variables, or touching brand-conditional UI.
 
 ## Usage Pattern
 
 When starting a task:
-1. Agent reads `CLAUDE.md` first (always included)
+1. Agent reads `AGENTS.md` first (always included)
 2. Agent determines which (if any) docs from this directory are relevant
 3. Agent reads only the needed documentation
 4. Agent proceeds with focused, relevant context
