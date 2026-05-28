@@ -410,6 +410,18 @@ func removeCompatLogsSchema(tempDir string) error {
 	return nil
 }
 
+// removePromqlSchema removes the experimental TimeSeries-engine schema from
+// the temp directory so it is only created when PromQL support is opted into
+// via ENABLE_PROMQL=true. Keeps the experimental engine and otel_metrics_ts
+// table out of deployments that have not enabled the feature.
+func removePromqlSchema(tempDir string) error {
+	promqlPath := filepath.Join(tempDir, "00008_otel_metrics_timeseries.sql")
+	if err := os.Remove(promqlPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove promql schema: %w", err)
+	}
+	return nil
+}
+
 // swapTracesSchemaForCompat replaces the full-text-search traces schema with
 // the compatibility variant (bloom_filter indexes, no items columns) in the
 // processed temp directory. It removes 00005_otel_traces.sql and renames
@@ -524,6 +536,13 @@ func main() {
 		}
 		if err := swapTracesSchemaForCompat(tempDir); err != nil {
 			log.Fatalf("Failed to swap traces schema: %v", err)
+		}
+	}
+
+	if os.Getenv("ENABLE_PROMQL") != "true" {
+		log.Printf("ENABLE_PROMQL not set, skipping PromQL TimeSeries schema")
+		if err := removePromqlSchema(tempDir); err != nil {
+			log.Fatalf("Failed to remove promql schema: %v", err)
 		}
 	}
 

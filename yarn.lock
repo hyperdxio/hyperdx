@@ -4438,6 +4438,7 @@ __metadata:
     "@mantine/spotlight": "npm:^9.0.0"
     "@next/eslint-plugin-next": "npm:^16.0.10"
     "@playwright/test": "npm:^1.57.0"
+    "@prometheus-io/codemirror-promql": "npm:^0.311.3"
     "@storybook/addon-docs": "npm:^10.1.4"
     "@storybook/addon-links": "npm:^10.1.4"
     "@storybook/addon-styling-webpack": "npm:^3.0.0"
@@ -8063,6 +8064,33 @@ __metadata:
     webpack-plugin-serve:
       optional: true
   checksum: 10c0/2aa713ce0979bfe508fc8a4605eaf39be2ee8f3d8e53d0dd7af1eab1249c7782e95aa644938210c86a654570ea355659a228c150b3fde51f2831211be8e4a0cc
+  languageName: node
+  linkType: hard
+
+"@prometheus-io/codemirror-promql@npm:^0.311.3":
+  version: 0.311.3
+  resolution: "@prometheus-io/codemirror-promql@npm:0.311.3"
+  dependencies:
+    "@prometheus-io/lezer-promql": "npm:0.311.3"
+    lru-cache: "npm:^11.2.7"
+  peerDependencies:
+    "@codemirror/autocomplete": ^6.4.0
+    "@codemirror/language": ^6.3.0
+    "@codemirror/lint": ^6.0.0
+    "@codemirror/state": ^6.1.1
+    "@codemirror/view": ^6.4.0
+    "@lezer/common": ^1.0.1
+  checksum: 10c0/3c0ef6e5aa061fe67c32764c07cdfe26c171f0196e64120e56029d56aadd1f53b28a25615a6861dfaef18e71d8af429ac6a368f4b2a5e54ae184567b51c80f04
+  languageName: node
+  linkType: hard
+
+"@prometheus-io/lezer-promql@npm:0.311.3":
+  version: 0.311.3
+  resolution: "@prometheus-io/lezer-promql@npm:0.311.3"
+  peerDependencies:
+    "@lezer/highlight": ^1.1.2
+    "@lezer/lr": ^1.2.3
+  checksum: 10c0/4f0cd6b16418e1c2103178a30db7160e7a3615195087ae24cf730dd878abcd4d0640a3b1a1a89823aad0c3b05586ebb216f2957d02e4a1595fc53831c34379b7
   languageName: node
   linkType: hard
 
@@ -20409,6 +20437,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"lru-cache@npm:^11.2.7":
+  version: 11.3.5
+  resolution: "lru-cache@npm:11.3.5"
+  checksum: 10c0/5b54ef7b88afb4bd25b7a778f1b2b1cde32d9770913e530da34ab203cf0442413bcaa6e372800cbab9562557a4480e4d8bf32e3a368bb5a91b12218eca085c66
+  languageName: node
+  linkType: hard
+
 "lru-cache@npm:^4.0.1":
   version: 4.1.5
   resolution: "lru-cache@npm:4.1.5"
@@ -23565,27 +23600,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"protobufjs@npm:^7.0.0, protobufjs@npm:^7.3.0":
-  version: 7.5.6
-  resolution: "protobufjs@npm:7.5.6"
-  dependencies:
-    "@protobufjs/aspromise": "npm:^1.1.2"
-    "@protobufjs/base64": "npm:^1.1.2"
-    "@protobufjs/codegen": "npm:^2.0.5"
-    "@protobufjs/eventemitter": "npm:^1.1.0"
-    "@protobufjs/fetch": "npm:^1.1.0"
-    "@protobufjs/float": "npm:^1.0.2"
-    "@protobufjs/inquire": "npm:^1.1.1"
-    "@protobufjs/path": "npm:^1.1.2"
-    "@protobufjs/pool": "npm:^1.1.0"
-    "@protobufjs/utf8": "npm:^1.1.1"
-    "@types/node": "npm:>=13.7.0"
-    long: "npm:^5.0.0"
-  checksum: 10c0/220df6c3cf6d2346748639a9b0b688fecc994bff9fee7018a93167e8cd45ab0ee3b4270d9eaa6be33a11adb46514ef9dce7e8217fd578c36726a9e70b96327cd
-  languageName: node
-  linkType: hard
-
-"protobufjs@npm:^7.5.8":
+"protobufjs@npm:^7.0.0, protobufjs@npm:^7.3.0, protobufjs@npm:^7.5.8":
   version: 7.5.8
   resolution: "protobufjs@npm:7.5.8"
   dependencies:

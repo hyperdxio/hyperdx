@@ -4,7 +4,7 @@ import { act, screen } from '@testing-library/react';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
-import { formatNumber } from '@/utils';
+import { formatNumber, getColorFromCSSToken } from '@/utils';
 
 import { NumberFormat } from '../../types';
 import DateRangeIndicator from '../charts/DateRangeIndicator';
@@ -38,6 +38,10 @@ jest.mock('@/utils', () => ({
     keys.forEach((key: string) => delete result[key]);
     return result;
   }),
+  // The renderer resolves palette tokens through getColorFromCSSToken.
+  // Return a valid CSS hex so Mantine applies it as an inline color style,
+  // letting us assert that the resolved value reaches the DOM element.
+  getColorFromCSSToken: jest.fn(() => '#00ff00'),
 }));
 
 jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
@@ -303,5 +307,46 @@ describe('DBNumberChart', () => {
 
     // Verify DateRangeIndicator was not called
     expect(jest.mocked(DateRangeIndicator)).not.toHaveBeenCalled();
+  });
+
+  describe('color', () => {
+    const mockGetColorFromCSSToken = getColorFromCSSToken as jest.Mock;
+
+    it('resolves a palette token through getColorFromCSSToken when config.color is set', () => {
+      const config = {
+        ...baseTestConfig,
+        color: 'chart-success' as const,
+      };
+
+      renderWithMantine(<DBNumberChart config={config} />);
+
+      expect(mockGetColorFromCSSToken).toHaveBeenCalledWith('chart-success');
+      // Verify the resolved color reaches the <Text> DOM element so a
+      // regression that drops the `c` prop or passes undefined is caught.
+      const textEl = screen.getByText('1234');
+      expect(textEl).toBeInTheDocument();
+      expect(textEl).toHaveStyle({ color: 'rgb(0, 255, 0)' });
+    });
+
+    it('does not resolve a color when config.color is unset', () => {
+      renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+
+      expect(mockGetColorFromCSSToken).not.toHaveBeenCalled();
+      expect(screen.getByText('1234')).toBeInTheDocument();
+    });
+
+    it('skips resolution and renders the default when config.color is not a known palette token', () => {
+      const config = {
+        ...baseTestConfig,
+        // Simulate a legacy or hand-edited dashboard with an unknown
+        // value sneaking past the schema (e.g. an old hex code).
+        color: 'definitely-not-a-token' as any,
+      };
+
+      renderWithMantine(<DBNumberChart config={config} />);
+
+      expect(mockGetColorFromCSSToken).not.toHaveBeenCalled();
+      expect(screen.getByText('1234')).toBeInTheDocument();
+    });
   });
 });

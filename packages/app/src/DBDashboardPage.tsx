@@ -29,6 +29,7 @@ import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
@@ -468,6 +469,19 @@ const Tile = forwardRef(
       !chart.config.source;
 
     useEffect(() => {
+      if (isPromqlSavedChartConfig(chart.config)) {
+        if (source != null) {
+          setQueriedConfig({
+            ...chart.config,
+            from: source.from,
+            connection: source.connection,
+            dateRange,
+            granularity,
+          });
+        }
+        return;
+      }
+
       if (isRawSqlSavedChartConfig(chart.config)) {
         // Some raw SQL charts don't have a source
         if (!chart.config.source) {
