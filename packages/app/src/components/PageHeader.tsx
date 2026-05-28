@@ -9,8 +9,10 @@ import styles from './PageHeader.module.scss';
  *    Preferred for any page whose header fits the standard model: a title
  *    or breadcrumb trail above a horizontal toolbar that splits cleanly
  *    into a leading group (source picker, edit control) and a trailing
- *    group (Run, Save, time picker, refresh). `KubernetesDashboardPage`,
- *    `AlertsPage`, and `DashboardsListPage` all use this form.
+ *    group (Run, Save, time picker, refresh). Examples:
+ *    - title-only:    `AlertsPage`, `DashboardsListPage`, `SavedSearchesListPage`
+ *    - leading+actions: `DBServiceMapPage`
+ *    - breadcrumbs+leading+actions: `KubernetesDashboardPage`
  *
  * 2. **Custom `children`** — the escape hatch for pages whose toolbar
  *    can't be expressed as leading + actions (e.g. a single full-width

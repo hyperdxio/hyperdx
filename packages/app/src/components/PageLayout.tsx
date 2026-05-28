@@ -11,8 +11,10 @@ import styles from './PageLayout.module.scss';
  * 1. **Structured slots** — pass `title` / `leading` / `actions` /
  *    `breadcrumbs` directly to `PageLayout`. These forward into an
  *    internal `<PageHeader>`. Preferred for the standard
- *    title-or-breadcrumb + horizontal-toolbar layout
- *    (see `KubernetesDashboardPage`).
+ *    title-or-breadcrumb + horizontal-toolbar layout. Examples:
+ *    `KubernetesDashboardPage` (breadcrumbs + leading + actions),
+ *    `DBServiceMapPage` (leading + actions),
+ *    `AlertsPage` / `DashboardsListPage` (title-only).
  *
  * 2. **Custom `header`** — pass a fully-formed `<PageHeader>{...}`
  *    (or any node) when the toolbar can't be expressed as leading +
