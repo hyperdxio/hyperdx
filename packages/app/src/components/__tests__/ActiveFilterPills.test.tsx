@@ -15,6 +15,7 @@ function makeSearchFilters(
     clearFilter: jest.fn(),
     clearAllFilters: jest.fn(),
     retainFiltersByColumns: jest.fn(() => []),
+    invalidFields: new Set<string>(),
   };
 }
 
@@ -255,6 +256,90 @@ describe('ActiveFilterPills', () => {
 
     expect(screen.getByText('+2 more')).toBeInTheDocument();
     expect(screen.queryByText('val8')).not.toBeInTheDocument();
+  });
+
+  describe('invalidFields prop', () => {
+    it('renders a pill in the inactive state when its field is in invalidFields', () => {
+      const searchFilters = makeSearchFilters({
+        SeverityText: {
+          included: new Set<string | boolean>(['info']),
+          excluded: new Set<string | boolean>(),
+        },
+      });
+      renderWithMantine(
+        <ActiveFilterPills
+          searchFilters={searchFilters}
+          invalidFields={new Set(['SeverityText'])}
+        />,
+      );
+
+      const valueEl = screen.getByText('info');
+      const pillSpan = valueEl.closest('span[data-invalid]');
+      expect(pillSpan).toHaveAttribute('data-invalid', 'true');
+      expect(valueEl).toHaveStyle({ textDecoration: 'line-through' });
+    });
+
+    it('does not mark pills as invalid when their field is not in invalidFields', () => {
+      const searchFilters = makeSearchFilters({
+        status: {
+          included: new Set<string | boolean>(['200']),
+          excluded: new Set<string | boolean>(),
+        },
+      });
+      renderWithMantine(
+        <ActiveFilterPills
+          searchFilters={searchFilters}
+          invalidFields={new Set(['SeverityText'])}
+        />,
+      );
+
+      const valueEl = screen.getByText('200');
+      const pillSpan = valueEl.closest('span');
+      expect(pillSpan).not.toHaveAttribute('data-invalid');
+    });
+
+    it('still allows removing an invalid pill via the X button', () => {
+      const searchFilters = makeSearchFilters({
+        SeverityText: {
+          included: new Set<string | boolean>(['info']),
+          excluded: new Set<string | boolean>(),
+        },
+      });
+      renderWithMantine(
+        <ActiveFilterPills
+          searchFilters={searchFilters}
+          invalidFields={new Set(['SeverityText'])}
+        />,
+      );
+
+      const removeButtons = screen.getAllByRole('button', {
+        name: /remove filter/i,
+      });
+      fireEvent.click(removeButtons[0]);
+      expect(searchFilters.setFilterValue).toHaveBeenCalledWith(
+        'SeverityText',
+        'info',
+        undefined,
+      );
+    });
+
+    it('uses a custom invalidFieldReason for the tooltip when provided', () => {
+      const searchFilters = makeSearchFilters({
+        SeverityText: {
+          included: new Set<string | boolean>(['info']),
+          excluded: new Set<string | boolean>(),
+        },
+      });
+      const reason = jest.fn((field: string) => `custom reason for ${field}`);
+      renderWithMantine(
+        <ActiveFilterPills
+          searchFilters={searchFilters}
+          invalidFields={new Set(['SeverityText'])}
+          invalidFieldReason={reason}
+        />,
+      );
+      expect(reason).toHaveBeenCalledWith('SeverityText');
+    });
   });
 
   it('renders mixed included, excluded, and range filters together', () => {

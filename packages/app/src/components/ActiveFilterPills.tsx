@@ -59,22 +59,40 @@ const pillStyle = {
 
 function FilterPill({
   pill,
+  isInvalid,
+  invalidReason,
   onRemove,
 }: {
   pill: PillItem;
+  isInvalid?: boolean;
+  invalidReason?: string;
   onRemove: () => void;
 }) {
   const isExcluded = pill.type === 'excluded';
   const operator = isExcluded ? ' != ' : pill.type === 'range' ? ': ' : ' = ';
 
+  const tooltipLabel = isInvalid
+    ? (invalidReason ??
+      `Filter not applied: "${pill.field}" isn't a column on the current source. It will reapply if you switch back.`)
+    : `${pill.field}${operator}${pill.value}`;
+
+  const showDangerAccent = isExcluded && !isInvalid;
+
   return (
-    <Tooltip label={`${pill.field}${operator}${pill.value}`} openDelay={300}>
+    <Tooltip label={tooltipLabel} openDelay={300} multiline maw={280}>
       <span
+        data-invalid={isInvalid ? 'true' : undefined}
         style={{
           ...pillStyle,
-          backgroundColor: isExcluded
-            ? 'var(--mantine-color-red-light)'
-            : 'var(--color-bg-hover)',
+          backgroundColor: isInvalid
+            ? 'transparent'
+            : isExcluded
+              ? 'var(--color-bg-danger)'
+              : 'var(--color-bg-hover)',
+          border: isInvalid
+            ? '1px dashed var(--color-border-muted)'
+            : '1px solid transparent',
+          opacity: isInvalid ? 0.55 : 1,
         }}
       >
         <Text
@@ -82,23 +100,46 @@ function FilterPill({
           size="xxs"
           c="dimmed"
           fw={500}
-          style={{ flexShrink: 0, maxWidth: 100 }}
+          style={{
+            flexShrink: 0,
+            maxWidth: 100,
+            textDecoration: isInvalid ? 'line-through' : undefined,
+          }}
           truncate="start"
         >
           {pill.field}
         </Text>
-        <Text span size="xxs" c={isExcluded ? 'red.4' : 'dimmed'}>
+        <Text
+          span
+          size="xxs"
+          c="dimmed"
+          style={{
+            color: showDangerAccent ? 'var(--color-text-danger)' : undefined,
+            textDecoration: isInvalid ? 'line-through' : undefined,
+          }}
+        >
           {operator}
         </Text>
-        <Text span size="xxs" fw={500} truncate>
+        <Text
+          span
+          size="xxs"
+          fw={500}
+          truncate
+          style={{ textDecoration: isInvalid ? 'line-through' : undefined }}
+        >
           {pill.value}
         </Text>
         <ActionIcon
           size={14}
           variant="transparent"
-          color={isExcluded ? 'red.4' : 'gray'}
+          color="gray"
           onClick={onRemove}
-          style={{ flexShrink: 0, marginLeft: 2 }}
+          style={{
+            flexShrink: 0,
+            marginLeft: 2,
+            color: showDangerAccent ? 'var(--color-text-danger)' : undefined,
+          }}
+          aria-label="Remove filter"
         >
           <IconX size={9} />
         </ActionIcon>
@@ -109,9 +150,23 @@ function FilterPill({
 
 export const ActiveFilterPills = memo(function ActiveFilterPills({
   searchFilters,
+  invalidFields,
+  invalidFieldReason,
   ...flexProps
 }: {
   searchFilters: FilterStateHook;
+  /**
+   * Field names whose filters are present in state but not applied to the
+   * current query (e.g. column doesn't exist on the active source). These
+   * render in a muted, strikethrough, dashed-border style and are preserved
+   * so the user can switch back without losing their selection.
+   */
+  invalidFields?: Set<string>;
+  /**
+   * Optional tooltip override for invalid pills. Receives the field name and
+   * returns the tooltip text.
+   */
+  invalidFieldReason?: (field: string) => string;
 } & FlexProps) {
   const { filters, setFilterValue, clearFilter, clearAllFilters } =
     searchFilters;
@@ -161,13 +216,20 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
 
   return (
     <Flex gap={4} px="sm" wrap="wrap" align="center" {...flexProps}>
-      {visiblePills.map((pill, i) => (
-        <FilterPill
-          key={`${pill.field}-${pill.type}-${pill.value}-${i}`}
-          pill={pill}
-          onRemove={() => handleRemove(pill)}
-        />
-      ))}
+      {visiblePills.map((pill, i) => {
+        const isInvalid = invalidFields?.has(pill.field) ?? false;
+        return (
+          <FilterPill
+            key={`${pill.field}-${pill.type}-${pill.value}-${i}`}
+            pill={pill}
+            isInvalid={isInvalid}
+            invalidReason={
+              isInvalid ? invalidFieldReason?.(pill.field) : undefined
+            }
+            onRemove={() => handleRemove(pill)}
+          />
+        );
+      })}
       {!expanded && hiddenCount > 0 && (
         <Text
           size="xxs"

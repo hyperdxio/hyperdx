@@ -1155,6 +1155,160 @@ describe('searchFilters', () => {
         warnSpy.mockRestore();
       });
     });
+
+    describe('validFields / invalidFields', () => {
+      it('treats all filters as valid when validFields is not provided', () => {
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [
+              { type: 'lucene', condition: 'ServiceName:"app"' },
+              { type: 'lucene', condition: 'SeverityText:"info"' },
+            ],
+            onFilterChange: jest.fn(),
+          }),
+        );
+
+        expect(result.current.invalidFields.size).toBe(0);
+      });
+
+      it('marks filter keys absent from validFields as invalid', () => {
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [
+              { type: 'lucene', condition: 'ServiceName:"app"' },
+              { type: 'lucene', condition: 'SeverityText:"info"' },
+            ],
+            onFilterChange: jest.fn(),
+            validFields: new Set(['ServiceName', 'Timestamp']),
+          }),
+        );
+
+        expect(Array.from(result.current.invalidFields)).toEqual([
+          'SeverityText',
+        ]);
+        // Filter still in UI state — preserved for context.
+        expect(result.current.filters.SeverityText).toBeDefined();
+      });
+
+      it('treats a nested key as valid when its root column is valid', () => {
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [
+              { type: 'lucene', condition: 'LogAttributes.user:"123"' },
+            ],
+            onFilterChange: jest.fn(),
+            validFields: new Set(['LogAttributes']),
+          }),
+        );
+
+        expect(result.current.invalidFields.size).toBe(0);
+      });
+
+      it('strips invalid filters from the serialized query on user mutation', () => {
+        const onFilterChange = jest.fn();
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [
+              { type: 'lucene', condition: 'ServiceName:"app"' },
+              { type: 'lucene', condition: 'SeverityText:"info"' },
+            ],
+            onFilterChange,
+            validFields: new Set(['ServiceName']),
+          }),
+        );
+
+        act(() => {
+          result.current.setFilterValue('ServiceName', 'api');
+        });
+
+        const lastCall =
+          onFilterChange.mock.calls[onFilterChange.mock.calls.length - 1][0];
+        expect(
+          lastCall.some((f: { condition: string }) =>
+            f.condition.includes('SeverityText'),
+          ),
+        ).toBe(false);
+        expect(
+          lastCall.some((f: { condition: string }) =>
+            f.condition.includes('ServiceName'),
+          ),
+        ).toBe(true);
+      });
+
+      it('re-emits the query when validFields changes so the URL stays in sync', () => {
+        const onFilterChange = jest.fn();
+        let validFields: Set<string> | undefined = new Set([
+          'ServiceName',
+          'SeverityText',
+        ]);
+        const { rerender } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [
+              { type: 'lucene', condition: 'ServiceName:"app"' },
+              { type: 'lucene', condition: 'SeverityText:"info"' },
+            ],
+            onFilterChange,
+            validFields,
+          }),
+        );
+
+        onFilterChange.mockClear();
+
+        validFields = new Set(['ServiceName']);
+        rerender();
+
+        // SeverityText is no longer valid → stripped from the emitted query.
+        const lastCall =
+          onFilterChange.mock.calls[onFilterChange.mock.calls.length - 1][0];
+        expect(
+          lastCall.every(
+            (f: { condition: string }) => !f.condition.includes('SeverityText'),
+          ),
+        ).toBe(true);
+      });
+
+      it('preserves invalid filters in state so they re-apply when the field becomes valid again', () => {
+        const onFilterChange = jest.fn();
+        let validFields: Set<string> | undefined = new Set(['ServiceName']);
+        const { result, rerender } = renderHook(() =>
+          useSearchPageFilterState({
+            // URL only has ServiceName (SeverityText was previously stripped)
+            // but UI state will keep SeverityText preserved across rerenders.
+            searchQuery: [{ type: 'lucene', condition: 'ServiceName:"app"' }],
+            onFilterChange,
+            validFields,
+          }),
+        );
+
+        // Seed UI state with an invalid filter directly (simulating an
+        // earlier source where SeverityText was valid).
+        act(() => {
+          result.current.setFilters(prev => ({
+            ...prev,
+            SeverityText: {
+              included: new Set<string | boolean>(['info']),
+              excluded: new Set<string | boolean>(),
+            },
+          }));
+        });
+
+        expect(result.current.invalidFields.has('SeverityText')).toBe(true);
+
+        onFilterChange.mockClear();
+
+        // Switch to a source where SeverityText is valid again.
+        validFields = new Set(['ServiceName', 'SeverityText']);
+        rerender();
+
+        const lastCall =
+          onFilterChange.mock.calls[onFilterChange.mock.calls.length - 1][0];
+        expect(
+          lastCall.some((f: { condition: string }) =>
+            f.condition.includes('SeverityText'),
+          ),
+        ).toBe(true);
+      });
+    });
   });
 
   describe('filters use direct_read optimization', () => {

@@ -382,12 +382,32 @@ export const parseQuery = (
   return { filters: Object.fromEntries(state), passthroughFilters };
 };
 
+// Returns true when `key` (a filter state key — top-level column or
+// dot-normalized nested path) is allowed by the given column-name set.
+const isKeyAllowed = (
+  key: string,
+  allowedColumnNames: Set<string>,
+): boolean => {
+  const dotIdx = key.indexOf('.');
+  const rootColumn = dotIdx > 0 ? key.slice(0, dotIdx) : key;
+  return allowedColumnNames.has(key) || allowedColumnNames.has(rootColumn);
+};
+
 export const useSearchPageFilterState = ({
   searchQuery = [],
   onFilterChange,
+  validFields,
 }: {
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
+  /**
+   * Set of column names that exist on the currently selected source.
+   * When provided, filter keys that don't match any allowed column are
+   * marked as inactive: they remain in UI state (and are exposed via
+   * `invalidFields`) but are skipped when serializing the SQL/Lucene query
+   * via `onFilterChange`. If omitted, all filters are considered valid.
+   */
+  validFields?: Set<string>;
 }) => {
   const parsedQuery = useMemo(() => {
     try {
@@ -400,13 +420,67 @@ export const useSearchPageFilterState = ({
 
   const [filters, setFilters] = useState<FilterState>({});
 
+  // Sync UI state from URL on initial load and whenever the URL filters
+  // change (e.g. navigating to a saved search). When `validFields` is set,
+  // any filters present in UI state but not in the URL because they're
+  // currently invalid are preserved so the user keeps their selection across
+  // source switches.
   useEffect(() => {
-    if (!areFiltersEqual(filters, parsedQuery.filters)) {
-      setFilters(parsedQuery.filters);
+    const merged: FilterState = { ...parsedQuery.filters };
+    if (validFields) {
+      for (const [key, value] of Object.entries(filters)) {
+        if (!isKeyAllowed(key, validFields) && !merged[key]) {
+          merged[key] = value;
+        }
+      }
     }
-    // only react to changes in parsed query
+    if (!areFiltersEqual(filters, merged)) {
+      setFilters(merged);
+    }
+    // only react to changes in parsed query — validFields changes are handled
+    // by the re-emit effect below, which causes parsedQuery to update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsedQuery.filters]);
+
+  const invalidFields = useMemo(() => {
+    if (!validFields) return new Set<string>();
+    const invalid = new Set<string>();
+    for (const key of Object.keys(filters)) {
+      if (!isKeyAllowed(key, validFields)) invalid.add(key);
+    }
+    return invalid;
+  }, [filters, validFields]);
+
+  // When `validFields` changes (e.g. user switches data source) re-emit the
+  // query so the URL reflects only currently-applied filters. Strips entries
+  // that became invalid and re-adds entries that became valid again from UI
+  // state. Filter mutations go through `updateFilterQuery` which already
+  // strips inline, so this only needs to react to `validFields` changes.
+  useEffect(() => {
+    if (!validFields) return;
+    const strippedFromState = stripInvalidFilters(filters);
+    if (!areFiltersEqual(parsedQuery.filters, strippedFromState)) {
+      onFilterChange([
+        ...filtersToQuery(strippedFromState),
+        ...parsedQuery.passthroughFilters,
+      ]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [validFields]);
+
+  // Excludes invalid filters before serializing so the rendered SQL/Lucene
+  // query stays valid even though the entries remain in UI state.
+  const stripInvalidFilters = useCallback(
+    (next: FilterState): FilterState => {
+      if (!validFields) return next;
+      const out: FilterState = {};
+      for (const [key, value] of Object.entries(next)) {
+        if (isKeyAllowed(key, validFields)) out[key] = value;
+      }
+      return out;
+    },
+    [validFields],
+  );
 
   // Migrate legacy SQL filters to Lucene on load so URLs become canonical
   const hasMigratedRef = useRef(false);
@@ -418,22 +492,22 @@ export const useSearchPageFilterState = ({
     if (hasSqlFilters && Object.keys(parsedQuery.filters).length > 0) {
       hasMigratedRef.current = true;
       onFilterChange([
-        ...filtersToQuery(parsedQuery.filters),
+        ...filtersToQuery(stripInvalidFilters(parsedQuery.filters)),
         ...parsedQuery.passthroughFilters,
       ]);
     }
-  }, [searchQuery, parsedQuery, onFilterChange]);
+  }, [searchQuery, parsedQuery, onFilterChange, stripInvalidFilters]);
 
   const updateFilterQuery = useCallback(
     (newFilters: FilterState) => {
       // Preserve unparseable filters so they aren't silently lost when
       // the user toggles a sidebar facet.
       onFilterChange([
-        ...filtersToQuery(newFilters),
+        ...filtersToQuery(stripInvalidFilters(newFilters)),
         ...parsedQuery.passthroughFilters,
       ]);
     },
-    [onFilterChange, parsedQuery.passthroughFilters],
+    [onFilterChange, parsedQuery.passthroughFilters, stripInvalidFilters],
   );
 
   const setFilterValue = useCallback(
@@ -528,17 +602,17 @@ export const useSearchPageFilterState = ({
   // Keep only filters whose root column appears in `allowedColumnNames`.
   // Returns the keys of the filters that were dropped so callers can surface
   // a notice when filter state was thrown away (e.g. on source change).
+  //
+  // NOTE: Prefer passing `validFields` to this hook instead — it preserves
+  // invalid filters as inactive (visible but not applied) rather than
+  // discarding them. This method is retained for callers that want a hard
+  // drop (e.g. one-off cleanup operations).
   const retainFiltersByColumns = useCallback(
     (allowedColumnNames: Set<string>): string[] => {
       const dropped: string[] = [];
       const kept: FilterState = {};
       for (const [key, value] of Object.entries(filters)) {
-        // Filter keys are dot-normalized — top-level columns are stored as-is,
-        // nested JSON/Map keys as `Root.nested.path`. An exact match handles
-        // the rare case of a column with dots in its name.
-        const dotIdx = key.indexOf('.');
-        const rootColumn = dotIdx > 0 ? key.slice(0, dotIdx) : key;
-        if (allowedColumnNames.has(key) || allowedColumnNames.has(rootColumn)) {
+        if (isKeyAllowed(key, allowedColumnNames)) {
           kept[key] = value;
         } else {
           dropped.push(key);
@@ -561,6 +635,7 @@ export const useSearchPageFilterState = ({
     clearFilter,
     clearAllFilters,
     retainFiltersByColumns,
+    invalidFields,
   };
 };
 
