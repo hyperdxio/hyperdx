@@ -13,6 +13,7 @@ import {
   joinQuerySettings,
   optimizeTimestampValueExpression,
   parseToStartOfFunction,
+  pickBucketTimestampColumn,
   splitAndTrimWithBracket,
 } from '@/core/utils';
 import {
@@ -92,18 +93,21 @@ export function isUsingGroupBy(
   return chartConfig.groupBy != null && chartConfig.groupBy.length > 0;
 }
 
-export function isUsingGranularity(
-  chartConfig: BuilderChartConfigWithOptDateRange,
-): chartConfig is Omit<
-  Omit<Omit<BuilderChartConfigWithDateRange, 'granularity'>, 'dateRange'>,
-  'timestampValueExpression'
-> & {
-  granularity: NonNullable<BuilderChartConfigWithDateRange['granularity']>;
-  dateRange: NonNullable<BuilderChartConfigWithDateRange['dateRange']>;
-  timestampValueExpression: NonNullable<
-    BuilderChartConfigWithDateRange['timestampValueExpression']
-  >;
-} {
+export function isUsingGranularity<
+  T extends BuilderChartConfigWithOptDateRange,
+>(
+  chartConfig: T,
+): chartConfig is T &
+  Omit<
+    Omit<Omit<BuilderChartConfigWithDateRange, 'granularity'>, 'dateRange'>,
+    'timestampValueExpression'
+  > & {
+    granularity: NonNullable<BuilderChartConfigWithDateRange['granularity']>;
+    dateRange: NonNullable<BuilderChartConfigWithDateRange['dateRange']>;
+    timestampValueExpression: NonNullable<
+      BuilderChartConfigWithDateRange['timestampValueExpression']
+    >;
+  } {
   return (
     chartConfig.timestampValueExpression != null &&
     chartConfig.granularity != null
@@ -631,16 +635,26 @@ function renderSortSpecificationList(
 function timeBucketExpr({
   interval,
   timestampValueExpression,
+  bucketTimestampValueExpression,
   dateRange,
   alias = FIXED_TIME_BUCKET_EXPR_ALIAS,
 }: {
   interval: SQLInterval | 'auto';
   timestampValueExpression: string;
+  /**
+   * Pre-resolved single column for the bucket. Threaded down from
+   * `renderChartConfig` via `pickBucketTimestampColumn`. When absent we
+   * fall back to the first token of `timestampValueExpression` so existing
+   * single-column sources keep working.
+   */
+  bucketTimestampValueExpression?: string;
   dateRange?: [Date, Date];
   alias?: string;
 }) {
   const unsafeTimestampValueExpression = {
-    UNSAFE_RAW_SQL: getFirstTimestampValueExpression(timestampValueExpression),
+    UNSAFE_RAW_SQL:
+      bucketTimestampValueExpression ??
+      getFirstTimestampValueExpression(timestampValueExpression),
   };
   const unsafeInterval = {
     UNSAFE_RAW_SQL:
@@ -798,6 +812,8 @@ async function renderSelect(
       ? timeBucketExpr({
           interval: chartConfig.granularity,
           timestampValueExpression: chartConfig.timestampValueExpression,
+          bucketTimestampValueExpression:
+            chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
         })
       : [],
@@ -1005,7 +1021,7 @@ async function renderWhere(
 }
 
 async function renderGroupBy(
-  chartConfig: BuilderChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql | undefined> {
   return concatChSql(
@@ -1017,6 +1033,8 @@ async function renderGroupBy(
       ? timeBucketExpr({
           interval: chartConfig.granularity,
           timestampValueExpression: chartConfig.timestampValueExpression,
+          bucketTimestampValueExpression:
+            chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
         })
       : [],
@@ -1044,7 +1062,7 @@ async function renderHaving(
 }
 
 function renderOrderBy(
-  chartConfig: BuilderChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
 ): ChSql | undefined {
   const isIncludingTimeBucket = isUsingGranularity(chartConfig);
 
@@ -1058,6 +1076,8 @@ function renderOrderBy(
       ? timeBucketExpr({
           interval: chartConfig.granularity,
           timestampValueExpression: chartConfig.timestampValueExpression,
+          bucketTimestampValueExpression:
+            chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
         })
       : [],
@@ -1099,6 +1119,17 @@ function renderSettings(
 type InternalChartFields = {
   includedDataInterval?: string;
   settings?: ChSql;
+  /**
+   * Pre-resolved single column from the (possibly multi-column)
+   * `timestampValueExpression`, used for the time-bucket and time-math
+   * expressions only. Resolved once at the top of `renderChartConfig` via
+   * `pickBucketTimestampColumn` so the bucket isn't pinned to a Date-typed
+   * partition column when a higher-precision DateTime column is also listed.
+   *
+   * Closes HDX-4371. The WHERE clause keeps using the multi-column form so
+   * partition pruning via the Date column continues to work.
+   */
+  bucketTimestampValueExpression?: string;
 };
 
 type BuilderChartConfigWithOptDateRangeEx = BuilderChartConfigWithOptDateRange &
@@ -1224,7 +1255,7 @@ function renderFill(
 }
 
 function renderDeltaExpression(
-  chartConfig: BuilderChartConfigWithOptDateRange,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
   valueExpression: string,
 ) {
   const interval =
@@ -1233,8 +1264,21 @@ function renderDeltaExpression(
       : chartConfig.granularity;
   const intervalInSeconds = convertGranularityToSeconds(interval ?? '');
 
-  const valueDiff = `(argMax(${valueExpression}, ${chartConfig.timestampValueExpression}) - argMin(${valueExpression}, ${chartConfig.timestampValueExpression}))`;
-  const timeDiffInSeconds = `date_diff('second', min(toDateTime(${chartConfig.timestampValueExpression})), max(toDateTime(${chartConfig.timestampValueExpression})))`;
+  // Use the pre-resolved bucket column for time math too. If
+  // `chartConfig.timestampValueExpression` lists multiple columns (the
+  // LogHouse `"EventDate, EventTime"` pattern), feeding it directly to
+  // `argMin`/`argMax`/`min`/`max` would emit invalid SQL like
+  // `argMax(value, EventDate, EventTime)`. Picking the highest-precision
+  // DateTime token via `bucketTimestampValueExpression` keeps the SQL
+  // valid and the math correct.
+  const timeExpr =
+    chartConfig.bucketTimestampValueExpression ??
+    getFirstTimestampValueExpression(
+      chartConfig.timestampValueExpression ?? '',
+    );
+
+  const valueDiff = `(argMax(${valueExpression}, ${timeExpr}) - argMin(${valueExpression}, ${timeExpr}))`;
+  const timeDiffInSeconds = `date_diff('second', min(toDateTime(${timeExpr})), max(toDateTime(${timeExpr})))`;
 
   // Prevent division by zero, if timeDiffInSeconds is 0, return 0
   // The delta is extrapolated to the bucket interval, to match prometheus delta() behavior
@@ -1277,6 +1321,8 @@ async function translateMetricChartConfig(
       timestampValueExpression:
         chartConfig.timestampValueExpression ||
         DEFAULT_METRIC_TABLE_TIME_COLUMN,
+      bucketTimestampValueExpression:
+        chartConfig.bucketTimestampValueExpression,
       dateRange: chartConfig.dateRange,
       alias: timeBucketCol,
     });
@@ -1368,6 +1414,8 @@ async function translateMetricChartConfig(
       interval: chartConfig.granularity || 'auto',
       timestampValueExpression:
         chartConfig.timestampValueExpression || 'TimeUnix',
+      bucketTimestampValueExpression:
+        chartConfig.bucketTimestampValueExpression,
       dateRange: chartConfig.dateRange,
       alias: timeBucketCol,
     });
@@ -1782,9 +1830,32 @@ export async function renderChartConfig(
 
   // metric types require more rewriting since we know more about the schema
   // but goes through the same generation process
-  const chartConfig = isMetricChartConfig(rawChartConfig)
+  const translatedChartConfig = isMetricChartConfig(rawChartConfig)
     ? await translateMetricChartConfig(rawChartConfig, metadata)
     : rawChartConfig;
+
+  // Resolve the bucket column once for the whole render. A source with
+  // `timestampValueExpression = "EventDate, EventTime"` should bucket on
+  // `EventTime` (highest-precision DateTime), not on `EventDate` (the first
+  // token). Keep the multi-column form on `timestampValueExpression` so
+  // `timeFilterExpr` can prune partitions via the Date column. HDX-4371.
+  const chartConfig: BuilderChartConfigWithOptDateRangeEx = {
+    ...translatedChartConfig,
+    bucketTimestampValueExpression:
+      translatedChartConfig.bucketTimestampValueExpression ??
+      (translatedChartConfig.timestampValueExpression &&
+      translatedChartConfig.from?.databaseName &&
+      translatedChartConfig.from?.tableName
+        ? await pickBucketTimestampColumn({
+            timestampValueExpression:
+              translatedChartConfig.timestampValueExpression,
+            metadata,
+            databaseName: translatedChartConfig.from.databaseName,
+            tableName: translatedChartConfig.from.tableName,
+            connectionId: translatedChartConfig.connection,
+          })
+        : undefined),
+  };
 
   const withClauses = await renderWith(chartConfig, metadata, querySettings);
   const select = await renderSelect(chartConfig, metadata);
