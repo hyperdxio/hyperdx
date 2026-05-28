@@ -15,6 +15,7 @@ import {
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Anchor,
   Button,
   Code,
@@ -22,6 +23,7 @@ import {
   Group,
   Paper,
   Stepper,
+  Tooltip,
 } from '@mantine/core';
 import {
   IconDeviceLaptop,
@@ -340,7 +342,11 @@ export default function SessionsPage() {
     [setSelectedSessionQuery],
   );
 
-  const { data: tableData, isLoading: isSessionsLoading } = useSessions({
+  const {
+    data: tableData,
+    isLoading: isSessionsLoading,
+    refetch: refetchSessions,
+  } = useSessions({
     dateRange: searchedTimeRange,
     sessionSource,
     traceSource: traceTrace,
@@ -428,6 +434,17 @@ export default function SessionsPage() {
                 >
                   Run
                 </Button>
+                <Tooltip label="Refresh results">
+                  <ActionIcon
+                    variant="subtle"
+                    size="lg"
+                    onClick={() => refetchSessions()}
+                    loading={isSessionsLoading}
+                    style={{ flexShrink: 0 }}
+                  >
+                    <IconRefresh size={16} />
+                  </ActionIcon>
+                </Tooltip>
               </Group>
             </PageHeader>
           }
