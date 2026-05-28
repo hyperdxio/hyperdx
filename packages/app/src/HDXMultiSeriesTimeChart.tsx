@@ -675,7 +675,17 @@ export const MemoChart = memo(function MemoChart({
         }}
       >
         <defs>
-          {COLORS.map(c => {
+          {/* Gradient defs cover every hex that any <Area> fill may reference.
+              `COLORS` (the unified categorical palette) is included up-front
+              as a baseline; semantic colors returned by the
+              `getChartColor{Info,Success,Warning,Error}` helpers can also
+              appear in `lineData[].color` (e.g. info-level log series
+              resolve to the brand-green `--color-chart-info` on HyperDX,
+              which is not part of `COLORS`). Union them here so the
+              referenced `url(#time-chart-lin-grad-…)` always exists. */}
+          {Array.from(
+            new Set([...COLORS, ...lineData.map(ld => ld.color)]),
+          ).map(c => {
             return (
               <linearGradient
                 key={c}

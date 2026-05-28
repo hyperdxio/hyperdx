@@ -881,6 +881,27 @@ function isLegacyChartPaletteToken(
 }
 
 /**
+ * Resolve any string to a canonical `ChartPaletteToken`, accepting both
+ * current hue-named tokens and legacy numeric tokens (`chart-1` ..
+ * `chart-10`) from #2265. Returns `undefined` for anything else.
+ *
+ * Use this at every render-time consumption point (dashboard tile
+ * renderers, the color picker's `safeValue` guard, etc.). Stored
+ * dashboard payloads are not always Zod-parsed end-to-end — e.g.
+ * `useDashboards` raw-casts the API response — so the schema's
+ * preprocess can't be the only thing guaranteeing legacy migration.
+ */
+export function resolveChartPaletteToken(
+  value: unknown,
+): ChartPaletteToken | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (isLegacyChartPaletteToken(value)) {
+    return LEGACY_CHART_PALETTE_TOKEN_MAP[value];
+  }
+  return isChartPaletteToken(value) ? value : undefined;
+}
+
+/**
  * Zod schema for the curated palette tokens, transparently migrating
  * legacy numeric tokens (`chart-1` .. `chart-10`) to their hue-named
  * equivalents at parse time so stored configs from #2265 keep working.

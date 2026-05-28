@@ -18,7 +18,7 @@ import {
   CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteToken,
   getColorFromCSSToken,
-  isChartPaletteToken,
+  resolveChartPaletteToken,
   SEMANTIC_PALETTE_TOKENS,
 } from '@/utils';
 
@@ -73,8 +73,12 @@ export const ColorSwatchInput = ({
 }: ColorSwatchInputProps) => {
   const [opened, setOpened] = React.useState(false);
 
-  // Guard against legacy values that are not in the current palette.
-  const safeValue = value && isChartPaletteToken(value) ? value : undefined;
+  // Accept both current hue-named tokens and legacy `chart-1`..`chart-10`
+  // values from #2265 so an existing tile's color shows correctly the first
+  // time its drawer is opened (the dashboard fetch path doesn't run the
+  // Zod schema, so the legacy preprocess wouldn't have fired). Truly
+  // unknown values still fall through to "no selection".
+  const safeValue = resolveChartPaletteToken(value);
 
   const handleChange = (next?: ChartPaletteToken) => {
     onChange?.(next);

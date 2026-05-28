@@ -7,6 +7,7 @@ import {
   ChartPaletteTokenSchema,
   DisplayType,
   isChartPaletteToken,
+  resolveChartPaletteToken,
 } from '@/types';
 
 describe('isRawSqlSavedChartConfig', () => {
@@ -273,5 +274,44 @@ describe('ChartPaletteTokenSchema legacy migration', () => {
     expect(() => ChartPaletteTokenSchema.parse('chart-magenta')).toThrow();
     expect(() => ChartPaletteTokenSchema.parse('chart-11')).toThrow();
     expect(() => ChartPaletteTokenSchema.parse('#ff0000')).toThrow();
+  });
+});
+
+describe('resolveChartPaletteToken', () => {
+  it('returns hue-named tokens unchanged', () => {
+    expect(resolveChartPaletteToken('chart-blue')).toBe('chart-blue');
+    expect(resolveChartPaletteToken('chart-green')).toBe('chart-green');
+    expect(resolveChartPaletteToken('chart-light-blue')).toBe(
+      'chart-light-blue',
+    );
+  });
+
+  it('returns semantic tokens unchanged', () => {
+    expect(resolveChartPaletteToken('chart-success')).toBe('chart-success');
+    expect(resolveChartPaletteToken('chart-warning')).toBe('chart-warning');
+    expect(resolveChartPaletteToken('chart-error')).toBe('chart-error');
+  });
+
+  it('migrates legacy chart-1..10 to their HyperDX-slot-order hue equivalents', () => {
+    expect(resolveChartPaletteToken('chart-1')).toBe('chart-green');
+    expect(resolveChartPaletteToken('chart-2')).toBe('chart-blue');
+    expect(resolveChartPaletteToken('chart-3')).toBe('chart-orange');
+    expect(resolveChartPaletteToken('chart-4')).toBe('chart-red');
+    expect(resolveChartPaletteToken('chart-5')).toBe('chart-cyan');
+    expect(resolveChartPaletteToken('chart-6')).toBe('chart-pink');
+    expect(resolveChartPaletteToken('chart-7')).toBe('chart-purple');
+    expect(resolveChartPaletteToken('chart-8')).toBe('chart-light-blue');
+    expect(resolveChartPaletteToken('chart-9')).toBe('chart-brown');
+    expect(resolveChartPaletteToken('chart-10')).toBe('chart-gray');
+  });
+
+  it('returns undefined for unknown strings, hex values, and non-strings', () => {
+    expect(resolveChartPaletteToken('chart-magenta')).toBeUndefined();
+    expect(resolveChartPaletteToken('chart-11')).toBeUndefined();
+    expect(resolveChartPaletteToken('#ff0000')).toBeUndefined();
+    expect(resolveChartPaletteToken('')).toBeUndefined();
+    expect(resolveChartPaletteToken(undefined)).toBeUndefined();
+    expect(resolveChartPaletteToken(null)).toBeUndefined();
+    expect(resolveChartPaletteToken(1)).toBeUndefined();
   });
 });

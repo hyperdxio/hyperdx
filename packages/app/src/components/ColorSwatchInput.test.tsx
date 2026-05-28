@@ -139,6 +139,29 @@ describe('ColorSwatchInput', () => {
     }
   });
 
+  it('migrates a legacy chart-1..10 value to the matching hue swatch', async () => {
+    // Regression: dashboards saved through #2265 store `chart-1`..`chart-10`.
+    // The fetch path raw-casts API responses so ChartPaletteTokenSchema's
+    // legacy preprocess never runs. The picker must still show the
+    // migrated selection so users don't see "no color" when reopening a
+    // tile's Display Settings drawer.
+    const user = userEvent.setup();
+    renderWithMantine(
+      <ColorSwatchInput
+        value={'chart-1' as unknown as ChartPaletteToken}
+        onChange={jest.fn()}
+      />,
+    );
+
+    const trigger = screen.getByTestId('color-swatch-input-trigger');
+    expect(trigger).toHaveTextContent(/green/i);
+
+    await user.click(trigger);
+    expect(
+      await screen.findByTestId('color-swatch-option-chart-green'),
+    ).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('respects disabled and does not open the popover', async () => {
     const user = userEvent.setup();
     renderWithMantine(<ColorSwatchInput disabled />);

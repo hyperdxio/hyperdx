@@ -348,5 +348,24 @@ describe('DBNumberChart', () => {
       expect(mockGetColorFromCSSToken).not.toHaveBeenCalled();
       expect(screen.getByText('1234')).toBeInTheDocument();
     });
+
+    it('migrates legacy chart-1..10 tokens to their hue-named equivalent at render time', () => {
+      // Regression: useDashboards raw-casts the API response so saved configs
+      // from #2265 (`color: 'chart-1'`, etc.) never go through
+      // ChartPaletteTokenSchema. The renderer must apply the same legacy
+      // migration via resolveChartPaletteToken before the CSS-token lookup,
+      // otherwise tileColor silently resolves to undefined until the user
+      // re-saves the dashboard.
+      const config = {
+        ...baseTestConfig,
+        color: 'chart-1' as any,
+      };
+
+      renderWithMantine(<DBNumberChart config={config} />);
+
+      expect(mockGetColorFromCSSToken).toHaveBeenCalledWith('chart-green');
+      const textEl = screen.getByText('1234');
+      expect(textEl).toHaveStyle({ color: 'rgb(0, 255, 0)' });
+    });
   });
 });
