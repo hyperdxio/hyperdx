@@ -296,15 +296,26 @@ export class SearchPage {
   }
 
   /**
-   * Returns a locator for the yellow Mantine notification shown when one or
-   * more sidebar filters are dropped because they don't exist on the newly
-   * selected source's schema.
-   *
-   * The message format from DBSearchPage.tsx:
-   *   "N filter(s) didn't apply to this source and was/were removed."
+   * Returns a locator for a pill in the ActiveFilterPills bar (the row of
+   * "field = value ×" chips below the search toolbar) matching the given
+   * field. Multiple pills can share a field (one per included/excluded
+   * value); the locator covers all of them — callers can `.first()` or
+   * filter by text if they need a specific value.
    */
-  getDroppedFiltersToast() {
-    return this.page.getByText(/filter.* didn't apply to this source/i);
+  getActiveFilterPill(field: string) {
+    return this.page.getByTestId(`active-filter-pill-${field}`);
+  }
+
+  /**
+   * Returns a locator scoped to inactive (data-invalid="true") pills only.
+   * An inactive pill is one whose field doesn't exist on the active source —
+   * the filter is preserved in UI state but skipped at query time, and
+   * styled with a muted strikethrough so the user still sees it.
+   */
+  getInactiveFilterPill(field: string) {
+    return this.getActiveFilterPill(field).and(
+      this.page.locator('[data-invalid="true"]'),
+    );
   }
 
   // Getters for assertions in spec files

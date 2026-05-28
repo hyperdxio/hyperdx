@@ -81,6 +81,7 @@ function FilterPill({
   return (
     <Tooltip label={tooltipLabel} openDelay={300} multiline maw={280}>
       <span
+        data-testid={`active-filter-pill-${pill.field}`}
         data-invalid={isInvalid ? 'true' : undefined}
         style={{
           ...pillStyle,

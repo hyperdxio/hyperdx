@@ -156,11 +156,13 @@ test.describe(
       // preserved in state. The URL is the authoritative source of truth here.
       await expect(searchPage.page).toHaveURL(/filters=.*ServiceName/i);
 
-      // No "didn't apply" toast should have appeared
-      await expect(searchPage.getDroppedFiltersToast()).toHaveCount(0);
+      // ServiceName exists on both sources, so the pill stays active (not inactive).
+      await expect(searchPage.getInactiveFilterPill('ServiceName')).toHaveCount(
+        0,
+      );
     });
 
-    test('Incompatible filter is dropped and toast shown when one of two filters does not exist on new source', async () => {
+    test('Incompatible filter is preserved as inactive when one of two filters does not exist on new source', async () => {
       // Apply a ServiceName filter (shared between logs and traces)
       // (pickVisibleFilterValues also opens the filter group)
       const [serviceName] = await searchPage.filters.pickVisibleFilterValues(
@@ -181,20 +183,23 @@ test.describe(
       await searchPage.selectSource(DEFAULT_TRACES_SOURCE_NAME);
       await searchPage.table.waitForRowsToPopulate();
 
-      // Yellow toast must appear with "1 filter didn't apply to this source"
-      await expect(searchPage.getDroppedFiltersToast()).toBeVisible({
-        timeout: 10000,
-      });
+      // SeverityText pill is preserved as inactive (data-invalid="true") so the
+      // user can switch back without losing context. It is *not* applied to the
+      // query — i.e. not in the URL.
+      await expect(
+        searchPage.getInactiveFilterPill('SeverityText'),
+      ).toBeVisible({ timeout: 10000 });
+      await expect(searchPage.page).not.toHaveURL(/filters=.*SeverityText/i);
 
-      // Re-open ServiceName group and confirm the compatible filter was kept.
-      // Assert via URL rather than checkbox — the trace source's facet may show
-      // a different set of service name values, so the checkbox checked state is
-      // fragile even when the filter is correctly preserved in the URL/state.
-      await searchPage.filters.openFilterGroup('ServiceName');
+      // The compatible ServiceName filter stays active in URL and is not
+      // marked inactive.
       await expect(searchPage.page).toHaveURL(/filters=.*ServiceName/i);
+      await expect(searchPage.getInactiveFilterPill('ServiceName')).toHaveCount(
+        0,
+      );
     });
 
-    test('Filter for a column that does not exist on new source is dropped and toast shown', async () => {
+    test('Filter for a column that does not exist on new source is preserved as inactive', async () => {
       // Open and apply only a SeverityText filter (logs-only, not present on traces)
       await searchPage.filters.openFilterGroup('SeverityText');
       await searchPage.filters.applyFilter('SeverityText', 'info');
@@ -206,10 +211,32 @@ test.describe(
       await searchPage.selectSource(DEFAULT_TRACES_SOURCE_NAME);
       await searchPage.table.waitForRowsToPopulate();
 
-      // Toast must appear indicating 1 filter was removed
-      await expect(searchPage.getDroppedFiltersToast()).toBeVisible({
-        timeout: 10000,
-      });
+      // Pill is preserved as inactive (visible but not applied to the query).
+      await expect(
+        searchPage.getInactiveFilterPill('SeverityText'),
+      ).toBeVisible({ timeout: 10000 });
+      await expect(searchPage.page).not.toHaveURL(/filters=.*SeverityText/i);
+    });
+
+    test('Inactive filter reactivates when switching back to a compatible source', async () => {
+      // Apply a SeverityText filter on logs
+      await searchPage.filters.openFilterGroup('SeverityText');
+      await searchPage.filters.applyFilter('SeverityText', 'info');
+
+      // Switch to traces — pill goes inactive, dropped from URL
+      await searchPage.selectSource(DEFAULT_TRACES_SOURCE_NAME);
+      await searchPage.table.waitForRowsToPopulate();
+      await expect(
+        searchPage.getInactiveFilterPill('SeverityText'),
+      ).toBeVisible({ timeout: 10000 });
+
+      // Switch back to logs — pill should reactivate and re-appear in URL
+      await searchPage.selectSource(DEFAULT_LOGS_SOURCE_NAME);
+      await searchPage.table.waitForRowsToPopulate();
+      await expect(
+        searchPage.getInactiveFilterPill('SeverityText'),
+      ).toHaveCount(0);
+      await expect(searchPage.page).toHaveURL(/filters=.*SeverityText/i);
     });
   },
 );
