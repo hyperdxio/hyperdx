@@ -7,34 +7,110 @@ processors:
         statements:
           # JSON parsing: Extends log attributes with the fields from structured log body content, either as an OTEL map or
           # as a string containing JSON content.
-          - set(log.cache, ExtractPatterns(log.body, "(?P<0>(\\{.*\\}))")) where IsString(log.body)
-          - merge_maps(log.attributes, ParseJSON(log.cache["0"]), "upsert") where IsMap(log.cache)
+          - set(log.cache, ExtractPatterns(log.body, "(?P<0>(\\{.*\\}))")) where
+            IsString(log.body)
+          - merge_maps(log.attributes, ParseJSON(log.cache["0"]), "upsert")
+            where IsMap(log.cache)
           - flatten(log.attributes) where IsMap(log.cache)
           - merge_maps(log.attributes, log.body, "upsert") where IsMap(log.body)
+      - context: log
+        error_mode: ignore
+        conditions:
+          # Don't overwrite producer-set severity.
+          - severity_number == 0 and severity_text == ""
+        statements:
+          # HDX-4383: Promote a JSON-derived level/severity field from the parsed
+          # body (now in log.attributes) into log.severity_text so the string-
+          # inference block below is short-circuited. Case-insensitive matching
+          # is done by enumerating the common casings of common field names used
+          # by mainstream logging frameworks (pino, winston, zerolog, zap,
+          # logrus, slog, Serilog, GCP Cloud Logging, Elastic ECS, ...).
+          # Each statement self-guards on `severity_text == ""` so the first hit
+          # wins (priority order: level > severity > log.level).
+          - set(log.severity_text, log.attributes["level"])     where
+            log.severity_text == "" and
+            IsString(log.attributes["level"])     and
+            Len(log.attributes["level"]) > 0
+          - set(log.severity_text, log.attributes["Level"])     where
+            log.severity_text == "" and
+            IsString(log.attributes["Level"])     and
+            Len(log.attributes["Level"]) > 0
+          - set(log.severity_text, log.attributes["LEVEL"])     where
+            log.severity_text == "" and
+            IsString(log.attributes["LEVEL"])     and
+            Len(log.attributes["LEVEL"]) > 0
+          - set(log.severity_text, log.attributes["severity"])  where
+            log.severity_text == "" and
+            IsString(log.attributes["severity"])  and
+            Len(log.attributes["severity"]) > 0
+          - set(log.severity_text, log.attributes["Severity"])  where
+            log.severity_text == "" and
+            IsString(log.attributes["Severity"])  and
+            Len(log.attributes["Severity"]) > 0
+          - set(log.severity_text, log.attributes["SEVERITY"])  where
+            log.severity_text == "" and
+            IsString(log.attributes["SEVERITY"])  and
+            Len(log.attributes["SEVERITY"]) > 0
+          - set(log.severity_text, log.attributes["log.level"]) where
+            log.severity_text == "" and IsString(log.attributes["log.level"])
+            and Len(log.attributes["log.level"]) > 0
+          # Best-effort severity_number mapping (case-insensitive via (?i)).
+          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where
+            IsMatch(log.severity_text, "(?i)(alert|crit|emerg|fatal)")
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where
+            IsMatch(log.severity_text, "(?i)(error|err)")
+          - set(log.severity_number, SEVERITY_NUMBER_WARN)  where
+            IsMatch(log.severity_text, "(?i)(warn|notice)")
+          - set(log.severity_number, SEVERITY_NUMBER_INFO)  where
+            IsMatch(log.severity_text, "(?i)(info)")
+          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where
+            IsMatch(log.severity_text, "(?i)(debug|dbug)")
+          - set(log.severity_number, SEVERITY_NUMBER_TRACE) where
+            IsMatch(log.severity_text, "(?i)(trace)")
+          # Fallthrough: promoted a level but couldn't map to a known severity
+          # keyword (e.g. "verbose", "notice"-but-already-handled). Default to
+          # INFO so we always have a numeric severity when text was promoted.
+          # Guarded on severity_text != "" so it never fires when no level field
+          # was found (which would otherwise wrongly skip the inference block).
+          - set(log.severity_number, SEVERITY_NUMBER_INFO) where
+            log.severity_number == 0 and log.severity_text != ""
       - context: log
         error_mode: ignore
         conditions:
           - severity_number == 0 and severity_text == ""
         statements:
           # Infer: extract the first log level keyword from the first 256 characters of the body
-          - set(log.cache["substr"], log.body.string) where Len(log.body.string) < 256
-          - set(log.cache["substr"], Substring(log.body.string, 0, 256)) where Len(log.body.string) >= 256
-          - set(log.cache, ExtractPatterns(log.cache["substr"], "(?i)(?P<0>\\b(alert|crit|emerg|fatal|error|err|warn|notice|debug|dbug|trace))"))
+          - set(log.cache["substr"], log.body.string) where Len(log.body.string)
+            < 256
+          - set(log.cache["substr"], Substring(log.body.string, 0, 256)) where
+            Len(log.body.string) >= 256
+          - set(log.cache, ExtractPatterns(log.cache["substr"],
+            "(?i)(?P<0>\\b(alert|crit|emerg|fatal|error|err|warn|notice|debug|dbug|trace))"))
           # Infer: detect FATAL
-          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where IsMatch(log.cache["0"], "(?i)(alert|crit|emerg|fatal)")
-          - set(log.severity_text, "fatal") where log.severity_number == SEVERITY_NUMBER_FATAL
+          - set(log.severity_number, SEVERITY_NUMBER_FATAL) where
+            IsMatch(log.cache["0"], "(?i)(alert|crit|emerg|fatal)")
+          - set(log.severity_text, "fatal") where log.severity_number ==
+            SEVERITY_NUMBER_FATAL
           # Infer: detect ERROR
-          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where IsMatch(log.cache["0"], "(?i)(error|err)")
-          - set(log.severity_text, "error") where log.severity_number == SEVERITY_NUMBER_ERROR
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where
+            IsMatch(log.cache["0"], "(?i)(error|err)")
+          - set(log.severity_text, "error") where log.severity_number ==
+            SEVERITY_NUMBER_ERROR
           # Infer: detect WARN
-          - set(log.severity_number, SEVERITY_NUMBER_WARN) where IsMatch(log.cache["0"], "(?i)(warn|notice)")
-          - set(log.severity_text, "warn") where log.severity_number == SEVERITY_NUMBER_WARN
+          - set(log.severity_number, SEVERITY_NUMBER_WARN) where
+            IsMatch(log.cache["0"], "(?i)(warn|notice)")
+          - set(log.severity_text, "warn") where log.severity_number ==
+            SEVERITY_NUMBER_WARN
           # Infer: detect DEBUG
-          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where IsMatch(log.cache["0"], "(?i)(debug|dbug)")
-          - set(log.severity_text, "debug") where log.severity_number == SEVERITY_NUMBER_DEBUG
+          - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where
+            IsMatch(log.cache["0"], "(?i)(debug|dbug)")
+          - set(log.severity_text, "debug") where log.severity_number ==
+            SEVERITY_NUMBER_DEBUG
           # Infer: detect TRACE
-          - set(log.severity_number, SEVERITY_NUMBER_TRACE) where IsMatch(log.cache["0"], "(?i)(trace)")
-          - set(log.severity_text, "trace") where log.severity_number == SEVERITY_NUMBER_TRACE
+          - set(log.severity_number, SEVERITY_NUMBER_TRACE) where
+            IsMatch(log.cache["0"], "(?i)(trace)")
+          - set(log.severity_text, "trace") where log.severity_number ==
+            SEVERITY_NUMBER_TRACE
           # Infer: else
           - set(log.severity_text, "info") where log.severity_number == 0
           - set(log.severity_number, SEVERITY_NUMBER_INFO) where
