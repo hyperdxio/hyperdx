@@ -526,13 +526,20 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
             'are dropped by default — set includeHidden:true to inspect them.',
         };
 
-        const trimmedOutput = trimToolResponse(output);
+        const { data: trimmedOutput, isTrimmed } = trimToolResponse(output);
+
+        const finalOutput = isTrimmed
+          ? {
+              ...trimmedOutput,
+              note: 'Result was trimmed for context size. Narrow the time range, add filters, or reduce topN/topValuesPerProperty to reduce data.',
+            }
+          : trimmedOutput;
 
         return {
           content: [
             {
               type: 'text' as const,
-              text: JSON.stringify(trimmedOutput, null, 2),
+              text: JSON.stringify(finalOutput, null, 2),
             },
           ],
         };

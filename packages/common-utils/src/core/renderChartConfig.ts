@@ -15,7 +15,11 @@ import {
   parseToStartOfFunction,
   splitAndTrimWithBracket,
 } from '@/core/utils';
-import { isBuilderChartConfig, isRawSqlChartConfig } from '@/guards';
+import {
+  isBuilderChartConfig,
+  isPromqlChartConfig,
+  isRawSqlChartConfig,
+} from '@/guards';
 import { replaceMacros } from '@/macros';
 import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@/rawSqlParams';
@@ -32,6 +36,7 @@ import {
   DateRange,
   DisplayType,
   MetricsDataType,
+  PromqlChartConfig,
   QuerySettings,
   RawSqlChartConfig,
   SearchCondition,
@@ -155,8 +160,12 @@ export const splitChartConfigs = (
     return _configs;
   }
 
-  if (isRawSqlChartConfig(config) || isBuilderChartConfig(config)) {
-    return [config]; // narrowed to BuilderChartConfig or RawSqlChartConfig, assignable to RawSqlChartConfigEx
+  if (
+    isRawSqlChartConfig(config) ||
+    isPromqlChartConfig(config) ||
+    isBuilderChartConfig(config)
+  ) {
+    return [config];
   }
 
   throw new Error(`Unexpected chart config type: ${JSON.stringify(config)}`);
@@ -824,7 +833,7 @@ async function renderWhereExpressionStr({
   metadata: Metadata;
   from: BuilderChartConfigWithDateRange['from'];
   implicitColumnExpression?: string;
-  useTextIndexForImplicitColumn?: ChartConfigWithOptDateRangeEx['useTextIndexForImplicitColumn'];
+  useTextIndexForImplicitColumn?: BuilderChartConfigWithDateRange['useTextIndexForImplicitColumn'];
   connectionId: string;
   with?: BuilderChartConfigWithDateRange['with'];
 }): Promise<string> {
@@ -1099,9 +1108,14 @@ type RawSqlChartConfigEx = RawSqlChartConfig &
   Partial<DateRange> &
   InternalChartFields;
 
+type PromqlChartConfigEx = PromqlChartConfig &
+  Partial<DateRange> &
+  InternalChartFields;
+
 export type ChartConfigWithOptDateRangeEx =
   | BuilderChartConfigWithOptDateRangeEx
-  | RawSqlChartConfigEx;
+  | RawSqlChartConfigEx
+  | PromqlChartConfigEx;
 
 async function renderWith(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
@@ -1757,6 +1771,11 @@ export async function renderChartConfig(
   metadata: Metadata,
   querySettings: QuerySettings | undefined,
 ): Promise<ChSql> {
+  if (isPromqlChartConfig(rawChartConfig)) {
+    // PromQL queries are executed server-side via the Prometheus API route,
+    // not via SQL generation. Return empty SQL as a no-op.
+    return { sql: '', params: {} };
+  }
   if (isRawSqlChartConfig(rawChartConfig)) {
     return renderRawSqlChartConfig(rawChartConfig, metadata);
   }

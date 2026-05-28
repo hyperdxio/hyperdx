@@ -138,6 +138,7 @@ describe('MCP Query Tools', () => {
       expect(props).toContain('sourceId');
       expect(props).toContain('where');
       expect(props).toContain('sampleSize');
+      expect(props).toContain('topN');
       expect(props).toContain('bodyExpression');
       expect(tool!.inputSchema.required).toContain('sourceId');
     });
@@ -370,14 +371,14 @@ describe('MCP Query Tools', () => {
       expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
       const output = JSON.parse(getFirstText(result));
-      expect(output).toHaveProperty('result');
-      expect(output.result).toHaveProperty('patterns');
-      expect(output.result).toHaveProperty('totalCount');
-      expect(output.result).toHaveProperty('sampledRows');
-      expect(output.result).toHaveProperty('sampleMultiplier');
-      expect(output.result).toHaveProperty('bodyColumn', 'Body');
-      expect(output.result).toHaveProperty('timeRange');
-      expect(Array.isArray(output.result.patterns)).toBe(true);
+      expect(output).toHaveProperty('summary');
+      expect(output).toHaveProperty('patterns');
+      expect(output.summary).toHaveProperty('totalCount');
+      expect(output.summary).toHaveProperty('sampledCount');
+      expect(output.summary).toHaveProperty('sampleMultiplier');
+      expect(output.summary).toHaveProperty('bodyColumn', 'Body');
+      expect(output.summary).toHaveProperty('timeRange');
+      expect(Array.isArray(output.patterns)).toBe(true);
     });
 
     it('should execute with explicit bodyExpression on trace source', async () => {
@@ -391,9 +392,9 @@ describe('MCP Query Tools', () => {
       expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
       const output = JSON.parse(getFirstText(result));
-      expect(output).toHaveProperty('result');
-      expect(Array.isArray(output.result.patterns)).toBe(true);
-      expect(output.result).toHaveProperty('bodyColumn', 'SpanName');
+      expect(output).toHaveProperty('summary');
+      expect(Array.isArray(output.patterns)).toBe(true);
+      expect(output.summary).toHaveProperty('bodyColumn', 'SpanName');
     });
 
     it('should accept custom bodyExpression on log source', async () => {
@@ -407,7 +408,7 @@ describe('MCP Query Tools', () => {
       expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
       const output = JSON.parse(getFirstText(result));
-      expect(output.result).toHaveProperty('bodyColumn', 'SeverityText');
+      expect(output.summary).toHaveProperty('bodyColumn', 'SeverityText');
     });
 
     it('should respect sampleSize parameter', async () => {
@@ -503,10 +504,11 @@ describe('MCP Query Tools', () => {
 
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
-        const { patterns, totalCount, sampledRows } = output.result;
+        const { patterns } = output;
+        const { totalCount, sampledCount } = output.summary;
 
         expect(totalCount).toBeGreaterThanOrEqual(31);
-        expect(sampledRows).toBeGreaterThanOrEqual(31);
+        expect(sampledCount).toBeGreaterThanOrEqual(31);
         expect(patterns.length).toBeGreaterThanOrEqual(1);
 
         // The most common pattern should contain <*> placeholders

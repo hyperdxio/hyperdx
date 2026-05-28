@@ -827,6 +827,57 @@ func TestSwapLogsSchemaForCompat(t *testing.T) {
 // removeCompatLogsSchema
 // ---------------------------------------------------------------------------
 
+func TestRemovePromqlSchema(t *testing.T) {
+	t.Run("removes existing promql schema file", func(t *testing.T) {
+		dir := t.TempDir()
+		promqlPath := filepath.Join(dir, "00008_otel_metrics_timeseries.sql")
+
+		if err := os.WriteFile(promqlPath, []byte("PROMQL SCHEMA"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := removePromqlSchema(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if _, err := os.Stat(promqlPath); !os.IsNotExist(err) {
+			t.Error("promql schema file should have been removed")
+		}
+	})
+
+	t.Run("no error when promql schema file does not exist", func(t *testing.T) {
+		dir := t.TempDir()
+
+		if err := removePromqlSchema(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("preserves other files", func(t *testing.T) {
+		dir := t.TempDir()
+		otherPath := filepath.Join(dir, "00001_other.sql")
+		promqlPath := filepath.Join(dir, "00008_otel_metrics_timeseries.sql")
+
+		if err := os.WriteFile(otherPath, []byte("OTHER"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(promqlPath, []byte("PROMQL"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := removePromqlSchema(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if _, err := os.Stat(otherPath); err != nil {
+			t.Error("other file should still exist")
+		}
+		if _, err := os.Stat(promqlPath); !os.IsNotExist(err) {
+			t.Error("promql schema file should have been removed")
+		}
+	})
+}
+
 func TestRemoveCompatLogsSchema(t *testing.T) {
 	t.Run("removes existing compat file", func(t *testing.T) {
 		dir := t.TempDir()

@@ -148,7 +148,7 @@ export const SQLIntervalSchema = z
   .regex(/^\d+ (second|minute|hour|day)$/);
 export const SearchConditionSchema = z.string();
 export const SearchConditionLanguageSchema = z
-  .enum(['sql', 'lucene'])
+  .enum(['sql', 'lucene', 'promql'])
   .optional();
 export const AggregateFunctionSchema = z.enum([
   'avg',
@@ -886,9 +886,29 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
 
+/** Base schema for PromQL chart configs (persisted fields) */
+const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
+  configType: z.literal('promql'),
+  promqlExpression: z.string(),
+  connection: z.string(),
+  source: z.string().optional(),
+  step: z.string().optional(),
+});
+
+/** Schema describing PromQL chart configs with runtime-only fields */
+const PromqlChartConfigSchema = PromqlBaseChartConfigSchema.extend({
+  filters: z.array(FilterSchema).optional(),
+  from: z
+    .object({ databaseName: z.string(), tableName: z.string() })
+    .optional(),
+});
+
+export type PromqlChartConfig = z.infer<typeof PromqlChartConfigSchema>;
+
 export const ChartConfigSchema = z.union([
   BuilderChartConfigSchema,
   RawSqlChartConfigSchema,
+  PromqlChartConfigSchema,
 ]);
 
 export type ChartConfig = z.infer<typeof ChartConfigSchema>;
@@ -902,6 +922,7 @@ export type DateRange = {
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
 export type BuilderChartConfigWithDateRange = BuilderChartConfig & DateRange;
 export type RawSqlConfigWithDateRange = RawSqlChartConfig & DateRange;
+export type PromqlConfigWithDateRange = PromqlChartConfig & DateRange;
 
 export type BuilderChartConfigWithOptTimestamp = Omit<
   BuilderChartConfigWithDateRange,
@@ -912,7 +933,8 @@ export type BuilderChartConfigWithOptTimestamp = Omit<
 
 export type ChartConfigWithOptTimestamp =
   | BuilderChartConfigWithOptTimestamp
-  | RawSqlConfigWithDateRange;
+  | RawSqlConfigWithDateRange
+  | PromqlConfigWithDateRange;
 
 // For non-time-based searches (ex. grab 1 row)
 export type BuilderChartConfigWithOptDateRange = Omit<
@@ -924,7 +946,8 @@ export type BuilderChartConfigWithOptDateRange = Omit<
 
 export type ChartConfigWithOptDateRange =
   | BuilderChartConfigWithOptDateRange
-  | (RawSqlChartConfig & Partial<DateRange>);
+  | (RawSqlChartConfig & Partial<DateRange>)
+  | (PromqlChartConfig & Partial<DateRange>);
 
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
@@ -971,13 +994,31 @@ const RawSqlSavedChartConfigSchema =
     ]),
   });
 
+const PromqlSavedChartConfigWithoutAlertSchema =
+  PromqlBaseChartConfigSchema.extend({
+    name: z.string().optional(),
+  });
+
+const PromqlSavedChartConfigSchema =
+  PromqlSavedChartConfigWithoutAlertSchema.extend({
+    alert: z.union([
+      AlertBaseSchema.optional(),
+      ChartAlertBaseSchema.optional(),
+    ]),
+  });
+
 export const SavedChartConfigSchema = z.union([
   BuilderSavedChartConfigSchema,
   RawSqlSavedChartConfigSchema,
+  PromqlSavedChartConfigSchema,
 ]);
 
 export type RawSqlSavedChartConfig = z.infer<
   typeof RawSqlSavedChartConfigSchema
+>;
+
+export type PromqlSavedChartConfig = z.infer<
+  typeof PromqlSavedChartConfigSchema
 >;
 
 export type SavedChartConfig = z.infer<typeof SavedChartConfigSchema>;
@@ -1000,6 +1041,7 @@ export const TileTemplateSchema = TileSchema.extend({
   config: z.union([
     BuilderSavedChartConfigWithoutAlertSchema,
     RawSqlSavedChartConfigWithoutAlertSchema,
+    PromqlSavedChartConfigWithoutAlertSchema,
   ]),
 });
 
@@ -1157,6 +1199,7 @@ export const ConnectionSchema = z.object({
     .regex(/^[a-z0-9_]+$/i)
     .optional()
     .nullable(),
+  prometheusEndpoint: z.string().url().optional(),
 });
 
 export type Connection = z.infer<typeof ConnectionSchema>;
@@ -1207,6 +1250,7 @@ export enum SourceKind {
   Trace = 'trace',
   Session = 'session',
   Metric = 'metric',
+  Promql = 'promql',
 }
 
 // --------------------------
@@ -1401,12 +1445,18 @@ export const MetricSourceSchema = BaseSourceSchema.extend({
   logSourceId: z.string().optional(),
 });
 
+// PromQL source form schema
+export const PromqlSourceSchema = BaseSourceSchema.extend({
+  kind: z.literal(SourceKind.Promql),
+});
+
 // Union of all source form schemas for validation
 export const SourceSchema = z.discriminatedUnion('kind', [
   LogSourceSchema,
   TraceSourceSchema,
   SessionSourceSchema,
   MetricSourceSchema,
+  PromqlSourceSchema,
 ]);
 export type TSource = z.infer<typeof SourceSchema>;
 
@@ -1415,6 +1465,7 @@ export const SourceSchemaNoId = z.discriminatedUnion('kind', [
   TraceSourceSchema.omit({ id: true }),
   SessionSourceSchema.omit({ id: true }),
   MetricSourceSchema.omit({ id: true }),
+  PromqlSourceSchema.omit({ id: true }),
 ]);
 export type TSourceNoId = z.infer<typeof SourceSchemaNoId>;
 
@@ -1423,6 +1474,7 @@ export type TLogSource = Extract<TSource, { kind: SourceKind.Log }>;
 export type TTraceSource = Extract<TSource, { kind: SourceKind.Trace }>;
 export type TSessionSource = Extract<TSource, { kind: SourceKind.Session }>;
 export type TMetricSource = Extract<TSource, { kind: SourceKind.Metric }>;
+export type TPromqlSource = Extract<TSource, { kind: SourceKind.Promql }>;
 
 // Type guards for narrowing TSource by kind
 export function isLogSource(source: TSource): source is TLogSource {
@@ -1436,6 +1488,9 @@ export function isSessionSource(source: TSource): source is TSessionSource {
 }
 export function isMetricSource(source: TSource): source is TMetricSource {
   return source.kind === SourceKind.Metric;
+}
+export function isPromqlSource(source: TSource): source is TPromqlSource {
+  return source.kind === SourceKind.Promql;
 }
 export function isSearchableSource(source: TSource): boolean {
   return isLogSource(source) || isTraceSource(source);
