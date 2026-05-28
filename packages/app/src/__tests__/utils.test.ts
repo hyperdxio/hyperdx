@@ -12,6 +12,7 @@ import {
   getAllMetricTables,
   getMetricTableName,
   mapKeyBy,
+  mergePath,
   orderByStringToSortingState,
   parseTimestampToMs,
   sortingStateToOrderByString,
@@ -1200,5 +1201,78 @@ describe('formatDurationMsCompact', () => {
   it('formats hours (>= 1 hour)', () => {
     expect(formatDurationMsCompact(3_600_000)).toBe('1h');
     expect(formatDurationMsCompact(7_200_000)).toBe('2h');
+  });
+});
+
+describe('mergePath', () => {
+  describe('default (Array / unknown column)', () => {
+    it('returns the bare key for a single-segment path', () => {
+      expect(mergePath(['Body'])).toBe('Body');
+    });
+
+    it('numeric sub-segment becomes 1-based array index', () => {
+      // ClickHouse arrays are 1-based but flattened data uses 0-based indices.
+      expect(mergePath(['SomeArray', '0'])).toBe('SomeArray[1]');
+      expect(mergePath(['SomeArray', '4'])).toBe('SomeArray[5]');
+    });
+
+    it('non-numeric sub-segment becomes string-key subscript', () => {
+      expect(mergePath(['SomeColumn', 'service.name'])).toBe(
+        "SomeColumn['service.name']",
+      );
+    });
+
+    it('mixed numeric and string segments chain', () => {
+      expect(mergePath(['Outer', '1', 'inner'])).toBe("Outer[2]['inner']");
+    });
+  });
+
+  describe('JSON column', () => {
+    it('emits dotted backtick-quoted accessor', () => {
+      expect(mergePath(['BodyJson', 'service', 'name'], ['BodyJson'])).toBe(
+        'BodyJson.`service`.`name`',
+      );
+    });
+  });
+
+  describe('Map column (HDX-4369)', () => {
+    // Failing reproducer from the issue body: on a Map(String, String), a
+    // numeric-looking sub-key must NOT collapse into array-index syntax.
+    // ClickHouse rejects `LogAttributes[2]` against a Map column with
+    // "Illegal types of arguments: Map(String, String), UInt8 for function
+    // arrayElement". The fix adds a `mapColumns` parameter that forces the
+    // bracketed string-key form regardless of whether the key parses as a
+    // non-negative integer.
+    it('numeric sub-key on a Map renders as string subscript, not array index', () => {
+      const result = mergePath(['LogAttributes', '1'], [], ['LogAttributes']);
+      expect(result).not.toBe('LogAttributes[2]');
+      expect(result).not.toMatch(/\[\d+\]$/);
+      expect(result).toBe("LogAttributes['1']");
+    });
+
+    it('non-numeric Map sub-key keeps string subscript (unchanged)', () => {
+      expect(
+        mergePath(['LogAttributes', 'service.name'], [], ['LogAttributes']),
+      ).toBe("LogAttributes['service.name']");
+    });
+
+    it('multi-segment Map path chains string subscripts', () => {
+      expect(
+        mergePath(['LogAttributes', '1', 'foo'], [], ['LogAttributes']),
+      ).toBe("LogAttributes['1']['foo']");
+    });
+
+    it('Array column with numeric key still uses array-index syntax', () => {
+      // Inverse case: keep existing behavior for non-Map parents.
+      expect(mergePath(['SomeArray', '1'], [], ['LogAttributes'])).toBe(
+        'SomeArray[2]',
+      );
+    });
+
+    it('JSON column wins over Map column when both lists contain the key', () => {
+      // Caller can't currently configure the same column as both; the order
+      // is deterministic if they did.
+      expect(mergePath(['Body', '1'], ['Body'], ['Body'])).toBe('Body.`1`');
+    });
   });
 });

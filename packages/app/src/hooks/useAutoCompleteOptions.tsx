@@ -234,9 +234,24 @@ export function useAutoCompleteOptions(
     [tcs, effectiveDateRange, source?.timestampValueExpression],
   );
 
+  // Map columns from the field list, so a path like `['LogAttributes', '1']`
+  // on a Map(String, ...) renders as `LogAttributes['1']` instead of the
+  // illegal array `LogAttributes[2]`. HDX-4369.
+  const mapColumns = useMemo(
+    () =>
+      (fields ?? [])
+        .filter(
+          f =>
+            f.path.length === 1 &&
+            (f.type === 'Map' || f.type.startsWith('Map(')),
+        )
+        .map(f => f.path[0]),
+    [fields],
+  );
+
   const searchKeys = useMemo(
-    () => (searchField ? [mergePath(searchField.path)] : []),
-    [searchField],
+    () => (searchField ? [mergePath(searchField.path, [], mapColumns)] : []),
+    [searchField, mapColumns],
   );
 
   const metadataMVs = tcs[0]?.metadataMVs;

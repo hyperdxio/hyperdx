@@ -333,9 +333,14 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
 export function DBRowJsonViewer({
   data,
   jsonColumns,
+  mapColumns,
 }: {
   data: any;
   jsonColumns?: string[];
+  // Map column names from the result-set metadata. Threaded into
+  // `mergePath` so numeric-looking sub-keys on a Map render as
+  // `Map['key']` instead of the array `Map[N+1]`. HDX-4369.
+  mapColumns?: string[];
 }) {
   const {
     onPropertyAddClick,
@@ -370,7 +375,7 @@ export function DBRowJsonViewer({
   const getLineActions = useCallback<GetLineActions>(
     ({ keyPath, value, isInParsedJson, parsedJsonRootPath }) => {
       const actions: LineAction[] = [];
-      const fieldPath = mergePath(keyPath, jsonColumns);
+      const fieldPath = mergePath(keyPath, jsonColumns, mapColumns);
 
       // Add to Filters action (strings only)
       // FIXME: TOTAL HACK To disallow adding timestamp to filters
@@ -621,6 +626,7 @@ export function DBRowJsonViewer({
       rowData,
       toggleColumn,
       jsonColumns,
+      mapColumns,
     ],
   );
 
