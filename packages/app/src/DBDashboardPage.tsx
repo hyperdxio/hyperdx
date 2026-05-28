@@ -29,6 +29,7 @@ import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
@@ -463,6 +464,19 @@ const Tile = forwardRef(
       !chart.config.source;
 
     useEffect(() => {
+      if (isPromqlSavedChartConfig(chart.config)) {
+        if (source != null) {
+          setQueriedConfig({
+            ...chart.config,
+            from: source.from,
+            connection: source.connection,
+            dateRange,
+            granularity,
+          });
+        }
+        return;
+      }
+
       if (isRawSqlSavedChartConfig(chart.config)) {
         // Some raw SQL charts don't have a source
         if (!chart.config.source) {
@@ -1356,9 +1370,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const {
     filterValues,
     setFilterValue,
-    filterQueries,
     setFilterQueries,
     ignoredFilterExpressions,
+    getFilterQueriesForSource,
   } = useDashboardFilters(filters);
 
   const dashboardReady =
@@ -1761,97 +1775,106 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 
   const renderTileComponent = useCallback(
-    (chart: Tile) => (
-      <Tile
-        key={chart.id}
-        chart={chart}
-        dateRange={searchedTimeRange}
-        onEditClick={() => setEditedTile(chart)}
-        granularity={
-          isRefreshEnabled ? granularityOverride : (granularity ?? undefined)
-        }
-        filters={[
-          {
-            type: whereLanguage === 'sql' ? 'sql' : 'lucene',
-            condition: where,
-          },
-          ...(filterQueries ?? []),
-        ]}
-        onTimeRangeSelect={onTimeRangeSelect}
-        isHighlighted={highlightedTileId === chart.id}
-        onUpdateChart={newChart => {
-          if (!dashboard) return;
-          setDashboard(
-            produce(dashboard, draft => {
-              const chartIndex = draft.tiles.findIndex(c => c.id === chart.id);
-              if (chartIndex === -1) return;
-              draft.tiles[chartIndex] = newChart;
-            }),
-          );
-        }}
-        onDuplicateClick={async () => {
-          if (dashboard != null) {
-            if (
-              !(await confirm(
-                <>
-                  Duplicate {'"'}
-                  <Text component="span" fw={700}>
-                    {chart.config.name}
-                  </Text>
-                  {'"'}?
-                </>,
-                'Duplicate',
-              ))
-            ) {
-              return;
-            }
-            setDashboard({
-              ...dashboard,
-              tiles: [
-                ...dashboard.tiles,
-                {
-                  ...chart,
-                  id: makeId(),
-                  config: {
-                    ...chart.config,
-                    alert: undefined,
+    (chart: Tile) => {
+      // Resolve the tile's source ID so per-source-scoped filters can be
+      // narrowed to only the tiles they target. Builder and RawSQL configs
+      // both carry a `source` field; markdown / other configs don't.
+      const tileSourceId =
+        'source' in chart.config ? chart.config.source : undefined;
+      return (
+        <Tile
+          key={chart.id}
+          chart={chart}
+          dateRange={searchedTimeRange}
+          onEditClick={() => setEditedTile(chart)}
+          granularity={
+            isRefreshEnabled ? granularityOverride : (granularity ?? undefined)
+          }
+          filters={[
+            {
+              type: whereLanguage === 'sql' ? 'sql' : 'lucene',
+              condition: where,
+            },
+            ...getFilterQueriesForSource(tileSourceId),
+          ]}
+          onTimeRangeSelect={onTimeRangeSelect}
+          isHighlighted={highlightedTileId === chart.id}
+          onUpdateChart={newChart => {
+            if (!dashboard) return;
+            setDashboard(
+              produce(dashboard, draft => {
+                const chartIndex = draft.tiles.findIndex(
+                  c => c.id === chart.id,
+                );
+                if (chartIndex === -1) return;
+                draft.tiles[chartIndex] = newChart;
+              }),
+            );
+          }}
+          onDuplicateClick={async () => {
+            if (dashboard != null) {
+              if (
+                !(await confirm(
+                  <>
+                    Duplicate {'"'}
+                    <Text component="span" fw={700}>
+                      {chart.config.name}
+                    </Text>
+                    {'"'}?
+                  </>,
+                  'Duplicate',
+                ))
+              ) {
+                return;
+              }
+              setDashboard({
+                ...dashboard,
+                tiles: [
+                  ...dashboard.tiles,
+                  {
+                    ...chart,
+                    id: makeId(),
+                    config: {
+                      ...chart.config,
+                      alert: undefined,
+                    },
                   },
-                },
-              ],
-            });
-          }
-        }}
-        onDeleteClick={async () => {
-          if (dashboard != null) {
-            if (
-              !(await confirm(
-                <>
-                  Delete{' '}
-                  <Text component="span" fw={700}>
-                    {chart.config.name}
-                  </Text>
-                  ?
-                </>,
-                'Delete',
-                { variant: 'danger' },
-              ))
-            ) {
-              return;
+                ],
+              });
             }
-            setDashboard({
-              ...dashboard,
-              tiles: dashboard.tiles.filter(c => c.id !== chart.id),
-            });
+          }}
+          onDeleteClick={async () => {
+            if (dashboard != null) {
+              if (
+                !(await confirm(
+                  <>
+                    Delete{' '}
+                    <Text component="span" fw={700}>
+                      {chart.config.name}
+                    </Text>
+                    ?
+                  </>,
+                  'Delete',
+                  { variant: 'danger' },
+                ))
+              ) {
+                return;
+              }
+              setDashboard({
+                ...dashboard,
+                tiles: dashboard.tiles.filter(c => c.id !== chart.id),
+              });
+            }
+          }}
+          moveTargets={moveTargetContainers}
+          onMoveToGroup={(containerId, tabId) =>
+            handleMoveTileToGroup(chart.id, containerId, tabId)
           }
-        }}
-        moveTargets={moveTargetContainers}
-        onMoveToGroup={(containerId, tabId) =>
-          handleMoveTileToGroup(chart.id, containerId, tabId)
-        }
-        isSelected={selectedTileIds.has(chart.id)}
-        onSelect={handleToggleTileSelect}
-      />
-    ),
+          isSelected={selectedTileIds.has(chart.id)}
+          onSelect={handleToggleTileSelect}
+        />
+      );
+    },
     [
       dashboard,
       searchedTimeRange,
@@ -1864,7 +1887,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       where,
       whereLanguage,
       onTimeRangeSelect,
-      filterQueries,
+      getFilterQueriesForSource,
       moveTargetContainers,
       handleMoveTileToGroup,
       selectedTileIds,

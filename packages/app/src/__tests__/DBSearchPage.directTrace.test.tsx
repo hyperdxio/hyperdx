@@ -132,6 +132,10 @@ jest.mock('../hooks/useMetadata', () => ({
     data: { sorting_key: 'Timestamp' },
     isLoading: false,
   }),
+  useColumns: () => ({
+    data: undefined,
+    isLoading: false,
+  }),
 }));
 
 jest.mock('../hooks/useSqlSuggestions', () => ({

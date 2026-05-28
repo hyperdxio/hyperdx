@@ -148,7 +148,7 @@ export const SQLIntervalSchema = z
   .regex(/^\d+ (second|minute|hour|day)$/);
 export const SearchConditionSchema = z.string();
 export const SearchConditionLanguageSchema = z
-  .enum(['sql', 'lucene'])
+  .enum(['sql', 'lucene', 'promql'])
   .optional();
 export const AggregateFunctionSchema = z.enum([
   'avg',
@@ -789,6 +789,65 @@ export function isOnClickDashboardById(
   );
 }
 
+/**
+ * The set of palette tokens a user can pick for chart series colors,
+ * number-tile colors, reference lines, and threshold rules.
+ *
+ * Tokens map to CSS variables in
+ * `packages/app/src/theme/themes/<theme>/_tokens.scss`:
+ *   chart-1 .. chart-10        -> --color-chart-1 .. --color-chart-10
+ *   chart-success/warning/error -> --color-chart-{success|warning|error}
+ *
+ * Storing tokens (not hex) lets user choices reflow correctly across
+ * themes and color modes; see notes/repo-conventions/hyperdx/tile-styling.md.
+ *
+ * Lives in common-utils because the schema is shared between the app
+ * and the API; the theme-aware CSS resolver (`getColorFromCSSToken`)
+ * stays in `packages/app/src/utils.ts` because it depends on
+ * `getComputedStyle(document.documentElement)`.
+ */
+export const CHART_PALETTE_TOKENS = [
+  'chart-1',
+  'chart-2',
+  'chart-3',
+  'chart-4',
+  'chart-5',
+  'chart-6',
+  'chart-7',
+  'chart-8',
+  'chart-9',
+  'chart-10',
+  'chart-success',
+  'chart-warning',
+  'chart-error',
+] as const;
+
+export type ChartPaletteToken = (typeof CHART_PALETTE_TOKENS)[number];
+
+/** Categorical tokens (chart-1 .. chart-10). */
+export const CATEGORICAL_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
+  0,
+  10,
+) as readonly ChartPaletteToken[];
+
+/** Semantic tokens (success / warning / error). */
+export const SEMANTIC_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
+  10,
+) as readonly ChartPaletteToken[];
+
+/** Type guard for runtime validation of an unknown token string. */
+export function isChartPaletteToken(
+  value: unknown,
+): value is ChartPaletteToken {
+  return (
+    typeof value === 'string' &&
+    (CHART_PALETTE_TOKENS as readonly string[]).includes(value)
+  );
+}
+
+/** Zod schema that accepts only the curated palette tokens above. */
+export const ChartPaletteTokenSchema = z.enum(CHART_PALETTE_TOKENS);
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
 /**
@@ -803,6 +862,14 @@ const SharedChartSettingsSchema = z.object({
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   alignDateRangeToGranularity: z.boolean().optional(),
   onClick: OnClickSchema.optional(),
+  // Palette-token color override. Applied by the renderer for number
+  // tiles only (gated in `ChartDisplaySettingsDrawer`); other display
+  // types ignore the field. Other tile types (line / bar / pie) ship
+  // their per-series colors in a follow-up PR via `select[i].color`.
+  // Stored at shared level mirroring `numberFormat` above, which is
+  // also a Number-tile-only field stored at shared level and gated in
+  // the UI.
+  color: ChartPaletteTokenSchema.optional(),
 });
 
 export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
@@ -886,9 +953,29 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
 
 export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
 
+/** Base schema for PromQL chart configs (persisted fields) */
+const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
+  configType: z.literal('promql'),
+  promqlExpression: z.string(),
+  connection: z.string(),
+  source: z.string().optional(),
+  step: z.string().optional(),
+});
+
+/** Schema describing PromQL chart configs with runtime-only fields */
+const PromqlChartConfigSchema = PromqlBaseChartConfigSchema.extend({
+  filters: z.array(FilterSchema).optional(),
+  from: z
+    .object({ databaseName: z.string(), tableName: z.string() })
+    .optional(),
+});
+
+export type PromqlChartConfig = z.infer<typeof PromqlChartConfigSchema>;
+
 export const ChartConfigSchema = z.union([
   BuilderChartConfigSchema,
   RawSqlChartConfigSchema,
+  PromqlChartConfigSchema,
 ]);
 
 export type ChartConfig = z.infer<typeof ChartConfigSchema>;
@@ -902,6 +989,7 @@ export type DateRange = {
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
 export type BuilderChartConfigWithDateRange = BuilderChartConfig & DateRange;
 export type RawSqlConfigWithDateRange = RawSqlChartConfig & DateRange;
+export type PromqlConfigWithDateRange = PromqlChartConfig & DateRange;
 
 export type BuilderChartConfigWithOptTimestamp = Omit<
   BuilderChartConfigWithDateRange,
@@ -912,7 +1000,8 @@ export type BuilderChartConfigWithOptTimestamp = Omit<
 
 export type ChartConfigWithOptTimestamp =
   | BuilderChartConfigWithOptTimestamp
-  | RawSqlConfigWithDateRange;
+  | RawSqlConfigWithDateRange
+  | PromqlConfigWithDateRange;
 
 // For non-time-based searches (ex. grab 1 row)
 export type BuilderChartConfigWithOptDateRange = Omit<
@@ -924,7 +1013,8 @@ export type BuilderChartConfigWithOptDateRange = Omit<
 
 export type ChartConfigWithOptDateRange =
   | BuilderChartConfigWithOptDateRange
-  | (RawSqlChartConfig & Partial<DateRange>);
+  | (RawSqlChartConfig & Partial<DateRange>)
+  | (PromqlChartConfig & Partial<DateRange>);
 
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
@@ -971,13 +1061,31 @@ const RawSqlSavedChartConfigSchema =
     ]),
   });
 
+const PromqlSavedChartConfigWithoutAlertSchema =
+  PromqlBaseChartConfigSchema.extend({
+    name: z.string().optional(),
+  });
+
+const PromqlSavedChartConfigSchema =
+  PromqlSavedChartConfigWithoutAlertSchema.extend({
+    alert: z.union([
+      AlertBaseSchema.optional(),
+      ChartAlertBaseSchema.optional(),
+    ]),
+  });
+
 export const SavedChartConfigSchema = z.union([
   BuilderSavedChartConfigSchema,
   RawSqlSavedChartConfigSchema,
+  PromqlSavedChartConfigSchema,
 ]);
 
 export type RawSqlSavedChartConfig = z.infer<
   typeof RawSqlSavedChartConfigSchema
+>;
+
+export type PromqlSavedChartConfig = z.infer<
+  typeof PromqlSavedChartConfigSchema
 >;
 
 export type SavedChartConfig = z.infer<typeof SavedChartConfigSchema>;
@@ -1000,6 +1108,7 @@ export const TileTemplateSchema = TileSchema.extend({
   config: z.union([
     BuilderSavedChartConfigWithoutAlertSchema,
     RawSqlSavedChartConfigWithoutAlertSchema,
+    PromqlSavedChartConfigWithoutAlertSchema,
   ]),
 });
 
@@ -1058,6 +1167,9 @@ export const DashboardFilterSchema = z.object({
   sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
   where: z.string().optional(),
   whereLanguage: SearchConditionLanguageSchema,
+  // Sources this filter applies to. Undefined / missing means the filter
+  // applies to all tiles.
+  appliesToSourceIds: z.array(z.string().min(1)).optional(),
 });
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
@@ -1154,6 +1266,7 @@ export const ConnectionSchema = z.object({
     .regex(/^[a-z0-9_]+$/i)
     .optional()
     .nullable(),
+  prometheusEndpoint: z.string().url().optional(),
 });
 
 export type Connection = z.infer<typeof ConnectionSchema>;
@@ -1166,6 +1279,19 @@ export const TeamClickHouseSettingsSchema = z.object({
   parallelizeWhenPossible: z.boolean().optional(),
   filterKeysFetchLimit: z.number().optional(),
 });
+
+/** Accepts null to unset (reset to default) a setting. */
+export const TeamClickHouseSettingsUpdateSchema = z.object({
+  fieldMetadataDisabled: z.boolean().nullish(),
+  searchRowLimit: z.number().nullish(),
+  queryTimeout: z.number().nullish(),
+  metadataMaxRowsToRead: z.number().nullish(),
+  parallelizeWhenPossible: z.boolean().nullish(),
+  filterKeysFetchLimit: z.number().nullish(),
+});
+export type TeamClickHouseSettingsUpdate = z.infer<
+  typeof TeamClickHouseSettingsUpdateSchema
+>;
 export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
 >;
@@ -1191,6 +1317,7 @@ export enum SourceKind {
   Trace = 'trace',
   Session = 'session',
   Metric = 'metric',
+  Promql = 'promql',
 }
 
 // --------------------------
@@ -1385,12 +1512,18 @@ export const MetricSourceSchema = BaseSourceSchema.extend({
   logSourceId: z.string().optional(),
 });
 
+// PromQL source form schema
+export const PromqlSourceSchema = BaseSourceSchema.extend({
+  kind: z.literal(SourceKind.Promql),
+});
+
 // Union of all source form schemas for validation
 export const SourceSchema = z.discriminatedUnion('kind', [
   LogSourceSchema,
   TraceSourceSchema,
   SessionSourceSchema,
   MetricSourceSchema,
+  PromqlSourceSchema,
 ]);
 export type TSource = z.infer<typeof SourceSchema>;
 
@@ -1399,6 +1532,7 @@ export const SourceSchemaNoId = z.discriminatedUnion('kind', [
   TraceSourceSchema.omit({ id: true }),
   SessionSourceSchema.omit({ id: true }),
   MetricSourceSchema.omit({ id: true }),
+  PromqlSourceSchema.omit({ id: true }),
 ]);
 export type TSourceNoId = z.infer<typeof SourceSchemaNoId>;
 
@@ -1407,6 +1541,7 @@ export type TLogSource = Extract<TSource, { kind: SourceKind.Log }>;
 export type TTraceSource = Extract<TSource, { kind: SourceKind.Trace }>;
 export type TSessionSource = Extract<TSource, { kind: SourceKind.Session }>;
 export type TMetricSource = Extract<TSource, { kind: SourceKind.Metric }>;
+export type TPromqlSource = Extract<TSource, { kind: SourceKind.Promql }>;
 
 // Type guards for narrowing TSource by kind
 export function isLogSource(source: TSource): source is TLogSource {
@@ -1420,6 +1555,9 @@ export function isSessionSource(source: TSource): source is TSessionSource {
 }
 export function isMetricSource(source: TSource): source is TMetricSource {
   return source.kind === SourceKind.Metric;
+}
+export function isPromqlSource(source: TSource): source is TPromqlSource {
+  return source.kind === SourceKind.Promql;
 }
 export function isSearchableSource(source: TSource): boolean {
   return isLogSource(source) || isTraceSource(source);

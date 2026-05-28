@@ -8,19 +8,16 @@ import {
   SelectProps,
   UnstyledButton,
 } from '@mantine/core';
-import {
-  IconChartLine,
-  IconConnection,
-  IconDeviceLaptop,
-  IconLogs,
-  IconPlus,
-  IconSettings,
-  IconStack,
-} from '@tabler/icons-react';
+import { IconPlus, IconSettings, IconStack } from '@tabler/icons-react';
 
 import SelectControlled, {
   SelectControlledSpecialValues,
 } from '@/components/SelectControlled';
+import {
+  SOURCE_KIND_ICONS,
+  useFilteredSortedSourceItems,
+  useSourceKindMap,
+} from '@/components/sourceSelectUtils';
 import { useSources } from '@/source';
 
 import styles from '../../styles/SourceSelectControlled.module.scss';
@@ -55,13 +52,6 @@ export const SourceSelectRightSection = ({
     ),
     rightSectionWidth: 70,
   };
-};
-
-const SOURCE_KIND_ICONS: Record<string, React.ReactNode> = {
-  [SourceKind.Log]: <IconLogs size={16} />,
-  [SourceKind.Trace]: <IconConnection size={16} />,
-  [SourceKind.Session]: <IconDeviceLaptop size={16} />,
-  [SourceKind.Metric]: <IconChartLine size={16} />,
 };
 
 const OPTION_ICONS: Record<string, React.ReactNode> = {
@@ -102,11 +92,7 @@ function SourceSelectControlledComponent({
     <IconStack size={16} />
   );
 
-  const sourceKindMap = useMemo(() => {
-    const map = new Map<string, SourceKind>();
-    data?.forEach(s => map.set(s.id, s.kind));
-    return map;
-  }, [data]);
+  const sourceKindMap = useSourceKindMap(data);
 
   const renderOption = useCallback(
     ({ option }: { option: ComboboxItem }) => {
@@ -126,21 +112,13 @@ function SourceSelectControlledComponent({
 
   const hasActions = !!onCreate || !!onEdit;
 
-  const values = useMemo(() => {
-    const sourceItems = (
-      data
-        ?.filter(
-          source =>
-            (!allowedSourceKinds || allowedSourceKinds.includes(source.kind)) &&
-            (!connectionId || source.connection === connectionId) &&
-            !source.disabled,
-        )
-        .map(d => ({
-          value: d.id,
-          label: d.name,
-        })) ?? []
-    ).sort((a, b) => a.label.localeCompare(b.label));
+  const sourceItems = useFilteredSortedSourceItems({
+    sources: data,
+    allowedSourceKinds,
+    connectionId,
+  });
 
+  const values = useMemo(() => {
     if (!hasActions) {
       return sourceItems;
     }
@@ -160,7 +138,7 @@ function SourceSelectControlledComponent({
     }
 
     return [...sourceItems, { group: 'Actions', items: actionItems }];
-  }, [data, onCreate, onEdit, allowedSourceKinds, connectionId, hasActions]);
+  }, [sourceItems, onCreate, onEdit, hasActions]);
 
   const rightSectionProps = SourceSelectRightSection({ sourceSchemaPreview });
 

@@ -12,6 +12,7 @@ import {
   useGetKeyValues,
   useMultipleAllFields,
 } from '@/hooks/useMetadata';
+import { useSource } from '@/source';
 import { mergePath, toArray, useDebounce } from '@/utils';
 
 export type TokenInfo = {
@@ -144,15 +145,18 @@ export function useAutoCompleteOptions(
   {
     tableConnection,
     additionalSuggestions,
+    sourceId,
     dateRange,
     inputRef,
   }: {
     tableConnection?: TableConnection | TableConnection[];
     additionalSuggestions?: string[];
+    sourceId?: string;
     dateRange?: [Date, Date];
     inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   },
 ) {
+  const { data: source } = useSource({ id: sourceId });
   const value = useDebounce(_value, 300);
   const tcs = useMemo(() => toArray(tableConnection), [tableConnection]);
 
@@ -164,6 +168,7 @@ export function useAutoCompleteOptions(
   // Fetch fields, using rollup for map key discovery when available
   const { data: fields } = useMultipleAllFields(tcs, {
     dateRange: effectiveDateRange,
+    timestampValueExpression: source?.timestampValueExpression,
   });
 
   const { fieldCompleteOptions, fieldCompleteMap } = useMemo(() => {
@@ -220,13 +225,13 @@ export function useAutoCompleteOptions(
               databaseName: tcs[0].databaseName,
               tableName: tcs[0].tableName,
             },
-            timestampValueExpression: '',
+            timestampValueExpression: source?.timestampValueExpression ?? '',
             select: '',
             where: '',
             dateRange: effectiveDateRange,
           }
         : undefined,
-    [tcs, effectiveDateRange],
+    [tcs, effectiveDateRange, source?.timestampValueExpression],
   );
 
   const searchKeys = useMemo(
