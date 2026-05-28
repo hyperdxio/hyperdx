@@ -194,6 +194,11 @@ export function RowOverviewPanel({
             date={new Date(firstRow?.__hdx_timestamp ?? 0)}
             mainContent={mainContent}
             mainContentHeader={mainContentColumn}
+            // `getEventBody` returns undefined when neither Body Expression
+            // nor Implicit Column Expression is configured on the source.
+            // In that case suppress the body paper entirely instead of
+            // rendering an "[Empty]" placeholder.
+            bodyConfigured={mainContentColumn !== undefined}
             severityText={firstRow?.__hdx_severity_text}
             rowData={firstRow}
           />
@@ -283,63 +288,67 @@ export function RowOverviewPanel({
           </Accordion.Item>
         )}
 
-        <Accordion.Item value="eventAttributes">
-          <Accordion.Control>
-            <Text size="sm" ps="md">
-              {source.kind === 'log' ? 'Log' : 'Span'} Attributes
-            </Text>
-          </Accordion.Control>
-          <Accordion.Panel>
-            <Box px="md">
-              <DBRowJsonViewer
-                data={filteredEventAttributes}
-                jsonColumns={jsonColumns}
-              />
-            </Box>
-          </Accordion.Panel>
-        </Accordion.Item>
-
-        <Accordion.Item value="resourceAttributes">
-          <Accordion.Control>
-            <Text size="sm" ps="md">
-              Resource Attributes
-            </Text>
-          </Accordion.Control>
-          <Accordion.Panel>
-            <Flex wrap="wrap" gap="2px" mx="md" mb="lg">
-              {Object.entries(resourceAttributes).map(([key, value]) => (
-                <EventTag
-                  {...(onPropertyAddClick
-                    ? {
-                        onPropertyAddClick,
-                        sqlExpression:
-                          'resourceAttributesExpression' in source &&
-                          source.resourceAttributesExpression &&
-                          jsonColumns?.includes(
-                            source.resourceAttributesExpression,
-                          )
-                            ? // If resource attributes is a JSON column, we need to cast the key to a string so we can run where X in Y queries
-                              `toString(${source.resourceAttributesExpression}.${key})`
-                            : 'resourceAttributesExpression' in source
-                              ? `${source.resourceAttributesExpression}['${key}']`
-                              : '',
-                      }
-                    : {
-                        onPropertyAddClick: undefined,
-                        sqlExpression: undefined,
-                      })}
-                  generateSearchUrl={
-                    generateSearchUrl ? _generateSearchUrl : undefined
-                  }
-                  displayedKey={key}
-                  name={`${'resourceAttributesExpression' in source ? source.resourceAttributesExpression : ''}.${key}`}
-                  value={value as string}
-                  key={key}
+        {Object.keys(filteredEventAttributes).length > 0 && (
+          <Accordion.Item value="eventAttributes">
+            <Accordion.Control>
+              <Text size="sm" ps="md">
+                {source.kind === 'log' ? 'Log' : 'Span'} Attributes
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px="md">
+                <DBRowJsonViewer
+                  data={filteredEventAttributes}
+                  jsonColumns={jsonColumns}
                 />
-              ))}
-            </Flex>
-          </Accordion.Panel>
-        </Accordion.Item>
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {Object.keys(resourceAttributes).length > 0 && (
+          <Accordion.Item value="resourceAttributes">
+            <Accordion.Control>
+              <Text size="sm" ps="md">
+                Resource Attributes
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Flex wrap="wrap" gap="2px" mx="md" mb="lg">
+                {Object.entries(resourceAttributes).map(([key, value]) => (
+                  <EventTag
+                    {...(onPropertyAddClick
+                      ? {
+                          onPropertyAddClick,
+                          sqlExpression:
+                            'resourceAttributesExpression' in source &&
+                            source.resourceAttributesExpression &&
+                            jsonColumns?.includes(
+                              source.resourceAttributesExpression,
+                            )
+                              ? // If resource attributes is a JSON column, we need to cast the key to a string so we can run where X in Y queries
+                                `toString(${source.resourceAttributesExpression}.${key})`
+                              : 'resourceAttributesExpression' in source
+                                ? `${source.resourceAttributesExpression}['${key}']`
+                                : '',
+                        }
+                      : {
+                          onPropertyAddClick: undefined,
+                          sqlExpression: undefined,
+                        })}
+                    generateSearchUrl={
+                      generateSearchUrl ? _generateSearchUrl : undefined
+                    }
+                    displayedKey={key}
+                    name={`${'resourceAttributesExpression' in source ? source.resourceAttributesExpression : ''}.${key}`}
+                    value={value as string}
+                    key={key}
+                  />
+                ))}
+              </Flex>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
       </Accordion>
     </div>
   );
