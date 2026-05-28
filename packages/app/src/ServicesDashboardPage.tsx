@@ -39,6 +39,8 @@ function pickSourceConfigFields(source: TSource) {
           useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
         }
       : {}),
+    // Logs-only body fallback for bare-text Lucene search.
+    ...(isLogSource(source) ? { bodyExpression: source.bodyExpression } : {}),
     ...pickSampleWeightExpressionProps(source),
   };
 }

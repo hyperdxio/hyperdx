@@ -506,6 +506,76 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     expect(actualSql).not.toContain('http_COLON_');
     expect(actualSql).not.toContain('HDX_COLON');
   });
+
+  describe('CustomSchemaSQLSerializerV2: implicit column falls back to bodyExpression', () => {
+    // Symmetric counterpart to the one-way fallback in
+    // `getEventBody` (packages/app/src/source.ts): a log source admin who
+    // configures Body Expression but not Implicit Column Expression should
+    // still be able to run bare-text Lucene search. HDX-4376.
+    it('uses bodyExpression when implicitColumnExpression is unset', async () => {
+      const bodyOnlySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: 'message',
+      });
+      const sql = await new SearchQueryBuilder(
+        'Prometheus',
+        bodyOnlySerializer,
+      ).build();
+      expect(sql).toMatch(/lower\(message\)/);
+    });
+
+    it('implicit wins over body when both are set on the source', async () => {
+      const bothSerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'indexed_message',
+        bodyExpression: 'message',
+      });
+      const sql = await new SearchQueryBuilder(
+        'Prometheus',
+        bothSerializer,
+      ).build();
+      expect(sql).toMatch(/lower\(indexed_message\)/);
+      expect(sql).not.toMatch(/lower\(message\)/);
+    });
+
+    it('throws when neither implicit nor body is set', async () => {
+      const emptySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: undefined,
+      });
+      await expect(
+        new SearchQueryBuilder('Prometheus', emptySerializer).build(),
+      ).rejects.toThrow(
+        'Can not search bare text without an implicit column set.',
+      );
+    });
+
+    it('per-context implicit override wins over the source body fallback', async () => {
+      const bodyOnlySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: 'message',
+      });
+      const sql = await bodyOnlySerializer.getColumnForField('<implicit>', {
+        implicitColumnExpression: 'override_col',
+      });
+      expect(sql.column).toBe('override_col');
+    });
+  });
 });
 
 describe('CustomSchemaSQLSerializerV2 - bloom_filter tokens() indices', () => {
