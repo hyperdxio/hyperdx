@@ -106,6 +106,15 @@ type CollectorConfig = {
         max_elapsed_time: string;
       };
     };
+    prometheusremotewrite?: {
+      endpoint: string;
+      tls: {
+        insecure: boolean;
+      };
+      resource_to_telemetry_conversion: {
+        enabled: boolean;
+      };
+    };
   };
   service: {
     extensions: string[];
@@ -274,6 +283,23 @@ export const buildOtelCollectorConfig = (
     otelCollectorConfig.service.pipelines['logs/in'].receivers.push(
       'otlp/hyperdx',
     );
+
+    if (config.IS_PROMQL_ENABLED && otelCollectorConfig.exporters) {
+      otelCollectorConfig.exporters.prometheusremotewrite = {
+        endpoint: 'http://${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}/write',
+        tls: {
+          insecure: true,
+        },
+        resource_to_telemetry_conversion: {
+          enabled: true,
+        },
+      };
+      otelCollectorConfig.service.pipelines['metrics/promql'] = {
+        receivers: ['otlp/hyperdx'],
+        processors: ['memory_limiter', 'batch'],
+        exporters: ['prometheusremotewrite'],
+      };
+    }
 
     if (collectorAuthenticationEnforced) {
       if (otelCollectorConfig.receivers['otlp/hyperdx'] == null) {

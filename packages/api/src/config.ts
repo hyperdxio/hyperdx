@@ -49,6 +49,8 @@ export const IS_LOCAL_APP_MODE =
 export const DEFAULT_CONNECTIONS = env.DEFAULT_CONNECTIONS;
 export const DEFAULT_SOURCES = env.DEFAULT_SOURCES;
 
+export const IS_PROMQL_ENABLED = env.ENABLE_PROMQL === 'true';
+
 // FOR CI ONLY
 export const CLICKHOUSE_HOST = env.CLICKHOUSE_HOST as string;
 export const CLICKHOUSE_USER = env.CLICKHOUSE_USER as string;
