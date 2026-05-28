@@ -107,7 +107,7 @@ export function RowOverviewPanel({
   );
 
   const _generateSearchUrl = useCallback(
-    (query?: string, queryLanguage?: 'sql' | 'lucene') => {
+    (query?: string, queryLanguage?: 'sql' | 'lucene' | 'promql') => {
       return (
         generateSearchUrl?.({
           where: query,
@@ -313,13 +313,16 @@ export function RowOverviewPanel({
                     ? {
                         onPropertyAddClick,
                         sqlExpression:
+                          'resourceAttributesExpression' in source &&
                           source.resourceAttributesExpression &&
                           jsonColumns?.includes(
                             source.resourceAttributesExpression,
                           )
                             ? // If resource attributes is a JSON column, we need to cast the key to a string so we can run where X in Y queries
                               `toString(${source.resourceAttributesExpression}.${key})`
-                            : `${source.resourceAttributesExpression}['${key}']`,
+                            : 'resourceAttributesExpression' in source
+                              ? `${source.resourceAttributesExpression}['${key}']`
+                              : '',
                       }
                     : {
                         onPropertyAddClick: undefined,
@@ -329,7 +332,7 @@ export function RowOverviewPanel({
                     generateSearchUrl ? _generateSearchUrl : undefined
                   }
                   displayedKey={key}
-                  name={`${source.resourceAttributesExpression}.${key}`}
+                  name={`${'resourceAttributesExpression' in source ? source.resourceAttributesExpression : ''}.${key}`}
                   value={value as string}
                   key={key}
                 />
