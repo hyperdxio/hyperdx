@@ -1,10 +1,11 @@
 ---
-'@hyperdx/api': patch
-'@hyperdx/otel-collector': patch
+'@hyperdx/api': minor
+'@hyperdx/app': minor
+'@hyperdx/otel-collector': minor
 ---
 
-fix(otel-collector): allow `CUSTOM_OTELCOL_CONFIG_FILE` to swap the default
-`memory_limiter` (and other pipeline processors)
+fix(otel-collector): allow `CUSTOM_OTELCOL_CONFIG_FILE` to override the
+default `memory_limiter`, `batch` (and other pipeline processors)
 
 Pipeline `processors:` lists used to be defined in the OpAMP remote config
 sent by the API (`packages/api/src/opamp/controllers/opampController.ts`).
