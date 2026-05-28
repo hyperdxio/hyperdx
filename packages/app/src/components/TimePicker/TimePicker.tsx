@@ -43,8 +43,8 @@ const modeAtom = atomWithStorage<TimePickerMode>(
   TimePickerMode.Range,
 );
 
-const DATE_INPUT_PLACEHOLDER = 'YYYY-MM-DD HH:mm:ss';
-const DATE_INPUT_FORMAT = 'YYYY-MM-DD HH:mm:ss';
+const DATE_INPUT_PLACEHOLDER = 'YYYY-MM-DD HH:mm:ss.SSS';
+const DATE_INPUT_FORMAT = 'YYYY-MM-DD HH:mm:ss.SSS';
 
 /** Ensure a value is a Date object (Mantine v9 DateInput returns strings). */
 const toDate = (v: Date | string | null): Date | null =>
@@ -188,7 +188,7 @@ const TimePickerComponent = ({
         return;
       }
       const formatStr =
-        timeFormat === '24h' ? 'MMM d HH:mm:ss' : 'MMM d h:mm:ss a';
+        timeFormat === '24h' ? 'MMM d HH:mm:ss.SSS' : 'MMM d h:mm:ss.SSS a';
       const rangeStr = [from, to]
         .map(d => d && format(d, formatStr))
         .join(' - ');

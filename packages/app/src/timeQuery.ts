@@ -35,11 +35,11 @@ const LIVE_TAIL_REFRESH_INTERVAL_MS = 1000;
 export const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
   return `${formatDate(range[0], {
     isUTC,
-    format: 'normal',
+    format: 'withMs',
     clock: '24h',
   })} - ${formatDate(range[1], {
     isUTC,
-    format: 'normal',
+    format: 'withMs',
     clock: '24h',
   })}`;
 };
