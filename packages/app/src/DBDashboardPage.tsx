@@ -1622,6 +1622,16 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     'dashboard-toc-visible',
     false,
   );
+  // react-grid-layout's WidthProvider only listens to window resize events,
+  // so when the TOC rail toggles and the grid's column width changes via
+  // Flex, RGL keeps drawing tiles at the old width. Nudge it after the
+  // layout has committed.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [tocVisible]);
   // URL-based collapse state: tracks which containers the current viewer has
   // explicitly collapsed/expanded. Falls back to the DB-stored default.
   const [urlCollapsedIds, setUrlCollapsedIds] = useQueryState(
