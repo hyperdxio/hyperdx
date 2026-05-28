@@ -68,11 +68,17 @@ The CSS vars exist for:
   `getColorFromCSSVariable`/`getColorFromCSSToken` back to reading the var and
   add per-brand entries to `CATEGORICAL_HEX_BY_TOKEN`.
 
-They're duplicated inside each `[data-mantine-color-scheme]` selector (both
-schemes, both themes — four blocks). CSS specificity requires it; a shared block
-would be overridden by per-scheme rules elsewhere. **If you change a hex in
-`_tokens.scss`, change it in `CATEGORICAL_HEX_BY_TOKEN` too — they are
-intentionally kept in sync.**
+The 10 categorical hues live in a single shared partial,
+`packages/app/src/theme/themes/_chart-categorical-tokens.scss`, which both brand
+themes `@use` and `@include` inside their per-theme `chart-tokens` mixin. Each
+theme's `chart-tokens` mixin is then `@include`'d inside both
+`[data-mantine-color-scheme]` selectors. Sass inlines the bodies at each call
+site, so the emitted CSS has the same per-scheme specificity as a
+hand-duplicated block would — but the source lives in **one place** for the
+unified categorical layer (the shared partial) and one block per theme for the
+per-brand semantic layer. **If you change a hex in the shared partial, change it
+in `CATEGORICAL_HEX_BY_TOKEN` in `utils.ts` too — the SCSS and JS sources are
+intentionally mirrored.**
 
 Brand identity for charts is carried by the **semantic** tokens
 (`--color-chart-success`, `-info`) and by non-chart UI chrome (Mantine accent,
@@ -386,19 +392,22 @@ preference:
 
 1. **Group small categories** into "Other" before charting.
 2. **Reuse slots** with patterns/strokes/labels for disambiguation.
-3. If you really must extend: add `--color-chart-{newhue}` to **all four** SCSS
-   blocks (HyperDX dark, HyperDX light, ClickStack dark, ClickStack light),
-   append `'chart-{newhue}'` to `CHART_PALETTE_TOKENS` in
-   `common-utils/src/types.ts`, add the hex to `CATEGORICAL_HEX_BY_TOKEN` in
-   `utils.ts`, and add a label entry in `ColorSwatchInput.tsx` → `TOKEN_LABELS`
-   and `ChartColors.stories.tsx` → `COLOR_LABELS`.
+3. If you really must extend: add `--color-chart-{newhue}` to the shared
+   `_chart-categorical-tokens.scss` partial — one edit covers both brands and
+   both schemes via the existing `@include` chain. Then append
+   `'chart-{newhue}'` to `CHART_PALETTE_TOKENS` in `common-utils/src/types.ts`,
+   add the hex to `CATEGORICAL_HEX_BY_TOKEN` in `utils.ts`, and add a label
+   entry in `ColorSwatchInput.tsx` → `TOKEN_LABELS` and
+   `ChartColors.stories.tsx` → `COLOR_LABELS`.
 
 ### A new semantic color (e.g. `--color-chart-pending`)
 
 1. Pick the hex per theme (HyperDX often uses brand variants; ClickStack uses
    Observable variants).
 2. Add `--color-chart-pending` and (if needed) `--color-chart-pending-highlight`
-   to **all four** SCSS blocks.
+   to the `@mixin chart-tokens` block in both theme files (HyperDX and
+   ClickStack `_tokens.scss`). The mixin is `@include`'d in each scheme
+   selector, so two edits cover dark and light for both brands.
 3. Add `pending` (and optionally `pendingHighlight`) to
    `SEMANTIC_CHART_PALETTE.hyperdx` and `.clickstack` in `utils.ts`.
 4. Append `'chart-pending'` to `CHART_PALETTE_TOKENS` (and
@@ -455,24 +464,25 @@ Why each is wrong:
       Mantine colors.
 - [ ] No new hex strings in chart components — all colors flow through
       `utils.ts` helpers or CSS vars.
-- [ ] If you added or changed a categorical hex, changed it in **all three**
-      places (HyperDX SCSS, ClickStack SCSS, `CATEGORICAL_HEX_BY_TOKEN` in
-      `utils.ts`).
+- [ ] If you added or changed a categorical hex, changed it in **both** places
+      (`_chart-categorical-tokens.scss` shared partial,
+      `CATEGORICAL_HEX_BY_TOKEN` in `utils.ts`).
 - [ ] If you added or changed a semantic hex, changed it in **all three** places
-      (the relevant theme's SCSS, `SEMANTIC_CHART_PALETTE.{theme}` in
-      `utils.ts`).
+      (the relevant theme's `chart-tokens` mixin in `_tokens.scss`,
+      `SEMANTIC_CHART_PALETTE.{theme}` in `utils.ts`).
 - [ ] Storybook `Design Tokens / Chart Colors` still renders correctly.
 
 ## File reference summary
 
-| What                                       | Where                                                                            |
-| ------------------------------------------ | -------------------------------------------------------------------------------- |
-| HyperDX chart vars (dark + light)          | `packages/app/src/theme/themes/hyperdx/_tokens.scss`                             |
-| ClickStack chart vars (dark + light)       | `packages/app/src/theme/themes/clickstack/_tokens.scss`                          |
-| JS palette objects + reader functions      | `packages/app/src/utils.ts`                                                      |
-| Palette token enum + legacy migration      | `packages/common-utils/src/types.ts`                                             |
-| Multi-series wiring (`setLineColors` etc.) | `packages/app/src/ChartUtils.tsx`                                                |
-| Number-tile color picker                   | `packages/app/src/components/ColorSwatchInput.tsx`                               |
-| Heatmap palettes                           | `packages/app/src/components/DBHeatmapChart.tsx` (`darkPalette`, `lightPalette`) |
-| Storybook visual reference                 | `packages/app/src/theme/ChartColors.stories.tsx`                                 |
-| Delta "all spans" reference color          | `packages/app/src/components/deltaChartUtils.ts` (`ALL_SPANS_COLOR`)             |
+| What                                                | Where                                                                            |
+| --------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Shared categorical chart vars (10 hues)             | `packages/app/src/theme/themes/_chart-categorical-tokens.scss`                   |
+| HyperDX semantic chart vars + chart-tokens mixin    | `packages/app/src/theme/themes/hyperdx/_tokens.scss`                             |
+| ClickStack semantic chart vars + chart-tokens mixin | `packages/app/src/theme/themes/clickstack/_tokens.scss`                          |
+| JS palette objects + reader functions               | `packages/app/src/utils.ts`                                                      |
+| Palette token enum + legacy migration               | `packages/common-utils/src/types.ts`                                             |
+| Multi-series wiring (`setLineColors` etc.)          | `packages/app/src/ChartUtils.tsx`                                                |
+| Number-tile color picker                            | `packages/app/src/components/ColorSwatchInput.tsx`                               |
+| Heatmap palettes                                    | `packages/app/src/components/DBHeatmapChart.tsx` (`darkPalette`, `lightPalette`) |
+| Storybook visual reference                          | `packages/app/src/theme/ChartColors.stories.tsx`                                 |
+| Delta "all spans" reference color                   | `packages/app/src/components/deltaChartUtils.ts` (`ALL_SPANS_COLOR`)             |

@@ -1,0 +1,41 @@
+/* Shared Chart Categorical Tokens - used by both theme files */
+
+/*
+ * The 10-hue categorical chart palette is genuinely unified across
+ * brands (HyperDX and ClickStack both resolve `--color-chart-{hue}`
+ * to the same hex). This file is the SCSS source of truth for those
+ * hues; both theme files `@use` it and `@include` the mixin inside
+ * their per-theme `chart-tokens` mixin.
+ *
+ * Per-brand chart identity (success, info, warning, error) lives in
+ * each theme's `chart-tokens` mixin alongside this `@include`. Those
+ * semantic tokens genuinely vary per brand, so they don't belong here.
+ *
+ * The React rendering path reads these hues from
+ * `CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts` directly
+ * (`getColorFromCSSVariable` / `getColorFromCSSToken` skip
+ * `getComputedStyle` for categorical tokens) — the palette is the
+ * same on every theme, so the round-trip would add a layout read per
+ * series for no functional gain. These vars exist so SCSS modules
+ * and inline `var()` consumers can reference hues without importing
+ * from JS, and for devtools inspection. If you change a hex here,
+ * update `CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts`
+ * to match — the SCSS and JS sources are intentionally mirrored.
+ *
+ * `chart-blue` is `#437eef` (the brand link color, same hue as
+ * `--click-global-color-text-link-default`) rather than Observable
+ * blue (`#4269d0`); all other hues are straight from Observable 10
+ * (https://observablehq.com/@d3/color-schemes).
+ */
+@mixin chart-categorical-tokens {
+  --color-chart-blue: #437eef;
+  --color-chart-orange: #efb118;
+  --color-chart-red: #ff725c;
+  --color-chart-cyan: #6cc5b0;
+  --color-chart-green: #3ca951;
+  --color-chart-pink: #ff8ab7;
+  --color-chart-purple: #a463f2;
+  --color-chart-light-blue: #97bbf5;
+  --color-chart-brown: #9c6b4e;
+  --color-chart-gray: #9498a0;
+}

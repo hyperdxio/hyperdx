@@ -375,7 +375,9 @@ export const getLogLevelClass = (lvl: string | undefined) => {
  *
  * Keep in sync with `CATEGORICAL_PALETTE_TOKENS` in
  * `@hyperdx/common-utils/dist/types` and with the `--color-chart-{hue}`
- * vars in both `packages/app/src/theme/themes/{hyperdx,clickstack}/_tokens.scss`.
+ * vars in `packages/app/src/theme/themes/_chart-categorical-tokens.scss`
+ * (the single shared SCSS source for categorical hues; both brand
+ * themes `@use` it).
  */
 const CATEGORICAL_HEX_BY_TOKEN = {
   'chart-blue': '#437eef',
@@ -443,6 +445,7 @@ export const COLORS: string[] = CATEGORICAL_PALETTE_TOKENS.map(
 export {
   CATEGORICAL_PALETTE_TOKENS,
   CHART_PALETTE_TOKENS,
+  isChartPaletteToken,
   resolveChartPaletteToken,
   SEMANTIC_PALETTE_TOKENS,
 } from '@hyperdx/common-utils/dist/types';
