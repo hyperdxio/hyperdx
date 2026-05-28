@@ -1,0 +1,37 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "severity-inference"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "from-json-level-producer-wins"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000000",
+              "severity_number": 0,
+              "severity_text": "info",
+              "body": {
+                "stringValue": "{\"level\":\"warn\",\"msg\":\"producer-set severity must win over the JSON level field\"}"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
