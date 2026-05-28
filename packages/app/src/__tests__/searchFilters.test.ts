@@ -1002,6 +1002,159 @@ describe('searchFilters', () => {
       // No migration needed — onFilterChange should not be called
       expect(onFilterChangeNoMigrate).not.toHaveBeenCalled();
     });
+
+    describe('retainFiltersByColumns', () => {
+      it('returns [] and does not touch URL when filter state is empty', () => {
+        const onFilterChangeLocal = jest.fn();
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [],
+            onFilterChange: onFilterChangeLocal,
+          }),
+        );
+
+        let dropped: string[] = ['unset'];
+        act(() => {
+          dropped = result.current.retainFiltersByColumns(
+            new Set(['ServiceName']),
+          );
+        });
+
+        expect(dropped).toEqual([]);
+        expect(onFilterChangeLocal).not.toHaveBeenCalled();
+      });
+
+      it('keeps filters whose root column exists on the new source', () => {
+        const onFilterChangeLocal = jest.fn();
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [
+              { type: 'lucene', condition: 'ServiceName:"app"' },
+              { type: 'lucene', condition: 'SeverityText:"error"' },
+            ],
+            onFilterChange: onFilterChangeLocal,
+          }),
+        );
+
+        let dropped: string[] = ['unset'];
+        act(() => {
+          dropped = result.current.retainFiltersByColumns(
+            new Set(['ServiceName', 'SeverityText', 'Timestamp']),
+          );
+        });
+
+        expect(dropped).toEqual([]);
+        // Nothing dropped → no URL update fires.
+        expect(onFilterChangeLocal).not.toHaveBeenCalled();
+      });
+
+      it('keeps nested JSON/Map keys when the root column exists', () => {
+        const onFilterChangeLocal = jest.fn();
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [
+              {
+                type: 'lucene',
+                condition: 'LogAttributes.user:"123"',
+              },
+            ],
+            onFilterChange: onFilterChangeLocal,
+          }),
+        );
+
+        let dropped: string[] = ['unset'];
+        act(() => {
+          dropped = result.current.retainFiltersByColumns(
+            new Set(['LogAttributes']),
+          );
+        });
+
+        expect(dropped).toEqual([]);
+        expect(onFilterChangeLocal).not.toHaveBeenCalled();
+      });
+
+      it('drops filters whose root column is missing and returns their keys', () => {
+        const onFilterChangeLocal = jest.fn();
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [
+              { type: 'lucene', condition: 'OldColumn:"x"' },
+              { type: 'lucene', condition: 'AnotherGone:"y"' },
+            ],
+            onFilterChange: onFilterChangeLocal,
+          }),
+        );
+
+        let dropped: string[] = [];
+        act(() => {
+          dropped = result.current.retainFiltersByColumns(
+            new Set(['ServiceName']),
+          );
+        });
+
+        expect(dropped.sort()).toEqual(['AnotherGone', 'OldColumn']);
+        expect(onFilterChangeLocal).toHaveBeenLastCalledWith([]);
+      });
+
+      it('keeps matching filters and drops the rest in mixed input', () => {
+        const onFilterChangeLocal = jest.fn();
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [
+              { type: 'lucene', condition: 'ServiceName:"app"' },
+              { type: 'lucene', condition: 'Body:"oops"' },
+            ],
+            onFilterChange: onFilterChangeLocal,
+          }),
+        );
+
+        let dropped: string[] = [];
+        act(() => {
+          dropped = result.current.retainFiltersByColumns(
+            new Set(['ServiceName', 'Timestamp']),
+          );
+        });
+
+        expect(dropped).toEqual(['Body']);
+        expect(onFilterChangeLocal).toHaveBeenLastCalledWith([
+          { type: 'lucene', condition: 'ServiceName:"app"' },
+        ]);
+      });
+
+      it('preserves passthrough filters when reconciling', () => {
+        const onFilterChangeLocal = jest.fn();
+        const warnSpy = jest
+          .spyOn(console, 'warn')
+          .mockImplementation(() => {});
+        // Unparseable Lucene (mismatched parens) is preserved by parseQuery
+        // as a passthrough filter.
+        const { result } = renderHook(() =>
+          useSearchPageFilterState({
+            searchQuery: [
+              { type: 'lucene', condition: 'ServiceName:"app"' },
+              { type: 'lucene', condition: 'Body:"oops"' },
+              { type: 'lucene', condition: '((((' },
+            ],
+            onFilterChange: onFilterChangeLocal,
+          }),
+        );
+
+        let dropped: string[] = [];
+        act(() => {
+          dropped = result.current.retainFiltersByColumns(
+            new Set(['ServiceName']),
+          );
+        });
+
+        expect(dropped).toEqual(['Body']);
+        // Passthrough filter rides along after the kept filters.
+        expect(onFilterChangeLocal).toHaveBeenLastCalledWith([
+          { type: 'lucene', condition: 'ServiceName:"app"' },
+          { type: 'lucene', condition: '((((' },
+        ]);
+        warnSpy.mockRestore();
+      });
+    });
   });
 
   describe('filters use direct_read optimization', () => {
@@ -1043,6 +1196,9 @@ describe('searchFilters', () => {
       },
     ]);
     metadata.getSetting = jest.fn().mockResolvedValue('0');
+    metadata.getServerVersion = jest
+      .fn()
+      .mockResolvedValue([26, 5, 0, 0] as const);
 
     const serializer = new CustomSchemaSQLSerializerV2({
       metadata,

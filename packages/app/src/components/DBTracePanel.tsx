@@ -192,6 +192,8 @@ export default function DBTracePanel({
               control={traceIdControl}
               size="xs"
               parentRef={typeof document !== 'undefined' ? document.body : null}
+              dateRange={dateRange}
+              sourceId={sourceId ?? undefined}
             />
             <Button
               ms="sm"

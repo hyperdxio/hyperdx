@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Scrape the OTel collector's internal metrics
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['otel-collector:8888']
+
+  # Scrape ClickHouse metrics (if the /metrics handler is available)
+  - job_name: 'clickhouse'
+    static_configs:
+      - targets: ['ch-server:9363']
+    metrics_path: '/metrics'

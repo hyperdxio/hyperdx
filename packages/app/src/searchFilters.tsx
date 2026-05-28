@@ -525,6 +525,34 @@ export const useSearchPageFilterState = ({
     updateFilterQuery({});
   }, [updateFilterQuery]);
 
+  // Keep only filters whose root column appears in `allowedColumnNames`.
+  // Returns the keys of the filters that were dropped so callers can surface
+  // a notice when filter state was thrown away (e.g. on source change).
+  const retainFiltersByColumns = useCallback(
+    (allowedColumnNames: Set<string>): string[] => {
+      const dropped: string[] = [];
+      const kept: FilterState = {};
+      for (const [key, value] of Object.entries(filters)) {
+        // Filter keys are dot-normalized — top-level columns are stored as-is,
+        // nested JSON/Map keys as `Root.nested.path`. An exact match handles
+        // the rare case of a column with dots in its name.
+        const dotIdx = key.indexOf('.');
+        const rootColumn = dotIdx > 0 ? key.slice(0, dotIdx) : key;
+        if (allowedColumnNames.has(key) || allowedColumnNames.has(rootColumn)) {
+          kept[key] = value;
+        } else {
+          dropped.push(key);
+        }
+      }
+      if (dropped.length > 0) {
+        setFilters(kept);
+        updateFilterQuery(kept);
+      }
+      return dropped;
+    },
+    [filters, updateFilterQuery],
+  );
+
   return {
     filters,
     setFilters,
@@ -532,6 +560,7 @@ export const useSearchPageFilterState = ({
     setFilterRange,
     clearFilter,
     clearAllFilters,
+    retainFiltersByColumns,
   };
 };
 

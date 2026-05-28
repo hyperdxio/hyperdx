@@ -53,10 +53,10 @@ describe('DBRowJsonViewer', () => {
   });
 
   // Helper to render component
-  const renderComponent = (data: any) => {
+  const renderComponent = (data: any, jsonColumns?: string[]) => {
     return renderWithMantine(
       <RowSidePanelContext.Provider value={defaultContext}>
-        <DBRowJsonViewer data={data} />
+        <DBRowJsonViewer data={data} jsonColumns={jsonColumns} />
       </RowSidePanelContext.Provider>,
     );
   };
@@ -130,6 +130,21 @@ describe('DBRowJsonViewer', () => {
     expect(mockOnPropertyAddClick).toHaveBeenCalledWith(
       "LogAttributes['field1']",
       'value1',
+    );
+  });
+
+  it('adds filters on JSON-typed column as plain dot notation (no toString, no backticks)', () => {
+    const jsonData = {
+      Metadata: {
+        endpoint: 'grpc://thingy:8888/Verify',
+      },
+    };
+    renderComponent(jsonData, ['Metadata']);
+    clickLineButton('endpoint', 'Add to Filters');
+
+    expect(mockOnPropertyAddClick).toHaveBeenCalledWith(
+      'Metadata.endpoint',
+      'grpc://thingy:8888/Verify',
     );
   });
 

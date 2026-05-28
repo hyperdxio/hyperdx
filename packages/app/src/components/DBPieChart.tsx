@@ -1,10 +1,7 @@
 import { memo, useMemo } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
-import {
-  BuilderChartConfigWithOptTimestamp,
-  RawSqlConfigWithDateRange,
-} from '@hyperdx/common-utils/dist/types';
+import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 import { Box, Flex, ScrollArea, Text } from '@mantine/core';
 
 import {
@@ -109,7 +106,7 @@ export const DBPieChart = ({
   toolbarSuffix,
   errorVariant,
 }: {
-  config: BuilderChartConfigWithOptTimestamp | RawSqlConfigWithDateRange;
+  config: ChartConfigWithOptTimestamp;
   title?: React.ReactNode;
   enabled?: boolean;
   queryKeyPrefix?: string;
