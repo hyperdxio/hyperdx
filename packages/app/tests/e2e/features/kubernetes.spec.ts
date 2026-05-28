@@ -10,7 +10,7 @@ test.describe('Kubernetes Dashboard', { tag: ['@kubernetes'] }, () => {
   });
 
   test('should load kubernetes dashboard', async () => {
-    await expect(k8sPage.title).toBeVisible();
+    await expect(k8sPage.pageContainer).toBeVisible();
   });
 
   test('should show pod details', async () => {
