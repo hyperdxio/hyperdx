@@ -1,5 +1,5 @@
 import React from 'react';
-import { screen, waitFor } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { SourceManagementMenu } from '../SourceSelect';
@@ -20,6 +20,13 @@ describe('SourceManagementMenu', () => {
   it('renders the kebab trigger when only onEdit is wired', () => {
     renderWithMantine(
       <SourceManagementMenu hasSelection={false} onEdit={jest.fn()} />,
+    );
+    expect(screen.getByTestId('source-actions-menu')).toBeInTheDocument();
+  });
+
+  it('renders the kebab trigger when only onManageSources is wired', () => {
+    renderWithMantine(
+      <SourceManagementMenu hasSelection={false} onManageSources={jest.fn()} />,
     );
     expect(screen.getByTestId('source-actions-menu')).toBeInTheDocument();
   });
@@ -94,14 +101,28 @@ describe('SourceManagementMenu', () => {
     });
   });
 
-  it('calls onEdit when Edit sources is clicked', async () => {
+  it('calls onEdit when Edit source is clicked', async () => {
     const onEdit = jest.fn();
     renderWithMantine(
-      <SourceManagementMenu hasSelection={false} onEdit={onEdit} />,
+      // hasSelection required: Edit source is disabled without a selection.
+      <SourceManagementMenu hasSelection onEdit={onEdit} />,
     );
     await userEvent.click(screen.getByTestId('source-actions-menu'));
-    await userEvent.click(await screen.findByText('Edit sources'));
+    await userEvent.click(await screen.findByText('Edit source'));
     expect(onEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onManageSources when Manage sources is clicked', async () => {
+    const onManageSources = jest.fn();
+    renderWithMantine(
+      <SourceManagementMenu
+        hasSelection={false}
+        onManageSources={onManageSources}
+      />,
+    );
+    await userEvent.click(screen.getByTestId('source-actions-menu'));
+    await userEvent.click(await screen.findByText('Manage sources'));
+    expect(onManageSources).toHaveBeenCalledTimes(1);
   });
 
   it('calls onCreate when Create new source is clicked', async () => {
