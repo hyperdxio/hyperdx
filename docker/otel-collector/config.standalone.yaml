@@ -61,14 +61,14 @@ exporters:
       enabled: true
 
 service:
+  # Pipeline `processors:` lists live in the base config.yaml so users can
+  # swap them via CUSTOM_OTELCOL_CONFIG_FILE. See HDX-4090.
   pipelines:
     traces:
       receivers: [otlp/hyperdx]
-      processors: [memory_limiter, batch]
       exporters: [clickhouse]
     metrics:
       receivers: [otlp/hyperdx]
-      processors: [memory_limiter, batch]
       exporters: [clickhouse]
     metrics/promql:
       receivers: [otlp/hyperdx]
@@ -79,9 +79,7 @@ service:
       exporters: [routing/logs]
     logs/out-default:
       receivers: [routing/logs]
-      processors: [memory_limiter, transform, batch]
       exporters: [clickhouse]
     logs/out-rrweb:
       receivers: [routing/logs]
-      processors: [memory_limiter, batch]
       exporters: [clickhouse/rrweb]

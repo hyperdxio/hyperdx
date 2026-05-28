@@ -8,13 +8,29 @@ receivers:
       disk:
       filesystem:
       network:
-# override the default processors
+# To override the default `memory_limiter` (or any other base processor),
+# define a NEW processor with a different name and swap the pipeline
+# `processors:` lists to reference it. Leaf-merging into the existing
+# `memory_limiter` block does NOT work cleanly because the OTel processor
+# silently prefers `limit_mib` over `limit_percentage` when both are set.
+# Example: switch to percentage-based memory limiting.
+#
 # processors:
-#   batch:
-#     send_batch_size: 10000
-#     timeout: 10s
-#   memory_limiter:
-#     limit_mib: 2000
+#   memory_limiter/custom:
+#     check_interval: 5s
+#     limit_percentage: 75
+#     spike_limit_percentage: 25
+#
+# service:
+#   pipelines:
+#     traces:
+#       processors: [memory_limiter/custom, batch]
+#     metrics:
+#       processors: [memory_limiter/custom, batch]
+#     logs/out-default:
+#       processors: [memory_limiter/custom, transform, batch]
+#     logs/out-rrweb:
+#       processors: [memory_limiter/custom, batch]
 exporters:
   # fork data to otel-collector-json service (DEV ONLY)
   otlphttp/json:

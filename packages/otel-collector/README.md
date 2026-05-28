@@ -128,6 +128,61 @@ custom OTel configurations without rebuilding the collector.
 | `https`  | core   |
 | `yaml`   | core   |
 
+## Overriding base components via `CUSTOM_OTELCOL_CONFIG_FILE`
+
+The collector ships with a default `memory_limiter` processor sized for a
+small (~2 GiB) container. On larger pods you typically want to switch to
+`limit_percentage`/`spike_limit_percentage` mode so the limit scales with
+the pod's memory allocation.
+
+The OTel `confmap` package merges YAML maps **leaf-by-leaf** rather than
+replacing a block wholesale, and the `memorylimiterprocessor` silently
+prefers `limit_mib` over `limit_percentage` when both are set. The
+combination means you cannot switch the default `memory_limiter` to
+percentage mode by leaf-merging into the existing block — your percentage
+values land in `effective.yaml` but the inherited mib values still win at
+runtime.
+
+The supported pattern is to **define a new processor with a different
+name** and swap the pipeline `processors:` lists in
+`CUSTOM_OTELCOL_CONFIG_FILE` to reference it:
+
+```yaml
+# custom.config.yaml
+processors:
+  memory_limiter/custom:
+    check_interval: 5s
+    limit_percentage: 75
+    spike_limit_percentage: 25
+
+service:
+  pipelines:
+    traces:
+      processors: [memory_limiter/custom, batch]
+    metrics:
+      processors: [memory_limiter/custom, batch]
+    logs/out-default:
+      processors: [memory_limiter/custom, transform, batch]
+    logs/out-rrweb:
+      processors: [memory_limiter/custom, batch]
+```
+
+After restart, the collector instantiates `memory_limiter/custom` (and not
+the unused default `memory_limiter`). You can confirm by checking
+`/etc/otel/supervisor-data/effective.yaml` and the `"Memory limiter
+configured"` log line emitted at collector start.
+
+The same pattern works for any other base processor (`batch`, `transform`,
+…) — define a new component with a different name and re-declare the
+pipelines that should use it.
+
+> Pipeline `processors:` lists live in `docker/otel-collector/config.yaml`
+> (for OpAMP supervisor mode) and `docker/otel-collector/config.standalone.yaml`
+> (for standalone mode). The OpAMP remote config from
+> `packages/api/src/opamp/controllers/opampController.ts` intentionally
+> does **not** set `processors:` on pipelines, so your bootstrap+custom
+> merge is not overwritten.
+
 ## Upgrading the OTel Collector version
 
 ### Step 1: Look up the core version
