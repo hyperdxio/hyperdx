@@ -2345,39 +2345,43 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
               </Menu.Target>
 
               <Menu.Dropdown>
-                <Menu.Label>View</Menu.Label>
-                <Menu.Item
-                  leftSection={
-                    tocVisible ? (
-                      <IconLayoutSidebarRightCollapse size={16} />
-                    ) : (
-                      <IconLayoutSidebarRightExpand size={16} />
-                    )
-                  }
-                  onClick={() => setTocVisible(v => !v)}
-                  data-testid="toggle-toc-menu-item"
-                >
-                  {tocVisible
-                    ? 'Hide table of contents'
-                    : 'Show table of contents'}
-                </Menu.Item>
-                <Menu.Item
-                  leftSection={<IconChevronsUp size={16} />}
-                  onClick={handleCollapseAll}
-                  disabled={collapsibleContainers.length === 0}
-                  data-testid="collapse-all-sections-menu-item"
-                >
-                  Collapse all sections
-                </Menu.Item>
-                <Menu.Item
-                  leftSection={<IconChevronsDown size={16} />}
-                  onClick={handleExpandAll}
-                  disabled={collapsibleContainers.length === 0}
-                  data-testid="expand-all-sections-menu-item"
-                >
-                  Expand all sections
-                </Menu.Item>
-                <Menu.Divider />
+                {containers.length > 0 && (
+                  <>
+                    <Menu.Label>View</Menu.Label>
+                    <Menu.Item
+                      leftSection={
+                        tocVisible ? (
+                          <IconLayoutSidebarRightCollapse size={16} />
+                        ) : (
+                          <IconLayoutSidebarRightExpand size={16} />
+                        )
+                      }
+                      onClick={() => setTocVisible(v => !v)}
+                      data-testid="toggle-toc-menu-item"
+                    >
+                      {tocVisible
+                        ? 'Hide table of contents'
+                        : 'Show table of contents'}
+                    </Menu.Item>
+                    <Menu.Item
+                      leftSection={<IconChevronsUp size={16} />}
+                      onClick={handleCollapseAll}
+                      disabled={collapsibleContainers.length === 0}
+                      data-testid="collapse-all-sections-menu-item"
+                    >
+                      Collapse all sections
+                    </Menu.Item>
+                    <Menu.Item
+                      leftSection={<IconChevronsDown size={16} />}
+                      onClick={handleExpandAll}
+                      disabled={collapsibleContainers.length === 0}
+                      data-testid="expand-all-sections-menu-item"
+                    >
+                      Expand all sections
+                    </Menu.Item>
+                    <Menu.Divider />
+                  </>
+                )}
                 {hasTiles && (
                   <Menu.Item
                     leftSection={<IconDownload size={16} />}
