@@ -100,7 +100,6 @@ jest.mock('../../SourceSelect', () => ({
       <option value="metric-source">Metric Source</option>
     </select>
   ),
-  SourceManagementMenu: () => null,
 }));
 
 jest.mock('../../ChartSQLPreview', () => ({

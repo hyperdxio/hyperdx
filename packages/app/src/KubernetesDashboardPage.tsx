@@ -1342,7 +1342,7 @@ function KubernetesDashboardPage() {
   const dashboardBody = (
     <>
       <Head>
-        <title>Kubernetes Dashboard – {brandName}</title>{/* [prose-lint: allow] page-title separator matches sibling dashboard pages */}
+        <title>Kubernetes Dashboard – {brandName}</title>
       </Head>
       <OnboardingModal requireSource={false} />
       {metricSource && logSource && (
