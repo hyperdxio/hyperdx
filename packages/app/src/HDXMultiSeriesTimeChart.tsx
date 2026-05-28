@@ -684,7 +684,12 @@ export const MemoChart = memo(function MemoChart({
               which is not part of `COLORS`). Union them here so the
               referenced `url(#time-chart-lin-grad-…)` always exists. */}
           {Array.from(
-            new Set([...COLORS, ...lineData.map(ld => ld.color)]),
+            new Set([
+              ...COLORS,
+              ...lineData
+                .map(ld => ld.color)
+                .filter((c): c is string => typeof c === 'string'),
+            ]),
           ).map(c => {
             return (
               <linearGradient

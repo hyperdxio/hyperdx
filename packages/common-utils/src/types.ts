@@ -886,10 +886,13 @@ function isLegacyChartPaletteToken(
  * `chart-10`) from #2265. Returns `undefined` for anything else.
  *
  * Use this at every render-time consumption point (dashboard tile
- * renderers, the color picker's `safeValue` guard, etc.). Stored
- * dashboard payloads are not always Zod-parsed end-to-end — e.g.
- * `useDashboards` raw-casts the API response — so the schema's
- * preprocess can't be the only thing guaranteeing legacy migration.
+ * renderers like `DBNumberChart`, the color picker's `safeValue` guard
+ * in `ColorSwatchInput`, etc.). The app's fetch-time normalizer
+ * (`normalizeDashboardTileColors` in `packages/app/src/dashboard.ts`)
+ * heals dashboards loaded via `useDashboards` / `fetchLocalDashboards`,
+ * but tiles constructed in memory (presets, `ChartEditor` form state,
+ * unit-test fixtures) bypass that path, so render-time consumers still
+ * need this helper as defense in depth.
  */
 export function resolveChartPaletteToken(
   value: unknown,
