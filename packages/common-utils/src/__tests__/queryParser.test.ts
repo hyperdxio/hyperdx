@@ -575,6 +575,44 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       });
       expect(sql.column).toBe('override_col');
     });
+
+    it('per-context body override wins over the source body fallback', async () => {
+      // Arm 3 of the resolution chain
+      // (context.implicit ?? this.implicit ?? context.body ?? this.body).
+      const bodyOnlySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: 'message',
+      });
+      const sql = await bodyOnlySerializer.getColumnForField('<implicit>', {
+        bodyExpression: 'override_col',
+      });
+      expect(sql.column).toBe('override_col');
+    });
+
+    it('renders concatWithSeparator when bodyExpression is multi-column', async () => {
+      // The multi-column-concat path at queryParser.ts:1727 fires
+      // whenever neither context override is set, including the
+      // body-fallback case. Guards splitAndTrimWithBracket +
+      // concatWithSeparator(';',...) rendering on body fallback
+      // against future regressions.
+      const multiColumnBodySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: 'Body, Message',
+      });
+      const sql = await new SearchQueryBuilder(
+        'foo',
+        multiColumnBodySerializer,
+      ).build();
+      expect(sql).toContain("concatWithSeparator(';',Body,Message)");
+    });
   });
 });
 
@@ -943,6 +981,35 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
       tableName,
       connectionId,
       implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo', serializer);
+    const sql = await builder.build();
+
+    expect(sql).toBe("((hasAllTokens(Body, 'foo')))");
+  });
+
+  it('should use hasAllTokens when text index exists on the body-fallback column', async () => {
+    // Pins that shouldUseTokenBf widening preserves the
+    // hasAllTokens optimization when the resolver falls back to
+    // bodyExpression (implicitColumnExpression unset on the source).
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_text',
+        type: 'text',
+        typeFull: 'text(tokenizer=splitByNonAlpha)',
+        expression: 'Body',
+        granularity: '8',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: undefined,
+      bodyExpression: 'Body',
     });
 
     const builder = new SearchQueryBuilder('foo', serializer);

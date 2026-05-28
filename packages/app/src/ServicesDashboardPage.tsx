@@ -453,6 +453,10 @@ function HttpTab({
           isLogSource(source) || isTraceSource(source)
             ? source.useTextIndexForImplicitColumn
             : undefined,
+        // No bodyExpression threading here: the HttpTab calls
+        // useSource({ kinds: [SourceKind.Trace] }) above (L387-390),
+        // so `source` is type-narrowed to TTraceSource and the
+        // logs-only body fallback can't apply at this surface.
         connection: source.connection,
         source: source.id,
         with: [
