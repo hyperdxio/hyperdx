@@ -90,9 +90,9 @@ function FilterPill({
               ? 'var(--color-bg-danger)'
               : 'var(--color-bg-hover)',
           border: isInvalid
-            ? '1px dashed var(--color-border-muted)'
+            ? '1px dashed var(--color-border)'
             : '1px solid transparent',
-          opacity: isInvalid ? 0.55 : 1,
+          opacity: isInvalid ? 0.75 : 1,
         }}
       >
         <Text
