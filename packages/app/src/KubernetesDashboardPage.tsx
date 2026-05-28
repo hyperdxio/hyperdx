@@ -21,7 +21,6 @@ import {
   Alert,
   Anchor,
   Badge,
-  Box,
   Breadcrumbs,
   Card,
   Flex,
@@ -42,6 +41,7 @@ import {
 } from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import { PageLayout } from '@/components/PageLayout';
 import { TimePicker } from '@/components/TimePicker';
 import { useVirtualList } from '@/hooks/useVirtualList';
 
@@ -1249,19 +1249,85 @@ function KubernetesDashboardPage() {
     };
   }, [isLoadingJsonColumns, logSource, logSourceJsonColumns]);
 
-  return (
-    <Box data-testid="kubernetes-dashboard-page" p="sm">
+  const headerLeading = (
+    <Group gap="xs">
+      <SourceSelectControlled
+        name="logSourceId"
+        control={control}
+        allowedSourceKinds={[SourceKind.Log]}
+        size="xs"
+        allowDeselect={false}
+        sourceSchemaPreview={
+          <SourceSchemaPreview source={logSource} variant="text" />
+        }
+      />
+      <SourceSelectControlled
+        name="metricSourceId"
+        control={control}
+        allowedSourceKinds={[SourceKind.Metric]}
+        size="xs"
+        allowDeselect={false}
+        sourceSchemaPreview={
+          <SourceSchemaPreview source={metricSource} variant="text" />
+        }
+      />
+    </Group>
+  );
+
+  const headerActions = (
+    <Group gap="xs">
+      <form
+        data-testid="kubernetes-time-form"
+        onSubmit={e => {
+          e.preventDefault();
+          onSearch(displayedTimeInputValue);
+          return false;
+        }}
+      >
+        <TimePicker
+          data-testid="kubernetes-time-picker"
+          inputValue={displayedTimeInputValue}
+          setInputValue={setDisplayedTimeInputValue}
+          onSearch={onSearch}
+        />
+      </form>
+      <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+        <ActionIcon
+          onClick={refresh}
+          loading={manualRefreshCooloff}
+          disabled={manualRefreshCooloff}
+          variant="secondary"
+          title="Refresh dashboard"
+          aria-label="Refresh dashboard"
+          size="lg"
+        >
+          <IconRefresh size={18} />
+        </ActionIcon>
+      </Tooltip>
+    </Group>
+  );
+
+  const pageBreadcrumbs = (
+    <Breadcrumbs fz="sm">
+      <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+        Dashboards
+      </Anchor>
+      <Text fz="sm" c="dimmed">
+        Kubernetes
+      </Text>
+    </Breadcrumbs>
+  );
+
+  // Extracted for the same reason as `headerLeading` / `headerActions` /
+  // `pageBreadcrumbs` above: keeps the `<PageLayout>` return shallow and
+  // prevents the ~380-line tab/chart tree below from being wrapped in
+  // an extra indentation level, which would otherwise force the deeply
+  // nested `convertV1ChartConfigToV2({...})` calls to wrap further.
+  const dashboardBody = (
+    <>
       <Head>
         <title>Kubernetes Dashboard – {brandName}</title>
       </Head>
-      <Breadcrumbs mb="xs" mt="xs" fz="sm">
-        <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-          Dashboards
-        </Anchor>
-        <Text fz="sm" c="dimmed">
-          Kubernetes
-        </Text>
-      </Breadcrumbs>
       <OnboardingModal requireSource={false} />
       {metricSource && logSource && (
         <PodDetailsSidePanel
@@ -1281,62 +1347,6 @@ function KubernetesDashboardPage() {
           logSource={logSource}
         />
       )}
-      <Group justify="space-between">
-        <Group>
-          <Text size="xl">Kubernetes Dashboard</Text>
-          <SourceSelectControlled
-            name="logSourceId"
-            control={control}
-            allowedSourceKinds={[SourceKind.Log]}
-            size="xs"
-            allowDeselect={false}
-            sourceSchemaPreview={
-              <SourceSchemaPreview source={logSource} variant="text" />
-            }
-          />
-          <SourceSelectControlled
-            name="metricSourceId"
-            control={control}
-            allowedSourceKinds={[SourceKind.Metric]}
-            size="xs"
-            allowDeselect={false}
-            sourceSchemaPreview={
-              <SourceSchemaPreview source={metricSource} variant="text" />
-            }
-          />
-        </Group>
-
-        <Group gap="xs">
-          <form
-            data-testid="kubernetes-time-form"
-            onSubmit={e => {
-              e.preventDefault();
-              onSearch(displayedTimeInputValue);
-              return false;
-            }}
-          >
-            <TimePicker
-              data-testid="kubernetes-time-picker"
-              inputValue={displayedTimeInputValue}
-              setInputValue={setDisplayedTimeInputValue}
-              onSearch={onSearch}
-            />
-          </form>
-          <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
-            <ActionIcon
-              onClick={refresh}
-              loading={manualRefreshCooloff}
-              disabled={manualRefreshCooloff}
-              variant="secondary"
-              title="Refresh dashboard"
-              aria-label="Refresh dashboard"
-              size="lg"
-            >
-              <IconRefresh size={18} />
-            </ActionIcon>
-          </Tooltip>
-        </Group>
-      </Group>
       {metricSource && (
         <KubernetesFilters
           dateRange={dateRange}
@@ -1675,7 +1685,18 @@ function KubernetesDashboardPage() {
           <Tabs.Panel value="clusters">Clusters</Tabs.Panel>
         </div>
       </Tabs>
-    </Box>
+    </>
+  );
+
+  return (
+    <PageLayout
+      data-testid="kubernetes-dashboard-page"
+      breadcrumbs={pageBreadcrumbs}
+      leading={headerLeading}
+      actions={headerActions}
+      padded
+      content={dashboardBody}
+    />
   );
 }
 
