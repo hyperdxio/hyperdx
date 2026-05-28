@@ -77,7 +77,7 @@ const DashboardFilters = ({
   });
 
   return (
-    <Group mt="sm" align="start">
+    <Group align="start">
       {Object.values(filters).map(filter => {
         const queriedFilterValues = filterValuesById?.get(filter.id);
         const included = filterValues[filter.expression]?.included;
