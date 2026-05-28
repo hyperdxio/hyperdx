@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
@@ -28,7 +28,9 @@ import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
-import SourceSchemaPreview from './SourceSchemaPreview';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
 
 const eventRowWhereParser = parseAsJsonEncoded<{
@@ -141,9 +143,8 @@ export default function DBTracePanel({
     };
   }, [traceId, setEventRowWhere]);
 
-  const sourceSchemaPreview = useMemo(() => {
-    return <SourceSchemaPreview source={childSourceData} variant="text" />;
-  }, [childSourceData]);
+  const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
+    useState(false);
 
   const [displayedTab, setDisplayedTab] = useState<Tab>(Tab.Overview);
   return (
@@ -177,7 +178,16 @@ export default function DBTracePanel({
             control={control}
             name="source"
             size="xs"
-            sourceSchemaPreview={sourceSchemaPreview}
+            onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+            isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(
+              childSourceData,
+            )}
+          />
+          <SourceSchemaPreview
+            source={childSourceData}
+            controlled
+            open={isSourceSchemaPreviewOpen}
+            onClose={() => setIsSourceSchemaPreviewOpen(false)}
           />
         </Group>
       </Flex>

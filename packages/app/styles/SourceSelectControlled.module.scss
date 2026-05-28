@@ -1,3 +1,6 @@
+/* Legacy class. Still used by DBTableSelect for its inline schema-preview
+ * text button. New code uses SourceManagementMenu (kebab) instead.
+ */
 .sourceSchemaPreviewButton {
   pointer-events: all;
   font-size: var(--mantine-font-size-xxs);
@@ -15,4 +18,41 @@
   &::after {
     border-color: var(--color-border);
   }
+}
+
+/* Chip + kebab wrapper. Holds the Mantine Select and the adjacent
+ * SourceManagementMenu ActionIcon as a single inline-flex unit.
+ */
+.sourceSelectGroup {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Chip hover state. The Mantine Select input is the "chip" surface;
+ * we tint its background and force a pointer cursor on hover so the
+ * chevron + label feel like a single clickable affordance even though
+ * the input itself is searchable.
+ */
+.sourceSelectInput {
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover:not(:focus-within) {
+    background-color: var(--mantine-color-default-hover);
+  }
+
+  /* Once the user actually starts typing, keep text cursor semantics. */
+  &:focus-within {
+    cursor: text;
+  }
+}
+
+/* Kebab button hover. Mantine's subtle variant already provides a hover
+ * tint; we just tighten the margin and ensure the icon sits flush with
+ * the chip baseline.
+ */
+.sourceMenuButton {
+  flex-shrink: 0;
 }

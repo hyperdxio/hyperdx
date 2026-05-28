@@ -127,7 +127,9 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
-import SourceSchemaPreview from './components/SourceSchemaPreview';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from './components/SourceSchemaPreview';
 import {
   getRelativeTimeOptionLabel,
   LIVE_TAIL_DURATION_MS,
@@ -1664,10 +1666,8 @@ export function DBSearchPage() {
     [inputSourceObj],
   );
 
-  const sourceSchemaPreview = useMemo(
-    () => <SourceSchemaPreview source={inputSourceObj} variant="text" />,
-    [inputSourceObj],
-  );
+  const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
+    useState(false);
 
   const onTimePickerSearch = useCallback(
     (range: string) => {
@@ -1886,10 +1886,19 @@ export function DBSearchPage() {
             name="source"
             onCreate={openNewSourceModal}
             onEdit={onEditSources}
+            onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+            isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(
+              inputSourceObj,
+            )}
             allowedSourceKinds={ALLOWED_SOURCE_KINDS}
             data-testid="source-selector"
-            sourceSchemaPreview={sourceSchemaPreview}
             style={{ minWidth: 150 }}
+          />
+          <SourceSchemaPreview
+            source={inputSourceObj}
+            controlled
+            open={isSourceSchemaPreviewOpen}
+            onClose={() => setIsSourceSchemaPreviewOpen(false)}
           />
           <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
             <SQLInlineEditorControlled
