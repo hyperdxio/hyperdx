@@ -27,6 +27,7 @@ import {
   IconTextWrap,
 } from '@tabler/icons-react';
 
+import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/utils';
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { mergePath } from '@/utils';
 import {
@@ -370,8 +371,6 @@ export function DBRowJsonViewer({
     ({ keyPath, value, isInParsedJson, parsedJsonRootPath }) => {
       const actions: LineAction[] = [];
       const fieldPath = mergePath(keyPath, jsonColumns);
-      const isJsonColumn =
-        keyPath.length > 0 && jsonColumns?.includes(keyPath[0]);
 
       // Add to Filters action (strings only)
       // FIXME: TOTAL HACK To disallow adding timestamp to filters
@@ -394,7 +393,6 @@ export function DBRowJsonViewer({
           onClick: () => {
             let filterFieldPath = fieldPath;
 
-            // Handle parsed JSON from string columns using JSONExtractString
             if (isInParsedJson && parsedJsonRootPath) {
               const jsonQuery = buildJSONExtractQuery(
                 keyPath,
@@ -403,23 +401,14 @@ export function DBRowJsonViewer({
               );
               if (jsonQuery) {
                 filterFieldPath = jsonQuery;
-              } else {
-                // We're at the root of the parsed JSON, treat as string
-                filterFieldPath = isJsonColumn
-                  ? `toString(${fieldPath})`
-                  : fieldPath;
               }
-            } else {
-              // Regular JSON column or non-JSON field
-              filterFieldPath = isJsonColumn
-                ? `toString(${fieldPath})`
-                : fieldPath;
             }
 
-            onPropertyAddClick(filterFieldPath, value);
+            const cleanedPath = cleanClickHouseExpression(filterFieldPath);
+            onPropertyAddClick(cleanedPath, value);
             notifications.show({
               color: 'green',
-              message: `Added "${fieldPath} = ${value}" to filters`,
+              message: `Added "${cleanedPath} = ${value}" to filters`,
             });
           },
         });

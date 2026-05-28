@@ -110,6 +110,7 @@ describe('usePresetDashboardFilters', () => {
       filterQueries: mockFilterQueries,
       setFilterQueries: jest.fn(),
       ignoredFilterExpressions: [],
+      getFilterQueriesForSource: jest.fn().mockReturnValue(mockFilterQueries),
     });
   });
 

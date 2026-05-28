@@ -25,7 +25,10 @@ import {
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  ClickHouseQueryError,
+  ColumnMeta,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
@@ -129,8 +132,9 @@ import {
   getRelativeTimeOptionLabel,
   LIVE_TAIL_DURATION_MS,
 } from './components/TimePicker/utils';
-import { useTableMetadata } from './hooks/useMetadata';
+import { useColumns, useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
+import { useStableCallback } from './hooks/useStableCallback';
 import {
   buildDirectTraceWhereClause,
   getDefaultDirectTraceDateRange,
@@ -783,6 +787,12 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
   }, [source, tableMetadata]);
 }
 
+function formatDroppedFiltersMessage(count: number): string {
+  const noun = count === 1 ? 'filter' : 'filters';
+  const verb = count === 1 ? 'was' : 'were';
+  return `${count} ${noun} didn't apply to this source and ${verb} removed.`;
+}
+
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
@@ -1070,6 +1080,23 @@ export function DBSearchPage() {
     defaultValue: searchedConfig.source ?? undefined,
   });
   const prevSourceRef = useRef(watchedSource);
+  // Set when the user switches sources via the dropdown. The follow-up
+  // effect waits for the new source's columns to load and then drops any
+  // sidebar filters that don't apply to the new schema.
+  const pendingFilterReconcileRef = useRef<string | null>(null);
+
+  const watchedSourceObj = useMemo(
+    () => inputSourceObjs?.find(s => s.id === watchedSource),
+    [inputSourceObjs, watchedSource],
+  );
+  const { data: watchedSourceColumns } = useColumns(
+    {
+      databaseName: watchedSourceObj?.from?.databaseName ?? '',
+      tableName: watchedSourceObj?.from?.tableName ?? '',
+      connectionId: watchedSourceObj?.connection ?? '',
+    },
+    { enabled: !!watchedSourceObj },
+  );
 
   useEffect(() => {
     // If the user changes the source dropdown, reset the select and orderby fields
@@ -1087,14 +1114,19 @@ export function DBSearchPage() {
         if (savedSearchId == null || savedSearch?.source !== watchedSource) {
           setValue('select', '');
           setValue('orderBy', '');
-          // Clear all search filters only when switching to a different source
-          searchFilters.clearAllFilters();
+          // Defer filter clearing: wait until the new source's columns load,
+          // then keep filters whose root column exists on the new schema.
+          pendingFilterReconcileRef.current = watchedSource ?? null;
           // If the user is in a saved search, prefer the saved search's select/orderBy if available
         } else {
           setValue('select', savedSearch?.select ?? '');
           setValue('orderBy', savedSearch?.orderBy ?? '');
           // Don't clear filters - we're loading from saved search
         }
+        // Push the new source to URL/searchedConfig so the chart re-queries.
+        // Debounced so a later filter reconcile (which also submits) collapses
+        // into a single run.
+        debouncedSubmit();
       }
     }
   }, [
@@ -1103,9 +1135,33 @@ export function DBSearchPage() {
     savedSearch,
     savedSearchId,
     inputSourceObjs,
-    searchFilters,
     setLastSelectedSourceId,
+    debouncedSubmit,
   ]);
+
+  const retainCompatibleFilters = useStableCallback((columns: ColumnMeta[]) => {
+    pendingFilterReconcileRef.current = null;
+
+    const allowed = new Set(columns.map(c => c.name));
+
+    const dropped = searchFilters.retainFiltersByColumns(allowed);
+
+    if (dropped.length > 0) {
+      notifications.show({
+        color: 'yellow',
+        message: formatDroppedFiltersMessage(dropped.length),
+      });
+    }
+  });
+
+  useEffect(() => {
+    if (
+      pendingFilterReconcileRef.current === watchedSource &&
+      watchedSourceColumns
+    ) {
+      retainCompatibleFilters(watchedSourceColumns);
+    }
+  }, [watchedSource, watchedSourceColumns, retainCompatibleFilters]);
 
   const onTableScroll = useCallback(
     (scrollTop: number) => {
