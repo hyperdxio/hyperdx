@@ -6,6 +6,7 @@ import type { SetStateAction } from 'react';
 import TimestampNano from 'timestamp-nano';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  ChartPaletteToken,
   NumericUnit,
   SourceKind,
   TMetricSource,
@@ -409,54 +410,21 @@ export const COLORS = [
 ];
 
 /**
- * The set of palette tokens a user can pick for chart series colors,
- * number-tile colors, reference lines, and threshold rules.
+ * Palette token types and runtime guards live in common-utils so the
+ * Zod schema in `SharedChartSettingsSchema` can reference them; the
+ * theme-aware CSS resolver `getColorFromCSSToken` below stays in app
+ * because it depends on `getComputedStyle(document.documentElement)`.
  *
- * Tokens map to CSS variables in `packages/app/src/theme/themes/<theme>/_tokens.scss`:
- *   chart-1 .. chart-10        -> --color-chart-1 .. --color-chart-10
- *   chart-success/warning/error -> --color-chart-{success|warning|error}
- *
- * Storing tokens (not hex) lets user choices reflow correctly across
- * themes and color modes; see notes/repo-conventions/hyperdx/tile-styling.md.
+ * Re-exported here so existing app-side imports from `@/utils` keep
+ * working unchanged.
  */
-export const CHART_PALETTE_TOKENS = [
-  'chart-1',
-  'chart-2',
-  'chart-3',
-  'chart-4',
-  'chart-5',
-  'chart-6',
-  'chart-7',
-  'chart-8',
-  'chart-9',
-  'chart-10',
-  'chart-success',
-  'chart-warning',
-  'chart-error',
-] as const;
-
-export type ChartPaletteToken = (typeof CHART_PALETTE_TOKENS)[number];
-
-/** Categorical tokens (chart-1 .. chart-10). */
-export const CATEGORICAL_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
-  0,
-  10,
-) as readonly ChartPaletteToken[];
-
-/** Semantic tokens (success / warning / error). */
-export const SEMANTIC_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
-  10,
-) as readonly ChartPaletteToken[];
-
-/** Type guard for runtime validation of an unknown token string. */
-export function isChartPaletteToken(
-  value: unknown,
-): value is ChartPaletteToken {
-  return (
-    typeof value === 'string' &&
-    (CHART_PALETTE_TOKENS as readonly string[]).includes(value)
-  );
-}
+export {
+  CATEGORICAL_PALETTE_TOKENS,
+  CHART_PALETTE_TOKENS,
+  isChartPaletteToken,
+  SEMANTIC_PALETTE_TOKENS,
+} from '@hyperdx/common-utils/dist/types';
+export type { ChartPaletteToken };
 
 /**
  * Detects the active theme by checking for theme classes on documentElement.

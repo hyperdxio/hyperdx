@@ -773,6 +773,65 @@ export function isOnClickDashboardById(
   );
 }
 
+/**
+ * The set of palette tokens a user can pick for chart series colors,
+ * number-tile colors, reference lines, and threshold rules.
+ *
+ * Tokens map to CSS variables in
+ * `packages/app/src/theme/themes/<theme>/_tokens.scss`:
+ *   chart-1 .. chart-10        -> --color-chart-1 .. --color-chart-10
+ *   chart-success/warning/error -> --color-chart-{success|warning|error}
+ *
+ * Storing tokens (not hex) lets user choices reflow correctly across
+ * themes and color modes; see notes/repo-conventions/hyperdx/tile-styling.md.
+ *
+ * Lives in common-utils because the schema is shared between the app
+ * and the API; the theme-aware CSS resolver (`getColorFromCSSToken`)
+ * stays in `packages/app/src/utils.ts` because it depends on
+ * `getComputedStyle(document.documentElement)`.
+ */
+export const CHART_PALETTE_TOKENS = [
+  'chart-1',
+  'chart-2',
+  'chart-3',
+  'chart-4',
+  'chart-5',
+  'chart-6',
+  'chart-7',
+  'chart-8',
+  'chart-9',
+  'chart-10',
+  'chart-success',
+  'chart-warning',
+  'chart-error',
+] as const;
+
+export type ChartPaletteToken = (typeof CHART_PALETTE_TOKENS)[number];
+
+/** Categorical tokens (chart-1 .. chart-10). */
+export const CATEGORICAL_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
+  0,
+  10,
+) as readonly ChartPaletteToken[];
+
+/** Semantic tokens (success / warning / error). */
+export const SEMANTIC_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
+  10,
+) as readonly ChartPaletteToken[];
+
+/** Type guard for runtime validation of an unknown token string. */
+export function isChartPaletteToken(
+  value: unknown,
+): value is ChartPaletteToken {
+  return (
+    typeof value === 'string' &&
+    (CHART_PALETTE_TOKENS as readonly string[]).includes(value)
+  );
+}
+
+/** Zod schema that accepts only the curated palette tokens above. */
+export const ChartPaletteTokenSchema = z.enum(CHART_PALETTE_TOKENS);
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
 /**
@@ -787,6 +846,14 @@ const SharedChartSettingsSchema = z.object({
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   alignDateRangeToGranularity: z.boolean().optional(),
   onClick: OnClickSchema.optional(),
+  // Palette-token color override. Applied by the renderer for number
+  // tiles only (gated in `ChartDisplaySettingsDrawer`); other display
+  // types ignore the field. Other tile types (line / bar / pie) ship
+  // their per-series colors in a follow-up PR via `select[i].color`.
+  // Stored at shared level mirroring `numberFormat` above, which is
+  // also a Number-tile-only field stored at shared level and gated in
+  // the UI.
+  color: ChartPaletteTokenSchema.optional(),
 });
 
 export const _ChartConfigSchema = SharedChartSettingsSchema.extend({

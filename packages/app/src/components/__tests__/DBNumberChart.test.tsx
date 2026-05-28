@@ -4,7 +4,7 @@ import { act, screen } from '@testing-library/react';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
-import { formatNumber } from '@/utils';
+import { formatNumber, getColorFromCSSToken } from '@/utils';
 
 import { NumberFormat } from '../../types';
 import DateRangeIndicator from '../charts/DateRangeIndicator';
@@ -38,6 +38,9 @@ jest.mock('@/utils', () => ({
     keys.forEach((key: string) => delete result[key]);
     return result;
   }),
+  // The renderer resolves palette tokens through getColorFromCSSToken;
+  // returning a predictable string keeps the assertion theme-independent.
+  getColorFromCSSToken: jest.fn((token: string) => `resolved(${token})`),
 }));
 
 jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
@@ -303,5 +306,42 @@ describe('DBNumberChart', () => {
 
     // Verify DateRangeIndicator was not called
     expect(jest.mocked(DateRangeIndicator)).not.toHaveBeenCalled();
+  });
+
+  describe('color', () => {
+    const mockGetColorFromCSSToken = getColorFromCSSToken as jest.Mock;
+
+    it('resolves a palette token through getColorFromCSSToken when config.color is set', () => {
+      const config = {
+        ...baseTestConfig,
+        color: 'chart-success' as const,
+      };
+
+      renderWithMantine(<DBNumberChart config={config} />);
+
+      expect(mockGetColorFromCSSToken).toHaveBeenCalledWith('chart-success');
+      expect(screen.getByText('1234')).toBeInTheDocument();
+    });
+
+    it('does not resolve a color when config.color is unset', () => {
+      renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+
+      expect(mockGetColorFromCSSToken).not.toHaveBeenCalled();
+      expect(screen.getByText('1234')).toBeInTheDocument();
+    });
+
+    it('skips resolution and renders the default when config.color is not a known palette token', () => {
+      const config = {
+        ...baseTestConfig,
+        // Simulate a legacy or hand-edited dashboard with an unknown
+        // value sneaking past the schema (e.g. an old hex code).
+        color: 'definitely-not-a-token' as any,
+      };
+
+      renderWithMantine(<DBNumberChart config={config} />);
+
+      expect(mockGetColorFromCSSToken).not.toHaveBeenCalled();
+      expect(screen.getByText('1234')).toBeInTheDocument();
+    });
   });
 });
