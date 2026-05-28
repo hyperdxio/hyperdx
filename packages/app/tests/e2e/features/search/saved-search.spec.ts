@@ -639,8 +639,6 @@ test.describe('Saved Search Functionality', () => {
       });
 
       await test.step('Verify both filters are restored', async () => {
-        await searchPage.filters.openFilterGroup(firstFilterGroup);
-        await searchPage.filters.openFilterGroup(secondFilterGroup);
         await expect(
           searchPage.filters.getFilterCheckboxInput(
             firstFilterGroup,

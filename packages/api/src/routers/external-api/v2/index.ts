@@ -4,6 +4,7 @@ import { validateUserAccessKey } from '@/middleware/auth';
 import alertsRouter from '@/routers/external-api/v2/alerts';
 import chartsRouter from '@/routers/external-api/v2/charts';
 import dashboardRouter from '@/routers/external-api/v2/dashboards';
+import searchRouter from '@/routers/external-api/v2/search';
 import sourcesRouter from '@/routers/external-api/v2/sources';
 import webhooksRouter from '@/routers/external-api/v2/webhooks';
 import rateLimiter, { rateLimiterKeyGenerator } from '@/utils/rateLimiter';
@@ -42,6 +43,8 @@ router.use(
   validateUserAccessKey,
   sourcesRouter,
 );
+
+router.use('/search', defaultRateLimiter, validateUserAccessKey, searchRouter);
 
 router.use(
   '/webhooks',

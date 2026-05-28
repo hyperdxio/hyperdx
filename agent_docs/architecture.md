@@ -41,10 +41,78 @@ All models follow consistent patterns with:
 
 ## Backend Architecture
 
-- **Routers**: `packages/api/src/routers/` - Domain-specific API routes
-- **Controllers**: `packages/api/src/controllers/` - Business logic separated from routes
-- **Middleware**: Authentication, CORS, error handling
-- **Services**: Reusable business logic (e.g., `agentService`)
+The API package (`packages/api`) hosts several distinct applications, each with
+its own routing, authentication, and rate limiting:
+
+### Internal API (`src/routers/api/`)
+
+The primary API consumed by the web frontend (`packages/app`). Uses session-based
+authentication (Passport.js). Follows a standard layered structure:
+
+- **Routers**: `src/routers/api/` - Domain-specific API routes
+- **Controllers**: `src/controllers/` - Business logic separated from routes
+- **Middleware**: `src/middleware/` - Authentication, CORS, error handling
+- **Services**: `src/services/` - Reusable business logic (e.g., `agentService`)
+
+### External API v2 (`src/routers/external-api/v2/`)
+
+Public REST API for programmatic access. Authenticated via Personal API Access
+Key (`validateUserAccessKey` middleware), rate-limited to 100 req/min.
+
+- **Routes**: `alerts.ts`, `charts.ts`, `dashboards.ts`, `sources.ts`,
+  `webhooks.ts`
+- **OpenAPI spec**: `packages/api/openapi.json` (auto-generated via
+  `yarn docgen`, linted via `yarn lint:openapi` using Spectral)
+- **Tests**: `src/routers/external-api/__tests__/`
+
+When adding or modifying external API endpoints, run `yarn docgen` to regenerate
+the OpenAPI spec and `yarn lint:openapi` to validate it.
+
+### MCP Server (`src/mcp/`)
+
+[Model Context Protocol](https://modelcontextprotocol.io/) server that lets AI
+assistants query observability data and manage dashboards. Exposed as a stateless
+Streamable HTTP endpoint at `/api/mcp`, authenticated via Personal API Access
+Key, rate-limited to 600 req/min.
+
+- **Entry**: `app.ts` (Express middleware), `mcpServer.ts` (server factory)
+- **Tools**: `tools/alerts/`, `tools/dashboards/`, `tools/query/`,
+  `tools/savedSearches/` - each directory contains tool definitions and handlers
+- **Prompts**: `prompts/dashboards/` - context prompts for AI assistants
+- **Tests**: `src/mcp/__tests__/` (alerts, dashboards, query, savedSearches,
+  tracing)
+- **Dev/debug**: `yarn dev:mcp` launches the MCP Inspector for interactive
+  testing
+
+See `MCP.md` in the repo root for user-facing setup instructions.
+
+### OpAMP Server (`src/opamp/`)
+
+HTTP-based [OpAMP](https://github.com/open-telemetry/opamp-spec) server that
+serves configurations to supervised OpenTelemetry Collectors. The supervisor
+pings `/v1/opamp` with status, and the server returns updated config when needed.
+
+- **Entry**: `app.ts` (Express sub-app)
+- **Controller**: `controllers/opampController.ts` - config derivation logic
+- **Service**: `services/agentService.ts` - agent management
+- **Model**: `models/agent.ts` - agent state persistence
+- **Proto**: `proto/` - Protocol Buffer definitions for OpAMP and anyvalue
+
+Config is derived from the team document with the ingestion API key.
+
+### Background Tasks (`src/tasks/`)
+
+Cron-driven tasks that run outside the request/response cycle. In development,
+tasks run via `yarn dev-task`; in production, they are triggered externally.
+
+- `checkAlerts/` - Alert evaluation (runs every minute in dev)
+- `provisionDashboards/` - Dashboard provisioning from config files
+- `usageStats.ts` - Usage statistics collection
+- `pingPongTask.ts` - Health check task
+- `metrics.ts` - Task execution metrics (duration, success/failure counters)
+
+Note: Background tasks do **not** run in Vercel preview deployments (see
+`agent_docs/development.md` for details).
 
 ## Data & Query Patterns
 

@@ -12,6 +12,10 @@ export interface IConnection {
   username: string;
   team: ObjectId;
   hyperdxSettingPrefix?: string;
+  /** Optional Prometheus-compatible API endpoint (e.g. http://prometheus:9090).
+   *  When set, PromQL queries are proxied to this endpoint instead of using
+   *  ClickHouse's prometheusQuery() function. */
+  prometheusEndpoint?: string;
 }
 
 export default mongoose.model<IConnection>(
@@ -31,6 +35,7 @@ export default mongoose.model<IConnection>(
         select: false,
       },
       hyperdxSettingPrefix: String,
+      prometheusEndpoint: String,
     },
     {
       timestamps: true,

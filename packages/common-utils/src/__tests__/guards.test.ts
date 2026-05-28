@@ -3,7 +3,7 @@ import {
   isBuilderSavedChartConfig,
   isRawSqlSavedChartConfig,
 } from '@/guards';
-import { DisplayType } from '@/types';
+import { DisplayType, isChartPaletteToken } from '@/types';
 
 describe('isRawSqlSavedChartConfig', () => {
   it('returns true when configType is "sql"', () => {
@@ -166,5 +166,55 @@ describe('displayTypeRequiresSource', () => {
         }),
       ).toBe(false);
     });
+  });
+});
+
+describe('isChartPaletteToken', () => {
+  it('returns true for all categorical tokens', () => {
+    for (let i = 1; i <= 10; i++) {
+      expect(isChartPaletteToken(`chart-${i}`)).toBe(true);
+    }
+  });
+
+  it('returns true for semantic tokens', () => {
+    expect(isChartPaletteToken('chart-success')).toBe(true);
+    expect(isChartPaletteToken('chart-warning')).toBe(true);
+    expect(isChartPaletteToken('chart-error')).toBe(true);
+  });
+
+  it('returns false for a raw hex string', () => {
+    expect(isChartPaletteToken('#00c28a')).toBe(false);
+    expect(isChartPaletteToken('#ff725c')).toBe(false);
+  });
+
+  it('returns false for undefined and null', () => {
+    expect(isChartPaletteToken(undefined)).toBe(false);
+    expect(isChartPaletteToken(null)).toBe(false);
+  });
+
+  it('returns false for numbers', () => {
+    expect(isChartPaletteToken(1)).toBe(false);
+    expect(isChartPaletteToken(0)).toBe(false);
+  });
+
+  it('returns false for an empty string', () => {
+    expect(isChartPaletteToken('')).toBe(false);
+  });
+
+  it('is case-sensitive (no uppercase matches)', () => {
+    expect(isChartPaletteToken('Chart-1')).toBe(false);
+    expect(isChartPaletteToken('CHART-SUCCESS')).toBe(false);
+    expect(isChartPaletteToken('chart-Success')).toBe(false);
+  });
+
+  it('returns false for an out-of-range categorical index', () => {
+    expect(isChartPaletteToken('chart-0')).toBe(false);
+    expect(isChartPaletteToken('chart-11')).toBe(false);
+  });
+
+  it('returns false for strings that look similar but are not tokens', () => {
+    expect(isChartPaletteToken('chart-')).toBe(false);
+    expect(isChartPaletteToken('chart')).toBe(false);
+    expect(isChartPaletteToken('chart-neutral')).toBe(false);
   });
 });

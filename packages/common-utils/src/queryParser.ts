@@ -9,6 +9,7 @@ import {
   extractInnerCHArrayJSType,
   JSDataType,
 } from '@/clickhouse';
+import { supportsDirectReadMap } from '@/core/clickhouseVersion';
 import {
   Metadata,
   parseKeyPath,
@@ -19,6 +20,7 @@ import {
   parseTokenizerFromTextIndex,
   splitAndTrimWithBracket,
 } from '@/core/utils';
+import { UseTextIndex } from '@/types';
 
 /** Max number of tokens to pass to hasAllTokens(), which supports up to 64 tokens as of ClickHouse v25.12. */
 const HAS_ALL_TOKENS_CHUNK_SIZE = 50;
@@ -31,7 +33,7 @@ function encodeSpecialTokens(query: string): string {
     .replace(/localhost:(\d{1,5})/, 'localhost_COLON_$1')
     .replace(/\\:/g, 'HDX_COLON');
 }
-function decodeSpecialTokens(query: string): string {
+export function decodeSpecialTokens(query: string): string {
   return query
     .replace(/\\"/g, '"')
     .replace(/HDX_BACKSLASH_LITERAL/g, '\\')
@@ -59,17 +61,21 @@ function normalizeChExpression(expr: string): string {
 const IMPLICIT_FIELD = '<implicit>';
 
 // Type guards for lucene AST types
-function isNodeTerm(node: lucene.Node | lucene.AST): node is lucene.NodeTerm {
+export function isNodeTerm(
+  node: lucene.Node | lucene.AST,
+): node is lucene.NodeTerm {
   return 'term' in node && node.term != null;
 }
 
-function isNodeRangedTerm(
+export function isNodeRangedTerm(
   node: lucene.Node | lucene.AST,
 ): node is lucene.NodeRangedTerm {
   return 'inclusive' in node && node.inclusive != null;
 }
 
-function isBinaryAST(ast: lucene.AST | lucene.Node): ast is lucene.BinaryAST {
+export function isBinaryAST(
+  ast: lucene.AST | lucene.Node,
+): ast is lucene.BinaryAST {
   return 'right' in ast && ast.right != null;
 }
 
@@ -79,7 +85,7 @@ function hasStart(
   return 'start' in ast && !!ast.start;
 }
 
-function isLeftOnlyAST(
+export function isLeftOnlyAST(
   ast: lucene.AST | lucene.Node,
 ): ast is lucene.LeftOnlyAST {
   return (
@@ -740,6 +746,13 @@ export type CustomSchemaConfig = {
   implicitColumnExpression?: string;
   tableName: string;
   connectionId: string;
+  /**
+   * Source-level override for whether to use a ClickHouse text index when
+   * rendering implicit-field lucene matches. When `undefined` (or
+   * `UseTextIndex.Auto`), the renderer detects a covering index from table
+   * metadata; otherwise, it forces the chosen behavior.
+   */
+  useTextIndexForImplicitColumn?: UseTextIndex;
 };
 
 function renderArrayFieldExpression({
@@ -1059,6 +1072,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private databaseName: string;
   private implicitColumnExpression?: string;
   private connectionId: string;
+  private useTextIndexForImplicitColumn: UseTextIndex;
   private skipIndicesPromise?: Promise<SkipIndexMetadata[]>;
   private enableTextIndexPromise?: Promise<boolean>;
   private kvItemsLookupPromise?: Promise<KvItemsLookup>;
@@ -1069,6 +1083,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     tableName,
     connectionId,
     implicitColumnExpression,
+    useTextIndexForImplicitColumn,
   }: { metadata: Metadata } & CustomSchemaConfig) {
     super();
     this.metadata = metadata;
@@ -1076,6 +1091,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     this.tableName = tableName;
     this.implicitColumnExpression = implicitColumnExpression;
     this.connectionId = connectionId;
+    this.useTextIndexForImplicitColumn =
+      useTextIndexForImplicitColumn ?? UseTextIndex.Auto;
 
     // Pre-fetch skip indices for potential bloom filter optimization
     this.skipIndicesPromise = this.metadata
@@ -1113,9 +1130,17 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
    * A KV items column is an ALIAS/MATERIALIZED column whose expression is
    * arrayMap((k,v)->concat(k,'=',v), mapKeys(X), mapValues(X)) and which has
    * a text(tokenizer=array) skip index.
+   *
+   * The version gate (`supportsDirectReadMap`) only applies to ALIAS items
+   * columns: ALIAS columns are computed at query time, so `has(items, ...)`
+   * against an ALIAS only realizes its speedup when the server can perform a
+   * direct_read against the underlying Map's tuple storage. MATERIALIZED items
+   * columns are physically stored on disk, so `has()` reads them directly and
+   * is fast on any ClickHouse version that supports the text index itself.
    */
   private async buildKvItemsLookup(): Promise<KvItemsLookup> {
-    const [columns, skipIndices] = await Promise.all([
+    const [serverVersion, columns, skipIndices] = await Promise.all([
+      this.metadata.getServerVersion({ connectionId: this.connectionId }),
       this.metadata.getColumns({
         databaseName: this.databaseName,
         tableName: this.tableName,
@@ -1124,9 +1149,10 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       this.skipIndicesPromise ?? Promise.resolve([]),
     ]);
 
+    const directReadSupported = supportsDirectReadMap(serverVersion);
+
     const lookup: KvItemsLookup = new Map();
 
-    // Find columns that are ALIAS or MATERIALIZED with KV items expressions
     const kvItemsCandidates = columns.filter(
       c =>
         (c.default_type === 'ALIAS' || c.default_type === 'MATERIALIZED') &&
@@ -1134,6 +1160,10 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     );
 
     for (const candidate of kvItemsCandidates) {
+      if (candidate.default_type === 'ALIAS' && !directReadSupported) {
+        continue;
+      }
+
       const parsed = (() => {
         let parsed: { mapColumn: string; separator: string } | undefined;
         for (const strategy of KV_ITEMS_STRATEGIES) {
@@ -1144,16 +1174,14 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       })();
       if (!parsed) continue;
 
-      // Check if this column has a text(tokenizer=array) skip index
+      const candidateName = normalizeChExpression(candidate.name);
+      const candidateExpr = normalizeChExpression(candidate.default_expression);
       const hasArrayTextIndex = skipIndices.some(idx => {
         if (idx.type !== 'text') return false;
         const tokenizer = parseTokenizerFromTextIndex(idx);
         if (tokenizer?.type !== 'array') return false;
-        // Require exact match: has() won't benefit from a transformed index like lower(col)
-        return (
-          normalizeChExpression(idx.expression) ===
-          normalizeChExpression(candidate.name)
-        );
+        const idxExpr = normalizeChExpression(idx.expression);
+        return idxExpr === candidateName || idxExpr === candidateExpr;
       });
 
       if (hasArrayTextIndex) {
@@ -1252,43 +1280,73 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           ],
         );
       } else if (shouldUseTokenBf) {
-        // First check for a text index, and use it if possible
-        // Note: We check that enable_full_text_index = 1, otherwise hasAllTokens() errors
-        const isTextIndexEnabled = await this.enableTextIndexPromise;
-        const textIndex = isTextIndexEnabled
-          ? await this.findTextIndex(column)
-          : undefined;
+        // Source preference for the text index:
+        //   - auto (default): detect a covering text index from skip-index metadata
+        //   - enabled: force hasAllTokens(), even if no text index is detected
+        //   - disabled: skip the text-index branch entirely
+        let useHasAllTokens = false;
+        let textIndexHasLower = false;
+        if (this.useTextIndexForImplicitColumn === UseTextIndex.Enabled) {
+          useHasAllTokens = true;
+          const textIndexResult = await this.findTextIndex(column);
+          if (textIndexResult) {
+            textIndexHasLower = textIndexResult.indexHasLower;
+          }
+        } else if (this.useTextIndexForImplicitColumn === UseTextIndex.Auto) {
+          // Note: We check that enable_full_text_index = 1, otherwise hasAllTokens() errors
+          const isTextIndexEnabled = await this.enableTextIndexPromise;
+          const textIndexResult = isTextIndexEnabled
+            ? await this.findTextIndex(column)
+            : undefined;
 
-        if (textIndex) {
-          const tokenizer = parseTokenizerFromTextIndex(textIndex);
-
-          // HDX-3259: Support other tokenizers by overriding tokenizeTerm, termHasSeparators, and batching logic
-          if (tokenizer?.type === 'splitByNonAlpha') {
-            const tokens = this.tokenizeTerm(term);
-            const hasSeparators = this.termHasSeparators(term);
-
-            // Batch tokens to avoid exceeding hasAllTokens limit (64)
-            const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
-            const hasAllTokensExpressions = tokenBatches.map(batch =>
-              SqlString.format(`hasAllTokens(?, ?)`, [
-                SqlString.raw(column),
-                batch.join(' '),
-              ]),
+          if (textIndexResult) {
+            const tokenizer = parseTokenizerFromTextIndex(
+              textIndexResult.index,
             );
-
-            if (hasSeparators || tokenBatches.length > 1) {
-              // Multi-token, or term containing token separators: hasAllTokens(..., 'foo bar') AND lower(...) LIKE '%foo bar%'
-              return `(${isNegatedField ? 'NOT (' : ''}${[
-                ...hasAllTokensExpressions,
-                SqlString.format(`(lower(?) LIKE lower(?))`, [
-                  SqlString.raw(column),
-                  `%${term}%`,
-                ]),
-              ].join(' AND ')}${isNegatedField ? ')' : ''})`;
-            } else {
-              // Single token, without token separators: hasAllTokens(..., 'term')
-              return `(${isNegatedField ? 'NOT ' : ''}${hasAllTokensExpressions.join(' AND ')})`;
+            // HDX-3259: Support other tokenizers by overriding tokenizeTerm, termHasSeparators, and batching logic
+            if (tokenizer?.type === 'splitByNonAlpha') {
+              useHasAllTokens = true;
+              textIndexHasLower = textIndexResult.indexHasLower;
             }
+          }
+        }
+
+        if (useHasAllTokens) {
+          const tokens = this.tokenizeTerm(term);
+          const hasSeparators = this.termHasSeparators(term);
+
+          // When the text index is on lower(column), we must pass lower(column)
+          // as the first argument and wrap the tokens in lower() to match.
+          const hasAllTokensColumn = textIndexHasLower
+            ? `lower(${column})`
+            : column;
+
+          // Batch tokens to avoid exceeding hasAllTokens limit (64)
+          const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
+          const hasAllTokensExpressions = tokenBatches.map(batch =>
+            textIndexHasLower
+              ? SqlString.format(`hasAllTokens(?, lower(?))`, [
+                  SqlString.raw(hasAllTokensColumn),
+                  batch.join(' '),
+                ])
+              : SqlString.format(`hasAllTokens(?, ?)`, [
+                  SqlString.raw(hasAllTokensColumn),
+                  batch.join(' '),
+                ]),
+          );
+
+          if (hasSeparators || tokenBatches.length > 1) {
+            // Multi-token, or term containing token separators: hasAllTokens(..., 'foo bar') AND lower(...) LIKE '%foo bar%'
+            return `(${isNegatedField ? 'NOT (' : ''}${[
+              ...hasAllTokensExpressions,
+              SqlString.format(`(lower(?) LIKE lower(?))`, [
+                SqlString.raw(column),
+                `%${term}%`,
+              ]),
+            ].join(' AND ')}${isNegatedField ? ')' : ''})`;
+          } else {
+            // Single token, without token separators: hasAllTokens(..., 'term')
+            return `(${isNegatedField ? 'NOT ' : ''}${hasAllTokensExpressions.join(' AND ')})`;
           }
         }
 
@@ -1297,7 +1355,9 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         const bloomIndex = await this.findBloomFilterTokensIndex(column);
 
         if (bloomIndex.found) {
-          const indexHasLower = /\blower\s*\(/.test(bloomIndex.indexExpression);
+          const indexHasLower = this.isLowerExpression(
+            bloomIndex.indexExpression,
+          );
           const termTokensExpression = indexHasLower
             ? SqlString.format('tokens(lower(?))', [term])
             : SqlString.format('tokens(?)', [term]);
@@ -1504,21 +1564,36 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     // throw new Error(`Column not found: ${field}`);
   }
 
+  private isLowerExpression(expr: string): boolean {
+    return /\blower\s*\(/i.test(expr);
+  }
+
   private async findTextIndex(
     columnExpression: string,
-  ): Promise<SkipIndexMetadata | undefined> {
+  ): Promise<{ index: SkipIndexMetadata; indexHasLower: boolean } | undefined> {
     const skipIndices = await this.skipIndicesPromise;
 
     if (!skipIndices || skipIndices.length === 0) {
       return undefined;
     }
 
-    // Note: Text index expressions should not be wrapped in tokens() or preprocessing functions like lower().
-    return skipIndices.find(
+    const idx = skipIndices.find(
       idx =>
         idx.type === 'text' &&
         this.indexCoversColumn(idx.expression, columnExpression),
     );
+
+    if (!idx) {
+      return undefined;
+    }
+
+    const normalizedExpr = normalizeChExpression(idx.expression);
+    const normalizedCol = normalizeChExpression(columnExpression);
+    const indexHasLower =
+      normalizedExpr !== normalizedCol &&
+      this.isLowerExpression(idx.expression);
+
+    return { index: idx, indexHasLower };
   }
 
   /**
@@ -1657,9 +1732,14 @@ async function nodeTerm(
   serializer: Serializer,
   context: SerializerContext,
 ): Promise<string> {
-  const field = node.field[0] === '-' ? node.field.slice(1) : node.field;
-  let isNegatedField = node.field[0] === '-';
   const isImplicitField = node.field === IMPLICIT_FIELD;
+  const rawField = node.field[0] === '-' ? node.field.slice(1) : node.field;
+  // Decode special-token placeholders the emitter inserted in the field name
+  // (e.g. HDX_COLON for an escaped `:` in a Map sub-key). Leave the implicit
+  // field sentinel untouched so downstream comparisons against IMPLICIT_FIELD
+  // still match.
+  const field = isImplicitField ? rawField : decodeSpecialTokens(rawField);
+  let isNegatedField = node.field[0] === '-';
 
   // NodeTerm
   if (isNodeTerm(node)) {
@@ -1761,7 +1841,7 @@ function createSerializerContext(
 
     return {
       ...currentContext,
-      implicitColumnExpression: fieldWithoutNegation,
+      implicitColumnExpression: decodeSpecialTokens(fieldWithoutNegation),
       ...(isNegatedAndParenthesized(ast)
         ? { isNegatedAndParenthesized: true }
         : {}),

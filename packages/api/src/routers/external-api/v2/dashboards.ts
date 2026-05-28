@@ -1359,6 +1359,17 @@ function getSourceConnectionMismatches(
  *           description: Language of the where condition
  *           default: "sql"
  *           example: "lucene"
+ *         appliesToSourceIds:
+ *           type: array
+ *           items:
+ *             type: string
+ *           description: |
+ *             Optional list of source IDs this filter applies to. Omit or provide
+ *             an empty array to apply the filter to ALL tiles regardless of source.
+ *             A non-empty array restricts the filter to only tiles whose source ID
+ *             is in the list; tiles using other sources are not affected by the
+ *             selected filter value(s).
+ *           example: ["65f5e4a3b9e77c001a111111"]
  *
  *     Filter:
  *       allOf:

@@ -27,6 +27,7 @@ import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
@@ -133,6 +134,10 @@ export async function computeAliasWithClauses(
     implicitColumnExpression:
       source.kind === SourceKind.Log || source.kind === SourceKind.Trace
         ? source.implicitColumnExpression
+        : undefined,
+    useTextIndexForImplicitColumn:
+      source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+        ? source.useTextIndexForImplicitColumn
         : undefined,
     ...pickSampleWeightExpressionProps(source),
     timestampValueExpression: source.timestampValueExpression,
@@ -565,6 +570,11 @@ const getChartConfigFromAlert = (
       return undefined;
     }
 
+    // PromQL tiles don't support alerts yet
+    if (isPromqlSavedChartConfig(tile.config)) {
+      return undefined;
+    }
+
     const { source } = details;
     if (!source) {
       logger.error(
@@ -581,11 +591,15 @@ const getChartConfigFromAlert = (
       tile.config.displayType === DisplayType.Number
     ) {
       // Tile alerts can use Log, Trace, or Metric sources.
-      // implicitColumnExpression exists on Log and Trace sources;
+      // implicitColumnExpression+useTextIndexForImplicitColumn exist on Log and Trace sources;
       // metricTables exists on Metric sources.
       const implicitColumnExpression =
         source.kind === SourceKind.Log || source.kind === SourceKind.Trace
           ? source.implicitColumnExpression
+          : undefined;
+      const useTextIndexForImplicitColumn =
+        source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+          ? source.useTextIndexForImplicitColumn
           : undefined;
       const sampleWeightExpression = getSampleWeightExpression(source);
       const metricTables =
@@ -600,6 +614,7 @@ const getChartConfigFromAlert = (
         granularity: `${windowSizeInMins} minute`,
         groupBy: tile.config.groupBy,
         implicitColumnExpression,
+        useTextIndexForImplicitColumn,
         sampleWeightExpression,
         metricTables,
         select: tile.config.select,

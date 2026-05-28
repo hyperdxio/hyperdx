@@ -60,6 +60,15 @@ export HDX_E2E_APP_PORT="${HDX_E2E_APP_PORT:-$((21300 + HDX_E2E_SLOT))}"
 
 export E2E_PROJECT="e2e-${HDX_E2E_SLOT}"
 
+# Prevent Playwright's html reporter from spawning a blocking server on port
+# 9323 ("Serving HTML report... Press Ctrl+C to quit.") after a failed/flaky
+# run. Without this, the test process never exits in interactive terminals,
+# which breaks non-interactive (agent) invocations of `make dev-e2e`.
+# The Makefile's `REPORT=1` flag still works because it invokes
+# `npx playwright show-report` separately after the test process exits.
+# CI is already unaffected (Playwright skips auto-open when process.env.CI is set).
+export PLAYWRIGHT_HTML_OPEN=never
+
 # --- Log capture for dev-portal visibility ---
 HDX_E2E_SLOTS_DIR="${HOME}/.config/hyperdx/dev-slots"
 HDX_E2E_LOGS_DIR="${HDX_E2E_SLOTS_DIR}/${HDX_E2E_SLOT}/logs-e2e"

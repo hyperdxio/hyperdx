@@ -380,4 +380,24 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
     expect(ext.tiles[0].containerId).toBe('real');
     expect(ext.tiles[0].tabId).toBe('errors');
   });
+
+  it('drops PromQL tiles from external response (no schema variant yet)', () => {
+    const doc = makeDoc({
+      tiles: [
+        makeTile({
+          id: 'promql-tile',
+          config: {
+            configType: 'promql',
+            promqlExpression: 'up',
+            connection: 'conn-1',
+            displayType: DisplayType.Line,
+            name: 'My PromQL tile',
+          } as any,
+        }),
+        makeTile({ id: 'normal-tile' }),
+      ],
+    });
+    const ext = convertToExternalDashboard(doc);
+    expect(ext.tiles.map(t => t.id)).toEqual(['normal-tile']);
+  });
 });

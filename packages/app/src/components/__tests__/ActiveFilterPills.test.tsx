@@ -14,6 +14,7 @@ function makeSearchFilters(
     setFilterRange: jest.fn(),
     clearFilter: jest.fn(),
     clearAllFilters: jest.fn(),
+    retainFiltersByColumns: jest.fn(() => []),
   };
 }
 
