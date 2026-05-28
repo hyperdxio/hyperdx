@@ -88,4 +88,19 @@ service:
     logs:
       level: ${HYPERDX_LOG_LEVEL}
   extensions: [health_check]
-  # Pipelines are now configured dynamically in opampController.ts
+  # Pipeline receivers and exporters are configured dynamically in
+  # opampController.ts. Pipeline `processors:` lists are declared here in
+  # the bootstrap config so they can be overridden via
+  # CUSTOM_OTELCOL_CONFIG_FILE (e.g. to swap memory_limiter for a custom
+  # version with limit_percentage). The OpAMP remote config intentionally
+  # does NOT set `processors:` on these pipelines so the bootstrap+custom
+  # merge wins. See https://github.com/hyperdxio/hyperdx/pull/2351.
+  pipelines:
+    traces:
+      processors: [memory_limiter, batch]
+    metrics:
+      processors: [memory_limiter, batch]
+    logs/out-default:
+      processors: [memory_limiter, transform, batch]
+    logs/out-rrweb:
+      processors: [memory_limiter, batch]

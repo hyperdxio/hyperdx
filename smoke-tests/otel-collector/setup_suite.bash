@@ -9,6 +9,7 @@ setup_suite() {
     wait_for_ready "otel-collector"
     wait_for_ready "otel-collector-json"
     wait_for_ready "otel-collector-compat"
+    wait_for_ready "otel-collector-custom"
 }
 
 teardown_suite() {
