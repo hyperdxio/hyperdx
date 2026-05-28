@@ -2390,6 +2390,33 @@ describe('renderChartConfig', () => {
     });
   });
 
+  it('bare-text Lucene where uses bodyExpression when implicitColumnExpression is unset', async () => {
+    // A ChartConfig with only bodyExpression (no implicitColumnExpression) must
+    // route bare-text Lucene search through the body column end-to-end.
+    mockMetadata.getMaterializedColumnsLookupTable = jest
+      .fn()
+      .mockResolvedValue(new Map());
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Table,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [{ aggFn: 'count', valueExpression: '', aggCondition: '' }],
+      where: 'Prometheus',
+      whereLanguage: 'lucene',
+      timestampValueExpression: 'Timestamp',
+      bodyExpression: 'Body',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+    };
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      undefined,
+    );
+    const sql = parameterizedQueryToSql(generatedSql);
+    // The bare-text term should filter against the body column, not throw.
+    expect(sql).toMatch(/lower\(Body\)/);
+  });
+
   describe('sample-weighted aggregations', () => {
     const baseSampledConfig: ChartConfigWithOptDateRange = {
       displayType: DisplayType.Table,
