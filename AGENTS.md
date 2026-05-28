@@ -11,13 +11,21 @@ schema-agnostic design, and correlation across all telemetry types in one place.
 
 ## Architecture (WHAT)
 
-This is a **monorepo** with three main packages:
+This is a **monorepo** with five packages:
 
 - `packages/app` - Next.js frontend (TypeScript, Mantine UI, TanStack Query)
 - `packages/api` - Express backend (Node.js 22+, MongoDB for metadata,
-  ClickHouse for telemetry)
+  ClickHouse for telemetry). Also hosts the **MCP server**, **External API v2**,
+  and **OpAMP server** as sub-applications.
 - `packages/common-utils` - Shared TypeScript utilities for query parsing and
   validation
+- `packages/cli` - Terminal CLI and interactive TUI (`hdx`) for searching,
+  tailing, and inspecting logs and traces (Ink/React). Has its own
+  [`AGENTS.md`](packages/cli/AGENTS.md) with detailed architecture and
+  keybindings.
+- `packages/otel-collector` - Custom-built OpenTelemetry Collector (Go, OCB).
+  See its [`README.md`](packages/otel-collector/README.md) for architecture,
+  included components, and upgrade procedures.
 
 **Data flow**: Apps → OpenTelemetry Collector → ClickHouse (telemetry data) /
 MongoDB (configuration/metadata)
@@ -49,6 +57,14 @@ directory:
 - `agent_docs/development.md` - Development workflows, testing, and common tasks
 - `agent_docs/code_style.md` - Code patterns and best practices (read only when
   actively coding)
+
+**Package-specific guides** (read when working on that package):
+
+- `packages/cli/AGENTS.md` - CLI/TUI architecture, keybindings, web frontend
+  alignment, key patterns
+- `packages/otel-collector/README.md` - Collector build process, included
+  components, upgrade procedures, adding custom components
+- `MCP.md` - MCP server setup and available tools (user-facing)
 
 **After finishing all code edits**, run `yarn lint:fix` to auto-fix formatting
 and lint issues across all packages. Pre-commit hooks handle this when
@@ -115,6 +131,13 @@ To run a specific test file or pattern:
 ```bash
 yarn ci:unit <path/to/test.ts>                           # Run specific test file
 yarn ci:unit --testNamePattern="test name pattern"       # Run tests matching pattern
+```
+
+**packages/cli** (type check only, no test suite):
+
+```bash
+cd packages/cli
+npx tsc --noEmit        # Type check
 ```
 
 **Lint & type check across all packages:**

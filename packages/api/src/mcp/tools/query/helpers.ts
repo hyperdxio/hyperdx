@@ -1,12 +1,19 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isBuilderSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import type {
   ChartConfigWithDateRange,
   MetricTable,
 } from '@hyperdx/common-utils/dist/types';
-import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import {
+  DisplayType,
+  SourceKind,
+  UseTextIndex,
+} from '@hyperdx/common-utils/dist/types';
 import { ObjectId } from 'mongodb';
 import ms from 'ms';
 
@@ -19,6 +26,64 @@ import {
 import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
+
+// ─── Where merging ───────────────────────────────────────────────────────────
+
+export interface MergeWhereResult<T> {
+  items: T[];
+  /** Non-empty when items were skipped due to language mismatch. */
+  warnings: string[];
+}
+
+/**
+ * Merge a top-level `where` filter into each select item so it becomes part
+ * of the per-item aggCondition. Table/line/number/pie display types don't have
+ * a chart-level where — filtering is per-select-item.
+ *
+ * When the top-level and item-level languages differ, the item's own filter
+ * takes precedence (we can't easily merge Lucene + SQL). A warning is returned
+ * so callers can surface it in the response.
+ */
+export function mergeWhereIntoSelectItems<
+  T extends {
+    where?: string;
+    whereLanguage?: 'lucene' | 'sql';
+  },
+>(
+  items: T[],
+  topWhere: string,
+  topLang: 'lucene' | 'sql',
+): MergeWhereResult<T> {
+  if (!topWhere) return { items, warnings: [] };
+
+  const warnings: string[] = [];
+
+  const merged = items.map((item, idx) => {
+    const itemWhere = item.where || '';
+    const itemLang = item.whereLanguage || 'lucene';
+
+    // If both languages match, combine with AND
+    if (itemWhere && itemLang === topLang) {
+      const combined = `(${topWhere}) AND (${itemWhere})`;
+      return { ...item, where: combined, whereLanguage: topLang };
+    }
+
+    // If the item has no where, just use the top-level
+    if (!itemWhere) {
+      return { ...item, where: topWhere, whereLanguage: topLang };
+    }
+
+    // Languages differ — keep item's where unchanged (can't easily merge
+    // Lucene + SQL). The item's own filter takes precedence.
+    warnings.push(
+      `select[${idx}]: top-level where (${topLang}) was NOT applied because this item uses whereLanguage:"${itemLang}". ` +
+        `Set the item's whereLanguage to "${topLang}" or rewrite the top-level where in ${itemLang} to apply both filters.`,
+    );
+    return item;
+  });
+
+  return { items: merged, warnings };
+}
 
 // ─── Tile construction ───────────────────────────────────────────────────────
 
@@ -58,8 +123,8 @@ export function parseTimeRange(
       error: 'Invalid startTime or endTime: must be valid ISO 8601 strings',
     };
   }
-  if (startDate > endDate) {
-    return { error: 'startTime must not be after endTime' };
+  if (startDate >= endDate) {
+    return { error: 'endTime must be greater than startTime' };
   }
   return { startDate, endDate };
 }
@@ -78,9 +143,7 @@ function isEmptyResult(result: unknown): boolean {
 }
 
 function formatQueryResult(result: unknown) {
-  const trimmedResult = trimToolResponse(result);
-  const isTrimmed =
-    JSON.stringify(trimmedResult).length < JSON.stringify(result).length;
+  const { data: trimmedResult, isTrimmed } = trimToolResponse(result);
   const empty = isEmptyResult(result);
   return {
     content: [
@@ -129,7 +192,7 @@ export async function runConfigTile(
   const internalTile = convertToInternalTileConfig(tile);
   const savedConfig = internalTile.config;
 
-  if (!isRawSqlSavedChartConfig(savedConfig)) {
+  if (isBuilderSavedChartConfig(savedConfig)) {
     const builderConfig = savedConfig;
 
     if (
@@ -153,7 +216,7 @@ export async function runConfigTile(
         content: [
           {
             type: 'text' as const,
-            text: `Source not found: ${builderConfig.source}`,
+            text: `Source not found: ${builderConfig.source}. Call hyperdx_list_sources to discover available source IDs.`,
           },
         ],
       };
@@ -191,6 +254,10 @@ export async function runConfigTile(
       'implicitColumnExpression' in source
         ? source.implicitColumnExpression
         : undefined;
+    const useTextIndexForImplicitColumn =
+      'useTextIndexForImplicitColumn' in source
+        ? source.useTextIndexForImplicitColumn
+        : undefined;
     const searchOverrides = isSearch
       ? {
           select: builderConfig.select || defaultTableSelect || '*',
@@ -218,37 +285,28 @@ export async function runConfigTile(
       connection: source.connection.toString(),
       timestampValueExpression: source.timestampValueExpression,
       implicitColumnExpression: implicitColumn,
+      useTextIndexForImplicitColumn,
       dateRange: [startDate, endDate] as [Date, Date],
     } satisfies ChartConfigWithDateRange;
 
     const metadata = getMetadata(clickhouseClient);
-    let result;
     try {
-      result = await clickhouseClient.queryChartConfig({
+      const result = await clickhouseClient.queryChartConfig({
         config: chartConfig,
         metadata,
         querySettings: source.querySettings,
       });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return {
-        isError: true as const,
-        content: [
-          {
-            type: 'text' as const,
-            text: `ClickHouse query failed: ${message}`,
-          },
-        ],
-      };
+      return formatQueryResult(result);
+    } catch (e) {
+      return clickHouseErrorResult(e);
     }
-
-    return formatQueryResult(result);
   }
 
   // Raw SQL tile — hydrate source fields for macro support ($__sourceTable, $__filters)
   let sourceFields: {
     from?: { databaseName: string; tableName: string };
     implicitColumnExpression?: string;
+    useTextIndexForImplicitColumn?: UseTextIndex;
     metricTables?: MetricTable;
   } = {};
   if (savedConfig.source) {
@@ -259,6 +317,10 @@ export async function runConfigTile(
         implicitColumnExpression:
           'implicitColumnExpression' in source
             ? source.implicitColumnExpression
+            : undefined,
+        useTextIndexForImplicitColumn:
+          'useTextIndexForImplicitColumn' in source
+            ? source.useTextIndexForImplicitColumn
             : undefined,
         metricTables:
           source.kind === SourceKind.Metric ? source.metricTables : undefined,
@@ -277,7 +339,7 @@ export async function runConfigTile(
       content: [
         {
           type: 'text' as const,
-          text: `Connection not found: ${savedConfig.connection}`,
+          text: `Connection not found: ${savedConfig.connection}. Call hyperdx_list_sources to discover available connection IDs.`,
         },
       ],
     };
@@ -296,25 +358,66 @@ export async function runConfigTile(
   } satisfies ChartConfigWithDateRange;
 
   const metadata = getMetadata(clickhouseClient);
-  let result;
   try {
-    result = await clickhouseClient.queryChartConfig({
+    const result = await clickhouseClient.queryChartConfig({
       config: chartConfig,
       metadata,
       querySettings: undefined,
     });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text: `ClickHouse query failed: ${message}`,
-        },
-      ],
-    };
+    return formatQueryResult(result);
+  } catch (e) {
+    return clickHouseErrorResult(e);
   }
+}
 
-  return formatQueryResult(result);
+// ─── Error hints ─────────────────────────────────────────────────────────────
+
+/**
+ * Decorate raw ClickHouse error messages with actionable guidance before
+ * they reach the agent. Some ClickHouse errors are unhelpful in isolation —
+ * e.g. "Cannot convert string '...Z' to type DateTime64(9)" leaves the agent
+ * guessing about the right format. Catch common patterns and append a hint.
+ */
+export function clickHouseErrorResult(e: unknown): {
+  isError: true;
+  content: [{ type: 'text'; text: string }];
+} {
+  const raw = e instanceof Error ? e.message : String(e);
+  const hint = errorHint(raw);
+  const text = hint ? `${raw}\n\nHINT: ${hint}` : raw;
+  return {
+    isError: true as const,
+    content: [{ type: 'text' as const, text }],
+  };
+}
+
+/** @internal Exported for testing only. */
+export function errorHint(msg: string): string | null {
+  if (
+    /Cannot (convert|parse) string .* (to|as) (type )?DateTime64/i.test(msg)
+  ) {
+    return (
+      "Wrap ISO timestamps with `toDateTime64('YYYY-MM-DD HH:MM:SS', 9)` " +
+      'or use the supplied macros: `$__timeFilter(Timestamp)` (the easiest), ' +
+      '`{startDateMilliseconds:Int64}`, `{endDateMilliseconds:Int64}`. ' +
+      'Bare ISO 8601 strings will NOT auto-cast to DateTime64.'
+    );
+  }
+  if (/Syntax error.*\bAS\b/.test(msg)) {
+    return (
+      'Quote the alias if it contains reserved words or special chars: ' +
+      '`expr AS "alias"`. The MCP builder tools accept `alias` as a ' +
+      'separate field on each select entry — use that to avoid SQL-quoting ' +
+      'headaches.'
+    );
+  }
+  if (
+    /response length exceeds the maximum allowed size of V8 String/i.test(msg)
+  ) {
+    return (
+      'Add a LIMIT, narrow the time range, or use a smaller granularity. ' +
+      'The result row count is too large to serialize back to the agent.'
+    );
+  }
+  return null;
 }

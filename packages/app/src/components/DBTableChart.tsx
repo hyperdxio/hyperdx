@@ -4,6 +4,7 @@ import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { isRatioChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   isBuilderChartConfig,
+  isPromqlChartConfig,
   isRawSqlChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
@@ -76,6 +77,7 @@ export default function DBTableChart({
 
   const queriedConfig = useMemo(() => {
     if (isRawSqlChartConfig(config)) return config;
+    if (isPromqlChartConfig(config)) return config;
 
     const _config = convertToTableChartConfig(config);
 
@@ -103,7 +105,7 @@ export default function DBTableChart({
 
   // Returns an array of aliases, so we can check if something is using an alias
   const aliasMap = useMemo(() => {
-    if (isRawSqlChartConfig(config)) {
+    if (isRawSqlChartConfig(config) || isPromqlChartConfig(config)) {
       return [];
     }
 

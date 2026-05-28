@@ -847,6 +847,9 @@ describe('External API v2 Dashboards - old format', () => {
             expression: 'service_name',
             sourceId: traceSource._id.toString(),
             sourceMetricType: undefined,
+            // Scope to a single source (the common case for mixed-source
+            // dashboards) — exercises the array round-trip.
+            appliesToSourceIds: [traceSource._id.toString()],
           },
           {
             type: 'QUERY_EXPRESSION' as const,
@@ -855,6 +858,11 @@ describe('External API v2 Dashboards - old format', () => {
             sourceId: traceSource._id.toString(),
             where: "environment = 'production'",
             whereLanguage: 'sql' as const,
+            // Scope to multiple sources to exercise multi-entry arrays.
+            appliesToSourceIds: [
+              traceSource._id.toString(),
+              metricSource._id.toString(),
+            ],
           },
         ],
       };
@@ -885,14 +893,25 @@ describe('External API v2 Dashboards - old format', () => {
       );
       expect(response.body.data.filters[0].name).toBe('Environment');
       expect(response.body.data.filters[0].expression).toBe('environment');
+      // Filter 0 omitted appliesToSourceIds (broadcast-to-all) — must NOT be
+      // materialized as an empty array on read; the field stays absent so
+      // the default semantics survive a save/load round-trip.
+      expect(response.body.data.filters[0].appliesToSourceIds).toBeUndefined();
       expect(response.body.data.filters[1].name).toBe('Service Filter');
       expect(response.body.data.filters[1].expression).toBe('service_name');
+      expect(response.body.data.filters[1].appliesToSourceIds).toEqual([
+        traceSource._id.toString(),
+      ]);
       expect(response.body.data.filters[2].name).toBe('Region (Filtered)');
       expect(response.body.data.filters[2].expression).toBe('region');
       expect(response.body.data.filters[2].where).toBe(
         "environment = 'production'",
       );
       expect(response.body.data.filters[2].whereLanguage).toBe('sql');
+      expect(response.body.data.filters[2].appliesToSourceIds).toEqual([
+        traceSource._id.toString(),
+        metricSource._id.toString(),
+      ]);
 
       const getResponse = await authRequest(
         'get',
@@ -1045,6 +1064,7 @@ describe('External API v2 Dashboards - old format', () => {
               name: 'Updated Filter 1',
               expression: 'environment',
               sourceId: traceSource._id.toString(),
+              // Broadcast filter: appliesToSourceIds intentionally omitted.
             },
             {
               id: filterId2,
@@ -1052,6 +1072,11 @@ describe('External API v2 Dashboards - old format', () => {
               name: 'Updated Filter 2',
               expression: 'service_name',
               sourceId: traceSource._id.toString(),
+              // Multi-source scope to exercise array round-trip on PUT.
+              appliesToSourceIds: [
+                traceSource._id.toString(),
+                metricSource._id.toString(),
+              ],
             },
           ],
         },
@@ -1069,6 +1094,9 @@ describe('External API v2 Dashboards - old format', () => {
         expression: 'environment',
         sourceId: traceSource._id.toString(),
       });
+      // Broadcast filter must stay broadcast on read — the field must not
+      // be materialized into an empty array by save/load.
+      expect(response.body.data.filters[0].appliesToSourceIds).toBeUndefined();
       expect(response.body.data.filters[1]).toMatchObject({
         id: expect.any(String),
         type: 'QUERY_EXPRESSION',
@@ -1076,6 +1104,10 @@ describe('External API v2 Dashboards - old format', () => {
         expression: 'service_name',
         sourceId: traceSource._id.toString(),
       });
+      expect(response.body.data.filters[1].appliesToSourceIds).toEqual([
+        traceSource._id.toString(),
+        metricSource._id.toString(),
+      ]);
 
       const getResponse = await authRequest(
         'get',
@@ -1094,6 +1126,8 @@ describe('External API v2 Dashboards - old format', () => {
           name: 'Existing Filter 1',
           expression: 'environment',
           sourceId: traceSource._id.toString(),
+          // Stored with a scope — a no-filters PUT must preserve it intact.
+          appliesToSourceIds: [traceSource._id.toString()],
         },
         {
           id: existingFilterId2,
@@ -3039,6 +3073,9 @@ describe('External API v2 Dashboards - new format', () => {
             expression: 'service_name',
             sourceId: traceSource._id.toString(),
             sourceMetricType: undefined,
+            // Scope to a single source (the common case for mixed-source
+            // dashboards) — exercises the array round-trip.
+            appliesToSourceIds: [traceSource._id.toString()],
           },
           {
             type: 'QUERY_EXPRESSION' as const,
@@ -3047,6 +3084,11 @@ describe('External API v2 Dashboards - new format', () => {
             sourceId: traceSource._id.toString(),
             where: "environment = 'production'",
             whereLanguage: 'sql' as const,
+            // Scope to multiple sources to exercise multi-entry arrays.
+            appliesToSourceIds: [
+              traceSource._id.toString(),
+              metricSource._id.toString(),
+            ],
           },
         ],
       };
@@ -3077,14 +3119,25 @@ describe('External API v2 Dashboards - new format', () => {
       );
       expect(response.body.data.filters[0].name).toBe('Environment');
       expect(response.body.data.filters[0].expression).toBe('environment');
+      // Filter 0 omitted appliesToSourceIds (broadcast-to-all) — must NOT be
+      // materialized as an empty array on read; the field stays absent so
+      // the default semantics survive a save/load round-trip.
+      expect(response.body.data.filters[0].appliesToSourceIds).toBeUndefined();
       expect(response.body.data.filters[1].name).toBe('Service Filter');
       expect(response.body.data.filters[1].expression).toBe('service_name');
+      expect(response.body.data.filters[1].appliesToSourceIds).toEqual([
+        traceSource._id.toString(),
+      ]);
       expect(response.body.data.filters[2].name).toBe('Region (Filtered)');
       expect(response.body.data.filters[2].expression).toBe('region');
       expect(response.body.data.filters[2].where).toBe(
         "environment = 'production'",
       );
       expect(response.body.data.filters[2].whereLanguage).toBe('sql');
+      expect(response.body.data.filters[2].appliesToSourceIds).toEqual([
+        traceSource._id.toString(),
+        metricSource._id.toString(),
+      ]);
 
       const getResponse = await authRequest(
         'get',
@@ -3206,6 +3259,7 @@ describe('External API v2 Dashboards - new format', () => {
               name: 'Updated Filter 1',
               expression: 'environment',
               sourceId: traceSource._id.toString(),
+              // Broadcast filter: appliesToSourceIds intentionally omitted.
             },
             {
               id: filterId2,
@@ -3213,6 +3267,11 @@ describe('External API v2 Dashboards - new format', () => {
               name: 'Updated Filter 2',
               expression: 'service_name',
               sourceId: traceSource._id.toString(),
+              // Multi-source scope to exercise array round-trip on PUT.
+              appliesToSourceIds: [
+                traceSource._id.toString(),
+                metricSource._id.toString(),
+              ],
             },
           ],
         },
@@ -3230,6 +3289,9 @@ describe('External API v2 Dashboards - new format', () => {
         expression: 'environment',
         sourceId: traceSource._id.toString(),
       });
+      // Broadcast filter must stay broadcast on read — the field must not
+      // be materialized into an empty array by save/load.
+      expect(response.body.data.filters[0].appliesToSourceIds).toBeUndefined();
       expect(response.body.data.filters[1]).toMatchObject({
         id: expect.any(String),
         type: 'QUERY_EXPRESSION',
@@ -3237,6 +3299,10 @@ describe('External API v2 Dashboards - new format', () => {
         expression: 'service_name',
         sourceId: traceSource._id.toString(),
       });
+      expect(response.body.data.filters[1].appliesToSourceIds).toEqual([
+        traceSource._id.toString(),
+        metricSource._id.toString(),
+      ]);
 
       const getResponse = await authRequest(
         'get',
@@ -3255,6 +3321,8 @@ describe('External API v2 Dashboards - new format', () => {
           name: 'Existing Filter 1',
           expression: 'environment',
           sourceId: traceSource._id.toString(),
+          // Stored with a scope — a no-filters PUT must preserve it intact.
+          appliesToSourceIds: [traceSource._id.toString()],
         },
         {
           id: existingFilterId2,

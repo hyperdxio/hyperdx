@@ -38,6 +38,24 @@ const eventPatternsSchema = z.object({
         'Auto-detected from the source if omitted (Body for logs, SpanName for traces). ' +
         'Example: "Body", "SpanName", "SpanAttributes[\'http.url\']"',
     ),
+  topN: z
+    .number()
+    .min(1)
+    .max(100)
+    .optional()
+    .default(20)
+    .describe('Number of top patterns to return (1-100). Default: 20.'),
+  trendBuckets: z
+    .number()
+    .min(0)
+    .max(60)
+    .optional()
+    .default(24)
+    .describe(
+      'Number of time buckets for per-pattern trend sparklines (0-60). Default: 24. ' +
+        'Compare bucket counts at start vs end to spot patterns that started or stopped mid-window. ' +
+        'Set to 0 to disable trend computation (smaller response).',
+    ),
   startTime: startTimeSchema,
   endTime: endTimeSchema,
 });
@@ -59,7 +77,7 @@ export function registerEventPatterns(server: McpServer, context: McpContext) {
         '"recurring messages", or log noise analysis.\n\n' +
         'Each pattern includes a "whereSnippet" — use it as the "where" parameter in ' +
         'a follow-up hyperdx_search call to browse matching raw events.\n\n' +
-        'Requires sourceId — call hyperdx_list_sources first.\n\n' +
+        'Requires sourceId — call hyperdx_list_sources then hyperdx_describe_source first.\n\n' +
         'When to use which tool:\n' +
         '  - hyperdx_event_patterns: clustering / recurring shapes / noise analysis\n' +
         '  - hyperdx_search: raw individual rows\n' +
@@ -86,6 +104,8 @@ export function registerEventPatterns(server: McpServer, context: McpContext) {
           whereLanguage: input.whereLanguage,
           bodyExpression: input.bodyExpression,
           sampleSize: input.sampleSize,
+          topN: input.topN,
+          trendBuckets: input.trendBuckets,
         },
       );
     }),

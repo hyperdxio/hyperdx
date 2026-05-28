@@ -2349,6 +2349,16 @@
             "description": "Language of the where condition",
             "default": "sql",
             "example": "lucene"
+          },
+          "appliesToSourceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional list of source IDs this filter applies to. Omit or provide\nan empty array to apply the filter to ALL tiles regardless of source.\nA non-empty array restricts the filter to only tiles whose source ID\nis in the list; tiles using other sources are not affected by the\nselected filter value(s).\n",
+            "example": [
+              "65f5e4a3b9e77c001a111111"
+            ]
           }
         }
       },
@@ -3032,6 +3042,17 @@
             "nullable": true,
             "example": "Body"
           },
+          "useTextIndexForImplicitColumn": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "enabled",
+              "disabled"
+            ],
+            "description": "Controls whether lucene rendering uses ClickHouse text indices via hasAllTokens() against the implicit column. \"auto\" detects a covering index at query time, \"enabled\" forces text index usage, \"disabled\" forces a LIKE/hasToken fallback.",
+            "nullable": true,
+            "example": "auto"
+          },
           "highlightedTraceAttributeExpressions": {
             "type": "array",
             "description": "Expressions defining trace-level attributes which are displayed in the trace view for the selected trace.",
@@ -3240,6 +3261,17 @@
             "description": "Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log.",
             "nullable": true,
             "example": "SpanName"
+          },
+          "useTextIndexForImplicitColumn": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "enabled",
+              "disabled"
+            ],
+            "description": "Controls whether lucene rendering uses ClickHouse text indices via hasAllTokens() against the implicit column. \"auto\" detects a covering index at query time, \"enabled\" forces text index usage, \"disabled\" forces a LIKE/hasToken fallback.",
+            "nullable": true,
+            "example": "auto"
           },
           "highlightedTraceAttributeExpressions": {
             "type": "array",

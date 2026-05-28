@@ -15,7 +15,11 @@ import {
   parseToStartOfFunction,
   splitAndTrimWithBracket,
 } from '@/core/utils';
-import { isBuilderChartConfig, isRawSqlChartConfig } from '@/guards';
+import {
+  isBuilderChartConfig,
+  isPromqlChartConfig,
+  isRawSqlChartConfig,
+} from '@/guards';
 import { replaceMacros } from '@/macros';
 import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@/rawSqlParams';
@@ -32,6 +36,7 @@ import {
   DateRange,
   DisplayType,
   MetricsDataType,
+  PromqlChartConfig,
   QuerySettings,
   RawSqlChartConfig,
   SearchCondition,
@@ -155,8 +160,12 @@ export const splitChartConfigs = (
     return _configs;
   }
 
-  if (isRawSqlChartConfig(config) || isBuilderChartConfig(config)) {
-    return [config]; // narrowed to BuilderChartConfig or RawSqlChartConfig, assignable to RawSqlChartConfigEx
+  if (
+    isRawSqlChartConfig(config) ||
+    isPromqlChartConfig(config) ||
+    isBuilderChartConfig(config)
+  ) {
+    return [config];
   }
 
   throw new Error(`Unexpected chart config type: ${JSON.stringify(config)}`);
@@ -541,6 +550,8 @@ async function renderSelectList(
         from: chartConfig.from,
         language: select.aggConditionLanguage ?? 'lucene',
         implicitColumnExpression: chartConfig.implicitColumnExpression,
+        useTextIndexForImplicitColumn:
+          chartConfig.useTextIndexForImplicitColumn,
         metadata,
         connectionId: chartConfig.connection,
         with: chartConfig.with,
@@ -555,6 +566,8 @@ async function renderSelectList(
                 from: chartConfig.from,
                 language: 'lucene',
                 implicitColumnExpression: chartConfig.implicitColumnExpression,
+                useTextIndexForImplicitColumn:
+                  chartConfig.useTextIndexForImplicitColumn,
                 metadata,
                 connectionId: chartConfig.connection,
                 with: chartConfig.with,
@@ -811,6 +824,7 @@ async function renderWhereExpressionStr({
   metadata,
   from,
   implicitColumnExpression,
+  useTextIndexForImplicitColumn,
   connectionId,
   with: withClauses,
 }: {
@@ -819,6 +833,7 @@ async function renderWhereExpressionStr({
   metadata: Metadata;
   from: BuilderChartConfigWithDateRange['from'];
   implicitColumnExpression?: string;
+  useTextIndexForImplicitColumn?: BuilderChartConfigWithDateRange['useTextIndexForImplicitColumn'];
   connectionId: string;
   with?: BuilderChartConfigWithDateRange['with'];
 }): Promise<string> {
@@ -829,6 +844,7 @@ async function renderWhereExpressionStr({
       databaseName: from.databaseName,
       tableName: from.tableName,
       implicitColumnExpression,
+      useTextIndexForImplicitColumn,
       connectionId: connectionId,
     });
     const builder = new SearchQueryBuilder(condition, serializer);
@@ -887,6 +903,8 @@ async function renderWhere(
         from: chartConfig.from,
         language: chartConfig.whereLanguage ?? 'sql',
         implicitColumnExpression: chartConfig.implicitColumnExpression,
+        useTextIndexForImplicitColumn:
+          chartConfig.useTextIndexForImplicitColumn,
         metadata,
         connectionId: chartConfig.connection,
         with: chartConfig.with,
@@ -912,6 +930,8 @@ async function renderWhere(
               from: chartConfig.from,
               language: select.aggConditionLanguage ?? 'sql',
               implicitColumnExpression: chartConfig.implicitColumnExpression,
+              useTextIndexForImplicitColumn:
+                chartConfig.useTextIndexForImplicitColumn,
               metadata,
               connectionId: chartConfig.connection,
               with: chartConfig.with,
@@ -938,6 +958,8 @@ async function renderWhere(
             from: chartConfig.from,
             language: filter.type,
             implicitColumnExpression: chartConfig.implicitColumnExpression,
+            useTextIndexForImplicitColumn:
+              chartConfig.useTextIndexForImplicitColumn,
             metadata,
             connectionId: chartConfig.connection,
             with: chartConfig.with,
@@ -1014,6 +1036,7 @@ async function renderHaving(
     from: chartConfig.from,
     language: chartConfig.havingLanguage ?? 'sql',
     implicitColumnExpression: chartConfig.implicitColumnExpression,
+    useTextIndexForImplicitColumn: chartConfig.useTextIndexForImplicitColumn,
     metadata,
     connectionId: chartConfig.connection,
     with: chartConfig.with,
@@ -1085,9 +1108,14 @@ type RawSqlChartConfigEx = RawSqlChartConfig &
   Partial<DateRange> &
   InternalChartFields;
 
+type PromqlChartConfigEx = PromqlChartConfig &
+  Partial<DateRange> &
+  InternalChartFields;
+
 export type ChartConfigWithOptDateRangeEx =
   | BuilderChartConfigWithOptDateRangeEx
-  | RawSqlChartConfigEx;
+  | RawSqlChartConfigEx
+  | PromqlChartConfigEx;
 
 async function renderWith(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
@@ -1704,6 +1732,8 @@ async function renderFiltersToSql(
             from: chartConfig.from!,
             language: filter.type,
             implicitColumnExpression: chartConfig.implicitColumnExpression,
+            useTextIndexForImplicitColumn:
+              chartConfig.useTextIndexForImplicitColumn,
             metadata,
             connectionId: chartConfig.connection,
           });
@@ -1741,6 +1771,11 @@ export async function renderChartConfig(
   metadata: Metadata,
   querySettings: QuerySettings | undefined,
 ): Promise<ChSql> {
+  if (isPromqlChartConfig(rawChartConfig)) {
+    // PromQL queries are executed server-side via the Prometheus API route,
+    // not via SQL generation. Return empty SQL as a no-op.
+    return { sql: '', params: {} };
+  }
   if (isRawSqlChartConfig(rawChartConfig)) {
     return renderRawSqlChartConfig(rawChartConfig, metadata);
   }

@@ -34,7 +34,10 @@ function pickSourceConfigFields(source: TSource) {
     connection: source.connection,
     from: source.from,
     ...(isLogSource(source) || isTraceSource(source)
-      ? { implicitColumnExpression: source.implicitColumnExpression }
+      ? {
+          implicitColumnExpression: source.implicitColumnExpression,
+          useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
+        }
       : {}),
     ...pickSampleWeightExpressionProps(source),
   };
@@ -444,6 +447,10 @@ function HttpTab({
           isLogSource(source) || isTraceSource(source)
             ? source.implicitColumnExpression
             : undefined,
+        useTextIndexForImplicitColumn:
+          isLogSource(source) || isTraceSource(source)
+            ? source.useTextIndexForImplicitColumn
+            : undefined,
         connection: source.connection,
         source: source.id,
         with: [
@@ -455,6 +462,10 @@ function HttpTab({
                 isLogSource(source) || isTraceSource(source)
                   ? source?.implicitColumnExpression || ''
                   : '',
+              useTextIndexForImplicitColumn:
+                isLogSource(source) || isTraceSource(source)
+                  ? source?.useTextIndexForImplicitColumn
+                  : undefined,
               connection: source?.connection ?? '',
               from: source?.from ?? {
                 databaseName: '',

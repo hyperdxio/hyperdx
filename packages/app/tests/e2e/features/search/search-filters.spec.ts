@@ -1,5 +1,10 @@
 import { SearchPage } from '../../page-objects/SearchPage';
+import { SERVICES } from '../../seed-clickhouse';
 import { expect, test } from '../../utils/base-test';
+import {
+  DEFAULT_LOGS_SOURCE_NAME,
+  DEFAULT_TRACES_SOURCE_NAME,
+} from '../../utils/constants';
 
 test.describe('Search Filters', { tag: ['@search'] }, () => {
   let searchPage: SearchPage;
@@ -104,6 +109,111 @@ test.describe('Search Filters', { tag: ['@search'] }, () => {
   //   // Add methods to FilterComponent for show more/less
   // });
 });
+
+// HDX-4254: Preserve compatible filters when switching sources
+test.describe(
+  'Source switching — filter preservation',
+  { tag: ['@search'] },
+  () => {
+    let searchPage: SearchPage;
+
+    test.beforeEach(async ({ page }) => {
+      searchPage = new SearchPage(page);
+      await searchPage.goto();
+      // Start every test on the logs source so the baseline is consistent
+      await searchPage.selectSource(DEFAULT_LOGS_SOURCE_NAME);
+      await searchPage.table.waitForRowsToPopulate();
+    });
+
+    test('Compatible filter is preserved when switching to a source that shares the column — no toast', async () => {
+      // Pick a visible ServiceName value from the seeded candidates
+      // (pickVisibleFilterValues also opens the filter group)
+      const [serviceName] = await searchPage.filters.pickVisibleFilterValues(
+        'ServiceName',
+        SERVICES,
+        1,
+      );
+
+      // Apply the ServiceName filter
+      await searchPage.filters.applyFilter('ServiceName', serviceName);
+      const filterInput = searchPage.filters.getFilterCheckboxInput(
+        'ServiceName',
+        serviceName,
+      );
+      await expect(filterInput).toBeChecked();
+
+      // Switch to E2E Traces — ServiceName also exists on that schema
+      await searchPage.selectSource(DEFAULT_TRACES_SOURCE_NAME);
+      await searchPage.table.waitForRowsToPopulate();
+
+      // Re-open ServiceName group (it may collapse during source switch)
+      await searchPage.filters.openFilterGroup('ServiceName');
+
+      // The filter must still be in the URL — implementation contract for HDX-4254.
+      // We assert the URL rather than the sidebar checkbox because the trace source
+      // may render a different set of facet values (e.g. different service names),
+      // making a checkbox-checked assertion fragile even when the filter is correctly
+      // preserved in state. The URL is the authoritative source of truth here.
+      await expect(searchPage.page).toHaveURL(/filters=.*ServiceName/i);
+
+      // No "didn't apply" toast should have appeared
+      await expect(searchPage.getDroppedFiltersToast()).toHaveCount(0);
+    });
+
+    test('Incompatible filter is dropped and toast shown when one of two filters does not exist on new source', async () => {
+      // Apply a ServiceName filter (shared between logs and traces)
+      // (pickVisibleFilterValues also opens the filter group)
+      const [serviceName] = await searchPage.filters.pickVisibleFilterValues(
+        'ServiceName',
+        SERVICES,
+        1,
+      );
+      await searchPage.filters.applyFilter('ServiceName', serviceName);
+
+      // Open and apply a SeverityText filter (logs-only column, not present on traces)
+      await searchPage.filters.openFilterGroup('SeverityText');
+      await searchPage.filters.applyFilter('SeverityText', 'info');
+      await expect(
+        searchPage.filters.getFilterCheckboxInput('SeverityText', 'info'),
+      ).toBeChecked();
+
+      // Switch to E2E Traces — SeverityText does not exist on that schema
+      await searchPage.selectSource(DEFAULT_TRACES_SOURCE_NAME);
+      await searchPage.table.waitForRowsToPopulate();
+
+      // Yellow toast must appear with "1 filter didn't apply to this source"
+      await expect(searchPage.getDroppedFiltersToast()).toBeVisible({
+        timeout: 10000,
+      });
+
+      // Re-open ServiceName group and confirm the compatible filter was kept.
+      // Assert via URL rather than checkbox — the trace source's facet may show
+      // a different set of service name values, so the checkbox checked state is
+      // fragile even when the filter is correctly preserved in the URL/state.
+      await searchPage.filters.openFilterGroup('ServiceName');
+      await expect(searchPage.page).toHaveURL(/filters=.*ServiceName/i);
+    });
+
+    test('Filter for a column that does not exist on new source is dropped and toast shown', async () => {
+      // Open and apply only a SeverityText filter (logs-only, not present on traces)
+      await searchPage.filters.openFilterGroup('SeverityText');
+      await searchPage.filters.applyFilter('SeverityText', 'info');
+      await expect(
+        searchPage.filters.getFilterCheckboxInput('SeverityText', 'info'),
+      ).toBeChecked();
+
+      // Switch to E2E Traces — SeverityText is absent from traces schema
+      await searchPage.selectSource(DEFAULT_TRACES_SOURCE_NAME);
+      await searchPage.table.waitForRowsToPopulate();
+
+      // Toast must appear indicating 1 filter was removed
+      await expect(searchPage.getDroppedFiltersToast()).toBeVisible({
+        timeout: 10000,
+      });
+    });
+  },
+);
+
 // HDX-3901: Filter parsing with special characters (=, >, <, OR) in quoted
 // values is tested via unit tests in searchFilters.test.ts (6 dedicated test
 // cases). The parseQuery / extractInClauses / containsOperatorOutsideQuotes
