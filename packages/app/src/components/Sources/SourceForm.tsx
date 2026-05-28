@@ -1569,6 +1569,10 @@ function TraceTableModelForm(props: TableModelProps) {
                       transform:
                         'translate(calc(-50% + var(--slider-size) / 2), calc(var(--mantine-spacing-xs) / 2))',
                     },
+                    label: {
+                      top: '-36px',
+                      insetInlineStart: 'auto',
+                    },
                   }}
                 />
               </div>
