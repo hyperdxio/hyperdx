@@ -240,6 +240,7 @@ export default function DashboardContainer({
 
   return (
     <Box
+      id={`dashboard-container-${container.id}`}
       data-testid={`group-container-${container.id}`}
       data-bordered={bordered ? 'true' : 'false'}
       onMouseEnter={() => setHovered(true)}
