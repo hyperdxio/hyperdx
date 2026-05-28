@@ -1,15 +1,13 @@
 import React from 'react';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { SourceManagementMenu } from '../SourceSelect';
 
 describe('SourceManagementMenu', () => {
-  it('returns null when no actions are wired', () => {
-    const { container } = renderWithMantine(
-      <SourceManagementMenu hasSelection={false} />,
-    );
-    expect(container.firstChild).toBeNull();
+  it('does not render the kebab trigger when no actions are wired', () => {
+    renderWithMantine(<SourceManagementMenu hasSelection={false} />);
+    expect(screen.queryByTestId('source-actions-menu')).not.toBeInTheDocument();
   });
 
   it('renders the kebab trigger when onSchemaPreview is wired', () => {
@@ -43,9 +41,11 @@ describe('SourceManagementMenu', () => {
         />,
       );
       await userEvent.click(screen.getByTestId('source-actions-menu'));
-      expect(
-        screen.getByText('View schema').closest('button'),
-      ).toHaveAttribute('data-disabled', 'true');
+      const viewSchemaBtn = await screen.findByText('View schema');
+      expect(viewSchemaBtn.closest('button')).toHaveAttribute(
+        'data-disabled',
+        'true',
+      );
     });
 
     it('is disabled when isSchemaPreviewEnabled is false', async () => {
@@ -57,9 +57,11 @@ describe('SourceManagementMenu', () => {
         />,
       );
       await userEvent.click(screen.getByTestId('source-actions-menu'));
-      expect(
-        screen.getByText('View schema').closest('button'),
-      ).toHaveAttribute('data-disabled', 'true');
+      const viewSchemaBtn = await screen.findByText('View schema');
+      expect(viewSchemaBtn.closest('button')).toHaveAttribute(
+        'data-disabled',
+        'true',
+      );
     });
 
     it('is enabled when hasSelection and isSchemaPreviewEnabled are both true', async () => {
@@ -71,9 +73,10 @@ describe('SourceManagementMenu', () => {
         />,
       );
       await userEvent.click(screen.getByTestId('source-actions-menu'));
-      expect(
-        screen.getByText('View schema').closest('button'),
-      ).not.toHaveAttribute('data-disabled');
+      const viewSchemaBtn = await screen.findByText('View schema');
+      expect(viewSchemaBtn.closest('button')).not.toHaveAttribute(
+        'data-disabled',
+      );
     });
 
     it('calls onSchemaPreview when clicked', async () => {
@@ -86,7 +89,7 @@ describe('SourceManagementMenu', () => {
         />,
       );
       await userEvent.click(screen.getByTestId('source-actions-menu'));
-      await userEvent.click(screen.getByText('View schema'));
+      await userEvent.click(await screen.findByText('View schema'));
       expect(onSchemaPreview).toHaveBeenCalledTimes(1);
     });
   });
@@ -97,7 +100,7 @@ describe('SourceManagementMenu', () => {
       <SourceManagementMenu hasSelection={false} onEdit={onEdit} />,
     );
     await userEvent.click(screen.getByTestId('source-actions-menu'));
-    await userEvent.click(screen.getByText('Edit sources'));
+    await userEvent.click(await screen.findByText('Edit sources'));
     expect(onEdit).toHaveBeenCalledTimes(1);
   });
 
@@ -107,7 +110,7 @@ describe('SourceManagementMenu', () => {
       <SourceManagementMenu hasSelection={false} onCreate={onCreate} />,
     );
     await userEvent.click(screen.getByTestId('source-actions-menu'));
-    await userEvent.click(screen.getByText('Create new source'));
+    await userEvent.click(await screen.findByText('Create new source'));
     expect(onCreate).toHaveBeenCalledTimes(1);
   });
 });

@@ -67,7 +67,12 @@ describe('SourceSchemaPreview — controlled mode', () => {
         onClose={onClose}
       />,
     );
-    await userEvent.click(screen.getByRole('button', { name: /close/i }));
+    // Mantine 9 CloseButton renders without aria-label; find by its class.
+    const closeBtn = document.querySelector(
+      '.mantine-Modal-close',
+    ) as HTMLElement;
+    expect(closeBtn).toBeTruthy();
+    await userEvent.click(closeBtn);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
