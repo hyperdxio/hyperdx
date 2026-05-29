@@ -349,4 +349,27 @@ describe('DBNumberChart', () => {
       expect(screen.getByText('1234')).toBeInTheDocument();
     });
   });
+
+  describe('auto-sized font', () => {
+    it('renders the value with a pixel-based font size so the tile can resize it', () => {
+      renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+
+      const textEl = screen.getByText('1234');
+      const fontSize = textEl.style.fontSize;
+
+      // The value should be sized in px (set by AutoSizeNumber's
+      // ResizeObserver-driven calculation) rather than the previous
+      // hard-coded "4rem". Anything non-empty ending in "px" indicates
+      // the auto-sizing path is active.
+      expect(fontSize).toMatch(/px$/);
+    });
+
+    it('does not let the value wrap to multiple lines', () => {
+      renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+      const textEl = screen.getByText('1234');
+      // Long numbers should shrink to fit on a single line rather
+      // than wrap and visually break the tile.
+      expect(textEl.style.whiteSpace).toBe('nowrap');
+    });
+  });
 });
