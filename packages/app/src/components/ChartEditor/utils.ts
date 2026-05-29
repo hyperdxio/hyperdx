@@ -186,6 +186,11 @@ export function convertFormStateToChartConfig(
         source && (isLogSource(source) || isTraceSource(source))
           ? source.implicitColumnExpression
           : undefined,
+      // Body expression is only populated for log sources; trace sources use
+      // `spanNameExpression` for display, which has a different semantic for
+      // bare-text search and should not auto-fall-back.
+      bodyExpression:
+        source && isLogSource(source) ? source.bodyExpression : undefined,
       useTextIndexForImplicitColumn:
         source && (isLogSource(source) || isTraceSource(source))
           ? source.useTextIndexForImplicitColumn
@@ -213,6 +218,8 @@ export function convertFormStateToChartConfig(
         isLogSource(source) || isTraceSource(source)
           ? source.implicitColumnExpression
           : undefined,
+      // Logs-only body fallback (see comment above for raw-sql config).
+      bodyExpression: isLogSource(source) ? source.bodyExpression : undefined,
       useTextIndexForImplicitColumn:
         isLogSource(source) || isTraceSource(source)
           ? source.useTextIndexForImplicitColumn

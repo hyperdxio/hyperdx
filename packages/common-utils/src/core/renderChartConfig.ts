@@ -554,6 +554,7 @@ async function renderSelectList(
         from: chartConfig.from,
         language: select.aggConditionLanguage ?? 'lucene',
         implicitColumnExpression: chartConfig.implicitColumnExpression,
+        bodyExpression: chartConfig.bodyExpression,
         useTextIndexForImplicitColumn:
           chartConfig.useTextIndexForImplicitColumn,
         metadata,
@@ -570,6 +571,7 @@ async function renderSelectList(
                 from: chartConfig.from,
                 language: 'lucene',
                 implicitColumnExpression: chartConfig.implicitColumnExpression,
+                bodyExpression: chartConfig.bodyExpression,
                 useTextIndexForImplicitColumn:
                   chartConfig.useTextIndexForImplicitColumn,
                 metadata,
@@ -840,6 +842,7 @@ async function renderWhereExpressionStr({
   metadata,
   from,
   implicitColumnExpression,
+  bodyExpression,
   useTextIndexForImplicitColumn,
   connectionId,
   with: withClauses,
@@ -849,6 +852,7 @@ async function renderWhereExpressionStr({
   metadata: Metadata;
   from: BuilderChartConfigWithDateRange['from'];
   implicitColumnExpression?: string;
+  bodyExpression?: string;
   useTextIndexForImplicitColumn?: BuilderChartConfigWithDateRange['useTextIndexForImplicitColumn'];
   connectionId: string;
   with?: BuilderChartConfigWithDateRange['with'];
@@ -860,6 +864,7 @@ async function renderWhereExpressionStr({
       databaseName: from.databaseName,
       tableName: from.tableName,
       implicitColumnExpression,
+      bodyExpression,
       useTextIndexForImplicitColumn,
       connectionId: connectionId,
     });
@@ -919,6 +924,7 @@ async function renderWhere(
         from: chartConfig.from,
         language: chartConfig.whereLanguage ?? 'sql',
         implicitColumnExpression: chartConfig.implicitColumnExpression,
+        bodyExpression: chartConfig.bodyExpression,
         useTextIndexForImplicitColumn:
           chartConfig.useTextIndexForImplicitColumn,
         metadata,
@@ -946,6 +952,7 @@ async function renderWhere(
               from: chartConfig.from,
               language: select.aggConditionLanguage ?? 'sql',
               implicitColumnExpression: chartConfig.implicitColumnExpression,
+              bodyExpression: chartConfig.bodyExpression,
               useTextIndexForImplicitColumn:
                 chartConfig.useTextIndexForImplicitColumn,
               metadata,
@@ -974,6 +981,7 @@ async function renderWhere(
             from: chartConfig.from,
             language: filter.type,
             implicitColumnExpression: chartConfig.implicitColumnExpression,
+            bodyExpression: chartConfig.bodyExpression,
             useTextIndexForImplicitColumn:
               chartConfig.useTextIndexForImplicitColumn,
             metadata,
@@ -1054,6 +1062,7 @@ async function renderHaving(
     from: chartConfig.from,
     language: chartConfig.havingLanguage ?? 'sql',
     implicitColumnExpression: chartConfig.implicitColumnExpression,
+    bodyExpression: chartConfig.bodyExpression,
     useTextIndexForImplicitColumn: chartConfig.useTextIndexForImplicitColumn,
     metadata,
     connectionId: chartConfig.connection,
@@ -1780,6 +1789,7 @@ async function renderFiltersToSql(
             from: chartConfig.from!,
             language: filter.type,
             implicitColumnExpression: chartConfig.implicitColumnExpression,
+            bodyExpression: chartConfig.bodyExpression,
             useTextIndexForImplicitColumn:
               chartConfig.useTextIndexForImplicitColumn,
             metadata,

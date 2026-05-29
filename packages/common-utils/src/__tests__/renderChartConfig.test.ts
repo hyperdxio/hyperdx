@@ -2390,6 +2390,74 @@ describe('renderChartConfig', () => {
     });
   });
 
+  it('bare-text Lucene where uses bodyExpression when implicitColumnExpression is unset', async () => {
+    // A ChartConfig with only bodyExpression (no implicitColumnExpression) must
+    // route bare-text Lucene search through the body column end-to-end.
+    mockMetadata.getMaterializedColumnsLookupTable = jest
+      .fn()
+      .mockResolvedValue(new Map());
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Table,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [{ aggFn: 'count', valueExpression: '', aggCondition: '' }],
+      where: 'Prometheus',
+      whereLanguage: 'lucene',
+      timestampValueExpression: 'Timestamp',
+      bodyExpression: 'Body',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+    };
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      undefined,
+    );
+    const sql = parameterizedQueryToSql(generatedSql);
+    // The bare-text term should filter against the body column, not throw.
+    expect(sql).toMatch(/lower\(Body\)/);
+  });
+
+  it('bare-text Lucene in aggCondition and filters uses bodyExpression when implicitColumnExpression is unset', async () => {
+    // bodyExpression is threaded through renderChartConfig into
+    // aggCondition serialization and the filters list, not only `where`.
+    // Pins the threading contract for those two paths beyond the
+    // top-level where (covered by the test above).
+    mockMetadata.getMaterializedColumnsLookupTable = jest
+      .fn()
+      .mockResolvedValue(new Map());
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Table,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [
+        {
+          aggFn: 'count',
+          valueExpression: '',
+          aggCondition: 'errored',
+          aggConditionLanguage: 'lucene',
+        },
+      ],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'Timestamp',
+      bodyExpression: 'Body',
+      filters: [{ type: 'lucene', condition: 'denied' }],
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+    };
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      undefined,
+    );
+    const sql = parameterizedQueryToSql(generatedSql);
+    // Both the aggCondition term ('errored') and the filters term
+    // ('denied') should filter against the body column. The mockMetadata
+    // here has no bloom filter / text indices, so bare tokens render
+    // via hasToken(lower(<col>), lower(<term>)) instead of LIKE.
+    expect(sql).toContain("hasToken(lower(Body), lower('errored'))");
+    expect(sql).toContain("hasToken(lower(Body), lower('denied'))");
+  });
+
   describe('sample-weighted aggregations', () => {
     const baseSampledConfig: ChartConfigWithOptDateRange = {
       displayType: DisplayType.Table,
