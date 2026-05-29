@@ -763,11 +763,12 @@ export async function timeFilterExpr({
         /^DateTime(?!64)\b/.test(columnMeta.type) &&
         !isDateType;
 
-      // toStartOf*, Date, and DateTime filters must stay inclusive — strict
-      // < on a rounded/truncated value drops a whole interval/second.
-      const forceInclusive = !!toStartOf || isDateType || isDateTimeType;
-      const startOp = dateRangeStartInclusive || forceInclusive ? '>=' : '>';
-      const endOp = dateRangeEndInclusive || forceInclusive ? '<=' : '<';
+      // toStartOf* and Date filters must stay inclusive — strict < on a
+      // rounded value drops a whole interval.
+      const startOp =
+        dateRangeStartInclusive || toStartOf || isDateType ? '>=' : '>';
+      const endOp =
+        dateRangeEndInclusive || toStartOf || isDateType ? '<=' : '<';
 
       if (isDateType) {
         return chSql`(${unsafeTimestampValueExpression} ${startOp} toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} ${endOp} toDate(${endTimeCond}))`;

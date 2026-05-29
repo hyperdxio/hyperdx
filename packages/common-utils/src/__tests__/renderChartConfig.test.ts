@@ -1672,8 +1672,7 @@ describe('renderChartConfig', () => {
         expected: `(datetime_col >= toDateTime(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()})) AND datetime_col <= toDateTime(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()})))`,
       },
       {
-        description:
-          'stays inclusive for DateTime column even with dateRangeEndInclusive=false',
+        description: 'respects exclusive operators for DateTime column',
         timestampValueExpression: 'datetime_col',
         dateRange: [
           new Date('2025-02-12 03:53:38Z'),
@@ -1681,7 +1680,7 @@ describe('renderChartConfig', () => {
         ],
         dateRangeStartInclusive: false,
         dateRangeEndInclusive: false,
-        expected: `(datetime_col >= toDateTime(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND datetime_col <= toDateTime(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
+        expected: `(datetime_col > toDateTime(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND datetime_col < toDateTime(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
       },
     ];
 

@@ -32,14 +32,19 @@ import { usePrevious } from './utils';
 const LIVE_TAIL_TIME_QUERY = 'Live Tail';
 const LIVE_TAIL_REFRESH_INTERVAL_MS = 1000;
 
-export const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
+export const dateRangeToString = (
+  range: [Date, Date],
+  isUTC: boolean,
+  showMs = true,
+) => {
+  const fmt = showMs ? 'withMs' : 'normal';
   return `${formatDate(range[0], {
     isUTC,
-    format: 'withMs',
+    format: fmt,
     clock: '24h',
   })} - ${formatDate(range[1], {
     isUTC,
-    format: 'withMs',
+    format: fmt,
     clock: '24h',
   })}`;
 };
@@ -385,6 +390,8 @@ export type UseTimeQueryInputType = {
   showRelativeInterval?: boolean;
   setDisplayedTimeInputValue?: (value: string) => void;
   updateInput?: boolean;
+  /** When true, format displayed time strings with millisecond precision. */
+  showMs?: boolean;
 };
 
 export type UseTimeQueryReturnType = {
@@ -420,6 +427,7 @@ export function useNewTimeQuery({
   showRelativeInterval,
   setDisplayedTimeInputValue,
   updateInput,
+  showMs = true,
 }: UseTimeQueryInputType): UseTimeQueryReturnType {
   const router = useRouter();
   // We need to return true in SSR to prevent mismatch issues
@@ -433,7 +441,9 @@ export function useNewTimeQuery({
     deprecatedDisplayedTimeInputValue,
     deprecatedSetDisplayedTimeInputValue,
   ] = useState<string>(() => {
-    return initialDisplayValue ?? dateRangeToString(initialTimeRange, isUTC);
+    return (
+      initialDisplayValue ?? dateRangeToString(initialTimeRange, isUTC, showMs)
+    );
   });
 
   const _setDisplayedTimeInputValue =
@@ -472,14 +482,14 @@ export function useNewTimeQuery({
         const relativeInterval =
           showRelativeInterval && getRelativeInterval(start, end);
         const dateRangeStr =
-          relativeInterval || dateRangeToString([start, end], isUTC);
+          relativeInterval || dateRangeToString([start, end], isUTC, showMs);
         if (updateInput !== false) {
           _setDisplayedTimeInputValue(dateRangeStr);
         }
       }
     } else if (from == null && to == null && isReady) {
       setSearchedTimeRange(initialTimeRange);
-      const dateRangeStr = dateRangeToString(initialTimeRange, isUTC);
+      const dateRangeStr = dateRangeToString(initialTimeRange, isUTC, showMs);
       if (updateInput !== false) {
         if (!showRelativeInterval) {
           _setDisplayedTimeInputValue(dateRangeStr);
@@ -512,12 +522,12 @@ export function useNewTimeQuery({
       (start: Date, end: Date, displayedTimeInputValue?: string | null) => {
         setTimeRangeQuery({ from: start.getTime(), to: end.getTime() });
         setSearchedTimeRange([start, end]);
-        const dateRangeStr = dateRangeToString([start, end], isUTC);
+        const dateRangeStr = dateRangeToString([start, end], isUTC, showMs);
         if (displayedTimeInputValue !== null) {
           _setDisplayedTimeInputValue(displayedTimeInputValue ?? dateRangeStr);
         }
       },
-      [setTimeRangeQuery, isUTC, _setDisplayedTimeInputValue],
+      [setTimeRangeQuery, isUTC, _setDisplayedTimeInputValue, showMs],
     ),
   };
 }
