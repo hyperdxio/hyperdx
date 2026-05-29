@@ -265,9 +265,7 @@ export default function DashboardsListPage() {
             />
             {allTags.length > 0 && (
               <MultiSelect
-                placeholder={
-                  selectedTags.length === 0 ? 'Filter by tags' : undefined
-                }
+                placeholder="Filter by tags"
                 data={allTags}
                 value={selectedTags}
                 onChange={setSelectedTags}
@@ -275,6 +273,7 @@ export default function DashboardsListPage() {
                 searchable
                 style={{ flex: 1, maxWidth: 400 }}
                 miw={200}
+                data-testid="tag-filter"
               />
             )}
           </Group>
