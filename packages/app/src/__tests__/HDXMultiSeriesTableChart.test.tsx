@@ -102,6 +102,44 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
         { timeout: 1000 },
       );
     });
+
+    it('hides the hint after mouseLeave so tooltip cannot get stranded (HDX-4405)', async () => {
+      // Regression test: the tooltip must disappear when the row is left.
+      // Previously each virtual row mounted its own Tooltip.Floating; if the
+      // row unmounted before onMouseLeave fired (rapid mouse movement), the
+      // Portal-rendered tooltip stayed visible. The fix moves the single
+      // Tooltip.Floating to <tbody> so its state never gets stranded.
+      const getRowAction = jest.fn().mockReturnValue({
+        url: '/search?source=src_1&where=',
+        description: 'Search HyperDX Logs',
+      });
+
+      renderWithMantine(
+        <Table
+          data={baseData}
+          columns={baseColumns}
+          getRowAction={getRowAction}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+      const row = screen.getByText('web').closest('tr')!;
+
+      // Show tooltip
+      fireEvent.mouseEnter(row);
+      await waitFor(() =>
+        expect(screen.getByText('Search HyperDX Logs')).toBeInTheDocument(),
+      );
+
+      // Leave the row — tooltip must disappear
+      fireEvent.mouseLeave(row);
+      await waitFor(() =>
+        expect(
+          screen.queryByText('Search HyperDX Logs'),
+        ).not.toBeInTheDocument(),
+      );
+    });
   });
 
   describe('getRowAction failure path', () => {
