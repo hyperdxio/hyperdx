@@ -258,8 +258,10 @@ semantic palettes:
 The visual reference for the categorical and semantic palettes is the storybook
 story at `packages/app/src/theme/ChartColors.stories.tsx`. It renders
 `AllChartColors`, `BarChartPreview`, `LineChartPreview`,
-`SemanticColorsPreview`, and `AccessibilityCheck`. Run storybook in the `app`
-package to inspect both schemes side by side.
+`SemanticColorsPreview` (includes info; responds to the Brand toolbar),
+`InfoChartColorsByBrand` (HyperDX cyan vs ClickStack blue side by side), and
+`AccessibilityCheck`. Run storybook in the `app` package to inspect both schemes
+side by side.
 
 The number-tile color picker (`ColorSwatchInput.stories.tsx`) renders the same
 tokens through the user-facing picker UI.
