@@ -999,10 +999,7 @@ export class DashboardPage {
     // mousemove handler has a coordinate to position against.
     const box = await row.boundingBox();
     if (box) {
-      await this.page.mouse.move(
-        box.x + box.width / 2,
-        box.y + box.height / 2,
-      );
+      await this.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     }
     // Tooltip.Floating renders a div inside a Portal (appended to document
     // body). When open, Mantine sets `display: block` on it inline; when
