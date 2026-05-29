@@ -1,5 +1,166 @@
 # @hyperdx/api
 
+## 2.28.0
+
+### Minor Changes
+
+- 3123db53: feat: experimental promql support
+- cb6a74ce: fix(otel-collector): allow `CUSTOM_OTELCOL_CONFIG_FILE` to override the
+  default `memory_limiter`, `batch` (and other pipeline processors)
+
+  Pipeline `processors:` lists used to be defined in the OpAMP remote config
+  sent by the API (`packages/api/src/opamp/controllers/opampController.ts`).
+  That meant the remote config overwrote any pipeline `processors:` list a
+  user supplied via `CUSTOM_OTELCOL_CONFIG_FILE`, making it impossible to
+  substitute the default `memory_limiter` with one configured for
+  `limit_percentage`/`spike_limit_percentage` mode (#2145).
+
+  The pipeline `processors:` lists now live in the bootstrap config
+  (`docker/otel-collector/config.yaml` for supervisor mode, and
+  `docker/otel-collector/config.standalone.yaml` for standalone mode). The
+  OpAMP remote config no longer sets `processors:` on these pipelines, so the
+  bootstrap+custom merge wins. Receivers and exporters are still configured
+  dynamically by the OpAMP controller.
+
+  To override `memory_limiter`, define a new processor with a different name
+  in `CUSTOM_OTELCOL_CONFIG_FILE` and swap the pipeline `processors:` lists:
+
+  ```yaml
+  processors:
+    memory_limiter/custom:
+      check_interval: 5s
+      limit_percentage: 75
+      spike_limit_percentage: 25
+
+  service:
+    pipelines:
+      traces:
+        processors: [memory_limiter/custom, batch]
+      metrics:
+        processors: [memory_limiter/custom, batch]
+      logs/out-default:
+        processors: [memory_limiter/custom, transform, batch]
+      logs/out-rrweb:
+        processors: [memory_limiter/custom, batch]
+  ```
+
+  The default `memory_limiter` block defined in the base config is left in
+  the merged config but is no longer referenced by any pipeline; the
+  collector only instantiates `memory_limiter/custom` at runtime.
+
+  The same swap pattern works for the `batch` processor (and any other base
+  processor). For example, to lower the export timeout on a specific
+  pipeline:
+
+  ```yaml
+  processors:
+    batch/lowlatency:
+      send_batch_size: 1000
+      send_batch_max_size: 2000
+      timeout: 500ms
+
+  service:
+    pipelines:
+      traces:
+        processors: [memory_limiter, batch/lowlatency]
+      logs/out-default:
+        processors: [memory_limiter, transform, batch/lowlatency]
+  ```
+
+  Lighter-weight env-var tuning is also available for the default `batch`
+  processor without writing a custom config file:
+  `HYPERDX_OTEL_BATCH_SEND_BATCH_SIZE`,
+  `HYPERDX_OTEL_BATCH_SEND_BATCH_MAX_SIZE`, and `HYPERDX_OTEL_BATCH_TIMEOUT`.
+  See the README for details.
+
+### Patch Changes
+
+- d1342121: feat(mcp): add hyperdx_describe_source tool and slim list_sources to catalog
+
+  Add `hyperdx_describe_source` — returns full column schema, map attribute
+  keys, and sampled low-cardinality values (SeverityText, StatusCode,
+  ServiceName, etc.) for a single source. Uses existing rollup tables for
+  performant value sampling.
+
+  Slim `hyperdx_list_sources` to a lightweight MongoDB-only catalog (no
+  ClickHouse queries). Source tools moved to a dedicated `tools/sources/`
+  module.
+
+  All query tool descriptions and prompts updated to reference the two-step
+  `list_sources → describe_source` discovery workflow.
+
+- a945fa07: feat(mcp): add hyperdx_event_deltas tool
+
+  Add `hyperdx_event_deltas` MCP tool that compares two row groups (target
+  vs baseline) and ranks properties by how much their value distributions
+  differ. Same algorithm as the in-app Event Deltas view.
+
+  Extract shared event-deltas algorithm from the UI into
+  `@hyperdx/common-utils/src/core/eventDeltas.ts` so it can be used by
+  both the frontend and the MCP server.
+
+- e1c4381b: fix: bare-text Lucene search now falls back from Implicit Column Expression to
+  Body Expression on log sources
+
+  Previously, a log source configured with `bodyExpression` set but
+  `implicitColumnExpression` unset threw `Can not search bare text without an
+implicit column set.` on every bare-token search, even though the row panel
+  rendered correctly using the body column.
+
+  Search now reuses the same one-way fallback that `getEventBody` already
+  implements: when no Implicit Column Expression is set, bare-text search runs
+  against the configured Body Expression. Trace sources are unchanged
+  (`spanNameExpression` is not a body equivalent for trace search).
+
+- c3a8aa55: feat(mcp): rewrite dashboard authoring prompts and expose `filters` on `hyperdx_save_dashboard`
+
+  The `create_dashboard` prompt now leads with a design checklist (alias every select item including number tiles, schema gap on `groupBy` so tables don't render `arrayElement(SpanAttributes, '...')` as the column header, RED columns with aliases, per-series `numberFormat` for durations, `groupByColumnsOnLeft` for inventory tables, dashboard-level filters instead of per-tile `where` literals, one-metric-per-tile for metric sources, required containers at five or more tiles, post-save validation of every tile, no title-recap markdown). The wall-of-JSON canonical example is gone; the `dashboard_examples` patterns carry the concrete shapes.
+
+  The `dashboard_examples` set is replaced with four verified patterns (`service_inventory`, `service_detail`, `log_analytics`, `backend_dependencies`) plus the existing `infrastructure_sql`. Each non-SQL example leads with a "When to use" header and a "Why this shape" note so the model picks by intent, not by surface keyword match. Examples were built and rendered on a live dev stack before landing.
+
+  The `query_guide` prompt gains a `DASHBOARD FILTERS` section that documents the `filters: [{ type, name, expression, sourceId, where?, whereLanguage? }]` shape, a `NUMBER FORMAT` section that explains the per-series vs. chart-level distinction, and a `PER-TILE TYPE CONSTRAINTS` note that metric tiles take exactly one select item per tile.
+
+  `hyperdx_save_dashboard` now accepts `filters` on its input schema, reusing `externalDashboardFilterSchemaWithId` so the MCP and REST surfaces stay in lockstep and the existing `convertExternalFiltersToInternal` helper handles the conversion without translation. Filters round-trip through create, get, and update.
+
+  Voice pass: every prompt string is now em-dash-free.
+
+- a4b9fa85: feat(mcp): improve MCP tool quality — error hints, shared helpers, better messages
+
+  Extract duplicated ClickHouse error handling into a shared helper with
+  pattern-matched error hints (DateTime64 casting, AS alias quoting, response
+  size limits) so agents get actionable guidance on common failures. Add
+  reusable mergeWhereIntoSelectItems() helper for consistent top-level where
+  injection. Improve source/connection-not-found messages to suggest calling
+  hyperdx_list_sources.
+
+- 07911fd2: feat(mcp): add trace waterfall and breakdown tools
+
+  Add `hyperdx_trace_waterfall` — fetch all spans in a single trace as a
+  parent/child waterfall tree with optional correlated logs. Supports
+  auto-pick by slowest, first error, or most recent trace.
+
+  Add `hyperdx_trace_top_time_consuming_operations` — aggregate breakdown
+  of child operations consuming the most cumulative time across traces
+  matching a parent-span filter. Same algorithm as the in-app "Top Most
+  Time Consuming Operations" chart.
+
+- 04a5a925: feat: Add source scoping to dashboard filters
+- 8810ff0f: feat: Add option for force-enabling/disabling text index support
+- a8eb27dc: feat: filters reflect all values, not search aware; filters use metadata MVs if available
+- Updated dependencies [3123db53]
+- Updated dependencies [dcab1cb6]
+- Updated dependencies [a945fa07]
+- Updated dependencies [1df7583d]
+- Updated dependencies [6a5ac3e3]
+- Updated dependencies [e1c4381b]
+- Updated dependencies [b30dfe0a]
+- Updated dependencies [dcb85826]
+- Updated dependencies [b5148c85]
+- Updated dependencies [04a5a925]
+- Updated dependencies [8810ff0f]
+- Updated dependencies [a8eb27dc]
+  - @hyperdx/common-utils@0.20.0
+
 ## 2.27.0
 
 ### Minor Changes
