@@ -295,7 +295,7 @@ async function describeSourceSchema(
       : 'These are the REAL values in your data — use them in filters instead of guessing. ' +
         'Example: where: "SeverityText:error" (if \'error\' appears in the sampled values above).';
 
-  const output = trimToolResponse({
+  const { data: output, isTrimmed } = trimToolResponse({
     source: meta,
     usage: {
       topLevelColumns:
@@ -311,11 +311,18 @@ async function describeSourceSchema(
     },
   });
 
+  const finalOutput = isTrimmed
+    ? {
+        ...output,
+        note: 'Result was trimmed for context size. Some columns or sampled values may be omitted.',
+      }
+    : output;
+
   return {
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify(output, null, 2),
+        text: JSON.stringify(finalOutput),
       },
     ],
   };

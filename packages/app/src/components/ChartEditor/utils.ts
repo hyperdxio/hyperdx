@@ -3,6 +3,7 @@ import { Path, UseFormSetError } from 'react-hook-form';
 import { validateRawSqlForAlert } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -14,6 +15,8 @@ import {
   isMetricSource,
   isRangeThresholdType,
   isTraceSource,
+  PromqlChartConfig,
+  PromqlSavedChartConfig,
   RawSqlChartConfig,
   RawSqlSavedChartConfig,
   SavedChartConfig,
@@ -70,6 +73,29 @@ export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,
   source: TSource | undefined,
 ): SavedChartConfig | undefined {
+  if (form.configType === 'promql') {
+    const promqlConfig: PromqlSavedChartConfig = {
+      configType: 'promql',
+      ...pick(form, [
+        'name',
+        'displayType',
+        'numberFormat',
+        'color',
+        'granularity',
+        'compareToPreviousPeriod',
+        'fillNulls',
+        'alignDateRangeToGranularity',
+        'alert',
+        'step',
+      ]),
+      promqlExpression: form.promqlExpression ?? '',
+      connection: form.connection ?? '',
+      source: form.source || undefined,
+    };
+
+    return promqlConfig;
+  }
+
   if (form.configType === 'sql' && isRawSqlDisplayType(form.displayType)) {
     const rawSqlConfig: RawSqlSavedChartConfig = {
       configType: 'sql',
@@ -77,6 +103,7 @@ export function convertFormStateToSavedChartConfig(
         'name',
         'displayType',
         'numberFormat',
+        'color',
         'granularity',
         'compareToPreviousPeriod',
         'fillNulls',
@@ -115,6 +142,28 @@ export function convertFormStateToChartConfig(
   dateRange: ChartConfigWithDateRange['dateRange'],
   source: TSource | undefined,
 ): ChartConfigWithDateRange | undefined {
+  if (form.configType === 'promql') {
+    const promqlConfig: PromqlChartConfig = {
+      configType: 'promql',
+      ...pick(form, [
+        'displayType',
+        'numberFormat',
+        'color',
+        'granularity',
+        'compareToPreviousPeriod',
+        'fillNulls',
+        'alignDateRangeToGranularity',
+        'step',
+      ]),
+      promqlExpression: form.promqlExpression ?? '',
+      connection: source?.connection ?? form.connection ?? '',
+      source: form.source || undefined,
+      from: source?.from,
+    };
+
+    return { ...promqlConfig, dateRange };
+  }
+
   if (form.configType === 'sql' && isRawSqlDisplayType(form.displayType)) {
     const rawSqlConfig: RawSqlChartConfig = {
       configType: 'sql',
@@ -122,6 +171,7 @@ export function convertFormStateToChartConfig(
         'name',
         'displayType',
         'numberFormat',
+        'color',
         'granularity',
         'compareToPreviousPeriod',
         'fillNulls',
@@ -136,6 +186,11 @@ export function convertFormStateToChartConfig(
         source && (isLogSource(source) || isTraceSource(source))
           ? source.implicitColumnExpression
           : undefined,
+      // Body expression is only populated for log sources; trace sources use
+      // `spanNameExpression` for display, which has a different semantic for
+      // bare-text search and should not auto-fall-back.
+      bodyExpression:
+        source && isLogSource(source) ? source.bodyExpression : undefined,
       useTextIndexForImplicitColumn:
         source && (isLogSource(source) || isTraceSource(source))
           ? source.useTextIndexForImplicitColumn
@@ -163,6 +218,8 @@ export function convertFormStateToChartConfig(
         isLogSource(source) || isTraceSource(source)
           ? source.implicitColumnExpression
           : undefined,
+      // Logs-only body fallback (see comment above for raw-sql config).
+      bodyExpression: isLogSource(source) ? source.bodyExpression : undefined,
       useTextIndexForImplicitColumn:
         isLogSource(source) || isTraceSource(source)
           ? source.useTextIndexForImplicitColumn
@@ -186,7 +243,11 @@ export function convertSavedChartConfigToFormState(
 ): ChartEditorFormState {
   return {
     ...config,
-    configType: isRawSqlSavedChartConfig(config) ? 'sql' : 'builder',
+    configType: isPromqlSavedChartConfig(config)
+      ? 'promql'
+      : isRawSqlSavedChartConfig(config)
+        ? 'sql'
+        : 'builder',
     series:
       isBuilderSavedChartConfig(config) && Array.isArray(config.select)
         ? config.select.map(s => ({

@@ -21,6 +21,7 @@ import type {
 } from '@/types';
 import { isLogSource, isTraceSource, SourceKind } from '@/types';
 
+import { ClickHouseVersion, parseClickHouseVersion } from './clickhouseVersion';
 import {
   ClickHouseVersion,
   parseClickHouseVersion,

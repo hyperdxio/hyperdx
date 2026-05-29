@@ -12,6 +12,7 @@ export const SOURCE_KIND_ICONS: Record<string, React.ReactNode> = {
   [SourceKind.Trace]: <IconConnection size={16} />,
   [SourceKind.Session]: <IconDeviceLaptop size={16} />,
   [SourceKind.Metric]: <IconChartLine size={16} />,
+  [SourceKind.Promql]: <IconChartLine size={16} />,
 };
 
 export function useSourceKindMap(sources: TSource[] | undefined) {

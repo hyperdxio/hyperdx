@@ -2390,6 +2390,74 @@ describe('renderChartConfig', () => {
     });
   });
 
+  it('bare-text Lucene where uses bodyExpression when implicitColumnExpression is unset', async () => {
+    // A ChartConfig with only bodyExpression (no implicitColumnExpression) must
+    // route bare-text Lucene search through the body column end-to-end.
+    mockMetadata.getMaterializedColumnsLookupTable = jest
+      .fn()
+      .mockResolvedValue(new Map());
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Table,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [{ aggFn: 'count', valueExpression: '', aggCondition: '' }],
+      where: 'Prometheus',
+      whereLanguage: 'lucene',
+      timestampValueExpression: 'Timestamp',
+      bodyExpression: 'Body',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+    };
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      undefined,
+    );
+    const sql = parameterizedQueryToSql(generatedSql);
+    // The bare-text term should filter against the body column, not throw.
+    expect(sql).toMatch(/lower\(Body\)/);
+  });
+
+  it('bare-text Lucene in aggCondition and filters uses bodyExpression when implicitColumnExpression is unset', async () => {
+    // bodyExpression is threaded through renderChartConfig into
+    // aggCondition serialization and the filters list, not only `where`.
+    // Pins the threading contract for those two paths beyond the
+    // top-level where (covered by the test above).
+    mockMetadata.getMaterializedColumnsLookupTable = jest
+      .fn()
+      .mockResolvedValue(new Map());
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Table,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [
+        {
+          aggFn: 'count',
+          valueExpression: '',
+          aggCondition: 'errored',
+          aggConditionLanguage: 'lucene',
+        },
+      ],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'Timestamp',
+      bodyExpression: 'Body',
+      filters: [{ type: 'lucene', condition: 'denied' }],
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+    };
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      undefined,
+    );
+    const sql = parameterizedQueryToSql(generatedSql);
+    // Both the aggCondition term ('errored') and the filters term
+    // ('denied') should filter against the body column. The mockMetadata
+    // here has no bloom filter / text indices, so bare tokens render
+    // via hasToken(lower(<col>), lower(<term>)) instead of LIKE.
+    expect(sql).toContain("hasToken(lower(Body), lower('errored'))");
+    expect(sql).toContain("hasToken(lower(Body), lower('denied'))");
+  });
+
   describe('sample-weighted aggregations', () => {
     const baseSampledConfig: ChartConfigWithOptDateRange = {
       displayType: DisplayType.Table,
@@ -2757,6 +2825,172 @@ describe('renderChartConfig', () => {
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toContain('count()');
       expect(actual).not.toContain('SampleRate');
+    });
+  });
+
+  describe('PromQL chart config', () => {
+    it('should return empty SQL (PromQL is executed via Prometheus API)', async () => {
+      const promqlConfig: ChartConfigWithOptDateRange = {
+        configType: 'promql' as const,
+        promqlExpression: 'rate(http_requests_total[5m])',
+        connection: 'test-connection',
+        displayType: DisplayType.Line,
+        dateRange: [
+          new Date('2025-01-01T00:00:00Z'),
+          new Date('2025-01-01T01:00:00Z'),
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        promqlConfig,
+        mockMetadata,
+        undefined,
+      );
+
+      // PromQL configs return empty SQL — queries go through the Prometheus API route
+      expect(generatedSql.sql).toBe('');
+      expect(generatedSql.params).toEqual({});
+    });
+  });
+
+  // HDX-4371: a source with `timestampValueExpression = "EventDate, EventTime"`
+  // should bucket on `EventTime` (the DateTime token), not on `EventDate`
+  // (the partition-key Date). The WHERE clause keeps using both columns so
+  // partition pruning still works.
+  describe('multi-column timestampValueExpression (HDX-4371)', () => {
+    it('picks the DateTime token for the bucket, keeps the Date in WHERE', async () => {
+      mockMetadata.getColumn = jest
+        .fn()
+        .mockImplementation(async ({ column }: { column: string }) => {
+          if (column === 'EventDate')
+            return { name: 'EventDate', type: 'Date' };
+          if (column === 'EventTime')
+            return { name: 'EventTime', type: 'DateTime' };
+          return undefined;
+        });
+
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        from: { databaseName: 'default', tableName: 'logs' },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: '',
+            aggConditionLanguage: 'sql',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'EventDate, EventTime',
+        dateRange: [
+          new Date('2026-05-27T00:00:00Z'),
+          new Date('2026-05-27T12:00:00Z'),
+        ],
+        granularity: '1 minute',
+        limit: { limit: 10 },
+      };
+
+      const generated = await renderChartConfig(
+        config,
+        mockMetadata,
+        undefined,
+      );
+      const sql = parameterizedQueryToSql(generated);
+
+      // Bucket uses EventTime (DateTime), not EventDate (Date).
+      expect(sql).toContain('toStartOfInterval(toDateTime(EventTime),');
+      expect(sql).not.toContain('toStartOfInterval(toDateTime(EventDate),');
+      // WHERE clause should still reference both columns for partition pruning.
+      expect(sql).toContain('EventDate');
+      expect(sql).toContain('EventTime');
+    });
+
+    it('all-Date input falls back to the first token (and warns)', async () => {
+      mockMetadata.getColumn = jest
+        .fn()
+        .mockImplementation(async ({ column }: { column: string }) => {
+          if (column === 'EventDate')
+            return { name: 'EventDate', type: 'Date' };
+          if (column === 'OtherDate')
+            return { name: 'OtherDate', type: 'Date' };
+          return undefined;
+        });
+
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        from: { databaseName: 'default', tableName: 'logs' },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: '',
+            aggConditionLanguage: 'sql',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'EventDate, OtherDate',
+        dateRange: [
+          new Date('2026-05-27T00:00:00Z'),
+          new Date('2026-05-27T12:00:00Z'),
+        ],
+        granularity: '1 minute',
+        limit: { limit: 10 },
+      };
+
+      const generated = await renderChartConfig(
+        config,
+        mockMetadata,
+        undefined,
+      );
+      const sql = parameterizedQueryToSql(generated);
+
+      // Falls back to first token.
+      expect(sql).toContain('toStartOfInterval(toDateTime(EventDate),');
+    });
+
+    it('single-column EventTime works unchanged (no regression)', async () => {
+      mockMetadata.getColumn = jest
+        .fn()
+        .mockImplementation(async ({ column }: { column: string }) =>
+          column === 'EventTime'
+            ? { name: 'EventTime', type: 'DateTime' }
+            : undefined,
+        );
+
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        from: { databaseName: 'default', tableName: 'logs' },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: '',
+            aggConditionLanguage: 'sql',
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'EventTime',
+        dateRange: [
+          new Date('2026-05-27T00:00:00Z'),
+          new Date('2026-05-27T12:00:00Z'),
+        ],
+        granularity: '1 minute',
+        limit: { limit: 10 },
+      };
+
+      const generated = await renderChartConfig(
+        config,
+        mockMetadata,
+        undefined,
+      );
+      const sql = parameterizedQueryToSql(generated);
+      expect(sql).toContain('toStartOfInterval(toDateTime(EventTime),');
     });
   });
 });
