@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { SubmitHandler, useForm } from 'react-hook-form';
@@ -16,6 +16,12 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconPencil } from '@tabler/icons-react';
 
+import {
+  type TeamTab,
+  useTeamAdminAccess,
+  useTeamSettingsTabs,
+} from '@/extensions/teamSettings';
+
 import { PageHeader } from './components/PageHeader';
 import ApiKeysSection from './components/TeamSettings/ApiKeysSection';
 import ConnectionsSection from './components/TeamSettings/ConnectionsSection';
@@ -27,15 +33,6 @@ import TeamQueryConfigSection from './components/TeamSettings/TeamQueryConfigSec
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import { withAppNav } from './layout';
-
-type TeamTab = {
-  value: string;
-  label: string;
-  sections: {
-    id: string;
-    content: ReactNode;
-  }[];
-};
 
 function TeamTabContent({ sections }: { sections: TeamTab['sections'] }) {
   return (
@@ -57,7 +54,7 @@ export default function TeamPage() {
   const allowedAuthMethods = team?.allowedAuthMethods ?? [];
   const hasAllowedAuthMethods = allowedAuthMethods.length > 0;
 
-  const hasAdminAccess = true;
+  const hasAdminAccess = useTeamAdminAccess();
   const [isEditingTeamName, setIsEditingTeamName] = useState(false);
   const form = useForm<{ name: string }>({
     defaultValues: { name: team?.name },
@@ -88,7 +85,7 @@ export default function TeamPage() {
     [refetchTeam, setTeamName],
   );
 
-  const tabs: TeamTab[] = [
+  const baseTabs: TeamTab[] = [
     {
       value: 'data',
       label: 'Data',
@@ -156,6 +153,8 @@ export default function TeamPage() {
       ],
     },
   ];
+
+  const tabs = useTeamSettingsTabs(baseTabs);
 
   const queryTab =
     typeof router.query.tab === 'string' ? router.query.tab : null;
