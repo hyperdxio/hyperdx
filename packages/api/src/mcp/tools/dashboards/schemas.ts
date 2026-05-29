@@ -630,7 +630,7 @@ const mcpPatchTileLayoutSchema = z.object({
 // Build the patch tile union by extending the default-free layout with
 // each tile type's config shape. We only need the `config` field from
 // each tile schema; the layout wrapper is replaced.
-export const mcpPatchTileSchema = z.union([
+const mcpPatchTileSchema = z.union([
   mcpPatchTileLayoutSchema.extend({ config: mcpLineTileSchema.shape.config }),
   mcpPatchTileLayoutSchema.extend({ config: mcpBarTileSchema.shape.config }),
   mcpPatchTileLayoutSchema.extend({ config: mcpTableTileSchema.shape.config }),
