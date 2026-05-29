@@ -756,15 +756,23 @@ export async function timeFilterExpr({
           : chSql`fromUnixTimestamp64Milli(${{ Int64: endTime }})`;
 
       const isDateType = columnMeta?.type === 'Date' || isToDateExpr;
+      // DateTime (second precision) but not DateTime64 (sub-second precision).
+      // Matches DateTime, DateTime('UTC'), DateTime('America/New_York'), etc.
+      const isDateTimeType =
+        columnMeta?.type != null &&
+        /^DateTime(?!64)\b/.test(columnMeta.type) &&
+        !isDateType;
 
-      // toStartOf* and Date filters must stay inclusive — strict < on a rounded value drops a whole interval
-      const startOp =
-        dateRangeStartInclusive || toStartOf || isDateType ? '>=' : '>';
-      const endOp =
-        dateRangeEndInclusive || toStartOf || isDateType ? '<=' : '<';
+      // toStartOf*, Date, and DateTime filters must stay inclusive — strict
+      // < on a rounded/truncated value drops a whole interval/second.
+      const forceInclusive = !!toStartOf || isDateType || isDateTimeType;
+      const startOp = dateRangeStartInclusive || forceInclusive ? '>=' : '>';
+      const endOp = dateRangeEndInclusive || forceInclusive ? '<=' : '<';
 
       if (isDateType) {
         return chSql`(${unsafeTimestampValueExpression} ${startOp} toDate(${startTimeCond}) AND ${unsafeTimestampValueExpression} ${endOp} toDate(${endTimeCond}))`;
+      } else if (isDateTimeType) {
+        return chSql`(${unsafeTimestampValueExpression} ${startOp} toDateTime(${startTimeCond}) AND ${unsafeTimestampValueExpression} ${endOp} toDateTime(${endTimeCond}))`;
       } else {
         return chSql`(${unsafeTimestampValueExpression} ${startOp} ${startTimeCond} AND ${unsafeTimestampValueExpression} ${endOp} ${endTimeCond})`;
       }

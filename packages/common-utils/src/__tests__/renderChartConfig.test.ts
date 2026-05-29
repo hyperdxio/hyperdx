@@ -27,14 +27,14 @@ describe('renderChartConfig', () => {
 
   beforeEach(() => {
     const columns = [
-      { name: 'timestamp', type: 'DateTime' },
+      { name: 'timestamp', type: 'DateTime64(9)' },
       { name: 'value', type: 'Float64' },
       { name: 'TraceId', type: 'String' },
       { name: 'ServiceName', type: 'String' },
     ];
     mockMetadata = {
       getColumns: jest.fn().mockResolvedValue([
-        { name: 'timestamp', type: 'DateTime' },
+        { name: 'timestamp', type: 'DateTime64(9)' },
         { name: 'value', type: 'Float64' },
       ]),
       getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(null),
@@ -1661,13 +1661,37 @@ describe('renderChartConfig', () => {
         dateRangeEndInclusive: false,
         expected: `(toDate(timestamp) >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toDate(timestamp) <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))AND(timestamp > fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()}))`,
       },
+      {
+        description:
+          'wraps DateTime column (second precision) with toDateTime()',
+        timestampValueExpression: 'datetime_col',
+        dateRange: [
+          new Date('2025-02-12 00:12:34Z'),
+          new Date('2025-02-14 00:12:34Z'),
+        ],
+        expected: `(datetime_col >= toDateTime(fromUnixTimestamp64Milli(${new Date('2025-02-12 00:12:34Z').getTime()})) AND datetime_col <= toDateTime(fromUnixTimestamp64Milli(${new Date('2025-02-14 00:12:34Z').getTime()})))`,
+      },
+      {
+        description:
+          'stays inclusive for DateTime column even with dateRangeEndInclusive=false',
+        timestampValueExpression: 'datetime_col',
+        dateRange: [
+          new Date('2025-02-12 03:53:38Z'),
+          new Date('2025-02-12 04:08:38Z'),
+        ],
+        dateRangeStartInclusive: false,
+        dateRangeEndInclusive: false,
+        expected: `(datetime_col >= toDateTime(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND datetime_col <= toDateTime(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))`,
+      },
     ];
 
     beforeEach(() => {
       mockMetadata.getColumn.mockImplementation(async ({ column }) =>
         column === 'date'
           ? ({ type: 'Date' } as ColumnMeta)
-          : ({ type: 'DateTime' } as ColumnMeta),
+          : column === 'datetime_col'
+            ? ({ type: 'DateTime' } as ColumnMeta)
+            : ({ type: 'DateTime64(9)' } as ColumnMeta),
       );
     });
 
