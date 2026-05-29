@@ -2,6 +2,7 @@ import {
   DashboardWithoutId,
   DashboardWithoutIdSchema,
   resolveChartPaletteToken,
+  walkRawDashboardTileColors,
 } from '@hyperdx/common-utils/dist/types';
 import fs from 'fs';
 import path from 'path';
@@ -13,26 +14,18 @@ import type { HdxTask } from '@/tasks/types';
 import { ProvisionDashboardsTaskArgs } from '@/tasks/types';
 import logger from '@/utils/logger';
 
-// Walks parsed-but-unvalidated JSON and rewrites any legacy
-// `chart-1`..`chart-10` tile colors from #2265 to their hue-named
-// equivalents. Mirrors `normalizeRawDashboardTileColors` in the app
-// package; the provisioner can't import from `packages/app`, so the
-// minimal walker is inlined here.
-function migrateLegacyDashboardTileColorsInPlace(raw: unknown): void {
-  if (!raw || typeof raw !== 'object') return;
-  const tiles = (raw as { tiles?: unknown }).tiles;
-  if (!Array.isArray(tiles)) return;
-  for (const tile of tiles) {
-    if (!tile || typeof tile !== 'object') continue;
-    const config = (tile as { config?: unknown }).config;
-    if (!config || typeof config !== 'object') continue;
-    const c = config as { color?: unknown };
-    if (typeof c.color !== 'string') continue;
-    const resolved = resolveChartPaletteToken(c.color);
-    if (resolved !== undefined && resolved !== c.color) {
-      c.color = resolved;
-    }
-  }
+// Heal legacy `chart-1`..`chart-10` tile colors from #2265 before the
+// strict `DashboardWithoutIdSchema` parse rejects them. Same policy as
+// the React `normalizeDashboardTileColors` and the API router's
+// `migrateLegacyDashboardTileColors`: hue tokens pass through, legacy
+// numeric tokens are rewritten to hue-named equivalents, and unknown
+// strings are left intact so the schema's native enum error surfaces
+// in the warn log instead of silently dropping the field.
+function migrateLegacyDashboardTileColorsRaw(raw: unknown): unknown {
+  return walkRawDashboardTileColors(raw, current => {
+    const resolved = resolveChartPaletteToken(current);
+    return resolved ?? current;
+  });
 }
 
 export function readDashboardFiles(dir: string): DashboardWithoutId[] {
@@ -47,11 +40,12 @@ export function readDashboardFiles(dir: string): DashboardWithoutId[] {
   const dashboards: DashboardWithoutId[] = [];
   for (const file of files) {
     try {
-      const raw = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
-      migrateLegacyDashboardTileColorsInPlace(raw);
+      const raw = migrateLegacyDashboardTileColorsRaw(
+        JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')),
+      ) as Record<string, unknown> | null | undefined;
       const parsed = DashboardWithoutIdSchema.safeParse({
         tags: [],
-        ...raw,
+        ...(raw as object),
       });
       if (!parsed.success) {
         logger.warn(

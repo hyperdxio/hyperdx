@@ -4,6 +4,7 @@ import {
   PresetDashboard,
   PresetDashboardFilterSchema,
   resolveChartPaletteToken,
+  walkRawDashboardTileColors,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import _ from 'lodash';
@@ -40,28 +41,19 @@ const router = express.Router();
  *
  * This is a one-release deprecation shim — once stored data has converged
  * on the hue-named tokens, it can be removed in favor of straight-strict
- * validation.
+ * validation. The actual walk delegates to `walkRawDashboardTileColors`
+ * in common-utils so this middleware, the app-side normalizer, the JSON
+ * import path, and the provisioner all share the same per-tile traversal.
  */
 const migrateLegacyDashboardTileColors: express.RequestHandler = (
   req,
   _res,
   next,
 ) => {
-  const body: unknown = req.body;
-  if (!body || typeof body !== 'object') return next();
-  const tiles = (body as { tiles?: unknown }).tiles;
-  if (!Array.isArray(tiles)) return next();
-  for (const tile of tiles) {
-    if (!tile || typeof tile !== 'object') continue;
-    const config = (tile as { config?: unknown }).config;
-    if (!config || typeof config !== 'object') continue;
-    const c = config as { color?: unknown };
-    if (typeof c.color !== 'string') continue;
-    const resolved = resolveChartPaletteToken(c.color);
-    if (resolved !== undefined && resolved !== c.color) {
-      c.color = resolved;
-    }
-  }
+  req.body = walkRawDashboardTileColors(req.body, current => {
+    const resolved = resolveChartPaletteToken(current);
+    return resolved ?? current;
+  });
   next();
 };
 

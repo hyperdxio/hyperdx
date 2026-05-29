@@ -94,17 +94,16 @@ describe('fetchLocalDashboards', () => {
       });
     });
 
-    it('strips unresolvable color strings so they never reach the strict schema', () => {
-      // A stale hex / hand-edited / future-rollback value would 400 the
-      // server-side `ChartPaletteTokenSchema` on next save if it sailed
-      // through unchanged. The normalizer drops the field instead, so
-      // the tile renders as the default series color and the next PATCH
-      // doesn't blow up.
+    it('leaves unresolvable color strings intact (no silent data loss)', () => {
+      // A stale hex / hand-edited / future-rollback value is preserved
+      // so the user's choice survives a render pass — the strict
+      // server-side `ChartPaletteTokenSchema` surfaces a clear error on
+      // next save instead of the normalizer quietly dropping the field
+      // and irreversibly overwriting the user's pick.
       storeDashboardWithTileColor('chart-future-magenta');
-      const config = fetchLocalDashboards()[0].tiles[0].config as {
-        color?: unknown;
-      };
-      expect(config).not.toHaveProperty('color');
+      expect(fetchLocalDashboards()[0].tiles[0].config).toMatchObject({
+        color: 'chart-future-magenta',
+      });
     });
 
     it('does not touch tiles whose config has no color field', () => {

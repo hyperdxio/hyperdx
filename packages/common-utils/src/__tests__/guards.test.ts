@@ -8,6 +8,7 @@ import {
   DisplayType,
   isChartPaletteToken,
   resolveChartPaletteToken,
+  walkRawDashboardTileColors,
 } from '@/types';
 
 describe('isRawSqlSavedChartConfig', () => {
@@ -311,5 +312,65 @@ describe('resolveChartPaletteToken', () => {
     expect(resolveChartPaletteToken(undefined)).toBeUndefined();
     expect(resolveChartPaletteToken(null)).toBeUndefined();
     expect(resolveChartPaletteToken(1)).toBeUndefined();
+  });
+});
+
+// `walkRawDashboardTileColors` is the single shared per-tile traversal
+// behind four sites: the React app's fetch- and write-time normalizer,
+// the JSON-import pre-validation pass, the API dashboards-route
+// middleware, and the dashboard provisioner. The tests below pin its
+// contract directly; the per-callsite suites exercise the policy
+// composed over it (legacy → hue, unknown preserved, etc).
+describe('walkRawDashboardTileColors', () => {
+  const identity = (current: string) => current;
+
+  it('rewrites string colors via onColor', () => {
+    const input = { tiles: [{ config: { color: 'chart-1' } }] };
+    const result = walkRawDashboardTileColors(input, () => 'chart-green') as {
+      tiles: Array<{ config: { color: string } }>;
+    };
+    expect(result.tiles[0].config.color).toBe('chart-green');
+  });
+
+  it('strips the color field when onColor returns undefined', () => {
+    const input = {
+      tiles: [{ id: 't1', config: { color: 'bad', other: 'kept' } }],
+    };
+    const result = walkRawDashboardTileColors(input, () => undefined) as {
+      tiles: Array<{ id: string; config: { color?: string; other?: string } }>;
+    };
+    expect(result.tiles[0].config).not.toHaveProperty('color');
+    expect(result.tiles[0].config.other).toBe('kept');
+    expect(result.tiles[0].id).toBe('t1');
+  });
+
+  it('preserves referential identity when the callback returns the same string', () => {
+    const input = { tiles: [{ config: { color: 'chart-orange' } }] };
+    expect(walkRawDashboardTileColors(input, identity)).toBe(input);
+  });
+
+  it('skips tiles whose config has a non-string color', () => {
+    const input = { tiles: [{ config: { color: 42 } }] };
+    expect(walkRawDashboardTileColors(input, () => 'chart-blue')).toBe(input);
+  });
+
+  it('returns the input unchanged when tiles is missing, non-array, null, or a primitive', () => {
+    expect(walkRawDashboardTileColors({ name: 'D' }, identity)).toEqual({
+      name: 'D',
+    });
+    expect(walkRawDashboardTileColors({ tiles: 'nope' }, identity)).toEqual({
+      tiles: 'nope',
+    });
+    expect(walkRawDashboardTileColors(null, identity)).toBeNull();
+    expect(walkRawDashboardTileColors('hello', identity)).toBe('hello');
+    expect(walkRawDashboardTileColors(undefined, identity)).toBeUndefined();
+  });
+
+  it('handles tiles whose config is missing or non-object', () => {
+    const input = {
+      tiles: [{ id: 'a' }, { id: 'b', config: null }, { id: 'c', config: 7 }],
+    };
+    // No color fields to touch → identity output.
+    expect(walkRawDashboardTileColors(input, () => 'x')).toBe(input);
   });
 });

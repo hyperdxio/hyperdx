@@ -13,19 +13,31 @@ Stored configs from the initial color picker (#2265) keep working.
 matches `z.output` — wrapping it in `z.preprocess` would poison
 `validateRequest`'s `req.body` inference all the way up to
 `Dashboard.tiles[i].config.color`). Migration of legacy `chart-1` .. `chart-10`
-happens at four complementary points so no entry path can slip through:
+happens at five complementary points so no entry or wire-format path can slip
+through, all composing over a single shared walker
+(`walkRawDashboardTileColors` in `common-utils`) so the per-tile traversal
+stays in lockstep:
 
 - **Fetch-time / write-time (React)**: `normalizeDashboardTileColors` in
   `packages/app/src/dashboard.ts` heals dashboards on read
   (`useDashboards` / `fetchLocalDashboards` / `fetchDashboards`) and on write
   (`useUpdateDashboard` / `useCreateDashboard`). Unresolvable color strings
-  (stale hexes, hand-edited values) are stripped at the boundary so they
-  never reach the strict server-side schema and 400 the next save.
+  (stale hexes, hand-edited values, forward-rolled future tokens) are
+  preserved so the user's chosen value survives a render pass — the strict
+  server-side schema surfaces a clear error on next save instead of the
+  normalizer quietly dropping the field.
 - **JSON import**: `DBDashboardImportPage` runs
   `normalizeRawDashboardTileColors` on the parsed JSON *before* the strict
   `DashboardTemplateSchema.safeParse`, so templates exported from a
   pre-rename deploy import cleanly.
-- **Server-side migration shim**: the dashboards POST / PATCH routes mount
+- **Server-side GET response healing**: `getDashboards` / `getDashboard` in
+  `packages/api/src/controllers/dashboard.ts` rewrite legacy tile colors on
+  the way out. Pre-rename Mongo docs are served on the wire as
+  hue-named tokens so non-React HTTP clients (CI scripts, stale bundle
+  tabs during a rolling deploy, the external API) can round-trip
+  GET → PATCH without ever resurrecting `chart-N` through the strict
+  schema.
+- **Server-side write shim**: the dashboards POST / PATCH routes mount
   a request-body preprocessor that rewrites legacy tile colors before
   `validateRequest` runs `ChartPaletteTokenSchema`. Catches non-React
   HTTP callers (stale-bundle tabs during a rolling deploy, CI scripts,

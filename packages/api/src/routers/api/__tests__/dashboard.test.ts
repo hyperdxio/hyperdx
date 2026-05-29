@@ -124,6 +124,32 @@ describe('dashboard router', () => {
     expect(updated.body.tiles[0].config.color).toBe('chart-gray');
   });
 
+  // Wire-format guarantee: GET emits canonical hue-named tokens even for
+  // dashboards that pre-date the rename and still hold `chart-1`..`chart-10`
+  // in Mongo. Without this, a non-React client (or a stale React bundle
+  // that bypasses `normalizeDashboardTileColors`) could GET a legacy
+  // color and round-trip it back through PATCH where the strict schema
+  // would 400. Bypasses the API to seed the legacy value directly into
+  // Mongo because the POST/PATCH middleware would otherwise rewrite it
+  // before it ever reached the DB.
+  it('returns hue-named tokens on GET for a Mongo-seeded legacy chart-N tile', async () => {
+    const tileWithLegacy = makeTile();
+    (tileWithLegacy.config as any).color = 'chart-1';
+    const seeded = await Dashboard.create({
+      name: 'Pre-rename Dashboard',
+      team: team._id,
+      tiles: [tileWithLegacy],
+      tags: [],
+    });
+
+    const list = await agent.get('/dashboards').expect(200);
+    const fromList = list.body.find(d => d._id === seeded._id.toString());
+    expect(fromList.tiles[0].config.color).toBe('chart-green');
+
+    const single = await agent.get(`/dashboards/${seeded._id}`).expect(200);
+    expect(single.body.tiles[0].config.color).toBe('chart-green');
+  });
+
   it('sets createdBy and updatedBy on create and populates them in GET', async () => {
     const created = await agent
       .post('/dashboards')

@@ -426,13 +426,13 @@ type SemanticChartColorKey =
  * Live values come from `--color-chart-{success|warning|error|info}[-highlight]`
  * in `_chart-categorical-tokens.scss` (`chart-semantic-tokens` mixin).
  *
- * The two brand entries are intentionally byte-identical today — the
- * palette is unified across HyperDX and ClickStack post-#2362. The
- * per-brand shape (and the explicit `Record<…, SemanticChartHexes>`
- * constraint) is preserved as a future override hook AND so the type
- * system enforces parity: dropping or renaming a key in one brand
- * without mirroring it in the other becomes a compile error instead
- * of a silent runtime divergence between SSR and client.
+ * Kept per-brand (instead of collapsed to one object) so the
+ * `Record<'hyperdx' | 'clickstack', SemanticChartHexes>` constraint
+ * forces both brands to declare every semantic key — dropping or
+ * renaming one in either entry becomes a compile error rather than a
+ * silent runtime divergence between SSR and client. The two entries
+ * are byte-identical today; collapse to a flat object if and when a
+ * brand actually needs to diverge.
  */
 type SemanticChartHexes = Readonly<Record<SemanticChartColorKey, string>>;
 
@@ -469,11 +469,14 @@ const SEMANTIC_CHART_PALETTE: Readonly<
  * Typed as `readonly string[]` (not `string[]`) because the array is a
  * derived snapshot of `CATEGORICAL_HEX_BY_TOKEN` — mutating it in place
  * would desync the two structures the completeness check above pins
- * together.
+ * together. `CATEGORICAL_PALETTE_TOKENS` is a `readonly` tuple of
+ * `CategoricalChartPaletteToken` already, so the `.map` callback's
+ * `token` parameter is the narrow union and `CATEGORICAL_HEX_BY_TOKEN`
+ * index lookup is exhaustive without further assertion.
  */
-export const COLORS: readonly string[] = (
-  CATEGORICAL_PALETTE_TOKENS as readonly CategoricalChartPaletteToken[]
-).map(token => CATEGORICAL_HEX_BY_TOKEN[token]);
+export const COLORS: readonly string[] = CATEGORICAL_PALETTE_TOKENS.map(
+  token => CATEGORICAL_HEX_BY_TOKEN[token],
+);
 
 /**
  * Palette token types and runtime guards live in common-utils so the

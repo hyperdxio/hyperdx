@@ -7,6 +7,7 @@ import {
   resolveChartPaletteToken,
   SavedChartConfig,
   SearchConditionLanguage,
+  walkRawDashboardTileColors,
 } from '@hyperdx/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -48,6 +49,23 @@ export type Dashboard = {
 const localDashboards = createEntityStore<Dashboard>('hdx-local-dashboards');
 
 /**
+ * Resolution policy shared by both the typed normalizer below and the
+ * `unknown`-walking JSON-import variant: hue tokens pass through
+ * unchanged, legacy `chart-N` from #2265 are rewritten to their
+ * hue-named equivalents, and anything else (stale hexes, hand-edited
+ * values, future tokens from a forward-rolled deploy) is left as-is so
+ * the strict server-side `ChartPaletteTokenSchema` surfaces a clear
+ * error on save rather than silently dropping the user's chosen color.
+ * Render-time consumers (`DBNumberChart`, `ColorSwatchInput`) still
+ * call `resolveChartPaletteToken` directly so the live chart falls
+ * back gracefully even while the unresolved value is in flight.
+ */
+const migrateOrPreserveColor = (current: string): string => {
+  const resolved = resolveChartPaletteToken(current);
+  return resolved ?? current;
+};
+
+/**
  * Heal legacy `chart-1`..`chart-10` colors stored on tiles by #2265
  * into their hue-named equivalents. Applied at fetch time so every
  * downstream consumer (renderers, the color picker, save mutations)
@@ -58,74 +76,33 @@ const localDashboards = createEntityStore<Dashboard>('hdx-local-dashboards');
  * return a Zod 400. Symmetric application also lets the DB-side data
  * converge on next save instead of holding legacy tokens forever.
  *
- * Hue tokens already match the resolver and pass through unchanged.
- * Strings that aren't resolvable to a current `ChartPaletteToken`
- * (stale hexes, hand-edited values, future tokens from a forward-rolled
- * deploy) are stripped from `config.color` rather than passed through —
- * leaving them in place would trip the strict server-side
- * `ChartPaletteTokenSchema` on the next save and 400 the request. The
- * returned tile array preserves identity where nothing changed so React
- * reconciliation stays cheap, and the helper is safe to call on payloads
- * that omit `tiles` entirely (partial PATCHes).
+ * Delegates the per-tile walk to `walkRawDashboardTileColors` in
+ * common-utils so the unknown-import path and the API-side migration
+ * shim stay in lockstep with this typed variant. The double cast is
+ * unavoidable: the shared walker is generic over `unknown` so the
+ * provisioner / API can call it, and TypeScript can't carry the
+ * `tiles[]` element type through. The return shape is structurally
+ * identical to the input.
  */
 function normalizeDashboardTileColors<T extends { tiles?: Tile[] }>(
   dashboard: T,
 ): T {
   if (!dashboard.tiles || dashboard.tiles.length === 0) return dashboard;
-  let changed = false;
-  const tiles = dashboard.tiles.map(tile => {
-    const current = tile.config?.color;
-    if (typeof current !== 'string') return tile;
-    const resolved = resolveChartPaletteToken(current);
-    if (resolved === current) return tile;
-    changed = true;
-    if (resolved === undefined) {
-      const { color: _drop, ...rest } = tile.config;
-      return { ...tile, config: rest as Tile['config'] };
-    }
-    return {
-      ...tile,
-      config: { ...tile.config, color: resolved } as Tile['config'],
-    };
-  });
-  return changed ? { ...dashboard, tiles } : dashboard;
+  return walkRawDashboardTileColors(dashboard, migrateOrPreserveColor) as T;
 }
 
 /**
  * Walks a parsed-but-not-yet-validated JSON payload and rewrites every
  * `tiles[i].config.color` that points at a legacy `chart-1`..`chart-10`
- * value to its hue-named equivalent. Mirrors `normalizeDashboardTileColors`
- * but operates on `unknown` data so the JSON-import flow in
- * `DBDashboardImportPage` can heal legacy values *before* the strict
- * `DashboardTemplateSchema` parse (which would reject the legacy enum and
- * trip an error toast).
- *
- * Unlike `normalizeDashboardTileColors`, this raw variant leaves unknown
- * non-token strings in place so the schema's own validation message
- * surfaces them to the user with the proper "Invalid enum value" copy —
- * stripping the field here would silently swallow a typo in an
- * imported file.
+ * value to its hue-named equivalent. Same policy as
+ * `normalizeDashboardTileColors` (legacy → hue, unknown left intact for
+ * the schema to flag) but exposed as `unknown -> unknown` so the
+ * JSON-import flow in `DBDashboardImportPage` can heal legacy values
+ * *before* the strict `DashboardTemplateSchema` parse (which would
+ * otherwise reject the legacy enum and trip an error toast).
  */
 export function normalizeRawDashboardTileColors(input: unknown): unknown {
-  if (!input || typeof input !== 'object') return input;
-  const root = input as { tiles?: unknown };
-  const tiles = root.tiles;
-  if (!Array.isArray(tiles)) return input;
-  let changed = false;
-  const nextTiles = tiles.map(tile => {
-    if (!tile || typeof tile !== 'object') return tile;
-    const t = tile as { config?: unknown };
-    const config = t.config;
-    if (!config || typeof config !== 'object') return tile;
-    const c = config as { color?: unknown };
-    const current = c.color;
-    if (typeof current !== 'string') return tile;
-    const resolved = resolveChartPaletteToken(current);
-    if (resolved === undefined || resolved === current) return tile;
-    changed = true;
-    return { ...t, config: { ...c, color: resolved } };
-  });
-  return changed ? { ...root, tiles: nextTiles } : input;
+  return walkRawDashboardTileColors(input, migrateOrPreserveColor);
 }
 
 /**

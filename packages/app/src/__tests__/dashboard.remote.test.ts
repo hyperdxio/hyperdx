@@ -95,12 +95,14 @@ describe('fetchDashboards (remote path)', () => {
     expect(result[0].tiles[0].config).toMatchObject({ color: 'chart-orange' });
   });
 
-  it('strips unresolvable color strings so they never reach the strict schema', async () => {
+  it('leaves unresolvable color strings intact (no silent data loss)', async () => {
     setRemotePayload(remoteDashboardWithTileColor('chart-future-magenta'));
 
     const result = await fetchDashboards();
 
-    expect(result[0].tiles[0].config).not.toHaveProperty('color');
+    expect(result[0].tiles[0].config).toMatchObject({
+      color: 'chart-future-magenta',
+    });
   });
 
   it('does not touch tiles whose config has no color field', async () => {
@@ -169,7 +171,7 @@ describe('useCreateDashboard / useUpdateDashboard write-time normalization', () 
     );
   });
 
-  it('strips unresolvable color before POST in useCreateDashboard', async () => {
+  it('preserves unresolvable color through POST so the server can surface a clear schema error', async () => {
     const create = captureMutation(useCreateDashboard);
 
     await create({
@@ -188,8 +190,9 @@ describe('useCreateDashboard / useUpdateDashboard write-time normalization', () 
     });
 
     const call = hdxServerMock.mock.calls[0];
-    const body = call[1].json;
-    expect(body.tiles[0].config).not.toHaveProperty('color');
+    expect(call[1].json.tiles[0].config).toMatchObject({
+      color: 'chart-future-magenta',
+    });
   });
 
   it('rewrites legacy chart-N to hue tokens before PATCH in useUpdateDashboard', async () => {

@@ -940,6 +940,62 @@ export function resolveChartPaletteToken(
 }
 
 /**
+ * Walk a parsed-but-not-yet-typed dashboard payload and yield each
+ * `tiles[i].config.color` that holds a string, asking `onColor` what
+ * the new value should be. The walker is the single shared
+ * implementation behind:
+ *   - the React app's fetch- / write-time normalizer
+ *     (`normalizeDashboardTileColors` in `packages/app/src/dashboard.ts`)
+ *   - the JSON-import pre-validation pass
+ *     (`normalizeRawDashboardTileColors`, same file)
+ *   - the API dashboards route middleware
+ *     (`migrateLegacyDashboardTileColors` in
+ *     `packages/api/src/routers/api/dashboards.ts`)
+ *   - the dashboard-provisioner task
+ *     (`packages/api/src/tasks/provisionDashboards/index.ts`)
+ *
+ * `onColor` receives the current string and returns one of:
+ *   - `undefined` → strip the `color` field from that tile's config.
+ *   - a string identical to `current` → leave the tile untouched
+ *     (preserves referential identity so React reconciliation stays
+ *     cheap).
+ *   - a different string → rewrite `config.color` to the new value.
+ *
+ * Returns the (possibly new) `input` reference. When nothing changed,
+ * the same `input` is returned so `===` callers can short-circuit.
+ * Inputs that aren't an object, or whose `tiles` isn't an array, are
+ * returned unchanged.
+ */
+export function walkRawDashboardTileColors(
+  input: unknown,
+  onColor: (current: string) => string | undefined,
+): unknown {
+  if (!input || typeof input !== 'object') return input;
+  const root = input as { tiles?: unknown };
+  const tiles = root.tiles;
+  if (!Array.isArray(tiles)) return input;
+  let changed = false;
+  const nextTiles = (tiles as unknown[]).map(tile => {
+    if (!tile || typeof tile !== 'object') return tile;
+    const t = tile as { config?: unknown };
+    const config = t.config;
+    if (!config || typeof config !== 'object') return tile;
+    const c = config as { color?: unknown };
+    const current = c.color;
+    if (typeof current !== 'string') return tile;
+    const next = onColor(current);
+    if (next === current) return tile;
+    changed = true;
+    if (next === undefined) {
+      const { color: _drop, ...rest } = c;
+      return { ...t, config: rest };
+    }
+    return { ...t, config: { ...c, color: next } };
+  });
+  return changed ? { ...root, tiles: nextTiles } : input;
+}
+
+/**
  * Strict Zod schema for the curated palette tokens. Intentionally
  * does NOT accept legacy numeric tokens (`chart-1` .. `chart-10`)
  * from #2265 — wrapping the enum in `z.preprocess` would force the
