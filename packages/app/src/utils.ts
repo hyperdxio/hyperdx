@@ -610,7 +610,7 @@ export function getChartColorError(): string {
 }
 
 /** Primary brand color used for info-level logs and similar
- *  "neutral / default" series. HyperDX brand green, ClickStack blue. */
+ *  "neutral / default" series. HyperDX Observable cyan, ClickStack brand blue. */
 export function getChartColorInfo(): string {
   return getSemanticChartColor('--color-chart-info', 'info');
 }

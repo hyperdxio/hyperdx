@@ -4,6 +4,7 @@ import {
   CATEGORICAL_PALETTE_TOKENS,
   COLORS,
   getChartColorError,
+  getChartColorInfo,
   getChartColorSuccess,
   getChartColorWarning,
 } from '@/utils';
@@ -46,7 +47,32 @@ const SEMANTIC_CHART_COLORS = [
     hex: getChartColorError(),
     label: 'Error (Red)',
   },
+  {
+    name: 'color-chart-info',
+    hex: getChartColorInfo(),
+    label: 'Info',
+  },
 ];
+
+// Per-brand info colors. Unlike success/warning/error (same hex on both
+// brands today), `--color-chart-info` varies by brand and reuses a
+// categorical hue on each side (HyperDX → cyan, ClickStack → blue).
+const INFO_CHART_COLORS_BY_BRAND = [
+  {
+    brand: 'HyperDX',
+    name: 'color-chart-info',
+    hex: '#6cc5b0',
+    label: 'Info (Cyan)',
+    note: 'Observable cyan — same hue as categorical chart-cyan',
+  },
+  {
+    brand: 'ClickStack',
+    name: 'color-chart-info',
+    hex: '#437eef',
+    label: 'Info (Blue)',
+    note: 'Brand blue — same hue as categorical chart-blue and link color',
+  },
+] as const;
 
 const story = {
   title: 'Design Tokens/Chart Colors',
@@ -126,6 +152,17 @@ export const AllChartColors = () => (
     </div>
 
     <h3 style={{ fontSize: 16, marginBottom: 16 }}>Semantic Chart Colors</h3>
+    <p
+      style={{
+        marginBottom: 16,
+        color: 'var(--color-text-muted)',
+        fontSize: 13,
+      }}
+    >
+      Success, warning, and error are shared across brands. Info varies by brand
+      — use the Brand toolbar to preview the active theme, or see{' '}
+      <strong>Info Chart Colors By Brand</strong> for a side-by-side comparison.
+    </p>
     <div style={{ marginBottom: 32 }}>
       {SEMANTIC_CHART_COLORS.map(({ name, hex, label }) => (
         <ColorSwatch key={name} name={name} hex={hex} label={label} />
@@ -323,12 +360,55 @@ export const SemanticColorsPreview = () => (
               fontSize: 24,
             }}
           >
-            {i === 0 ? '98%' : i === 1 ? '15' : '3'}
+            {i === 0 ? '98%' : i === 1 ? '15' : i === 2 ? '3' : '42'}
           </div>
           <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
           <code style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
             {hex}
           </code>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+export const InfoChartColorsByBrand = () => (
+  <div style={{ padding: 24 }}>
+    <h2 style={{ marginBottom: 24 }}>Info Chart Colors By Brand</h2>
+    <p style={{ marginBottom: 24, color: 'var(--color-text-muted)' }}>
+      `--color-chart-info` is the brand-primary semantic for info-level logs,
+      neutral single-series charts, and similar &quot;default accent&quot;
+      surfaces. Both brands reuse a categorical hue rather than a bespoke hex.
+    </p>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+        gap: 24,
+      }}
+    >
+      {INFO_CHART_COLORS_BY_BRAND.map(({ brand, name, hex, label, note }) => (
+        <div
+          key={brand}
+          style={{
+            padding: 16,
+            background: 'var(--color-bg-surface)',
+            borderRadius: 8,
+            border: '1px solid var(--color-border)',
+          }}
+        >
+          <h3 style={{ fontSize: 15, marginBottom: 12 }}>{brand}</h3>
+          <ColorSwatch name={name} hex={hex} label={label} />
+          <p
+            style={{
+              marginTop: 4,
+              marginBottom: 0,
+              fontSize: 12,
+              color: 'var(--color-text-muted)',
+            }}
+          >
+            {note}
+          </p>
         </div>
       ))}
     </div>
