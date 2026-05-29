@@ -1010,6 +1010,51 @@ export class DashboardPage {
   }
 
   /**
+   * Return the first data row (<tr data-index>) of the table in the
+   * given tile. Used for hover-based interactions (e.g. tooltip tests).
+   */
+  getFirstTableRow(tileIndex = 0): Locator {
+    return this.getTile(tileIndex)
+      .locator('table tbody tr[data-index]')
+      .first();
+  }
+
+  /**
+   * Hover over the first data row of a table tile and wait for the
+   * floating tooltip to appear. Returns the tooltip locator so callers
+   * can make further assertions.
+   *
+   * Tooltip.Floating renders its content inside a Portal at the document
+   * body level. Mantine uses CSS modules (hashed classes) so we locate the
+   * floating popup by text content that matches the known hint patterns used
+   * by describeOnClick (e.g. "Open in search", "Search <SourceName>",
+   * "Open dashboard"). The tooltip is shown via `display: block` on the
+   * Portal div, so Playwright's `toBeVisible` checks that correctly.
+   */
+  async hoverFirstTableRowAndGetTooltip(tileIndex = 0): Promise<Locator> {
+    const row = this.getFirstTableRow(tileIndex);
+    await row.hover();
+    // Trigger a mousemove inside the row so Tooltip.Floating's internal
+    // mousemove handler has a coordinate to position against.
+    const box = await row.boundingBox();
+    if (box) {
+      await this.page.mouse.move(
+        box.x + box.width / 2,
+        box.y + box.height / 2,
+      );
+    }
+    // Tooltip.Floating renders a div inside a Portal (appended to document
+    // body). When open, Mantine sets `display: block` on it inline; when
+    // closed, `display: none`. We can't rely on a stable Mantine class name
+    // (CSS modules hash them), so match by the tooltip text content that
+    // describeOnClick produces: "Search <SourceName>", "Open in search", etc.
+    // These phrases don't appear in the table cells themselves.
+    const tooltip = this.page.getByText(/Open in search/, { exact: false });
+    await tooltip.waitFor({ state: 'visible', timeout: 5000 });
+    return tooltip;
+  }
+
+  /**
    * Locator for the Mantine toast raised by useOnClickLinkBuilder when the
    * configured onClick action fails (unknown source, missing row column, etc).
    */
