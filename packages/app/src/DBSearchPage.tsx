@@ -1744,18 +1744,19 @@ export function DBSearchPage() {
 
   // `Edit source` (singular): operate on the currently selected source.
   // Local mode opens the inline edit modal seeded with `inputSource`;
-  // non-local navigates to the team page deep-linked to that source so
-  // `<SourcesList>` auto-expands it. Both modes converge on "edit the
-  // source you were looking at" in one click.
+  // non-local uses a hard navigation so the page's `useQueryStates`
+  // (source/where/select/whereLanguage/filters/orderBy) can't merge
+  // stale /search state into the destination URL, and so
+  // `router.basePath` is correctly prepended for the /clickstack build.
   const onEditCurrentSource = useCallback(() => {
     if (IS_LOCAL_MODE) {
       setModelFormExpanded(true);
       return;
     }
     if (inputSource) {
-      router.push({ pathname: '/team', query: { source: inputSource } });
+      window.location.assign(`${router.basePath}/team?source=${inputSource}`);
     } else {
-      router.push('/team');
+      window.location.assign(`${router.basePath}/team`);
     }
   }, [inputSource, setModelFormExpanded]);
 
@@ -1765,12 +1766,12 @@ export function DBSearchPage() {
   // for a hard navigation instead of `router.push` so the page's
   // `useQueryStates` (source/where/select/whereLanguage/filters/orderBy)
   // can't restore its state into the new URL during the client-side
-  // transition; otherwise `SourcesList` auto-expands the leaked
-  // `?source=` and Manage Sources behaves like Edit source.
+  // transition, and so `router.basePath` is correctly prepended for
+  // the /clickstack build.
   const onManageSources = useMemo(() => {
     if (IS_LOCAL_MODE) return undefined;
     return () => {
-      window.location.assign('/team');
+      window.location.assign(`${router.basePath}/team`);
     };
   }, []);
 
