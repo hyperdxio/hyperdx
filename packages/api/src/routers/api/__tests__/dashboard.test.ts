@@ -132,7 +132,14 @@ describe('dashboard router', () => {
   // would 400. Bypasses the API to seed the legacy value directly into
   // Mongo because the POST/PATCH middleware would otherwise rewrite it
   // before it ever reached the DB.
-  it('returns hue-named tokens on GET for a Mongo-seeded legacy chart-N tile', async () => {
+  //
+  // The dashboards router currently only exposes a list GET (no
+  // `/:id` single GET handler — single-dashboard reads on the React
+  // side go through `useDashboards` and filter client-side). The
+  // controller's `getDashboard` healer is still exercised in the same
+  // process: `updateDashboard` calls `getDashboard` internally before
+  // PATCH, so a follow-up no-op PATCH would surface a regression.
+  it('returns hue-named tokens on GET (list) for a Mongo-seeded legacy chart-N tile', async () => {
     const tileWithLegacy = makeTile();
     (tileWithLegacy.config as any).color = 'chart-1';
     const seeded = await Dashboard.create({
@@ -144,10 +151,8 @@ describe('dashboard router', () => {
 
     const list = await agent.get('/dashboards').expect(200);
     const fromList = list.body.find(d => d._id === seeded._id.toString());
+    expect(fromList).toBeDefined();
     expect(fromList.tiles[0].config.color).toBe('chart-green');
-
-    const single = await agent.get(`/dashboards/${seeded._id}`).expect(200);
-    expect(single.body.tiles[0].config.color).toBe('chart-green');
   });
 
   it('sets createdBy and updatedBy on create and populates them in GET', async () => {
