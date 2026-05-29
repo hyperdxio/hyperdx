@@ -112,3 +112,20 @@ export function supportsDirectReadMap(
   if (!branchMin) return false;
   return compareClickHouseVersion(version, branchMin) >= 0;
 }
+
+/**
+ * First release that shipped the `mergeTreeTextIndex(database, table, index)`
+ * table function used to introspect text skip indices.
+ */
+const MERGE_TREE_TEXT_INDEX_MIN: ClickHouseVersion = [26, 3, 0, 0];
+
+/**
+ * Returns true when the connected ClickHouse server supports the
+ * `mergeTreeTextIndex` table function (>= 26.3). Returns false when the
+ * version is undefined or older.
+ */
+export function supportsMergeTreeTextIndex(
+  version: ClickHouseVersion | undefined,
+): boolean {
+  return isClickHouseVersionAtLeast(version, MERGE_TREE_TEXT_INDEX_MIN);
+}

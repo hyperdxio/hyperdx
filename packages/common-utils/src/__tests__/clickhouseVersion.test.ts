@@ -3,6 +3,7 @@ import {
   isClickHouseVersionAtLeast,
   parseClickHouseVersion,
   supportsDirectReadMap,
+  supportsMergeTreeTextIndex,
 } from '@/core/clickhouseVersion';
 
 type ClickHouseVersionTuple = readonly [number, number, number, number];
@@ -172,5 +173,26 @@ describe('supportsDirectReadMap', () => {
 
   it('returns false when the version is undefined', () => {
     expect(supportsDirectReadMap(undefined)).toBe(false);
+  });
+});
+
+describe('supportsMergeTreeTextIndex', () => {
+  it.each<readonly [ClickHouseVersionTuple, boolean]>([
+    [[26, 3, 0, 0], true],
+    [[26, 3, 0, 1], true],
+    [[26, 3, 99, 99], true],
+    [[26, 4, 0, 0], true],
+    [[27, 0, 0, 0], true],
+    [[26, 2, 99, 99], false],
+    [[26, 2, 0, 0], false],
+    [[26, 1, 0, 0], false],
+    [[25, 12, 0, 0], false],
+    [[24, 0, 0, 0], false],
+  ])('%j → %s', (version, expected) => {
+    expect(supportsMergeTreeTextIndex(version)).toBe(expected);
+  });
+
+  it('returns false when the version is undefined', () => {
+    expect(supportsMergeTreeTextIndex(undefined)).toBe(false);
   });
 });
