@@ -20,12 +20,47 @@
   }
 }
 
-/* Chip + kebab wrapper. Holds the Mantine Select and the adjacent
- * SourceManagementMenu ActionIcon as a single inline-flex unit.
+/* Chip + kebab wrapper. Holds the Mantine Select and the SourceManagementMenu
+ * ActionIcon as a single inline-flex unit. When the kebab is present
+ * (`[data-with-menu]`), the two surfaces are "glued" into a split-button chip:
+ * the adjoining corners are squared, the kebab overlaps the input's right
+ * border by 1px so they share a single vertical seam, and the kebab stretches
+ * to match the input's height so the chip reads as one unit.
+ *
+ * Override Mantine via its own CSS variables (`--input-radius`, `--ai-radius`)
+ * rather than fighting class-level `border-radius`: Mantine v7 reads these
+ * vars to compute the rounded corners, so setting them is the canonical
+ * override path.
  */
 .sourceSelectGroup {
   display: inline-flex;
-  align-items: center;
+  align-items: stretch;
+  gap: 0;
+
+  &[data-with-menu] {
+    /* Square only the right edge of the input. */
+    .sourceSelectInput {
+      --input-radius: 0;
+
+      border-top-left-radius: var(--mantine-radius-default);
+      border-bottom-left-radius: var(--mantine-radius-default);
+    }
+
+    /* Square only the left edge of the kebab. Fixed 30px height matches the
+     * input chip; -1px margin overlaps the input's right edge so the shared
+     * border is one pixel wide, not two. */
+    .sourceMenuButton {
+      --ai-radius: 0;
+
+      width: 30px;
+      height: 30px;
+      margin-left: -1px;
+      background-color: var(--color-bg-field-addon);
+      border: 1px solid var(--input-bd, var(--color-border));
+      border-top-right-radius: var(--mantine-radius-default);
+      border-bottom-right-radius: var(--mantine-radius-default);
+    }
+  }
 }
 
 /* Chip hover state. The Mantine Select input is the "chip" surface;
@@ -49,9 +84,8 @@
   }
 }
 
-/* Kebab button hover. Mantine's subtle variant already provides a hover
- * tint; we just tighten the margin and ensure the icon sits flush with
- * the chip baseline.
+/* Kebab button. Mantine's subtle variant gives the hover tint; layout shared
+ * with the input is set up in the `[data-with-menu]` block above.
  */
 .sourceMenuButton {
   flex-shrink: 0;
