@@ -501,6 +501,9 @@ const Tile = forwardRef(
               'from',
               'metricTables',
             ]),
+            ...(isLogSource(source)
+              ? { bodyExpression: source.bodyExpression }
+              : {}),
             sampleWeightExpression: getSampleWeightExpression(source),
             dateRange,
             granularity,
@@ -540,6 +543,9 @@ const Tile = forwardRef(
               isLogSource(source) || isTraceSource(source)
                 ? source.useTextIndexForImplicitColumn
                 : undefined,
+            bodyExpression: isLogSource(source)
+              ? source.bodyExpression
+              : undefined,
             sampleWeightExpression: getSampleWeightExpression(source),
             filters,
             metricTables: isMetricSource ? source.metricTables : undefined,
