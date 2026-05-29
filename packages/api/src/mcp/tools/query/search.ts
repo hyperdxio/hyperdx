@@ -140,7 +140,9 @@ export function registerSearch(server: McpServer, context: McpContext) {
         },
       );
 
-      // Replace rows in the result with denoised rows and add metadata
+      // Replace rows in the result with denoised rows and add metadata.
+      // Always emit a `denoised` block when denoise=true so callers can
+      // distinguish "no noisy patterns" from "denoise was not requested".
       const denoisedResult = {
         ...resultData,
         data: denoised.rows,
@@ -155,21 +157,20 @@ export function registerSearch(server: McpServer, context: McpContext) {
             text: JSON.stringify(
               {
                 result: trimmedResult,
-                ...(denoised.removedPatterns.length > 0
-                  ? {
-                      denoised: {
-                        removedPatterns: denoised.removedPatterns,
-                        originalRowCount: rows.length,
-                        filteredRowCount: denoised.rows.length,
-                      },
-                    }
-                  : {}),
+                denoised: {
+                  removedPatterns: denoised.removedPatterns,
+                  // rows.length is the count returned by runConfigTile
+                  // (already subject to maxResults and trim limits).
+                  returnedRowCountBeforeDenoise: rows.length,
+                  filteredRowCount: denoised.rows.length,
+                  ...(denoised.skipped ? { skipped: denoised.skipped } : {}),
+                },
                 ...(isTrimmed
                   ? {
                       note: 'Result was trimmed for context size. Narrow the time range or add filters to reduce data.',
                     }
                   : {}),
-                ...(denoised.rows.length === 0
+                ...(denoised.rows.length === 0 && !denoised.skipped
                   ? {
                       hint: 'All events matched noisy patterns and were removed. Try narrowing filters or disabling denoise to see all events.',
                     }

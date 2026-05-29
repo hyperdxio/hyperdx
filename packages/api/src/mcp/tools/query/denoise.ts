@@ -34,6 +34,11 @@ export interface DenoiseResult {
     estimatedCount: number;
     sampleCount: number;
   }>;
+  /**
+   * When non-null, denoising was skipped and rows are returned unmodified.
+   * The value describes why (e.g. "body_column_not_in_results").
+   */
+  skipped?: string;
 }
 
 // ─── Core denoising function ─────────────────────────────────────────────────
@@ -59,20 +64,18 @@ export async function denoiseSearchResults(
   },
 ): Promise<DenoiseResult> {
   if (rows.length === 0) {
-    return { rows, removedPatterns: [] };
+    return { rows, removedPatterns: [], skipped: 'no_rows' };
   }
 
   // ── Resolve source & connection ──
   const source = await getSource(teamId, sourceId);
   if (!source) {
-    // Can't denoise without source info — return rows unmodified
-    return { rows, removedPatterns: [] };
+    return { rows, removedPatterns: [], skipped: 'source_not_found' };
   }
 
   const bodyColumn = resolveBodyExpression(source);
   if (!bodyColumn) {
-    // Source doesn't have a body column — can't mine patterns
-    return { rows, removedPatterns: [] };
+    return { rows, removedPatterns: [], skipped: 'no_body_column' };
   }
 
   const connection = await getConnectionById(
@@ -81,7 +84,7 @@ export async function denoiseSearchResults(
     true,
   );
   if (!connection) {
-    return { rows, removedPatterns: [] };
+    return { rows, removedPatterns: [], skipped: 'connection_not_found' };
   }
 
   const clickhouseClient = new ClickhouseClient({
@@ -165,22 +168,24 @@ export async function denoiseSearchResults(
     ]);
   } catch {
     // If sampling fails, return rows unmodified rather than failing the search
-    return { rows, removedPatterns: [] };
+    return { rows, removedPatterns: [], skipped: 'sampling_failed' };
   }
 
   const sampleRows = sampleResult.data;
   const totalCount = Number(countResult.data?.[0]?.total ?? 0);
 
   if (!sampleRows || sampleRows.length === 0) {
-    return { rows, removedPatterns: [] };
+    return { rows, removedPatterns: [], skipped: 'no_sample_data' };
   }
 
   // ── Mine patterns from the sample ──
-  const { patterns, sampleMultiplier } = minePatterns(sampleRows, {
+  // Note: maxSamples: 1 — minePatterns always keeps at least one sample per
+  // cluster internally; we just minimize memory overhead.
+  const { patterns } = minePatterns(sampleRows, {
     totalCount,
     startDate,
     endDate,
-    maxSamples: 0, // We don't need samples for denoising
+    maxSamples: 1,
     getBody: row => {
       const raw = row.__hdx_pattern_body;
       return raw != null ? String(raw) : '';
@@ -196,13 +201,16 @@ export async function denoiseSearchResults(
   }
 
   // ── Identify noisy patterns (>10% of sampled events) ──
+  // Key by template string rather than cluster ID so we are not coupled to
+  // the auto-incrementing IDs generated inside minePatterns(). The matching
+  // miner below produces its own IDs; comparing template strings is stable.
   const sampledRowCount = sampleRows.length;
-  const noisyPatternIds = new Set<string>();
+  const noisyTemplates = new Set<string>();
   const removedPatterns: DenoiseResult['removedPatterns'] = [];
 
   for (const p of patterns) {
     if (p.sampleCount / sampledRowCount > NOISE_THRESHOLD) {
-      noisyPatternIds.add(p.id);
+      noisyTemplates.add(p.pattern);
       removedPatterns.push({
         pattern: p.pattern,
         estimatedCount: p.estimatedCount,
@@ -211,13 +219,11 @@ export async function denoiseSearchResults(
     }
   }
 
-  if (noisyPatternIds.size === 0) {
+  if (noisyTemplates.size === 0) {
     return { rows, removedPatterns: [] };
   }
 
-  // ── Re-create the same Drain miner and train it on the same sample ──
-  // We need a fresh miner to match result rows against the learned patterns.
-  // The minePatterns() function doesn't expose the miner, so we rebuild it.
+  // ── Build a miner trained on the same sample for row matching ──
   const drainConfig = new TemplateMinerConfig();
   const miner = new TemplateMiner(drainConfig);
   for (const row of sampleRows) {
@@ -227,13 +233,13 @@ export async function denoiseSearchResults(
   }
 
   // ── Match each result row and filter out noisy ones ──
-  // The body column in result rows may be named differently from the
-  // pattern mining column. We try the exact bodyColumn name first,
-  // then fall back to common column names.
   const bodyColumnKey = findBodyColumnKey(rows[0], bodyColumn);
   if (!bodyColumnKey) {
-    // Can't find the body column in result rows — return unmodified
-    return { rows, removedPatterns: [] };
+    return {
+      rows,
+      removedPatterns: [],
+      skipped: 'body_column_not_in_results',
+    };
   }
 
   const filteredRows = rows.filter(row => {
@@ -242,7 +248,7 @@ export async function denoiseSearchResults(
     const bodyText = flattenBody(String(bodyValue));
     const match = miner.match(bodyText, 'fallback');
     if (!match) return true; // No pattern match — keep the row
-    return !noisyPatternIds.has(String(match.clusterId));
+    return !noisyTemplates.has(match.getTemplate());
   });
 
   return {
