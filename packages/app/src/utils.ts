@@ -403,7 +403,7 @@ const SEMANTIC_CHART_PALETTE = {
     success: '#00c28a',
     warning: '#efb118',
     error: '#ff725c',
-    info: '#00c28a',
+    info: '#6cc5b0',
     successHighlight: '#80d9b3',
     warningHighlight: '#f5c94d',
     errorHighlight: '#ffa090',

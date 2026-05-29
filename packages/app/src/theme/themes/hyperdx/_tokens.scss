@@ -24,20 +24,21 @@
   @include shared-chart.chart-categorical-tokens;
 
   /*
-   * Chart Semantic Colors - per-brand (HyperDX brand green for
-   * `success` and `info`). Unlike the categorical hues above, semantic
-   * tokens vary by brand theme, so `getChartColor{Success,Warning,...}`
-   * in `utils.ts` reads them via `getComputedStyle` and reacts to a
-   * runtime theme switch without a React re-render. Inline `var()`
-   * consumers (e.g. `LogLevel.tsx`) get the same benefit for free.
-   * Within HyperDX, the dark and light schemes happen to use the same
-   * hexes, which is why they're inside `chart-tokens` rather than the
-   * scheme-specific mixins.
+   * Chart Semantic Colors - per-brand. HyperDX uses brand green
+   * (`#00c28a`) for `success` and Observable cyan (`#6cc5b0`, same
+   * hue as the categorical `chart-cyan`) for `info`. Unlike the
+   * categorical hues above, semantic tokens vary by brand theme, so
+   * `getChartColor{Success,Warning,...}` in `utils.ts` reads them via
+   * `getComputedStyle` and reacts to a runtime theme switch without a
+   * React re-render. Inline `var()` consumers (e.g. `LogLevel.tsx`)
+   * get the same benefit for free. Within HyperDX, the dark and light
+   * schemes happen to use the same hexes, which is why they're inside
+   * `chart-tokens` rather than the scheme-specific mixins.
    */
   --color-chart-success: #00c28a;
   --color-chart-warning: #efb118;
   --color-chart-error: #ff725c;
-  --color-chart-info: #00c28a;
+  --color-chart-info: #6cc5b0;
 
   /* Chart Semantic Colors - Highlighted (for hover/selection states) */
   --color-chart-success-highlight: #80d9b3;

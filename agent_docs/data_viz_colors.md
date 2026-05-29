@@ -98,9 +98,12 @@ categorical slot 0.
 ```
 
 Defined in both `_tokens.scss` files. **Per-brand**: HyperDX uses brand green
-for `success` and `info` (`#00c28a`); ClickStack uses Observable green
+(`#00c28a`) for `success` and Observable cyan (`#6cc5b0`, same hue as the
+categorical `chart-cyan`) for `info`; ClickStack uses Observable green
 (`#3ca951`) for `success` and brand blue (`#437eef`, same hue as the categorical
-`chart-blue` and `--click-global-color-text-link-default`) for `info`. Warning
+`chart-blue` and `--click-global-color-text-link-default`) for `info`. Both
+brands' `info` reuses a categorical hue rather than a bespoke value, so
+info-level series visually rhyme with the matching categorical slot. Warning
 and error are the same across themes.
 
 Unlike the categorical hues, **the semantic CSS vars are read at runtime** via
@@ -369,9 +372,10 @@ place themes differ is the semantic chart layer.
 
 ### HyperDX
 
-- `--color-chart-success` and `--color-chart-info` use brand green (`#00c28a`).
-- Single-series charts that pick a "neutral" / info-level color via
-  `getChartColorInfo()` render brand green.
+- `--color-chart-success` uses brand green (`#00c28a`).
+- `--color-chart-info` uses Observable cyan (`#6cc5b0`, same as the categorical
+  `chart-cyan`), so info-level logs and `getChartColorInfo()` render cyan —
+  visually distinct from `success` (the two used to collapse to the same hex).
 - Multi-series charts start at brand blue (slot 0, `#437eef`) and proceed
   through the canonical palette — brand identity is preserved via the Mantine
   green accent, sidebar gradient, and semantic chart tokens.
