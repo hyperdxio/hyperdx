@@ -1,7 +1,4 @@
-import {
-  getJSONColumnNames,
-  getMapColumnNames,
-} from '../DBRowDataPanel';
+import { getJSONColumnNames, getMapColumnNames } from '../DBRowDataPanel';
 
 describe('DBRowDataPanel', () => {
   describe('getJSONColumnNames', () => {
