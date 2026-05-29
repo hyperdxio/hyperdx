@@ -129,7 +129,7 @@ export const SourceManagementMenu = ({
   return (
     <Menu width={220} withinPortal position="bottom-end">
       <Menu.Target>
-        <Tooltip label="Source actions" color="dark" position="top">
+        <Tooltip label="Source actions" position="top" withArrow>
           <ActionIcon
             variant="subtle"
             color="gray"
@@ -212,7 +212,7 @@ function SourceSelectControlledComponent({
 
   return (
     <Group
-      gap={4}
+      gap={0}
       wrap="nowrap"
       className={styles.sourceSelectGroup}
       data-with-menu={hasMenu || undefined}
