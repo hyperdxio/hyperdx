@@ -21,7 +21,6 @@ import type {
 } from '@/types';
 import { isLogSource, isTraceSource, SourceKind } from '@/types';
 
-import { ClickHouseVersion, parseClickHouseVersion } from './clickhouseVersion';
 import {
   ClickHouseVersion,
   parseClickHouseVersion,
@@ -484,8 +483,14 @@ export class Metadata {
       tableName,
       dateRange,
     );
-    const runIndexQuery = async (sql: ChSql): Promise<string[]> =>
-      this.clickhouseClient
+    if (indexes?.keysIndex) {
+      const sql = chSql`
+        SELECT token AS key
+        FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: indexes.keysIndex.indexName }})
+        WHERE ${partsFilter}
+        GROUP BY key HAVING key != ''
+        LIMIT ${{ Int32: maxKeys }}`;
+      const keys = await this.clickhouseClient
         .query<'JSON'>({
           query: sql.sql,
           query_params: sql.params,
@@ -494,28 +499,27 @@ export class Metadata {
         })
         .then(r => r.json<{ key: string }>())
         .then(d => d.data.map(r => r.key).filter(Boolean));
-    if (indexes?.keysIndex) {
-      const sql = chSql`
-        SELECT token AS key
-        FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: indexes.keysIndex.indexName }})
-        WHERE ${partsFilter}
-        GROUP BY key HAVING key != ''
-        LIMIT ${{ Int32: maxKeys }}`;
-      const keys = await runIndexQuery(sql);
       if (keys.length > 0) {
         this.cache.set(cacheKey, keys);
         return keys;
       }
     }
     if (indexes?.itemsIndex) {
-      const { indexName, separator } = indexes.itemsIndex;
       const sql = chSql`
-        SELECT splitByChar(${{ String: separator }}, token)[1] AS key
-        FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: indexName }})
+        SELECT splitByChar(${{ String: indexes.itemsIndex.separator }}, token)[1] AS key
+        FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: indexes.itemsIndex.indexName }})
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''
         LIMIT ${{ Int32: maxKeys }}`;
-      const keys = await runIndexQuery(sql);
+      const keys = await this.clickhouseClient
+        .query<'JSON'>({
+          query: sql.sql,
+          query_params: sql.params,
+          connectionId,
+          clickhouse_settings: this.getClickHouseSettings(),
+        })
+        .then(r => r.json<{ key: string }>())
+        .then(d => d.data.map(r => r.key).filter(Boolean));
       if (keys.length > 0) {
         this.cache.set(cacheKey, keys);
         return keys;
@@ -774,6 +778,7 @@ export class Metadata {
     keys,
     maxValues = 20,
     connectionId,
+    metadataMVs,
     dateRange,
     timestampValueExpression,
     signal,
@@ -783,6 +788,7 @@ export class Metadata {
     column: string;
     keys: string[];
     maxValues?: number;
+    metadataMVs?: MetadataMaterializedViews;
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
     connectionId: string;
@@ -798,44 +804,108 @@ export class Metadata {
       })
     ).get(column)?.itemsIndex;
     if (idx) {
-      const partsFilter = this.partsOverlapFilter(
-        databaseName,
-        tableName,
-        dateRange,
-      );
-      const orChain = concatChSql(
-        ' OR ',
-        keys.map(
-          k => chSql`startsWith(token, ${{ String: `${k}${idx.separator}` }})`,
-        ),
-      );
-      const sql = chSql`
-          SELECT substring(token, 1, position(token, ${{ String: idx.separator }}) - 1) AS key,
-                 substring(token, position(token, ${{ String: idx.separator }}) + ${{ Int32: idx.separator.length }}) AS value
-          FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: idx.indexName }})
-          WHERE ${partsFilter}
-            AND (${orChain})
-          GROUP BY key, value HAVING value != ''
-          LIMIT ${{ Int32: maxValues }} BY key`;
-      const rows = await this.clickhouseClient
-        .query<'JSON'>({
-          query: sql.sql,
-          query_params: sql.params,
-          connectionId,
-          clickhouse_settings: this.getClickHouseSettings(),
-          abort_signal: signal,
-        })
-        .then(r => r.json<{ key: string; value: string }>())
-        .then(d => d.data);
-      if (rows.length > 0) {
-        const result = new Map<string, string[]>();
-        for (const row of rows) {
-          if (!row.value) continue;
-          const arr = result.get(row.key) ?? [];
-          arr.push(row.value);
-          result.set(row.key, arr);
+      try {
+        const partsFilter = this.partsOverlapFilter(
+          databaseName,
+          tableName,
+          dateRange,
+        );
+        const orChain = concatChSql(
+          ' OR ',
+          keys.map(
+            k =>
+              chSql`startsWith(token, ${{ String: `${k}${idx.separator}` }})`,
+          ),
+        );
+        const sql = chSql`
+            SELECT substring(token, 1, position(token, ${{ String: idx.separator }}) - 1) AS key,
+                   substring(token, position(token, ${{ String: idx.separator }}) + ${{ Int32: idx.separator.length }}) AS value
+            FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: idx.indexName }})
+            WHERE ${partsFilter}
+              AND (${orChain})
+            GROUP BY key, value HAVING value != ''
+            LIMIT ${{ Int32: maxValues }} BY key`;
+        const rows = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: this.getClickHouseSettings(),
+            abort_signal: signal,
+          })
+          .then(r => r.json<{ key: string; value: string }>())
+          .then(d => d.data);
+        if (rows.length > 0) {
+          const result = new Map<string, string[]>();
+          for (const row of rows) {
+            if (!row.value) continue;
+            const arr = result.get(row.key) ?? [];
+            arr.push(row.value);
+            result.set(row.key, arr);
+          }
+          return result;
         }
-        return result;
+      } catch (e) {
+        console.warn('getMapValues text-index query failed', e);
+      }
+    }
+
+    if (metadataMVs && dateRange) {
+      try {
+        const alignedDateRange = getAlignedDateRange(
+          dateRange,
+          metadataMVs.granularity,
+        );
+        const startExpr = renderStartOfBucketExpr(
+          metadataMVs.granularity,
+          chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[0].getTime() }})`,
+        );
+        const endExpr = renderStartOfBucketExpr(
+          metadataMVs.granularity,
+          chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
+        );
+        const keyList = concatChSql(
+          ',',
+          keys.map(k => chSql`${{ String: k }}`),
+        );
+        const sql = chSql`
+          SELECT Key AS key, Value AS value
+          FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
+          WHERE ColumnIdentifier = ${{ String: column }}
+            AND Key IN (${keyList})
+            AND Value != ''
+            AND Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}
+          GROUP BY Key, Value
+          ORDER BY sum(count) DESC
+          LIMIT ${{ Int32: maxValues }} BY Key
+        `;
+        const rows = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              ...this.getClickHouseSettings(),
+              timeout_overflow_mode: 'break',
+              max_execution_time: 15,
+              max_rows_to_read: '0',
+            },
+            abort_signal: signal,
+          })
+          .then(r => r.json<{ key: string; value: string }>())
+          .then(d => d.data);
+        if (rows.length > 0) {
+          const result = new Map<string, string[]>();
+          for (const row of rows) {
+            if (!row.value) continue;
+            const arr = result.get(row.key) ?? [];
+            arr.push(row.value);
+            result.set(row.key, arr);
+          }
+          return result;
+        }
+      } catch (e) {
+        console.warn('getMapValues MV rollup query failed', e);
       }
     }
 
@@ -1828,6 +1898,7 @@ export class Metadata {
               keys: sampledKeys,
               maxValues: maxValuesPerKey,
               connectionId,
+              metadataMVs,
               dateRange,
               signal,
             });
