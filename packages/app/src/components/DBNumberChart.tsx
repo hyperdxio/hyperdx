@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ErrorBoundary } from 'react-error-boundary';
 import {
   filterColumnMetaByType,
   JSDataType,
@@ -28,8 +29,13 @@ import ChartErrorState, {
 } from './charts/ChartErrorState';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
-const NUMBER_TILE_MIN_FONT_SIZE = 14;
+const NUMBER_TILE_MIN_FONT_SIZE = 10;
 const NUMBER_TILE_MAX_FONT_SIZE = 72;
+// Initial / fallback font size used before the first measurement runs
+// (and as a sensible mid-range size if measurement is unavailable).
+// Tuned to look reasonable in a typical "default" tile (~6 columns wide
+// on a 24-col grid) without overflowing.
+const NUMBER_TILE_DEFAULT_FONT_SIZE = 36;
 const NUMBER_TILE_PADDING = 12;
 
 function fitFontSize(
@@ -64,6 +70,26 @@ function fitFontSize(
   return best;
 }
 
+// Plain centered rendering used as a fallback when AutoSizeNumber's
+// measurement / ResizeObserver pipeline throws unexpectedly. Mirrors the
+// pre-auto-size implementation so dashboards keep showing the value even
+// if the resize logic encounters a runtime error.
+function SimpleNumber({
+  children,
+  color,
+}: {
+  children: React.ReactNode;
+  color?: string;
+}) {
+  return (
+    <Flex align="center" justify="center" h="100%" style={{ flexGrow: 1 }}>
+      <Text size="4rem" c={color}>
+        {children}
+      </Text>
+    </Flex>
+  );
+}
+
 // Renders the formatted number at the largest font size (between
 // NUMBER_TILE_MIN_FONT_SIZE and NUMBER_TILE_MAX_FONT_SIZE) that fits the
 // surrounding tile, recomputing whenever the tile resizes or the value
@@ -78,7 +104,9 @@ function AutoSizeNumber({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const textRef = useRef<HTMLParagraphElement | null>(null);
-  const [fontSize, setFontSize] = useState<number>(NUMBER_TILE_MAX_FONT_SIZE);
+  const [fontSize, setFontSize] = useState<number>(
+    NUMBER_TILE_DEFAULT_FONT_SIZE,
+  );
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -144,6 +172,25 @@ function AutoSizeNumber({
         {children}
       </Text>
     </Flex>
+  );
+}
+
+// Wraps AutoSizeNumber in an error boundary so a runtime failure in the
+// measurement / ResizeObserver pipeline never blanks out the tile —
+// instead the dashboard falls back to the original fixed-size rendering.
+function SafeAutoSizeNumber({
+  children,
+  color,
+}: {
+  children: React.ReactNode;
+  color?: string;
+}) {
+  return (
+    <ErrorBoundary
+      fallback={<SimpleNumber color={color}>{children}</SimpleNumber>}
+    >
+      <AutoSizeNumber color={color}>{children}</AutoSizeNumber>
+    </ErrorBoundary>
   );
 }
 
@@ -276,9 +323,9 @@ export default function DBNumberChart({
           No data found within time range.
         </div>
       ) : (
-        <AutoSizeNumber color={tileColor}>
+        <SafeAutoSizeNumber color={tileColor}>
           {formattedValue ?? 'N/A'}
-        </AutoSizeNumber>
+        </SafeAutoSizeNumber>
       )}
     </ChartContainer>
   );

@@ -443,9 +443,9 @@ describe('DBNumberChart', () => {
         // Available width after padding (12 px each side) is 96 px.
         // 10 chars * 0.6 width-per-char = 6 px/char, so the largest
         // font size that fits is floor(96 / (10 * 0.6)) = 16 px. Picked
-        // size must be <= 16 and >= the configured min of 14 px.
+        // size must be <= 16 and >= the configured min of 10 px.
         expect(fontSize).toBeLessThanOrEqual(16);
-        expect(fontSize).toBeGreaterThanOrEqual(14);
+        expect(fontSize).toBeGreaterThanOrEqual(10);
       } finally {
         restore();
       }
@@ -466,6 +466,45 @@ describe('DBNumberChart', () => {
         expect(fontSize).toBeLessThanOrEqual(72);
       } finally {
         restore();
+      }
+    });
+  });
+
+  describe('error boundary fallback', () => {
+    /**
+     * Force the auto-sizer's measurement pipeline to throw by making
+     * `clientWidth` raise an error during the layout effect. The
+     * surrounding ErrorBoundary should catch the failure and fall back
+     * to the simpler fixed-size rendering, which still shows the value
+     * (so dashboards never go blank because of a measurement bug).
+     */
+    it('falls back to a simpler text rendering if AutoSizeNumber throws', () => {
+      const containerSpy = jest
+        .spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+        .mockImplementation(function (this: HTMLElement) {
+          if (this.tagName === 'DIV') {
+            throw new Error('boom: simulated layout failure');
+          }
+          return 0;
+        });
+
+      // ErrorBoundary logs the caught error to console.error; silence
+      // it so the test output stays focused on the assertions.
+      const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+
+        const textEl = screen.getByText('1234');
+        expect(textEl).toBeInTheDocument();
+
+        // The fallback uses Mantine's `size="4rem"` rather than an
+        // inline px font-size, so the auto-sized inline style should
+        // not be present on the rendered element.
+        expect(textEl.style.fontSize).toBe('');
+      } finally {
+        containerSpy.mockRestore();
+        errSpy.mockRestore();
       }
     });
   });
