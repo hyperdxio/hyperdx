@@ -51,6 +51,11 @@ export function buildJSONExtractQuery(
     return null; // No nested path to extract
   }
 
+  // The mergePath call here intentionally omits `mapColumns`. This helper
+  // only runs under a parsed-JSON root (callers gate on `isInParsedJson &&
+  // parsedJsonRootPath`), so `parsedJsonRootPath[0]` is always a JSON column.
+  // A future caller that points this at a Map column would need to thread
+  // mapColumns through; see HDX-4369.
   const baseColumn = mergePath(parsedJsonRootPath, jsonColumns);
   const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
   return `${jsonExtractFn}(${baseColumn}, ${jsonPathArgs})`;

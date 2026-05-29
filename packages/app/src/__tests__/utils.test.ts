@@ -1277,6 +1277,43 @@ describe('mergePath', () => {
       expect(mergePath(['Body', '1'], ['Body'], ['Body'])).toBe('Body.`1`');
     });
   });
+
+  describe('SQL escaping of single quotes and backslashes', () => {
+    // Keys can contain user-controlled characters (Map sub-keys carry
+    // arbitrary text). An unescaped single quote produces malformed SQL like
+    // `Map['it's']`, which ClickHouse parses as the broken token sequence
+    // `Map['it']s']`. Backslash must escape first so the quote-escape
+    // backslash is not itself doubled.
+    it('escapes single quotes in Map sub-keys', () => {
+      expect(mergePath(['LogAttributes', "it's"], [], ['LogAttributes'])).toBe(
+        "LogAttributes['it\\'s']",
+      );
+    });
+
+    it('escapes backslashes in Map sub-keys', () => {
+      expect(
+        mergePath(['LogAttributes', 'back\\slash'], [], ['LogAttributes']),
+      ).toBe("LogAttributes['back\\\\slash']");
+    });
+
+    it('escapes a key containing both a backslash and a quote', () => {
+      expect(
+        mergePath(['LogAttributes', "a\\b'c"], [], ['LogAttributes']),
+      ).toBe("LogAttributes['a\\\\b\\'c']");
+    });
+
+    it('escapes single quotes in default-branch string subscripts', () => {
+      // The default Array / unknown column branch also takes string-key
+      // subscripts when the segment is non-numeric. Same escape applies.
+      expect(mergePath(['SomeColumn', "it's"])).toBe("SomeColumn['it\\'s']");
+    });
+
+    it('leaves numeric segments untouched in the default branch', () => {
+      // Numeric path collapses to bracketed integer index; escape is a
+      // no-op because Number.isInteger(asNumber) succeeds. Sanity check.
+      expect(mergePath(['SomeArray', '0'])).toBe('SomeArray[1]');
+    });
+  });
 });
 
 describe('getColorFromCSSToken', () => {

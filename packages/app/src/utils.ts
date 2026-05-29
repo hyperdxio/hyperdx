@@ -1014,6 +1014,13 @@ export const formatUptime = (seconds: number) => {
 // ClickHouse rejects the resulting `LogAttributes[2]` with
 // `Illegal types of arguments: Map(String, String), UInt8 for function
 // arrayElement`. HDX-4369.
+// Escape backslash and single-quote inside a key before interpolating it
+// into a single-quoted SQL string. Keys can contain user-controlled
+// characters (Map sub-keys, JSON field names from the row data) and an
+// unescaped quote produces malformed SQL.
+const escapeSqlSingleQuoted = (v: string): string =>
+  v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
 export const mergePath = (
   path: string[],
   jsonColumns: string[] = [],
@@ -1038,14 +1045,16 @@ export const mergePath = (
     // operator is keyed by the Map's key type, not by integer position. A
     // numeric-looking sub-key like `"1"` on a Map(String, ...) must still
     // render as `Map['1']`.
-    return `${key}${rest.map(v => `['${v}']`).join('')}`;
+    return `${key}${rest.map(v => `['${escapeSqlSingleQuoted(v)}']`).join('')}`;
   }
   return `${key}${rest
     .map(v => {
       const asNumber = Number(v);
       const isArrayIndex = Number.isInteger(asNumber) && asNumber >= 0;
       // ClickHouse arrays are 1-based, but flattened data uses 0-based indices
-      return isArrayIndex ? `[${asNumber + 1}]` : `['${v}']`;
+      return isArrayIndex
+        ? `[${asNumber + 1}]`
+        : `['${escapeSqlSingleQuoted(v)}']`;
     })
     .join('')}`;
 };
