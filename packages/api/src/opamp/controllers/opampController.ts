@@ -106,6 +106,15 @@ type CollectorConfig = {
         max_elapsed_time: string;
       };
     };
+    prometheusremotewrite?: {
+      endpoint: string;
+      tls: {
+        insecure: boolean;
+      };
+      resource_to_telemetry_conversion: {
+        enabled: boolean;
+      };
+    };
   };
   service: {
     extensions: string[];
@@ -235,16 +244,22 @@ export const buildOtelCollectorConfig = (
     },
     service: {
       extensions: [],
+      // The pipeline `processors:` lists are intentionally declared in the
+      // bootstrap config (docker/otel-collector/config.yaml) instead of here,
+      // so that users can swap them via CUSTOM_OTELCOL_CONFIG_FILE. See
+      // https://github.com/hyperdxio/hyperdx/pull/2351: when the OpAMP
+      // remote config sets `processors:` on a pipeline, it overwrites the
+      // bootstrap+custom merge, which prevents users from substituting
+      // their own processor (e.g. a memory_limiter with limit_percentage
+      // instead of limit_mib).
       pipelines: {
         traces: {
           receivers: ['nop'],
-          processors: ['memory_limiter', 'batch'],
           exporters: ['clickhouse'],
         },
         metrics: {
           // TODO: prometheus needs to be authenticated
           receivers: ['prometheus'],
-          processors: ['memory_limiter', 'batch'],
           exporters: ['clickhouse'],
         },
         'logs/in': {
@@ -254,12 +269,10 @@ export const buildOtelCollectorConfig = (
         },
         'logs/out-default': {
           receivers: ['routing/logs'],
-          processors: ['memory_limiter', 'transform', 'batch'],
           exporters: ['clickhouse'],
         },
         'logs/out-rrweb': {
           receivers: ['routing/logs'],
-          processors: ['memory_limiter', 'batch'],
           exporters: ['clickhouse/rrweb'],
         },
       },
@@ -274,6 +287,23 @@ export const buildOtelCollectorConfig = (
     otelCollectorConfig.service.pipelines['logs/in'].receivers.push(
       'otlp/hyperdx',
     );
+
+    if (config.IS_PROMQL_ENABLED && otelCollectorConfig.exporters) {
+      otelCollectorConfig.exporters.prometheusremotewrite = {
+        endpoint: 'http://${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}/write',
+        tls: {
+          insecure: true,
+        },
+        resource_to_telemetry_conversion: {
+          enabled: true,
+        },
+      };
+      otelCollectorConfig.service.pipelines['metrics/promql'] = {
+        receivers: ['otlp/hyperdx'],
+        processors: ['memory_limiter', 'batch'],
+        exporters: ['prometheusremotewrite'],
+      };
+    }
 
     if (collectorAuthenticationEnforced) {
       if (otelCollectorConfig.receivers['otlp/hyperdx'] == null) {

@@ -145,10 +145,8 @@ export function registerSearch(server: McpServer, context: McpContext) {
         ...resultData,
         data: denoised.rows,
       };
-      const trimmedResult = trimToolResponse(denoisedResult);
-      const isTrimmed =
-        JSON.stringify(trimmedResult).length <
-        JSON.stringify(denoisedResult).length;
+      const { data: trimmedResult, isTrimmed } =
+        trimToolResponse(denoisedResult);
 
       return {
         content: [

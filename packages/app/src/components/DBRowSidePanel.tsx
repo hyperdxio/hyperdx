@@ -170,6 +170,8 @@ const DBRowSidePanel = ({
       source.resourceAttributesExpression
     ) {
       return true;
+    } else if (source.kind === SourceKind.Promql) {
+      return false;
     }
     return false;
   }, [source]);
@@ -289,7 +291,11 @@ const DBRowSidePanel = ({
 
   const hasK8sContext = useMemo(() => {
     try {
-      if (!source?.resourceAttributesExpression || !normalizedRow) {
+      if (
+        !('resourceAttributesExpression' in source) ||
+        !source?.resourceAttributesExpression ||
+        !normalizedRow
+      ) {
         return false;
       }
 

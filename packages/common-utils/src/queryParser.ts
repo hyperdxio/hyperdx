@@ -9,6 +9,7 @@ import {
   extractInnerCHArrayJSType,
   JSDataType,
 } from '@/clickhouse';
+import { supportsDirectReadMap } from '@/core/clickhouseVersion';
 import {
   Metadata,
   parseKeyPath,
@@ -150,6 +151,13 @@ async function findPrefixMatch({
 interface SerializerContext {
   /** The current implicit column expression, indicating which SQL expression to use when comparing a term to the '<implicit>' field */
   implicitColumnExpression?: string;
+  /**
+   * Fallback used when implicitColumnExpression is unset. Mirrors the one-way
+   * fallback `getEventBody` already implements for row display: an admin who
+   * sets only the Body Expression on a log source can still run bare-text
+   * Lucene search.
+   */
+  bodyExpression?: string;
   isNegatedAndParenthesized?: boolean;
 }
 
@@ -743,6 +751,12 @@ type CustomSchemaSQLColumnExpression = {
 export type CustomSchemaConfig = {
   databaseName: string;
   implicitColumnExpression?: string;
+  /**
+   * Body expression to fall back to when `implicitColumnExpression` is unset
+   * but the source has a body column configured. Populated only by log
+   * sources; trace sources do not auto-fall-back from `spanNameExpression`.
+   */
+  bodyExpression?: string;
   tableName: string;
   connectionId: string;
   /**
@@ -1070,6 +1084,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private tableName: string;
   private databaseName: string;
   private implicitColumnExpression?: string;
+  private bodyExpression?: string;
   private connectionId: string;
   private useTextIndexForImplicitColumn: UseTextIndex;
   private skipIndicesPromise?: Promise<SkipIndexMetadata[]>;
@@ -1082,6 +1097,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     tableName,
     connectionId,
     implicitColumnExpression,
+    bodyExpression,
     useTextIndexForImplicitColumn,
   }: { metadata: Metadata } & CustomSchemaConfig) {
     super();
@@ -1089,6 +1105,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     this.databaseName = databaseName;
     this.tableName = tableName;
     this.implicitColumnExpression = implicitColumnExpression;
+    this.bodyExpression = bodyExpression;
     this.connectionId = connectionId;
     this.useTextIndexForImplicitColumn =
       useTextIndexForImplicitColumn ?? UseTextIndex.Auto;
@@ -1129,9 +1146,17 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
    * A KV items column is an ALIAS/MATERIALIZED column whose expression is
    * arrayMap((k,v)->concat(k,'=',v), mapKeys(X), mapValues(X)) and which has
    * a text(tokenizer=array) skip index.
+   *
+   * The version gate (`supportsDirectReadMap`) only applies to ALIAS items
+   * columns: ALIAS columns are computed at query time, so `has(items, ...)`
+   * against an ALIAS only realizes its speedup when the server can perform a
+   * direct_read against the underlying Map's tuple storage. MATERIALIZED items
+   * columns are physically stored on disk, so `has()` reads them directly and
+   * is fast on any ClickHouse version that supports the text index itself.
    */
   private async buildKvItemsLookup(): Promise<KvItemsLookup> {
-    const [columns, skipIndices] = await Promise.all([
+    const [serverVersion, columns, skipIndices] = await Promise.all([
+      this.metadata.getServerVersion({ connectionId: this.connectionId }),
       this.metadata.getColumns({
         databaseName: this.databaseName,
         tableName: this.tableName,
@@ -1140,9 +1165,10 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       this.skipIndicesPromise ?? Promise.resolve([]),
     ]);
 
+    const directReadSupported = supportsDirectReadMap(serverVersion);
+
     const lookup: KvItemsLookup = new Map();
 
-    // Find columns that are ALIAS or MATERIALIZED with KV items expressions
     const kvItemsCandidates = columns.filter(
       c =>
         (c.default_type === 'ALIAS' || c.default_type === 'MATERIALIZED') &&
@@ -1150,6 +1176,10 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     );
 
     for (const candidate of kvItemsCandidates) {
+      if (candidate.default_type === 'ALIAS' && !directReadSupported) {
+        continue;
+      }
+
       const parsed = (() => {
         let parsed: { mapColumn: string; separator: string } | undefined;
         for (const strategy of KV_ITEMS_STRATEGIES) {
@@ -1160,16 +1190,14 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       })();
       if (!parsed) continue;
 
-      // Check if this column has a text(tokenizer=array) skip index
+      const candidateName = normalizeChExpression(candidate.name);
+      const candidateExpr = normalizeChExpression(candidate.default_expression);
       const hasArrayTextIndex = skipIndices.some(idx => {
         if (idx.type !== 'text') return false;
         const tokenizer = parseTokenizerFromTextIndex(idx);
         if (tokenizer?.type !== 'array') return false;
-        // Require exact match: has() won't benefit from a transformed index like lower(col)
-        return (
-          normalizeChExpression(idx.expression) ===
-          normalizeChExpression(candidate.name)
-        );
+        const idxExpr = normalizeChExpression(idx.expression);
+        return idxExpr === candidateName || idxExpr === candidateExpr;
       });
 
       if (hasArrayTextIndex) {
@@ -1257,7 +1285,12 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     }
 
     if (isImplicitField) {
-      const shouldUseTokenBf = !context.implicitColumnExpression;
+      // Token-bloom-filter and tokens()-index optimizations key on the
+      // source's column. A per-context override (of either implicit or body)
+      // means we're searching a different expression, so skip the index
+      // optimization.
+      const shouldUseTokenBf =
+        !context.implicitColumnExpression && !context.bodyExpression;
 
       if (prefixWildcard || suffixWildcard) {
         return SqlString.format(
@@ -1664,8 +1697,16 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   }
 
   async getColumnForField(field: string, context: SerializerContext) {
+    // Two-stage fallback: implicit wins over body, and per-call context
+    // overrides win over the source defaults. The body fallback lets log
+    // sources that only set Body Expression still serve bare-text Lucene
+    // search; this is the symmetric counterpart to `getEventBody` in
+    // packages/app/src/source.ts.
     const implicitColumnExpression =
-      context.implicitColumnExpression ?? this.implicitColumnExpression;
+      context.implicitColumnExpression ??
+      this.implicitColumnExpression ??
+      context.bodyExpression ??
+      this.bodyExpression;
     if (field === IMPLICIT_FIELD && !implicitColumnExpression) {
       throw new Error(
         'Can not search bare text without an implicit column set.',
@@ -1675,10 +1716,15 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     const fieldFinal =
       field === IMPLICIT_FIELD ? implicitColumnExpression! : field;
 
-    if (
-      field === IMPLICIT_FIELD &&
-      implicitColumnExpression === this.implicitColumnExpression // Source's implicit column has not been overridden
-    ) {
+    // Use the multi-column-concat path whenever the resolved expression came
+    // from the source (either `this.implicitColumnExpression` or its body
+    // fallback `this.bodyExpression`), not when a per-context override was
+    // applied. Mirrors the original "source's implicit column has not been
+    // overridden" intent.
+    const isSourceImplicit =
+      context.implicitColumnExpression === undefined &&
+      context.bodyExpression === undefined;
+    if (field === IMPLICIT_FIELD && isSourceImplicit) {
       // Sources can specify multi-column implicit columns, eg. Body and Message, in
       // which case we search the combined string `concatWithSeparator(';', Body, Message)`.
       const expressions = splitAndTrimWithBracket(fieldFinal);
@@ -1720,9 +1766,14 @@ async function nodeTerm(
   serializer: Serializer,
   context: SerializerContext,
 ): Promise<string> {
-  const field = node.field[0] === '-' ? node.field.slice(1) : node.field;
-  let isNegatedField = node.field[0] === '-';
   const isImplicitField = node.field === IMPLICIT_FIELD;
+  const rawField = node.field[0] === '-' ? node.field.slice(1) : node.field;
+  // Decode special-token placeholders the emitter inserted in the field name
+  // (e.g. HDX_COLON for an escaped `:` in a Map sub-key). Leave the implicit
+  // field sentinel untouched so downstream comparisons against IMPLICIT_FIELD
+  // still match.
+  const field = isImplicitField ? rawField : decodeSpecialTokens(rawField);
+  let isNegatedField = node.field[0] === '-';
 
   // NodeTerm
   if (isNodeTerm(node)) {
@@ -1824,7 +1875,7 @@ function createSerializerContext(
 
     return {
       ...currentContext,
-      implicitColumnExpression: fieldWithoutNegation,
+      implicitColumnExpression: decodeSpecialTokens(fieldWithoutNegation),
       ...(isNegatedAndParenthesized(ast)
         ? { isNegatedAndParenthesized: true }
         : {}),

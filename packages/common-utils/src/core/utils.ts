@@ -104,6 +104,118 @@ export function getFirstTimestampValueExpression(valueExpression: string) {
   return splitAndTrimWithBracket(valueExpression)[0];
 }
 
+type TimestampTypeKind = 'date' | 'datetime' | 'datetime64';
+
+function classifyTimestampType(type: string | undefined): {
+  kind: TimestampTypeKind;
+  precision: number;
+} | null {
+  if (!type) return null;
+  // Strip a single Nullable() wrapper if present.
+  const inner = type.replace(/^Nullable\((.*)\)$/i, '$1').trim();
+
+  if (/^Date(?:32)?$/i.test(inner)) {
+    return { kind: 'date', precision: -1 };
+  }
+  if (/^DateTime$/i.test(inner)) {
+    return { kind: 'datetime', precision: 0 };
+  }
+  // DateTime64(<precision>[, '<timezone>'])
+  const dt64 = inner.match(/^DateTime64\(\s*(\d+)\s*(?:,[^)]*)?\)$/i);
+  if (dt64) {
+    return { kind: 'datetime64', precision: parseInt(dt64[1], 10) };
+  }
+  return null;
+}
+
+/**
+ * Resolve a (possibly multi-column) `timestampValueExpression` to the
+ * single column best suited for time-bucketing.
+ *
+ * When a source's `Timestamp Column` lists multiple columns (e.g.
+ * `"EventDate, EventTime"` for partition-pruning), the histogram bucket
+ * should be built from the highest-precision DateTime/DateTime64 token,
+ * not from the first one. Picking a `Date` for the bucket collapses an
+ * entire day into a single bar at midnight UTC.
+ *
+ * Falls back to the first token with a `console.warn` when no
+ * DateTime-typed token is found (e.g. all `Date`, CTE alias with no
+ * reachable metadata).
+ *
+ * Single-column inputs short-circuit without touching metadata.
+ */
+export async function pickBucketTimestampColumn({
+  timestampValueExpression,
+  metadata,
+  databaseName,
+  tableName,
+  connectionId,
+}: {
+  timestampValueExpression: string;
+  metadata: {
+    getColumn: (args: {
+      databaseName: string;
+      tableName: string;
+      column: string;
+      connectionId: string;
+    }) => Promise<{ type?: string } | undefined>;
+  };
+  databaseName: string;
+  tableName: string;
+  connectionId: string;
+}): Promise<string> {
+  const tokens = splitAndTrimWithBracket(timestampValueExpression);
+  if (tokens.length <= 1) {
+    return tokens[0] ?? timestampValueExpression;
+  }
+
+  if (!databaseName || !tableName) {
+    return tokens[0];
+  }
+
+  type Candidate = {
+    token: string;
+    kind: TimestampTypeKind;
+    precision: number;
+  };
+  const candidates: Candidate[] = [];
+
+  for (const token of tokens) {
+    let column: { type?: string } | undefined;
+    try {
+      column = await metadata.getColumn({
+        databaseName,
+        tableName,
+        column: token,
+        connectionId,
+      });
+    } catch {
+      // Column lookup failures shouldn't block rendering; treat the token
+      // as unresolvable and keep going.
+      continue;
+    }
+    const classified = classifyTimestampType(column?.type);
+    if (classified && classified.kind !== 'date') {
+      candidates.push({ token, ...classified });
+    }
+  }
+
+  if (candidates.length === 0) {
+    console.warn(
+      `pickBucketTimestampColumn: no DateTime/DateTime64 column found in ` +
+        `"${timestampValueExpression}"; falling back to the first token. ` +
+        `Buckets may collapse if the column is Date-typed.`,
+    );
+    return tokens[0];
+  }
+
+  // Highest precision wins. DateTime64 with higher precision beats
+  // DateTime64 with lower; DateTime64 beats DateTime; on a tie, earlier
+  // token in the expression wins to preserve the existing default.
+  candidates.sort((a, b) => b.precision - a.precision);
+  return candidates[0].token;
+}
+
 /** Returns true if the given expression is a JSON expression, eg. `col.key.nestedKey` or "json_col"."key" */
 export const isJsonExpression = (expr: string) => {
   if (!expr.includes('.')) return false;
@@ -534,6 +646,14 @@ export function convertToDashboardTemplate(
     // Extract name from source or default to '' if not found
     filter.source =
       sources.find(source => source.id === input.source)?.name ?? '';
+    if (input.appliesToSourceIds?.length) {
+      const remapped = input.appliesToSourceIds
+        .map(id => sources.find(source => source.id === id)?.name)
+        .filter((name): name is string => !!name && name.length > 0);
+      filter.appliesToSourceIds = remapped.length > 0 ? remapped : undefined;
+    } else {
+      filter.appliesToSourceIds = undefined;
+    }
     return filter;
   };
 

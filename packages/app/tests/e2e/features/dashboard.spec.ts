@@ -8,6 +8,7 @@ import { expect, test } from '../utils/base-test';
 import {
   DEFAULT_LOGS_SOURCE_NAME,
   DEFAULT_METRICS_SOURCE_NAME,
+  DEFAULT_TRACES_SOURCE_NAME,
 } from '../utils/constants';
 
 test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
@@ -498,6 +499,112 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await expect(dashboardPage.getFilterItemByName('Metric')).toHaveCount(0);
     });
   });
+
+  test(
+    'should scope a filter to a specific source via "Applies to sources"',
+    {},
+    async () => {
+      test.setTimeout(45000);
+
+      await test.step('Create new dashboard', async () => {
+        await expect(dashboardPage.createButton).toBeVisible();
+        await dashboardPage.createNewDashboard();
+      });
+
+      await test.step('Add a logs table tile', async () => {
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createTable({
+          chartName: 'Logs Table',
+          sourceName: DEFAULT_LOGS_SOURCE_NAME,
+          groupBy: 'ServiceName',
+        });
+      });
+
+      await test.step('Add a traces table tile', async () => {
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createTable({
+          chartName: 'Traces Table',
+          sourceName: DEFAULT_TRACES_SOURCE_NAME,
+          groupBy: 'SpanName',
+        });
+      });
+
+      await test.step('Add a Span filter scoped to the trace source', async () => {
+        await dashboardPage.openEditFiltersModal();
+        await expect(dashboardPage.emptyFiltersList).toBeVisible();
+        await dashboardPage.addFilterToDashboard(
+          'SpanName',
+          DEFAULT_TRACES_SOURCE_NAME,
+          'SpanName',
+          undefined,
+          [DEFAULT_TRACES_SOURCE_NAME],
+        );
+        await expect(
+          dashboardPage.getFilterItemByName('SpanName'), // Not a valid column for the logs table
+        ).toBeVisible();
+        await dashboardPage.closeFiltersModal();
+      });
+
+      await test.step('Filter label tooltip shows the scoped count', async () => {
+        const label = dashboardPage.getFilterLabel('SpanName');
+        await expect(label).toBeVisible();
+        await label.hover();
+        await expect(
+          dashboardPage.page.getByText('Applies to 1 source'),
+        ).toBeVisible();
+      });
+
+      await test.step('Selecting a value filters only the traces tile', async () => {
+        await dashboardPage.clickFilterOption('SpanName', 'GET /api/logs');
+
+        // Traces tile: only the "GET /api/logs" span should remain.
+        const tracesAccountingCell = dashboardPage.page.getByTitle(
+          'GET /api/logs',
+          {
+            exact: true,
+          },
+        );
+        await expect(tracesAccountingCell).toBeVisible();
+
+        // The logs tile must still render its rows — the filter scope
+        // excluded it, so the dropdown value should not have affected it.
+        // (Even if the traces source has no `SpanName` column, the tile
+        // must not be broken by an inapplicable WHERE.)
+        const logsTile = dashboardPage.getTile(0);
+        await expect(logsTile.locator('table tbody tr').first()).toBeVisible({
+          timeout: 15000,
+        });
+      });
+    },
+  );
+
+  test(
+    'filter label tooltip shows "all sources" when scope is empty',
+    {},
+    async () => {
+      await dashboardPage.createNewDashboard();
+      await dashboardPage.addTile();
+      await dashboardPage.chartEditor.createTable({
+        chartName: 'Logs Table',
+        sourceName: DEFAULT_LOGS_SOURCE_NAME,
+        groupBy: 'ServiceName',
+      });
+
+      await dashboardPage.openEditFiltersModal();
+      await dashboardPage.addFilterToDashboard(
+        'Service',
+        DEFAULT_LOGS_SOURCE_NAME,
+        'ServiceName',
+      );
+      await dashboardPage.closeFiltersModal();
+
+      const label = dashboardPage.getFilterLabel('Service');
+      await label.hover();
+      await expect(
+        dashboardPage.page.getByText('Applies to all sources'),
+      ).toBeVisible();
+    },
+  );
 
   test('should save and restore query and filter values', {}, async () => {
     const testQuery = 'SeverityText:error';

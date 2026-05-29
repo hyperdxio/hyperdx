@@ -53,25 +53,34 @@ exporters:
       initial_interval: 5s
       max_interval: 30s
       max_elapsed_time: 300s
+  prometheusremotewrite:
+    endpoint: http://${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}/write
+    tls:
+      insecure: true
+    resource_to_telemetry_conversion:
+      enabled: true
 
 service:
+  # Pipeline `processors:` lists live in the base config.yaml so users can
+  # swap them via CUSTOM_OTELCOL_CONFIG_FILE. See
+  # https://github.com/hyperdxio/hyperdx/pull/2351.
   pipelines:
     traces:
       receivers: [otlp/hyperdx]
-      processors: [memory_limiter, batch]
       exporters: [clickhouse]
     metrics:
       receivers: [otlp/hyperdx]
-      processors: [memory_limiter, batch]
       exporters: [clickhouse]
+    metrics/promql:
+      receivers: [otlp/hyperdx]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite]
     logs/in:
       receivers: [otlp/hyperdx]
       exporters: [routing/logs]
     logs/out-default:
       receivers: [routing/logs]
-      processors: [memory_limiter, transform, batch]
       exporters: [clickhouse]
     logs/out-rrweb:
       receivers: [routing/logs]
-      processors: [memory_limiter, batch]
       exporters: [clickhouse/rrweb]

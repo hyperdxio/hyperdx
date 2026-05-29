@@ -238,6 +238,52 @@ export function renderOnClickDashboard({
   return { ok: true, url: `/dashboards/${dashboardId}?${params.toString()}` };
 }
 
+/**
+ * Build a one-line, row-independent description of an OnClick action,
+ * suitable for a hover hint shown before the user commits to the click.
+ *
+ * Returns one of four shapes:
+ * - `Search <SourceName>` when targeting a known source by ID.
+ * - `Open in search` when targeting a source by template, or when the
+ *   ID does not resolve to a known source.
+ * - `Open dashboard "<Name>"` when targeting a known dashboard by ID.
+ * - `Open dashboard` when targeting a dashboard by template, or when
+ *   the ID does not resolve to a known dashboard.
+ *
+ * Template-mode targets resolve a different name per row (the name
+ * is itself templated); the generic verb form keeps the hint stable
+ * across rows. Per-row scope preview belongs to a separate hint
+ * surface and is not the responsibility of this helper.
+ */
+export function describeOnClick({
+  onClick,
+  sourceNamesById,
+  dashboardNamesById,
+}: {
+  onClick: OnClick;
+  sourceNamesById: Map<string, string>;
+  dashboardNamesById: Map<string, string>;
+}): string {
+  if (onClick.type === 'search') {
+    if (onClick.target.mode === 'id') {
+      const name = sourceNamesById.get(onClick.target.id);
+      if (name) return `Search ${name}`;
+    }
+    return 'Open in search';
+  }
+  if (onClick.type === 'dashboard') {
+    if (onClick.target.mode === 'id') {
+      const name = dashboardNamesById.get(onClick.target.id);
+      if (name) return `Open dashboard "${name}"`;
+    }
+    return 'Open dashboard';
+  }
+  // Exhaustiveness check: adding a new OnClickSchema variant must
+  // also extend describeOnClick.
+  const _exhaustive: never = onClick;
+  return _exhaustive;
+}
+
 /** Throws if the given OnClick includes a template with invalid syntax */
 export function validateOnClickTemplate(onClick: OnClick) {
   if (onClick.target.mode === 'template') {

@@ -1,5 +1,6 @@
 import type { OnClickDashboard, OnClickSearch } from '../../types';
 import {
+  describeOnClick,
   renderOnClickDashboard,
   renderOnClickSearch,
   validateOnClickTemplate,
@@ -951,5 +952,78 @@ describe('validateOnClickTemplate', () => {
       whereLanguage: 'sql',
     };
     expect(() => validateOnClickTemplate(onClick)).not.toThrow();
+  });
+});
+
+describe('describeOnClick', () => {
+  const sourceNamesById = new Map<string, string>([['src_1', 'HyperDX Logs']]);
+  const dashboardNamesById = new Map<string, string>([
+    ['dash_1', 'API Latency Drilldown'],
+  ]);
+
+  it('describes a search action targeting a known source by ID with the resolved name', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'id', id: 'src_1' },
+      whereLanguage: 'sql',
+    };
+    expect(
+      describeOnClick({ onClick, sourceNamesById, dashboardNamesById }),
+    ).toBe('Search HyperDX Logs');
+  });
+
+  it('falls back to a generic verb form when the search source ID is not in the lookup', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'id', id: 'src_missing' },
+      whereLanguage: 'sql',
+    };
+    expect(
+      describeOnClick({ onClick, sourceNamesById, dashboardNamesById }),
+    ).toBe('Open in search');
+  });
+
+  it('falls back to a generic verb form for template-mode search targets', () => {
+    const onClick: OnClickSearch = {
+      type: 'search',
+      target: { mode: 'template', template: '{{Src}}' },
+      whereLanguage: 'sql',
+    };
+    expect(
+      describeOnClick({ onClick, sourceNamesById, dashboardNamesById }),
+    ).toBe('Open in search');
+  });
+
+  it('describes a dashboard action targeting a known dashboard by ID with the resolved name', () => {
+    const onClick: OnClickDashboard = {
+      type: 'dashboard',
+      target: { mode: 'id', id: 'dash_1' },
+      whereLanguage: 'sql',
+    };
+    expect(
+      describeOnClick({ onClick, sourceNamesById, dashboardNamesById }),
+    ).toBe('Open dashboard "API Latency Drilldown"');
+  });
+
+  it('falls back to a generic verb form when the dashboard ID is not in the lookup', () => {
+    const onClick: OnClickDashboard = {
+      type: 'dashboard',
+      target: { mode: 'id', id: 'dash_missing' },
+      whereLanguage: 'sql',
+    };
+    expect(
+      describeOnClick({ onClick, sourceNamesById, dashboardNamesById }),
+    ).toBe('Open dashboard');
+  });
+
+  it('falls back to a generic verb form for template-mode dashboard targets', () => {
+    const onClick: OnClickDashboard = {
+      type: 'dashboard',
+      target: { mode: 'template', template: '{{Dashboard}}' },
+      whereLanguage: 'sql',
+    };
+    expect(
+      describeOnClick({ onClick, sourceNamesById, dashboardNamesById }),
+    ).toBe('Open dashboard');
   });
 });

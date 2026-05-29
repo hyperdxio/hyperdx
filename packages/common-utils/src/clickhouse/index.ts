@@ -823,7 +823,7 @@ export function chSqlToAliasMap(
   chSql: ChSql | undefined,
 ): Record<string, string> {
   const aliasMap: Record<string, string> = {};
-  if (chSql == null) {
+  if (chSql == null || !chSql.sql) {
     return aliasMap;
   }
 
