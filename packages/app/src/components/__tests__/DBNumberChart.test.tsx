@@ -371,5 +371,102 @@ describe('DBNumberChart', () => {
       // than wrap and visually break the tile.
       expect(textEl.style.whiteSpace).toBe('nowrap');
     });
+
+    /**
+     * Drives the binary-search measurement pass by faking the DOM
+     * geometry that the AutoSizeNumber component reads:
+     *
+     *  - container.clientWidth / clientHeight  -> available tile size
+     *  - text.scrollWidth / scrollHeight       -> rendered text size at
+     *    the current font-size, modeled as proportional to the assigned
+     *    font-size in px and the length of the text (a reasonable
+     *    approximation of how a real browser would lay it out).
+     *
+     * With those mocks in place we can assert that the picked font size
+     * actually shrinks for narrow containers and grows for wide ones.
+     */
+    const installGeometryMocks = (
+      containerWidth: number,
+      containerHeight: number,
+      // px of width per character at 1px font; tweak so realistic numbers
+      // produce realistic measurements during the binary search.
+      widthPerChar = 0.6,
+    ) => {
+      const containerSpy = jest
+        .spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+        .mockImplementation(function (this: HTMLElement) {
+          return this.tagName === 'DIV' ? containerWidth : 0;
+        });
+      const containerHeightSpy = jest
+        .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+        .mockImplementation(function (this: HTMLElement) {
+          return this.tagName === 'DIV' ? containerHeight : 0;
+        });
+      const scrollWidthSpy = jest
+        .spyOn(HTMLElement.prototype, 'scrollWidth', 'get')
+        .mockImplementation(function (this: HTMLElement) {
+          if (this.tagName !== 'P') return 0;
+          const fs = parseFloat(this.style.fontSize) || 0;
+          return Math.ceil((this.textContent ?? '').length * widthPerChar * fs);
+        });
+      const scrollHeightSpy = jest
+        .spyOn(HTMLElement.prototype, 'scrollHeight', 'get')
+        .mockImplementation(function (this: HTMLElement) {
+          if (this.tagName !== 'P') return 0;
+          const fs = parseFloat(this.style.fontSize) || 0;
+          // line-height: 1.1
+          return Math.ceil(fs * 1.1);
+        });
+
+      return () => {
+        containerSpy.mockRestore();
+        containerHeightSpy.mockRestore();
+        scrollWidthSpy.mockRestore();
+        scrollHeightSpy.mockRestore();
+      };
+    };
+
+    it('shrinks the font for a narrow tile so the value fits without overflow', () => {
+      const restore = installGeometryMocks(120, 80);
+      try {
+        mockUseQueriedChartConfig.mockReturnValue({
+          data: { data: [{ value: 1234567890 }] },
+          isLoading: false,
+          isError: false,
+        });
+
+        renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+
+        const textEl = screen.getByText('1234567890');
+        const fontSize = parseFloat(textEl.style.fontSize);
+
+        // Available width after padding (12 px each side) is 96 px.
+        // 10 chars * 0.6 width-per-char = 6 px/char, so the largest
+        // font size that fits is floor(96 / (10 * 0.6)) = 16 px. Picked
+        // size must be <= 16 and >= the configured min of 14 px.
+        expect(fontSize).toBeLessThanOrEqual(16);
+        expect(fontSize).toBeGreaterThanOrEqual(14);
+      } finally {
+        restore();
+      }
+    });
+
+    it('grows the font for a wide tile so the value fills the available space', () => {
+      const restore = installGeometryMocks(800, 400);
+      try {
+        renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+
+        const textEl = screen.getByText('1234');
+        const fontSize = parseFloat(textEl.style.fontSize);
+
+        // 4 chars * 0.6 = 2.4 px per font-size px, so a 800-px-wide
+        // container could theoretically fit very large fonts; the
+        // auto-sizer should clamp to the configured max (72 px).
+        expect(fontSize).toBeGreaterThanOrEqual(60);
+        expect(fontSize).toBeLessThanOrEqual(72);
+      } finally {
+        restore();
+      }
+    });
   });
 });
