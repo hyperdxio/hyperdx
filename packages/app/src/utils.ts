@@ -379,6 +379,8 @@ export const getLogLevelClass = (lvl: string | undefined) => {
  * (the single shared SCSS source for categorical hues; both brand
  * themes `@use` it).
  */
+type CategoricalChartPaletteToken = (typeof CATEGORICAL_PALETTE_TOKENS)[number];
+
 const CATEGORICAL_HEX_BY_TOKEN = {
   'chart-blue': '#437eef',
   'chart-orange': '#efb118',
@@ -390,15 +392,53 @@ const CATEGORICAL_HEX_BY_TOKEN = {
   'chart-light-blue': '#97bbf5',
   'chart-brown': '#9c6b4e',
   'chart-gray': '#9498a0',
-} as const satisfies Record<string, string>;
+} as const satisfies Record<CategoricalChartPaletteToken, string>;
+
+// Reverse-direction completeness check: if `CATEGORICAL_HEX_BY_TOKEN`
+// ever grows an extra key that's not in `CATEGORICAL_PALETTE_TOKENS`
+// (e.g. a deprecated hex stuck around after dropping the token from the
+// shared enum), this type collapses to `never` and the assignment below
+// becomes a compile error. The `satisfies` above already enforces the
+// forward direction (every categorical token has a hex), so together
+// they pin the two structures to a 1:1 mapping at build time.
+type _CategoricalHexCompleteness =
+  Exclude<
+    keyof typeof CATEGORICAL_HEX_BY_TOKEN,
+    CategoricalChartPaletteToken
+  > extends never
+    ? true
+    : never;
+const _categoricalHexCompletenessCheck: _CategoricalHexCompleteness = true;
+void _categoricalHexCompletenessCheck;
+
+type SemanticChartColorKey =
+  | 'success'
+  | 'warning'
+  | 'error'
+  | 'info'
+  | 'successHighlight'
+  | 'warningHighlight'
+  | 'errorHighlight';
 
 /**
  * Per-brand semantic chart palette. SSR / `getComputedStyle` fallback
  * for `getChartColor{Success,Warning,Error,Info,*Highlight}` helpers.
  * Live values come from `--color-chart-{success|warning|error|info}[-highlight]`
  * in `_chart-categorical-tokens.scss` (`chart-semantic-tokens` mixin).
+ *
+ * The two brand entries are intentionally byte-identical today — the
+ * palette is unified across HyperDX and ClickStack post-#2362. The
+ * per-brand shape (and the explicit `Record<…, SemanticChartHexes>`
+ * constraint) is preserved as a future override hook AND so the type
+ * system enforces parity: dropping or renaming a key in one brand
+ * without mirroring it in the other becomes a compile error instead
+ * of a silent runtime divergence between SSR and client.
  */
-const SEMANTIC_CHART_PALETTE = {
+type SemanticChartHexes = Readonly<Record<SemanticChartColorKey, string>>;
+
+const SEMANTIC_CHART_PALETTE: Readonly<
+  Record<'hyperdx' | 'clickstack', SemanticChartHexes>
+> = {
   hyperdx: {
     success: '#3ca951',
     warning: '#efb118',
@@ -417,9 +457,7 @@ const SEMANTIC_CHART_PALETTE = {
     warningHighlight: '#f5c94d',
     errorHighlight: '#ffa090',
   },
-} as const;
-
-type SemanticChartColorKey = keyof typeof SEMANTIC_CHART_PALETTE.hyperdx;
+};
 
 /**
  * Ordered hex array for positional series assignment.
@@ -427,11 +465,15 @@ type SemanticChartColorKey = keyof typeof SEMANTIC_CHART_PALETTE.hyperdx;
  * Returned directly by `getColorFromCSSVariable(i)` on both server and
  * client — the categorical palette is unified across themes, so there's
  * no benefit to reading the matching CSS var via `getComputedStyle`.
+ *
+ * Typed as `readonly string[]` (not `string[]`) because the array is a
+ * derived snapshot of `CATEGORICAL_HEX_BY_TOKEN` — mutating it in place
+ * would desync the two structures the completeness check above pins
+ * together.
  */
-export const COLORS: string[] = CATEGORICAL_PALETTE_TOKENS.map(
-  token =>
-    CATEGORICAL_HEX_BY_TOKEN[token as keyof typeof CATEGORICAL_HEX_BY_TOKEN],
-);
+export const COLORS: readonly string[] = (
+  CATEGORICAL_PALETTE_TOKENS as readonly CategoricalChartPaletteToken[]
+).map(token => CATEGORICAL_HEX_BY_TOKEN[token]);
 
 /**
  * Palette token types and runtime guards live in common-utils so the
@@ -510,10 +552,15 @@ export function getColorFromCSSToken(token: ChartPaletteToken): string {
     return CATEGORICAL_HEX_BY_TOKEN[token];
   }
 
-  const cssVarName = `--color-${token}`;
+  // After the categorical short-circuit, `token` is narrowed to a
+  // semantic token (`chart-success`/`chart-warning`/`chart-error`)
+  // — the parameter type that `semanticTokenFallback` enforces via
+  // its exhaustiveness check.
+  const semanticToken = token;
+  const cssVarName = `--color-${semanticToken}`;
 
   if (typeof window === 'undefined') {
-    return semanticTokenFallback(token);
+    return semanticTokenFallback(semanticToken);
   }
 
   try {
@@ -526,7 +573,7 @@ export function getColorFromCSSToken(token: ChartPaletteToken): string {
     // Fallback if getComputedStyle fails
   }
 
-  return semanticTokenFallback(token);
+  return semanticTokenFallback(semanticToken);
 }
 
 function isCategoricalChartPaletteToken(
@@ -535,7 +582,9 @@ function isCategoricalChartPaletteToken(
   return Object.prototype.hasOwnProperty.call(CATEGORICAL_HEX_BY_TOKEN, token);
 }
 
-function semanticTokenFallback(token: ChartPaletteToken): string {
+function semanticTokenFallback(
+  token: Exclude<ChartPaletteToken, CategoricalChartPaletteToken>,
+): string {
   switch (token) {
     case 'chart-success':
     case 'chart-warning':
@@ -547,9 +596,16 @@ function semanticTokenFallback(token: ChartPaletteToken): string {
         | 'error';
       return SEMANTIC_CHART_PALETTE[theme][key];
     }
-    default:
-      // Unknown token; fall back to brand-primary so we render *something*.
-      return COLORS[0];
+    default: {
+      // Exhaustiveness assertion: if a new semantic token lands on
+      // `ChartPaletteToken` without a matching case above, this line
+      // becomes a compile error. The fallback was previously
+      // `COLORS[0]` with a "brand-primary" comment, but that path is
+      // unreachable through the parameter type and silently masked
+      // future drift.
+      const _exhaustive: never = token;
+      throw new Error(`Unhandled semantic chart token: ${_exhaustive}`);
+    }
   }
 }
 

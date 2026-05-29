@@ -3,6 +3,7 @@ import {
   DashboardWithoutIdSchema,
   PresetDashboard,
   PresetDashboardFilterSchema,
+  resolveChartPaletteToken,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import _ from 'lodash';
@@ -29,6 +30,41 @@ import { objectIdSchema } from '@/utils/zod';
 // create routes that will get and update dashboards
 const router = express.Router();
 
+/**
+ * Heal legacy `chart-1`..`chart-10` tile colors from #2265 on the request
+ * body *before* `validateRequest` runs `ChartPaletteTokenSchema`. Keeps the
+ * schema strict (so `z.input` == `z.output` and `req.body` infers cleanly)
+ * while still accepting payloads from any non-React HTTP client whose
+ * stored values haven't yet been healed by the app-side normalizer
+ * (`normalizeDashboardTileColors` in `packages/app/src/dashboard.ts`).
+ *
+ * This is a one-release deprecation shim — once stored data has converged
+ * on the hue-named tokens, it can be removed in favor of straight-strict
+ * validation.
+ */
+const migrateLegacyDashboardTileColors: express.RequestHandler = (
+  req,
+  _res,
+  next,
+) => {
+  const body: unknown = req.body;
+  if (!body || typeof body !== 'object') return next();
+  const tiles = (body as { tiles?: unknown }).tiles;
+  if (!Array.isArray(tiles)) return next();
+  for (const tile of tiles) {
+    if (!tile || typeof tile !== 'object') continue;
+    const config = (tile as { config?: unknown }).config;
+    if (!config || typeof config !== 'object') continue;
+    const c = config as { color?: unknown };
+    if (typeof c.color !== 'string') continue;
+    const resolved = resolveChartPaletteToken(c.color);
+    if (resolved !== undefined && resolved !== c.color) {
+      c.color = resolved;
+    }
+  }
+  next();
+};
+
 router.get('/', async (req, res, next) => {
   try {
     const { teamId } = getNonNullUserWithTeam(req);
@@ -43,6 +79,7 @@ router.get('/', async (req, res, next) => {
 
 router.post(
   '/',
+  migrateLegacyDashboardTileColors,
   validateRequest({
     body: DashboardWithoutIdSchema,
   }),
@@ -63,6 +100,7 @@ router.post(
 
 router.patch(
   '/:id',
+  migrateLegacyDashboardTileColors,
   validateRequest({
     params: z.object({
       id: objectIdSchema,

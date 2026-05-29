@@ -70,6 +70,8 @@ export const semanticColorsGrouped = {
     'color-chart-success',
     'color-chart-warning',
     'color-chart-error',
+    'color-chart-info',
+    'color-chart-success-highlight',
     'color-chart-error-highlight',
     'color-chart-warning-highlight',
   ],

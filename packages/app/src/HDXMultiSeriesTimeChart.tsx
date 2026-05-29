@@ -333,6 +333,32 @@ const StackedBarWithOverlap = (props: BarProps) => {
   );
 };
 
+/**
+ * Compute the unique set of hexes referenced by `<linearGradient>` defs
+ * inside MemoChart. Exported so a unit test can pin the dedup-and-union
+ * behavior without standing up a full recharts render (which jsdom
+ * struggles with at the container-sized SVG layer).
+ *
+ * Includes every categorical hex up front so any positional `<Area>`
+ * fill resolves, then unions in semantic hexes returned by the
+ * `getChartColor{Info,Success,Warning,Error}` helpers — those land in
+ * `lineData[].color` and would otherwise be missing a matching def.
+ * `undefined` colors are filtered so `c.replace('#', '')` can't throw
+ * on a future caller that leaves a series color unset.
+ */
+export function collectMemoChartGradientHexes(
+  lineData: { color?: string }[],
+): string[] {
+  return Array.from(
+    new Set([
+      ...COLORS,
+      ...lineData
+        .map(ld => ld.color)
+        .filter((c): c is string => typeof c === 'string'),
+    ]),
+  );
+}
+
 export const MemoChart = memo(function MemoChart({
   graphResults,
   setIsClickActive,
@@ -683,14 +709,7 @@ export const MemoChart = memo(function MemoChart({
               resolve to `--color-chart-info`, chart blue `#437eef`, on both
               brands, which matches categorical slot 0). Union them here so the
               referenced `url(#time-chart-lin-grad-…)` always exists. */}
-          {Array.from(
-            new Set([
-              ...COLORS,
-              ...lineData
-                .map(ld => ld.color)
-                .filter((c): c is string => typeof c === 'string'),
-            ]),
-          ).map(c => {
+          {collectMemoChartGradientHexes(lineData).map(c => {
             return (
               <linearGradient
                 key={c}

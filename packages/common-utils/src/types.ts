@@ -796,7 +796,12 @@ export function isOnClickDashboardById(
  * Tokens map to CSS variables in
  * `packages/app/src/theme/themes/<theme>/_tokens.scss`:
  *   chart-{hue}                 -> --color-chart-{hue}                    (10 hues, unified across themes)
- *   chart-success/warning/error/info -> --color-chart-{success|warning|error|info}  (semantic; unified across brands)
+ *   chart-success/warning/error -> --color-chart-{success|warning|error}  (semantic; unified across brands)
+ *
+ * `chart-info` is a render-time CSS variable (defined in the shared
+ * `chart-semantic-tokens` SCSS mixin) but is intentionally *not* in the
+ * picker enum — it's consumed only by code paths that always want
+ * brand-primary (e.g. info-level log series, `getChartColorInfo()`).
  *
  * Storing tokens (not hex) lets user choices reflow correctly across
  * themes and color modes; see notes/repo-conventions/hyperdx/tile-styling.md.
@@ -806,7 +811,12 @@ export function isOnClickDashboardById(
  * stays in `packages/app/src/utils.ts` because it depends on
  * `getComputedStyle(document.documentElement)`.
  */
-export const CHART_PALETTE_TOKENS = [
+/** Categorical tokens (10 hues). Tuple literal so the element type
+ * stays narrow (`'chart-blue' | 'chart-orange' | ...`) rather than
+ * widening to `ChartPaletteToken`; downstream consumers like
+ * `CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts` rely on
+ * the narrow element type to enforce 1:1 coverage at compile time. */
+export const CATEGORICAL_PALETTE_TOKENS = [
   'chart-blue',
   'chart-orange',
   'chart-red',
@@ -817,23 +827,35 @@ export const CHART_PALETTE_TOKENS = [
   'chart-light-blue',
   'chart-brown',
   'chart-gray',
+] as const;
+
+/** Semantic tokens (success / warning / error). Tuple literal for the
+ * same narrow-element-type reason as the categorical list above. */
+export const SEMANTIC_PALETTE_TOKENS = [
   'chart-success',
   'chart-warning',
   'chart-error',
 ] as const;
 
+export const CHART_PALETTE_TOKENS = [
+  ...CATEGORICAL_PALETTE_TOKENS,
+  ...SEMANTIC_PALETTE_TOKENS,
+] as const;
+
 export type ChartPaletteToken = (typeof CHART_PALETTE_TOKENS)[number];
 
-/** Categorical tokens (10 hues). */
-export const CATEGORICAL_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
-  0,
-  10,
-) as readonly ChartPaletteToken[];
-
-/** Semantic tokens (success / warning / error). */
-export const SEMANTIC_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
-  10,
-) as readonly ChartPaletteToken[];
+/** Numeric tokens (`chart-1` .. `chart-10`) shipped in #2265. */
+type LegacyChartPaletteTokenKey =
+  | 'chart-1'
+  | 'chart-2'
+  | 'chart-3'
+  | 'chart-4'
+  | 'chart-5'
+  | 'chart-6'
+  | 'chart-7'
+  | 'chart-8'
+  | 'chart-9'
+  | 'chart-10';
 
 /**
  * Legacy numeric tokens (`chart-1` .. `chart-10`) shipped in the initial
@@ -844,6 +866,16 @@ export const SEMANTIC_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
  * Mapping preserves the HyperDX slot ordering from #2265 (slot 1 was
  * brand green, slot 2 was blue, and so on through the Observable 10
  * palette).
+ *
+ * ⚠️ ClickStack caveat: pre-rename ClickStack resolved `--color-chart-1`
+ * to brand blue, not brand green, so a ClickStack tile saved with the
+ * old "Color 1" will visually shift after migration. The trade-off
+ * (and why we don't theme-branch this map) is documented in
+ * `agent_docs/data_viz_colors.md` and the changeset for #2362.
+ *
+ * Keyed by the narrow `LegacyChartPaletteTokenKey` union (rather than
+ * `string`) so a typo in a legacy slot at edit time becomes a compile
+ * error.
  */
 export const LEGACY_CHART_PALETTE_TOKEN_MAP = {
   'chart-1': 'chart-green',
@@ -856,7 +888,7 @@ export const LEGACY_CHART_PALETTE_TOKEN_MAP = {
   'chart-8': 'chart-light-blue',
   'chart-9': 'chart-brown',
   'chart-10': 'chart-gray',
-} as const satisfies Record<string, ChartPaletteToken>;
+} as const satisfies Record<LegacyChartPaletteTokenKey, ChartPaletteToken>;
 
 export type LegacyChartPaletteToken =
   keyof typeof LEGACY_CHART_PALETTE_TOKEN_MAP;

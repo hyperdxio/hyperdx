@@ -1,6 +1,7 @@
 import {
   DashboardWithoutId,
   DashboardWithoutIdSchema,
+  resolveChartPaletteToken,
 } from '@hyperdx/common-utils/dist/types';
 import fs from 'fs';
 import path from 'path';
@@ -11,6 +12,28 @@ import Team from '@/models/team';
 import type { HdxTask } from '@/tasks/types';
 import { ProvisionDashboardsTaskArgs } from '@/tasks/types';
 import logger from '@/utils/logger';
+
+// Walks parsed-but-unvalidated JSON and rewrites any legacy
+// `chart-1`..`chart-10` tile colors from #2265 to their hue-named
+// equivalents. Mirrors `normalizeRawDashboardTileColors` in the app
+// package; the provisioner can't import from `packages/app`, so the
+// minimal walker is inlined here.
+function migrateLegacyDashboardTileColorsInPlace(raw: unknown): void {
+  if (!raw || typeof raw !== 'object') return;
+  const tiles = (raw as { tiles?: unknown }).tiles;
+  if (!Array.isArray(tiles)) return;
+  for (const tile of tiles) {
+    if (!tile || typeof tile !== 'object') continue;
+    const config = (tile as { config?: unknown }).config;
+    if (!config || typeof config !== 'object') continue;
+    const c = config as { color?: unknown };
+    if (typeof c.color !== 'string') continue;
+    const resolved = resolveChartPaletteToken(c.color);
+    if (resolved !== undefined && resolved !== c.color) {
+      c.color = resolved;
+    }
+  }
+}
 
 export function readDashboardFiles(dir: string): DashboardWithoutId[] {
   let files: string[];
@@ -25,6 +48,7 @@ export function readDashboardFiles(dir: string): DashboardWithoutId[] {
   for (const file of files) {
     try {
       const raw = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+      migrateLegacyDashboardTileColorsInPlace(raw);
       const parsed = DashboardWithoutIdSchema.safeParse({
         tags: [],
         ...raw,

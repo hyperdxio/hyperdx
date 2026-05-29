@@ -1,6 +1,7 @@
 ---
 '@hyperdx/common-utils': minor
 '@hyperdx/app': minor
+'@hyperdx/api': patch
 ---
 
 refactor(theme): rename chart palette tokens from chart-1..10 to hue-named
@@ -12,16 +13,33 @@ Stored configs from the initial color picker (#2265) keep working.
 matches `z.output` — wrapping it in `z.preprocess` would poison
 `validateRequest`'s `req.body` inference all the way up to
 `Dashboard.tiles[i].config.color`). Migration of legacy `chart-1` .. `chart-10`
-happens in two complementary places: a `normalizeDashboardTileColors` helper (in
-`packages/app/src/dashboard.ts`) heals dashboards both on fetch (`useDashboards`
-/ `fetchLocalDashboards`) and on write (`useUpdateDashboard` /
-`useCreateDashboard`), so the DB-side data converges on next save and JSON
-imports / preset constructions don't trip the strict server-side schema. A
-render-time `resolveChartPaletteToken` helper (in `common-utils/types.ts`,
-re-exported from `packages/app/src/utils.ts`) acts as belt-and-suspenders inside
-`DBNumberChart` and `ColorSwatchInput` for tiles constructed in memory between
-fetch and save. Both paths preserve the HyperDX slot ordering from #2265 (slot 1
-= brand green, slot 2 = blue, etc.).
+happens at four complementary points so no entry path can slip through:
+
+- **Fetch-time / write-time (React)**: `normalizeDashboardTileColors` in
+  `packages/app/src/dashboard.ts` heals dashboards on read
+  (`useDashboards` / `fetchLocalDashboards` / `fetchDashboards`) and on write
+  (`useUpdateDashboard` / `useCreateDashboard`). Unresolvable color strings
+  (stale hexes, hand-edited values) are stripped at the boundary so they
+  never reach the strict server-side schema and 400 the next save.
+- **JSON import**: `DBDashboardImportPage` runs
+  `normalizeRawDashboardTileColors` on the parsed JSON *before* the strict
+  `DashboardTemplateSchema.safeParse`, so templates exported from a
+  pre-rename deploy import cleanly.
+- **Server-side migration shim**: the dashboards POST / PATCH routes mount
+  a request-body preprocessor that rewrites legacy tile colors before
+  `validateRequest` runs `ChartPaletteTokenSchema`. Catches non-React
+  HTTP callers (stale-bundle tabs during a rolling deploy, CI scripts,
+  MCP, the upcoming external-API parity work) for a one-release
+  deprecation window without weakening the schema's input/output equality.
+  The dashboard provisioner task applies the same shim before parsing
+  on-disk template files.
+- **Render-time (belt-and-suspenders)**: `DBNumberChart` and
+  `ColorSwatchInput` also call `resolveChartPaletteToken` for tiles
+  constructed in memory between fetch and save (`ChartEditor` form
+  state, unit-test fixtures, hand-rolled `Tile` literals).
+
+The migration preserves the HyperDX slot ordering from #2265 (slot 1 = brand
+green, slot 2 = blue, etc.).
 
 **ClickStack legacy color caveat:** Pre-rename ClickStack used a different slot
 ordering than HyperDX (`--color-chart-1` was brand blue `#437eef`, not brand

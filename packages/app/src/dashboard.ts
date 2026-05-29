@@ -58,12 +58,15 @@ const localDashboards = createEntityStore<Dashboard>('hdx-local-dashboards');
  * return a Zod 400. Symmetric application also lets the DB-side data
  * converge on next save instead of holding legacy tokens forever.
  *
- * Unknown strings are left untouched so we don't accidentally erase
- * forward-compat values; hue tokens already match the resolver and
- * pass through unchanged. The returned tile array preserves identity
- * where nothing changed so React reconciliation stays cheap and the
- * helper is safe to call on payloads that omit `tiles` entirely
- * (partial PATCHes).
+ * Hue tokens already match the resolver and pass through unchanged.
+ * Strings that aren't resolvable to a current `ChartPaletteToken`
+ * (stale hexes, hand-edited values, future tokens from a forward-rolled
+ * deploy) are stripped from `config.color` rather than passed through —
+ * leaving them in place would trip the strict server-side
+ * `ChartPaletteTokenSchema` on the next save and 400 the request. The
+ * returned tile array preserves identity where nothing changed so React
+ * reconciliation stays cheap, and the helper is safe to call on payloads
+ * that omit `tiles` entirely (partial PATCHes).
  */
 function normalizeDashboardTileColors<T extends { tiles?: Tile[] }>(
   dashboard: T,
@@ -71,12 +74,15 @@ function normalizeDashboardTileColors<T extends { tiles?: Tile[] }>(
   if (!dashboard.tiles || dashboard.tiles.length === 0) return dashboard;
   let changed = false;
   const tiles = dashboard.tiles.map(tile => {
-    const config = tile.config as { color?: unknown };
-    const current = config?.color;
+    const current = tile.config?.color;
     if (typeof current !== 'string') return tile;
     const resolved = resolveChartPaletteToken(current);
-    if (resolved === undefined || resolved === current) return tile;
+    if (resolved === current) return tile;
     changed = true;
+    if (resolved === undefined) {
+      const { color: _drop, ...rest } = tile.config;
+      return { ...tile, config: rest as Tile['config'] };
+    }
     return {
       ...tile,
       config: { ...tile.config, color: resolved } as Tile['config'],
@@ -85,7 +91,50 @@ function normalizeDashboardTileColors<T extends { tiles?: Tile[] }>(
   return changed ? { ...dashboard, tiles } : dashboard;
 }
 
-// Exported for testing; the React layer should reach for `useDashboards`.
+/**
+ * Walks a parsed-but-not-yet-validated JSON payload and rewrites every
+ * `tiles[i].config.color` that points at a legacy `chart-1`..`chart-10`
+ * value to its hue-named equivalent. Mirrors `normalizeDashboardTileColors`
+ * but operates on `unknown` data so the JSON-import flow in
+ * `DBDashboardImportPage` can heal legacy values *before* the strict
+ * `DashboardTemplateSchema` parse (which would reject the legacy enum and
+ * trip an error toast).
+ *
+ * Unlike `normalizeDashboardTileColors`, this raw variant leaves unknown
+ * non-token strings in place so the schema's own validation message
+ * surfaces them to the user with the proper "Invalid enum value" copy —
+ * stripping the field here would silently swallow a typo in an
+ * imported file.
+ */
+export function normalizeRawDashboardTileColors(input: unknown): unknown {
+  if (!input || typeof input !== 'object') return input;
+  const root = input as { tiles?: unknown };
+  const tiles = root.tiles;
+  if (!Array.isArray(tiles)) return input;
+  let changed = false;
+  const nextTiles = tiles.map(tile => {
+    if (!tile || typeof tile !== 'object') return tile;
+    const t = tile as { config?: unknown };
+    const config = t.config;
+    if (!config || typeof config !== 'object') return tile;
+    const c = config as { color?: unknown };
+    const current = c.color;
+    if (typeof current !== 'string') return tile;
+    const resolved = resolveChartPaletteToken(current);
+    if (resolved === undefined || resolved === current) return tile;
+    changed = true;
+    return { ...t, config: { ...c, color: resolved } };
+  });
+  return changed ? { ...root, tiles: nextTiles } : input;
+}
+
+/**
+ * Shared queryFn behind `useDashboards`. Exported so tests can call it
+ * directly (notably `dashboard.remote.test.ts`, which exercises the
+ * non-local branch in isolation). React components should keep going
+ * through `useDashboards` so React Query caching and invalidation
+ * stays uniform.
+ */
 export async function fetchDashboards(): Promise<Dashboard[]> {
   if (IS_LOCAL_MODE) {
     return localDashboards.getAll().map(normalizeDashboardTileColors);
@@ -186,7 +235,12 @@ export function useDashboard({
 
   const dashboard: Dashboard | undefined = useMemo(() => {
     if (isLocalDashboard) {
-      return localDashboard ?? defaultDashboard;
+      // URL-state local dashboards bypass `fetchDashboards`, so heal
+      // any legacy `chart-N` here too (symmetric with the write-time
+      // pass in `setDashboard` below).
+      return localDashboard
+        ? normalizeDashboardTileColors(localDashboard)
+        : defaultDashboard;
     }
     return remoteDashboard;
   }, [isLocalDashboard, localDashboard, defaultDashboard, remoteDashboard]);
@@ -198,7 +252,11 @@ export function useDashboard({
       onError?: VoidFunction,
     ) => {
       if (isLocalDashboard) {
-        setLocalDashboard(newDashboard);
+        // Normalize on write too so the URL-state local dashboard never
+        // holds a legacy `chart-N` after a no-fetch path (e.g. a tile
+        // inserted via a preset literal) and matches the canonical hue
+        // tokens used by the renderers.
+        setLocalDashboard(normalizeDashboardTileColors(newDashboard));
         onSuccess?.();
       } else {
         setIsSettingDashboard(true);

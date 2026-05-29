@@ -41,14 +41,18 @@
 }
 
 /*
- * Semantic chart colors — unified on both brands. `success` and `info` alias
- * categorical `chart-green` and `chart-blue`; warning and error use shared
- * Observable hexes. Must be `@include`d after `chart-categorical-tokens`.
+ * Semantic chart colors — unified on both brands. All four semantic vars
+ * alias their matching categorical hue var so a future tweak to e.g.
+ * `--color-chart-orange` propagates to `--color-chart-warning` without
+ * a second edit. Must be `@include`d after `chart-categorical-tokens`.
+ *
+ * Highlight variants stay as concrete hexes — they're a tint of the
+ * base hue, not an alias, so they can't ride the var.
  */
 @mixin chart-semantic-tokens {
   --color-chart-success: var(--color-chart-green);
-  --color-chart-warning: #efb118;
-  --color-chart-error: #ff725c;
+  --color-chart-warning: var(--color-chart-orange);
+  --color-chart-error: var(--color-chart-red);
   --color-chart-info: var(--color-chart-blue);
 
   /* Highlighted variants (hover/selection states) */

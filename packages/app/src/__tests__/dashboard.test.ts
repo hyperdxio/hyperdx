@@ -64,20 +64,26 @@ describe('fetchLocalDashboards', () => {
       );
     };
 
-    it('migrates chart-1..10 to their HyperDX-slot-order hue equivalents', () => {
-      storeDashboardWithTileColor('chart-1');
+    // Locked-in slot-to-hue mapping. Parameterized across all 10 slots
+    // so a future tweak to `LEGACY_CHART_PALETTE_TOKEN_MAP` is caught
+    // here instead of by a stored dashboard silently recoloring on the
+    // user's next reload. Order matches the HyperDX `_tokens.scss`
+    // categorical palette.
+    it.each([
+      ['chart-1', 'chart-green'],
+      ['chart-2', 'chart-blue'],
+      ['chart-3', 'chart-orange'],
+      ['chart-4', 'chart-red'],
+      ['chart-5', 'chart-cyan'],
+      ['chart-6', 'chart-pink'],
+      ['chart-7', 'chart-purple'],
+      ['chart-8', 'chart-light-blue'],
+      ['chart-9', 'chart-brown'],
+      ['chart-10', 'chart-gray'],
+    ])('migrates legacy %s → %s', (legacy, hue) => {
+      storeDashboardWithTileColor(legacy);
       expect(fetchLocalDashboards()[0].tiles[0].config).toMatchObject({
-        color: 'chart-green',
-      });
-
-      storeDashboardWithTileColor('chart-2');
-      expect(fetchLocalDashboards()[0].tiles[0].config).toMatchObject({
-        color: 'chart-blue',
-      });
-
-      storeDashboardWithTileColor('chart-10');
-      expect(fetchLocalDashboards()[0].tiles[0].config).toMatchObject({
-        color: 'chart-gray',
+        color: hue,
       });
     });
 
@@ -88,15 +94,17 @@ describe('fetchLocalDashboards', () => {
       });
     });
 
-    it('leaves unknown strings alone (no silent data loss)', () => {
-      // A forward-compat or hand-edited value should survive the
-      // normalizer untouched; render-time consumers can decide to
-      // ignore it. The alternative — erasing the value — would be
-      // worse than leaving it.
+    it('strips unresolvable color strings so they never reach the strict schema', () => {
+      // A stale hex / hand-edited / future-rollback value would 400 the
+      // server-side `ChartPaletteTokenSchema` on next save if it sailed
+      // through unchanged. The normalizer drops the field instead, so
+      // the tile renders as the default series color and the next PATCH
+      // doesn't blow up.
       storeDashboardWithTileColor('chart-future-magenta');
-      expect(fetchLocalDashboards()[0].tiles[0].config).toMatchObject({
-        color: 'chart-future-magenta',
-      });
+      const config = fetchLocalDashboards()[0].tiles[0].config as {
+        color?: unknown;
+      };
+      expect(config).not.toHaveProperty('color');
     });
 
     it('does not touch tiles whose config has no color field', () => {
