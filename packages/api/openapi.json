@@ -2359,6 +2359,23 @@
             "example": [
               "65f5e4a3b9e77c001a111111"
             ]
+          },
+          "constant": {
+            "type": "boolean",
+            "description": "When true, the value from the dashboard's savedFilterValues matched\nby this filter's expression is applied automatically on every tile\nthis filter scopes, and viewers cannot change it. Use this to lock\na dashboard template to a single scope (clone the dashboard, save a\ndifferent default per copy). Pairs with renderMode to control how\nthe locked filter shows in the filter bar.\n",
+            "default": false,
+            "example": true
+          },
+          "renderMode": {
+            "type": "string",
+            "enum": [
+              "editable",
+              "readonly",
+              "hidden"
+            ],
+            "description": "Controls how this filter renders in the dashboard filter bar.\n\"editable\" (default) shows a normal dropdown the viewer can change.\n\"readonly\" shows a disabled chip with a lock icon; the viewer\nsees the locked value but cannot edit it. \"hidden\" omits the chip\nentirely; the locked value still scopes every matching tile.\n",
+            "default": "editable",
+            "example": "readonly"
           }
         }
       },

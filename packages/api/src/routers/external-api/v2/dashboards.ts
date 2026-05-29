@@ -1370,6 +1370,28 @@ function getSourceConnectionMismatches(
  *             is in the list; tiles using other sources are not affected by the
  *             selected filter value(s).
  *           example: ["65f5e4a3b9e77c001a111111"]
+ *         constant:
+ *           type: boolean
+ *           description: |
+ *             When true, the value from the dashboard's savedFilterValues matched
+ *             by this filter's expression is applied automatically on every tile
+ *             this filter scopes, and viewers cannot change it. Use this to lock
+ *             a dashboard template to a single scope (clone the dashboard, save a
+ *             different default per copy). Pairs with renderMode to control how
+ *             the locked filter shows in the filter bar.
+ *           default: false
+ *           example: true
+ *         renderMode:
+ *           type: string
+ *           enum: [editable, readonly, hidden]
+ *           description: |
+ *             Controls how this filter renders in the dashboard filter bar.
+ *             "editable" (default) shows a normal dropdown the viewer can change.
+ *             "readonly" shows a disabled chip with a lock icon; the viewer
+ *             sees the locked value but cannot edit it. "hidden" omits the chip
+ *             entirely; the locked value still scopes every matching tile.
+ *           default: "editable"
+ *           example: "readonly"
  *
  *     Filter:
  *       allOf:

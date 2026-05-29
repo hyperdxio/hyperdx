@@ -1,7 +1,7 @@
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { Group, Stack, Text, Tooltip } from '@mantine/core';
-import { IconHelp, IconRefresh } from '@tabler/icons-react';
+import { IconHelp, IconLock, IconRefresh } from '@tabler/icons-react';
 
 import { VirtualMultiSelect } from './components/VirtualMultiSelect/VirtualMultiSelect';
 import { useDashboardFilterValues } from './hooks/useDashboardFilterValues';
@@ -29,6 +29,7 @@ const DashboardFilterSelect = ({
 }: DashboardFilterSelectProps) => {
   const sortedValues = values?.toSorted() || [];
   const tooltipText = getAppliesToTooltip(filter);
+  const isReadOnly = filter.renderMode === 'readonly' || !!filter.constant;
 
   return (
     <Stack gap={2}>
@@ -36,6 +37,18 @@ const DashboardFilterSelect = ({
         <Text size="xs" c="dimmed">
           {filter.name}
         </Text>
+        {isReadOnly && (
+          <Tooltip
+            label="This filter is locked to the saved default value"
+            withinPortal
+          >
+            <IconLock
+              size={12}
+              color="var(--color-text-muted)"
+              data-testid={`dashboard-filter-lock-${filter.name}`}
+            />
+          </Tooltip>
+        )}
         <Tooltip label={tooltipText} withinPortal>
           <IconHelp
             size={12}
@@ -49,7 +62,7 @@ const DashboardFilterSelect = ({
           placeholder={value.length === 0 ? filter.name : undefined}
           values={value}
           data={sortedValues}
-          disabled={isLoading}
+          disabled={isLoading || isReadOnly}
           onChange={onChange}
           data-testid={`dashboard-filter-select-${filter.name}`}
         />
@@ -71,14 +84,18 @@ const DashboardFilters = ({
   filterValues,
   onSetFilterValue,
 }: DashboardFilterProps) => {
+  // Filters with renderMode === 'hidden' still apply to tile WHERE clauses
+  // (via the hook) but are not rendered in the filter bar.
+  const visibleFilters = filters.filter(f => f.renderMode !== 'hidden');
+
   const { data: filterValuesById, isFetching } = useDashboardFilterValues({
-    filters,
+    filters: visibleFilters,
     dateRange,
   });
 
   return (
     <Group align="start">
-      {Object.values(filters).map(filter => {
+      {visibleFilters.map(filter => {
         const queriedFilterValues = filterValuesById?.get(filter.id);
         const included = filterValues[filter.expression]?.included;
         const selectedValues = included

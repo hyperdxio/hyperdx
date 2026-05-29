@@ -18,13 +18,17 @@ import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  parseKeyPath,
+  TableConnection,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
+import { filtersToQuery } from '@hyperdx/common-utils/dist/filters';
 import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
@@ -164,6 +168,7 @@ import {
 } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
+import { parseQuery } from './searchFilters';
 import {
   getFirstTimestampValueExpression,
   useSource,
@@ -1386,7 +1391,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setFilterQueries,
     ignoredFilterExpressions,
     getFilterQueriesForSource,
-  } = useDashboardFilters(filters);
+  } = useDashboardFilters(filters, {
+    savedFilterValues: dashboard?.savedFilterValues,
+  });
 
   const dashboardReady =
     !!dashboard?.id &&
@@ -1416,7 +1423,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard?.id, dashboardReady]);
 
-  const handleSaveFilter = (filter: DashboardFilter) => {
+  const handleSaveFilter = (
+    filter: DashboardFilter,
+    options?: { defaultValues?: string[] },
+  ) => {
     if (!dashboard) return;
 
     setDashboard(
@@ -1427,6 +1437,33 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           draft.filters[filterIndex] = filter;
         } else {
           draft.filters = [...(draft.filters ?? []), filter];
+        }
+
+        // When the editor sets a default value (currently used to seed
+        // locked filters; the chip + "Save default" flow handles editable
+        // filters), upsert that value into savedFilterValues keyed by the
+        // filter expression. An empty array means "clear the saved default
+        // for this expression."
+        if (options?.defaultValues !== undefined) {
+          const existing = draft.savedFilterValues ?? [];
+          const { filters: parsed, passthroughFilters } = parseQuery(existing);
+          const norm = parseKeyPath(filter.expression).join('.');
+          const remaining: typeof parsed = {};
+          for (const [key, value] of Object.entries(parsed)) {
+            if (parseKeyPath(key).join('.') !== norm) {
+              remaining[key] = value;
+            }
+          }
+          if (options.defaultValues.length > 0) {
+            remaining[filter.expression] = {
+              included: new Set(options.defaultValues),
+              excluded: new Set(),
+            };
+          }
+          draft.savedFilterValues = [
+            ...filtersToQuery(remaining),
+            ...passthroughFilters,
+          ];
         }
       }),
     );
@@ -1537,9 +1574,42 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
     // Filter defaults: URL filters override saved defaults. If switching to a
     // dashboard without defaults, clear selected filters.
+    //
+    // Constant filters are excluded from the URL push: their value is
+    // sourced from savedFilterValues directly by the hook on every read,
+    // so writing them into the URL would (a) leak the locked scope into
+    // shared links and (b) duplicate the value across two sources of
+    // truth.
     if (!hasFiltersInUrl) {
       if (dashboard.savedFilterValues) {
-        setFilterQueries(dashboard.savedFilterValues);
+        const constantExpressions = new Set<string>();
+        for (const f of dashboard.filters ?? []) {
+          if (f.constant) {
+            constantExpressions.add(parseKeyPath(f.expression).join('.'));
+          }
+        }
+        if (constantExpressions.size === 0) {
+          setFilterQueries(dashboard.savedFilterValues);
+        } else {
+          // Filter out lucene/sql Filter[] entries that resolve to a
+          // constant expression. The hook overlays these from
+          // savedFilterValues itself.
+          const { filters: parsedSaved, passthroughFilters } = parseQuery(
+            dashboard.savedFilterValues,
+          );
+          const remaining: typeof parsedSaved = {};
+          for (const [key, value] of Object.entries(parsedSaved)) {
+            const norm = parseKeyPath(key).join('.');
+            if (!constantExpressions.has(norm)) {
+              remaining[key] = value;
+            }
+          }
+          const remainingQueries = [
+            ...filtersToQuery(remaining),
+            ...passthroughFilters,
+          ];
+          setFilterQueries(remainingQueries.length ? remainingQueries : null);
+        }
       } else if (isSwitchingDashboards) {
         setFilterQueries(null);
       }
@@ -1551,6 +1621,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     dashboard?.savedQuery,
     dashboard?.savedQueryLanguage,
     dashboard?.savedFilterValues,
+    dashboard?.filters,
     isLocalDashboard,
     isFetchingDashboard,
     router.isReady,
@@ -1584,9 +1655,50 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     const currentWhereLanguage = currentWhere
       ? formValues.whereLanguage || 'lucene'
       : null;
-    const currentFilterValues = rawFilterQueries?.length
-      ? rawFilterQueries
-      : [];
+    // Constant filter values are intentionally absent from the URL (the
+    // hook overlays them from savedFilterValues directly), so saving the
+    // bare URL state would clobber them. Preserve constant entries from
+    // the existing savedFilterValues array; everything else comes from
+    // the current URL state.
+    const constantExpressions = new Set<string>();
+    for (const f of dashboard.filters ?? []) {
+      if (f.constant) {
+        constantExpressions.add(parseKeyPath(f.expression).join('.'));
+      }
+    }
+    const urlFilterValues = rawFilterQueries?.length ? rawFilterQueries : [];
+    let currentFilterValues: Filter[] = urlFilterValues;
+    if (constantExpressions.size > 0 && dashboard.savedFilterValues?.length) {
+      const { filters: parsedSaved, passthroughFilters: savedPassthrough } =
+        parseQuery(dashboard.savedFilterValues);
+      const preservedSaved: typeof parsedSaved = {};
+      for (const [key, value] of Object.entries(parsedSaved)) {
+        const norm = parseKeyPath(key).join('.');
+        if (constantExpressions.has(norm)) {
+          preservedSaved[key] = value;
+        }
+      }
+      const preservedQueries = [
+        ...filtersToQuery(preservedSaved),
+        ...savedPassthrough,
+      ];
+      // Drop any URL entry whose expression collides with a constant; the
+      // preserved saved entry is the source of truth.
+      const { filters: parsedUrl, passthroughFilters: urlPassthrough } =
+        parseQuery(urlFilterValues);
+      const filteredUrl: typeof parsedUrl = {};
+      for (const [key, value] of Object.entries(parsedUrl)) {
+        const norm = parseKeyPath(key).join('.');
+        if (!constantExpressions.has(norm)) {
+          filteredUrl[key] = value;
+        }
+      }
+      currentFilterValues = [
+        ...preservedQueries,
+        ...filtersToQuery(filteredUrl),
+        ...urlPassthrough,
+      ];
+    }
 
     setDashboard(
       produce(dashboard, draft => {
@@ -2768,6 +2880,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         opened={showFiltersModal}
         onClose={() => setShowFiltersModal(false)}
         filters={filters}
+        savedFilterValues={dashboard?.savedFilterValues}
+        dateRange={searchedTimeRange}
+        supportsConstantFilters
         onSaveFilter={handleSaveFilter}
         onRemoveFilter={handleRemoveFilter}
         isLoading={isSavingDashboard || isFetchingDashboard}

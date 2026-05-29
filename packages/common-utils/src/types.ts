@@ -1164,6 +1164,12 @@ export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
 
 export const DashboardFilterType = z.enum(['QUERY_EXPRESSION']);
 
+export const DashboardFilterRenderMode = z.enum([
+  'editable',
+  'readonly',
+  'hidden',
+]);
+
 export const DashboardFilterSchema = z.object({
   id: z.string(),
   type: DashboardFilterType,
@@ -1176,6 +1182,16 @@ export const DashboardFilterSchema = z.object({
   // Sources this filter applies to. Undefined / missing means the filter
   // applies to all tiles.
   appliesToSourceIds: z.array(z.string().min(1)).optional(),
+  // When true, the saved default value (from dashboard.savedFilterValues
+  // matched by expression) is applied automatically and viewers cannot
+  // clear it. Pairs with `renderMode` to control how the locked filter
+  // appears in the filter bar.
+  constant: z.boolean().optional(),
+  // Controls how the filter appears in the dashboard filter bar.
+  // 'editable' (default): viewer can change the value.
+  // 'readonly': chip is rendered but the dropdown is disabled.
+  // 'hidden': chip is not rendered at all (filter still applies).
+  renderMode: DashboardFilterRenderMode.optional(),
 });
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;

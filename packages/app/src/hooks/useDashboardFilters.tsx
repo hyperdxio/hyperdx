@@ -12,14 +12,47 @@ import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
 const filterQueriesParser = parseAsJsonEncoded<Filter[]>();
 
-const useDashboardFilters = (filters: DashboardFilter[]) => {
+interface UseDashboardFiltersOptions {
+  /**
+   * The dashboard's saved filter values, in the same Lucene-encoded shape
+   * used in the URL. Constant filters (`constant: true`) source their
+   * locked value from this array, matched by filter expression.
+   * Optional; when omitted, constant filters resolve to no value.
+   */
+  savedFilterValues?: Filter[] | null;
+}
+
+const useDashboardFilters = (
+  filters: DashboardFilter[],
+  { savedFilterValues }: UseDashboardFiltersOptions = {},
+) => {
   const [filterQueries, setFilterQueries] = useQueryState(
     'filters',
     filterQueriesParser,
   );
 
+  // Normalize an expression to dot-notation so bracket-notation lookups
+  // match the keys produced by parseLuceneFilter.
+  const normalizeKey = (k: string) => parseKeyPath(k).join('.');
+
+  // Set of normalized expressions that are locked by `constant: true`.
+  // `setFilterValue` skips writes to these, and read paths overlay the
+  // saved value regardless of URL state.
+  const constantExpressions = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of filters) {
+      if (f.constant) set.add(normalizeKey(f.expression));
+    }
+    return set;
+  }, [filters]);
+
   const setFilterValue = useCallback(
     (expression: string, values: string[]) => {
+      // Constant filters cannot be cleared or changed by the viewer; the
+      // value is always sourced from `savedFilterValues`.
+      if (constantExpressions.has(parseKeyPath(expression).join('.'))) {
+        return;
+      }
       setFilterQueries(prev => {
         const { filters: filterValues } = parseQuery(prev ?? []);
         // Normalize the expression to dot notation so it matches the keys
@@ -37,7 +70,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
         return filtersToQuery(filterValues);
       });
     },
-    [setFilterQueries],
+    [setFilterQueries, constantExpressions],
   );
 
   const {
@@ -50,10 +83,6 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     const valuesForExistingFilters: FilterState = {};
     const ignored: string[] = [];
 
-    // Build a normalized lookup so bracket-notation expressions
-    // (e.g. SpanAttributes['k8s.pod.name']) match the dot-notation keys
-    // returned by parseLuceneFilter (e.g. SpanAttributes.k8s.pod.name).
-    const normalizeKey = (k: string) => parseKeyPath(k).join('.');
     const normalizedParsed = new Map(
       Object.entries(parsedFilters).map(([k, v]) => [normalizeKey(k), v]),
     );
@@ -61,15 +90,30 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
       filters.map(f => normalizeKey(f.expression)),
     );
 
-    for (const { expression } of filters) {
+    // Build a normalized lookup of saved filter values so constant filters
+    // can resolve their locked value regardless of URL state. Saved values
+    // are stored in the same Lucene-encoded shape as URL filters, so the
+    // same parser produces the same expression-keyed FilterState.
+    const { filters: parsedSaved } = parseQuery(savedFilterValues ?? []);
+    const normalizedSaved = new Map(
+      Object.entries(parsedSaved).map(([k, v]) => [normalizeKey(k), v]),
+    );
+
+    for (const { expression, constant } of filters) {
       const norm = normalizeKey(expression);
-      const match = normalizedParsed.get(norm);
+      // Constant filters always source their value from savedFilterValues,
+      // ignoring any URL state on the same expression. This is what makes
+      // the value "locked": the viewer cannot override it via the URL.
+      const savedMatch = constant ? normalizedSaved.get(norm) : undefined;
+      const urlMatch = constant ? undefined : normalizedParsed.get(norm);
+      const match = savedMatch ?? urlMatch;
       if (match) {
         valuesForExistingFilters[expression] = match;
       }
     }
     for (const key of Object.keys(parsedFilters)) {
-      if (!knownNormalized.has(normalizeKey(key))) {
+      const norm = normalizeKey(key);
+      if (!knownNormalized.has(norm)) {
         ignored.push(key);
       }
     }
@@ -92,7 +136,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
       ignoredExpressions: ignored,
       filtersByExpression,
     };
-  }, [filterQueries, filters]);
+  }, [filterQueries, filters, savedFilterValues]);
 
   // Return only the filter queries that should be applied to a tile whose
   // source is `sourceId`. When multiple filter definitions share the same

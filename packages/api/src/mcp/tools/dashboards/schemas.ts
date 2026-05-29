@@ -700,6 +700,27 @@ const mcpDashboardFilterSchema = z
           'Useful on mixed-source dashboards where a column (e.g. SpanName) only exists on ' +
           'a subset of sources.',
       ),
+    constant: z
+      .boolean()
+      .optional()
+      .describe(
+        'Optional. When true, the dashboard "scope" filter pattern: the value from the dashboard\'s ' +
+          "savedFilterValues matched by this filter's `expression` is applied automatically on " +
+          'every matching tile, and viewers cannot change it. Use this to lock a dashboard template ' +
+          'to a specific scope so it can be cloned and re-pointed by saving a different default ' +
+          'value per copy. Pair with `renderMode` to control how the locked filter shows in the bar.',
+      ),
+    renderMode: z
+      .enum(['editable', 'readonly', 'hidden'])
+      .optional()
+      .describe(
+        'Optional. Controls how this filter renders in the dashboard filter bar. ' +
+          '"editable" (default) shows a normal dropdown the viewer can change. ' +
+          '"readonly" shows a disabled chip with a lock icon; the viewer sees the locked value ' +
+          'but cannot edit it. ' +
+          '"hidden" omits the chip entirely; the locked value still scopes every matching tile. ' +
+          'Typically used together with `constant: true`.',
+      ),
   })
   .describe(
     'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
@@ -718,8 +739,13 @@ export const mcpFiltersParam = z
       'dropped on arrival and the destination opens unfiltered.\n\n' +
       'By default a filter applies to every tile on the dashboard. On mixed-source dashboards, ' +
       'use the optional `appliesToSourceIds` field to restrict a filter to only the tiles whose ' +
-      'source carries the referenced column — leave `appliesToSourceIds` omitted to keep the ' +
+      'source carries the referenced column; leave `appliesToSourceIds` omitted to keep the ' +
       'broadcast-to-all-tiles default.\n\n' +
+      'For dashboards meant as cloneable templates, set `constant: true` on a filter to lock ' +
+      "its value to the dashboard's saved default (matched by `expression`); pair with " +
+      '`renderMode: "readonly"` to show a disabled chip or `"hidden"` to drop the chip ' +
+      'entirely while keeping the WHERE clause active. Locked filters cannot be cleared by ' +
+      'the viewer.\n\n' +
       'Example (broadcast to every tile):\n' +
       '[\n' +
       '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +

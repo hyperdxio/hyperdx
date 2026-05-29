@@ -921,6 +921,127 @@ describe('External API v2 Dashboards - old format', () => {
       expect(getResponse.body.data.filters).toEqual(response.body.data.filters);
     });
 
+    it('should round-trip constant and renderMode on filters (HDX-4404)', async () => {
+      const dashboardPayload = {
+        name: 'Dashboard with locked filters',
+        tiles: [makeExternalChart({ sourceId: traceSource._id.toString() })],
+        tags: TEST_TAGS,
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Service (locked, read-only)',
+            expression: 'ServiceName',
+            sourceId: traceSource._id.toString(),
+            constant: true,
+            renderMode: 'readonly' as const,
+          },
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Environment (hidden)',
+            expression: 'environment',
+            sourceId: traceSource._id.toString(),
+            constant: true,
+            renderMode: 'hidden' as const,
+          },
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Region (default editable)',
+            expression: 'region',
+            sourceId: traceSource._id.toString(),
+            // constant + renderMode omitted -> default editable behavior.
+          },
+        ],
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send(dashboardPayload)
+        .expect(200);
+
+      expect(response.body.data.filters).toHaveLength(3);
+      expect(response.body.data.filters[0]).toMatchObject({
+        name: 'Service (locked, read-only)',
+        constant: true,
+        renderMode: 'readonly',
+      });
+      expect(response.body.data.filters[1]).toMatchObject({
+        name: 'Environment (hidden)',
+        constant: true,
+        renderMode: 'hidden',
+      });
+      // Filter 2 omitted the new fields. They must NOT be materialized as
+      // defaults on read; the absence is meaningful (default behavior
+      // matches today's editable, non-locked filter).
+      expect(response.body.data.filters[2].constant).toBeUndefined();
+      expect(response.body.data.filters[2].renderMode).toBeUndefined();
+
+      // GET round-trip.
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${response.body.data.id}`,
+      ).expect(200);
+      expect(getResponse.body.data.filters).toEqual(response.body.data.filters);
+
+      // PUT: flip filter 2 to readonly, drop filter 1, keep filter 0.
+      const updatePayload = {
+        name: 'Dashboard with locked filters',
+        tiles: [makeExternalChart({ sourceId: traceSource._id.toString() })],
+        tags: TEST_TAGS,
+        filters: [
+          {
+            id: response.body.data.filters[0].id,
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Service (locked, read-only)',
+            expression: 'ServiceName',
+            sourceId: traceSource._id.toString(),
+            constant: true,
+            renderMode: 'readonly' as const,
+          },
+          {
+            id: response.body.data.filters[2].id,
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Region (now read-only)',
+            expression: 'region',
+            sourceId: traceSource._id.toString(),
+            constant: true,
+            renderMode: 'readonly' as const,
+          },
+        ],
+      };
+      const updateResponse = await authRequest(
+        'put',
+        `${BASE_URL}/${response.body.data.id}`,
+      )
+        .send(updatePayload)
+        .expect(200);
+
+      expect(updateResponse.body.data.filters).toHaveLength(2);
+      expect(updateResponse.body.data.filters[1]).toMatchObject({
+        id: response.body.data.filters[2].id,
+        name: 'Region (now read-only)',
+        constant: true,
+        renderMode: 'readonly',
+      });
+    });
+
+    it('should reject an unknown renderMode value (HDX-4404)', async () => {
+      const dashboardPayload = {
+        name: 'Bad renderMode',
+        tiles: [makeExternalChart({ sourceId: traceSource._id.toString() })],
+        tags: TEST_TAGS,
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId: traceSource._id.toString(),
+            renderMode: 'invisible',
+          },
+        ],
+      };
+
+      await authRequest('post', BASE_URL).send(dashboardPayload).expect(400);
+    });
+
     it('should return 400 when filter source ID does not exist', async () => {
       const nonExistentSourceId = new ObjectId().toString();
       const dashboardPayload = {

@@ -1352,6 +1352,127 @@ describe('MCP Dashboard Tools', () => {
       expect(envFilter.id).not.toBe(existingFilterId);
     });
 
+    it('should round-trip constant and renderMode on filters (HDX-4404)', async () => {
+      const sourceId = traceSource._id.toString();
+
+      // CREATE: a dashboard with one locked-readonly filter, one hidden
+      // filter, and one default editable filter.
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Cloneable dashboard template',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service (locked, read-only)',
+            expression: 'ServiceName',
+            sourceId,
+            constant: true,
+            renderMode: 'readonly',
+          },
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Environment (hidden)',
+            expression: 'environment',
+            sourceId,
+            constant: true,
+            renderMode: 'hidden',
+          },
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Region',
+            expression: 'region',
+            sourceId,
+          },
+        ],
+      });
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+      expect(created.filters).toHaveLength(3);
+      expect(created.filters[0]).toMatchObject({
+        name: 'Service (locked, read-only)',
+        constant: true,
+        renderMode: 'readonly',
+      });
+      expect(created.filters[1]).toMatchObject({
+        name: 'Environment (hidden)',
+        constant: true,
+        renderMode: 'hidden',
+      });
+      expect(created.filters[2].constant).toBeUndefined();
+      expect(created.filters[2].renderMode).toBeUndefined();
+
+      // GET: same dashboard via hyperdx_get_dashboard preserves the new
+      // fields verbatim.
+      const getResult = await callTool(client, 'hyperdx_get_dashboard', {
+        id: created.id,
+      });
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.filters).toEqual(created.filters);
+
+      // UPDATE: flip the editable filter to read-only and keep the others.
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'Cloneable dashboard template',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          {
+            id: created.filters[0].id,
+            type: 'QUERY_EXPRESSION',
+            name: 'Service (locked, read-only)',
+            expression: 'ServiceName',
+            sourceId,
+            constant: true,
+            renderMode: 'readonly',
+          },
+          {
+            id: created.filters[1].id,
+            type: 'QUERY_EXPRESSION',
+            name: 'Environment (hidden)',
+            expression: 'environment',
+            sourceId,
+            constant: true,
+            renderMode: 'hidden',
+          },
+          {
+            id: created.filters[2].id,
+            type: 'QUERY_EXPRESSION',
+            name: 'Region (now read-only)',
+            expression: 'region',
+            sourceId,
+            constant: true,
+            renderMode: 'readonly',
+          },
+        ],
+      });
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.filters).toHaveLength(3);
+      expect(updated.filters[2]).toMatchObject({
+        id: created.filters[2].id,
+        name: 'Region (now read-only)',
+        constant: true,
+        renderMode: 'readonly',
+      });
+    });
+
+    it('should reject an unknown renderMode value (HDX-4404)', async () => {
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Bad renderMode',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+            renderMode: 'invisible',
+          },
+        ],
+      });
+      expect(result.isError).toBeTruthy();
+    });
+
     it('should round-trip a table tile that uses a having clause', async () => {
       // mcpTableTileSchema exposes `having` so the service_detail
       // example's "Top Error Messages" pattern (groupBy StatusMessage

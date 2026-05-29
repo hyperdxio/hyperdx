@@ -349,4 +349,167 @@ describe('useDashboardFilters', () => {
       { type: 'lucene', condition: 'environment:"production"' },
     ]);
   });
+
+  describe('constant filters (HDX-4404)', () => {
+    const constantFilters: DashboardFilter[] = [
+      {
+        id: 'env-filter',
+        type: 'QUERY_EXPRESSION',
+        name: 'Environment',
+        expression: 'environment',
+        source: 'logs',
+        constant: true,
+        renderMode: 'readonly',
+      },
+      {
+        id: 'svc-filter',
+        type: 'QUERY_EXPRESSION',
+        name: 'Service',
+        expression: 'service.name',
+        source: 'traces',
+        // No constant flag; behaves like a normal editable filter.
+      },
+    ];
+
+    const savedFilterValues: Filter[] = [
+      { type: 'lucene', condition: 'environment:"production"' },
+    ];
+
+    it('injects the saved value for a constant filter when the URL is empty', () => {
+      const { result } = renderHook(() =>
+        useDashboardFilters(constantFilters, { savedFilterValues }),
+      );
+
+      expect(result.current.filterValues.environment.included).toEqual(
+        new Set(['production']),
+      );
+      // Sibling editable filter has no URL state, so no value is set.
+      expect(result.current.filterValues['service.name']).toBeUndefined();
+    });
+
+    it('uses the saved value over any URL value on the same expression', () => {
+      // The viewer or a shared link tried to override the constant filter
+      // via the URL. The hook must ignore that and keep the saved value.
+      mockState = [{ type: 'lucene', condition: 'environment:"staging"' }];
+
+      const { result } = renderHook(() =>
+        useDashboardFilters(constantFilters, { savedFilterValues }),
+      );
+
+      expect(result.current.filterValues.environment.included).toEqual(
+        new Set(['production']),
+      );
+    });
+
+    it('setFilterValue is a no-op for a constant filter expression', () => {
+      const { result } = renderHook(() =>
+        useDashboardFilters(constantFilters, { savedFilterValues }),
+      );
+
+      // Clear any setFilterQueries calls from the initial render (e.g.
+      // legacy SQL migration on cold start).
+      mockSetState.mockClear();
+
+      act(() => {
+        result.current.setFilterValue('environment', ['development']);
+      });
+
+      // No-op: the constant expression cannot be cleared or rewritten.
+      expect(mockSetState).not.toHaveBeenCalled();
+    });
+
+    it('setFilterValue still works for editable siblings', () => {
+      const { result } = renderHook(() =>
+        useDashboardFilters(constantFilters, { savedFilterValues }),
+      );
+
+      mockSetState.mockClear();
+      act(() => {
+        result.current.setFilterValue('service.name', ['api']);
+      });
+
+      expect(mockSetState).toHaveBeenCalled();
+      // After the URL update, the editable filter has the new value AND
+      // the constant filter still has its locked value.
+      const { result: result2 } = renderHook(() =>
+        useDashboardFilters(constantFilters, { savedFilterValues }),
+      );
+      expect(result2.current.filterValues['service.name'].included).toEqual(
+        new Set(['api']),
+      );
+      expect(result2.current.filterValues.environment.included).toEqual(
+        new Set(['production']),
+      );
+    });
+
+    it('getFilterQueriesForSource returns the locked value for a constant filter', () => {
+      // appliesToSourceIds restricts the constant to a subset of tiles.
+      const scopedConstantFilter: DashboardFilter = {
+        id: 'env-filter',
+        type: 'QUERY_EXPRESSION',
+        name: 'Environment',
+        expression: 'environment',
+        source: 'logs',
+        constant: true,
+        appliesToSourceIds: ['source-a'],
+      };
+
+      const { result } = renderHook(() =>
+        useDashboardFilters([scopedConstantFilter], { savedFilterValues }),
+      );
+
+      // Tile on the in-scope source receives the locked value.
+      const inScope = result.current.getFilterQueriesForSource('source-a');
+      expect(inScope).toHaveLength(1);
+      const inScopeCondition =
+        'condition' in inScope[0] ? inScope[0].condition : '';
+      expect(inScopeCondition).toContain('environment');
+      expect(inScopeCondition).toContain('production');
+
+      // Tile on an out-of-scope source receives nothing.
+      const outOfScope = result.current.getFilterQueriesForSource('source-b');
+      expect(outOfScope).toEqual([]);
+    });
+
+    it('resolves the locked value for a hidden filter (renderMode: hidden, constant: true)', () => {
+      const hiddenFilter: DashboardFilter = {
+        id: 'env-filter',
+        type: 'QUERY_EXPRESSION',
+        name: 'Environment',
+        expression: 'environment',
+        source: 'logs',
+        constant: true,
+        renderMode: 'hidden',
+      };
+
+      const { result } = renderHook(() =>
+        useDashboardFilters([hiddenFilter], { savedFilterValues }),
+      );
+
+      // The hook applies the locked value the same way regardless of
+      // renderMode. The filter bar component drops the chip elsewhere.
+      expect(result.current.filterValues.environment.included).toEqual(
+        new Set(['production']),
+      );
+    });
+
+    it('resolves no value for a constant filter when savedFilterValues is missing the expression', () => {
+      const constantWithoutSavedValue: DashboardFilter = {
+        id: 'region-filter',
+        type: 'QUERY_EXPRESSION',
+        name: 'Region',
+        expression: 'region',
+        source: 'logs',
+        constant: true,
+      };
+
+      const { result } = renderHook(() =>
+        useDashboardFilters([constantWithoutSavedValue], {
+          savedFilterValues,
+        }),
+      );
+
+      expect(result.current.filterValues.region).toBeUndefined();
+    });
+  });
 });
