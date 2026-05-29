@@ -1245,7 +1245,7 @@ describe('getColorFromCSSToken', () => {
 
     // Defaults to HyperDX in jsdom because the document has no
     // theme-clickstack class.
-    expect(getColorFromCSSToken('chart-success')).toBe('#00c28a');
+    expect(getColorFromCSSToken('chart-success')).toBe('#3ca951');
     expect(getColorFromCSSToken('chart-warning')).toBe('#efb118');
     expect(getColorFromCSSToken('chart-error')).toBe('#ff725c');
   });

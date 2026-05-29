@@ -680,8 +680,8 @@ export const MemoChart = memo(function MemoChart({
               as a baseline; semantic colors returned by the
               `getChartColor{Info,Success,Warning,Error}` helpers can also
               appear in `lineData[].color` (e.g. info-level log series
-              resolve to the brand-green `--color-chart-info` on HyperDX,
-              which is not part of `COLORS`). Union them here so the
+              resolve to `--color-chart-info`, chart blue `#437eef`, on both
+              brands, which matches categorical slot 0). Union them here so the
               referenced `url(#time-chart-lin-grad-…)` always exists. */}
           {Array.from(
             new Set([

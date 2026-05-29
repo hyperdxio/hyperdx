@@ -40,12 +40,10 @@ The categorical palette is based on Observable 10, with `chart-blue` swapped to
 (`--click-global-color-text-link-default`); all other hues are straight from
 Observable 10. The palette resolves identically on both themes — picking
 `chart-blue` always renders the brand blue. Brand identity for charts moves
-entirely into the semantic layer: HyperDX `--color-chart-info` resolves to
-Observable cyan `#6cc5b0` (same hue as categorical `chart-cyan`), visually
-distinct from `--color-chart-success` (brand green `#00c28a`). ClickStack info
-resolves to brand blue `#437eef` (same hue as categorical `chart-blue` and the
-link color), so info-level logs and primary series stay visually aligned with
-the link color on that side.
+entirely into the semantic layer: `--color-chart-success` and `--color-chart-info`
+resolve to categorical `chart-green` (`#3ca951`) and `chart-blue` (`#437eef`) on
+both HyperDX and ClickStack, so success fills, info-level logs, and the
+matching multi-series slots all read consistently across brands.
 
 Internally, JS (`CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts`) is
 the source of truth for categorical hues — `getColorFromCSSVariable` and

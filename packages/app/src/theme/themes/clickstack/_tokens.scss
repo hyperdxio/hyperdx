@@ -10,39 +10,15 @@
  * @include it so specificity stays identical to declaring the vars
  * inline — Sass inlines the body of the mixin at each call site, so
  * the resulting CSS is byte-identical to the previous hand-duplicated
- * shape. The categorical hues themselves come from the shared
- * `chart-categorical-tokens` partial, since they're unified across
- * brands; only the per-brand semantic tokens live in this file.
+ * shape. Categorical and semantic chart tokens come from the shared
+ * `chart-categorical-tokens` partial (two mixins: hues, then semantics).
  */
 
 @use '../chart-categorical-tokens' as shared-chart;
 
 @mixin chart-tokens {
-  /* Categorical Palette - shared with HyperDX (10 unified hues). */
   @include shared-chart.chart-categorical-tokens;
-
-  /*
-   * Chart Semantic Colors - per-brand. Unlike the categorical hues
-   * above, these vary by theme, so `getChartColor{Success,Warning,...}`
-   * in `utils.ts` reads them via `getComputedStyle` and reacts to a
-   * runtime theme switch without a React re-render. Inline `var()`
-   * consumers (e.g. `LogLevel.tsx`) get the same benefit for free.
-   * ClickStack uses the brand blue (#437eef, same hue as
-   * `--click-global-color-text-link-default` and the categorical
-   * `chart-blue`) for `info` and Observable green for `success`.
-   * Within ClickStack, the dark and light schemes happen to use the
-   * same hexes, which is why they're inside `chart-tokens` rather
-   * than the scheme-specific blocks.
-   */
-  --color-chart-success: #3ca951;
-  --color-chart-warning: #efb118;
-  --color-chart-error: #ff725c;
-  --color-chart-info: #437eef;
-
-  /* Chart Semantic Colors - Highlighted (for hover/selection states) */
-  --color-chart-success-highlight: #80d9b3;
-  --color-chart-warning-highlight: #f5c94d;
-  --color-chart-error-highlight: #ffa090;
+  @include shared-chart.chart-semantic-tokens;
 }
 
 /* Dark Mode */

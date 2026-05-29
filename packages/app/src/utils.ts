@@ -396,14 +396,14 @@ const CATEGORICAL_HEX_BY_TOKEN = {
  * Per-brand semantic chart palette. SSR / `getComputedStyle` fallback
  * for `getChartColor{Success,Warning,Error,Info,*Highlight}` helpers.
  * Live values come from `--color-chart-{success|warning|error|info}[-highlight]`
- * in each theme's `_tokens.scss`.
+ * in `_chart-categorical-tokens.scss` (`chart-semantic-tokens` mixin).
  */
 const SEMANTIC_CHART_PALETTE = {
   hyperdx: {
-    success: '#00c28a',
+    success: '#3ca951',
     warning: '#efb118',
     error: '#ff725c',
-    info: '#6cc5b0',
+    info: '#437eef',
     successHighlight: '#80d9b3',
     warningHighlight: '#f5c94d',
     errorHighlight: '#ffa090',
@@ -609,8 +609,8 @@ export function getChartColorError(): string {
   return getSemanticChartColor('--color-chart-error', 'error');
 }
 
-/** Primary brand color used for info-level logs and similar
- *  "neutral / default" series. HyperDX Observable cyan, ClickStack brand blue. */
+/** Chart blue used for info-level logs and similar "neutral / default"
+ *  series. Same hue as categorical `chart-blue` on both brands. */
 export function getChartColorInfo(): string {
   return getSemanticChartColor('--color-chart-info', 'info');
 }

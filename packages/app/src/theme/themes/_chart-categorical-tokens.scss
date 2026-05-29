@@ -1,30 +1,30 @@
-/* Shared Chart Categorical Tokens - used by both theme files */
+/* Shared Chart Tokens - used by both theme files */
 
 /*
- * The 10-hue categorical chart palette is genuinely unified across
- * brands (HyperDX and ClickStack both resolve `--color-chart-{hue}`
- * to the same hex). This file is the SCSS source of truth for those
- * hues; both theme files `@use` it and `@include` the mixin inside
- * their per-theme `chart-tokens` mixin.
+ * Categorical hues and semantic chart colors are unified across HyperDX and
+ * ClickStack. This file is the SCSS source of truth for both layers; each
+ * brand theme `@use`s it and `@include`s the mixins inside its per-theme
+ * `chart-tokens` mixin (categorical first, then semantic — semantics reference
+ * `var(--color-chart-green)` / `var(--color-chart-blue)`).
  *
- * Per-brand chart identity (success, info, warning, error) lives in
- * each theme's `chart-tokens` mixin alongside this `@include`. Those
- * semantic tokens genuinely vary per brand, so they don't belong here.
+ * Per-brand overrides: if a future brand needs a different semantic hex,
+ * declare it in that theme's `chart-tokens` mixin *after* the shared
+ * `@include chart-semantic-tokens` call.
  *
- * The React rendering path reads these hues from
- * `CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts` directly
- * (`getColorFromCSSVariable` / `getColorFromCSSToken` skip
- * `getComputedStyle` for categorical tokens) — the palette is the
- * same on every theme, so the round-trip would add a layout read per
- * series for no functional gain. These vars exist so SCSS modules
- * and inline `var()` consumers can reference hues without importing
- * from JS, and for devtools inspection. If you change a hex here,
- * update `CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts`
- * to match — the SCSS and JS sources are intentionally mirrored.
+ * Categorical hues — React reads these from `CATEGORICAL_HEX_BY_TOKEN` in
+ * `packages/app/src/utils.ts` directly (`getColorFromCSSVariable` /
+ * `getColorFromCSSToken` skip `getComputedStyle` for categorical tokens).
+ * The CSS vars exist for SCSS modules, inline `var()` consumers, and devtools.
+ * If you change a categorical hex here, update `CATEGORICAL_HEX_BY_TOKEN`
+ * in `utils.ts` to match.
+ *
+ * Semantic tokens — read at runtime via `getComputedStyle` in `utils.ts`.
+ * If you change a semantic hex here, update `SEMANTIC_CHART_PALETTE` in
+ * `utils.ts` to match.
  *
  * `chart-blue` is `#437eef` (the brand link color, same hue as
- * `--click-global-color-text-link-default`) rather than Observable
- * blue (`#4269d0`); all other hues are straight from Observable 10
+ * `--click-global-color-text-link-default`) rather than Observable blue
+ * (`#4269d0`); all other hues are straight from Observable 10
  * (https://observablehq.com/@d3/color-schemes).
  */
 @mixin chart-categorical-tokens {
@@ -38,4 +38,21 @@
   --color-chart-light-blue: #97bbf5;
   --color-chart-brown: #9c6b4e;
   --color-chart-gray: #9498a0;
+}
+
+/*
+ * Semantic chart colors — unified on both brands. `success` and `info` alias
+ * categorical `chart-green` and `chart-blue`; warning and error use shared
+ * Observable hexes. Must be `@include`d after `chart-categorical-tokens`.
+ */
+@mixin chart-semantic-tokens {
+  --color-chart-success: var(--color-chart-green);
+  --color-chart-warning: #efb118;
+  --color-chart-error: #ff725c;
+  --color-chart-info: var(--color-chart-blue);
+
+  /* Highlighted variants (hover/selection states) */
+  --color-chart-success-highlight: #80d9b3;
+  --color-chart-warning-highlight: #f5c94d;
+  --color-chart-error-highlight: #ffa090;
 }

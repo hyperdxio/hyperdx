@@ -796,7 +796,7 @@ export function isOnClickDashboardById(
  * Tokens map to CSS variables in
  * `packages/app/src/theme/themes/<theme>/_tokens.scss`:
  *   chart-{hue}                 -> --color-chart-{hue}                    (10 hues, unified across themes)
- *   chart-success/warning/error -> --color-chart-{success|warning|error}  (per-brand semantic)
+ *   chart-success/warning/error/info -> --color-chart-{success|warning|error|info}  (semantic; unified across brands)
  *
  * Storing tokens (not hex) lets user choices reflow correctly across
  * themes and color modes; see notes/repo-conventions/hyperdx/tile-styling.md.
