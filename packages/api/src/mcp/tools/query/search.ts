@@ -1,8 +1,11 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import { trimToolResponse } from '@/utils/trimToolResponse';
+
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
+import { denoiseSearchResults } from './denoise';
 import { buildTile, parseTimeRange, runConfigTile } from './helpers';
 import {
   endTimeSchema,
@@ -36,6 +39,16 @@ const searchSchema = z.object({
       'Maximum number of rows to return (1-200). Default: 50. ' +
         'Use smaller values to reduce response size.',
     ),
+  denoise: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'When true, automatically removes events matching high-frequency patterns ' +
+        '(those accounting for >10% of sampled events) from the results. ' +
+        'Useful for cutting through log noise to find unusual or interesting events. ' +
+        'Adds ~1-2s of latency for the pattern sampling queries.',
+    ),
   startTime: startTimeSchema,
   endTime: endTimeSchema,
 });
@@ -56,6 +69,8 @@ export function registerSearch(server: McpServer, context: McpContext) {
         'Requires sourceId — call hyperdx_list_sources then hyperdx_describe_source first.\n\n' +
         'For aggregated metrics, use hyperdx_table instead. ' +
         'For pattern discovery, use hyperdx_event_patterns instead.\n\n' +
+        'Set denoise=true to automatically filter out high-frequency repetitive patterns, ' +
+        'surfacing only unusual or interesting events.\n\n' +
         'Column naming: top-level columns are PascalCase (Duration, StatusCode). ' +
         "Map attributes use bracket syntax: SpanAttributes['http.method'].",
       inputSchema: searchSchema,
@@ -78,9 +93,96 @@ export function registerSearch(server: McpServer, context: McpContext) {
         whereLanguage: input.whereLanguage,
       });
 
-      return runConfigTile(teamId.toString(), tile, startDate, endDate, {
-        maxResults: input.maxResults,
-      });
+      const result = await runConfigTile(
+        teamId.toString(),
+        tile,
+        startDate,
+        endDate,
+        {
+          maxResults: input.maxResults,
+        },
+      );
+
+      // ── Denoising post-processing ──
+      if (!input.denoise || ('isError' in result && result.isError)) {
+        return result;
+      }
+
+      // Extract the raw result data from the formatted response.
+      // runConfigTile returns { content: [{ type: "text", text: JSON }] }.
+      const resultText = result.content?.[0]?.text;
+      if (!resultText) return result;
+
+      let parsed: { result?: { data?: Record<string, unknown>[] } };
+      try {
+        parsed = JSON.parse(resultText);
+      } catch {
+        return result;
+      }
+
+      const resultData = parsed.result;
+      const rows = (resultData as Record<string, unknown> | undefined)?.data as
+        | Record<string, unknown>[]
+        | undefined;
+      if (!rows || !Array.isArray(rows) || rows.length === 0) {
+        return result;
+      }
+
+      const denoised = await denoiseSearchResults(
+        teamId.toString(),
+        input.sourceId,
+        startDate,
+        endDate,
+        rows,
+        {
+          where: input.where,
+          whereLanguage: input.whereLanguage,
+        },
+      );
+
+      // Replace rows in the result with denoised rows and add metadata
+      const denoisedResult = {
+        ...resultData,
+        data: denoised.rows,
+      };
+      const trimmedResult = trimToolResponse(denoisedResult);
+      const isTrimmed =
+        JSON.stringify(trimmedResult).length <
+        JSON.stringify(denoisedResult).length;
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(
+              {
+                result: trimmedResult,
+                ...(denoised.removedPatterns.length > 0
+                  ? {
+                      denoised: {
+                        removedPatterns: denoised.removedPatterns,
+                        originalRowCount: rows.length,
+                        filteredRowCount: denoised.rows.length,
+                      },
+                    }
+                  : {}),
+                ...(isTrimmed
+                  ? {
+                      note: 'Result was trimmed for context size. Narrow the time range or add filters to reduce data.',
+                    }
+                  : {}),
+                ...(denoised.rows.length === 0
+                  ? {
+                      hint: 'All events matched noisy patterns and were removed. Try narrowing filters or disabling denoise to see all events.',
+                    }
+                  : {}),
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
     }),
   );
 }

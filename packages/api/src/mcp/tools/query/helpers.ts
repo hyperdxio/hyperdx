@@ -1,6 +1,9 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  getFirstTimestampValueExpression,
+  splitAndTrimWithBracket,
+} from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import type {
   ChartConfigWithDateRange,
@@ -23,6 +26,37 @@ import {
 import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
+
+// ─── Source body expression helpers ──────────────────────────────────────────
+
+export interface SourceBodyFields {
+  kind: string;
+  spanNameExpression?: string;
+  bodyExpression?: string;
+  implicitColumnExpression?: string;
+}
+
+/**
+ * Resolve the body column expression for pattern mining from a source.
+ * Mirrors the web app's getEventBody() logic (packages/app/src/source.ts).
+ */
+export function resolveBodyExpression(
+  source: SourceBodyFields,
+): string | undefined {
+  let expression: string | undefined;
+  if (source.kind === SourceKind.Trace) {
+    expression = source.spanNameExpression;
+  } else if (source.kind === SourceKind.Log) {
+    expression = source.bodyExpression ?? source.implicitColumnExpression;
+  }
+  if (!expression) return undefined;
+  const multiExpr = splitAndTrimWithBracket(expression);
+  return multiExpr.length === 1 ? expression : multiExpr[0];
+}
+
+/** Reject bodyExpression values containing SQL-unsafe characters. */
+// eslint-disable-next-line no-useless-escape
+export const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
 
 // ─── Tile construction ───────────────────────────────────────────────────────
 
