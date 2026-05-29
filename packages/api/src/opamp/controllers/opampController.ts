@@ -244,16 +244,22 @@ export const buildOtelCollectorConfig = (
     },
     service: {
       extensions: [],
+      // The pipeline `processors:` lists are intentionally declared in the
+      // bootstrap config (docker/otel-collector/config.yaml) instead of here,
+      // so that users can swap them via CUSTOM_OTELCOL_CONFIG_FILE. See
+      // https://github.com/hyperdxio/hyperdx/pull/2351: when the OpAMP
+      // remote config sets `processors:` on a pipeline, it overwrites the
+      // bootstrap+custom merge, which prevents users from substituting
+      // their own processor (e.g. a memory_limiter with limit_percentage
+      // instead of limit_mib).
       pipelines: {
         traces: {
           receivers: ['nop'],
-          processors: ['memory_limiter', 'batch'],
           exporters: ['clickhouse'],
         },
         metrics: {
           // TODO: prometheus needs to be authenticated
           receivers: ['prometheus'],
-          processors: ['memory_limiter', 'batch'],
           exporters: ['clickhouse'],
         },
         'logs/in': {
@@ -263,12 +269,10 @@ export const buildOtelCollectorConfig = (
         },
         'logs/out-default': {
           receivers: ['routing/logs'],
-          processors: ['memory_limiter', 'transform', 'batch'],
           exporters: ['clickhouse'],
         },
         'logs/out-rrweb': {
           receivers: ['routing/logs'],
-          processors: ['memory_limiter', 'batch'],
           exporters: ['clickhouse/rrweb'],
         },
       },
