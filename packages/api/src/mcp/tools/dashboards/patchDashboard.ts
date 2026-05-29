@@ -1,7 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { uniq } from 'lodash';
 import mongoose from 'mongoose';
-import { z } from 'zod';
 
 import * as config from '@/config';
 import Dashboard from '@/models/dashboard';
@@ -16,7 +15,7 @@ import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
-import { mcpPatchTileSchema } from './schemas';
+import { mcpPatchDashboardSchema } from './schemas';
 
 export function registerPatchDashboard(
   server: McpServer,
@@ -35,34 +34,7 @@ export function registerPatchDashboard(
         'tile by tileId \u2014 all in one call. Unmentioned tiles and fields are preserved. ' +
         'Use clickstack_get_dashboard_tile to inspect a tile before patching it. ' +
         'IMPORTANT: After patching a tile, run clickstack_query_tile to confirm the query still works.',
-      inputSchema: z.object({
-        dashboardId: z.string().describe('Dashboard ID.'),
-        name: z
-          .string()
-          .min(1)
-          .optional()
-          .describe('New dashboard name. Omit to keep the current name.'),
-        tags: z
-          .array(z.string())
-          .optional()
-          .describe(
-            'New tags array (replaces all existing tags). Omit to keep the current tags.',
-          ),
-        tileId: z
-          .string()
-          .optional()
-          .describe(
-            'ID of the tile to replace. Must be paired with `tile`. ' +
-              'Obtain tile IDs from clickstack_get_dashboard.',
-          ),
-        tile: mcpPatchTileSchema
-          .optional()
-          .describe(
-            'The full replacement tile definition. Replaces the tile matched by tileId. ' +
-              'Layout fields (x, y, w, h), name, and containerId/tabId default to the ' +
-              "existing tile's values when omitted, so you only need to specify what changed.",
-          ),
-      }),
+      inputSchema: mcpPatchDashboardSchema,
     },
     withToolTracing(
       'clickstack_patch_dashboard',

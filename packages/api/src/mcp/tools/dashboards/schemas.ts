@@ -773,6 +773,49 @@ export const mcpFiltersParam = z
       ']',
   );
 
+export const mcpPatchDashboardSchema = z.object({
+  dashboardId: z.string().describe('Dashboard ID.'),
+  name: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('New dashboard name. Omit to keep the current name.'),
+  tags: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'New tags array (replaces all existing tags). Omit to keep the current tags.',
+    ),
+  tileId: z
+    .string()
+    .optional()
+    .describe(
+      'ID of the tile to replace. Must be paired with `tile`. ' +
+        'Obtain tile IDs from clickstack_get_dashboard.',
+    ),
+  tile: mcpPatchTileSchema
+    .optional()
+    .describe(
+      'The full replacement tile definition. Replaces the tile matched by tileId. ' +
+        'Layout fields (x, y, w, h), name, and containerId/tabId default to the ' +
+        "existing tile's values when omitted, so you only need to specify what changed.",
+    ),
+});
+
+export const mcpSearchDashboardsSchema = z.object({
+  query: z
+    .string()
+    .max(200)
+    .optional()
+    .describe(
+      'Search term to match against dashboard names (case-insensitive substring match).',
+    ),
+  tags: z
+    .array(z.string().min(1))
+    .optional()
+    .describe('Filter to dashboards that have ALL of these tags.'),
+});
+
 export const mcpContainersParam = z
   .array(DashboardContainerSchema)
   .max(DASHBOARD_MAX_CONTAINERS)

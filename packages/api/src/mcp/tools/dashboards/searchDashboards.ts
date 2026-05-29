@@ -1,6 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { escapeRegExp } from 'lodash';
-import { z } from 'zod';
 
 import * as config from '@/config';
 import Dashboard from '@/models/dashboard';
@@ -8,6 +7,7 @@ import logger from '@/utils/logger';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
+import { mcpSearchDashboardsSchema } from './schemas';
 
 const SEARCH_RESULTS_LIMIT = 100;
 
@@ -26,19 +26,7 @@ export function registerSearchDashboards(
         'Search dashboards by name and/or tags. Returns matching dashboards with ' +
         'their IDs, names, and tags. More targeted than clickstack_get_dashboard (which ' +
         'lists all dashboards). At least one of query or tags must be provided.',
-      inputSchema: z.object({
-        query: z
-          .string()
-          .max(200)
-          .optional()
-          .describe(
-            'Search term to match against dashboard names (case-insensitive substring match).',
-          ),
-        tags: z
-          .array(z.string().min(1))
-          .optional()
-          .describe('Filter to dashboards that have ALL of these tags.'),
-      }),
+      inputSchema: mcpSearchDashboardsSchema,
     },
     withToolTracing(
       'clickstack_search_dashboards',
