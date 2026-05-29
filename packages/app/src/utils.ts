@@ -445,7 +445,6 @@ export const COLORS: string[] = CATEGORICAL_PALETTE_TOKENS.map(
 export {
   CATEGORICAL_PALETTE_TOKENS,
   CHART_PALETTE_TOKENS,
-  isChartPaletteToken,
   resolveChartPaletteToken,
   SEMANTIC_PALETTE_TOKENS,
 } from '@hyperdx/common-utils/dist/types';

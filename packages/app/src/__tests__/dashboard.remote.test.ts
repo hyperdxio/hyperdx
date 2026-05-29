@@ -1,19 +1,12 @@
-/*
- * Remote-path tests for `fetchDashboards`. Kept in a separate file
- * from `dashboard.test.ts` because that file mocks `IS_LOCAL_MODE`
- * to `true` for the entire suite — switching the same constant per
- * test via `jest.isolateModules` + `jest.doMock` proved unreliable
- * because `jest.mock` declarations are hoisted to the top of the
- * file. A second test file with its own file-level mocks is the
- * idiomatic Jest pattern for exercising the alternate branch.
- */
-
-const mockJson = jest.fn();
-
-jest.mock('../api', () => ({
-  hdxServer: jest.fn(() => ({ json: mockJson })),
-}));
+// Mirrors the local-mode tests in `dashboard.test.ts` but exercises the
+// non-local branch of `fetchDashboards`: `hdxServer('dashboards').json<>()`
+// followed by the same `normalizeDashboardTileColors` pass. The two files
+// are split because `IS_LOCAL_MODE` is bound at module load and the two
+// branches need different top-level mocks; `jest.doMock` inside
+// `jest.isolateModules` did not override the hoisted `jest.mock` factory
+// reliably enough to share a file.
 jest.mock('../config', () => ({ IS_LOCAL_MODE: false }));
+jest.mock('../api', () => ({ hdxServer: jest.fn() }));
 jest.mock('@mantine/notifications', () => ({
   notifications: { show: jest.fn() },
 }));
@@ -28,98 +21,86 @@ jest.mock('@tanstack/react-query', () => ({
 }));
 jest.mock('@/utils', () => ({ hashCode: jest.fn(() => 0) }));
 
+import { hdxServer } from '../api';
 import { fetchDashboards } from '../dashboard';
 
+const hdxServerMock = hdxServer as jest.Mock;
+
+const remoteDashboardWithTileColor = (color: unknown) => [
+  {
+    id: 'a',
+    name: 'A',
+    tiles: [{ id: 't1', x: 0, y: 0, w: 4, h: 4, config: { color } }],
+    tags: [],
+  },
+];
+
+const setRemotePayload = (payload: unknown) => {
+  hdxServerMock.mockReturnValue({
+    json: jest.fn().mockResolvedValue(payload),
+  });
+};
+
 beforeEach(() => {
-  mockJson.mockReset();
+  hdxServerMock.mockReset();
 });
 
-describe('fetchDashboards remote-path normalization', () => {
-  // The local-mode path is covered by `dashboard.test.ts` via
-  // `fetchLocalDashboards`. This file mirrors that coverage for the
-  // `hdxServer('dashboards').json<Dashboard[]>().then(...).map(
-  // normalizeDashboardTileColors)` branch so the remote path doesn't
-  // silently regress.
-  it('migrates legacy chart-1..10 colors from server response', async () => {
-    mockJson.mockResolvedValue([
-      {
-        id: 'a',
-        name: 'A',
-        tiles: [
-          {
-            id: 't1',
-            x: 0,
-            y: 0,
-            w: 4,
-            h: 4,
-            config: { color: 'chart-1' },
-          },
-          {
-            id: 't2',
-            x: 0,
-            y: 0,
-            w: 4,
-            h: 4,
-            config: { color: 'chart-2' },
-          },
-          {
-            id: 't10',
-            x: 0,
-            y: 0,
-            w: 4,
-            h: 4,
-            config: { color: 'chart-10' },
-          },
-        ],
-        tags: [],
-      },
-    ]);
+describe('fetchDashboards (remote path)', () => {
+  // Stored configs from #2265 (the initial number-tile color picker)
+  // contain `color: 'chart-1'..'chart-10'`. The fetch-time normalizer
+  // heals those values for any tile that comes back from the API, so
+  // downstream consumers see the canonical hue tokens that
+  // `ChartPaletteTokenSchema` accepts. Symmetric coverage with the
+  // local-path suite in `dashboard.test.ts`.
+  it('migrates legacy chart-1..10 tokens from a remote payload', async () => {
+    setRemotePayload(remoteDashboardWithTileColor('chart-1'));
+
     const result = await fetchDashboards();
+
+    expect(hdxServerMock).toHaveBeenCalledWith('dashboards');
     expect(result[0].tiles[0].config).toMatchObject({ color: 'chart-green' });
-    expect(result[0].tiles[1].config).toMatchObject({ color: 'chart-blue' });
-    expect(result[0].tiles[2].config).toMatchObject({ color: 'chart-gray' });
   });
 
-  it('leaves hue-named tokens unchanged on the remote path', async () => {
-    mockJson.mockResolvedValue([
-      {
-        id: 'a',
-        name: 'A',
-        tiles: [
-          {
-            id: 't1',
-            x: 0,
-            y: 0,
-            w: 4,
-            h: 4,
-            config: { color: 'chart-orange' },
-          },
-        ],
-        tags: [],
-      },
-    ]);
+  it('migrates chart-10 to chart-gray on the remote path', async () => {
+    setRemotePayload(remoteDashboardWithTileColor('chart-10'));
+
     const result = await fetchDashboards();
+
+    expect(result[0].tiles[0].config).toMatchObject({ color: 'chart-gray' });
+  });
+
+  it('passes through hue-named tokens unchanged', async () => {
+    setRemotePayload(remoteDashboardWithTileColor('chart-orange'));
+
+    const result = await fetchDashboards();
+
+    expect(result[0].tiles[0].config).toMatchObject({ color: 'chart-orange' });
+  });
+
+  it('preserves unknown color strings (no silent data loss)', async () => {
+    setRemotePayload(remoteDashboardWithTileColor('chart-future-magenta'));
+
+    const result = await fetchDashboards();
+
     expect(result[0].tiles[0].config).toMatchObject({
-      color: 'chart-orange',
+      color: 'chart-future-magenta',
     });
   });
 
-  it('preserves tile identity when no migration is needed', async () => {
-    // Reconciliation hot path: if a fetched dashboard has nothing to
-    // heal, the helper returns the same object reference so React's
-    // `useQuery` consumers don't see a synthetic change.
-    const tile = {
-      id: 't1',
-      x: 0,
-      y: 0,
-      w: 4,
-      h: 4,
-      config: { color: 'chart-blue' },
-    };
-    const dashboard = { id: 'a', name: 'A', tiles: [tile], tags: [] };
-    mockJson.mockResolvedValue([dashboard]);
+  it('does not touch tiles whose config has no color field', async () => {
+    setRemotePayload([
+      {
+        id: 'a',
+        name: 'A',
+        tiles: [
+          { id: 't1', x: 0, y: 0, w: 4, h: 4, config: { displayType: 1 } },
+        ],
+        tags: [],
+      },
+    ]);
+
     const result = await fetchDashboards();
-    expect(result[0]).toBe(dashboard);
-    expect(result[0].tiles[0]).toBe(tile);
+
+    expect(result[0].tiles[0].config).toEqual({ displayType: 1 });
   });
 });

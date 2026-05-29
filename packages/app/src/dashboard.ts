@@ -85,6 +85,7 @@ function normalizeDashboardTileColors<T extends { tiles?: Tile[] }>(
   return changed ? { ...dashboard, tiles } : dashboard;
 }
 
+// Exported for testing; the React layer should reach for `useDashboards`.
 export async function fetchDashboards(): Promise<Dashboard[]> {
   if (IS_LOCAL_MODE) {
     return localDashboards.getAll().map(normalizeDashboardTileColors);
