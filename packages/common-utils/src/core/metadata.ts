@@ -364,10 +364,9 @@ export class Metadata {
           this.getTableMetadata({ databaseName, tableName, connectionId }),
           this.getServerVersion({ connectionId }),
         ]);
-        // mergeTreeTextIndex table function requires ClickHouse >= 26.3, and
-        // only reads from a single local MergeTree table.
         if (!supportsMergeTreeTextIndex(version)) return new Map();
-        if (tableMeta?.engine === 'Distributed') return new Map();
+        if (!tableMeta) return new Map();
+        if (tableMeta.engine === 'Distributed') return new Map();
 
         const [columns, indices] = await Promise.all([
           this.getColumns({ databaseName, tableName, connectionId }),

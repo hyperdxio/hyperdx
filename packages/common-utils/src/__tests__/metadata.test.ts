@@ -1622,6 +1622,93 @@ describe('Metadata', () => {
       expect(call.query).toContain('startsWith(token');
     });
 
+    it('getMapValues falls through text-index -> MV -> main-table scan', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', itemsOnlyEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ data: [] }) })
+        .mockResolvedValueOnce({
+          json: () =>
+            Promise.resolve({
+              data: [{ key: 'service.name', value: 'api' }],
+            }),
+        });
+
+      const result = await md.getMapValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        keys: ['service.name'],
+        connectionId: 'conn-1',
+        metadataMVs: {
+          keyRollupTable: 'logs_key_rollup_15m',
+          kvRollupTable: 'logs_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+
+      expect((mockClickhouseClient.query as jest.Mock).mock.calls.length).toBe(
+        2,
+      );
+      const textIndexCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[0][0];
+      expect(textIndexCall.query).toContain('mergeTreeTextIndex');
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls[1][0];
+      expect(Object.values(mvCall.query_params)).toContain(
+        'logs_kv_rollup_15m',
+      );
+      expect(result.get('service.name')).toEqual(['api']);
+    });
+
+    it('getMapValues falls through to main-table scan when text-index and MV both empty', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', itemsOnlyEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ data: [] }) })
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ data: [] }) })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ value: 'api' }] }),
+        });
+
+      const result = await md.getMapValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        keys: ['service.name'],
+        connectionId: 'conn-1',
+        metadataMVs: {
+          keyRollupTable: 'logs_key_rollup_15m',
+          kvRollupTable: 'logs_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+        timestampValueExpression: 'Timestamp',
+      });
+
+      expect((mockClickhouseClient.query as jest.Mock).mock.calls.length).toBe(
+        3,
+      );
+      const mainScanCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[2][0];
+      expect(mainScanCall.query).not.toContain('mergeTreeTextIndex');
+      expect(mainScanCall.query).not.toContain('logs_kv_rollup_15m');
+      expect(mainScanCall.query).toContain('SELECT DISTINCT');
+      expect(result.get('service.name')).toEqual(['api']);
+    });
+
     it('getAllKeyValues uses mergeTreeTextIndex for map keys whose column has an index, MV for the rest', async () => {
       const md = buildMetadata();
       jest
@@ -2095,6 +2182,35 @@ describe('Metadata', () => {
 
         expect(result.size).toBe(0);
         // Bailed out early — no follow-up column/index queries.
+        expect(getColumnsSpy).not.toHaveBeenCalled();
+        expect(getSkipIndicesSpy).not.toHaveBeenCalled();
+      } finally {
+        jest
+          .spyOn(Metadata.prototype, 'getMapColumnTextIndexes')
+          .mockResolvedValue(new Map());
+      }
+    });
+
+    it('getMapColumnTextIndexes returns empty Map when base table does not exist', async () => {
+      const md = buildMetadata();
+      const globalStub = Metadata.prototype
+        .getMapColumnTextIndexes as jest.Mock;
+      globalStub.mockRestore();
+      try {
+        jest.spyOn(md, 'getTableMetadata').mockResolvedValue(undefined);
+        jest
+          .spyOn(md, 'getServerVersion')
+          .mockResolvedValue([26, 3, 0, 0] as const);
+        const getColumnsSpy = jest.spyOn(md, 'getColumns');
+        const getSkipIndicesSpy = jest.spyOn(md, 'getSkipIndices');
+
+        const result = await md.getMapColumnTextIndexes({
+          databaseName: 'default',
+          tableName: 'unused_base_table',
+          connectionId: 'conn-1',
+        });
+
+        expect(result.size).toBe(0);
         expect(getColumnsSpy).not.toHaveBeenCalled();
         expect(getSkipIndicesSpy).not.toHaveBeenCalled();
       } finally {
