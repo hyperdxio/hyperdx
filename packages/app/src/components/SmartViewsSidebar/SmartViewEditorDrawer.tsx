@@ -69,16 +69,27 @@ export function SmartViewEditorDrawer({
 
   // Seed the draft from the existing view when the drawer opens for
   // editing; reset to defaults when opening for a new view.
+  //
+  // Defensive on every field: an older SmartView document stored before
+  // the local-mode default kicked in (or returned by a server that
+  // dropped a field) may have `rules` undefined, `combinator` missing,
+  // or any rule entry null. Coerce to safe defaults rather than letting
+  // `.length` / `.tag` throw and crash the whole listing page.
   useEffect(() => {
     if (!opened) return;
     if (existingView) {
+      const safeRules = Array.isArray(existingView.rules)
+        ? (existingView.rules.filter(
+            (r): r is RuleDraft => r != null && typeof r === 'object',
+          ) as RuleDraft[])
+        : [];
       setDraft({
-        name: existingView.name,
+        name: existingView.name ?? '',
         icon: existingView.icon ?? '',
-        combinator: existingView.combinator,
+        combinator: existingView.combinator ?? 'all',
         rules:
-          existingView.rules.length > 0
-            ? (existingView.rules as RuleDraft[])
+          safeRules.length > 0
+            ? safeRules
             : [{ kind: 'tag-includes', tag: '' }],
       });
     } else {

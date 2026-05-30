@@ -16,10 +16,23 @@ import {
  * the new fields they reference.
  */
 export function evaluateSmartView<T extends { tags: string[] }>(
-  view: { rules: SmartViewRule[]; combinator: SmartViewCombinator },
+  view: {
+    rules?: SmartViewRule[] | null;
+    combinator?: SmartViewCombinator | null;
+  },
   item: T,
 ): boolean {
-  if (view.rules.length === 0) return true;
+  // Defensive: a view persisted before the local-mode default kicked in
+  // (or returned by a server that dropped a field) may have `rules`
+  // null/undefined or contain non-object entries. Skip the entries that
+  // don't fit any rule shape rather than crashing the caller.
+  const rules = Array.isArray(view.rules)
+    ? view.rules.filter(
+        (r): r is SmartViewRule =>
+          r != null && typeof r === 'object' && 'kind' in r,
+      )
+    : [];
+  if (rules.length === 0) return true;
 
   const pass = (rule: SmartViewRule): boolean => {
     switch (rule.kind) {
@@ -32,7 +45,5 @@ export function evaluateSmartView<T extends { tags: string[] }>(
     }
   };
 
-  return view.combinator === 'all'
-    ? view.rules.every(pass)
-    : view.rules.some(pass);
+  return view.combinator === 'any' ? rules.some(pass) : rules.every(pass);
 }

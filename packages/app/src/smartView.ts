@@ -21,16 +21,39 @@ export type SmartViewInput = Omit<SmartView, 'id' | 'createdAt' | 'updatedAt'>;
 // React Query never tries to hit the API.
 const localSmartViews = createEntityStore<SmartView>('hdx-local-smart-views');
 
+function normalizeSmartView(view: Partial<SmartView>): SmartView {
+  // Coerce any missing fields so downstream consumers (sidebar, drawer,
+  // evaluateSmartView) never have to defend against undefined `rules`,
+  // missing `combinator`, etc. A SmartView stored before a default
+  // landed will still render and edit cleanly.
+  return {
+    id: view.id ?? '',
+    name: view.name ?? '',
+    icon: view.icon,
+    resource: view.resource ?? 'dashboard',
+    rules: Array.isArray(view.rules) ? view.rules : [],
+    combinator: view.combinator ?? 'all',
+    ordering: typeof view.ordering === 'number' ? view.ordering : 0,
+    isShared: view.isShared,
+    createdAt: view.createdAt,
+    updatedAt: view.updatedAt,
+  };
+}
+
 async function fetchSmartViews(
   resource: SmartViewResource,
 ): Promise<SmartView[]> {
   if (IS_LOCAL_MODE) {
     return localSmartViews
       .getAll()
-      .filter(v => v.resource === resource)
+      .filter(v => v?.resource === resource)
+      .map(normalizeSmartView)
       .sort((a, b) => (a.ordering ?? 0) - (b.ordering ?? 0));
   }
-  return hdxServer(`smart-views?resource=${resource}`).json<SmartView[]>();
+  const raw = await hdxServer(`smart-views?resource=${resource}`).json<
+    Partial<SmartView>[]
+  >();
+  return Array.isArray(raw) ? raw.map(normalizeSmartView) : [];
 }
 
 export function useSmartViews(resource: SmartViewResource) {

@@ -84,4 +84,23 @@ describe('evaluateSmartView', () => {
     expect(evaluateSmartView(v, { tags: ['incident'] } as Item)).toBe(true);
     expect(evaluateSmartView(v, { tags: ['other'] } as Item)).toBe(false);
   });
+
+  it('treats a view with missing rules / combinator as match-all instead of crashing', () => {
+    // Defensive: an older SmartView document persisted before the
+    // local-mode defaults landed may have `rules` or `combinator`
+    // undefined. The evaluator must not blow up on either.
+    const undefinedView = {} as Parameters<typeof evaluateSmartView>[0];
+    expect(evaluateSmartView(undefinedView, { tags: [] } as Item)).toBe(true);
+    expect(evaluateSmartView(undefinedView, { tags: ['any'] } as Item)).toBe(
+      true,
+    );
+
+    const nullRulesView = {
+      rules: null as unknown as Parameters<
+        typeof evaluateSmartView
+      >[0]['rules'],
+      combinator: 'all' as const,
+    };
+    expect(evaluateSmartView(nullRulesView, { tags: [] } as Item)).toBe(true);
+  });
 });
