@@ -4,20 +4,17 @@
   min-height: var(--autocomplete-base-height, 36px);
 }
 
-.textarea {
+.inputContainer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   flex-grow: 1;
-  resize: none;
   border: 1px solid var(--color-border);
   border-radius: var(--mantine-radius-default);
-
-  textarea {
-    border: none !important;
-    word-break: break-all;
-  }
-
-  textarea::placeholder {
-    transform: translateY(1px);
-  }
+  background-color: var(--color-bg-field);
+  min-height: var(--autocomplete-base-height, 36px);
+  gap: 2px;
+  padding: 2px 0 2px 4px;
 
   &.focused {
     position: absolute;
@@ -29,11 +26,12 @@
     border-bottom: 2px solid var(--color-bg-brand) !important;
   }
 
-  /* Fade at the bottom when collapsed (single-line, not focused); applied to textarea */
+  /* Fade at the bottom when collapsed (single-line, not focused); applied to container */
   &.collapseFade {
     position: relative;
+    overflow: hidden;
 
-    &::after {
+    &:not([data-has-chips])::after {
       content: '';
       position: absolute;
       left: 0;
@@ -48,6 +46,28 @@
       pointer-events: none;
       border-radius: var(--mantine-radius-default);
     }
+  }
+}
+
+.textarea {
+  flex: 1 1 auto;
+  min-width: 100px;
+  resize: none;
+  border: none !important;
+
+  /* When focused with chips, require enough space or wrap to next line */
+  .focused[data-has-chips] > & {
+    min-width: min(100%, 300px);
+  }
+
+  textarea {
+    border: none !important;
+    background: transparent !important;
+    word-break: break-all;
+  }
+
+  textarea::placeholder {
+    transform: translateY(1px);
   }
 }
 

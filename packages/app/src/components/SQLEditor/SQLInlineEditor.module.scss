@@ -14,9 +14,13 @@
   background-color: var(--color-bg-field);
   border: 1px solid var(--color-border);
   display: flex;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
   min-height: var(--editor-base-height, 36px);
   box-shadow: none;
+  gap: 2px;
+  padding-top: 2px;
+  padding-bottom: 2px;
 
   &.error {
     border-color: var(--color-bg-danger);
@@ -34,31 +38,31 @@
 
   &:not(.expanded) {
     position: relative;
-    max-height: var(--editor-base-height, 36px);
     overflow: hidden;
+  }
+
+  /* When no chips, keep original single-line height cap */
+  &:not(.expanded):not([data-has-chips]) {
+    max-height: var(--editor-base-height, 36px);
   }
 }
 
 .label {
   white-space: nowrap;
-
-  &.sizeXs {
-    padding-top: 6px;
-  }
-
-  &:not(.sizeXs) {
-    padding-top: 8px;
-  }
+  flex-shrink: 0;
 }
 
 .cmWrapper {
-  min-width: 10px;
-  width: 100%;
-  padding-top: 3.4px;
+  min-width: 100px;
+  flex: 1 1 auto;
   font-size: var(--mantine-font-size-sm);
 
+  /* When expanded with chips, require enough space or wrap to next line */
+  .expanded[data-has-chips] > & {
+    min-width: min(100%, 300px);
+  }
+
   &.sizeXs {
-    padding-top: 2.4px;
     font-size: var(--mantine-font-size-xs);
   }
 

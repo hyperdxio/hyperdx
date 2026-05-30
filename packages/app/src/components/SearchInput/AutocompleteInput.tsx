@@ -28,6 +28,8 @@ export default function AutocompleteInput({
   language,
   onSubmit,
   queryHistoryType,
+  filterChips,
+  onRemoveLastChip,
   'data-testid': dataTestId,
 }: {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -47,6 +49,9 @@ export default function AutocompleteInput({
   onLanguageChange?: (language: 'sql' | 'lucene') => void;
   language?: 'sql' | 'lucene';
   queryHistoryType?: string;
+  filterChips?: React.ReactNode;
+  /** Returns true if a chip was actually removed so the host can consume the keystroke. */
+  onRemoveLastChip?: () => boolean | void;
   'data-testid'?: string;
 }) {
   const suggestionsLimit = 10;
@@ -180,117 +185,143 @@ export default function AutocompleteInput({
         }}
       >
         <Popover.Target>
-          <Textarea
-            ref={inputRef}
-            placeholder={placeholder}
+          <div
             className={cx(
-              styles.textarea,
+              styles.inputContainer,
               !isSearchInputFocused && styles.collapseFade,
               isSearchInputFocused && styles.focused,
             )}
-            value={value}
-            size={size}
-            autosize
-            minRows={1}
-            maxRows={isSearchInputFocused ? 4 : 1}
-            data-testid={dataTestId}
-            onChange={e => onChange(e.target.value)}
-            onFocus={() => {
-              setSelectedAutocompleteIndex(-1);
-              setSelectedQueryHistoryIndex(-1);
-              setIsSearchInputFocused(true);
-            }}
-            onBlur={() => {
-              setSelectedAutocompleteIndex(-1);
-              setSelectedQueryHistoryIndex(-1);
-              setIsSearchInputFocused(false);
-            }}
-            onKeyDown={e => {
-              if (
-                e.key === 'Escape' &&
-                e.target instanceof HTMLTextAreaElement
-              ) {
-                e.preventDefault();
-                setIsInputDropdownOpen(false);
-                e.target.blur();
-              }
-
-              // Autocomplete Navigation/Acceptance Keys
-              if (e.key === 'Tab' && e.target instanceof HTMLTextAreaElement) {
+            data-autocomplete-container
+            data-has-chips={filterChips != null ? 'true' : undefined}
+          >
+            {filterChips}
+            <Textarea
+              ref={inputRef}
+              placeholder={placeholder}
+              className={styles.textarea}
+              value={value}
+              size={size}
+              autosize
+              minRows={1}
+              maxRows={isSearchInputFocused ? 4 : 1}
+              data-testid={dataTestId}
+              onChange={e => onChange(e.target.value)}
+              onFocus={() => {
+                setSelectedAutocompleteIndex(-1);
+                setSelectedQueryHistoryIndex(-1);
+                setIsSearchInputFocused(true);
+              }}
+              onBlur={() => {
+                setSelectedAutocompleteIndex(-1);
+                setSelectedQueryHistoryIndex(-1);
+                setIsSearchInputFocused(false);
+              }}
+              onKeyDown={e => {
                 if (
-                  suggestedProperties.length > 0 &&
-                  selectedAutocompleteIndex < suggestedProperties.length &&
-                  selectedAutocompleteIndex >= 0
+                  e.key === 'Escape' &&
+                  e.target instanceof HTMLTextAreaElement
                 ) {
                   e.preventDefault();
-                  onAcceptSuggestion(
-                    suggestedProperties[selectedAutocompleteIndex].value,
-                  );
+                  setIsInputDropdownOpen(false);
+                  e.target.blur();
                 }
-              }
-              if (
-                e.key === 'Enter' &&
-                e.target instanceof HTMLTextAreaElement
-              ) {
+
+                // Backspace at cursor position 0 removes last chip (only if
+                // a chip was actually present — otherwise let backspace behave
+                // normally).
                 if (
-                  suggestedProperties.length > 0 &&
-                  selectedAutocompleteIndex < suggestedProperties.length &&
-                  selectedAutocompleteIndex >= 0
+                  e.key === 'Backspace' &&
+                  e.target instanceof HTMLTextAreaElement &&
+                  e.target.selectionStart === 0 &&
+                  e.target.selectionEnd === 0 &&
+                  onRemoveLastChip
                 ) {
-                  e.preventDefault();
-                  onAcceptSuggestion(
-                    suggestedProperties[selectedAutocompleteIndex].value,
-                  );
-                } else {
-                  // Allow shift+enter to still create new lines
-                  if (!e.shiftKey) {
+                  const removed = onRemoveLastChip();
+                  if (removed) {
                     e.preventDefault();
-                    if (queryHistoryType && value) {
-                      setQueryHistory(value);
-                    }
-                    onSubmit?.();
                   }
                 }
-              }
-              if (
-                e.key === 'ArrowDown' &&
-                e.target instanceof HTMLTextAreaElement
-              ) {
-                if (suggestedProperties.length > 0) {
-                  e.preventDefault();
-                  setSelectedAutocompleteIndex(
-                    Math.min(
-                      selectedAutocompleteIndex + 1,
-                      suggestedProperties.length - 1,
-                      suggestionsLimit - 1,
-                    ),
-                  );
+
+                // Autocomplete Navigation/Acceptance Keys
+                if (
+                  e.key === 'Tab' &&
+                  e.target instanceof HTMLTextAreaElement
+                ) {
+                  if (
+                    suggestedProperties.length > 0 &&
+                    selectedAutocompleteIndex < suggestedProperties.length &&
+                    selectedAutocompleteIndex >= 0
+                  ) {
+                    e.preventDefault();
+                    onAcceptSuggestion(
+                      suggestedProperties[selectedAutocompleteIndex].value,
+                    );
+                  }
                 }
-              }
-              if (
-                e.key === 'ArrowUp' &&
-                e.target instanceof HTMLTextAreaElement
-              ) {
-                if (suggestedProperties.length > 0) {
-                  e.preventDefault();
-                  setSelectedAutocompleteIndex(
-                    Math.max(selectedAutocompleteIndex - 1, 0),
-                  );
+                if (
+                  e.key === 'Enter' &&
+                  e.target instanceof HTMLTextAreaElement
+                ) {
+                  if (
+                    suggestedProperties.length > 0 &&
+                    selectedAutocompleteIndex < suggestedProperties.length &&
+                    selectedAutocompleteIndex >= 0
+                  ) {
+                    e.preventDefault();
+                    onAcceptSuggestion(
+                      suggestedProperties[selectedAutocompleteIndex].value,
+                    );
+                  } else {
+                    // Allow shift+enter to still create new lines
+                    if (!e.shiftKey) {
+                      e.preventDefault();
+                      if (queryHistoryType && value) {
+                        setQueryHistory(value);
+                      }
+                      onSubmit?.();
+                    }
+                  }
                 }
+                if (
+                  e.key === 'ArrowDown' &&
+                  e.target instanceof HTMLTextAreaElement
+                ) {
+                  if (suggestedProperties.length > 0) {
+                    e.preventDefault();
+                    setSelectedAutocompleteIndex(
+                      Math.min(
+                        selectedAutocompleteIndex + 1,
+                        suggestedProperties.length - 1,
+                        suggestionsLimit - 1,
+                      ),
+                    );
+                  }
+                }
+                if (
+                  e.key === 'ArrowUp' &&
+                  e.target instanceof HTMLTextAreaElement
+                ) {
+                  if (suggestedProperties.length > 0) {
+                    e.preventDefault();
+                    setSelectedAutocompleteIndex(
+                      Math.max(selectedAutocompleteIndex - 1, 0),
+                    );
+                  }
+                }
+              }}
+              rightSectionWidth={rightSectionWidth}
+              rightSection={
+                language != null && onLanguageChange != null ? (
+                  <div ref={ref}>
+                    <InputLanguageSwitch
+                      language={language}
+                      onLanguageChange={onLanguageChange}
+                    />
+                  </div>
+                ) : undefined
               }
-            }}
-            rightSectionWidth={rightSectionWidth}
-            rightSection={
-              language != null && onLanguageChange != null ? (
-                <div ref={ref}>
-                  <InputLanguageSwitch
-                    language={language}
-                    onLanguageChange={onLanguageChange}
-                  />
-                </div>
-              ) : undefined
-            }
-          />
+            />
+          </div>
         </Popover.Target>
         <Popover.Dropdown className={styles.dropdown}>
           {aboveSuggestions != null && (

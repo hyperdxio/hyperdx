@@ -1,0 +1,64 @@
+.chipsGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+  max-height: 46px;
+  overflow: hidden;
+}
+
+/* When the parent input is focused/expanded, show all chips */
+/* stylelint-disable-next-line selector-pseudo-class-no-unknown */
+:global([data-expanded='true']) .chipsGroup {
+  max-height: none;
+}
+
+.chip,
+.chipExcluded {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 16px;
+  cursor: default;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border-emphasis);
+  background: transparent;
+}
+
+.chipExcluded {
+  border-color: var(--mantine-color-red-light);
+}
+
+.chipField {
+  font-size: 10px;
+  flex-shrink: 0;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-secondary);
+}
+
+.chipOperator {
+  font-size: 10px;
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.chipValue {
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text);
+}
+
+.chipClose {
+  flex-shrink: 0;
+  margin-left: 1px;
+}

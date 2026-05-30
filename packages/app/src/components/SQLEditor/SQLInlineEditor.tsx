@@ -65,6 +65,9 @@ type SQLInlineEditorProps = {
   allowMultiline?: boolean;
   dateRange?: [Date, Date];
   sourceId?: string;
+  filterChips?: React.ReactNode;
+  /** Returns true if a chip was actually removed so the host can consume the keystroke. */
+  onRemoveLastChip?: () => boolean | void;
 };
 
 const MAX_EDITOR_HEIGHT = '150px';
@@ -91,6 +94,8 @@ export default function SQLInlineEditor({
   allowMultiline = true,
   dateRange,
   sourceId,
+  filterChips,
+  onRemoveLastChip,
 }: SQLInlineEditorProps & TableConnectionChoice) {
   const { colorScheme } = useMantineColorScheme();
   const _tableConnections = tableConnection
@@ -152,6 +157,10 @@ export default function SQLInlineEditor({
   const ref = useRef<ReactCodeMirrorRef>(null);
 
   const compartmentRef = useRef<Compartment>(new Compartment());
+  const onRemoveLastChipRef = useRef(onRemoveLastChip);
+  useEffect(() => {
+    onRemoveLastChipRef.current = onRemoveLastChip;
+  }, [onRemoveLastChip]);
 
   const hasNonEmptyValue = value.trim().length > 0;
 
@@ -274,6 +283,16 @@ export default function SQLInlineEditor({
               return true;
             },
           },
+          {
+            key: 'Backspace',
+            run: view => {
+              const { from, to } = view.state.selection.main;
+              if (from === 0 && to === 0 && onRemoveLastChipRef.current) {
+                return onRemoveLastChipRef.current() === true;
+              }
+              return false;
+            },
+          },
           ...(allowMultiline
             ? [
                 {
@@ -324,6 +343,7 @@ export default function SQLInlineEditor({
           allowMultiline && !isExpanded ? styles.collapseFade : undefined,
         )}
         ps="4px"
+        data-has-chips={filterChips != null ? 'true' : undefined}
       >
         {label != null && (
           <Text
@@ -344,6 +364,7 @@ export default function SQLInlineEditor({
             </Tooltip>
           </Text>
         )}
+        {filterChips}
         <div
           className={cx(
             styles.cmWrapper,

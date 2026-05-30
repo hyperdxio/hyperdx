@@ -4,6 +4,7 @@
  */
 import { expect, Locator, Page } from '@playwright/test';
 
+import { FilterChipsComponent } from '../components/FilterChipsComponent';
 import { FilterComponent } from '../components/FilterComponent';
 import { InfrastructurePanelComponent } from '../components/InfrastructurePanelComponent';
 import { SavedSearchModalComponent } from '../components/SavedSearchModalComponent';
@@ -22,6 +23,7 @@ export class SearchPage {
   readonly sidePanel: SidePanelComponent;
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
+  readonly chips: FilterChipsComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
   readonly savedSearchNameTitle: Locator;
   readonly alertModal: SearchPageAlertModalComponent;
@@ -51,6 +53,7 @@ export class SearchPage {
     this.sidePanel = new SidePanelComponent(page, 'row-side-panel');
     this.infrastructure = new InfrastructurePanelComponent(page);
     this.filters = new FilterComponent(page);
+    this.chips = new FilterChipsComponent(page);
     this.savedSearchModal = new SavedSearchModalComponent(page);
     this.alertModal = new SearchPageAlertModalComponent(page);
     this.alertsButtonLocator = page.getByTestId('alerts-button');
