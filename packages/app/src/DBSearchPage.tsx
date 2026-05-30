@@ -25,6 +25,7 @@ import {
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import HyperDX from '@hyperdx/browser';
 import {
   ClickHouseQueryError,
   ColumnMeta,
@@ -72,6 +73,7 @@ import { notifications } from '@mantine/notifications';
 import {
   IconArrowBarToRight,
   IconBolt,
+  IconCode,
   IconPlayerPlay,
   IconPlus,
   IconStack2,
@@ -120,9 +122,14 @@ import {
   parseTimeQuery,
   useNewTimeQuery,
 } from '@/timeQuery';
-import { QUERY_LOCAL_STORAGE, useLocalStorage, usePrevious } from '@/utils';
+import {
+  formatDurationMs,
+  QUERY_LOCAL_STORAGE,
+  useLocalStorage,
+  usePrevious,
+} from '@/utils';
 
-import { SQLPreview } from './components/ChartSQLPreview';
+import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
@@ -330,30 +337,87 @@ function SearchResultsCountGroup({
   );
 }
 
-function SearchNumRows({
+export function SearchNumRows({
   config,
+  sqlConfig,
   enabled,
+  searchElapsedMs,
+  isSearching,
+  isLiveTail = false,
 }: {
   config: ChartConfigWithDateRange;
+  sqlConfig?: ChartConfigWithDateRange;
   enabled: boolean;
+  searchElapsedMs: number | null;
+  isSearching: boolean;
+  isLiveTail?: boolean;
 }) {
-  const { data, isLoading, error } = useExplainQuery(config, {
-    enabled,
-  });
+  const [statsOpened, { open: openStats, close: closeStats }] =
+    useDisclosure(false);
+  const { data, isLoading, error } = useExplainQuery(config, { enabled });
 
   if (!enabled) {
     return null;
   }
 
-  const numRows = data?.[0]?.rows;
+  const explainRow = data?.[0];
+  const numRows = explainRow?.rows;
+  const hasData = !isLoading && !error && numRows != null;
+
+  // During live tail we keep showing the last measured elapsed time and never
+  // flash the "..." loading state, so the value doesn't flicker between polls.
+  const showElapsedLoading = isSearching && !isLiveTail;
+  const showElapsed = showElapsedLoading || searchElapsedMs != null;
+
   return (
-    <Text size="xs">
-      {isLoading
-        ? 'Scanned Rows ...'
-        : error || !numRows
-          ? ''
-          : `Scanned Rows: ${Number.parseInt(numRows)?.toLocaleString()}`}
-    </Text>
+    <>
+      <Modal
+        opened={statsOpened}
+        onClose={closeStats}
+        title={sqlConfig != null ? 'Generated SQL (Timeline)' : 'Generated SQL'}
+        size="xl"
+      >
+        <ChartSQLPreview config={sqlConfig ?? config} enableCopy />
+      </Modal>
+      <Group gap={4} align="center">
+        <Text size="xs">
+          {isLoading
+            ? 'Scanned Rows ...'
+            : error || numRows == null
+              ? ''
+              : `Scanned Rows: ${Number(numRows).toLocaleString()}`}
+        </Text>
+        {showElapsed && (
+          <>
+            {(hasData || isLoading) && (
+              <Text size="xs" c="dimmed">
+                |
+              </Text>
+            )}
+            <Text size="xs">
+              {showElapsedLoading
+                ? 'Elapsed Time: ...'
+                : `Elapsed Time: ${formatDurationMs(searchElapsedMs!)}`}
+            </Text>
+          </>
+        )}
+        {/* The generated-SQL preview is derived purely from config, not the
+            explain query, so it renders unconditionally. Gating it on explain
+            loading/data would make it flicker on every live-tail poll, since
+            each poll changes the dateRange (and thus the explain queryKey). */}
+        <Tooltip label="Show Generated SQL" position="top">
+          <ActionIcon
+            variant="subtle"
+            size="sm"
+            color="gray"
+            onClick={openStats}
+            aria-label="Show Generated SQL"
+          >
+            <IconCode size={16} />
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+    </>
   );
 }
 
@@ -809,6 +873,79 @@ const queryStateMap = {
   filters: parseAsJsonEncoded<Filter[]>(),
   orderBy: parseAsStringEncoded,
 };
+
+export function useSearchTelemetry({
+  isAnyQueryFetching,
+  isLive,
+  sourceId,
+}: {
+  isAnyQueryFetching: boolean;
+  /** When true the hook suppresses recording and emission so live-tail
+   * background refetches do not flood the metric. */
+  isLive: boolean;
+  sourceId: string | null;
+}) {
+  const searchStartTimeRef = useRef<number | null>(null);
+  const wasFetchingRef = useRef(false);
+  // Whether the in-flight cycle began as a live-tail refresh, captured on the
+  // rising edge so a mid-cycle isLive flip can't change how it's treated.
+  const cycleIsLiveRef = useRef(false);
+
+  // Snapshot latency_ms and source_id together so a later sourceId change does
+  // not cause the emission effect to re-fire with stale latency data. `emit`
+  // records whether this cycle should be reported to telemetry (user-initiated
+  // searches only); latency is still surfaced for display in every case.
+  const [completedSearch, setCompletedSearch] = useState<{
+    latency_ms: number;
+    source_id: string;
+    emit: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (isAnyQueryFetching) {
+      // Start the timer once per fetch cycle (for live tail too — we display
+      // its elapsed time, we just don't emit telemetry for it).
+      if (!wasFetchingRef.current) {
+        searchStartTimeRef.current = performance.now();
+        cycleIsLiveRef.current = isLive;
+        // Only blank the displayed timer for user-initiated searches. During
+        // live tail we keep the previous value so it doesn't flicker between
+        // background refreshes.
+        if (!isLive) {
+          setCompletedSearch(null);
+        }
+      }
+      wasFetchingRef.current = true;
+    } else {
+      if (searchStartTimeRef.current != null) {
+        setCompletedSearch({
+          latency_ms: Math.round(
+            performance.now() - searchStartTimeRef.current,
+          ),
+          source_id: sourceId ?? '',
+          emit: !cycleIsLiveRef.current,
+        });
+        searchStartTimeRef.current = null;
+      }
+      wasFetchingRef.current = false;
+    }
+  }, [isAnyQueryFetching, isLive, sourceId]);
+
+  // completedSearch is the only dep here — sourceId was snapshotted at
+  // completion time so changing source after a finished search does not
+  // re-emit the previous run's latency against the new source. Live-tail
+  // cycles are recorded for display but flagged emit=false so they never flood
+  // telemetry.
+  useEffect(() => {
+    if (completedSearch == null || !completedSearch.emit) return;
+    HyperDX.addAction('search executed', {
+      latency_ms: completedSearch.latency_ms,
+      source_id: completedSearch.source_id,
+    });
+  }, [completedSearch]);
+
+  return { searchElapsedMs: completedSearch?.latency_ms ?? null };
+}
 
 export function DBSearchPage() {
   const brandName = useBrandDisplayName();
@@ -1338,6 +1475,12 @@ export function DBSearchPage() {
     useIsFetching({
       queryKey: [QUERY_KEY_PREFIX],
     }) > 0;
+
+  const { searchElapsedMs } = useSearchTelemetry({
+    isAnyQueryFetching,
+    isLive: isLive ?? false,
+    sourceId: chartConfig?.source ?? null,
+  });
 
   const isTabVisible = useDocumentVisibility();
 
@@ -2193,7 +2336,11 @@ export function DBSearchPage() {
                             ...chartConfig,
                             dateRange: searchedTimeRange,
                           }}
+                          sqlConfig={histogramTimeChartConfig ?? undefined}
                           enabled={isReady}
+                          searchElapsedMs={searchElapsedMs}
+                          isSearching={isAnyQueryFetching}
+                          isLiveTail={isLive ?? false}
                         />
                       </Group>
                     </Box>
@@ -2287,7 +2434,11 @@ export function DBSearchPage() {
                                 ...chartConfig,
                                 dateRange: searchedTimeRange,
                               }}
+                              sqlConfig={histogramTimeChartConfig ?? undefined}
                               enabled={isReady}
+                              searchElapsedMs={searchElapsedMs}
+                              isSearching={isAnyQueryFetching}
+                              isLiveTail={isLive ?? false}
                             />
                           </Group>
                         </Group>
