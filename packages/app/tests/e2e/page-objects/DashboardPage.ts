@@ -763,7 +763,7 @@ export class DashboardPage {
 
   async clickFilterOption(filterName: string, option: string) {
     const serviceFilter = this.getFilterSelectByName(filterName);
-    serviceFilter.click();
+    await serviceFilter.click();
     const optionLocator = this.page.getByRole('option', {
       name: option,
       exact: true,
