@@ -48,7 +48,16 @@ export default function usePresetDashboardFilters({
   }, []);
 
   const handleSaveFilter = useCallback(
-    (dashboardFilter: DashboardFilter) => {
+    (
+      dashboardFilter: DashboardFilter,
+      // Presets don't support locked/constant filters today (no
+      // savedFilterValues storage); accept and ignore the editor's
+      // second arg so the prop shape matches `DashboardFiltersModal`'s
+      // `onSaveFilter` contract and a future flip of
+      // `supportsConstantFilters` on presets doesn't silently drop the
+      // arg.
+      _options?: { defaultValues?: string[] },
+    ) => {
       const presetDashboardFilter = {
         ...dashboardFilter,
         presetDashboard,

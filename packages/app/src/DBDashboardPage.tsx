@@ -18,17 +18,13 @@ import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
-import {
-  parseKeyPath,
-  TableConnection,
-} from '@hyperdx/common-utils/dist/core/metadata';
+import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { filtersToQuery } from '@hyperdx/common-utils/dist/filters';
 import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
@@ -131,6 +127,13 @@ import {
   useDashboards,
   useDeleteDashboard,
 } from '@/dashboard';
+import {
+  buildConstantExpressionSet,
+  mergeConstantFiltersForSave,
+  removeSavedDefaultForExpression,
+  stripConstantsFromUrl,
+  upsertSavedDefault,
+} from '@/dashboardFilterUtils';
 import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
@@ -168,7 +171,6 @@ import {
 } from './GranularityPicker';
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
-import { parseQuery } from './searchFilters';
 import {
   getFirstTimestampValueExpression,
   useSource,
@@ -1445,25 +1447,11 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         // filter expression. An empty array means "clear the saved default
         // for this expression."
         if (options?.defaultValues !== undefined) {
-          const existing = draft.savedFilterValues ?? [];
-          const { filters: parsed, passthroughFilters } = parseQuery(existing);
-          const norm = parseKeyPath(filter.expression).join('.');
-          const remaining: typeof parsed = {};
-          for (const [key, value] of Object.entries(parsed)) {
-            if (parseKeyPath(key).join('.') !== norm) {
-              remaining[key] = value;
-            }
-          }
-          if (options.defaultValues.length > 0) {
-            remaining[filter.expression] = {
-              included: new Set(options.defaultValues),
-              excluded: new Set(),
-            };
-          }
-          draft.savedFilterValues = [
-            ...filtersToQuery(remaining),
-            ...passthroughFilters,
-          ];
+          draft.savedFilterValues = upsertSavedDefault(
+            draft.savedFilterValues,
+            filter.expression,
+            options.defaultValues,
+          );
         }
       }),
     );
@@ -1472,9 +1460,20 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const handleRemoveFilter = (id: string) => {
     if (!dashboard) return;
 
+    // Strip the matching savedFilterValues entry alongside the filter
+    // delete so a later recreate-on-the-same-expression doesn't silently
+    // re-lock to the orphaned saved value.
+    const removed = dashboard.filters?.find(p => p.id === id);
+    const cleanedSavedValues = removed
+      ? removeSavedDefaultForExpression(
+          dashboard.savedFilterValues,
+          removed.expression,
+        )
+      : dashboard.savedFilterValues;
     setDashboard({
       ...dashboard,
       filters: dashboard.filters?.filter(p => p.id !== id) ?? [],
+      savedFilterValues: cleanedSavedValues,
     });
   };
 
@@ -1582,46 +1581,31 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     // truth.
     if (!hasFiltersInUrl) {
       if (dashboard.savedFilterValues) {
-        const constantExpressions = new Set<string>();
-        for (const f of dashboard.filters ?? []) {
-          if (f.constant) {
-            constantExpressions.add(parseKeyPath(f.expression).join('.'));
-          }
-        }
-        if (constantExpressions.size === 0) {
-          setFilterQueries(dashboard.savedFilterValues);
-        } else {
-          // Filter out lucene/sql Filter[] entries that resolve to a
-          // constant expression. The hook overlays these from
-          // savedFilterValues itself.
-          const { filters: parsedSaved, passthroughFilters } = parseQuery(
+        const constantExpressions = buildConstantExpressionSet(
+          dashboard.filters,
+        );
+        setFilterQueries(
+          stripConstantsFromUrl(
             dashboard.savedFilterValues,
-          );
-          const remaining: typeof parsedSaved = {};
-          for (const [key, value] of Object.entries(parsedSaved)) {
-            const norm = parseKeyPath(key).join('.');
-            if (!constantExpressions.has(norm)) {
-              remaining[key] = value;
-            }
-          }
-          const remainingQueries = [
-            ...filtersToQuery(remaining),
-            ...passthroughFilters,
-          ];
-          setFilterQueries(remainingQueries.length ? remainingQueries : null);
-        }
+            constantExpressions,
+          ),
+        );
       } else if (isSwitchingDashboards) {
         setFilterQueries(null);
       }
     }
 
     initializedDashboard.current = dashboard.id;
+    // dashboard?.filters is read indirectly via the constant-expression
+    // helper but the `initializedDashboard.current === dashboard.id`
+    // guard above already prevents re-runs for the same dashboard, so
+    // we don't list it here to keep the effect surface stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     dashboard?.id,
     dashboard?.savedQuery,
     dashboard?.savedQueryLanguage,
     dashboard?.savedFilterValues,
-    dashboard?.filters,
     isLocalDashboard,
     isFetchingDashboard,
     router.isReady,
@@ -1660,45 +1644,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     // bare URL state would clobber them. Preserve constant entries from
     // the existing savedFilterValues array; everything else comes from
     // the current URL state.
-    const constantExpressions = new Set<string>();
-    for (const f of dashboard.filters ?? []) {
-      if (f.constant) {
-        constantExpressions.add(parseKeyPath(f.expression).join('.'));
-      }
-    }
+    const constantExpressions = buildConstantExpressionSet(dashboard.filters);
     const urlFilterValues = rawFilterQueries?.length ? rawFilterQueries : [];
-    let currentFilterValues: Filter[] = urlFilterValues;
-    if (constantExpressions.size > 0 && dashboard.savedFilterValues?.length) {
-      const { filters: parsedSaved, passthroughFilters: savedPassthrough } =
-        parseQuery(dashboard.savedFilterValues);
-      const preservedSaved: typeof parsedSaved = {};
-      for (const [key, value] of Object.entries(parsedSaved)) {
-        const norm = parseKeyPath(key).join('.');
-        if (constantExpressions.has(norm)) {
-          preservedSaved[key] = value;
-        }
-      }
-      const preservedQueries = [
-        ...filtersToQuery(preservedSaved),
-        ...savedPassthrough,
-      ];
-      // Drop any URL entry whose expression collides with a constant; the
-      // preserved saved entry is the source of truth.
-      const { filters: parsedUrl, passthroughFilters: urlPassthrough } =
-        parseQuery(urlFilterValues);
-      const filteredUrl: typeof parsedUrl = {};
-      for (const [key, value] of Object.entries(parsedUrl)) {
-        const norm = parseKeyPath(key).join('.');
-        if (!constantExpressions.has(norm)) {
-          filteredUrl[key] = value;
-        }
-      }
-      currentFilterValues = [
-        ...preservedQueries,
-        ...filtersToQuery(filteredUrl),
-        ...urlPassthrough,
-      ];
-    }
+    const currentFilterValues: Filter[] = mergeConstantFiltersForSave(
+      dashboard.savedFilterValues,
+      urlFilterValues,
+      constantExpressions,
+    );
 
     setDashboard(
       produce(dashboard, draft => {

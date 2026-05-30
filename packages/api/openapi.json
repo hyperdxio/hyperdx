@@ -2362,8 +2362,7 @@
           },
           "constant": {
             "type": "boolean",
-            "description": "When true, the value from the dashboard's savedFilterValues matched\nby this filter's expression is applied automatically on every tile\nthis filter scopes, and viewers cannot change it. Use this to lock\na dashboard template to a single scope (clone the dashboard, save a\ndifferent default per copy). Pairs with renderMode to control how\nthe locked filter shows in the filter bar.\n",
-            "default": false,
+            "description": "When true, the value from the dashboard's savedFilterValues matched\nby this filter's expression is applied automatically on every tile\nthis filter scopes, and viewers cannot change it. Use this to lock\na dashboard template to a single scope (clone the dashboard, save a\ndifferent default per copy). Pairs with renderMode to control how\nthe locked filter shows in the filter bar. Omit (or send false)\nfor an ordinary editable filter (the implicit default behavior).\n",
             "example": true
           },
           "renderMode": {
@@ -2373,8 +2372,7 @@
               "readonly",
               "hidden"
             ],
-            "description": "Controls how this filter renders in the dashboard filter bar.\n\"editable\" (default) shows a normal dropdown the viewer can change.\n\"readonly\" shows a disabled chip with a lock icon; the viewer\nsees the locked value but cannot edit it. \"hidden\" omits the chip\nentirely; the locked value still scopes every matching tile.\n",
-            "default": "editable",
+            "description": "Controls how this filter renders in the dashboard filter bar.\nOmit for the implicit \"editable\" behavior (normal dropdown the\nviewer can change). \"readonly\" shows a disabled chip with a lock\nicon; the viewer sees the locked value but cannot edit it.\n\"hidden\" omits the chip entirely; the locked value still scopes\nevery matching tile. \"readonly\" and \"hidden\" require constant: true.\n",
             "example": "readonly"
           }
         }

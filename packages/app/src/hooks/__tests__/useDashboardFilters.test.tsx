@@ -511,5 +511,55 @@ describe('useDashboardFilters', () => {
 
       expect(result.current.filterValues.region).toBeUndefined();
     });
+
+    it('resolves a constant filter declared with bracket-notation expression', () => {
+      // Bracket-notation expressions like SpanAttributes['k8s.pod.name']
+      // normalize to dot-notation on the URL/saved-value side via
+      // parseKeyPath. The hook must match the locked value through that
+      // normalization so a constant filter declared with brackets still
+      // resolves to its saved default, and setFilterValue still no-ops.
+      const bracketConstantFilter: DashboardFilter = {
+        id: 'pod-filter',
+        type: 'QUERY_EXPRESSION',
+        name: 'Pod',
+        expression: "SpanAttributes['k8s.pod.name']",
+        source: 'traces',
+        constant: true,
+      };
+
+      const bracketSavedFilterValues: Filter[] = [
+        {
+          type: 'lucene',
+          condition: 'SpanAttributes.k8s.pod.name:"api-pod-1"',
+        },
+      ];
+
+      const { result } = renderHook(() =>
+        useDashboardFilters([bracketConstantFilter], {
+          savedFilterValues: bracketSavedFilterValues,
+        }),
+      );
+
+      expect(
+        result.current.filterValues["SpanAttributes['k8s.pod.name']"].included,
+      ).toEqual(new Set(['api-pod-1']));
+
+      // setFilterValue against the same bracket-notation expression must
+      // also no-op (the no-op key is normalized internally).
+      mockSetState.mockClear();
+      act(() => {
+        result.current.setFilterValue("SpanAttributes['k8s.pod.name']", [
+          'other-pod',
+        ]);
+      });
+      expect(mockSetState).not.toHaveBeenCalled();
+
+      // getFilterQueriesForSource returns the locked value for any tile
+      // (no appliesToSourceIds set).
+      const queries = result.current.getFilterQueriesForSource('source-x');
+      expect(queries).toHaveLength(1);
+      const condition = 'condition' in queries[0] ? queries[0].condition : '';
+      expect(condition).toContain('api-pod-1');
+    });
   });
 });

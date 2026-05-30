@@ -1196,6 +1196,93 @@ export const DashboardFilterSchema = z.object({
 
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
 
+/**
+ * Refinement for a single dashboard filter definition: reject
+ * combinations that would persist but never take effect.
+ *
+ * - renderMode 'readonly' or 'hidden' without constant: true renders a
+ *   locked-looking chip (or no chip) that the hook never overlays, so
+ *   the WHERE clause never gains the value. Catching this at the
+ *   boundary means external API + MCP callers can't ship a no-op
+ *   filter.
+ *
+ * Apply as a `.superRefine(refineDashboardFilterCoherence)` on any
+ * object schema that contains the constant + renderMode fields
+ * (notably the external API and MCP wrappers that derive from
+ * `DashboardFilterSchema`).
+ */
+export const refineDashboardFilterCoherence = (
+  data: {
+    constant?: boolean;
+    renderMode?: z.infer<typeof DashboardFilterRenderMode>;
+  },
+  ctx: z.RefinementCtx,
+) => {
+  if (
+    (data.renderMode === 'readonly' || data.renderMode === 'hidden') &&
+    !data.constant
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['renderMode'],
+      message:
+        "renderMode 'readonly' and 'hidden' require constant: true; " +
+        'otherwise the chip is locked / removed but no value applies.',
+    });
+  }
+};
+
+/**
+ * Reject two filter definitions on the same dashboard that share a
+ * normalized expression but disagree on `constant`. Mixed siblings let
+ * the editable side's URL value clobber the constant's locked value
+ * (`useDashboardFilters` keys by expression, last-writer-wins), and the
+ * editor would seed the editable form with the constant's locked value.
+ * Apply this as a `.superRefine` on whatever schema carries the filter
+ * array (e.g. the dashboard schema).
+ */
+export const refineDashboardFiltersConstantSiblings = (
+  filters: DashboardFilter[],
+  ctx: z.RefinementCtx,
+) => {
+  const byNormalized = new Map<
+    string,
+    { hasConstant: boolean; hasEditable: boolean; index: number }
+  >();
+  for (let i = 0; i < filters.length; i++) {
+    const f = filters[i];
+    // Inline the normalization here so common-utils doesn't have to import
+    // parseKeyPath; matches the dot-notation form used everywhere else.
+    const norm = f.expression
+      .replace(/\['([^']+)'\]/g, '.$1')
+      .replace(/\["([^"]+)"\]/g, '.$1')
+      .replace(/^\.+|\.+$/g, '');
+    const entry = byNormalized.get(norm) ?? {
+      hasConstant: false,
+      hasEditable: false,
+      index: i,
+    };
+    if (f.constant) {
+      entry.hasConstant = true;
+    } else {
+      entry.hasEditable = true;
+    }
+    byNormalized.set(norm, entry);
+  }
+  for (const [, entry] of byNormalized) {
+    if (entry.hasConstant && entry.hasEditable) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['filters', entry.index],
+        message:
+          'Two filters with the same expression cannot mix constant: true ' +
+          'with constant: false / undefined. Either lock all sibling ' +
+          'definitions on the expression or none of them.',
+      });
+    }
+  }
+};
+
 export enum PresetDashboard {
   Services = 'services',
 }

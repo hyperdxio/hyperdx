@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Controller, FieldError, useForm, useWatch } from 'react-hook-form';
+import { z } from 'zod';
 import {
   parseKeyPath,
   TableConnection,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   DashboardFilter,
+  DashboardFilterRenderMode,
   Filter,
   MetricsDataType,
   SourceKind,
@@ -63,11 +65,11 @@ const MODAL_SIZE = 'md';
 // values are the only meaningful combinations in v1; the schema admits
 // more, leaving room for MCP / external API callers to express future
 // variants (e.g. constant + editable).
-type FilterVisibility = 'editable' | 'readonly' | 'hidden';
+type FilterVisibility = z.infer<typeof DashboardFilterRenderMode>;
 
 const getFilterVisibility = (filter: {
   constant?: boolean;
-  renderMode?: 'editable' | 'readonly' | 'hidden';
+  renderMode?: FilterVisibility;
 }): FilterVisibility => {
   if (filter.renderMode === 'hidden') return 'hidden';
   if (filter.renderMode === 'readonly' || filter.constant) return 'readonly';
@@ -84,9 +86,12 @@ const applyFilterVisibility = (
       return { constant: true, renderMode: 'hidden' };
     case 'editable':
     default:
-      // Leave both fields undefined so dashboards saved with the default
-      // visibility round-trip with no constant / renderMode keys present.
-      return { constant: undefined, renderMode: undefined };
+      // Return an empty object so the spread on save doesn't leave
+      // `constant: undefined` / `renderMode: undefined` keys present in
+      // memory; that would let structural equality against a server
+      // round-trip see a spurious diff even though the wire format is
+      // identical.
+      return {};
   }
 };
 
@@ -95,6 +100,12 @@ const VISIBILITY_OPTIONS: { value: FilterVisibility; label: string }[] = [
   { value: 'readonly', label: 'Read-only (locked to saved default)' },
   { value: 'hidden', label: 'Hidden (locked, no chip in the filter bar)' },
 ];
+
+// Sentinel time range used to satisfy the `useDashboardFilterValues` hook
+// signature when the form is not configured enough to actually fetch
+// values (queryReady=false). The hook only fires when filtersForQuery is
+// non-empty, so this placeholder never reaches ClickHouse.
+const NEVER_USED_RANGE: [Date, Date] = [new Date(0), new Date(0)];
 
 interface CustomInputWrapperProps {
   children: React.ReactNode;
@@ -187,17 +198,10 @@ const FilterDefaultValueSelect = ({
   const queryReady =
     !!filter && !!filter.source && !!filter.expression && !!dateRange;
   const filtersForQuery = useMemo(
-    () => (queryReady && filter ? [filter as DashboardFilter] : []),
+    () => (queryReady && filter ? [filter] : []),
     [queryReady, filter],
   );
 
-  // Fallback range for the disabled state (queryReady=false). The hook
-  // only fires when filtersForQuery is non-empty, so this placeholder
-  // never reaches ClickHouse; it just satisfies the hook's signature.
-  const NEVER_USED_RANGE = useMemo(
-    (): [Date, Date] => [new Date(0), new Date(0)],
-    [],
-  );
   const { data: filterValuesById, isLoading } = useDashboardFilterValues({
     filters: filtersForQuery,
     dateRange: dateRange ?? NEVER_USED_RANGE,
@@ -286,9 +290,18 @@ const DashboardFilterEditForm = ({
   onClose,
   onCancel,
 }: DashboardFilterEditFormProps) => {
-  const initialDefaultValues = useMemo(
+  // Snapshot the saved default value once per filter.id. A background
+  // savedFilterValues refetch that lands while the modal is open would
+  // otherwise re-derive `initialDefaultValues`, fire the reset effect,
+  // and wipe any in-progress edit to the `defaultValues` field. The
+  // reset still runs when the user switches which filter is being
+  // edited (filter.id changes).
+  //
+  // State (not a ref) so the initial form values can read the snapshot
+  // during render without tripping the react-hooks/refs lint, and so
+  // the dep array on the reset effect omits savedFilterValues by design.
+  const [initialDefaultValues, setInitialDefaultValues] = useState<string[]>(
     () => getDefaultValuesForExpression(filter.expression, savedFilterValues),
-    [filter.expression, savedFilterValues],
   );
 
   const { handleSubmit, register, formState, control, reset } =
@@ -303,16 +316,27 @@ const DashboardFilterEditForm = ({
       },
     });
 
+  // Re-snapshot and reset when the user switches which filter is being
+  // edited. Omitting `savedFilterValues` from the dep array is deliberate:
+  // a background refetch should not wipe in-progress edits. The latest
+  // value is still read on the next filter switch via the closure on the
+  // savedFilterValues prop.
   useEffect(() => {
+    const next = getDefaultValuesForExpression(
+      filter.expression,
+      savedFilterValues,
+    );
+    setInitialDefaultValues(next);
     reset({
       ...filter,
       where: filter.where ?? '',
       whereLanguage: filter.whereLanguage ?? getStoredLanguage() ?? 'sql',
       appliesToSourceIds: filter.appliesToSourceIds ?? [],
       visibility: getFilterVisibility(filter),
-      defaultValues: initialDefaultValues,
+      defaultValues: next,
     });
-  }, [filter, initialDefaultValues, reset]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter.id, reset]);
 
   const watchedVisibility = useWatch({ control, name: 'visibility' });
   const watchedDefaultValues = useWatch({ control, name: 'defaultValues' });
@@ -413,11 +437,13 @@ const DashboardFilterEditForm = ({
                 ?.map(v => v.trim())
                 .filter(v => v.length > 0) ?? [];
             const initialNormalized = initialDefaultValues.map(v => v.trim());
+            // Set equality so reordering the same values doesn't fire a
+            // spurious save write.
+            const sanitizedSet = new Set(sanitizedDefaults);
+            const initialSet = new Set(initialNormalized);
             const defaultsChanged =
-              sanitizedDefaults.length !== initialNormalized.length ||
-              sanitizedDefaults.some(
-                (v, i) => v !== (initialNormalized[i] ?? ''),
-              );
+              sanitizedSet.size !== initialSet.size ||
+              [...sanitizedSet].some(v => !initialSet.has(v));
             const shouldUpdateDefaults =
               supportsConstantFilters &&
               (visibility !== 'editable' || defaultsChanged);

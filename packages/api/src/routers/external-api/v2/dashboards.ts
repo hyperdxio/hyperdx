@@ -1378,19 +1378,19 @@ function getSourceConnectionMismatches(
  *             this filter scopes, and viewers cannot change it. Use this to lock
  *             a dashboard template to a single scope (clone the dashboard, save a
  *             different default per copy). Pairs with renderMode to control how
- *             the locked filter shows in the filter bar.
- *           default: false
+ *             the locked filter shows in the filter bar. Omit (or send false)
+ *             for an ordinary editable filter (the implicit default behavior).
  *           example: true
  *         renderMode:
  *           type: string
  *           enum: [editable, readonly, hidden]
  *           description: |
  *             Controls how this filter renders in the dashboard filter bar.
- *             "editable" (default) shows a normal dropdown the viewer can change.
- *             "readonly" shows a disabled chip with a lock icon; the viewer
- *             sees the locked value but cannot edit it. "hidden" omits the chip
- *             entirely; the locked value still scopes every matching tile.
- *           default: "editable"
+ *             Omit for the implicit "editable" behavior (normal dropdown the
+ *             viewer can change). "readonly" shows a disabled chip with a lock
+ *             icon; the viewer sees the locked value but cannot edit it.
+ *             "hidden" omits the chip entirely; the locked value still scopes
+ *             every matching tile. "readonly" and "hidden" require constant: true.
  *           example: "readonly"
  *
  *     Filter:

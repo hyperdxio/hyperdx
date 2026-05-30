@@ -10,6 +10,7 @@ import {
   NumberFormatSchema,
   OnClickDashboardSchema,
   OnClickSearchSchema,
+  refineDashboardFilterCoherence,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
   validateAlertScheduleOffsetMinutes,
@@ -128,18 +129,28 @@ type ChartSeries = z.infer<typeof chartSeriesSchema>;
 
 export const tagsSchema = z.array(z.string().max(32)).max(50).optional();
 
-export const externalDashboardFilterSchemaWithId = DashboardFilterSchema.omit({
+// Bare object schema (no superRefine) so `.omit`/`.extend` chains still
+// work on the create variant below. Apply the coherence refinement to
+// each shipped schema separately.
+const externalDashboardFilterBaseSchemaWithId = DashboardFilterSchema.omit({
   source: true,
 })
   .extend({ sourceId: objectIdSchema })
   .strict();
+
+export const externalDashboardFilterSchemaWithId =
+  externalDashboardFilterBaseSchemaWithId.superRefine(
+    refineDashboardFilterCoherence,
+  );
 
 export type ExternalDashboardFilterWithId = z.infer<
   typeof externalDashboardFilterSchemaWithId
 >;
 
 export const externalDashboardFilterSchema =
-  externalDashboardFilterSchemaWithId.omit({ id: true });
+  externalDashboardFilterBaseSchemaWithId
+    .omit({ id: true })
+    .superRefine(refineDashboardFilterCoherence);
 
 export type ExternalDashboardFilter = z.infer<
   typeof externalDashboardFilterSchema
@@ -150,7 +161,7 @@ export const externalDashboardSavedFilterValueSchema = z.object({
   condition: z.string().max(10000),
 });
 
-type ExternalDashboardSavedFilterValue = z.infer<
+export type ExternalDashboardSavedFilterValue = z.infer<
   typeof externalDashboardSavedFilterValueSchema
 >;
 

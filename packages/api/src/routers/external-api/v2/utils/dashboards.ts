@@ -14,12 +14,14 @@ import {
   DASHBOARD_MAX_CONTAINERS,
   DashboardContainer,
   DashboardContainerSchema,
+  DashboardFilter,
   DisplayType,
   isLogSource,
   isOnClickDashboardById,
   isOnClickSearchById,
   isTraceSource,
   RawSqlSavedChartConfig,
+  refineDashboardFiltersConstantSiblings,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
@@ -1149,6 +1151,18 @@ function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
       // (otherwise a tile that references a real preserved container
       // would be rejected against an empty `data.containers ?? []`).
       validateDashboardContainersStructure(data.containers ?? [], ctx);
+
+      // Cross-filter check: reject mixing constant: true with editable
+      // siblings on the same expression. The filter-array element type
+      // is `unknown` from Zod's perspective here, so cast through the
+      // shared shape. Filters are already individually validated by the
+      // `filterSchema` arg, so the cast is safe.
+      if (data.filters && data.filters.length > 0) {
+        refineDashboardFiltersConstantSiblings(
+          data.filters as unknown as DashboardFilter[],
+          ctx,
+        );
+      }
     });
 }
 

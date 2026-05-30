@@ -958,21 +958,41 @@ describe('External API v2 Dashboards - old format', () => {
         .expect(200);
 
       expect(response.body.data.filters).toHaveLength(3);
-      expect(response.body.data.filters[0]).toMatchObject({
+      // Use toEqual on the full filter object so extra fields (which would
+      // indicate schema drift) fail the assertion. The bot deep-review at
+      // dashboards.test.ts:961 flagged toMatchObject for letting unexpected
+      // fields slip through silently.
+      expect(response.body.data.filters[0]).toEqual({
+        id: response.body.data.filters[0].id,
+        type: 'QUERY_EXPRESSION',
         name: 'Service (locked, read-only)',
+        expression: 'ServiceName',
+        sourceId: traceSource._id.toString(),
+        whereLanguage: 'sql',
         constant: true,
         renderMode: 'readonly',
       });
-      expect(response.body.data.filters[1]).toMatchObject({
+      expect(response.body.data.filters[1]).toEqual({
+        id: response.body.data.filters[1].id,
+        type: 'QUERY_EXPRESSION',
         name: 'Environment (hidden)',
+        expression: 'environment',
+        sourceId: traceSource._id.toString(),
+        whereLanguage: 'sql',
         constant: true,
         renderMode: 'hidden',
       });
       // Filter 2 omitted the new fields. They must NOT be materialized as
       // defaults on read; the absence is meaningful (default behavior
       // matches today's editable, non-locked filter).
-      expect(response.body.data.filters[2].constant).toBeUndefined();
-      expect(response.body.data.filters[2].renderMode).toBeUndefined();
+      expect(response.body.data.filters[2]).toEqual({
+        id: response.body.data.filters[2].id,
+        type: 'QUERY_EXPRESSION',
+        name: 'Region (default editable)',
+        expression: 'region',
+        sourceId: traceSource._id.toString(),
+        whereLanguage: 'sql',
+      });
 
       // GET round-trip.
       const getResponse = await authRequest(
@@ -1015,9 +1035,13 @@ describe('External API v2 Dashboards - old format', () => {
         .expect(200);
 
       expect(updateResponse.body.data.filters).toHaveLength(2);
-      expect(updateResponse.body.data.filters[1]).toMatchObject({
+      expect(updateResponse.body.data.filters[1]).toEqual({
         id: response.body.data.filters[2].id,
+        type: 'QUERY_EXPRESSION',
         name: 'Region (now read-only)',
+        expression: 'region',
+        sourceId: traceSource._id.toString(),
+        whereLanguage: 'sql',
         constant: true,
         renderMode: 'readonly',
       });

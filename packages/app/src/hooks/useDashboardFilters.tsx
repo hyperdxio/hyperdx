@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQueryState } from 'nuqs';
-import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   FilterState,
   filtersToQuery,
 } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter, Filter } from '@hyperdx/common-utils/dist/types';
 
+import {
+  buildConstantExpressionSet,
+  normalizeExpression,
+} from '@/dashboardFilterUtils';
 import { parseQuery } from '@/searchFilters';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
@@ -31,33 +34,26 @@ const useDashboardFilters = (
     filterQueriesParser,
   );
 
-  // Normalize an expression to dot-notation so bracket-notation lookups
-  // match the keys produced by parseLuceneFilter.
-  const normalizeKey = (k: string) => parseKeyPath(k).join('.');
-
   // Set of normalized expressions that are locked by `constant: true`.
   // `setFilterValue` skips writes to these, and read paths overlay the
   // saved value regardless of URL state.
-  const constantExpressions = useMemo(() => {
-    const set = new Set<string>();
-    for (const f of filters) {
-      if (f.constant) set.add(normalizeKey(f.expression));
-    }
-    return set;
-  }, [filters]);
+  const constantExpressions = useMemo(
+    () => buildConstantExpressionSet(filters),
+    [filters],
+  );
 
   const setFilterValue = useCallback(
     (expression: string, values: string[]) => {
       // Constant filters cannot be cleared or changed by the viewer; the
       // value is always sourced from `savedFilterValues`.
-      if (constantExpressions.has(parseKeyPath(expression).join('.'))) {
+      if (constantExpressions.has(normalizeExpression(expression))) {
         return;
       }
       setFilterQueries(prev => {
         const { filters: filterValues } = parseQuery(prev ?? []);
         // Normalize the expression to dot notation so it matches the keys
         // returned by parseQuery (which converts bracket notation to dots).
-        const key = parseKeyPath(expression).join('.');
+        const key = normalizeExpression(expression);
         if (values.length === 0) {
           delete filterValues[key];
         } else {
@@ -84,10 +80,13 @@ const useDashboardFilters = (
     const ignored: string[] = [];
 
     const normalizedParsed = new Map(
-      Object.entries(parsedFilters).map(([k, v]) => [normalizeKey(k), v]),
+      Object.entries(parsedFilters).map(([k, v]) => [
+        normalizeExpression(k),
+        v,
+      ]),
     );
     const knownNormalized = new Set(
-      filters.map(f => normalizeKey(f.expression)),
+      filters.map(f => normalizeExpression(f.expression)),
     );
 
     // Build a normalized lookup of saved filter values so constant filters
@@ -96,11 +95,11 @@ const useDashboardFilters = (
     // same parser produces the same expression-keyed FilterState.
     const { filters: parsedSaved } = parseQuery(savedFilterValues ?? []);
     const normalizedSaved = new Map(
-      Object.entries(parsedSaved).map(([k, v]) => [normalizeKey(k), v]),
+      Object.entries(parsedSaved).map(([k, v]) => [normalizeExpression(k), v]),
     );
 
     for (const { expression, constant } of filters) {
-      const norm = normalizeKey(expression);
+      const norm = normalizeExpression(expression);
       // Constant filters always source their value from savedFilterValues,
       // ignoring any URL state on the same expression. This is what makes
       // the value "locked": the viewer cannot override it via the URL.
@@ -112,7 +111,7 @@ const useDashboardFilters = (
       }
     }
     for (const key of Object.keys(parsedFilters)) {
-      const norm = normalizeKey(key);
+      const norm = normalizeExpression(key);
       if (!knownNormalized.has(norm)) {
         ignored.push(key);
       }

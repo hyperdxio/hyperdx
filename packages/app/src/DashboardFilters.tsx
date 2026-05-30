@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { Group, Stack, Text, Tooltip } from '@mantine/core';
@@ -85,8 +86,13 @@ const DashboardFilters = ({
   onSetFilterValue,
 }: DashboardFilterProps) => {
   // Filters with renderMode === 'hidden' still apply to tile WHERE clauses
-  // (via the hook) but are not rendered in the filter bar.
-  const visibleFilters = filters.filter(f => f.renderMode !== 'hidden');
+  // (via the hook) but are not rendered in the filter bar. Memoize so the
+  // downstream useDashboardFilterValues sees a stable reference and its
+  // useQueries doesn't churn isLoading on every parent re-render.
+  const visibleFilters = useMemo(
+    () => filters.filter(f => f.renderMode !== 'hidden'),
+    [filters],
+  );
 
   const { data: filterValuesById, isFetching } = useDashboardFilterValues({
     filters: visibleFilters,

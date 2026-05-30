@@ -23,10 +23,12 @@ import {
   resolveSavedQueryLanguage,
   updateDashboardBodySchema,
 } from '@/routers/external-api/v2/utils/dashboards';
-import type {
-  ExternalDashboardFilter,
-  ExternalDashboardFilterWithId,
-  ExternalDashboardTileWithId,
+import {
+  type ExternalDashboardFilter,
+  type ExternalDashboardFilterWithId,
+  type ExternalDashboardSavedFilterValue,
+  externalDashboardSavedFilterValueSchema,
+  type ExternalDashboardTileWithId,
 } from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
@@ -62,6 +64,20 @@ export function registerSaveDashboard(
         tags: z.array(z.string()).optional().describe('Dashboard tags'),
         containers: mcpContainersParam.optional(),
         filters: mcpFiltersParam.optional(),
+        savedFilterValues: z
+          .array(externalDashboardSavedFilterValueSchema)
+          .optional()
+          .describe(
+            'Optional saved default values for the dashboard filters. Each ' +
+              'entry is a Lucene or SQL `condition` string keyed by a filter ' +
+              'expression (e.g. `ServiceName:"hdx-private-api"`). ' +
+              'Pair this with `constant: true` on a filter in the `filters` ' +
+              'array to lock that filter to a specific value: the matching ' +
+              'savedFilterValues entry is applied automatically on every ' +
+              'tile and the viewer cannot override it. ' +
+              'If you set `constant: true` without a corresponding ' +
+              'savedFilterValues entry, the filter has no effect.',
+          ),
       }),
     },
     withToolTracing(
@@ -74,6 +90,7 @@ export function registerSaveDashboard(
         tags,
         containers,
         filters: inputFilters,
+        savedFilterValues: inputSavedFilterValues,
       }) => {
         if (!dashboardId) {
           return createDashboard({
@@ -84,6 +101,7 @@ export function registerSaveDashboard(
             tags,
             containers,
             inputFilters,
+            inputSavedFilterValues,
           });
         }
         return updateDashboard({
@@ -95,6 +113,7 @@ export function registerSaveDashboard(
           tags,
           containers,
           inputFilters,
+          inputSavedFilterValues,
         });
       },
     ),
@@ -147,6 +166,7 @@ async function createDashboard({
   tags,
   containers,
   inputFilters,
+  inputSavedFilterValues,
 }: {
   teamId: string;
   frontendUrl: string | undefined;
@@ -157,6 +177,7 @@ async function createDashboard({
   inputFilters:
     | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
     | undefined;
+  inputSavedFilterValues: ExternalDashboardSavedFilterValue[] | undefined;
 }) {
   const parsed = createDashboardBodySchema.safeParse({
     name,
@@ -164,6 +185,7 @@ async function createDashboard({
     tags,
     containers,
     filters: stripFilterIds(inputFilters),
+    savedFilterValues: inputSavedFilterValues,
   });
   if (!parsed.success) {
     return {
@@ -332,6 +354,7 @@ async function updateDashboard({
   tags,
   containers,
   inputFilters,
+  inputSavedFilterValues,
 }: {
   teamId: string;
   frontendUrl: string | undefined;
@@ -343,6 +366,7 @@ async function updateDashboard({
   inputFilters:
     | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
     | undefined;
+  inputSavedFilterValues: ExternalDashboardSavedFilterValue[] | undefined;
 }) {
   if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
     return {
@@ -357,6 +381,7 @@ async function updateDashboard({
     tags,
     containers,
     filters: assignFilterIds(inputFilters),
+    savedFilterValues: inputSavedFilterValues,
   });
   if (!parsed.success) {
     return {

@@ -745,7 +745,9 @@ export const mcpFiltersParam = z
       "its value to the dashboard's saved default (matched by `expression`); pair with " +
       '`renderMode: "readonly"` to show a disabled chip or `"hidden"` to drop the chip ' +
       'entirely while keeping the WHERE clause active. Locked filters cannot be cleared by ' +
-      'the viewer.\n\n' +
+      'the viewer. The locked value comes from the dashboard-level `savedFilterValues` ' +
+      "array (matched by this filter's `expression`); set both together in the same " +
+      '`hyperdx_save_dashboard` call.\n\n' +
       'Example (broadcast to every tile):\n' +
       '[\n' +
       '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
@@ -756,7 +758,18 @@ export const mcpFiltersParam = z
       '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "SpanName",\n' +
       '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
       '    "appliesToSourceIds": ["<trace-source-id>"] }\n' +
-      ']',
+      ']\n\n' +
+      'Example (locked scope-filter template) - pair with the top-level ' +
+      'savedFilterValues array on the dashboard call so the constant filter ' +
+      'has a value to apply:\n' +
+      '[\n' +
+      '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
+      '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
+      '    "constant": true, "renderMode": "readonly" }\n' +
+      ']\n' +
+      'plus on the dashboard call body:\n' +
+      '  "savedFilterValues": [ { "type": "lucene",\n' +
+      '    "condition": "ServiceName:\\"hdx-private-api\\"" } ]',
   );
 
 export const mcpContainersParam = z
