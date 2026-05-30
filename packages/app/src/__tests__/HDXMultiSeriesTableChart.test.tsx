@@ -103,20 +103,31 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       );
     });
 
-    it('hides the hint after mouseLeave so tooltip cannot get stranded (HDX-4405)', async () => {
-      // Regression test: the tooltip must disappear when the row is left.
-      // Previously each virtual row mounted its own Tooltip.Floating; if the
-      // row unmounted before onMouseLeave fired (rapid mouse movement), the
-      // Portal-rendered tooltip stayed visible. The fix moves the single
-      // Tooltip.Floating to <tbody> so its state never gets stranded.
-      const getRowAction = jest.fn().mockReturnValue({
-        url: '/search?source=src_1&where=',
-        description: 'Search HyperDX Logs',
-      });
+    it('hides the hint when the hovered virtual index maps to a no-URL row (HDX-4405)', async () => {
+      // Regression for the virtualiser race: the hovered <tr> can unmount
+      // before its onMouseLeave fires (rapid movement / data refresh). The
+      // old per-row Tooltip.Floating was stranded in the Portal; the fix
+      // stores a virtual index and re-derives the label via useMemo each
+      // render. When the row at that index no longer has a URL, the tooltip
+      // hides without a leave event from the (now-gone) element.
+      //
+      // We verify the key invariant structurally: hovering index 0 (URL row)
+      // shows the hint; hovering index 1 (no-URL row) hides it — no
+      // mouseLeave fires between the two enterevents, simulating the
+      // cursor jumping over the table faster than leave events dispatch.
+      const multiRowData = [
+        { ServiceName: 'web', Count: 10 },
+        { ServiceName: 'api', Count: 5 },
+      ];
+      const getRowAction = jest.fn((row: { ServiceName: string }) =>
+        row.ServiceName === 'web'
+          ? { url: '/search?source=src_1&where=', description: 'Search Logs' }
+          : { url: null, description: '', onClickError: jest.fn() },
+      );
 
       renderWithMantine(
         <Table
-          data={baseData}
+          data={multiRowData}
           columns={baseColumns}
           getRowAction={getRowAction}
           sorting={[]}
@@ -124,21 +135,27 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
         />,
       );
 
-      const row = screen.getByText('web').closest('tr')!;
+      const webRow = screen.getByText('web').closest('tr')!;
+      const apiRow = screen.getByText('api').closest('tr')!;
 
-      // Show tooltip
-      fireEvent.mouseEnter(row);
-      await waitFor(() =>
-        expect(screen.getByText('Search HyperDX Logs')).toBeInTheDocument(),
-      );
+      // Hover the URL row — tooltip must appear
+      fireEvent.mouseEnter(webRow);
+      await waitFor(() => {
+        const hint = screen.getByTestId('row-action-hint');
+        const tooltipBox = hint.closest<HTMLElement>('[style*="display"]');
+        expect(tooltipBox?.style.display).toBe('block');
+      });
 
-      // Leave the row — tooltip must disappear
-      fireEvent.mouseLeave(row);
-      await waitFor(() =>
-        expect(
-          screen.queryByText('Search HyperDX Logs'),
-        ).not.toBeInTheDocument(),
-      );
+      // Hover the no-URL row WITHOUT firing mouseLeave on the first row.
+      // This simulates the cursor jumping faster than leave events dispatch.
+      fireEvent.mouseEnter(apiRow);
+
+      // The label must derive to null (apiRow has url:null) so tooltip hides.
+      await waitFor(() => {
+        const hint = screen.getByTestId('row-action-hint');
+        const tooltipBox = hint.closest<HTMLElement>('[style*="display"]');
+        expect(tooltipBox?.style.display).toBe('none');
+      });
     });
   });
 

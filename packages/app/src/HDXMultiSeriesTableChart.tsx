@@ -307,14 +307,32 @@ export const Table = ({
   );
   const [wrapLinesEnabled, setWrapLinesEnabled] = useState(false);
 
-  // Single shared tooltip state for all virtual rows. Maintaining one
-  // Tooltip.Floating at the <tbody> level (rather than one per virtual row)
-  // prevents the tooltip from getting stranded when a row unmounts before
-  // onMouseLeave fires — a race that happens when the mouse moves rapidly
-  // across a virtualised list. See HDX-4405.
-  const [hoveredRowDescription, setHoveredRowDescription] = useState<
-    string | null
-  >(null);
+  // Store the virtual index of the hovered row (not its description string)
+  // so the label re-derives on every render. If the virtualiser replaces the
+  // row at that index (scroll re-virtualisation, auto-refetch) the label
+  // reflects the new row immediately rather than showing stale text. Storing
+  // the index also makes the safety-net `onMouseLeave` on <tbody> correct:
+  // it sets null rather than the prior row's description. See HDX-4405.
+  const [hoveredVirtualIndex, setHoveredVirtualIndex] = useState<number | null>(
+    null,
+  );
+
+  // Derive the label from whichever row currently occupies hoveredVirtualIndex.
+  // Returns null when no row is hovered, the index is out of range, or the
+  // row's action has no URL (error-toast rows show no hint).
+  const hoveredRowDescription = useMemo(() => {
+    if (hoveredVirtualIndex == null) return null;
+    const virtualRow = items.find(v => v.index === hoveredVirtualIndex);
+    if (!virtualRow) return null;
+    const row = rows[virtualRow.index] as TableRow<any> | undefined;
+    if (!row) return null;
+    const rowAction = getRowAction ? getRowAction(row.original) : null;
+    return rowAction?.url != null && rowAction.description
+      ? rowAction.description
+      : null;
+  }, [hoveredVirtualIndex, items, rows, getRowAction]);
+
+  const clearHovered = useCallback(() => setHoveredVirtualIndex(null), []);
 
   const { csvData } = useCsvExport(
     truncatedData,
@@ -386,17 +404,20 @@ export const Table = ({
             stranded in the Portal when a row unmounts before onMouseLeave
             fires (rapid mouse movement in a virtualised list). With this
             approach the tooltip state lives on <tbody>, which never unmounts,
-            and the label is updated by onMouseEnter/onMouseLeave handlers
-            on each <tr>. See HDX-4405. */}
+            and the label is re-derived from hoveredVirtualIndex each render so
+            scroll re-virtualisation never shows stale text. See HDX-4405. */}
         <Tooltip.Floating
-          label={hoveredRowDescription ?? ''}
+          label={
+            <span data-testid="row-action-hint">{hoveredRowDescription}</span>
+          }
           withinPortal
-          disabled={hoveredRowDescription == null}
+          disabled={!hoveredRowDescription}
         >
           {/* onMouseLeave on <tbody> is a safety net: if a virtual row
-              unmounts before its own onMouseLeave fires (rapid movement),
-              the cursor leaving the table body still clears the description. */}
-          <tbody onMouseLeave={() => setHoveredRowDescription(null)}>
+              unmounts before its own onMouseLeave fires (rapid cursor
+              movement or re-virtualisation), leaving the table body still
+              clears the hovered index. */}
+          <tbody onMouseLeave={clearHovered}>
             {paddingTop > 0 && (
               <tr>
                 <td colSpan={99999} style={{ height: `${paddingTop}px` }} />
@@ -404,32 +425,14 @@ export const Table = ({
             )}
             {items.map(virtualRow => {
               const row = rows[virtualRow.index] as TableRow<any>;
-              // Compute the action once per row so per-cell renders share
-              // the memoized result from useOnClickLinkBuilder.
-              const rowAction = getRowAction
-                ? getRowAction(row.original)
-                : null;
-              // Only surface a hint when the URL resolved successfully.
-              // Rows whose templates failed only fire an error toast on
-              // click, so showing "Open in search" would mislead the user.
-              const hintDescription =
-                rowAction?.url != null ? rowAction.description : null;
               return (
                 <tr
                   key={virtualRow.key}
                   className="bg-muted-hover"
                   data-index={virtualRow.index}
                   ref={rowVirtualizer.measureElement}
-                  onMouseEnter={
-                    hintDescription != null
-                      ? () => setHoveredRowDescription(hintDescription)
-                      : undefined
-                  }
-                  onMouseLeave={
-                    hintDescription != null
-                      ? () => setHoveredRowDescription(null)
-                      : undefined
-                  }
+                  onMouseEnter={() => setHoveredVirtualIndex(virtualRow.index)}
+                  onMouseLeave={clearHovered}
                 >
                   {row.getVisibleCells().map(cell => {
                     return (
