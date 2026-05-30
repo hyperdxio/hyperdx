@@ -668,7 +668,7 @@ export function evaluateColorCondition(
  * conditional color rules against the tile's current value.
  *
  * Rules are evaluated in order; the LAST matching rule's color wins
- * (Grafana threshold semantics). When no rule matches, `fallback` is
+ * (higher-priority rules go last). When no rule matches, `fallback` is
  * returned. When `value` is null/undefined or `rules` is empty,
  * `fallback` is returned immediately.
  *

@@ -1016,8 +1016,9 @@ export const ChartPaletteTokenSchema = z.enum(CHART_PALETTE_TOKENS);
 /**
  * A single conditional color rule. Rules are evaluated in order against
  * the tile's displayed value; the LAST matching rule's color wins
- * (Grafana threshold semantics). If no rule matches, the tile's static
- * `color` applies; if that is unset, the default text color applies.
+ * (last-match-wins: higher-priority rules go last). If no rule matches,
+ * the tile's static `color` applies; if that is unset, the default text
+ * color applies.
  *
  * String operators (`contains`, `startsWith`, `endsWith`, `regex`) are
  * included at the schema level so a future table-tile slice can reuse
@@ -1103,7 +1104,7 @@ const SharedChartSettingsSchema = z.object({
   // the UI.
   color: ChartPaletteTokenSchema.optional(),
   // Ordered conditional color rules for number tiles. Last matching rule
-  // wins (Grafana threshold semantics). Kept at shared level so a future
+  // wins (higher-priority rules go last). Kept at shared level so a future
   // table-tile slice can attach per-column rules without a schema change.
   // The UI gates the section on `displayType === DisplayType.Number`.
   colorRules: z.array(ColorConditionSchema).max(10).optional(),
