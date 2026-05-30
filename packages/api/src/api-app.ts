@@ -15,6 +15,7 @@ import connectionsRouter from './routers/api/connections';
 import favoritesRouter from './routers/api/favorites';
 import pinnedFiltersRouter from './routers/api/pinnedFilters';
 import savedSearchRouter from './routers/api/savedSearch';
+import smartViewsRouter from './routers/api/smartViews';
 import sourcesRouter from './routers/api/sources';
 import externalRoutersV2 from './routers/external-api/v2';
 import usageStats from './tasks/usageStats';
@@ -106,6 +107,7 @@ app.use('/connections', isUserAuthenticated, connectionsRouter);
 app.use('/sources', isUserAuthenticated, sourcesRouter);
 app.use('/saved-search', isUserAuthenticated, savedSearchRouter);
 app.use('/favorites', isUserAuthenticated, favoritesRouter);
+app.use('/smart-views', isUserAuthenticated, smartViewsRouter);
 app.use('/pinned-filters', isUserAuthenticated, pinnedFiltersRouter);
 app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
 if (config.IS_PROMQL_ENABLED) {
