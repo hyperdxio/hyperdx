@@ -366,8 +366,16 @@ const DashboardFilterEditForm = ({
   // default-value picker can query autocomplete values matching the
   // configured source / expression / WHERE. Memoize on the primitive
   // bits so we don't re-issue the same query on unrelated form edits.
+  //
+  // Gate on `tableName` (not just `sourceId`): a metric source with no
+  // metricType picked yet resolves to `source.from.tableName`, which is
+  // typically empty on a metric source. Firing the autocomplete in that
+  // state produces a malformed DESCRIBE ({db}.{} with an empty Identifier
+  // substitution) that the ClickHouse proxy rejects with a 500. The
+  // query only makes sense once the form has enough information to name
+  // a real table.
   const filterForValueQuery = useMemo(() => {
-    if (!sourceId || !watchedExpression) return null;
+    if (!sourceId || !watchedExpression || !tableName) return null;
     return {
       id: filter.id,
       type: 'QUERY_EXPRESSION' as const,
@@ -388,6 +396,7 @@ const DashboardFilterEditForm = ({
     watchedWhere,
     watchedWhereLanguage,
     metricType,
+    tableName,
   ]);
 
   const [modalContentRef, setModalContentRef] = useState<HTMLElement | null>(

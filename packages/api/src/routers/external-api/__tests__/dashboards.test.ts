@@ -962,13 +962,18 @@ describe('External API v2 Dashboards - old format', () => {
       // indicate schema drift) fail the assertion. The bot deep-review at
       // dashboards.test.ts:961 flagged toMatchObject for letting unexpected
       // fields slip through silently.
+      //
+      // whereLanguage is intentionally absent from these expectations: the
+      // input payload omits it, the Zod schema is optional with no default,
+      // so the round-trip is undefined-in / undefined-out. Adding the field
+      // here would make the test fail by asserting a wire-format default
+      // the schema never emits.
       expect(response.body.data.filters[0]).toEqual({
         id: response.body.data.filters[0].id,
         type: 'QUERY_EXPRESSION',
         name: 'Service (locked, read-only)',
         expression: 'ServiceName',
         sourceId: traceSource._id.toString(),
-        whereLanguage: 'sql',
         constant: true,
         renderMode: 'readonly',
       });
@@ -978,7 +983,6 @@ describe('External API v2 Dashboards - old format', () => {
         name: 'Environment (hidden)',
         expression: 'environment',
         sourceId: traceSource._id.toString(),
-        whereLanguage: 'sql',
         constant: true,
         renderMode: 'hidden',
       });
@@ -991,7 +995,6 @@ describe('External API v2 Dashboards - old format', () => {
         name: 'Region (default editable)',
         expression: 'region',
         sourceId: traceSource._id.toString(),
-        whereLanguage: 'sql',
       });
 
       // GET round-trip.
@@ -1041,7 +1044,6 @@ describe('External API v2 Dashboards - old format', () => {
         name: 'Region (now read-only)',
         expression: 'region',
         sourceId: traceSource._id.toString(),
-        whereLanguage: 'sql',
         constant: true,
         renderMode: 'readonly',
       });
