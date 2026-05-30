@@ -3,8 +3,12 @@ import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import {
   formatApproximateNumber,
+  formatRate,
   getNodeColors,
+  getNodeSize,
+  getRequestsPerSecond,
   navigateToTraceSearch,
+  rawDurationToMs,
 } from '../utils';
 
 // Mock next/router
@@ -344,5 +348,101 @@ describe('getNodeColors', () => {
       const colors2 = getNodeColors(10, 20, false);
       expect(colors1).not.toEqual(colors2);
     });
+  });
+});
+
+describe('rawDurationToMs', () => {
+  it('converts nanoseconds (precision 9) to milliseconds', () => {
+    // 1_000_000 ns = 1 ms
+    expect(rawDurationToMs(1_000_000, 9)).toBe(1);
+    expect(rawDurationToMs(2_500_000, 9)).toBe(2.5);
+  });
+
+  it('converts microseconds (precision 6) to milliseconds', () => {
+    // 1000 µs = 1 ms
+    expect(rawDurationToMs(1000, 6)).toBe(1);
+    expect(rawDurationToMs(500, 6)).toBe(0.5);
+  });
+
+  it('treats precision 3 as already-milliseconds', () => {
+    expect(rawDurationToMs(42, 3)).toBe(42);
+  });
+
+  it('does not scale up for sub-millisecond precision', () => {
+    // precision below 3 clamps the exponent to 0, so the value passes through
+    expect(rawDurationToMs(7, 0)).toBe(7);
+  });
+
+  it('handles zero', () => {
+    expect(rawDurationToMs(0, 9)).toBe(0);
+  });
+});
+
+describe('getRequestsPerSecond', () => {
+  const oneHour: [Date, Date] = [
+    new Date('2024-01-01T00:00:00.000Z'),
+    new Date('2024-01-01T01:00:00.000Z'),
+  ];
+
+  it('divides total requests by the window in seconds', () => {
+    // 3600 requests over 3600s = 1/s
+    expect(getRequestsPerSecond(3600, oneHour)).toBe(1);
+    expect(getRequestsPerSecond(7200, oneHour)).toBe(2);
+  });
+
+  it('returns 0 for a zero-length window', () => {
+    const t = new Date('2024-01-01T00:00:00.000Z');
+    expect(getRequestsPerSecond(100, [t, t])).toBe(0);
+  });
+
+  it('returns 0 for an inverted window', () => {
+    expect(getRequestsPerSecond(100, [oneHour[1], oneHour[0]])).toBe(0);
+  });
+});
+
+describe('formatRate', () => {
+  it('formats sub-1/s rates with two decimals and a req/s label', () => {
+    expect(formatRate(0)).toBe('0 req/s');
+    expect(formatRate(0.2)).toBe('0.20 req/s');
+  });
+
+  it('formats 1-999/s with one decimal', () => {
+    expect(formatRate(1)).toBe('1.0 req/s');
+    expect(formatRate(3.45)).toBe('3.5 req/s');
+    expect(formatRate(999)).toBe('999.0 req/s');
+  });
+
+  it('formats >=1000/s in thousands', () => {
+    expect(formatRate(1000)).toBe('1.0k req/s');
+    expect(formatRate(12345)).toBe('12.3k req/s');
+  });
+});
+
+describe('getNodeSize', () => {
+  it('returns the minimum size when there is no traffic to compare', () => {
+    expect(getNodeSize(0, 0)).toBe(32);
+    expect(getNodeSize(0, 100)).toBe(32);
+  });
+
+  it('returns the maximum size for the busiest node', () => {
+    // ratio = sqrt(100/100) = 1 -> MAX
+    expect(getNodeSize(100, 100)).toBe(60);
+  });
+
+  it('scales by the square root of the request ratio', () => {
+    // sqrt(25/100) = 0.5 -> 32 + 0.5*(60-32) = 46
+    expect(getNodeSize(25, 100)).toBe(46);
+  });
+
+  it('clamps requests above the max to the max size', () => {
+    expect(getNodeSize(200, 100)).toBe(60);
+  });
+
+  it('stays within [32, 60]', () => {
+    for (const r of [1, 10, 50, 99, 100]) {
+      const size = getNodeSize(r, 100);
+      expect(size).toBeGreaterThanOrEqual(32);
+      expect(size).toBeLessThanOrEqual(60);
+    }
   });
 });

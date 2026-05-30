@@ -172,6 +172,20 @@ function DBServiceMapPage() {
     [setSearchedConfig],
   );
 
+  // Clicking a node focuses on that service (and, via the server-side filter's
+  // neighbor expansion, its immediate callers/callees). Clicking the currently
+  // focused service clears the focus, so clicks toggle.
+  const onFocusService = useCallback(
+    (serviceName: string) => {
+      setSearchedConfig(prev => {
+        const current = prev.services ?? [];
+        const isFocused = current.length === 1 && current[0] === serviceName;
+        return { ...prev, services: isFocused ? null : [serviceName] };
+      });
+    },
+    [setSearchedConfig],
+  );
+
   const onSubmit = useCallback(() => {
     onSearch(displayedTimeInputValue);
     handleSubmit(({ where, whereLanguage }) => {
@@ -358,6 +372,7 @@ function DBServiceMapPage() {
               serviceNames={
                 selectedServices.length > 0 ? selectedServices : undefined
               }
+              onFocusService={onFocusService}
             />
           </>
         }

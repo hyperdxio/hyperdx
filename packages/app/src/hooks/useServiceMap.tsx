@@ -11,9 +11,18 @@ import { useMetadataWithSettings } from './useMetadata';
 
 export type SpanAggregationRow = {
   serverServiceName: string;
-  serverStatusCode: string;
-  requestCount: number;
   clientServiceName?: string;
+  // 1 for node-level (rolled-up across all callers) rows, 0 for edge-level
+  // (a specific client→server call). Comes from GROUPING() over the client
+  // service in the GROUPING SETS query.
+  isNodeLevel: number;
+  requestCount: number;
+  errorCount: number;
+  // Latency percentiles in raw duration units. Undefined when the source has
+  // no duration expression. Convert with rawDurationToMs for display.
+  p50?: number;
+  p95?: number;
+  p99?: number;
 };
 
 async function getServiceMapQuery({
@@ -88,6 +97,16 @@ async function getServiceMapQuery({
         valueExpression: source.statusCodeExpression ?? 'StatusCode',
         alias: 'statusCode',
       },
+      // Carry the raw span duration through so we can aggregate latency.
+      // Only available when the source defines a duration expression.
+      ...(source.durationExpression
+        ? [
+            {
+              valueExpression: source.durationExpression,
+              alias: 'duration',
+            },
+          ]
+        : []),
     ],
   };
 
@@ -132,129 +151,135 @@ async function getServiceMapQuery({
       )`
     : chSql``;
 
-  // Left join to support services which receive requests from clients that are not instrumented.
-  // Ordering helps ensure stable graph layout.
+  // Latency percentiles over the server spans. Empty fragment when the source
+  // has no duration expression. Percentiles can't be combined client-side, so
+  // they're computed server-side per grouping set (see GROUPING SETS below).
+  const latencySelect = source.durationExpression
+    ? chSql`,
+      quantile(0.5)(ServerSpans.duration) as p50,
+      quantile(0.95)(ServerSpans.duration) as p95,
+      quantile(0.99)(ServerSpans.duration) as p99`
+    : chSql``;
+
+  // Left join to support services which receive requests from clients that are
+  // not instrumented. GROUPING SETS emits, in one pass, both a per-edge row
+  // (server + client) and a rolled-up per-service node row (server only);
+  // GROUPING() flags which is which so node and edge percentiles are each
+  // computed over the right set of spans. Ordering helps stable graph layout.
   return chSql`
-    WITH 
+    WITH
       ServerSpans AS (${serverCTE}),
       ClientSpans AS (${clientCTE})
     SELECT
       ServerSpans.serviceName AS serverServiceName,
-      ServerSpans.statusCode AS serverStatusCode,
       ClientSpans.serviceName AS clientServiceName,
-      count(*) * ${{ Int64: effectiveSamplingLevel }} as requestCount
+      GROUPING(ClientSpans.serviceName) AS isNodeLevel,
+      count(*) * ${{ Int64: effectiveSamplingLevel }} as requestCount,
+      countIf(ServerSpans.statusCode = 'Error') * ${{ Int64: effectiveSamplingLevel }} as errorCount${latencySelect}
     FROM ServerSpans
       LEFT JOIN ClientSpans
         ON ServerSpans.traceId = ClientSpans.traceId
         AND ServerSpans.parentSpanId = ClientSpans.spanId
     WHERE (ClientSpans.serviceName IS NULL OR ServerSpans.serviceName != ClientSpans.serviceName)
       ${serviceNameFilter}
-    GROUP BY serverServiceName, serverStatusCode, clientServiceName
-    ORDER BY serverServiceName, serverStatusCode, clientServiceName
+    GROUP BY GROUPING SETS (
+      (ServerSpans.serviceName, ClientSpans.serviceName),
+      (ServerSpans.serviceName)
+    )
+    ORDER BY serverServiceName, isNodeLevel, clientServiceName
   `;
 }
 
-type IncomingRequestStats = {
+export type IncomingRequestStats = {
   totalRequests: number;
-  requestCountByStatus: Map<string, number>;
+  errorCount: number;
   errorPercentage: number;
+  // Latency percentiles in raw duration units. Convert with
+  // rawDurationToMs(value, source.durationPrecision) for display.
+  p50: number;
+  p95: number;
+  p99: number;
+  // Whether latency percentiles are available (source has a duration column).
+  hasLatency: boolean;
 };
 
 export type ServiceAggregation = {
   serviceName: string;
   incomingRequests: IncomingRequestStats;
   incomingRequestsByClient: Map<string, IncomingRequestStats>;
+  // Total requests this service makes to others (sum of edges where it is the
+  // client). Combined with incoming traffic to size the node by total
+  // throughput.
+  outgoingRequests: number;
 };
 
+function emptyStats(): IncomingRequestStats {
+  return {
+    totalRequests: 0,
+    errorCount: 0,
+    errorPercentage: 0,
+    p50: 0,
+    p95: 0,
+    p99: 0,
+    hasLatency: false,
+  };
+}
+
+function statsFromRow(row: SpanAggregationRow): IncomingRequestStats {
+  return {
+    totalRequests: row.requestCount,
+    errorCount: row.errorCount,
+    errorPercentage:
+      row.requestCount > 0 ? (row.errorCount / row.requestCount) * 100 : 0,
+    p50: row.p50 ?? 0,
+    p95: row.p95 ?? 0,
+    p99: row.p99 ?? 0,
+    hasLatency: row.p50 != null,
+  };
+}
+
 export function aggregateServiceMapData(data: SpanAggregationRow[]) {
-  // Aggregate data by service
   const services = new Map<string, ServiceAggregation>();
-  for (const row of data) {
-    const {
-      serverServiceName,
-      serverStatusCode,
-      clientServiceName,
-      requestCount,
-    } = row;
 
-    if (!services.has(serverServiceName)) {
-      services.set(serverServiceName, {
-        serviceName: serverServiceName,
-        incomingRequests: {
-          totalRequests: 0,
-          requestCountByStatus: new Map(),
-          errorPercentage: 0,
-        },
+  const ensureService = (name: string): ServiceAggregation => {
+    let service = services.get(name);
+    if (!service) {
+      service = {
+        serviceName: name,
+        incomingRequests: emptyStats(),
         incomingRequestsByClient: new Map(),
-      });
+        outgoingRequests: 0,
+      };
+      services.set(name, service);
     }
+    return service;
+  };
 
-    const service = services.get(serverServiceName)!;
+  for (const row of data) {
+    const service = ensureService(row.serverServiceName);
 
-    // Add to total incoming request count
-    service.incomingRequests.totalRequests += requestCount;
-
-    // Add to request count per status
-    const currentStatusCount =
-      service.incomingRequests.requestCountByStatus.get(serverStatusCode) || 0;
-    service.incomingRequests.requestCountByStatus.set(
-      serverStatusCode,
-      currentStatusCount + requestCount,
-    );
-
-    // Add to request count per client per status
-    if (clientServiceName) {
-      if (!service.incomingRequestsByClient.has(clientServiceName)) {
-        service.incomingRequestsByClient.set(clientServiceName, {
-          totalRequests: 0,
-          requestCountByStatus: new Map(),
-          errorPercentage: 0,
-        });
-      }
-
-      const perClientStats =
-        service.incomingRequestsByClient.get(clientServiceName)!;
-      perClientStats.totalRequests += requestCount;
-
-      const currentClientStatusCount =
-        perClientStats.requestCountByStatus.get(serverStatusCode) || 0;
-      perClientStats.requestCountByStatus.set(
-        serverStatusCode,
-        currentClientStatusCount + requestCount,
+    if (row.isNodeLevel) {
+      // Rolled-up totals across all callers for this service.
+      service.incomingRequests = statsFromRow(row);
+    } else if (row.clientServiceName) {
+      // Per-caller (edge) stats. Ensure the caller exists as a node too.
+      ensureService(row.clientServiceName);
+      service.incomingRequestsByClient.set(
+        row.clientServiceName,
+        statsFromRow(row),
       );
-
-      if (!services.has(clientServiceName)) {
-        services.set(clientServiceName, {
-          serviceName: clientServiceName,
-          incomingRequests: {
-            totalRequests: 0,
-            requestCountByStatus: new Map(),
-            errorPercentage: 0,
-          },
-          incomingRequestsByClient: new Map(),
-        });
-      }
     }
+    // Edge-level rows with no client service come from uninstrumented callers;
+    // they're already included in the node-level totals, so no edge is drawn.
   }
 
-  // Calculate error percentages for all services and their client stats
+  // Roll each edge's volume up to its caller's outgoing total.
   for (const service of services.values()) {
-    // Calculate error percentage for total incoming requests
-    const errorCount =
-      service.incomingRequests.requestCountByStatus.get('Error') || 0;
-    service.incomingRequests.errorPercentage =
-      service.incomingRequests.totalRequests > 0
-        ? (errorCount / service.incomingRequests.totalRequests) * 100
-        : 0;
-
-    // Calculate error percentage for each client
-    for (const clientStats of service.incomingRequestsByClient.values()) {
-      const clientErrorCount =
-        clientStats.requestCountByStatus.get('Error') || 0;
-      clientStats.errorPercentage =
-        clientStats.totalRequests > 0
-          ? (clientErrorCount / clientStats.totalRequests) * 100
-          : 0;
+    for (const [clientName, stats] of service.incomingRequestsByClient) {
+      const client = services.get(clientName);
+      if (client) {
+        client.outgoingRequests += stats.totalRequests;
+      }
     }
   }
 
@@ -320,9 +345,16 @@ export default function useServiceMap({
         .then(data =>
           data.data.map((row: Record<string, string>) => ({
             serverServiceName: row.serverServiceName,
-            serverStatusCode: row.serverStatusCode,
-            clientServiceName: row.clientServiceName,
+            // serviceName is a non-nullable LowCardinality(String), so rolled-up
+            // node-level rows and unmatched LEFT JOINs come back as '' rather
+            // than null — normalize those to undefined (no edge).
+            clientServiceName: row.clientServiceName || undefined,
+            isNodeLevel: Number(row.isNodeLevel),
             requestCount: Number.parseInt(row.requestCount),
+            errorCount: Number.parseInt(row.errorCount),
+            p50: row.p50 != null ? Number(row.p50) : undefined,
+            p95: row.p95 != null ? Number(row.p95) : undefined,
+            p99: row.p99 != null ? Number(row.p99) : undefined,
           })),
         );
 

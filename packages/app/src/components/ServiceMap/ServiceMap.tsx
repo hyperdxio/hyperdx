@@ -77,6 +77,7 @@ interface ServiceMapPresentationProps {
   dateRange: [Date, Date];
   source: TTraceSource;
   isSingleTrace?: boolean;
+  onFocusService?: (serviceName: string) => void;
 }
 
 function ServiceMapPresentation({
@@ -86,6 +87,7 @@ function ServiceMapPresentation({
   dateRange,
   source,
   isSingleTrace,
+  onFocusService,
 }: ServiceMapPresentationProps) {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
@@ -108,12 +110,16 @@ function ServiceMapPresentation({
     [],
   );
 
-  const maxErrorPercentage = useMemo(() => {
+  const { maxErrorPercentage, maxThroughput } = useMemo(() => {
     let maxError = 0;
+    let maxTput = 0;
     for (const service of services?.values() ?? []) {
       maxError = Math.max(service.incomingRequests.errorPercentage, maxError);
+      const throughput =
+        service.incomingRequests.totalRequests + service.outgoingRequests;
+      maxTput = Math.max(throughput, maxTput);
     }
-    return maxError;
+    return { maxErrorPercentage: maxError, maxThroughput: maxTput };
   }, [services]);
 
   useEffect(() => {
@@ -125,7 +131,9 @@ function ServiceMapPresentation({
           dateRange,
           source,
           maxErrorPercentage,
+          maxThroughput,
           isSingleTrace,
+          onFocusService,
         },
         position: { x: index * 150, y: 100 },
         type: 'service',
@@ -135,37 +143,48 @@ function ServiceMapPresentation({
       services?.values() ?? [],
     )
       .filter(service => service.incomingRequestsByClient.size > 0)
-      .flatMap(
-        ({
-          serviceName,
-          incomingRequestsByClient: requestCountPerClientPerStatus,
-        }) =>
-          Array.from(requestCountPerClientPerStatus.entries()).map(
-            ([clientServiceName, { totalRequests, errorPercentage }]) => {
-              return {
-                id: `${serviceName}-${clientServiceName}`,
-                source: clientServiceName,
-                target: serviceName,
-                animated: true,
-                type: 'request',
-                data: {
-                  totalRequests,
-                  errorPercentage,
-                  source,
-                  dateRange,
-                  serviceName,
-                  isSingleTrace,
-                },
-              };
-            },
-          ),
+      .flatMap(({ serviceName, incomingRequestsByClient: requestsByClient }) =>
+        Array.from(requestsByClient.entries()).map(
+          ([
+            clientServiceName,
+            { totalRequests, errorPercentage, p50, p95, p99, hasLatency },
+          ]) => {
+            return {
+              id: `${serviceName}-${clientServiceName}`,
+              source: clientServiceName,
+              target: serviceName,
+              animated: true,
+              type: 'request',
+              data: {
+                totalRequests,
+                errorPercentage,
+                p50,
+                p95,
+                p99,
+                hasLatency,
+                source,
+                dateRange,
+                serviceName,
+                isSingleTrace,
+              },
+            };
+          },
+        ),
       );
 
     const nodeWithLayout = getGraphLayout(nodes, edges);
 
     setNodes(nodeWithLayout);
     setEdges(edges);
-  }, [services, dateRange, source, maxErrorPercentage, isSingleTrace]);
+  }, [
+    services,
+    dateRange,
+    source,
+    maxErrorPercentage,
+    maxThroughput,
+    isSingleTrace,
+    onFocusService,
+  ]);
 
   if (isLoading) {
     return (
@@ -249,6 +268,9 @@ interface ServiceMapProps {
   where?: string;
   whereLanguage?: 'sql' | 'lucene';
   serviceNames?: string[];
+  // Called when a node is clicked, e.g. to drive the service filter to focus
+  // on that service and its immediate dependencies.
+  onFocusService?: (serviceName: string) => void;
 }
 
 export default function ServiceMap({
@@ -260,6 +282,7 @@ export default function ServiceMap({
   where,
   whereLanguage,
   serviceNames,
+  onFocusService,
 }: ServiceMapProps) {
   const {
     isLoading,
@@ -294,6 +317,7 @@ export default function ServiceMap({
         dateRange={dateRange}
         source={traceTableSource}
         isSingleTrace={isSingleTrace}
+        onFocusService={onFocusService}
       />
     </ReactFlowProvider>
   );
