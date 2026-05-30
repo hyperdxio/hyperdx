@@ -508,6 +508,7 @@ export function useNewTimeQuery({
     showRelativeInterval,
     _setDisplayedTimeInputValue,
     updateInput,
+    showMs,
   ]);
 
   return {
