@@ -246,6 +246,9 @@ interface ServiceMapProps {
   dateRange: [Date, Date];
   samplingFactor?: number;
   isSingleTrace?: boolean;
+  where?: string;
+  whereLanguage?: 'sql' | 'lucene';
+  serviceNames?: string[];
 }
 
 export default function ServiceMap({
@@ -254,6 +257,9 @@ export default function ServiceMap({
   dateRange,
   samplingFactor = 1,
   isSingleTrace,
+  where,
+  whereLanguage,
+  serviceNames,
 }: ServiceMapProps) {
   const {
     isLoading,
@@ -264,6 +270,9 @@ export default function ServiceMap({
     source: traceTableSource,
     dateRange,
     samplingFactor,
+    where,
+    whereLanguage,
+    serviceNames,
   });
 
   useEffect(() => {

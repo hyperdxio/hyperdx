@@ -22,12 +22,18 @@ async function getServiceMapQuery({
   traceId,
   metadata,
   samplingFactor,
+  where,
+  whereLanguage,
+  serviceNames,
 }: {
   source: TTraceSource;
   dateRange: [Date, Date];
   traceId?: string;
   metadata: Metadata;
   samplingFactor: number;
+  where?: string;
+  whereLanguage?: 'sql' | 'lucene';
+  serviceNames?: string[];
 }) {
   // Don't sample if we're looking for a specific trace
   const effectiveSamplingLevel = traceId ? 1 : samplingFactor;
@@ -37,6 +43,11 @@ async function getServiceMapQuery({
     connection: source.connection,
     dateRange,
     timestampValueExpression: source.timestampValueExpression,
+    ...(source.implicitColumnExpression != null
+      ? { implicitColumnExpression: source.implicitColumnExpression }
+      : {}),
+    where: where || '',
+    whereLanguage: (whereLanguage ?? 'lucene') as 'sql' | 'lucene',
     filters: [
       // Sample a subset of traces, for performance in the following join
       {
@@ -91,7 +102,6 @@ async function getServiceMapQuery({
             condition: `${source.spanKindExpression} IN ('Server', 'Consumer', 'SPAN_KIND_SERVER', 'SPAN_KIND_CONSUMER')`,
           },
         ],
-        where: '',
       },
       metadata,
       source.querySettings,
@@ -106,12 +116,21 @@ async function getServiceMapQuery({
             condition: `${source.spanKindExpression} IN ('Client', 'Producer', 'SPAN_KIND_CLIENT', 'SPAN_KIND_PRODUCER')`,
           },
         ],
-        where: '',
       },
       metadata,
       source.querySettings,
     ),
   ]);
+
+  const serviceNameInList = serviceNames?.length
+    ? { UNSAFE_RAW_SQL: serviceNames.map(s => SqlString.escape(s)).join(', ') }
+    : null;
+  const serviceNameFilter = serviceNameInList
+    ? chSql`AND (
+        ServerSpans.serviceName IN (${serviceNameInList})
+        OR ClientSpans.serviceName IN (${serviceNameInList})
+      )`
+    : chSql``;
 
   // Left join to support services which receive requests from clients that are not instrumented.
   // Ordering helps ensure stable graph layout.
@@ -129,6 +148,7 @@ async function getServiceMapQuery({
         ON ServerSpans.traceId = ClientSpans.traceId
         AND ServerSpans.parentSpanId = ClientSpans.spanId
     WHERE (ClientSpans.serviceName IS NULL OR ServerSpans.serviceName != ClientSpans.serviceName)
+      ${serviceNameFilter}
     GROUP BY serverServiceName, serverStatusCode, clientServiceName
     ORDER BY serverServiceName, serverStatusCode, clientServiceName
   `;
@@ -246,17 +266,32 @@ export default function useServiceMap({
   dateRange,
   traceId,
   samplingFactor,
+  where,
+  whereLanguage,
+  serviceNames,
 }: {
   source: TTraceSource;
   dateRange: [Date, Date];
   traceId?: string;
   samplingFactor: number;
+  where?: string;
+  whereLanguage?: 'sql' | 'lucene';
+  serviceNames?: string[];
 }) {
   const client = useClickhouseClient();
   const metadata = useMetadataWithSettings();
 
   return useQuery({
-    queryKey: ['serviceMapData', traceId, source, dateRange, samplingFactor],
+    queryKey: [
+      'serviceMapData',
+      traceId,
+      source,
+      dateRange,
+      samplingFactor,
+      where,
+      whereLanguage,
+      serviceNames,
+    ],
     queryFn: async ({ signal }) => {
       const query = await getServiceMapQuery({
         source,
@@ -264,6 +299,9 @@ export default function useServiceMap({
         traceId,
         metadata,
         samplingFactor,
+        where,
+        whereLanguage,
+        serviceNames,
       });
 
       const data = await client
