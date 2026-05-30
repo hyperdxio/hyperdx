@@ -42,7 +42,7 @@
   }
 
   /* When no chips, keep original single-line height cap */
-  &:not(.expanded):not([data-has-chips]) {
+  &:not(.expanded, [data-has-chips]) {
     max-height: var(--editor-base-height, 36px);
   }
 }

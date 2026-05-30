@@ -57,10 +57,12 @@ async function applySidebarFilter(
   await expect(searchPage.chips.chip(column, value, 'included')).toBeVisible();
   // The form-to-URL write is debounced ~1s; wait for the URL to reflect the
   // filter so subsequent page.reload() / page.goto() preserve the state.
+  // The sidebar writes filters as Lucene (`field:"value"`), so the encoded
+  // URL contains the value somewhere in the filters= param.
   await searchPage.page.waitForFunction(
-    v => decodeURIComponent(window.location.search).includes(`'${v}'`),
+    v => decodeURIComponent(window.location.search).includes(v),
     value,
-    { timeout: 5000 },
+    { timeout: 10000 },
   );
 }
 

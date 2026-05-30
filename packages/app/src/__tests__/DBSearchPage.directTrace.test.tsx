@@ -165,9 +165,6 @@ jest.mock('@/components/DBTimeChart', () => ({
   DBTimeChart: () => <div />,
 }));
 
-jest.mock('@/components/ActiveFilterPills', () => ({
-  ActiveFilterPills: () => <div />,
-}));
 jest.mock('@/components/ContactSupportText', () => ({
   ContactSupportText: () => <div />,
 }));
