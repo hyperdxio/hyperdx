@@ -1040,13 +1040,10 @@ export class DashboardPage {
     if (box) {
       await this.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     }
-    // Tooltip.Floating renders a div inside a Portal (appended to document
-    // body). When open, Mantine sets `display: block` on it inline; when
-    // closed, `display: none`. We can't rely on a stable Mantine class name
-    // (CSS modules hash them), so match by the tooltip text content that
-    // describeOnClick produces: "Search <SourceName>", "Open in search", etc.
-    // These phrases don't appear in the table cells themselves.
-    const tooltip = this.page.getByText(/Open in search/, { exact: false });
+    // The Tooltip.Floating label is a <span data-testid="row-action-hint">.
+    // The portal div uses display:none when disabled, so Playwright's
+    // toBeVisible() correctly reflects the open/closed state.
+    const tooltip = this.page.getByTestId('row-action-hint');
     await tooltip.waitFor({ state: 'visible', timeout: 5000 });
     return tooltip;
   }

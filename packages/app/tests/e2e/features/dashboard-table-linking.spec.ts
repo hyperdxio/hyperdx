@@ -786,13 +786,14 @@ test.describe(
       });
 
       await test.step('Move mouse away from the table — tooltip must disappear', async () => {
-        // Move to a neutral area well outside the table (top-left corner of
-        // the viewport). The tbody onMouseLeave clears hoveredRowDescription,
-        // which sets disabled=true on the single shared Tooltip.Floating,
-        // hiding it via inline display:none.
+        // Move to a neutral area well outside the table. The <tbody>
+        // onMouseLeave safety net clears hoveredVirtualIndex, which makes
+        // hoveredRowDescription derive to null, disabling the shared
+        // Tooltip.Floating (display:none in the Portal).
         await page.mouse.move(10, 10);
-        const tooltipText = page.getByText(/Open in search/, { exact: false });
-        await expect(tooltipText).toBeHidden({ timeout: 3000 });
+        await expect(page.getByTestId('row-action-hint')).toBeHidden({
+          timeout: 3000,
+        });
       });
     });
   },
