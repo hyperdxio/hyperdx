@@ -301,7 +301,7 @@ export function SmartViewEditorDrawer({
         </Box>
 
         <Group justify="flex-end" mt="md">
-          <Button variant="default" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
           <Button
