@@ -263,7 +263,7 @@ export default function DBNumberChart({
   });
 
   // Resolve the display color in three layers:
-  //   1. Conditional color rules evaluated against the raw numeric value
+  //   1. Conditional color rules evaluated against the raw value
   //      (last-match-wins, Grafana threshold semantics). Falls through
   //      when no rule matches.
   //   2. Static tile color from `config.color`, run through
@@ -274,11 +274,24 @@ export default function DBNumberChart({
   //      bypass the fetch normalizer.
   //   3. Default text color when nothing else resolves.
   //
-  // The raw value (pre-format) is used so rules match on the actual
-  // data value, not the formatted string.
-  const rawValue = valueColumn
-    ? (data?.data?.[0]?.[valueColumn.name] as number | undefined)
-    : (Object.values(data?.data?.[0] ?? {})?.[0] as number | undefined);
+  // The raw value (pre-format) is used so rules match on the actual data
+  // value, not the formatted string. ClickHouse returns UInt64 counts as
+  // strings over JSON (output_format_json_quote_64bit_integers=1), so
+  // coerce string values to numbers when possible so numeric operators
+  // match correctly.
+  const rawValueRaw = valueColumn
+    ? (data?.data?.[0]?.[valueColumn.name] as number | string | undefined)
+    : (Object.values(data?.data?.[0] ?? {})?.[0] as
+        | number
+        | string
+        | undefined);
+
+  const rawValue: number | string | null | undefined = (() => {
+    if (rawValueRaw == null) return rawValueRaw;
+    if (typeof rawValueRaw === 'number') return rawValueRaw;
+    const n = Number(rawValueRaw);
+    return Number.isFinite(n) ? n : rawValueRaw;
+  })();
 
   const resolvedToken = resolveConditionalColor(
     rawValue ?? null,

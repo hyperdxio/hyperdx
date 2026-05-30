@@ -147,7 +147,7 @@ function SortableRuleRow({
   if (rule.operator === 'between') {
     const [lo, hi] = rule.value;
     valueInputs = (
-      <Group gap={4} wrap="nowrap" style={{ flex: 1 }}>
+      <Group gap={4} wrap="nowrap">
         <NumberInput
           size="xs"
           value={lo}
@@ -159,9 +159,9 @@ function SortableRuleRow({
             } as ColorRuleWithId)
           }
           aria-label={`Rule ${index + 1} lower bound`}
-          style={{ width: 72 }}
+          w={72}
         />
-        <Text size="xs" c="dimmed">
+        <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
           to
         </Text>
         <NumberInput
@@ -175,7 +175,7 @@ function SortableRuleRow({
             } as ColorRuleWithId)
           }
           aria-label={`Rule ${index + 1} upper bound`}
-          style={{ width: 72 }}
+          w={72}
         />
       </Group>
     );
@@ -203,7 +203,7 @@ function SortableRuleRow({
           } as ColorRuleWithId);
         }}
         aria-label={`Rule ${index + 1} value`}
-        style={{ flex: 1 }}
+        w={120}
       />
     );
   } else {
@@ -219,22 +219,21 @@ function SortableRuleRow({
           } as ColorRuleWithId)
         }
         aria-label={`Rule ${index + 1} value`}
-        style={{ flex: 1 }}
+        w={120}
       />
     );
   }
 
   return (
     <Box ref={setNodeRef} style={style} data-testid={`color-rule-row-${index}`}>
-      <Group gap="xs" wrap="nowrap" align="flex-start">
+      <Group gap={6} wrap="nowrap" align="center">
         {/* Drag handle */}
         <ActionIcon
           variant="subtle"
           size="xs"
-          mt={4}
           aria-label="Drag to reorder"
           data-testid={`color-rule-drag-handle-${index}`}
-          style={{ cursor: 'grab', touchAction: 'none' }}
+          style={{ cursor: 'grab', touchAction: 'none', flexShrink: 0 }}
           {...attributes}
           {...listeners}
         >
@@ -249,15 +248,16 @@ function SortableRuleRow({
           onChange={handleOperatorChange}
           aria-label={`Rule ${index + 1} operator`}
           data-testid={`color-rule-operator-${index}`}
-          style={{ width: 90 }}
+          w={80}
           allowDeselect={false}
+          style={{ flexShrink: 0 }}
         />
 
         {/* Value input(s) */}
         {valueInputs}
 
         {/* Color picker */}
-        <Box mt={2}>
+        <Box style={{ flexShrink: 0 }}>
           <ColorSwatchInput
             value={rule.color}
             onChange={handleColorChange}
@@ -269,11 +269,11 @@ function SortableRuleRow({
         <ActionIcon
           variant="subtle"
           size="xs"
-          mt={4}
           color="red"
           aria-label={`Delete rule ${index + 1}`}
           data-testid={`color-rule-delete-${index}`}
           onClick={handleDelete}
+          style={{ flexShrink: 0 }}
         >
           <IconTrash size={14} stroke={1.5} />
         </ActionIcon>
@@ -361,15 +361,17 @@ export function ColorRulesEditor({ value, onChange }: ColorRulesEditorProps) {
         </DndContext>
       )}
 
-      <Button
-        variant="secondary"
-        size="compact-xs"
-        disabled={value.length >= MAX_RULES}
-        onClick={handleAdd}
-        data-testid="color-rules-add-button"
-      >
-        Add rule
-      </Button>
+      <Box>
+        <Button
+          variant="secondary"
+          size="compact-xs"
+          disabled={value.length >= MAX_RULES}
+          onClick={handleAdd}
+          data-testid="color-rules-add-button"
+        >
+          Add rule
+        </Button>
+      </Box>
     </Stack>
   );
 }

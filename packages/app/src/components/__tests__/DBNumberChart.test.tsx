@@ -416,6 +416,35 @@ describe('DBNumberChart', () => {
       renderWithMantine(<DBNumberChart config={config} />);
       expect(mockGetColorFromCSSToken).not.toHaveBeenCalled();
     });
+
+    it('coerces string data values (ClickHouse UInt64) to numbers for rule evaluation', () => {
+      // ClickHouse returns UInt64 as a JSON string when quote_64bit_integers is set
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [{ value: '1000' }] },
+        isLoading: false,
+        isError: false,
+      });
+      mockFormatNumber.mockReturnValue('1000');
+      const config = {
+        ...baseTestConfig,
+        color: 'chart-success' as const,
+        colorRules: [
+          {
+            operator: 'gte' as const,
+            value: 100,
+            color: 'chart-warning' as const,
+          },
+          {
+            operator: 'gte' as const,
+            value: 500,
+            color: 'chart-error' as const,
+          },
+        ],
+      };
+      renderWithMantine(<DBNumberChart config={config} />);
+      // String "1000" coerced to 1000 — matches both rules, last (error) wins
+      expect(mockGetColorFromCSSToken).toHaveBeenCalledWith('chart-error');
+    });
   });
 
   describe('color', () => {
