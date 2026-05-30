@@ -56,7 +56,7 @@ async function getServiceMapQuery({
       ? { implicitColumnExpression: source.implicitColumnExpression }
       : {}),
     where: where || '',
-    whereLanguage: (whereLanguage ?? 'lucene') as 'sql' | 'lucene',
+    whereLanguage: whereLanguage ?? 'lucene',
     filters: [
       // Sample a subset of traces, for performance in the following join
       {
@@ -154,11 +154,11 @@ async function getServiceMapQuery({
   // Latency percentiles over the server spans. Empty fragment when the source
   // has no duration expression. Percentiles can't be combined client-side, so
   // they're computed server-side per grouping set (see GROUPING SETS below).
+  // One quantiles(...) call maintains a single reservoir sketch for all three
+  // percentiles, ~3x cheaper than three separate quantile() aggregations.
   const latencySelect = source.durationExpression
     ? chSql`,
-      quantile(0.5)(ServerSpans.duration) as p50,
-      quantile(0.95)(ServerSpans.duration) as p95,
-      quantile(0.99)(ServerSpans.duration) as p99`
+      quantiles(0.5, 0.95, 0.99)(ServerSpans.duration) as quantiles`
     : chSql``;
 
   // Left join to support services which receive requests from clients that are
@@ -341,21 +341,28 @@ export default function useServiceMap({
             join_algorithm: 'auto',
           },
         })
-        .then(res => res.json<Record<string, string>>())
+        .then(res => res.json<Record<string, unknown>>())
         .then(data =>
-          data.data.map((row: Record<string, string>) => ({
-            serverServiceName: row.serverServiceName,
-            // serviceName is a non-nullable LowCardinality(String), so rolled-up
-            // node-level rows and unmatched LEFT JOINs come back as '' rather
-            // than null — normalize those to undefined (no edge).
-            clientServiceName: row.clientServiceName || undefined,
-            isNodeLevel: Number(row.isNodeLevel) === 1,
-            requestCount: Number.parseInt(row.requestCount),
-            errorCount: Number.parseInt(row.errorCount),
-            p50: row.p50 != null ? Number(row.p50) : undefined,
-            p95: row.p95 != null ? Number(row.p95) : undefined,
-            p99: row.p99 != null ? Number(row.p99) : undefined,
-          })),
+          data.data.map((row: Record<string, unknown>) => {
+            // quantiles(...) returns a [p50, p95, p99] array; absent when the
+            // source has no duration expression.
+            const quantiles = Array.isArray(row.quantiles)
+              ? (row.quantiles as unknown[])
+              : undefined;
+            return {
+              serverServiceName: row.serverServiceName as string,
+              // serviceName is a non-nullable LowCardinality(String), so
+              // rolled-up node-level rows and unmatched LEFT JOINs come back as
+              // '' rather than null — normalize those to undefined (no edge).
+              clientServiceName: (row.clientServiceName as string) || undefined,
+              isNodeLevel: Number(row.isNodeLevel) === 1,
+              requestCount: Number.parseInt(row.requestCount as string, 10),
+              errorCount: Number.parseInt(row.errorCount as string, 10),
+              p50: quantiles ? Number(quantiles[0]) : undefined,
+              p95: quantiles ? Number(quantiles[1]) : undefined,
+              p99: quantiles ? Number(quantiles[2]) : undefined,
+            };
+          }),
         );
 
       return aggregateServiceMapData(data);

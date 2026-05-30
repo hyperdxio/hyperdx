@@ -2,6 +2,7 @@ import router from 'next/router';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import {
+  deriveDisplayMetrics,
   formatApproximateNumber,
   formatRate,
   getNodeColors,
@@ -450,5 +451,55 @@ describe('getNodeSize', () => {
       expect(size).toBeGreaterThanOrEqual(32);
       expect(size).toBeLessThanOrEqual(60);
     }
+  });
+});
+
+describe('deriveDisplayMetrics', () => {
+  const source = { durationPrecision: 9 } as unknown as TTraceSource;
+  const oneHour: [Date, Date] = [
+    new Date('2024-01-01T00:00:00.000Z'),
+    new Date('2024-01-01T01:00:00.000Z'),
+  ];
+
+  it('converts percentiles to ms and computes throughput', () => {
+    const m = deriveDisplayMetrics(
+      {
+        totalRequests: 3600,
+        p50: 1_000_000,
+        p95: 5_000_000,
+        p99: 9_000_000,
+        hasLatency: true,
+      },
+      source,
+      oneHour,
+    );
+    expect(m.latencyMs).toEqual({ p50: 1, p95: 5, p99: 9 });
+    expect(m.requestsPerSecond).toBe(1);
+  });
+
+  it('omits latency when hasLatency is false', () => {
+    const m = deriveDisplayMetrics(
+      { totalRequests: 10, p50: 0, p95: 0, p99: 0, hasLatency: false },
+      source,
+      oneHour,
+    );
+    expect(m.latencyMs).toBeUndefined();
+  });
+
+  it('omits throughput for single-trace maps but keeps latency', () => {
+    const m = deriveDisplayMetrics(
+      {
+        totalRequests: 10,
+        p50: 1_000_000,
+        p95: 1_000_000,
+        p99: 1_000_000,
+        hasLatency: true,
+      },
+      source,
+      oneHour,
+      true,
+    );
+    expect(m.requestsPerSecond).toBeUndefined();
+    expect(m.latencyMs).toBeDefined();
   });
 });

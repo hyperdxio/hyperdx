@@ -5,12 +5,7 @@ import { Handle, Node, NodeProps, NodeToolbar, Position } from '@xyflow/react';
 import { ServiceAggregation } from '@/hooks/useServiceMap';
 
 import ServiceMapTooltip from './ServiceMapTooltip';
-import {
-  getNodeColors,
-  getNodeSize,
-  getRequestsPerSecond,
-  rawDurationToMs,
-} from './utils';
+import { deriveDisplayMetrics, getNodeColors, getNodeSize } from './utils';
 
 import styles from './ServiceMap.module.scss';
 
@@ -57,18 +52,18 @@ export default function ServiceMapNode(
 
   // Fallback matches the schema default (3 = ms); in practice the field is
   // always present on a parsed source.
-  const precision = source.durationPrecision ?? 3;
-  const latencyMs = hasLatency
-    ? {
-        p50: rawDurationToMs(p50, precision),
-        p95: rawDurationToMs(p95, precision),
-        p99: rawDurationToMs(p99, precision),
-      }
-    : undefined;
-
-  const requestsPerSecond = isSingleTrace
-    ? undefined
-    : getRequestsPerSecond(totalIncomingRequestCount, dateRange);
+  const { latencyMs, requestsPerSecond } = deriveDisplayMetrics(
+    {
+      totalRequests: totalIncomingRequestCount,
+      p50,
+      p95,
+      p99,
+      hasLatency,
+    },
+    source,
+    dateRange,
+    isSingleTrace,
+  );
 
   const size = getNodeSize(
     totalIncomingRequestCount + outgoingRequests,

@@ -8,7 +8,7 @@ import {
 } from '@xyflow/react';
 
 import ServiceMapTooltip from './ServiceMapTooltip';
-import { getRequestsPerSecond, rawDurationToMs } from './utils';
+import { deriveDisplayMetrics } from './utils';
 
 export type ServiceMapEdgeData = {
   totalRequests: number;
@@ -46,20 +46,12 @@ export default function ServiceMapEdge(
     isSingleTrace,
   } = props.data;
 
-  // Fallback matches the schema default (3 = ms); in practice the field is
-  // always present on a parsed source.
-  const precision = source.durationPrecision ?? 3;
-  const latencyMs = hasLatency
-    ? {
-        p50: rawDurationToMs(p50, precision),
-        p95: rawDurationToMs(p95, precision),
-        p99: rawDurationToMs(p99, precision),
-      }
-    : undefined;
-
-  const requestsPerSecond = isSingleTrace
-    ? undefined
-    : getRequestsPerSecond(totalRequests, dateRange);
+  const { latencyMs, requestsPerSecond } = deriveDisplayMetrics(
+    { totalRequests, p50, p95, p99, hasLatency },
+    source,
+    dateRange,
+    isSingleTrace,
+  );
 
   return (
     <>

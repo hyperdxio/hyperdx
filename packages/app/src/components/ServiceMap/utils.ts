@@ -71,11 +71,10 @@ export function rawDurationToMs(
   rawDuration: number,
   durationPrecision: number,
 ): number {
-  // ms = raw / 10^(precision - 3); matches getDurationSecondsExpression in
-  // source.ts. Must NOT clamp the exponent: a precision < 3 (e.g. 0 = seconds)
-  // needs a fractional divisor to scale the value *up* to milliseconds.
-  const divisor = Math.pow(10, durationPrecision - 3);
-  return rawDuration / divisor;
+  // ms = raw * 10^(3 - precision). Multiplying keeps an exact integer factor
+  // for precision < 3 (e.g. 0 = seconds) instead of dividing by a fractional
+  // divisor; matches getDurationSecondsExpression's unit conversion.
+  return rawDuration * Math.pow(10, 3 - durationPrecision);
 }
 
 /**
@@ -126,4 +125,44 @@ export function getNodeSize(throughput: number, maxThroughput: number): number {
   }
   const ratio = Math.sqrt(Math.min(throughput, maxThroughput) / maxThroughput);
   return Math.round(MIN_NODE_SIZE + ratio * (MAX_NODE_SIZE - MIN_NODE_SIZE));
+}
+
+export type DisplayStats = {
+  totalRequests: number;
+  p50: number;
+  p95: number;
+  p99: number;
+  hasLatency: boolean;
+};
+
+/**
+ * Derives the latency/throughput a tooltip shows from a node's or edge's raw
+ * stats. Shared by ServiceMapNode and ServiceMapEdge so the two stay in sync:
+ * latency is converted to ms (only when available), throughput is omitted for
+ * single-trace maps where a per-second rate is meaningless.
+ */
+export function deriveDisplayMetrics(
+  stats: DisplayStats,
+  source: TTraceSource,
+  dateRange: [Date, Date],
+  isSingleTrace?: boolean,
+): {
+  latencyMs?: { p50: number; p95: number; p99: number };
+  requestsPerSecond?: number;
+} {
+  // Fallback matches the schema default (3 = ms); in practice the field is
+  // always present on a parsed source.
+  const precision = source.durationPrecision ?? 3;
+  return {
+    latencyMs: stats.hasLatency
+      ? {
+          p50: rawDurationToMs(stats.p50, precision),
+          p95: rawDurationToMs(stats.p95, precision),
+          p99: rawDurationToMs(stats.p99, precision),
+        }
+      : undefined,
+    requestsPerSecond: isSingleTrace
+      ? undefined
+      : getRequestsPerSecond(stats.totalRequests, dateRange),
+  };
 }
