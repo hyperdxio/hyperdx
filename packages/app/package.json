@@ -6,9 +6,10 @@
   "engines": {
     "node": ">=22.16.0"
   },
+  "//bundler": "dev/dev:local run on Turbopack for fast local iteration; build/build:clickhouse run on Webpack (--webpack) for production parity. The two bundlers can diverge on CSS Modules/loaders/module resolution, so build failures may not reproduce in dev. See next.config.mjs for rationale.",
   "scripts": {
-    "dev": "npx dotenv -e .env.development -- next dev --webpack",
-    "dev:local": "NEXT_PUBLIC_IS_LOCAL_MODE=true npx dotenv -e .env.development -- next dev --webpack",
+    "dev": "npx dotenv -e .env.development -- next dev --turbopack",
+    "dev:local": "NEXT_PUBLIC_IS_LOCAL_MODE=true npx dotenv -e .env.development -- next dev --turbopack",
     "build": "next build --webpack",
     "build:clickhouse": "NEXT_PUBLIC_THEME=clickstack NEXT_PUBLIC_IS_LOCAL_MODE=true NEXT_PUBLIC_CLICKHOUSE_BUILD=true next build --webpack && node scripts/prepare-clickhouse-build-export.js",
     "run:clickhouse": "test -d out && npx rimraf tmp && mkdir tmp && cp -r out tmp/clickstack && echo 'visit http://localhost:3000/clickstack to start' && npx serve tmp -l 3000 || echo 'run build:clickhouse first'",
