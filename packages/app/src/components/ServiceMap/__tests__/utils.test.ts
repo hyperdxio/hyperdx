@@ -368,9 +368,9 @@ describe('rawDurationToMs', () => {
     expect(rawDurationToMs(42, 3)).toBe(42);
   });
 
-  it('does not scale up for sub-millisecond precision', () => {
-    // precision below 3 clamps the exponent to 0, so the value passes through
-    expect(rawDurationToMs(7, 0)).toBe(7);
+  it('scales up for precision below 3 (e.g. seconds)', () => {
+    // precision 0 = seconds: 7s -> 7000ms (divisor is 10^-3, i.e. multiply up)
+    expect(rawDurationToMs(7, 0)).toBe(7000);
   });
 
   it('handles zero', () => {
@@ -415,6 +415,12 @@ describe('formatRate', () => {
   it('formats >=1000/s in thousands', () => {
     expect(formatRate(1000)).toBe('1.0k req/s');
     expect(formatRate(12345)).toBe('12.3k req/s');
+  });
+
+  it('returns 0 req/s for non-finite or negative input', () => {
+    expect(formatRate(Infinity)).toBe('0 req/s');
+    expect(formatRate(NaN)).toBe('0 req/s');
+    expect(formatRate(-5)).toBe('0 req/s');
   });
 });
 

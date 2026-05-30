@@ -71,7 +71,10 @@ export function rawDurationToMs(
   rawDuration: number,
   durationPrecision: number,
 ): number {
-  const divisor = Math.pow(10, Math.max(0, durationPrecision - 3));
+  // ms = raw / 10^(precision - 3); matches getDurationSecondsExpression in
+  // source.ts. Must NOT clamp the exponent: a precision < 3 (e.g. 0 = seconds)
+  // needs a fractional divisor to scale the value *up* to milliseconds.
+  const divisor = Math.pow(10, durationPrecision - 3);
   return rawDuration / divisor;
 }
 
@@ -96,16 +99,16 @@ export function getRequestsPerSecond(
  * e.g. "1.2k req/s", "5.0 req/s", "0.20 req/s".
  */
 export function formatRate(perSecond: number): string {
+  if (!Number.isFinite(perSecond) || perSecond <= 0) {
+    return '0 req/s';
+  }
   if (perSecond >= 1000) {
     return `${(perSecond / 1000).toFixed(1)}k req/s`;
   }
   if (perSecond >= 1) {
     return `${perSecond.toFixed(1)} req/s`;
   }
-  if (perSecond > 0) {
-    return `${perSecond.toFixed(2)} req/s`;
-  }
-  return '0 req/s';
+  return `${perSecond.toFixed(2)} req/s`;
 }
 
 const MIN_NODE_SIZE = 32;

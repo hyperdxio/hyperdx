@@ -12,10 +12,10 @@ import { useMetadataWithSettings } from './useMetadata';
 export type SpanAggregationRow = {
   serverServiceName: string;
   clientServiceName?: string;
-  // 1 for node-level (rolled-up across all callers) rows, 0 for edge-level
-  // (a specific client→server call). Comes from GROUPING() over the client
-  // service in the GROUPING SETS query.
-  isNodeLevel: number;
+  // True for node-level (rolled-up across all callers) rows, false for
+  // edge-level (a specific client→server call) rows. Derived from GROUPING()
+  // over the client service in the GROUPING SETS query.
+  isNodeLevel: boolean;
   requestCount: number;
   errorCount: number;
   // Latency percentiles in raw duration units. Undefined when the source has
@@ -349,7 +349,7 @@ export default function useServiceMap({
             // node-level rows and unmatched LEFT JOINs come back as '' rather
             // than null — normalize those to undefined (no edge).
             clientServiceName: row.clientServiceName || undefined,
-            isNodeLevel: Number(row.isNodeLevel),
+            isNodeLevel: Number(row.isNodeLevel) === 1,
             requestCount: Number.parseInt(row.requestCount),
             errorCount: Number.parseInt(row.errorCount),
             p50: row.p50 != null ? Number(row.p50) : undefined,

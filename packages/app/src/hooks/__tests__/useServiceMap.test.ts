@@ -9,7 +9,7 @@ function nodeRow(
 ): SpanAggregationRow {
   return {
     serverServiceName,
-    isNodeLevel: 1,
+    isNodeLevel: true,
     requestCount,
     errorCount,
     ...latency,
@@ -26,7 +26,7 @@ function edgeRow(
   return {
     serverServiceName,
     clientServiceName,
-    isNodeLevel: 0,
+    isNodeLevel: false,
     requestCount,
     errorCount,
     ...latency,
@@ -211,6 +211,24 @@ describe('aggregateServiceMapData', () => {
       ]).get('api-service')!.incomingRequests;
       expect(stats.hasLatency).toBe(false);
       expect(stats.p50).toBe(0);
+      expect(stats.p95).toBe(0);
+      expect(stats.p99).toBe(0);
+    });
+
+    it('flags hasLatency from p50 even when p95/p99 are absent', () => {
+      // statsFromRow keys hasLatency off p50; missing p95/p99 default to 0.
+      const result = aggregateServiceMapData([
+        {
+          serverServiceName: 'api',
+          isNodeLevel: true,
+          requestCount: 10,
+          errorCount: 0,
+          p50: 5,
+        },
+      ]);
+      const stats = result.get('api')!.incomingRequests;
+      expect(stats.hasLatency).toBe(true);
+      expect(stats.p50).toBe(5);
       expect(stats.p95).toBe(0);
       expect(stats.p99).toBe(0);
     });

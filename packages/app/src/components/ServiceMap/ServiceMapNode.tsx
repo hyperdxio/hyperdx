@@ -55,7 +55,9 @@ export default function ServiceMapNode(
     props.selected,
   );
 
-  const precision = source.durationPrecision ?? 9;
+  // Fallback matches the schema default (3 = ms); in practice the field is
+  // always present on a parsed source.
+  const precision = source.durationPrecision ?? 3;
   const latencyMs = hasLatency
     ? {
         p50: rawDurationToMs(p50, precision),
