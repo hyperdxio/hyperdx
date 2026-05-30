@@ -1767,22 +1767,12 @@ export type Field = {
   jsType: JSDataType | null;
 };
 
-/**
- * Parses a bracket-notation key string into a path array.
- * e.g. `ResourceAttributes['service.name']` → `['ResourceAttributes', 'service.name']`
- *      `ServiceName` → `['ServiceName']`
- */
-export function parseKeyPath(key: string): string[] {
-  const singleIdx = key.indexOf("['");
-  if (singleIdx !== -1 && key.endsWith("']")) {
-    return [key.slice(0, singleIdx), key.slice(singleIdx + 2, -2)];
-  }
-  const doubleIdx = key.indexOf('["');
-  if (doubleIdx !== -1 && key.endsWith('"]')) {
-    return [key.slice(0, doubleIdx), key.slice(doubleIdx + 2, -2)];
-  }
-  return [key];
-}
+// Re-exported from `core/keyPath.ts` so existing call sites that import
+// from `core/metadata` keep working. The implementation moved to a leaf
+// module so `types.ts` can normalize dashboard-filter expressions with
+// the same rules query parsing applies, without forming a circular
+// import through `metadata.ts -> clickhouse -> guards.ts -> types.ts`.
+export { parseKeyPath } from './keyPath';
 
 // Describes a table and potentially related views
 export type TableConnection = {

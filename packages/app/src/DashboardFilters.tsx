@@ -30,7 +30,13 @@ const DashboardFilterSelect = ({
 }: DashboardFilterSelectProps) => {
   const sortedValues = values?.toSorted() || [];
   const tooltipText = getAppliesToTooltip(filter);
-  const isReadOnly = filter.renderMode === 'readonly' || !!filter.constant;
+  // The chip is rendered locked when either `constant: true` is set
+  // (the value comes from savedFilterValues and the viewer cannot
+  // override it) or `renderMode === 'readonly'` is set explicitly.
+  // The `renderMode === 'hidden'` case is handled one level up at
+  // `visibleFilters`, which drops the chip from the bar entirely; that
+  // branch never reaches this component.
+  const isLocked = filter.renderMode === 'readonly' || !!filter.constant;
 
   return (
     <Stack gap={2}>
@@ -38,7 +44,7 @@ const DashboardFilterSelect = ({
         <Text size="xs" c="dimmed">
           {filter.name}
         </Text>
-        {isReadOnly && (
+        {isLocked && (
           <Tooltip
             label="This filter is locked to the saved default value"
             withinPortal
@@ -63,7 +69,7 @@ const DashboardFilterSelect = ({
           placeholder={value.length === 0 ? filter.name : undefined}
           values={value}
           data={sortedValues}
-          disabled={isLoading || isReadOnly}
+          disabled={isLoading || isLocked}
           onChange={onChange}
           data-testid={`dashboard-filter-select-${filter.name}`}
         />

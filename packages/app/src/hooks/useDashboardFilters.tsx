@@ -63,6 +63,20 @@ const useDashboardFilters = (
           };
         }
 
+        // Output scrubber: a viewer with a stale shared URL might land
+        // with `filterValues` already containing entries for expressions
+        // that are now `constant: true`. Without this scrub, the very
+        // next `setFilterValue` call for any sibling expression would
+        // re-emit the stale constant entry into the URL via
+        // `filtersToQuery`, re-publishing the locked scope back into
+        // shared links. Drop those entries before re-encoding so the
+        // URL stays clean of locked expressions on every write.
+        for (const expr of Object.keys(filterValues)) {
+          if (constantExpressions.has(normalizeExpression(expr))) {
+            delete filterValues[expr];
+          }
+        }
+
         return filtersToQuery(filterValues);
       });
     },
@@ -98,13 +112,31 @@ const useDashboardFilters = (
       Object.entries(parsedSaved).map(([k, v]) => [normalizeExpression(k), v]),
     );
 
-    for (const { expression, constant } of filters) {
+    // Aggregate by normalized expression first so legacy data with
+    // mixed `constant: true` + editable siblings on the same expression
+    // (saved before the schema-level refinement landed, or via a
+    // non-v2 path that bypasses validation) resolves deterministically:
+    // if ANY sibling locks the expression, the locked saved value wins
+    // for every sibling. Without this aggregation, the loop below would
+    // overwrite per-iteration and last-writer-wins could silently let
+    // the editable sibling's URL value override the constant's locked
+    // value while `setFilterValue` still no-ops the writes.
+    const constantByNormalized = new Set<string>();
+    for (const f of filters) {
+      if (f.constant) {
+        constantByNormalized.add(normalizeExpression(f.expression));
+      }
+    }
+    for (const { expression } of filters) {
       const norm = normalizeExpression(expression);
+      const treatAsConstant = constantByNormalized.has(norm);
       // Constant filters always source their value from savedFilterValues,
       // ignoring any URL state on the same expression. This is what makes
       // the value "locked": the viewer cannot override it via the URL.
-      const savedMatch = constant ? normalizedSaved.get(norm) : undefined;
-      const urlMatch = constant ? undefined : normalizedParsed.get(norm);
+      const savedMatch = treatAsConstant
+        ? normalizedSaved.get(norm)
+        : undefined;
+      const urlMatch = treatAsConstant ? undefined : normalizedParsed.get(norm);
       const match = savedMatch ?? urlMatch;
       if (match) {
         valuesForExistingFilters[expression] = match;
@@ -179,6 +211,32 @@ const useDashboardFilters = (
       setFilterQueries([...filtersToQuery(parsed), ...passthroughFilters]);
     }
   }, [filterQueries, setFilterQueries]);
+
+  // Input guard for stale shared URLs: when the URL carries entries for
+  // expressions that are now `constant: true`, scrub them on load so a
+  // later `setFilterValue` for any other expression doesn't re-emit them
+  // back into the URL via `filtersToQuery`. Read paths already overlay
+  // the saved value regardless of URL state; this step keeps the URL
+  // itself clean. Runs once per first non-empty filterQueries snapshot.
+  const hasScrubbedConstantsRef = useRef(false);
+  useEffect(() => {
+    if (hasScrubbedConstantsRef.current) return;
+    if (!filterQueries || filterQueries.length === 0) return;
+    if (constantExpressions.size === 0) return;
+    const { filters: parsed, passthroughFilters } = parseQuery(filterQueries);
+    let removed = false;
+    for (const key of Object.keys(parsed)) {
+      if (constantExpressions.has(normalizeExpression(key))) {
+        delete parsed[key];
+        removed = true;
+      }
+    }
+    hasScrubbedConstantsRef.current = true;
+    if (removed) {
+      const next = [...filtersToQuery(parsed), ...passthroughFilters];
+      setFilterQueries(next.length ? next : null);
+    }
+  }, [filterQueries, constantExpressions, setFilterQueries]);
 
   return {
     filterValues: valuesForExistingFilters,

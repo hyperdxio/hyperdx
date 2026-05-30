@@ -1473,6 +1473,138 @@ describe('MCP Dashboard Tools', () => {
       expect(result.isError).toBeTruthy();
     });
 
+    it('should round-trip savedFilterValues paired with a constant filter (HDX-4404)', async () => {
+      // The locked-scope contract: a `constant: true` filter pulls its
+      // value from the dashboard-level `savedFilterValues` array. The
+      // MCP caller is the only path that can supply both in one shot,
+      // so a regression that drops `savedFilterValues` on the wire (or
+      // on the response) would silently break locked dashboards even
+      // though the per-filter round-trip above still passes. Use
+      // `toEqual` on the whole array to catch schema drift in either
+      // direction (missing fields OR unexpected extra fields).
+      const sourceId = traceSource._id.toString();
+      const savedFilterValues = [
+        {
+          type: 'lucene' as const,
+          condition: 'ServiceName:"hdx-private-api"',
+        },
+      ];
+      const createResult = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Locked dashboard template',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service (locked)',
+            expression: 'ServiceName',
+            sourceId,
+            whereLanguage: 'sql',
+            constant: true,
+            renderMode: 'readonly',
+          },
+        ],
+        savedFilterValues,
+      });
+      expect(createResult.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(createResult));
+      expect(created.savedFilterValues).toEqual(savedFilterValues);
+
+      // GET preserves savedFilterValues verbatim alongside the filter.
+      const getResult = await callTool(client, 'hyperdx_get_dashboard', {
+        id: created.id,
+      });
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.savedFilterValues).toEqual(savedFilterValues);
+      expect(fetched.filters).toEqual(created.filters);
+
+      // UPDATE with a different saved value: the new value replaces the
+      // old one verbatim (clone-and-flip semantics).
+      const nextSavedFilterValues = [
+        {
+          type: 'lucene' as const,
+          condition: 'ServiceName:"hdx-public-api"',
+        },
+      ];
+      const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
+        id: created.id,
+        name: 'Locked dashboard template',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          {
+            id: created.filters[0].id,
+            type: 'QUERY_EXPRESSION',
+            name: 'Service (locked)',
+            expression: 'ServiceName',
+            sourceId,
+            whereLanguage: 'sql',
+            constant: true,
+            renderMode: 'readonly',
+          },
+        ],
+        savedFilterValues: nextSavedFilterValues,
+      });
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.savedFilterValues).toEqual(nextSavedFilterValues);
+    });
+
+    it('should reject mismatched sibling constants on the same expression (HDX-4404)', async () => {
+      // Two filters on the same expression (`ServiceName`) where one is
+      // `constant: true` and the other is editable: the runtime overlay
+      // would have the editable side's URL value clobber the constant's
+      // locked value while `setFilterValue` still no-ops the writes.
+      // The dashboard-level sibling refinement rejects this combination.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Mismatched siblings',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service (locked)',
+            expression: 'ServiceName',
+            sourceId,
+            whereLanguage: 'sql',
+            constant: true,
+            renderMode: 'readonly',
+          },
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service (editable)',
+            expression: 'ServiceName',
+            sourceId,
+            whereLanguage: 'sql',
+          },
+        ],
+      });
+      expect(result.isError).toBeTruthy();
+    });
+
+    it('should reject renderMode without constant: true on the MCP schema (HDX-4404)', async () => {
+      // The MCP schema now carries the coherence refinement directly so
+      // an LLM caller hits the rule at the input boundary rather than
+      // via a downstream server-side rejection. renderMode 'readonly'
+      // without `constant: true` would paint a locked-looking chip that
+      // the hook never overlays, so the WHERE clause never gains the
+      // value.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Incoherent renderMode',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+            whereLanguage: 'sql',
+            renderMode: 'readonly',
+          },
+        ],
+      });
+      expect(result.isError).toBeTruthy();
+    });
+
     it('should round-trip a table tile that uses a having clause', async () => {
       // mcpTableTileSchema exposes `having` so the service_detail
       // example's "Top Error Messages" pattern (groupBy StatusMessage

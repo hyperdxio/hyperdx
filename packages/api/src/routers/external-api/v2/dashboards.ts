@@ -90,14 +90,26 @@ function getSourceConnectionMismatches(
  *       properties:
  *         type:
  *           type: string
- *           enum: [sql]
+ *           enum: [sql, lucene]
  *           default: sql
- *           description: Filter type. Currently only "sql" is supported.
- *           example: "sql"
+ *           description: |
+ *             Language of the `condition` expression. Use `lucene` for the
+ *             Lucene-style key:value syntax that round-trips through the
+ *             UI's "Save default" flow (e.g. `ServiceName:"hdx-private-api"`)
+ *             and pairs with a dashboard filter that has `constant: true`.
+ *             Use `sql` for a raw SQL fragment evaluated as a WHERE clause
+ *             on the matching source.
+ *           example: "lucene"
  *         condition:
  *           type: string
- *           description: SQL filter condition. For example use expressions in the form "column IN ('value')".
- *           example: "ServiceName IN ('hdx-oss-dev-api')"
+ *           description: |
+ *             Filter condition. For `type: sql`, a raw SQL expression in
+ *             the form `column IN ('value')`. For `type: lucene`, a
+ *             Lucene-style `key:value` string keyed by a dashboard
+ *             filter's `expression`; this is the shape the UI writes
+ *             when an author clicks "Save default" on a chip and the
+ *             shape constant filters consume.
+ *           example: "ServiceName:\"hdx-oss-dev-api\""
  *     MetricDataType:
  *       type: string
  *       enum: [sum, gauge, histogram, summary, exponential histogram]
@@ -1380,6 +1392,9 @@ function getSourceConnectionMismatches(
  *             different default per copy). Pairs with renderMode to control how
  *             the locked filter shows in the filter bar. Omit (or send false)
  *             for an ordinary editable filter (the implicit default behavior).
+ *             Two filters that share the same expression on the same dashboard
+ *             must agree on `constant`: mixing one locked sibling and one
+ *             editable sibling on the same expression is rejected.
  *           example: true
  *         renderMode:
  *           type: string
@@ -1501,7 +1516,11 @@ function getSourceConnectionMismatches(
  *           example: "sql"
  *         savedFilterValues:
  *           type: array
- *           description: Optional default dashboard filter values to persist on the dashboard.
+ *           description: |
+ *             Optional default dashboard filter values to persist on the dashboard.
+ *             Drop any entries whose expression does not match a filter you are
+ *             keeping in the `filters` array, otherwise they remain as orphaned
+ *             saved values invisible to the UI editor.
  *           items:
  *             $ref: '#/components/schemas/SavedFilterValue'
  *         containers:
@@ -1554,7 +1573,11 @@ function getSourceConnectionMismatches(
  *           example: "sql"
  *         savedFilterValues:
  *           type: array
- *           description: Optional default dashboard filter values to persist on the dashboard.
+ *           description: |
+ *             Optional default dashboard filter values to persist on the dashboard.
+ *             On update, this array is overwritten as a whole. Drop any entries
+ *             whose expression does not match a filter you kept in `filters` so
+ *             they do not remain as orphaned scope locks.
  *           items:
  *             $ref: '#/components/schemas/SavedFilterValue'
  *         containers:

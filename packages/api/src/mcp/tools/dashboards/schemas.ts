@@ -9,6 +9,7 @@ import {
   DashboardContainerSchema,
   DashboardFilterType,
   MetricsDataType,
+  refineDashboardFilterCoherence,
   SearchConditionLanguageSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
@@ -719,14 +720,24 @@ const mcpDashboardFilterSchema = z
           '"readonly" shows a disabled chip with a lock icon; the viewer sees the locked value ' +
           'but cannot edit it. ' +
           '"hidden" omits the chip entirely; the locked value still scopes every matching tile. ' +
-          'Typically used together with `constant: true`.',
+          'Typically used together with `constant: true`; setting renderMode to "readonly" or ' +
+          '"hidden" WITHOUT constant: true is rejected because the chip is locked but no value ' +
+          'applies.',
       ),
   })
+  // Surface the coherence rule (constant + renderMode interlock) on the
+  // schema itself so an MCP caller hits the same boundary the external
+  // API enforces, instead of learning the rule only via a downstream
+  // server-side rejection.
+  .superRefine(refineDashboardFilterCoherence)
   .describe(
     'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
       'Each filter binds a label/name to a column expression on a source. ' +
       "Filters are also the contract for row-click navigation: a table tile's " +
-      'onClick.filters[i].expression must match a filter declared here for the value to land.',
+      'onClick.filters[i].expression must match a filter declared here for the value to land. ' +
+      'Two filters that share the same expression on the same dashboard must agree on `constant`: ' +
+      'mixing one locked sibling and one editable sibling is rejected because the runtime ' +
+      "would let the editable side's URL value clobber the constant's locked value.",
   );
 
 export const mcpFiltersParam = z

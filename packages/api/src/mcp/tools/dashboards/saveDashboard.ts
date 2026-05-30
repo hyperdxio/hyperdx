@@ -76,7 +76,10 @@ export function registerSaveDashboard(
               'savedFilterValues entry is applied automatically on every ' +
               'tile and the viewer cannot override it. ' +
               'If you set `constant: true` without a corresponding ' +
-              'savedFilterValues entry, the filter has no effect.',
+              'savedFilterValues entry, the filter has no effect. ' +
+              'On UPDATE, this array is overwritten as a whole: drop any ' +
+              'entries for filter expressions you removed from the `filters` ' +
+              'array so they do not stay as orphaned scope locks.',
           ),
       }),
     },

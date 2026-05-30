@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { parseKeyPath } from './core/keyPath';
+
 // Basic Enums
 export enum MetricsDataType {
   Gauge = 'gauge',
@@ -1251,12 +1253,14 @@ export const refineDashboardFiltersConstantSiblings = (
   >();
   for (let i = 0; i < filters.length; i++) {
     const f = filters[i];
-    // Inline the normalization here so common-utils doesn't have to import
-    // parseKeyPath; matches the dot-notation form used everywhere else.
-    const norm = f.expression
-      .replace(/\['([^']+)'\]/g, '.$1')
-      .replace(/\["([^"]+)"\]/g, '.$1')
-      .replace(/^\.+|\.+$/g, '');
+    // Use the package-local `parseKeyPath` so the normalization here
+    // matches the runtime overlay (`useDashboardFilters` ->
+    // `parseKeyPath`) and the filter helpers (`filters.ts` ->
+    // `parseKeyPath`). Diverging the dot-notation form here against the
+    // other call sites makes the schema group as siblings two filters
+    // the hook treats as distinct (or vice versa) on nested
+    // bracket-notation expressions like `SpanAttributes['k8s']['pod']`.
+    const norm = parseKeyPath(f.expression).join('.');
     const entry = byNormalized.get(norm) ?? {
       hasConstant: false,
       hasEditable: false,

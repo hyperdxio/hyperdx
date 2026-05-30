@@ -30,6 +30,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
 import {
   IconFilter,
   IconInfoCircle,
@@ -86,11 +87,12 @@ const applyFilterVisibility = (
       return { constant: true, renderMode: 'hidden' };
     case 'editable':
     default:
-      // Return an empty object so the spread on save doesn't leave
-      // `constant: undefined` / `renderMode: undefined` keys present in
-      // memory; that would let structural equality against a server
-      // round-trip see a spurious diff even though the wire format is
-      // identical.
+      // The submit path destructures `constant` and `renderMode` out of
+      // the form values before spreading, so an empty object here is
+      // intentional: the resulting persisted filter has neither key.
+      // That keeps the wire format identical to today's editable filter
+      // (no spurious `constant: undefined` / `renderMode: undefined`
+      // entries that would diff against a server round-trip).
       return {};
   }
 };
@@ -344,6 +346,17 @@ const DashboardFilterEditForm = ({
   const watchedWhere = useWatch({ control, name: 'where' });
   const watchedWhereLanguage = useWatch({ control, name: 'whereLanguage' });
 
+  // CodeMirror-backed inputs (`expression`, `where`, `whereLanguage`) emit
+  // a `useWatch` update on every keystroke, so feeding them straight into
+  // `filterForValueQuery` below would fire a new ClickHouse autocomplete
+  // request per character and frequently with mid-edit partial WHERE
+  // strings that the proxy rejects server-side. Debounce on a stable
+  // 300ms window (matches `MetricAttributeHelperPanel`) so the picker
+  // only re-queries once the author pauses typing.
+  const [debouncedExpression] = useDebouncedValue(watchedExpression, 300);
+  const [debouncedWhere] = useDebouncedValue(watchedWhere, 300);
+  const [debouncedWhereLanguage] = useDebouncedValue(watchedWhereLanguage, 300);
+
   const sourceId = useWatch({ control, name: 'source' });
   const { data: source } = useSource({ id: sourceId });
 
@@ -375,16 +388,16 @@ const DashboardFilterEditForm = ({
   // query only makes sense once the form has enough information to name
   // a real table.
   const filterForValueQuery = useMemo(() => {
-    if (!sourceId || !watchedExpression || !tableName) return null;
+    if (!sourceId || !debouncedExpression || !tableName) return null;
     return {
       id: filter.id,
       type: 'QUERY_EXPRESSION' as const,
       name: filter.name || 'preview',
       source: sourceId,
-      expression: watchedExpression,
-      where: watchedWhere?.trim() ? watchedWhere : undefined,
-      whereLanguage: watchedWhere?.trim()
-        ? (watchedWhereLanguage ?? 'sql')
+      expression: debouncedExpression,
+      where: debouncedWhere?.trim() ? debouncedWhere : undefined,
+      whereLanguage: debouncedWhere?.trim()
+        ? (debouncedWhereLanguage ?? 'sql')
         : undefined,
       sourceMetricType: metricType,
     };
@@ -392,9 +405,9 @@ const DashboardFilterEditForm = ({
     filter.id,
     filter.name,
     sourceId,
-    watchedExpression,
-    watchedWhere,
-    watchedWhereLanguage,
+    debouncedExpression,
+    debouncedWhere,
+    debouncedWhereLanguage,
     metricType,
     tableName,
   ]);
@@ -419,12 +432,23 @@ const DashboardFilterEditForm = ({
             const appliesTo = values.appliesToSourceIds?.filter(
               id => !!id?.length,
             );
-            // Strip the UI-only synthetic fields before saving. The
-            // visibility preset translates to the orthogonal
-            // (constant, renderMode) pair the schema expects.
+            // Strip the UI-only synthetic fields AND the schema's
+            // `constant` / `renderMode` pair before saving: `visibility`
+            // is the canonical UI input and `applyFilterVisibility`
+            // below produces the (constant, renderMode) pair to spread
+            // on top of `rest`. Pulling `constant` and `renderMode`
+            // out of `rest` here ensures the spread of
+            // `visibilityFields` is authoritative: when the author
+            // flips a saved readonly/hidden filter back to "Editable",
+            // the persisted filter ends up without those keys (matching
+            // a fresh editable filter), not still carrying the stale
+            // `constant: true` / `renderMode: 'readonly'` from before
+            // the visibility change.
             const {
               visibility,
               defaultValues: editedDefaultValues,
+              constant: _droppedConstant,
+              renderMode: _droppedRenderMode,
               ...rest
             } = values;
             // Visibility / default-value editing is gated on

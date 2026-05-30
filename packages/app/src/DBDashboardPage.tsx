@@ -130,6 +130,7 @@ import {
 import {
   buildConstantExpressionSet,
   mergeConstantFiltersForSave,
+  normalizeExpression,
   removeSavedDefaultForExpression,
   stripConstantsFromUrl,
   upsertSavedDefault,
@@ -1463,16 +1464,35 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     // Strip the matching savedFilterValues entry alongside the filter
     // delete so a later recreate-on-the-same-expression doesn't silently
     // re-lock to the orphaned saved value.
+    //
+    // Two `constant: true` siblings on the same expression are
+    // schema-legal when `appliesToSourceIds` differs (one scoped to
+    // logs, one scoped to traces, both locked to the same value). In
+    // that case, deleting just one sibling must NOT prune the shared
+    // saved entry: the surviving sibling would then render with a lock
+    // icon but no value and apply no WHERE scoping. Only prune when no
+    // remaining filter references the same normalized expression.
     const removed = dashboard.filters?.find(p => p.id === id);
-    const cleanedSavedValues = removed
-      ? removeSavedDefaultForExpression(
-          dashboard.savedFilterValues,
-          removed.expression,
-        )
-      : dashboard.savedFilterValues;
+    const remainingFilters = dashboard.filters?.filter(p => p.id !== id) ?? [];
+    const removedExpression = removed?.expression;
+    const removedNormalized = removedExpression
+      ? normalizeExpression(removedExpression)
+      : null;
+    const siblingStillUsesExpression =
+      removedNormalized != null &&
+      remainingFilters.some(
+        p => normalizeExpression(p.expression) === removedNormalized,
+      );
+    const cleanedSavedValues =
+      removedExpression && !siblingStillUsesExpression
+        ? removeSavedDefaultForExpression(
+            dashboard.savedFilterValues,
+            removedExpression,
+          )
+        : dashboard.savedFilterValues;
     setDashboard({
       ...dashboard,
-      filters: dashboard.filters?.filter(p => p.id !== id) ?? [],
+      filters: remainingFilters,
       savedFilterValues: cleanedSavedValues,
     });
   };

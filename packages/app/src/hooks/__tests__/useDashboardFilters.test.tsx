@@ -399,6 +399,11 @@ describe('useDashboardFilters', () => {
       expect(result.current.filterValues.environment.included).toEqual(
         new Set(['production']),
       );
+      // A URL entry whose expression is now `constant: true` is NOT
+      // surfaced as "ignored" to the caller. Surfacing it would render
+      // a stale "ignored filter" banner on a cloneable template; the
+      // viewer correctly sees the locked value with no warning.
+      expect(result.current.ignoredFilterExpressions).toEqual([]);
     });
 
     it('setFilterValue is a no-op for a constant filter expression', () => {
@@ -510,6 +515,91 @@ describe('useDashboardFilters', () => {
       );
 
       expect(result.current.filterValues.region).toBeUndefined();
+      // No saved value AND the constant rule keeps the URL state out:
+      // the per-source query layer should also see nothing for any tile.
+      expect(result.current.getFilterQueriesForSource('source-a')).toEqual([]);
+    });
+
+    it('setFilterValue scrubs stale constant entries out of the URL on every write', () => {
+      // A viewer landed via a shared URL that carries an entry for an
+      // expression now locked by `constant: true`. Without the
+      // scrubbing in setFilterValue, the next write for any sibling
+      // would re-emit the stale constant entry via filtersToQuery,
+      // re-publishing the locked scope back into shared links.
+      mockState = [
+        { type: 'lucene', condition: 'environment:"staging"' },
+        { type: 'lucene', condition: 'service.name:"old"' },
+      ];
+
+      const { result } = renderHook(() =>
+        useDashboardFilters(constantFilters, { savedFilterValues }),
+      );
+
+      mockSetState.mockClear();
+      act(() => {
+        // Write for a sibling editable filter (not the constant one).
+        result.current.setFilterValue('service.name', ['api']);
+      });
+
+      // setFilterValue should have been called for the editable filter.
+      expect(mockSetState).toHaveBeenCalled();
+
+      // The resulting URL state must NOT contain the stale environment
+      // entry. Re-render to read the new URL state through the hook.
+      const { result: result2 } = renderHook(() =>
+        useDashboardFilters(constantFilters, { savedFilterValues }),
+      );
+      expect(result2.current.filterValues['service.name'].included).toEqual(
+        new Set(['api']),
+      );
+      // The constant filter still shows its saved value; the stale URL
+      // entry for the same expression did NOT survive the write.
+      expect(result2.current.filterValues.environment.included).toEqual(
+        new Set(['production']),
+      );
+      const serialized = (mockState ?? [])
+        .map(f => ('condition' in f ? f.condition : ''))
+        .join('|');
+      expect(serialized).not.toContain('staging');
+    });
+
+    it('aggregates by normalized expression so mixed legacy siblings still resolve the locked value', () => {
+      // Legacy data shape: same dashboard saved before the sibling
+      // refinement landed, or via a non-v2 path that bypassed
+      // validation. One sibling is `constant: true`, the other is
+      // editable; both on the same expression. The hook MUST treat
+      // both as locked (the saved value wins) so the editable sibling
+      // cannot pull a stale URL value into the chip while
+      // setFilterValue blocks the writes.
+      const legacyMixedSiblings: DashboardFilter[] = [
+        {
+          id: 'env-locked',
+          type: 'QUERY_EXPRESSION',
+          name: 'Environment (locked)',
+          expression: 'environment',
+          source: 'logs',
+          constant: true,
+        },
+        {
+          id: 'env-editable',
+          type: 'QUERY_EXPRESSION',
+          name: 'Environment (editable)',
+          expression: 'environment',
+          source: 'logs',
+          // No constant flag; the legacy editable sibling.
+        },
+      ];
+      // Stale URL value trying to override the constant.
+      mockState = [{ type: 'lucene', condition: 'environment:"staging"' }];
+
+      const { result } = renderHook(() =>
+        useDashboardFilters(legacyMixedSiblings, { savedFilterValues }),
+      );
+
+      // Both siblings see the locked value, not the URL value.
+      expect(result.current.filterValues.environment.included).toEqual(
+        new Set(['production']),
+      );
     });
 
     it('resolves a constant filter declared with bracket-notation expression', () => {

@@ -628,16 +628,17 @@
           "type": {
             "type": "string",
             "enum": [
-              "sql"
+              "sql",
+              "lucene"
             ],
             "default": "sql",
-            "description": "Filter type. Currently only \"sql\" is supported.",
-            "example": "sql"
+            "description": "Language of the `condition` expression. Use `lucene` for the\nLucene-style key:value syntax that round-trips through the\nUI's \"Save default\" flow (e.g. `ServiceName:\"hdx-private-api\"`)\nand pairs with a dashboard filter that has `constant: true`.\nUse `sql` for a raw SQL fragment evaluated as a WHERE clause\non the matching source.\n",
+            "example": "lucene"
           },
           "condition": {
             "type": "string",
-            "description": "SQL filter condition. For example use expressions in the form \"column IN ('value')\".",
-            "example": "ServiceName IN ('hdx-oss-dev-api')"
+            "description": "Filter condition. For `type: sql`, a raw SQL expression in\nthe form `column IN ('value')`. For `type: lucene`, a\nLucene-style `key:value` string keyed by a dashboard\nfilter's `expression`; this is the shape the UI writes\nwhen an author clicks \"Save default\" on a chip and the\nshape constant filters consume.\n",
+            "example": "ServiceName:\"hdx-oss-dev-api\""
           }
         }
       },
