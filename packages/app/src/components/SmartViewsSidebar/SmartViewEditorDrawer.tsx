@@ -193,7 +193,17 @@ export function SmartViewEditorDrawer({
           label="Name"
           required
           value={draft.name}
-          onChange={e => setDraft(d => ({ ...d, name: e.currentTarget.value }))}
+          onChange={e => {
+            // Capture the value EAGERLY: React 18 nulls out
+            // `event.currentTarget` after the synthetic-event handler
+            // returns, so reading `e.currentTarget.value` inside a
+            // deferred state updater throws `Cannot read properties
+            // of null (reading 'value')` under concurrent rendering.
+            // Same pattern matters for every TextInput onChange that
+            // pipes through a `setState(prev => ...)` updater.
+            const nextName = e.currentTarget.value;
+            setDraft(d => ({ ...d, name: nextName }));
+          }}
           placeholder="e.g. Checkout team"
           error={nameError}
           data-testid="smart-view-name-input"
@@ -203,7 +213,10 @@ export function SmartViewEditorDrawer({
           label="Icon (optional)"
           description="An emoji or short label rendered next to the name."
           value={draft.icon}
-          onChange={e => setDraft(d => ({ ...d, icon: e.currentTarget.value }))}
+          onChange={e => {
+            const nextIcon = e.currentTarget.value;
+            setDraft(d => ({ ...d, icon: nextIcon }));
+          }}
           placeholder="🛒"
           maxLength={64}
         />
