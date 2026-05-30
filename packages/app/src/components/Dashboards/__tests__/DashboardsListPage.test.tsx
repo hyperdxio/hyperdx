@@ -5,15 +5,19 @@ import DashboardsListPage from '../DashboardsListPage';
 
 const mockSetSelectedTags = jest.fn();
 const mockSetLegacyTag = jest.fn();
+const mockSetActiveViewId = jest.fn();
 const mockUseDashboards = jest.fn();
 const mockUseFavorites = jest.fn();
 const mockUseCreateDashboard = jest.fn();
 const mockUseDeleteDashboard = jest.fn();
+const mockUseSmartViews = jest.fn();
+const mockUseDeleteSmartView = jest.fn();
 const mockUseConfirm = jest.fn();
 const mockUseBrandDisplayName = jest.fn();
 
 let mockSelectedTags: string[] = [];
 let mockLegacyTag: string | null = null;
+let mockActiveViewId: string | null = null;
 
 jest.mock('next/router', () => ({
   __esModule: true,
@@ -54,8 +58,16 @@ jest.mock('nuqs', () => ({
   useQueryState: (key: string) => {
     if (key === 'tags') return [mockSelectedTags, mockSetSelectedTags];
     if (key === 'tag') return [mockLegacyTag, mockSetLegacyTag];
+    if (key === 'view') return [mockActiveViewId, mockSetActiveViewId];
     return [null, jest.fn()];
   },
+}));
+
+jest.mock('@/smartView', () => ({
+  useSmartViews: () => mockUseSmartViews(),
+  useDeleteSmartView: () => mockUseDeleteSmartView(),
+  useCreateSmartView: () => ({ mutate: jest.fn(), isPending: false }),
+  useUpdateSmartView: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 
 jest.mock('@/dashboard', () => ({
@@ -112,8 +124,10 @@ const seedDashboards = [
 beforeEach(() => {
   mockSelectedTags = [];
   mockLegacyTag = null;
+  mockActiveViewId = null;
   mockSetSelectedTags.mockClear();
   mockSetLegacyTag.mockClear();
+  mockSetActiveViewId.mockClear();
   mockUseDashboards.mockReturnValue({
     data: seedDashboards,
     isLoading: false,
@@ -125,6 +139,8 @@ beforeEach(() => {
     isPending: false,
   });
   mockUseDeleteDashboard.mockReturnValue({ mutate: jest.fn() });
+  mockUseSmartViews.mockReturnValue({ data: [], isLoading: false });
+  mockUseDeleteSmartView.mockReturnValue({ mutate: jest.fn() });
   mockUseConfirm.mockReturnValue(jest.fn());
   mockUseBrandDisplayName.mockReturnValue('HyperDX');
 });
@@ -162,5 +178,33 @@ describe('DashboardsListPage', () => {
     renderWithMantine(<DashboardsListPage />);
 
     expect(screen.getByText('No matching dashboards yet')).toBeInTheDocument();
+  });
+
+  it('filters the listing through the active smart view rules', () => {
+    const checkoutView = {
+      id: 'view-1',
+      name: 'Checkout team',
+      resource: 'dashboard' as const,
+      rules: [{ kind: 'tag-includes' as const, tag: 'checkout' }],
+      combinator: 'all' as const,
+      ordering: 0,
+      isShared: false,
+    };
+    mockUseSmartViews.mockReturnValue({
+      data: [checkoutView],
+      isLoading: false,
+    });
+    mockActiveViewId = 'view-1';
+
+    renderWithMantine(<DashboardsListPage />);
+
+    const grid = screen.getByTestId('dashboards-list-page');
+
+    // Only the two checkout-tagged dashboards are present; payments-only
+    // and untagged are filtered by the active view.
+    expect(within(grid).getAllByText('Checkout dash')).toHaveLength(1);
+    expect(within(grid).getAllByText('Multi dash')).toHaveLength(1);
+    expect(within(grid).queryByText('Payments dash')).toBeNull();
+    expect(within(grid).queryByText('Untagged dash')).toBeNull();
   });
 });
