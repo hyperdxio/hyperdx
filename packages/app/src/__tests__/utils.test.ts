@@ -1,5 +1,6 @@
 import {
   ChartPaletteTokenSchema,
+  ColorCondition,
   NumericUnit,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -10,6 +11,7 @@ import { MetricsDataType, NumberFormat } from '../types';
 import * as utils from '../utils';
 import {
   COLORS,
+  evaluateColorCondition,
   formatAttributeClause,
   formatDurationMs,
   formatDurationMsCompact,
@@ -20,6 +22,7 @@ import {
   mapKeyBy,
   orderByStringToSortingState,
   parseTimestampToMs,
+  resolveConditionalColor,
   sortingStateToOrderByString,
   stripTrailingSlash,
   useQueryHistory,
@@ -1266,5 +1269,300 @@ describe('getColorFromCSSToken', () => {
     // `resolveChartPaletteToken`.
     expect(() => ChartPaletteTokenSchema.parse('chart-1')).toThrow();
     expect(() => ChartPaletteTokenSchema.parse('chart-10')).toThrow();
+  });
+});
+
+// ─── evaluateColorCondition ───────────────────────────────────────────────────
+
+describe('evaluateColorCondition', () => {
+  describe('numeric ordered operators', () => {
+    it('gt: returns true when value > rule.value', () => {
+      const rule: ColorCondition = {
+        operator: 'gt',
+        value: 10,
+        color: 'chart-1',
+      };
+      expect(evaluateColorCondition(11, rule)).toBe(true);
+      expect(evaluateColorCondition(10, rule)).toBe(false);
+      expect(evaluateColorCondition(9, rule)).toBe(false);
+    });
+
+    it('gte: returns true when value >= rule.value', () => {
+      const rule: ColorCondition = {
+        operator: 'gte',
+        value: 10,
+        color: 'chart-1',
+      };
+      expect(evaluateColorCondition(10, rule)).toBe(true);
+      expect(evaluateColorCondition(11, rule)).toBe(true);
+      expect(evaluateColorCondition(9, rule)).toBe(false);
+    });
+
+    it('lt: returns true when value < rule.value', () => {
+      const rule: ColorCondition = {
+        operator: 'lt',
+        value: 10,
+        color: 'chart-1',
+      };
+      expect(evaluateColorCondition(9, rule)).toBe(true);
+      expect(evaluateColorCondition(10, rule)).toBe(false);
+    });
+
+    it('lte: returns true when value <= rule.value', () => {
+      const rule: ColorCondition = {
+        operator: 'lte',
+        value: 10,
+        color: 'chart-1',
+      };
+      expect(evaluateColorCondition(10, rule)).toBe(true);
+      expect(evaluateColorCondition(9, rule)).toBe(true);
+      expect(evaluateColorCondition(11, rule)).toBe(false);
+    });
+
+    it('numeric operators return false for string values', () => {
+      const rule: ColorCondition = {
+        operator: 'gt',
+        value: 10,
+        color: 'chart-1',
+      };
+      expect(evaluateColorCondition('15', rule)).toBe(false);
+    });
+  });
+
+  describe('between operator', () => {
+    it('returns true when value is within [lo, hi]', () => {
+      const rule: ColorCondition = {
+        operator: 'between',
+        value: [10, 100],
+        color: 'chart-1',
+      };
+      expect(evaluateColorCondition(50, rule)).toBe(true);
+      expect(evaluateColorCondition(10, rule)).toBe(true);
+      expect(evaluateColorCondition(100, rule)).toBe(true);
+      expect(evaluateColorCondition(9, rule)).toBe(false);
+      expect(evaluateColorCondition(101, rule)).toBe(false);
+    });
+
+    it('handles inverted range (first > second) by normalising to [lo, hi]', () => {
+      const rule: ColorCondition = {
+        operator: 'between',
+        value: [100, 10],
+        color: 'chart-1',
+      };
+      expect(evaluateColorCondition(50, rule)).toBe(true);
+      expect(evaluateColorCondition(5, rule)).toBe(false);
+    });
+
+    it('returns false for string values', () => {
+      const rule: ColorCondition = {
+        operator: 'between',
+        value: [10, 100],
+        color: 'chart-1',
+      };
+      expect(evaluateColorCondition('50', rule)).toBe(false);
+    });
+  });
+
+  describe('eq / neq operators', () => {
+    it('eq: returns true on strict equality (number)', () => {
+      const rule: ColorCondition = {
+        operator: 'eq',
+        value: 5,
+        color: 'chart-1',
+      };
+      expect(evaluateColorCondition(5, rule)).toBe(true);
+      expect(evaluateColorCondition(6, rule)).toBe(false);
+    });
+
+    it('eq: returns true on strict equality (string)', () => {
+      const rule: ColorCondition = {
+        operator: 'eq',
+        value: 'CRIT',
+        color: 'chart-1',
+      };
+      expect(evaluateColorCondition('CRIT', rule)).toBe(true);
+      expect(evaluateColorCondition('crit', rule)).toBe(false);
+    });
+
+    it('eq: cross-type mismatch returns false ("5" vs 5)', () => {
+      const rule: ColorCondition = {
+        operator: 'eq',
+        value: '5',
+        color: 'chart-1',
+      };
+      expect(evaluateColorCondition(5, rule)).toBe(false);
+    });
+
+    it('neq: returns true when value differs', () => {
+      const rule: ColorCondition = {
+        operator: 'neq',
+        value: 0,
+        color: 'chart-1',
+      };
+      expect(evaluateColorCondition(1, rule)).toBe(true);
+      expect(evaluateColorCondition(0, rule)).toBe(false);
+    });
+  });
+
+  describe('string operators', () => {
+    it('contains: returns true when string includes value', () => {
+      const rule: ColorCondition = {
+        operator: 'contains',
+        value: 'error',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition('fatal error occurred', rule)).toBe(true);
+      expect(evaluateColorCondition('warning', rule)).toBe(false);
+    });
+
+    it('contains: returns false for number values', () => {
+      const rule: ColorCondition = {
+        operator: 'contains',
+        value: 'error',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition(42, rule)).toBe(false);
+    });
+
+    it('startsWith: matches prefix', () => {
+      const rule: ColorCondition = {
+        operator: 'startsWith',
+        value: 'ERR',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition('ERR_500', rule)).toBe(true);
+      expect(evaluateColorCondition('WARN_ERR', rule)).toBe(false);
+    });
+
+    it('endsWith: matches suffix', () => {
+      const rule: ColorCondition = {
+        operator: 'endsWith',
+        value: 'CRIT',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition('ALERT_CRIT', rule)).toBe(true);
+      expect(evaluateColorCondition('CRIT_OK', rule)).toBe(false);
+    });
+
+    it('regex: matches valid pattern', () => {
+      const rule: ColorCondition = {
+        operator: 'regex',
+        value: '^err.*',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition('error123', rule)).toBe(true);
+      expect(evaluateColorCondition('warning', rule)).toBe(false);
+    });
+
+    it('regex: bad pattern returns false without throwing', () => {
+      const rule = {
+        operator: 'regex' as const,
+        value: '[invalid',
+        color: 'chart-error' as const,
+      };
+      expect(() => evaluateColorCondition('test', rule)).not.toThrow();
+      expect(evaluateColorCondition('test', rule)).toBe(false);
+    });
+  });
+});
+
+// ─── resolveConditionalColor ──────────────────────────────────────────────────
+
+describe('resolveConditionalColor', () => {
+  it('returns fallback when rules is undefined', () => {
+    expect(resolveConditionalColor(50, undefined, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns fallback when rules is empty', () => {
+    expect(resolveConditionalColor(50, [], 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns fallback when value is null', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 0, color: 'chart-warning' },
+    ];
+    expect(resolveConditionalColor(null, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns fallback when value is undefined', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 0, color: 'chart-warning' },
+    ];
+    expect(resolveConditionalColor(undefined, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns the matching rule color when one rule matches', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+    ];
+    expect(resolveConditionalColor(200, rules, 'chart-success')).toBe(
+      'chart-warning',
+    );
+  });
+
+  it('returns the LAST matching rule color (last-match-wins)', () => {
+    // value 1000: both rules match; last (chart-error) wins
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+      { operator: 'gte', value: 500, color: 'chart-error' },
+    ];
+    expect(resolveConditionalColor(1000, rules, 'chart-success')).toBe(
+      'chart-error',
+    );
+  });
+
+  it('returns fallback when no rule matches', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+      { operator: 'gte', value: 500, color: 'chart-error' },
+    ];
+    // value 50: no rule matches, return fallback
+    expect(resolveConditionalColor(50, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('covers the DBNumberChart success/warning/error scenario', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+      { operator: 'gte', value: 500, color: 'chart-error' },
+    ];
+    // 50 → no match → static color
+    expect(resolveConditionalColor(50, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+    // 200 → rule 1 matches, rule 2 doesn't → chart-warning
+    expect(resolveConditionalColor(200, rules, 'chart-success')).toBe(
+      'chart-warning',
+    );
+    // 1000 → both match → last match = chart-error
+    expect(resolveConditionalColor(1000, rules, 'chart-success')).toBe(
+      'chart-error',
+    );
+  });
+
+  it('string rules do not match numeric values', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'contains', value: 'err', color: 'chart-error' },
+    ];
+    // numeric value, string rule: no match
+    expect(resolveConditionalColor(42, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns undefined fallback when fallback is undefined and no rule matches', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+    ];
+    expect(resolveConditionalColor(50, rules, undefined)).toBeUndefined();
   });
 });

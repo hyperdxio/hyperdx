@@ -8,6 +8,7 @@ import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteToken,
+  ColorCondition,
   NumericUnit,
   SourceKind,
   TMetricSource,
@@ -610,6 +611,83 @@ function semanticTokenFallback(
       throw new Error(`Unhandled semantic chart token: ${_exhaustive}`);
     }
   }
+}
+
+/**
+ * Evaluates a single conditional color rule against a runtime value.
+ *
+ * Numeric operators (`gt`, `gte`, `lt`, `lte`, `between`) return false when
+ * `typeof value !== 'number'`. Equality operators (`eq`, `neq`) use strict
+ * comparison — cross-type mismatches (`"5"` vs `5`) return false. String
+ * operators (`contains`, `startsWith`, `endsWith`, `regex`) return false when
+ * `typeof value !== 'string'`. Bad regex patterns are silently treated as
+ * no-match (schema `.refine` is best-effort; this is the runtime safety net).
+ */
+export function evaluateColorCondition(
+  value: number | string,
+  rule: ColorCondition,
+): boolean {
+  switch (rule.operator) {
+    case 'gt':
+      return typeof value === 'number' && value > rule.value;
+    case 'gte':
+      return typeof value === 'number' && value >= rule.value;
+    case 'lt':
+      return typeof value === 'number' && value < rule.value;
+    case 'lte':
+      return typeof value === 'number' && value <= rule.value;
+    case 'between': {
+      if (typeof value !== 'number') return false;
+      const [a, b] = rule.value;
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      return value >= lo && value <= hi;
+    }
+    case 'eq':
+      return value === rule.value;
+    case 'neq':
+      return value !== rule.value;
+    case 'contains':
+      return typeof value === 'string' && value.includes(rule.value);
+    case 'startsWith':
+      return typeof value === 'string' && value.startsWith(rule.value);
+    case 'endsWith':
+      return typeof value === 'string' && value.endsWith(rule.value);
+    case 'regex':
+      if (typeof value !== 'string') return false;
+      try {
+        return new RegExp(rule.value).test(value);
+      } catch {
+        return false;
+      }
+  }
+}
+
+/**
+ * Resolves the display color for a number tile by evaluating ordered
+ * conditional color rules against the tile's current value.
+ *
+ * Rules are evaluated in order; the LAST matching rule's color wins
+ * (Grafana threshold semantics). When no rule matches, `fallback` is
+ * returned. When `value` is null/undefined or `rules` is empty,
+ * `fallback` is returned immediately.
+ *
+ * @param value    The tile's current numeric (or string) value.
+ * @param rules    Ordered list of conditional color rules from the config.
+ * @param fallback The tile's static color (`config.color`) to use when no
+ *                 rule matches, or undefined to use the default text color.
+ */
+export function resolveConditionalColor(
+  value: number | string | null | undefined,
+  rules: ColorCondition[] | undefined,
+  fallback: ChartPaletteToken | undefined,
+): ChartPaletteToken | undefined {
+  if (!rules || rules.length === 0 || value == null) return fallback;
+  let match: ChartPaletteToken | undefined = fallback;
+  for (const rule of rules) {
+    if (evaluateColorCondition(value, rule)) match = rule.color;
+  }
+  return match;
 }
 
 export function hashCode(str: string) {

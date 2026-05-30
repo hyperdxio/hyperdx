@@ -21,7 +21,11 @@ import {
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
-import { formatNumber, getColorFromCSSToken } from '@/utils';
+import {
+  formatNumber,
+  getColorFromCSSToken,
+  resolveConditionalColor,
+} from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
@@ -258,18 +262,32 @@ export default function DBNumberChart({
     id: config.source,
   });
 
-  // Tile-level color override resolved at render time so token choices
-  // reflow correctly across light / dark / IDE themes.
-  // `resolveChartPaletteToken` accepts both current hue-named tokens and
-  // legacy `chart-1`..`chart-10` values from stored configs. The fetch
-  // path (`normalizeDashboardTileColors`) already heals stored data, so
-  // in practice this resolver only ever sees the migrated hue tokens —
-  // but we keep the call as defense in depth against any tile that gets
-  // constructed in memory without going through the fetch normalizer.
-  // Unknown strings fall back to the default text color.
-  const resolvedColorToken = resolveChartPaletteToken(config.color);
-  const tileColor = resolvedColorToken
-    ? getColorFromCSSToken(resolvedColorToken)
+  // Resolve the display color in three layers:
+  //   1. Conditional color rules evaluated against the raw numeric value
+  //      (last-match-wins, Grafana threshold semantics). Falls through
+  //      when no rule matches.
+  //   2. Static tile color from `config.color`, run through
+  //      `resolveChartPaletteToken` so legacy `chart-1`..`chart-10`
+  //      stored values from pre-#2362 saves still resolve to the right
+  //      hue. The fetch-path `normalizeDashboardTileColors` already
+  //      heals stored data, but this guards in-memory tile configs that
+  //      bypass the fetch normalizer.
+  //   3. Default text color when nothing else resolves.
+  //
+  // The raw value (pre-format) is used so rules match on the actual
+  // data value, not the formatted string.
+  const rawValue = valueColumn
+    ? (data?.data?.[0]?.[valueColumn.name] as number | undefined)
+    : (Object.values(data?.data?.[0] ?? {})?.[0] as number | undefined);
+
+  const resolvedToken = resolveConditionalColor(
+    rawValue ?? null,
+    config.colorRules,
+    resolveChartPaletteToken(config.color),
+  );
+
+  const tileColor = resolvedToken
+    ? getColorFromCSSToken(resolvedToken)
     : undefined;
 
   const toolbarItemsMemo = useMemo(() => {

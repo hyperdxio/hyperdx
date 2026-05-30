@@ -1,0 +1,284 @@
+import { z } from 'zod';
+
+import { ColorConditionSchema } from '../types';
+
+describe('ColorConditionSchema', () => {
+  // ─── Positive cases ─────────────────────────────────────────────────────────
+
+  describe('numeric ordered operators', () => {
+    it.each(['gt', 'gte', 'lt', 'lte'] as const)(
+      'parses operator %s with a valid numeric value',
+      operator => {
+        const result = ColorConditionSchema.safeParse({
+          operator,
+          value: 42,
+          color: 'chart-success',
+        });
+        expect(result.success).toBe(true);
+      },
+    );
+
+    it('parses with an optional label', () => {
+      const result = ColorConditionSchema.safeParse({
+        operator: 'gte',
+        value: 100,
+        color: 'chart-warning',
+        label: 'High',
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('between operator', () => {
+    it('parses a valid between rule', () => {
+      const result = ColorConditionSchema.safeParse({
+        operator: 'between',
+        value: [10, 100],
+        color: 'chart-1',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('allows inverted between (first > second)', () => {
+      const result = ColorConditionSchema.safeParse({
+        operator: 'between',
+        value: [100, 10],
+        color: 'chart-1',
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('eq / neq operators', () => {
+    it('parses eq with a number value', () => {
+      const result = ColorConditionSchema.safeParse({
+        operator: 'eq',
+        value: 5,
+        color: 'chart-error',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('parses eq with a string value', () => {
+      const result = ColorConditionSchema.safeParse({
+        operator: 'eq',
+        value: 'CRIT',
+        color: 'chart-error',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('parses neq with a number value', () => {
+      const result = ColorConditionSchema.safeParse({
+        operator: 'neq',
+        value: 0,
+        color: 'chart-2',
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('string operators', () => {
+    it.each(['contains', 'startsWith', 'endsWith'] as const)(
+      'parses operator %s with a non-empty string value',
+      operator => {
+        const result = ColorConditionSchema.safeParse({
+          operator,
+          value: 'error',
+          color: 'chart-error',
+        });
+        expect(result.success).toBe(true);
+      },
+    );
+
+    it('parses regex with a valid pattern', () => {
+      const result = ColorConditionSchema.safeParse({
+        operator: 'regex',
+        value: '^error.*',
+        color: 'chart-error',
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  it('parses with all palette tokens', () => {
+    const tokens = [
+      'chart-1',
+      'chart-2',
+      'chart-3',
+      'chart-4',
+      'chart-5',
+      'chart-6',
+      'chart-7',
+      'chart-8',
+      'chart-9',
+      'chart-10',
+      'chart-success',
+      'chart-warning',
+      'chart-error',
+    ] as const;
+    for (const token of tokens) {
+      const result = ColorConditionSchema.safeParse({
+        operator: 'gt',
+        value: 0,
+        color: token,
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  // ─── Negative cases ──────────────────────────────────────────────────────────
+
+  it('rejects an unknown operator', () => {
+    const result = ColorConditionSchema.safeParse({
+      operator: 'notAnOp',
+      value: 1,
+      color: 'chart-1',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects NaN on numeric operators', () => {
+    const result = ColorConditionSchema.safeParse({
+      operator: 'gt',
+      value: Number.NaN,
+      color: 'chart-1',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects Infinity on numeric operators', () => {
+    const result = ColorConditionSchema.safeParse({
+      operator: 'lt',
+      value: Infinity,
+      color: 'chart-1',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a string value on a numeric operator (gt)', () => {
+    const result = ColorConditionSchema.safeParse({
+      operator: 'gt',
+      value: 'oops',
+      color: 'chart-1',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a number value on a string operator (contains)', () => {
+    const result = ColorConditionSchema.safeParse({
+      operator: 'contains',
+      value: 42,
+      color: 'chart-1',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an invalid palette token', () => {
+    const result = ColorConditionSchema.safeParse({
+      operator: 'gt',
+      value: 1,
+      color: 'not-a-token',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an empty string on contains', () => {
+    const result = ColorConditionSchema.safeParse({
+      operator: 'contains',
+      value: '',
+      color: 'chart-1',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an empty string on startsWith', () => {
+    const result = ColorConditionSchema.safeParse({
+      operator: 'startsWith',
+      value: '',
+      color: 'chart-1',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an empty string on endsWith', () => {
+    const result = ColorConditionSchema.safeParse({
+      operator: 'endsWith',
+      value: '',
+      color: 'chart-1',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an empty string on regex', () => {
+    const result = ColorConditionSchema.safeParse({
+      operator: 'regex',
+      value: '',
+      color: 'chart-1',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unparseable regex pattern', () => {
+    const result = ColorConditionSchema.safeParse({
+      operator: 'regex',
+      value: '[invalid',
+      color: 'chart-1',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a label longer than 40 characters', () => {
+    const result = ColorConditionSchema.safeParse({
+      operator: 'gt',
+      value: 1,
+      color: 'chart-1',
+      label: 'a'.repeat(41),
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('colorRules array in SharedChartSettingsSchema', () => {
+  // Test array constraints directly with a z.array(ColorConditionSchema).max(10) schema,
+  // mirroring how SharedChartSettingsSchema declares colorRules.
+  const rulesSchema = z.array(ColorConditionSchema).max(10).optional();
+
+  it('accepts 0 rules', () => {
+    expect(rulesSchema.safeParse([]).success).toBe(true);
+  });
+
+  it('accepts 1 rule', () => {
+    expect(
+      rulesSchema.safeParse([{ operator: 'gt', value: 0, color: 'chart-1' }])
+        .success,
+    ).toBe(true);
+  });
+
+  it('accepts 5 rules', () => {
+    const rules = Array.from({ length: 5 }, (_, i) => ({
+      operator: 'gt' as const,
+      value: i * 10,
+      color: 'chart-1' as const,
+    }));
+    expect(rulesSchema.safeParse(rules).success).toBe(true);
+  });
+
+  it('accepts 10 rules', () => {
+    const rules = Array.from({ length: 10 }, (_, i) => ({
+      operator: 'gte' as const,
+      value: i * 10,
+      color: 'chart-1' as const,
+    }));
+    expect(rulesSchema.safeParse(rules).success).toBe(true);
+  });
+
+  it('rejects 11 rules', () => {
+    const rules = Array.from({ length: 11 }, (_, i) => ({
+      operator: 'gte' as const,
+      value: i * 10,
+      color: 'chart-1' as const,
+    }));
+    expect(rulesSchema.safeParse(rules).success).toBe(false);
+  });
+});
