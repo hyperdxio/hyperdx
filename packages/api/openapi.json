@@ -2363,7 +2363,7 @@
           },
           "constant": {
             "type": "boolean",
-            "description": "When true, the value from the dashboard's savedFilterValues matched\nby this filter's expression is applied automatically on every tile\nthis filter scopes, and viewers cannot change it. Use this to lock\na dashboard template to a single scope (clone the dashboard, save a\ndifferent default per copy). Pairs with renderMode to control how\nthe locked filter shows in the filter bar. Omit (or send false)\nfor an ordinary editable filter (the implicit default behavior).\n",
+            "description": "When true, the value from the dashboard's savedFilterValues matched\nby this filter's expression is applied automatically on every tile\nthis filter scopes, and viewers cannot change it. Use this to lock\na dashboard template to a single scope (clone the dashboard, save a\ndifferent default per copy). Pairs with renderMode to control how\nthe locked filter shows in the filter bar. Omit (or send false)\nfor an ordinary editable filter (the implicit default behavior).\nTwo filters that share the same expression on the same dashboard\nmust agree on `constant`: mixing one locked sibling and one\neditable sibling on the same expression is rejected.\n",
             "example": true
           },
           "renderMode": {
@@ -2524,7 +2524,7 @@
           },
           "savedFilterValues": {
             "type": "array",
-            "description": "Optional default dashboard filter values to persist on the dashboard.",
+            "description": "Optional default dashboard filter values to persist on the dashboard.\nDrop any entries whose expression does not match a filter you are\nkeeping in the `filters` array, otherwise they remain as orphaned\nsaved values invisible to the UI editor.\n",
             "items": {
               "$ref": "#/components/schemas/SavedFilterValue"
             }
@@ -2595,7 +2595,7 @@
           },
           "savedFilterValues": {
             "type": "array",
-            "description": "Optional default dashboard filter values to persist on the dashboard.",
+            "description": "Optional default dashboard filter values to persist on the dashboard.\nOn update, this array is overwritten as a whole. Drop any entries\nwhose expression does not match a filter you kept in `filters` so\nthey do not remain as orphaned scope locks.\n",
             "items": {
               "$ref": "#/components/schemas/SavedFilterValue"
             }
