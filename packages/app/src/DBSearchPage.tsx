@@ -277,6 +277,7 @@ function SearchSubmitButton({
       type="submit"
       leftSection={<IconPlayerPlay size={16} />}
       style={{ flexShrink: 0 }}
+      size="xs"
     >
       Run
     </Button>
@@ -1982,6 +1983,7 @@ export function DBSearchPage() {
             minWidth="min(600px, 100%)"
             dateRange={searchedTimeRange}
             sourceId={inputSource}
+            size="xs"
           />
           <Flex
             gap="sm"
@@ -2001,12 +2003,13 @@ export function DBSearchPage() {
                 isLive && interval !== LIVE_TAIL_DURATION_MS
               }
               width="100%"
+              size="xs"
             />
             {isLive && (
               <Tooltip label="Live tail refresh interval">
                 <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
                   <Select
-                    size="sm"
+                    size="xs"
                     w="100%"
                     data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
                     value={String(refreshFrequency)}
