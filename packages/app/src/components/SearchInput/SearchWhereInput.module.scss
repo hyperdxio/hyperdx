@@ -56,10 +56,13 @@
     }
   }
 
-  /* !important overrides the inline min-height set by react-textarea-autosize */
+  /* !important overrides the inline min-height set by react-textarea-autosize.
+     Inner textarea is 2px shorter than the wrapper because the wrapper adds
+     a 1px border top/bottom, so 28px + 2px border = 30px outer (matches the
+     SQL inline editor's xs height). */
   /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
   &.sizeXs :global(.mantine-InputWrapper-root) textarea {
-    min-height: 30px !important;
+    min-height: 28px !important;
   }
 
   /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
