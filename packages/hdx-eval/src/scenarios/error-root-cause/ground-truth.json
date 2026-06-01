@@ -90,89 +90,60 @@
   },
   "rubric": {
     "programmatic": [
-      {
-        "id": "names_root_cause_service",
-        "weight": 2,
-        "pattern": "payment-service",
-        "flags": "i"
-      },
-      {
-        "id": "names_underlying_failure",
-        "weight": 2,
-        "pattern": "(connection timeout|db connection|connect.*timeout|timeout.*connect|unreachable)",
-        "flags": "i"
-      },
-      {
-        "id": "names_user_facing_service",
-        "weight": 1,
-        "pattern": "checkout(-api)?",
-        "flags": "i"
-      },
-      {
-        "id": "names_db_target",
-        "weight": 1,
-        "pattern": "db-payment",
-        "flags": "i"
-      },
-      {
-        "id": "names_error_type",
-        "weight": 2,
-        "pattern": "(ConnectionTimeoutError|connection.?timeout|DBTimeout|error\\.type[^a-z]+(connection|db))",
-        "flags": "i"
-      },
-      {
-        "id": "names_db_host_fqdn",
-        "weight": 1,
-        "pattern": "db-payment\\.internal",
-        "flags": "i"
-      },
-      {
-        "id": "names_specific_db_span",
-        "weight": 1,
-        "pattern": "(db\\.payment\\.connect|payment\\.charge)",
-        "flags": "i"
-      },
-      {
-        "id": "ruled_out_a_distractor",
-        "weight": 2,
-        "pattern": "(rul(ed|ing) out|not (the )?(root )?cause|concurrent (but )?(separate|unrelated)|distractor|separate (incident|trace tree|burst))[\\s\\S]{0,250}?\\b(tls|api-gateway|auth-service|rate.?limit|smtp|notification-service|cdn|origin|card declin|insufficient funds|search-service)",
-        "flags": "i"
-      },
-      {
-        "id": "false_blame_tls_handshake",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\b(tls handshake|api-gateway[^.\\n]{0,40}?(tls|handshake|peer reset))",
-        "flags": "i"
-      },
-      {
-        "id": "false_blame_auth_rate_limit",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(rate.?limit|auth-service[^.\\n]{0,40}?(rate.?limit|429|throttl))",
-        "flags": "i"
-      },
-      {
-        "id": "false_blame_smtp",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(smtp|notification-service[^.\\n]{0,40}?(smtp|email))",
-        "flags": "i"
-      },
-      {
-        "id": "false_blame_payment_decline",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(card declined|insufficient funds|cvv mismatch|expired card|payment.?declined)",
-        "flags": "i"
-      },
-      {
-        "id": "false_blame_cdn_origin",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(cdn|origin[^.\\n]{0,40}?(refused|unreachable|timeout)|cache.?miss[^.\\n]{0,40}?upstream)",
-        "flags": "i"
-      }
+      ["names_root_cause_service", 2, "payment-service"],
+      [
+        "names_underlying_failure",
+        2,
+        "(connection timeout|db connection|connect.*timeout|timeout.*connect|unreachable)"
+      ],
+      ["names_user_facing_service", 1, "checkout(-api)?"],
+      ["names_db_target", 1, "db-payment"],
+      [
+        "names_error_type",
+        2,
+        "(ConnectionTimeoutError|connection.?timeout|DBTimeout|error\\.type[^a-z]+(connection|db))"
+      ],
+      ["names_db_host_fqdn", 1, "db-payment\\.internal"],
+      [
+        "names_specific_db_span",
+        1,
+        "(db\\.payment\\.connect|payment\\.charge)"
+      ],
+      [
+        "ruled_out_a_distractor",
+        2,
+        "(rul(ed|ing) out|not (the )?(root )?cause|concurrent (but )?(separate|unrelated)|distractor|separate (incident|trace tree|burst))[\\s\\S]{0,250}?\\b(tls|api-gateway|auth-service|rate.?limit|smtp|notification-service|cdn|origin|card declin|insufficient funds|search-service)"
+      ],
+      [
+        "false_blame_tls_handshake",
+        2,
+        "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\b(tls handshake|api-gateway[^.\\n]{0,40}?(tls|handshake|peer reset))",
+        true
+      ],
+      [
+        "false_blame_auth_rate_limit",
+        2,
+        "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(rate.?limit|auth-service[^.\\n]{0,40}?(rate.?limit|429|throttl))",
+        true
+      ],
+      [
+        "false_blame_smtp",
+        2,
+        "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(smtp|notification-service[^.\\n]{0,40}?(smtp|email))",
+        true
+      ],
+      [
+        "false_blame_payment_decline",
+        2,
+        "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(card declined|insufficient funds|cvv mismatch|expired card|payment.?declined)",
+        true
+      ],
+      [
+        "false_blame_cdn_origin",
+        2,
+        "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(cdn|origin[^.\\n]{0,40}?(refused|unreachable|timeout)|cache.?miss[^.\\n]{0,40}?upstream)",
+        true
+      ]
     ],
     "judge": {
       "criteria": [

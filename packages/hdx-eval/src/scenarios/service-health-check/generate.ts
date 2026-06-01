@@ -43,6 +43,7 @@ import { makeLog } from '../../generators/logs';
 import {
   buildResourcePool,
   pickResource,
+  spreadTimestamp,
   uuidv4,
 } from '../../generators/templates';
 import {
@@ -256,11 +257,12 @@ function* streamTraces(
 
   let buf: TraceRow[] = [];
   for (let i = 0; i < totalTraces; i++) {
-    const t =
-      totalTraces > 1
-        ? baselineStartMs +
-          (i / (totalTraces - 1)) * (BASELINE_WINDOW_MS - 30_000)
-        : baselineStartMs;
+    const t = spreadTimestamp(
+      i,
+      totalTraces,
+      baselineStartMs,
+      BASELINE_WINDOW_MS,
+    );
     const inReportWindow = t >= reportStartMs;
     const cycleOffset = (t - baselineStartMs) % BATCH_SPIKE_PERIOD_MS;
     const inBatchSpike = cycleOffset < BATCH_SPIKE_DURATION_MS;
@@ -375,11 +377,12 @@ function* streamLogs(
 
   let buf: LogRow[] = [];
   for (let i = 0; i < totalLogs; i++) {
-    const t =
-      totalLogs > 1
-        ? baselineStartMs +
-          (i / (totalLogs - 1)) * (BASELINE_WINDOW_MS - 30_000)
-        : baselineStartMs;
+    const t = spreadTimestamp(
+      i,
+      totalLogs,
+      baselineStartMs,
+      BASELINE_WINDOW_MS,
+    );
 
     let body: string;
     let severityText: 'INFO' | 'WARN';

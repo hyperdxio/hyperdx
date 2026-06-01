@@ -68,71 +68,45 @@
   },
   "rubric": {
     "programmatic": [
-      {
-        "id": "names_affected_service",
-        "weight": 1,
-        "pattern": "api-server",
-        "flags": "i"
-      },
-      {
-        "id": "names_affected_endpoint",
-        "weight": 1,
-        "pattern": "(/api/orders/search|orders/search)",
-        "flags": "i"
-      },
-      {
-        "id": "names_slow_child",
-        "weight": 2,
-        "pattern": "(database\\.query|SELECT.*FROM\\s+orders)",
-        "flags": "i"
-      },
-      {
-        "id": "names_segment",
-        "weight": 2,
-        "pattern": "(enterprise|tenant\\.tier)",
-        "flags": "i"
-      },
-      {
-        "id": "names_index_or_query_root_cause",
-        "weight": 1,
-        "pattern": "(index|tenant_id|missing.*index)",
-        "flags": "i"
-      },
-      {
-        "id": "false_blame_hot_shard",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(root cause|caused by|primary issue|the issue is|the cause is|main issue)[^.\\n]{0,80}?\\b(hot.shard|elasticsearch.shard.hot|shard.{0,30}?hot)",
-        "flags": "i"
-      },
-      {
-        "id": "false_blame_products_search",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\bproducts.search",
-        "flags": "i"
-      },
-      {
-        "id": "false_blame_feature_flag",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(feature.flag|experiment_a)",
-        "flags": "i"
-      },
-      {
-        "id": "false_blame_gc_pause",
-        "weight": 1,
-        "negative": true,
-        "pattern": "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\bgc.pause",
-        "flags": "i"
-      },
-      {
-        "id": "false_blame_cold_start",
-        "weight": 1,
-        "negative": true,
-        "pattern": "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\bcold.start",
-        "flags": "i"
-      }
+      ["names_affected_service", 1, "api-server"],
+      ["names_affected_endpoint", 1, "(/api/orders/search|orders/search)"],
+      ["names_slow_child", 2, "(database\\.query|SELECT.*FROM\\s+orders)"],
+      ["names_segment", 2, "(enterprise|tenant\\.tier)"],
+      [
+        "names_index_or_query_root_cause",
+        1,
+        "(index|tenant_id|missing.*index)"
+      ],
+      [
+        "false_blame_hot_shard",
+        2,
+        "(root cause|caused by|primary issue|the issue is|the cause is|main issue)[^.\\n]{0,80}?\\b(hot.shard|elasticsearch.shard.hot|shard.{0,30}?hot)",
+        true
+      ],
+      [
+        "false_blame_products_search",
+        2,
+        "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\bproducts.search",
+        true
+      ],
+      [
+        "false_blame_feature_flag",
+        2,
+        "(root cause|caused by|primary issue|the issue is|because of|the cause is)[^.\\n]{0,80}?\\b(feature.flag|experiment_a)",
+        true
+      ],
+      [
+        "false_blame_gc_pause",
+        1,
+        "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\bgc.pause",
+        true
+      ],
+      [
+        "false_blame_cold_start",
+        1,
+        "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\bcold.start",
+        true
+      ]
     ],
     "judge": {
       "criteria": [

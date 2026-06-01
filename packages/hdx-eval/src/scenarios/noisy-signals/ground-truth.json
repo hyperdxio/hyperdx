@@ -110,143 +110,114 @@
   },
   "rubric": {
     "programmatic": [
-      {
-        "id": "names_heartbeat_pattern",
-        "weight": 2,
-        "pattern": "(health\\.check|heartbeat)",
-        "flags": "i"
-      },
-      {
-        "id": "names_cache_hit_pattern",
-        "weight": 2,
-        "pattern": "cache\\.?hit",
-        "flags": "i"
-      },
-      {
-        "id": "names_subscription_metric_pattern",
-        "weight": 2,
-        "pattern": "(subscription_mrr|metric\\.name=subscription|metric.{0,15}calculated|mrr)",
-        "flags": "i"
-      },
-      {
-        "id": "names_stacktrace_pattern",
-        "weight": 2,
-        "pattern": "(NonFatalRetryableError|job\\.caught_exception|caught.{0,8}exception)",
-        "flags": "i"
-      },
-      {
-        "id": "names_lb_probe_pattern",
-        "weight": 2,
-        "pattern": "(lb\\.health\\.probe|kube[- ]?probe|/healthz|health.?probe|LB.{0,20}probe|internal.{0,10}health.?check)",
-        "flags": "i"
-      },
-      {
-        "id": "names_console_dump_pattern",
-        "weight": 2,
-        "pattern": "(console\\.log_dump|console\\.log dump|console.{0,10}dump|client.?side.{0,15}console|frontend.{0,10}console)",
-        "flags": "i"
-      },
-      {
-        "id": "names_search_miss_pattern",
-        "weight": 1,
-        "pattern": "(search\\.cache\\.miss|cache.?miss.{0,30}(search|verbose|per.?query)|verbose.{0,20}cache.?miss)",
-        "flags": "i"
-      },
-      {
-        "id": "names_keep_notification_delivery",
-        "weight": 1,
-        "pattern": "(notification\\.delivery|push.{0,10}delivery|delivery.{0,15}(audit|record|trail))",
-        "flags": "i"
-      },
-      {
-        "id": "names_keep_billing_events",
-        "weight": 1,
-        "pattern": "(invoice\\.(charged|refunded)|subscription\\.(activated|cancelled)|payment\\.failed|billing.{0,15}(events?|financial|audit))",
-        "flags": "i"
-      },
-      {
-        "id": "names_keep_job_failed_permanent",
-        "weight": 1,
-        "pattern": "(job\\.failed\\.permanent|permanent.{0,15}(failure|fail)|unhandled.{0,20}(failure|error|job))",
-        "flags": "i"
-      },
-      {
-        "id": "false_blanket_drop_notification_debug",
-        "weight": 3,
-        "negative": true,
-        "pattern": "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\bnotification-service[^.\\n]{0,40}?\\bdebug\\b(?![^.\\n]*?(cache\\.?hit|cache.?lookup))",
-        "flags": "i"
-      },
-      {
-        "id": "false_blanket_drop_billing_info",
-        "weight": 3,
-        "negative": true,
-        "pattern": "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\bbilling-service[^.\\n]{0,40}?\\binfo\\b(?![^.\\n]*?(subscription|metric|mrr))",
-        "flags": "i"
-      },
-      {
-        "id": "false_blanket_drop_worker_errors",
-        "weight": 3,
-        "negative": true,
-        "pattern": "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\bworker[^.\\n]{0,40}?\\berror\\b(?![^.\\n]*?(NonFatalRetryable|caught|retryable|handled))",
-        "flags": "i"
-      },
-      {
-        "id": "false_drop_envoy_access",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(envoy.{0,20}?access|proxy\\.access|access.?log)\\b",
-        "flags": "i"
-      },
-      {
-        "id": "false_drop_page_render",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(page\\.render|rum|frontend.{0,15}render)",
-        "flags": "i"
-      },
-      {
-        "id": "false_drop_indexing",
-        "weight": 1,
-        "negative": true,
-        "pattern": "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(index\\.shard\\.flush|indexing.?progress|indexer.?health)",
-        "flags": "i"
-      },
-      {
-        "id": "false_drop_analytics_events",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(analytics-service|product\\.view|cart\\.add|checkout\\.[a-z]+|event tracking|product analytics)",
-        "flags": "i"
-      },
-      {
-        "id": "false_drop_notification_delivery",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(notification\\.delivery|push.{0,10}delivery|delivery.?(audit|record|trail))",
-        "flags": "i"
-      },
-      {
-        "id": "false_drop_billing_events",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(invoice\\.(charged|refunded)|subscription\\.(activated|cancelled)|payment\\.failed|financial.?event)",
-        "flags": "i"
-      },
-      {
-        "id": "false_drop_job_failed_permanent",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(job\\.failed\\.permanent|permanent.{0,15}(failure|fail))",
-        "flags": "i"
-      },
-      {
-        "id": "false_drop_service_ops_debug",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(inventory\\.stock_lookup|pricing\\.calculation|shipping\\.rate\\.quote|recommendation\\.score)",
-        "flags": "i"
-      }
+      ["names_heartbeat_pattern", 2, "(health\\.check|heartbeat)"],
+      ["names_cache_hit_pattern", 2, "cache\\.?hit"],
+      [
+        "names_subscription_metric_pattern",
+        2,
+        "(subscription_mrr|metric\\.name=subscription|metric.{0,15}calculated|mrr)"
+      ],
+      [
+        "names_stacktrace_pattern",
+        2,
+        "(NonFatalRetryableError|job\\.caught_exception|caught.{0,8}exception)"
+      ],
+      [
+        "names_lb_probe_pattern",
+        2,
+        "(lb\\.health\\.probe|kube[- ]?probe|/healthz|health.?probe|LB.{0,20}probe|internal.{0,10}health.?check)"
+      ],
+      [
+        "names_console_dump_pattern",
+        2,
+        "(console\\.log_dump|console\\.log dump|console.{0,10}dump|client.?side.{0,15}console|frontend.{0,10}console)"
+      ],
+      [
+        "names_search_miss_pattern",
+        1,
+        "(search\\.cache\\.miss|cache.?miss.{0,30}(search|verbose|per.?query)|verbose.{0,20}cache.?miss)"
+      ],
+      [
+        "names_keep_notification_delivery",
+        1,
+        "(notification\\.delivery|push.{0,10}delivery|delivery.{0,15}(audit|record|trail))"
+      ],
+      [
+        "names_keep_billing_events",
+        1,
+        "(invoice\\.(charged|refunded)|subscription\\.(activated|cancelled)|payment\\.failed|billing.{0,15}(events?|financial|audit))"
+      ],
+      [
+        "names_keep_job_failed_permanent",
+        1,
+        "(job\\.failed\\.permanent|permanent.{0,15}(failure|fail)|unhandled.{0,20}(failure|error|job))"
+      ],
+      [
+        "false_blanket_drop_notification_debug",
+        3,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\bnotification-service[^.\\n]{0,40}?\\bdebug\\b(?![^.\\n]*?(cache\\.?hit|cache.?lookup))",
+        true
+      ],
+      [
+        "false_blanket_drop_billing_info",
+        3,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\bbilling-service[^.\\n]{0,40}?\\binfo\\b(?![^.\\n]*?(subscription|metric|mrr))",
+        true
+      ],
+      [
+        "false_blanket_drop_worker_errors",
+        3,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\bworker[^.\\n]{0,40}?\\berror\\b(?![^.\\n]*?(NonFatalRetryable|caught|retryable|handled))",
+        true
+      ],
+      [
+        "false_drop_envoy_access",
+        2,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(envoy.{0,20}?access|proxy\\.access|access.?log)\\b",
+        true
+      ],
+      [
+        "false_drop_page_render",
+        2,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(page\\.render|rum|frontend.{0,15}render)",
+        true
+      ],
+      [
+        "false_drop_indexing",
+        1,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(index\\.shard\\.flush|indexing.?progress|indexer.?health)",
+        true
+      ],
+      [
+        "false_drop_analytics_events",
+        2,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(analytics-service|product\\.view|cart\\.add|checkout\\.[a-z]+|event tracking|product analytics)",
+        true
+      ],
+      [
+        "false_drop_notification_delivery",
+        2,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(notification\\.delivery|push.{0,10}delivery|delivery.?(audit|record|trail))",
+        true
+      ],
+      [
+        "false_drop_billing_events",
+        2,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(invoice\\.(charged|refunded)|subscription\\.(activated|cancelled)|payment\\.failed|financial.?event)",
+        true
+      ],
+      [
+        "false_drop_job_failed_permanent",
+        2,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(job\\.failed\\.permanent|permanent.{0,15}(failure|fail))",
+        true
+      ],
+      [
+        "false_drop_service_ops_debug",
+        2,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(inventory\\.stock_lookup|pricing\\.calculation|shipping\\.rate\\.quote|recommendation\\.score)",
+        true
+      ]
     ],
     "judge": {
       "criteria": [

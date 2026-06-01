@@ -88,6 +88,38 @@ export function pickSeverityIn(
   return { text, number: SEVERITY_NUMBER_BY_TEXT[text] ?? 9 };
 }
 
+/**
+ * Normalize messy OTel severity text (case variants, aliases) into the
+ * canonical uppercase form used by ClickHouse schema columns.
+ */
+export function normalizeSeverityText(
+  raw: string,
+): 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' {
+  const u = raw.toUpperCase();
+  if (u.startsWith('WARN')) return 'WARN';
+  if (u.startsWith('ERR') || raw === 'fatal') return 'ERROR';
+  if (u.startsWith('DEB')) return 'DEBUG';
+  if (u === 'TRACE') return 'TRACE';
+  return 'INFO';
+}
+
+/**
+ * Spread `count` timestamps linearly across a time window.
+ * `marginMs` is subtracted from the window end to avoid landing exactly
+ * on the boundary.
+ */
+export function spreadTimestamp(
+  i: number,
+  count: number,
+  startMs: number,
+  windowMs: number,
+  marginMs = 30_000,
+): number {
+  return count > 1
+    ? startMs + (i / (count - 1)) * (windowMs - marginMs)
+    : startMs;
+}
+
 // ─── Resource attributes (k8s/OTel-style) ────────────────────────────────
 
 const NAMESPACES = [
@@ -270,7 +302,7 @@ export function envoyAccessLog(args: { rng: SeededRng; nowMs: number }): {
 }
 
 /** logfmt body (popular Go/Python convention). */
-export function logfmtBody(args: {
+function logfmtBody(args: {
   rng: SeededRng;
   nowMs: number;
   level: string;
@@ -366,72 +398,11 @@ export function catalogLog(args: {
 }
 
 /** JSON-event body, common for app-tier services. */
-export function jsonEventBody(args: {
+function jsonEventBody(args: {
   rng: SeededRng;
   fields: Record<string, unknown>;
 }): string {
   return JSON.stringify(args.fields);
-}
-
-const EMAIL_PROVIDERS = ['ses', 'sendgrid', 'mailgun', 'postmark'];
-const EMAIL_TEMPLATES = [
-  'order_confirmation',
-  'shipping_update',
-  'receipt',
-  'password_reset',
-  'welcome',
-];
-
-/** checkout/order JSON event with many app.* attrs. */
-export function checkoutEventLog(args: { rng: SeededRng; nowMs: number }): {
-  body: string;
-  attrs: Record<string, string>;
-  level: string;
-} {
-  const { rng, nowMs } = args;
-  const checkoutId = uuidv4(rng);
-  const orderId = uuidv4(rng);
-  const userId = uuidv4(rng);
-  const amountNanos = rng.intRange(1_000_000_000, 999_999_999_999);
-  const amountUsd = (amountNanos / 1e9).toFixed(2);
-  const itemCount = rng.intRange(1, 12);
-  const fields = {
-    'app.checkout.id': checkoutId,
-    'app.order.id': orderId,
-    'app.order.user_id': userId,
-    'app.payment.amount_nanos': amountNanos,
-    'app.payment.amount_usd': amountUsd,
-    'app.payment.currency': 'USD',
-    'app.payment.method': rng.pick(['card', 'wallet', 'ach']),
-    'app.payment.3ds_used': rng.next() < 0.4,
-    'app.payment.processor': rng.pick(['stripe', 'braintree', 'adyen']),
-    'app.email.provider': rng.pick(EMAIL_PROVIDERS),
-    'app.email.template': rng.pick(EMAIL_TEMPLATES),
-    'app.email.delivery_ms': rng.intRange(120, 4500),
-    'app.email.recipient': `user${rng.intRange(1, 999_999)}@example.com`,
-    'app.email.status': rng.weightedPick([
-      { value: 'sent', weight: 92 },
-      { value: 'queued', weight: 5 },
-      { value: 'failed', weight: 3 },
-    ]),
-    'app.checkout.items_count': itemCount,
-    timestamp: new Date(nowMs).toISOString(),
-  };
-  const level = fields['app.email.status'] === 'failed' ? 'warn' : 'info';
-  return {
-    body: jsonEventBody({ rng, fields }),
-    attrs: {
-      'event.name': 'checkout.complete',
-      'app.checkout.id': checkoutId,
-      'app.order.id': orderId,
-      'code.function.name': 'placeOrder',
-      'code.line.number': String(rng.intRange(40, 220)),
-      'code.file.path': '/app/internal/checkout/handler.go',
-      'log.iostream': 'stdout',
-      logtag: 'F',
-    },
-    level,
-  };
 }
 
 const PAGES = [

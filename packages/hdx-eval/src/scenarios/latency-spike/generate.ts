@@ -1,6 +1,7 @@
 import {
   buildResourcePool,
   pickResource,
+  spreadTimestamp,
   uuidv4,
 } from '../../generators/templates';
 import {
@@ -278,10 +279,7 @@ export const latencySpikeScenario: Scenario = {
     const anomalyStartMs = nowMs - ANOMALY_WINDOW_MS;
 
     for (let i = 0; i < totalTraces; i++) {
-      const t =
-        totalTraces > 1
-          ? startMs + (i / (totalTraces - 1)) * (HISTORY_WINDOW_MS - 30_000)
-          : startMs;
+      const t = spreadTimestamp(i, totalTraces, startMs, HISTORY_WINDOW_MS);
       const traceId = newTraceId(rng);
       const endpoint = rng.weightedPick(
         ENDPOINTS.map(e => ({ value: e.name, weight: e.weight })),
@@ -499,10 +497,7 @@ export const latencySpikeScenario: Scenario = {
     });
     const bgTotal = Math.max(0, Math.round(BACKGROUND_TRACES * factor));
     for (let i = 0; i < bgTotal; i++) {
-      const t =
-        bgTotal > 1
-          ? startMs + (i / (bgTotal - 1)) * (HISTORY_WINDOW_MS - 30_000)
-          : startMs;
+      const t = spreadTimestamp(i, bgTotal, startMs, HISTORY_WINDOW_MS);
       const svc = bgServices[i % bgServices.length];
       const op = svc.operations[rng.intRange(0, svc.operations.length - 1)];
       const childOp = svc.childOps[rng.intRange(0, svc.childOps.length - 1)];

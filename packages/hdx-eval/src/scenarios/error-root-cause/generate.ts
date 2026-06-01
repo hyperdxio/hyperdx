@@ -6,9 +6,11 @@ import {
   catalogLog,
   envoyAccessLog,
   heartbeatLog,
+  normalizeSeverityText,
   pageRenderLog,
   pickResource,
   pickSeverityIn,
+  spreadTimestamp,
   uuidv4,
 } from '../../generators/templates';
 import {
@@ -139,9 +141,13 @@ function generateTlsSpike(rng: Rng, nowMs: number): TraceRow[] {
   const traces: TraceRow[] = [];
   const startMs = nowMs - TLS_SPIKE_OFFSET_FROM_NOW_MS;
   for (let i = 0; i < TLS_SPIKE_COUNT; i++) {
-    const t =
-      startMs +
-      (i / Math.max(TLS_SPIKE_COUNT - 1, 1)) * (TLS_SPIKE_DURATION_MS - 1000);
+    const t = spreadTimestamp(
+      i,
+      TLS_SPIKE_COUNT,
+      startMs,
+      TLS_SPIKE_DURATION_MS,
+      1000,
+    );
     traces.push(
       makeSpan({
         rng,
@@ -170,10 +176,13 @@ function generateAuthRateLimitBlip(rng: Rng, nowMs: number): TraceRow[] {
   const traces: TraceRow[] = [];
   const startMs = nowMs - AUTH_RATE_LIMIT_OFFSET_FROM_NOW_MS;
   for (let i = 0; i < AUTH_RATE_LIMIT_COUNT; i++) {
-    const t =
-      startMs +
-      (i / Math.max(AUTH_RATE_LIMIT_COUNT - 1, 1)) *
-        (AUTH_RATE_LIMIT_DURATION_MS - 1000);
+    const t = spreadTimestamp(
+      i,
+      AUTH_RATE_LIMIT_COUNT,
+      startMs,
+      AUTH_RATE_LIMIT_DURATION_MS,
+      1000,
+    );
     traces.push(
       makeSpan({
         rng,
@@ -202,9 +211,7 @@ function generateSearchSlowQueries(rng: Rng, nowMs: number): TraceRow[] {
   const startMs = nowMs - HISTORY_WINDOW_MS;
   // Slow but successful — distractor for latency-style queries.
   for (let i = 0; i < SEARCH_SLOW_COUNT; i++) {
-    const t =
-      startMs +
-      (i / Math.max(SEARCH_SLOW_COUNT - 1, 1)) * (HISTORY_WINDOW_MS - 30_000);
+    const t = spreadTimestamp(i, SEARCH_SLOW_COUNT, startMs, HISTORY_WINDOW_MS);
     traces.push(
       makeSpan({
         rng,
@@ -233,10 +240,12 @@ function generateBackgroundPaymentErrors(rng: Rng, nowMs: number): TraceRow[] {
   const traces: TraceRow[] = [];
   const startMs = nowMs - HISTORY_WINDOW_MS;
   for (let i = 0; i < BACKGROUND_PAYMENT_ERROR_COUNT; i++) {
-    const t =
-      startMs +
-      (i / Math.max(BACKGROUND_PAYMENT_ERROR_COUNT - 1, 1)) *
-        (HISTORY_WINDOW_MS - 30_000);
+    const t = spreadTimestamp(
+      i,
+      BACKGROUND_PAYMENT_ERROR_COUNT,
+      startMs,
+      HISTORY_WINDOW_MS,
+    );
     const reason = rng.pick(PAYMENT_DECLINE_REASONS);
     traces.push(
       makeSpan({
@@ -271,9 +280,13 @@ function generateSmtpDecoy(
   const logs: LogRow[] = [];
   const onsetMs = nowMs - ANOMALY_WINDOW_MS;
   for (let i = 0; i < SMTP_DECOY_COUNT; i++) {
-    const t =
-      onsetMs +
-      (i / Math.max(SMTP_DECOY_COUNT - 1, 1)) * (ANOMALY_WINDOW_MS - 5_000);
+    const t = spreadTimestamp(
+      i,
+      SMTP_DECOY_COUNT,
+      onsetMs,
+      ANOMALY_WINDOW_MS,
+      5_000,
+    );
     const traceId = newTraceId(rng);
     const spanId = newSpanId(rng);
     traces.push(
@@ -322,10 +335,13 @@ function generateCdnOriginDecoy(
   const logs: LogRow[] = [];
   const onsetMs = nowMs - ANOMALY_WINDOW_MS;
   for (let i = 0; i < CDN_ORIGIN_DECOY_COUNT; i++) {
-    const t =
-      onsetMs +
-      (i / Math.max(CDN_ORIGIN_DECOY_COUNT - 1, 1)) *
-        (ANOMALY_WINDOW_MS - 5_000);
+    const t = spreadTimestamp(
+      i,
+      CDN_ORIGIN_DECOY_COUNT,
+      onsetMs,
+      ANOMALY_WINDOW_MS,
+      5_000,
+    );
     const traceId = newTraceId(rng);
     const spanId = newSpanId(rng);
     traces.push(
@@ -392,9 +408,13 @@ function generateAnomaly(
   }
 
   for (let i = 0; i < FAILING_TRACE_COUNT; i++) {
-    const t =
-      onsetMs +
-      (i / Math.max(FAILING_TRACE_COUNT - 1, 1)) * (ANOMALY_WINDOW_MS - 5_000);
+    const t = spreadTimestamp(
+      i,
+      FAILING_TRACE_COUNT,
+      onsetMs,
+      ANOMALY_WINDOW_MS,
+      5_000,
+    );
     const traceId = newTraceId(rng);
     const variantBody = slots[i].body;
 
@@ -577,10 +597,13 @@ function* streamBackground(
   const startMs = nowMs - HISTORY_WINDOW_MS;
 
   for (let i = 0; i < traceCount; i++) {
-    const t =
-      traceCount > 1
-        ? startMs + (i / (traceCount - 1)) * (HISTORY_WINDOW_MS - 60_000)
-        : startMs;
+    const t = spreadTimestamp(
+      i,
+      traceCount,
+      startMs,
+      HISTORY_WINDOW_MS,
+      60_000,
+    );
     const traceId = newTraceId(rng);
     const parentService = rng.pick(BACKGROUND_SERVICES);
     const parentOp = rng.pick(BACKGROUND_OPS[parentService]);
@@ -652,10 +675,7 @@ function* streamBackground(
   }
 
   for (let i = 0; i < logCount; i++) {
-    const t =
-      logCount > 1
-        ? startMs + (i / (logCount - 1)) * (HISTORY_WINDOW_MS - 60_000)
-        : startMs;
+    const t = spreadTimestamp(i, logCount, startMs, HISTORY_WINDOW_MS, 60_000);
     const kind = rng.weightedPick(LOG_TEMPLATE_MIX);
     const service = LOG_TEMPLATE_SERVICE[kind];
     const sev = pickSeverityIn(
@@ -698,20 +718,11 @@ function* streamBackground(
         logtag: 'F',
       };
     }
-    const sevText = sev.text.toUpperCase().startsWith('WARN')
-      ? 'WARN'
-      : sev.text.toUpperCase().startsWith('ERR') || sev.text === 'fatal'
-        ? 'ERROR'
-        : sev.text.toUpperCase().startsWith('DEB')
-          ? 'DEBUG'
-          : sev.text.toUpperCase() === 'TRACE'
-            ? 'TRACE'
-            : 'INFO';
     bufLogs.push(
       makeLog({
         timestampMs: t,
         serviceName: service,
-        severityText: sevText,
+        severityText: normalizeSeverityText(sev.text),
         body,
         resourceAttributes: pickResource(rng, resourcePool, service),
         logAttributes: { ...attrs, _severity_raw: sev.text },

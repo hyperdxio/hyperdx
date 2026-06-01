@@ -51,64 +51,47 @@
   },
   "rubric": {
     "programmatic": [
-      {
-        "id": "names_affected_service",
-        "weight": 1,
-        "pattern": "api-server",
-        "flags": "i"
-      },
-      {
-        "id": "names_tenant_segment",
-        "weight": 2,
-        "pattern": "(tenant\\.?tier|enterprise)",
-        "flags": "i"
-      },
-      {
-        "id": "names_cache_segment",
-        "weight": 2,
-        "pattern": "(cache\\.?(hit|miss)|cache hit:?\\s*false|cache miss|miss(es)?)",
-        "flags": "i"
-      },
-      {
-        "id": "names_both_axes_combined",
-        "weight": 3,
-        "pattern": "(enterprise[^.\\n]{0,80}?(cache|miss)|cache[^.\\n]{0,40}?miss[^.\\n]{0,80}?enterprise|tier\\s*=\\s*['\"]?enterprise['\"]?[^.\\n]{0,80}?cache|enterprise[^.\\n]{0,40}?AND[^.\\n]{0,40}?(cache|hit\\s*=\\s*false|miss))",
-        "flags": "i"
-      },
-      {
-        "id": "names_error_pattern",
-        "weight": 1,
-        "pattern": "(schema mismatch|enterprise_v2|FallbackHandlerError|fallback (handler|path))",
-        "flags": "i"
-      },
-      {
-        "id": "false_blame_global",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\b(global|api-server (alone|generally)|all (tiers|users|traffic)|service[- ]wide)",
-        "flags": "i"
-      },
-      {
-        "id": "false_blame_tier_only",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\benterprise[^.\\n]{0,40}?(tier|customers|tenants?)(?![^.\\n]{0,200}?(cache|miss|hit\\s*=\\s*false))",
-        "flags": "i"
-      },
-      {
-        "id": "false_blame_cache_only",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\bcache[ \\-]?(miss(es)?|lookup|hit\\s*=\\s*false)(?![^.\\n]{0,200}?(enterprise|tier))",
-        "flags": "i"
-      },
-      {
-        "id": "false_blame_recommendation",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\brecommendation-service",
-        "flags": "i"
-      }
+      ["names_affected_service", 1, "api-server"],
+      ["names_tenant_segment", 2, "(tenant\\.?tier|enterprise)"],
+      [
+        "names_cache_segment",
+        2,
+        "(cache\\.?(hit|miss)|cache hit:?\\s*false|cache miss|miss(es)?)"
+      ],
+      [
+        "names_both_axes_combined",
+        3,
+        "(enterprise[^.\\n]{0,80}?(cache|miss)|cache[^.\\n]{0,40}?miss[^.\\n]{0,80}?enterprise|tier\\s*=\\s*['\"]?enterprise['\"]?[^.\\n]{0,80}?cache|enterprise[^.\\n]{0,40}?AND[^.\\n]{0,40}?(cache|hit\\s*=\\s*false|miss))"
+      ],
+      [
+        "names_error_pattern",
+        1,
+        "(schema mismatch|enterprise_v2|FallbackHandlerError|fallback (handler|path))"
+      ],
+      [
+        "false_blame_global",
+        2,
+        "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\b(global|api-server (alone|generally)|all (tiers|users|traffic)|service[- ]wide)",
+        true
+      ],
+      [
+        "false_blame_tier_only",
+        2,
+        "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\benterprise[^.\\n]{0,40}?(tier|customers|tenants?)(?![^.\\n]{0,200}?(cache|miss|hit\\s*=\\s*false))",
+        true
+      ],
+      [
+        "false_blame_cache_only",
+        2,
+        "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\bcache[ \\-]?(miss(es)?|lookup|hit\\s*=\\s*false)(?![^.\\n]{0,200}?(enterprise|tier))",
+        true
+      ],
+      [
+        "false_blame_recommendation",
+        2,
+        "(root cause|caused by|primary issue|the issue is|the cause is)[^.\\n]{0,80}?\\brecommendation-service",
+        true
+      ]
     ],
     "judge": {
       "criteria": [

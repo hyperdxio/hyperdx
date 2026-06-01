@@ -28,6 +28,7 @@ import { makeLog } from '../../generators/logs';
 import {
   buildResourcePool,
   pickResource,
+  spreadTimestamp,
   uuidv4,
 } from '../../generators/templates';
 import {
@@ -118,10 +119,7 @@ function* streamBackgroundRows(
   });
 
   for (let i = 0; i < totalTraces; i++) {
-    const t =
-      totalTraces > 1
-        ? startMs + (i / (totalTraces - 1)) * (HISTORY_WINDOW_MS - 30_000)
-        : startMs;
+    const t = spreadTimestamp(i, totalTraces, startMs, HISTORY_WINDOW_MS);
 
     const tenantTier = rng.weightedPick(
       TENANT_TIERS.map(tt => ({ value: tt.value, weight: tt.weight })),
@@ -230,9 +228,13 @@ function buildRecommendationDecoy(
   const traces: TraceRow[] = [];
   const logs: LogRow[] = [];
   for (let i = 0; i < REC_DECOY_COUNT; i++) {
-    const t =
-      startMs +
-      (i / Math.max(REC_DECOY_COUNT - 1, 1)) * (REC_DECOY_WINDOW_MS - 5_000);
+    const t = spreadTimestamp(
+      i,
+      REC_DECOY_COUNT,
+      startMs,
+      REC_DECOY_WINDOW_MS,
+      5_000,
+    );
     const traceId = newTraceId(rng);
     const spanId = newSpanId(rng);
     traces.push(

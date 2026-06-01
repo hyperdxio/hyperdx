@@ -58,102 +58,83 @@
   },
   "rubric": {
     "programmatic": [
-      {
-        "id": "names_service",
-        "weight": 1,
-        "pattern": "api-server",
-        "flags": "i"
-      },
-      {
-        "id": "reports_traffic_rate",
-        "weight": 1,
-        "pattern": "(requests?/min|requests/s|req/min|traffic|throughput|call volume|qps|rps)",
-        "flags": "i"
-      },
-      {
-        "id": "reports_error_rate",
-        "weight": 1,
-        "pattern": "(error rate|errors?/min|0\\.5\\s?%?|~?0\\.5|baseline.{0,15}error)",
-        "flags": "i"
-      },
-      {
-        "id": "reports_latency_metrics",
-        "weight": 1,
-        "pattern": "(p50|p95|p99|latency)[\\s\\S]{0,200}?\\d+(\\.\\d+)?\\s?(ms|millisecond)",
-        "flags": "i"
-      },
-      {
-        "id": "notes_new_log_pattern",
-        "weight": 2,
-        "pattern": "(shadow.?eval|new[_\\s]+recommendation|recommendation.engine|feature.?flag)",
-        "flags": "i"
-      },
-      {
-        "id": "notes_v2_endpoint",
-        "weight": 2,
-        "pattern": "(/api/v2/products|/v2/|v2\\s+(endpoint|rollout|rolling))",
-        "flags": "i"
-      },
-      {
-        "id": "notes_latency_drift",
-        "weight": 1,
-        "pattern": "(p50|p95|p99|latency)[\\s\\S]{0,60}?\\b(trend|drift|trending|creep|creeping|rising|rising|climb|increasing|monotonic)",
-        "flags": "i"
-      },
-      {
-        "id": "notes_brief_blip",
-        "weight": 1,
-        "pattern": "(brief|transient|1.?(min(ute)?|second)|60.?second|short.lived).{0,80}(spike|blip|errors?|timeouts?)",
-        "flags": "i"
-      },
-      {
-        "id": "frames_as_healthy",
-        "weight": 1,
-        "pattern": "(healthy|stable|within SLO|no concerns|operating normally|nominal|steady)",
-        "flags": "i"
-      },
-      {
-        "id": "false_alarm_incident",
-        "weight": 2,
-        "negative": true,
-        "pattern": "\\b(incident|outage|service.degradation|degraded|critical|severe|emergency)\\b",
-        "flags": "i"
-      },
-      {
-        "id": "false_alarm_paging",
-        "weight": 2,
-        "negative": true,
-        "pattern": "\\b(page (the|on-call)|on-call|escalat(e|ion)|wake.{0,5}up|urgent(ly)?)\\b",
-        "flags": "i"
-      },
-      {
-        "id": "false_alarm_blip_as_pattern",
-        "weight": 2,
-        "negative": true,
-        "pattern": "\\b(sustained|ongoing|persistent|recurring|continuing)\\b[^.\\n]{0,60}(error|timeout)",
-        "flags": "i"
-      },
-      {
-        "id": "false_alarm_baseline_errors",
-        "weight": 2,
-        "negative": true,
-        "pattern": "error rate[^.\\n]{0,60}\\b(elevated|high|concerning|problem(atic)?|investigate)\\b",
-        "flags": "i"
-      },
-      {
-        "id": "false_alarm_slo_breach",
-        "weight": 2,
-        "negative": true,
-        "pattern": "(SLO[^.\\n]{0,20}(breach|violation|exceed)|latency[^.\\n]{0,30}(critical|breach|violation))",
-        "flags": "i"
-      },
-      {
-        "id": "false_flag_batch_job",
-        "weight": 1,
-        "negative": true,
-        "pattern": "batch.?sync[^.\\n]{0,80}\\b(novel|unusual|new|anomal(y|ous)|concern|investigate)\\b",
-        "flags": "i"
-      }
+      ["names_service", 1, "api-server"],
+      [
+        "reports_traffic_rate",
+        1,
+        "(requests?/min|requests/s|req/min|traffic|throughput|call volume|qps|rps)"
+      ],
+      [
+        "reports_error_rate",
+        1,
+        "(error rate|errors?/min|0\\.5\\s?%?|~?0\\.5|baseline.{0,15}error)"
+      ],
+      [
+        "reports_latency_metrics",
+        1,
+        "(p50|p95|p99|latency)[\\s\\S]{0,200}?\\d+(\\.\\d+)?\\s?(ms|millisecond)"
+      ],
+      [
+        "notes_new_log_pattern",
+        2,
+        "(shadow.?eval|new[_\\s]+recommendation|recommendation.engine|feature.?flag)"
+      ],
+      [
+        "notes_v2_endpoint",
+        2,
+        "(/api/v2/products|/v2/|v2\\s+(endpoint|rollout|rolling))"
+      ],
+      [
+        "notes_latency_drift",
+        1,
+        "(p50|p95|p99|latency)[\\s\\S]{0,60}?\\b(trend|drift|trending|creep|creeping|rising|rising|climb|increasing|monotonic)"
+      ],
+      [
+        "notes_brief_blip",
+        1,
+        "(brief|transient|1.?(min(ute)?|second)|60.?second|short.lived).{0,80}(spike|blip|errors?|timeouts?)"
+      ],
+      [
+        "frames_as_healthy",
+        1,
+        "(healthy|stable|within SLO|no concerns|operating normally|nominal|steady)"
+      ],
+      [
+        "false_alarm_incident",
+        2,
+        "\\b(incident|outage|service.degradation|degraded|critical|severe|emergency)\\b",
+        true
+      ],
+      [
+        "false_alarm_paging",
+        2,
+        "\\b(page (the|on-call)|on-call|escalat(e|ion)|wake.{0,5}up|urgent(ly)?)\\b",
+        true
+      ],
+      [
+        "false_alarm_blip_as_pattern",
+        2,
+        "\\b(sustained|ongoing|persistent|recurring|continuing)\\b[^.\\n]{0,60}(error|timeout)",
+        true
+      ],
+      [
+        "false_alarm_baseline_errors",
+        2,
+        "error rate[^.\\n]{0,60}\\b(elevated|high|concerning|problem(atic)?|investigate)\\b",
+        true
+      ],
+      [
+        "false_alarm_slo_breach",
+        2,
+        "(SLO[^.\\n]{0,20}(breach|violation|exceed)|latency[^.\\n]{0,30}(critical|breach|violation))",
+        true
+      ],
+      [
+        "false_flag_batch_job",
+        1,
+        "batch.?sync[^.\\n]{0,80}\\b(novel|unusual|new|anomal(y|ous)|concern|investigate)\\b",
+        true
+      ]
     ],
     "judge": {
       "criteria": [

@@ -12,12 +12,14 @@ import {
   heartbeatLog,
   indexingLog,
   jobFailedPermanentLog,
+  normalizeSeverityText,
   notificationDeliveryLog,
   pageRenderLog,
   pickSeverity,
   pickSeverityIn,
   searchCacheMissVerboseLog,
   serviceOpsDebugLog,
+  spreadTimestamp,
   subscriptionMetricLog,
   upstreamHealthProbeLog,
 } from '../../generators/templates';
@@ -82,19 +84,55 @@ const DEFAULTS = {
 
 type Rng = GenerateContext['rng'];
 
-function* emitBatched(
-  rows: LogRow[],
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  for (let i = 0; i < rows.length; i += batchSize) {
-    yield { traces: [], logs: rows.slice(i, i + batchSize) };
-  }
+function spread(i: number, total: number, startMs: number): number {
+  return spreadTimestamp(i, total, startMs, HISTORY_WINDOW_MS);
 }
 
-function spread(i: number, total: number, startMs: number): number {
-  return total > 1
-    ? startMs + (i / (total - 1)) * (HISTORY_WINDOW_MS - 30_000)
-    : startMs;
+// ─── Generic log-phase generator ──────────────────────────────────────────
+// Most phases follow the same skeleton: loop N times, spread timestamps,
+// call a template function, push a log row, yield in batches. This generic
+// eliminates the per-phase boilerplate.
+
+type TemplateResult = { body: string; attrs: Record<string, string> };
+
+function* streamLogPhase(opts: {
+  rng: Rng;
+  startMs: number;
+  count: number;
+  batchSize: number;
+  serviceName: string | ((i: number) => string);
+  severityText: LogRow['severityText'];
+  template: (rng: Rng, t: number, svc: string) => TemplateResult;
+  extraAttrs?: (rng: Rng, t: number) => Record<string, string>;
+}): Iterable<ScenarioBatch> {
+  const { rng, startMs, count, batchSize, severityText, template, extraAttrs } =
+    opts;
+  const resolveSvc =
+    typeof opts.serviceName === 'function'
+      ? opts.serviceName
+      : () => opts.serviceName as string;
+  const buf: LogRow[] = [];
+  for (let i = 0; i < count; i++) {
+    const t = spread(i, count, startMs);
+    const svc = resolveSvc(i);
+    const tmpl = template(rng, t, svc);
+    buf.push(
+      makeLog({
+        timestampMs: t,
+        serviceName: svc,
+        severityText,
+        body: tmpl.body,
+        resourceAttributes: buildResourceAttrs({ rng, serviceName: svc }),
+        logAttributes: extraAttrs
+          ? { ...tmpl.attrs, ...extraAttrs(rng, t) }
+          : tmpl.attrs,
+      }),
+    );
+    if (buf.length >= batchSize) {
+      yield { traces: [], logs: buf.splice(0, buf.length) };
+    }
+  }
+  if (buf.length) yield { traces: [], logs: buf };
 }
 
 export const noisySignalsScenario: Scenario = {
@@ -109,35 +147,154 @@ export const noisySignalsScenario: Scenario = {
     const factor = ctx.volumeFactor ?? 1;
     const counts = scaleCounts(DEFAULTS, factor);
 
+    const FOUR_SERVICES = [
+      'inventory-service',
+      'pricing-service',
+      'shipping-service',
+      'recommendation-service',
+    ] as const;
+
+    const base = { rng, startMs, batchSize };
+
     // Composite cell 1: notification-service × DEBUG
-    yield* phaseCacheHit(rng, startMs, counts.CACHE_HIT, batchSize);
-    yield* phaseNotificationDelivery(
-      rng,
-      startMs,
-      counts.NOTIFICATION_DELIVERY,
-      batchSize,
-    );
+    yield* streamLogPhase({
+      ...base,
+      count: counts.CACHE_HIT,
+      serviceName: 'notification-service',
+      severityText: 'DEBUG',
+      template: (r, t) => cacheHitLog({ rng: r, nowMs: t }),
+    });
+    yield* streamLogPhase({
+      ...base,
+      count: counts.NOTIFICATION_DELIVERY,
+      serviceName: 'notification-service',
+      severityText: 'DEBUG',
+      template: (r, t) => notificationDeliveryLog({ rng: r, nowMs: t }),
+    });
     // Composite cell 2: billing-service × INFO
-    yield* phaseSubscription(rng, startMs, counts.SUBSCRIPTION, batchSize);
-    yield* phaseBillingEvents(rng, startMs, counts.BILLING_EVENTS, batchSize);
+    yield* streamLogPhase({
+      ...base,
+      count: counts.SUBSCRIPTION,
+      serviceName: 'billing-service',
+      severityText: 'INFO',
+      template: (r, t) => subscriptionMetricLog({ rng: r, nowMs: t }),
+    });
+    yield* streamLogPhase({
+      ...base,
+      count: counts.BILLING_EVENTS,
+      serviceName: 'billing-service',
+      severityText: 'INFO',
+      template: (r, t) => billingEventLog({ rng: r, nowMs: t }),
+    });
     // Composite cell 3: worker × ERROR
-    yield* phaseStacktrace(rng, startMs, counts.STACKTRACE, batchSize);
-    yield* phaseJobFailed(rng, startMs, counts.JOB_FAILED, batchSize);
+    yield* streamLogPhase({
+      ...base,
+      count: counts.STACKTRACE,
+      serviceName: 'worker',
+      severityText: 'ERROR',
+      template: (r, t) => caughtExceptionLog({ rng: r, nowMs: t }),
+    });
+    yield* streamLogPhase({
+      ...base,
+      count: counts.JOB_FAILED,
+      serviceName: 'worker',
+      severityText: 'ERROR',
+      template: (r, t) => jobFailedPermanentLog({ rng: r, nowMs: t }),
+    });
     // Composite cell 4: 4-service × DEBUG
-    yield* phaseHeartbeat(rng, startMs, counts.HEARTBEAT, batchSize);
-    yield* phaseServiceOps(rng, startMs, counts.SERVICE_OPS, batchSize);
+    yield* streamLogPhase({
+      ...base,
+      count: counts.HEARTBEAT,
+      serviceName: (i: number) => FOUR_SERVICES[i % FOUR_SERVICES.length],
+      severityText: 'DEBUG',
+      template: (r, t, svc) =>
+        heartbeatLog({ rng: r, nowMs: t, serviceName: svc }),
+    });
+    yield* streamLogPhase({
+      ...base,
+      count: counts.SERVICE_OPS,
+      serviceName: (i: number) => FOUR_SERVICES[i % FOUR_SERVICES.length],
+      severityText: 'DEBUG',
+      template: (r, t, svc) =>
+        serviceOpsDebugLog({
+          rng: r,
+          nowMs: t,
+          serviceName: svc as (typeof FOUR_SERVICES)[number],
+        }),
+    });
     // Composite cell 5: frontend-proxy × INFO
-    yield* phaseLbProbe(rng, startMs, counts.LB_PROBE, batchSize);
-    yield* phaseAccessLog(rng, startMs, counts.ACCESS_LOG, batchSize);
+    yield* streamLogPhase({
+      ...base,
+      count: counts.LB_PROBE,
+      serviceName: 'frontend-proxy',
+      severityText: 'INFO',
+      template: (r, t) => upstreamHealthProbeLog({ rng: r, nowMs: t }),
+    });
+    yield* streamLogPhase({
+      ...base,
+      count: counts.ACCESS_LOG,
+      serviceName: 'frontend-proxy',
+      severityText: 'INFO',
+      template: (r, t) => envoyAccessLog({ rng: r, nowMs: t }),
+      extraAttrs: r => ({ _severity_raw: pickSeverityIn(r, 'info').text }),
+    });
     // Composite cell 6: frontend × INFO
-    yield* phaseConsoleDump(rng, startMs, counts.CONSOLE_DUMP, batchSize);
-    yield* phasePageRender(rng, startMs, counts.PAGE_RENDER, batchSize);
+    yield* streamLogPhase({
+      ...base,
+      count: counts.CONSOLE_DUMP,
+      serviceName: 'frontend',
+      severityText: 'INFO',
+      template: (r, t) => consoleLogDumpLog({ rng: r, nowMs: t }),
+    });
+    yield* streamLogPhase({
+      ...base,
+      count: counts.PAGE_RENDER,
+      serviceName: 'frontend',
+      severityText: 'INFO',
+      template: (r, t) => pageRenderLog({ rng: r, nowMs: t }),
+    });
     // Composite cell 7: search-service × INFO
-    yield* phaseSearchMiss(rng, startMs, counts.SEARCH_MISS, batchSize);
-    yield* phaseIndexing(rng, startMs, counts.INDEXING, batchSize);
+    yield* streamLogPhase({
+      ...base,
+      count: counts.SEARCH_MISS,
+      serviceName: 'search-service',
+      severityText: 'INFO',
+      template: (r, t) => searchCacheMissVerboseLog({ rng: r, nowMs: t }),
+    });
+    yield* streamLogPhase({
+      ...base,
+      count: counts.INDEXING,
+      serviceName: 'search-service',
+      severityText: 'INFO',
+      template: (r, t) => indexingLog({ rng: r, nowMs: t }),
+    });
     // Single-pattern cells
-    yield* phaseAnalytics(rng, startMs, counts.ANALYTICS, batchSize);
-    yield* phaseCatalog(rng, startMs, counts.CATALOG_LOOKUP, batchSize);
+    yield* streamLogPhase({
+      ...base,
+      count: counts.ANALYTICS,
+      serviceName: 'analytics-service',
+      severityText: 'INFO',
+      template: (r, t) => analyticsEventLog({ rng: r, nowMs: t }),
+    });
+    yield* streamLogPhase({
+      ...base,
+      count: counts.CATALOG_LOOKUP,
+      serviceName: 'product-catalog',
+      severityText: 'INFO',
+      template: (r, t) => {
+        const sev = pickSeverityIn(r, 'info');
+        const tmpl = catalogLog({
+          rng: r,
+          nowMs: t,
+          level: sev.text.toLowerCase(),
+        });
+        return {
+          body: tmpl.body,
+          attrs: { ...tmpl.attrs, _severity_raw: sev.text },
+        };
+      },
+    });
+    // Background varied — custom logic, uses phaseBackgroundVaried
     yield* phaseBackgroundVaried(
       rng,
       startMs,
@@ -157,490 +314,6 @@ function scaleCounts<T extends Record<string, number>>(
     (out[k] as number) = Math.max(1, Math.round(defaults[k] * factor));
   }
   return out;
-}
-
-function* phaseHeartbeat(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  const services = [
-    'inventory-service',
-    'pricing-service',
-    'shipping-service',
-    'recommendation-service',
-  ];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const svc = services[i % services.length];
-    const tmpl = heartbeatLog({ rng, nowMs: t, serviceName: svc });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: svc,
-        severityText: 'DEBUG',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({ rng, serviceName: svc }),
-        logAttributes: tmpl.attrs,
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phaseServiceOps(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  const services = [
-    'inventory-service',
-    'pricing-service',
-    'shipping-service',
-    'recommendation-service',
-  ] as const;
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const svc = services[i % services.length];
-    const tmpl = serviceOpsDebugLog({ rng, nowMs: t, serviceName: svc });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: svc,
-        severityText: 'DEBUG',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({ rng, serviceName: svc }),
-        logAttributes: tmpl.attrs,
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phaseCacheHit(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const tmpl = cacheHitLog({ rng, nowMs: t });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: 'notification-service',
-        severityText: 'DEBUG',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({
-          rng,
-          serviceName: 'notification-service',
-        }),
-        logAttributes: tmpl.attrs,
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phaseNotificationDelivery(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const tmpl = notificationDeliveryLog({ rng, nowMs: t });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: 'notification-service',
-        severityText: 'DEBUG',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({
-          rng,
-          serviceName: 'notification-service',
-        }),
-        logAttributes: tmpl.attrs,
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phaseStacktrace(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const tmpl = caughtExceptionLog({ rng, nowMs: t });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: 'worker',
-        severityText: 'ERROR',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({ rng, serviceName: 'worker' }),
-        logAttributes: tmpl.attrs,
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phaseJobFailed(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const tmpl = jobFailedPermanentLog({ rng, nowMs: t });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: 'worker',
-        severityText: 'ERROR',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({ rng, serviceName: 'worker' }),
-        logAttributes: tmpl.attrs,
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phaseSubscription(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const tmpl = subscriptionMetricLog({ rng, nowMs: t });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: 'billing-service',
-        severityText: 'INFO',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({
-          rng,
-          serviceName: 'billing-service',
-        }),
-        logAttributes: tmpl.attrs,
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phaseBillingEvents(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const tmpl = billingEventLog({ rng, nowMs: t });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: 'billing-service',
-        severityText: 'INFO',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({
-          rng,
-          serviceName: 'billing-service',
-        }),
-        logAttributes: tmpl.attrs,
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phaseAccessLog(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const tmpl = envoyAccessLog({ rng, nowMs: t });
-    const sev = pickSeverityIn(rng, 'info');
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: 'frontend-proxy',
-        severityText: 'INFO',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({
-          rng,
-          serviceName: 'frontend-proxy',
-        }),
-        logAttributes: { ...tmpl.attrs, _severity_raw: sev.text },
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phaseLbProbe(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const tmpl = upstreamHealthProbeLog({ rng, nowMs: t });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: 'frontend-proxy',
-        severityText: 'INFO',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({
-          rng,
-          serviceName: 'frontend-proxy',
-        }),
-        logAttributes: tmpl.attrs,
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phasePageRender(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const tmpl = pageRenderLog({ rng, nowMs: t });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: 'frontend',
-        severityText: 'INFO',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({
-          rng,
-          serviceName: 'frontend',
-        }),
-        logAttributes: tmpl.attrs,
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phaseConsoleDump(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const tmpl = consoleLogDumpLog({ rng, nowMs: t });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: 'frontend',
-        severityText: 'INFO',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({
-          rng,
-          serviceName: 'frontend',
-        }),
-        logAttributes: tmpl.attrs,
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phaseIndexing(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const tmpl = indexingLog({ rng, nowMs: t });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: 'search-service',
-        severityText: 'INFO',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({
-          rng,
-          serviceName: 'search-service',
-        }),
-        logAttributes: tmpl.attrs,
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phaseSearchMiss(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const tmpl = searchCacheMissVerboseLog({ rng, nowMs: t });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: 'search-service',
-        severityText: 'INFO',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({
-          rng,
-          serviceName: 'search-service',
-        }),
-        logAttributes: tmpl.attrs,
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phaseAnalytics(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const tmpl = analyticsEventLog({ rng, nowMs: t });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: 'analytics-service',
-        severityText: 'INFO',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({
-          rng,
-          serviceName: 'analytics-service',
-        }),
-        logAttributes: tmpl.attrs,
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
-}
-
-function* phaseCatalog(
-  rng: Rng,
-  startMs: number,
-  count: number,
-  batchSize: number,
-): Iterable<ScenarioBatch> {
-  const buf: LogRow[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = spread(i, count, startMs);
-    const sev = pickSeverityIn(rng, 'info');
-    const tmpl = catalogLog({ rng, nowMs: t, level: sev.text.toLowerCase() });
-    buf.push(
-      makeLog({
-        timestampMs: t,
-        serviceName: 'product-catalog',
-        severityText: 'INFO',
-        body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({
-          rng,
-          serviceName: 'product-catalog',
-        }),
-        logAttributes: { ...tmpl.attrs, _severity_raw: sev.text },
-      }),
-    );
-    if (buf.length >= batchSize) {
-      yield { traces: [], logs: buf.splice(0, buf.length) };
-    }
-  }
-  if (buf.length) yield { traces: [], logs: buf };
 }
 
 function* phaseBackgroundVaried(
@@ -667,7 +340,6 @@ function* phaseBackgroundVaried(
   for (let i = 0; i < count; i++) {
     const t = spread(i, count, startMs);
     const svc = services[i % services.length];
-    // Mostly info, with realistic warn/error sprinkle
     const sev = rng.weightedPick<'info' | 'warn' | 'error' | 'debug' | 'trace'>(
       [
         { value: 'info', weight: 78 },
@@ -683,19 +355,7 @@ function* phaseBackgroundVaried(
       makeLog({
         timestampMs: t,
         serviceName: svc,
-        // The schema uses uppercase severityText; we encode the messy
-        // raw severity in LogAttributes._severity_raw so agents can see it
-        // (and have to handle case-folding to count by severity).
-        severityText: sevPick.text.toUpperCase().startsWith('WARN')
-          ? 'WARN'
-          : sevPick.text.toUpperCase().startsWith('ERR') ||
-              sevPick.text === 'fatal'
-            ? 'ERROR'
-            : sevPick.text.toUpperCase().startsWith('DEB')
-              ? 'DEBUG'
-              : sevPick.text.toUpperCase() === 'TRACE'
-                ? 'TRACE'
-                : 'INFO',
+        severityText: normalizeSeverityText(sevPick.text),
         body,
         resourceAttributes: buildResourceAttrs({ rng, serviceName: svc }),
         logAttributes: {
@@ -715,5 +375,4 @@ function* phaseBackgroundVaried(
 
 // Keep these unused imports tidy for the linter (they're conditionally
 // referenced via dynamic phase functions above).
-void emitBatched;
 void pickSeverity;
