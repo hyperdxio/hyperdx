@@ -1,0 +1,57 @@
+// Trailing chevron hint for dashboard table tile rows with a
+// configured onClick row action. The icon sits at the right edge of
+// the last cell and is revealed on row hover. Mirrors the
+// .rowButtons pattern from LogTable.module.scss (lines 156-172),
+// scoped down to a single icon. See HDX-4405.
+
+.tableRow {
+  // Row hover is the visibility trigger for the trailing-icon hint.
+  // We rely on a descendant selector rather than wrapping a <tbody>
+  // tooltip because anchored visibility is tied to the row's own
+  // lifecycle and never strands a popup after a virtual row
+  // unmounts.
+  &:hover .rowActionHint {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.lastCell {
+  // Containing block for the absolute-positioned .rowActionHint.
+  // <tr> does not reliably form a positioning context across
+  // browsers, so we attach `position: relative` to the last <td>
+  // only. The icon then anchors to the cell's right edge, which
+  // visually maps to the row's right edge because the last data
+  // column claims UNDEFINED_WIDTH (see reactTableColumns above).
+  position: relative;
+}
+
+.rowActionHint {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease-in-out;
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--color-text-primary);
+    background-color: var(--color-bg-muted);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-outline-focus);
+    outline-offset: 1px;
+  }
+}

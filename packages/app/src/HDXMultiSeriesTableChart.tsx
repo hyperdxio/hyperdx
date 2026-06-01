@@ -2,7 +2,11 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { Tooltip, UnstyledButton } from '@mantine/core';
-import { IconDownload, IconTextWrap } from '@tabler/icons-react';
+import {
+  IconChevronRight,
+  IconDownload,
+  IconTextWrap,
+} from '@tabler/icons-react';
 import {
   flexRender,
   getCoreRowModel,
@@ -28,6 +32,7 @@ import type { NumberFormat } from './types';
 import { formatNumber } from './utils';
 
 import focusStyles from '../styles/focus.module.scss';
+import styles from './HDXMultiSeriesTableChart.module.scss';
 
 export type TableVariant = 'default' | 'muted';
 
@@ -307,33 +312,6 @@ export const Table = ({
   );
   const [wrapLinesEnabled, setWrapLinesEnabled] = useState(false);
 
-  // Store the virtual index of the hovered row (not its description string)
-  // so the label re-derives on every render. If the virtualiser replaces the
-  // row at that index (scroll re-virtualisation, auto-refetch) the label
-  // reflects the new row immediately rather than showing stale text. Storing
-  // the index also makes the safety-net `onMouseLeave` on <tbody> correct:
-  // it sets null rather than the prior row's description. See HDX-4405.
-  const [hoveredVirtualIndex, setHoveredVirtualIndex] = useState<number | null>(
-    null,
-  );
-
-  // Derive the label from whichever row currently occupies hoveredVirtualIndex.
-  // Returns null when no row is hovered, the index is out of range, or the
-  // row's action has no URL (error-toast rows show no hint).
-  const hoveredRowDescription = useMemo(() => {
-    if (hoveredVirtualIndex == null) return null;
-    const virtualRow = items.find(v => v.index === hoveredVirtualIndex);
-    if (!virtualRow) return null;
-    const row = rows[virtualRow.index] as TableRow<any> | undefined;
-    if (!row) return null;
-    const rowAction = getRowAction ? getRowAction(row.original) : null;
-    return rowAction?.url != null && rowAction.description
-      ? rowAction.description
-      : null;
-  }, [hoveredVirtualIndex, items, rows, getRowAction]);
-
-  const clearHovered = useCallback(() => setHoveredVirtualIndex(null), []);
-
   const { csvData } = useCsvExport(
     truncatedData,
     columns.map(col => ({
@@ -398,62 +376,86 @@ export const Table = ({
             </tr>
           ))}
         </thead>
-        {/* Single Tooltip.Floating wrapping the whole <tbody> so the hint
-            follows the cursor without being tied to the lifecycle of any
-            individual virtual row. Per-row Tooltip.Floating instances get
-            stranded in the Portal when a row unmounts before onMouseLeave
-            fires (rapid mouse movement in a virtualised list). With this
-            approach the tooltip state lives on <tbody>, which never unmounts,
-            and the label is re-derived from hoveredVirtualIndex each render so
-            scroll re-virtualisation never shows stale text. See HDX-4405. */}
-        <Tooltip.Floating
-          label={
-            <span data-testid="row-action-hint">{hoveredRowDescription}</span>
-          }
-          withinPortal
-          disabled={!hoveredRowDescription}
-        >
-          {/* onMouseLeave on <tbody> is a safety net: if a virtual row
-              unmounts before its own onMouseLeave fires (rapid cursor
-              movement or re-virtualisation), leaving the table body still
-              clears the hovered index. */}
-          <tbody onMouseLeave={clearHovered}>
-            {paddingTop > 0 && (
-              <tr>
-                <td colSpan={99999} style={{ height: `${paddingTop}px` }} />
+        <tbody>
+          {paddingTop > 0 && (
+            <tr>
+              <td colSpan={99999} style={{ height: `${paddingTop}px` }} />
+            </tr>
+          )}
+          {items.map(virtualRow => {
+            const row = rows[virtualRow.index] as TableRow<any>;
+            // Compute the action once per row so the trailing-icon hint
+            // shares the memoized result from useOnClickLinkBuilder with
+            // the per-cell renders.
+            const rowAction = getRowAction ? getRowAction(row.original) : null;
+            const visibleCells = row.getVisibleCells();
+            const lastCellIndex = visibleCells.length - 1;
+            return (
+              <tr
+                key={virtualRow.key}
+                className={cx('bg-muted-hover', styles.tableRow)}
+                data-index={virtualRow.index}
+                ref={rowVirtualizer.measureElement}
+              >
+                {visibleCells.map((cell, cellIndex) => {
+                  const isLastCell = cellIndex === lastCellIndex;
+                  return (
+                    <td
+                      key={cell.id}
+                      title={`${cell.getValue()}`}
+                      className={cx({
+                        [styles.lastCell]: isLastCell,
+                      })}
+                    >
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
+                      {/* Trailing chevron hint: anchored Mantine Tooltip
+                          wrapping a Next.js Link in the last cell of
+                          rows that resolve to a URL. The icon is hidden
+                          (opacity: 0) by default and revealed on row
+                          hover via the .tableRow:hover .rowActionHint
+                          rule. The Link inherits the same native
+                          cmd-click / middle-click / right-click
+                          semantics as the per-cell Link in the row body.
+                          Suppressed when the row's templates failed
+                          (rowAction.url === null) so the icon never
+                          promises a destination the click won't open.
+                          See HDX-4405. */}
+                      {isLastCell && rowAction && rowAction.url && (
+                        <Tooltip
+                          label={rowAction.description}
+                          position="left"
+                          withArrow
+                          openDelay={300}
+                          closeDelay={100}
+                          fz="xs"
+                        >
+                          <Link
+                            href={rowAction.url}
+                            prefetch={false}
+                            tabIndex={-1}
+                            aria-hidden="true"
+                            className={styles.rowActionHint}
+                            data-testid="row-action-hint"
+                          >
+                            <IconChevronRight size={14} />
+                          </Link>
+                        </Tooltip>
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
-            )}
-            {items.map(virtualRow => {
-              const row = rows[virtualRow.index] as TableRow<any>;
-              return (
-                <tr
-                  key={virtualRow.key}
-                  className="bg-muted-hover"
-                  data-index={virtualRow.index}
-                  ref={rowVirtualizer.measureElement}
-                  onMouseEnter={() => setHoveredVirtualIndex(virtualRow.index)}
-                  onMouseLeave={clearHovered}
-                >
-                  {row.getVisibleCells().map(cell => {
-                    return (
-                      <td key={cell.id} title={`${cell.getValue()}`}>
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-            {paddingBottom > 0 && (
-              <tr>
-                <td colSpan={99999} style={{ height: `${paddingBottom}px` }} />
-              </tr>
-            )}
-          </tbody>
-        </Tooltip.Floating>
+            );
+          })}
+          {paddingBottom > 0 && (
+            <tr>
+              <td colSpan={99999} style={{ height: `${paddingBottom}px` }} />
+            </tr>
+          )}
+        </tbody>
       </table>
       {isTruncated && (
         <div className="p-2 text-center">

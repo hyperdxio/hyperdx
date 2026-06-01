@@ -981,30 +981,38 @@ export class DashboardPage {
   }
 
   /**
-   * Hover over the first data row of a table tile and wait for the
-   * floating tooltip to appear. Returns the tooltip locator so callers
-   * can make further assertions.
+   * Locator for the trailing chevron hint element rendered in the last
+   * cell of clickable rows. The icon carries
+   * `data-testid="row-action-hint"` and is the trigger element for the
+   * anchored Mantine Tooltip describing the row's onClick destination.
+   */
+  getRowActionHint(tileIndex = 0): Locator {
+    return this.getTile(tileIndex)
+      .locator('table tbody tr[data-index]')
+      .first()
+      .getByTestId('row-action-hint');
+  }
+
+  /**
+   * Hover the first data row of a table tile, then hover its trailing
+   * chevron hint so the anchored Mantine Tooltip opens. Returns the
+   * tooltip locator so callers can assert on the description text.
    *
-   * Tooltip.Floating renders its content inside a Portal at the document
-   * body level. Mantine uses CSS modules (hashed classes) so we locate the
-   * floating popup by text content that matches the known hint patterns used
-   * by describeOnClick (e.g. "Open in search", "Search <SourceName>",
-   * "Open dashboard"). The tooltip is shown via `display: block` on the
-   * Portal div, so Playwright's `toBeVisible` checks that correctly.
+   * The chevron icon (`data-testid="row-action-hint"`) is hidden
+   * (`opacity: 0`) until the row is hovered. Hovering the row reveals
+   * the icon via the `.tableRow:hover .rowActionHint` CSS rule. The
+   * Mantine Tooltip wrapping the icon then opens when the cursor moves
+   * to the icon itself, rendering its label in a portal at the body
+   * level (resolved via `getByRole('tooltip')`).
    */
   async hoverFirstTableRowAndGetTooltip(tileIndex = 0): Promise<Locator> {
     const row = this.getFirstTableRow(tileIndex);
     await row.hover();
-    // Trigger a mousemove inside the row so Tooltip.Floating's internal
-    // mousemove handler has a coordinate to position against.
-    const box = await row.boundingBox();
-    if (box) {
-      await this.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    }
-    // The Tooltip.Floating label is a <span data-testid="row-action-hint">.
-    // The portal div uses display:none when disabled, so Playwright's
-    // toBeVisible() correctly reflects the open/closed state.
-    const tooltip = this.page.getByTestId('row-action-hint');
+    const hint = this.getRowActionHint(tileIndex);
+    // Hover the icon directly so the anchored Tooltip's mouseEnter
+    // listener fires; row-hover alone only fades the icon in.
+    await hint.hover();
+    const tooltip = this.page.getByRole('tooltip');
     await tooltip.waitFor({ state: 'visible', timeout: 5000 });
     return tooltip;
   }
