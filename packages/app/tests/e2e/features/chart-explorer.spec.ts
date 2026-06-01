@@ -1,6 +1,16 @@
 import { ChartExplorerPage } from '../page-objects/ChartExplorerPage';
 import { expect, test } from '../utils/base-test';
 
+function getDateRangeFromProxyUrl(url: string): [number, number] {
+  const timestamps = Array.from(new URL(url).searchParams.values())
+    .filter(value => /^\d{13}$/.test(value))
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  expect(timestamps).toHaveLength(2);
+  return [timestamps[0], timestamps[1]];
+}
+
 test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
   let chartExplorerPage: ChartExplorerPage;
 
@@ -10,25 +20,37 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
   });
 
   test(
-    'should fire exactly one clickhouse-proxy request when Run is clicked',
+    'should split Run chart queries into adjacent ClickHouse chunks',
     { tag: ['@full-stack'] },
     async () => {
       await test.step('Wait for initial chart explorer activity to settle', async () => {
         await chartExplorerPage.waitForInitialSettle();
       });
 
-      // Begin counting proxy responses only after the initial settle so
-      // any auto-run queries fired on page load are excluded from the tally.
-      const proxyCounter =
-        chartExplorerPage.startCountingClickhouseProxyResponses();
+      await chartExplorerPage.chartEditor.setChartName(
+        `E2E Chunked Chart ${Date.now()}`,
+      );
+
+      // Begin recording only after the initial settle so any auto-run queries
+      // fired on page load are excluded from the assertion.
+      const proxyRecorder =
+        chartExplorerPage.startRecordingClickhouseProxyRequests();
 
       await test.step('Click Run and wait for chart to render', async () => {
         await chartExplorerPage.chartEditor.runQuery();
       });
 
-      await test.step('Assert exactly one clickhouse-proxy request was fired', async () => {
-        // Regression: prior to the fix, clicking Run fired duplicate requests.
-        expect(proxyCounter.getCount()).toBe(1);
+      await test.step('Assert Run used adjacent ClickHouse chunks, not duplicates', async () => {
+        const requests = proxyRecorder.getRequests();
+
+        expect(requests).toHaveLength(2);
+        expect(new Set(requests.map(request => request.postData)).size).toBe(2);
+
+        const ranges = requests
+          .map(request => getDateRangeFromProxyUrl(request.url))
+          .sort((a, b) => a[0] - b[0]);
+
+        expect(ranges[0][1]).toBe(ranges[1][0]);
       });
     },
   );

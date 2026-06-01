@@ -47,19 +47,23 @@ export class ChartExplorerPage {
   }
 
   /**
-   * Start counting /clickhouse-proxy responses from this point forward.
-   * Returns a handle whose `getCount()` returns the tally at any time.
+   * Start recording /clickhouse-proxy requests from this point forward.
    * Call this *after* waitForInitialSettle() so auto-queries on page load
-   * are not included in the count.
+   * are not included.
    */
-  startCountingClickhouseProxyResponses(): { getCount: () => number } {
-    let count = 0;
-    this.page.on('response', response => {
-      if (response.url().includes('/clickhouse-proxy')) {
-        count++;
+  startRecordingClickhouseProxyRequests(): {
+    getRequests: () => { postData: string | null; url: string }[];
+  } {
+    const requests: { postData: string | null; url: string }[] = [];
+    this.page.on('request', request => {
+      if (request.url().includes('/clickhouse-proxy')) {
+        requests.push({
+          postData: request.postData(),
+          url: request.url(),
+        });
       }
     });
-    return { getCount: () => count };
+    return { getRequests: () => requests };
   }
 
   // Getters for assertions
