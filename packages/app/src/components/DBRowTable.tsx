@@ -100,6 +100,7 @@ import {
   usePrevious,
 } from '@/utils';
 
+import { parseMapFieldName } from './DBSearchPageFilters/utils';
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import TableHeader from './DBTable/TableHeader';
@@ -1508,6 +1509,19 @@ function selectColumnMapWithoutAdditionalKeys(
   );
 }
 
+function addMapAliasesToSelect(select: string): string {
+  const selects = select.split(',');
+  for (let i = 0; i < selects.length; i++) {
+    const key = selects[i];
+    const mapField = parseMapFieldName(key);
+    if (mapField) {
+      selects[i] =
+        `${key} as "${mapField.baseName}['${mapField.propertyPath}']"`;
+    }
+  }
+  return selects.join(',');
+}
+
 export type DBRowTableVariant = 'default' | 'muted';
 
 function DBSqlRowTableComponent({
@@ -1602,6 +1616,9 @@ function DBSqlRowTableComponent({
       ...searchChartConfigDefaults(me?.team),
       ...config,
     };
+    if (typeof base.select === 'string') {
+      base.select = addMapAliasesToSelect(base.select);
+    }
     if (orderByArray.length) {
       base.orderBy = orderByArray.map(o => {
         return {
