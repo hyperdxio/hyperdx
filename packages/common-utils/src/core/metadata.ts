@@ -22,6 +22,7 @@ import type {
 import { isLogSource, isTraceSource, SourceKind } from '@/types';
 
 import { ClickHouseVersion, parseClickHouseVersion } from './clickhouseVersion';
+import { parseKeyPath } from './keyPath';
 import {
   optimizeGetKeyValuesCalls,
   renderStartOfBucketExpr,
@@ -1772,7 +1773,9 @@ export type Field = {
 // module so `types.ts` can normalize dashboard-filter expressions with
 // the same rules query parsing applies, without forming a circular
 // import through `metadata.ts -> clickhouse -> guards.ts -> types.ts`.
-export { parseKeyPath } from './keyPath';
+// Imported at the top of this file so internal call sites in
+// `metadata.ts` itself keep resolving the local name.
+export { parseKeyPath };
 
 // Describes a table and potentially related views
 export type TableConnection = {
