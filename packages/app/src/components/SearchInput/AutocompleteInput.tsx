@@ -120,34 +120,37 @@ export default function AutocompleteInput({
     onSubmit?.(); // search
   };
 
-  const onAcceptSuggestion = (suggestion: string) => {
-    setSelectedAutocompleteIndex(-1);
+  const onAcceptSuggestion = useCallback(
+    (suggestion: string) => {
+      setSelectedAutocompleteIndex(-1);
 
-    if (value == null || !tokenInfo) {
-      onChange(suggestion);
-      inputRef.current?.focus();
-      return;
-    }
+      if (value == null || !tokenInfo) {
+        onChange(suggestion);
+        inputRef.current?.focus();
+        return;
+      }
 
-    // Replace the token at cursor with the suggestion
-    const tokens = [...tokenInfo.tokens];
-    tokens[tokenInfo.index] = suggestion;
-    const newValue = tokens.join(' ');
+      // Replace the token at cursor with the suggestion
+      const tokens = [...tokenInfo.tokens];
+      tokens[tokenInfo.index] = suggestion;
+      const newValue = tokens.join(' ');
 
-    // Place cursor right after the inserted suggestion
-    let newCursorPos = 0;
-    for (let i = 0; i <= tokenInfo.index; i++) {
-      newCursorPos += tokens[i].length;
-      if (i < tokenInfo.index) newCursorPos++; // space
-    }
+      // Place cursor right after the inserted suggestion
+      let newCursorPos = 0;
+      for (let i = 0; i <= tokenInfo.index; i++) {
+        newCursorPos += tokens[i].length;
+        if (i < tokenInfo.index) newCursorPos++; // space
+      }
 
-    onChange(newValue);
+      onChange(newValue);
 
-    requestAnimationFrame(() => {
-      inputRef.current?.setSelectionRange(newCursorPos, newCursorPos);
-      inputRef.current?.focus();
-    });
-  };
+      requestAnimationFrame(() => {
+        inputRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+        inputRef.current?.focus();
+      });
+    },
+    [value, tokenInfo, onChange, inputRef],
+  );
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (ref.current) {
@@ -160,6 +163,108 @@ export default function AutocompleteInput({
 
   // Height including the 2px border from .textarea (1px top + 1px bottom)
   const baseHeight = size === 'xs' ? 30 : size === 'lg' ? 44 : 38;
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // Ignore keystrokes that belong to an in-progress IME composition
+      // (CJK input). At this point the textarea value is still empty while
+      // uncommitted glyphs live in the composition layer, so Backspace
+      // would otherwise eat a chip instead of editing the composition.
+      if (e.nativeEvent.isComposing || e.keyCode === 229) {
+        return;
+      }
+
+      if (e.key === 'Escape' && e.target instanceof HTMLTextAreaElement) {
+        e.preventDefault();
+        setIsInputDropdownOpen(false);
+        e.target.blur();
+        return;
+      }
+
+      // Backspace at cursor position 0 removes last chip (only if a chip
+      // was actually present — otherwise let backspace behave normally).
+      if (
+        e.key === 'Backspace' &&
+        e.target instanceof HTMLTextAreaElement &&
+        e.target.selectionStart === 0 &&
+        e.target.selectionEnd === 0 &&
+        onRemoveLastChip
+      ) {
+        const removed = onRemoveLastChip();
+        if (removed) {
+          e.preventDefault();
+          // Removing a chip changes what the user is targeting, so a
+          // stale arrow-key suggestion selection would cause the next
+          // Enter to insert an unintended token. Reset and close the
+          // dropdown to mirror the Escape branch.
+          setSelectedAutocompleteIndex(-1);
+          setIsInputDropdownOpen(false);
+        }
+        return;
+      }
+
+      if (!(e.target instanceof HTMLTextAreaElement)) return;
+
+      const hasSelectableSuggestion =
+        suggestedProperties.length > 0 &&
+        selectedAutocompleteIndex >= 0 &&
+        selectedAutocompleteIndex < suggestedProperties.length;
+
+      if (e.key === 'Tab' && hasSelectableSuggestion) {
+        e.preventDefault();
+        onAcceptSuggestion(
+          suggestedProperties[selectedAutocompleteIndex].value,
+        );
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        if (hasSelectableSuggestion) {
+          e.preventDefault();
+          onAcceptSuggestion(
+            suggestedProperties[selectedAutocompleteIndex].value,
+          );
+        } else if (!e.shiftKey) {
+          // Allow shift+enter to still create new lines
+          e.preventDefault();
+          if (queryHistoryType && value) {
+            setQueryHistory(value);
+          }
+          onSubmit?.();
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowDown' && suggestedProperties.length > 0) {
+        e.preventDefault();
+        setSelectedAutocompleteIndex(
+          Math.min(
+            selectedAutocompleteIndex + 1,
+            suggestedProperties.length - 1,
+            suggestionsLimit - 1,
+          ),
+        );
+        return;
+      }
+
+      if (e.key === 'ArrowUp' && suggestedProperties.length > 0) {
+        e.preventDefault();
+        setSelectedAutocompleteIndex(
+          Math.max(selectedAutocompleteIndex - 1, 0),
+        );
+      }
+    },
+    [
+      onRemoveLastChip,
+      suggestedProperties,
+      selectedAutocompleteIndex,
+      onAcceptSuggestion,
+      queryHistoryType,
+      value,
+      setQueryHistory,
+      onSubmit,
+    ],
+  );
 
   return (
     <div
@@ -216,114 +321,7 @@ export default function AutocompleteInput({
                 setSelectedQueryHistoryIndex(-1);
                 setIsSearchInputFocused(false);
               }}
-              onKeyDown={e => {
-                // Ignore keystrokes that belong to an in-progress IME
-                // composition (CJK input). At this point the textarea value
-                // is still empty while uncommitted glyphs live in the
-                // composition layer, so Backspace would otherwise eat a chip
-                // instead of editing the composition.
-                if (e.nativeEvent.isComposing || e.keyCode === 229) {
-                  return;
-                }
-
-                if (
-                  e.key === 'Escape' &&
-                  e.target instanceof HTMLTextAreaElement
-                ) {
-                  e.preventDefault();
-                  setIsInputDropdownOpen(false);
-                  e.target.blur();
-                }
-
-                // Backspace at cursor position 0 removes last chip (only if
-                // a chip was actually present — otherwise let backspace behave
-                // normally).
-                if (
-                  e.key === 'Backspace' &&
-                  e.target instanceof HTMLTextAreaElement &&
-                  e.target.selectionStart === 0 &&
-                  e.target.selectionEnd === 0 &&
-                  onRemoveLastChip
-                ) {
-                  const removed = onRemoveLastChip();
-                  if (removed) {
-                    e.preventDefault();
-                    // Removing a chip changes what the user is targeting,
-                    // so a stale arrow-key suggestion selection would cause
-                    // the next Enter to insert an unintended token. Reset
-                    // and close the dropdown to mirror the Escape branch.
-                    setSelectedAutocompleteIndex(-1);
-                    setIsInputDropdownOpen(false);
-                  }
-                }
-
-                // Autocomplete Navigation/Acceptance Keys
-                if (
-                  e.key === 'Tab' &&
-                  e.target instanceof HTMLTextAreaElement
-                ) {
-                  if (
-                    suggestedProperties.length > 0 &&
-                    selectedAutocompleteIndex < suggestedProperties.length &&
-                    selectedAutocompleteIndex >= 0
-                  ) {
-                    e.preventDefault();
-                    onAcceptSuggestion(
-                      suggestedProperties[selectedAutocompleteIndex].value,
-                    );
-                  }
-                }
-                if (
-                  e.key === 'Enter' &&
-                  e.target instanceof HTMLTextAreaElement
-                ) {
-                  if (
-                    suggestedProperties.length > 0 &&
-                    selectedAutocompleteIndex < suggestedProperties.length &&
-                    selectedAutocompleteIndex >= 0
-                  ) {
-                    e.preventDefault();
-                    onAcceptSuggestion(
-                      suggestedProperties[selectedAutocompleteIndex].value,
-                    );
-                  } else {
-                    // Allow shift+enter to still create new lines
-                    if (!e.shiftKey) {
-                      e.preventDefault();
-                      if (queryHistoryType && value) {
-                        setQueryHistory(value);
-                      }
-                      onSubmit?.();
-                    }
-                  }
-                }
-                if (
-                  e.key === 'ArrowDown' &&
-                  e.target instanceof HTMLTextAreaElement
-                ) {
-                  if (suggestedProperties.length > 0) {
-                    e.preventDefault();
-                    setSelectedAutocompleteIndex(
-                      Math.min(
-                        selectedAutocompleteIndex + 1,
-                        suggestedProperties.length - 1,
-                        suggestionsLimit - 1,
-                      ),
-                    );
-                  }
-                }
-                if (
-                  e.key === 'ArrowUp' &&
-                  e.target instanceof HTMLTextAreaElement
-                ) {
-                  if (suggestedProperties.length > 0) {
-                    e.preventDefault();
-                    setSelectedAutocompleteIndex(
-                      Math.max(selectedAutocompleteIndex - 1, 0),
-                    );
-                  }
-                }
-              }}
+              onKeyDown={handleKeyDown}
               rightSectionWidth={rightSectionWidth}
               rightSection={
                 language != null && onLanguageChange != null ? (

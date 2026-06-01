@@ -193,10 +193,9 @@ export default function SearchWhereInput({
   const sizeClass = size === 'xs' ? styles.sizeXs : styles.sizeSm;
 
   // Inline filter chips
-  const filters = searchFilters?.filters;
   const pills = useMemo(
-    () => (filters ? flattenFilters(filters) : []),
-    [filters],
+    () => flattenFilters(searchFilters?.filters),
+    [searchFilters?.filters],
   );
   const hasChips = pills.length > 0;
 

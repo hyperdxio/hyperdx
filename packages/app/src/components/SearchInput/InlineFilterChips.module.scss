@@ -33,7 +33,11 @@
 }
 
 .chipExcluded {
-  border-color: var(--mantine-color-red-light);
+  /* `--mantine-color-red-light` is a near-pink background tint that
+     barely reads as red against the input's chrome in light mode. The
+     `--color-text-danger` token swings between red-3 (dark) and red-8
+     (light) so the border stays clearly red in both themes. */
+  border-color: var(--color-text-danger);
 }
 
 .chipField {

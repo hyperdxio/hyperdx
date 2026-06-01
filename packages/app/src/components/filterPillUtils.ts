@@ -9,7 +9,8 @@ export type PillItem = {
   rawValue?: string | boolean;
 };
 
-export function flattenFilters(filters: FilterState): PillItem[] {
+export function flattenFilters(filters: FilterState | undefined): PillItem[] {
+  if (!filters) return [];
   const pills: PillItem[] = [];
   for (const [field, state] of Object.entries(filters)) {
     for (const val of state.included) {
