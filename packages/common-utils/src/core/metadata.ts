@@ -19,7 +19,7 @@ import type {
   MetadataMaterializedViews,
   TSource,
 } from '@/types';
-import { isLogSource, isTraceSource, SourceKind } from '@/types';
+import { isLogSource, isTraceSource, NATIVE_COLUMN, SourceKind } from '@/types';
 
 import { ClickHouseVersion, parseClickHouseVersion } from './clickhouseVersion';
 import {
@@ -1354,7 +1354,7 @@ export class Metadata {
       const isMapKey = path.length >= 2;
       return {
         keyExpression: keyExpr,
-        rollupColumn: isMapKey ? path[0] : 'NativeColumn',
+        rollupColumn: isMapKey ? path[0] : NATIVE_COLUMN,
         rollupKey: isMapKey ? path[1] : path[0],
         column: path[0],
         mapKey: isMapKey ? path[1] : undefined,
@@ -1546,7 +1546,7 @@ export class Metadata {
             WHERE Value != ''
               AND ${timeFilter}
             GROUP BY ColumnIdentifier, Key
-            ORDER BY ColumnIdentifier = 'NativeColumn' DESC, ColumnIdentifier, Key
+            ORDER BY ColumnIdentifier = '${NATIVE_COLUMN}' DESC, ColumnIdentifier, Key
             ${limitClause}
           `;
 
@@ -1569,7 +1569,7 @@ export class Metadata {
 
     return rows.map(row => {
       const keyExpr =
-        row.ColumnIdentifier === 'NativeColumn'
+        row.ColumnIdentifier === NATIVE_COLUMN
           ? row.Key
           : `${row.ColumnIdentifier}['${row.Key}']`;
       return { key: keyExpr, value: row.Values };

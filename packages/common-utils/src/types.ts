@@ -1897,3 +1897,45 @@ export const MeApiResponseSchema = z.object({
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;
+
+/**
+ * Sentinel value for {@link ColumnKey} `column` indicating a top-level
+ * (non-Map/JSON) column. When `column` equals this, `key` carries the
+ * native column name itself.
+ */
+export const NATIVE_COLUMN = 'NativeColumn' as const;
+
+/**
+ * A reference to a top-level native column.
+ * `key` is the native column name (e.g. `'ServiceName'`).
+ */
+export const NativeColumnKeySchema = z.object({
+  column: z.literal(NATIVE_COLUMN),
+  key: z.string(),
+});
+
+/**
+ * A reference to a value inside a Map or JSON column.
+ * `column` is the Map/JSON column name (e.g. `'ResourceAttributes'`).
+ * `key` is the key/path within it (e.g. `'service.name'`).
+ */
+export const MapColumnKeySchema = z.object({
+  column: z.string().refine(s => s !== NATIVE_COLUMN, {
+    message: `column must not equal "${NATIVE_COLUMN}"; use NativeColumnKeySchema for native columns`,
+  }),
+  key: z.string(),
+});
+
+/**
+ * Discriminated union over `column`:
+ *   - `column === NATIVE_COLUMN` → {@link NativeColumnKey}
+ *   - otherwise → {@link MapColumnKey}
+ */
+export const ColumnKeySchema = z.union([
+  NativeColumnKeySchema,
+  MapColumnKeySchema,
+]);
+
+export type NativeColumnKey = z.infer<typeof NativeColumnKeySchema>;
+export type MapColumnKey = z.infer<typeof MapColumnKeySchema>;
+export type ColumnKey = z.infer<typeof ColumnKeySchema>;
