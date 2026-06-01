@@ -127,7 +127,9 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
-import SourceSchemaPreview from './components/SourceSchemaPreview';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from './components/SourceSchemaPreview';
 import {
   getRelativeTimeOptionLabel,
   LIVE_TAIL_DURATION_MS,
@@ -1665,10 +1667,8 @@ export function DBSearchPage() {
     [inputSourceObj],
   );
 
-  const sourceSchemaPreview = useMemo(
-    () => <SourceSchemaPreview source={inputSourceObj} variant="text" />,
-    [inputSourceObj],
-  );
+  const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
+    useState(false);
 
   const onTimePickerSearch = useCallback(
     (range: string) => {
@@ -1743,13 +1743,38 @@ export function DBSearchPage() {
     setModelFormExpanded(false);
   }, [setModelFormExpanded]);
 
-  const onEditSources = useCallback(() => {
+  // `Edit source` (singular): operate on the currently selected source.
+  // Local mode opens the inline edit modal seeded with `inputSource`;
+  // non-local uses a hard navigation so the page's `useQueryStates`
+  // (source/where/select/whereLanguage/filters/orderBy) can't merge
+  // stale /search state into the destination URL, and so
+  // `router.basePath` is correctly prepended for the /clickstack build.
+  const onEditCurrentSource = useCallback(() => {
     if (IS_LOCAL_MODE) {
-      setModelFormExpanded(v => !v);
-    } else {
-      router.push('/team');
+      setModelFormExpanded(true);
+      return;
     }
-  }, [setModelFormExpanded]);
+    if (inputSource) {
+      window.location.assign(`${router.basePath}/team?source=${inputSource}`);
+    } else {
+      window.location.assign(`${router.basePath}/team`);
+    }
+  }, [inputSource, setModelFormExpanded]);
+
+  // `Manage sources`: open the all-sources list view. Only wired in
+  // non-local mode; local has no list-view surface so the menu item
+  // hides itself when this prop is undefined. We use `window.location`
+  // for a hard navigation instead of `router.push` so the page's
+  // `useQueryStates` (source/where/select/whereLanguage/filters/orderBy)
+  // can't restore its state into the new URL during the client-side
+  // transition, and so `router.basePath` is correctly prepended for
+  // the /clickstack build.
+  const onManageSources = useMemo(() => {
+    if (IS_LOCAL_MODE) return undefined;
+    return () => {
+      window.location.assign(`${router.basePath}/team`);
+    };
+  }, []);
 
   const setNewSourceModalClosed = useCallback(
     () => setNewSourceModalOpened(false),
@@ -1886,11 +1911,21 @@ export function DBSearchPage() {
             control={control}
             name="source"
             onCreate={openNewSourceModal}
-            onEdit={onEditSources}
+            onEdit={onEditCurrentSource}
+            onManageSources={onManageSources}
+            onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+            isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(
+              inputSourceObj,
+            )}
             allowedSourceKinds={ALLOWED_SOURCE_KINDS}
             data-testid="source-selector"
-            sourceSchemaPreview={sourceSchemaPreview}
             style={{ minWidth: 150 }}
+          />
+          <SourceSchemaPreview
+            source={inputSourceObj}
+            controlled
+            open={isSourceSchemaPreviewOpen}
+            onClose={() => setIsSourceSchemaPreviewOpen(false)}
           />
           <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
             <SQLInlineEditorControlled
