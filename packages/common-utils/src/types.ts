@@ -1040,6 +1040,10 @@ const SharedChartSettingsSchema = z.object({
 export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
+  // Fallback expression for bare-text Lucene search when no implicit column is
+  // set. Threaded through from `bodyExpression` on log sources. Trace sources
+  // do not populate this (different semantic for `spanNameExpression`).
+  bodyExpression: z.string().optional(),
   useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
   sampleWeightExpression: z.string().optional(),
   markdown: z.string().optional(),
@@ -1112,6 +1116,8 @@ const RawSqlChartConfigSchema = RawSqlBaseChartConfigSchema.extend({
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
   implicitColumnExpression: z.string().optional(),
+  // Same fallback as on `_ChartConfigSchema`; logs-only.
+  bodyExpression: z.string().optional(),
   useTextIndexForImplicitColumn: UseTextIndexSchema.optional(),
   metricTables: MetricTableSchema.optional(),
 });
