@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
+  addMapAliasesToSelect,
   appendSelectWithAdditionalKeys,
   RawLogTable,
 } from '@/components/DBRowTable';
@@ -414,5 +415,47 @@ describe('appendSelectWithAdditionalKeys', () => {
       select:
         'Timestamp,ServiceName,Body,__hdx_id,toDate(Timestamp),toStartOfFiveMinutes(Timestamp),_block_number,_block_offset',
     });
+  });
+});
+
+describe('addMapAliasesToSelect', () => {
+  it('leaves plain columns unchanged and collapses ", " to ","', () => {
+    expect(addMapAliasesToSelect('Timestamp, ServiceName, SeverityText')).toBe(
+      'Timestamp,ServiceName,SeverityText',
+    );
+  });
+
+  it('aliases a single-quoted bracket-form map key', () => {
+    expect(addMapAliasesToSelect("ResourceAttributes['service.name']")).toBe(
+      `ResourceAttributes['service.name'] as "ResourceAttributes['service.name']"`,
+    );
+  });
+
+  it('aliases only the map keys in a mixed multi-column input', () => {
+    expect(
+      addMapAliasesToSelect(
+        "Timestamp, ResourceAttributes['service.name'], SeverityText",
+      ),
+    ).toBe(
+      `Timestamp,ResourceAttributes['service.name'] as "ResourceAttributes['service.name']",SeverityText`,
+    );
+  });
+
+  it('preserves function-call expressions whose arguments contain commas', () => {
+    expect(
+      addMapAliasesToSelect(
+        "Timestamp, toDateTime(now64(3, 'UTC')), ServiceName",
+      ),
+    ).toBe(`Timestamp,toDateTime(now64(3, 'UTC')),ServiceName`);
+  });
+
+  it('passes already-aliased plain columns through unchanged', () => {
+    expect(addMapAliasesToSelect('Timestamp as ts, ServiceName as svc')).toBe(
+      'Timestamp as ts,ServiceName as svc',
+    );
+  });
+
+  it('returns an empty string for empty input', () => {
+    expect(addMapAliasesToSelect('')).toBe('');
   });
 });
