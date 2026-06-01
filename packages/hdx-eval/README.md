@@ -138,24 +138,6 @@ Combined score = `0.4 * programmatic + 0.6 * judge - toolErrorPenalty`
 - **Tool error penalty** — up to 20% deducted for high tool-call error rates.
   Prevents agents from papering over correctness with volume.
 
-## Bulk Eval
-
-`scripts/fast-eval.sh` seeds all scenarios at a shared anchor time in
-parallel, then runs them concurrently. Reads the API key from
-`~/.config/hdx-eval-anthropic-key`.
-
-```bash
-# Defaults: 4 scenarios, 2 runs/cell, concurrency 2
-./packages/hdx-eval/scripts/fast-eval.sh
-
-# Override
-SCENARIOS="error-root-cause latency-spike" RUNS=3 \
-  ./packages/hdx-eval/scripts/fast-eval.sh
-```
-
-There are also scripts for ablation studies (`scripts/ablation.sh`) and
-prompt variant comparison (`scripts/compare-prompt-variants.sh`).
-
 ## Determinism
 
 All randomness flows through a `mulberry32(seed)` PRNG. Same `(seed, now)`

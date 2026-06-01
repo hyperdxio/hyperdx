@@ -1,11 +1,2 @@
 /runs/
 eval.config.json
-
-# Ablation scratch / run artifacts
-ablation/_*.pgid
-ablation/_*.log
-ablation/autonomous-*.md
-ablation/autonomous-loop*-*.md
-ablation/MAIN_VS_*.md
-ablation/PROMPT_VARIANT*.md
-ablation/prompt-variant-*/
