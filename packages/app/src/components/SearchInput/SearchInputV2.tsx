@@ -63,7 +63,8 @@ export default function SearchInputV2({
   dateRange?: [Date, Date];
   sourceId?: string;
   filterChips?: React.ReactNode;
-  onRemoveLastChip?: () => void;
+  /** Returns true if a chip was actually removed so the host can consume the keystroke. */
+  onRemoveLastChip?: () => boolean;
   'data-testid'?: string;
 } & UseControllerProps<any> &
   TableConnectionChoice) {

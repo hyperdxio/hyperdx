@@ -67,7 +67,7 @@ type SQLInlineEditorProps = {
   sourceId?: string;
   filterChips?: React.ReactNode;
   /** Returns true if a chip was actually removed so the host can consume the keystroke. */
-  onRemoveLastChip?: () => boolean | void;
+  onRemoveLastChip?: () => boolean;
 };
 
 const MAX_EDITOR_HEIGHT = '150px';
@@ -286,9 +286,13 @@ export default function SQLInlineEditor({
           {
             key: 'Backspace',
             run: view => {
+              // Skip during IME composition so the chip-removal shortcut
+              // doesn't fire while uncommitted CJK glyphs are still in the
+              // composition layer.
+              if (view.composing) return false;
               const { from, to } = view.state.selection.main;
               if (from === 0 && to === 0 && onRemoveLastChipRef.current) {
-                return onRemoveLastChipRef.current() === true;
+                return onRemoveLastChipRef.current();
               }
               return false;
             },

@@ -44,7 +44,9 @@
     border-bottom-left-radius: 0;
   }
 
-  /* legacy: InputWrapper styles for textarea within the container */
+  /* Mantine's <Textarea> in AutocompleteInput (Lucene mode) still renders
+     an `.mantine-InputWrapper-root` wrapper, so these rules are live and
+     load-bearing for Lucene-mode sizing — don't strip them as dead code. */
   /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
   :global(.mantine-InputWrapper-root) {
     border-top-left-radius: 0;

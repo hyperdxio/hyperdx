@@ -198,19 +198,24 @@ export default function SearchWhereInput({
     () => (filters ? flattenFilters(filters) : []),
     [filters],
   );
+  const hasChips = pills.length > 0;
 
-  const filterChips = searchFilters ? (
-    <InlineFilterChips
-      pills={pills}
-      setFilterValue={searchFilters.setFilterValue}
-      clearFilter={searchFilters.clearFilter}
-    />
-  ) : null;
+  // Only render the chip slot when there are pills to show. Passing `null`
+  // when the slot is empty keeps `data-has-chips` off downstream so the
+  // single-line height cap and the collapse-fade gradient stay engaged.
+  const filterChips =
+    searchFilters && hasChips ? (
+      <InlineFilterChips
+        pills={pills}
+        setFilterValue={searchFilters.setFilterValue}
+        clearFilter={searchFilters.clearFilter}
+      />
+    ) : null;
 
   // Returns true only when a chip was actually removed, so the input's
   // Backspace-at-position-0 handler knows whether to consume the keystroke.
   const onRemoveLastChip = useCallback((): boolean => {
-    if (!searchFilters || pills.length === 0) return false;
+    if (!searchFilters || !hasChips) return false;
     const lastPill = pills[pills.length - 1];
     removePill(
       lastPill,
@@ -218,7 +223,7 @@ export default function SearchWhereInput({
       searchFilters.clearFilter,
     );
     return true;
-  }, [searchFilters, pills]);
+  }, [searchFilters, hasChips, pills]);
 
   return (
     <Box

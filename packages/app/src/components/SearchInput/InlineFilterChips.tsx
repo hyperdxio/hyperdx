@@ -83,9 +83,9 @@ export default memo(function InlineFilterChips({
 
   return (
     <div className={styles.chipsGroup} data-testid="filter-chips-group">
-      {pills.map((pill, i) => (
+      {pills.map(pill => (
         <InlineFilterChip
-          key={`${pill.field}-${pill.type}-${pill.value}-${i}`}
+          key={`${pill.field}-${pill.type}-${pill.value}`}
           pill={pill}
           onRemove={() => handleRemove(pill)}
         />

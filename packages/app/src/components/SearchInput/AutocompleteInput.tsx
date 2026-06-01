@@ -51,7 +51,7 @@ export default function AutocompleteInput({
   queryHistoryType?: string;
   filterChips?: React.ReactNode;
   /** Returns true if a chip was actually removed so the host can consume the keystroke. */
-  onRemoveLastChip?: () => boolean | void;
+  onRemoveLastChip?: () => boolean;
   'data-testid'?: string;
 }) {
   const suggestionsLimit = 10;
@@ -217,6 +217,15 @@ export default function AutocompleteInput({
                 setIsSearchInputFocused(false);
               }}
               onKeyDown={e => {
+                // Ignore keystrokes that belong to an in-progress IME
+                // composition (CJK input). At this point the textarea value
+                // is still empty while uncommitted glyphs live in the
+                // composition layer, so Backspace would otherwise eat a chip
+                // instead of editing the composition.
+                if (e.nativeEvent.isComposing || e.keyCode === 229) {
+                  return;
+                }
+
                 if (
                   e.key === 'Escape' &&
                   e.target instanceof HTMLTextAreaElement
@@ -239,6 +248,12 @@ export default function AutocompleteInput({
                   const removed = onRemoveLastChip();
                   if (removed) {
                     e.preventDefault();
+                    // Removing a chip changes what the user is targeting,
+                    // so a stale arrow-key suggestion selection would cause
+                    // the next Enter to insert an unintended token. Reset
+                    // and close the dropdown to mirror the Escape branch.
+                    setSelectedAutocompleteIndex(-1);
+                    setIsInputDropdownOpen(false);
                   }
                 }
 
