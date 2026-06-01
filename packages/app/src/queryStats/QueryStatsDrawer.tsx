@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { parameterizedQueryToSql } from '@hyperdx/common-utils/dist/clickhouse';
 import {
@@ -24,6 +24,7 @@ import {
 
 import { useClickhouseClient } from '@/clickhouse';
 
+import { currentPathname } from './InstrumentedClickhouseClient';
 import {
   clearQueryEvents,
   QueryEvent,
@@ -40,7 +41,7 @@ function StatusIcon({ status }: { status: QueryEvent['status'] }) {
     return (
       <IconLoader2
         size={14}
-        className="spin"
+        className="spin-animate"
         aria-label="pending"
         color="var(--mantine-color-yellow-5)"
       />
@@ -99,11 +100,21 @@ function hydrateSql(sql: string, params: Record<string, any>): string {
   }
 }
 
+// EXPLAIN PLAN only parses against read-only statements; for everything else
+// (SHOW/INSERT/ALTER/DROP/etc.) the button would just produce a parse error.
+function canExplain(sql: string): boolean {
+  return /^\s*(SELECT|WITH)\b/i.test(sql);
+}
+
 function QueryRow({ event }: { event: QueryEvent }) {
   const [expanded, setExpanded] = useState(false);
   const hydratedSql = useMemo(
     () => hydrateSql(event.sql, event.params),
     [event.sql, event.params],
+  );
+  const collapsedSql = useMemo(
+    () => collapseWhitespace(hydratedSql),
+    [hydratedSql],
   );
   const [explainState, setExplainState] = useState<
     | { status: 'idle' }
@@ -187,9 +198,9 @@ function QueryRow({ event }: { event: QueryEvent }) {
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
           }}
-          title={collapseWhitespace(hydratedSql)}
+          title={collapsedSql}
         >
-          {collapseWhitespace(hydratedSql)}
+          {collapsedSql}
         </Text>
       </Group>
       <Collapse expanded={expanded}>
@@ -254,7 +265,7 @@ function QueryRow({ event }: { event: QueryEvent }) {
                 </Text>
               )}
             </Group>
-            {event.kind !== 'explain' && (
+            {event.kind !== 'explain' && canExplain(event.sql) && (
               <Box onClick={e => e.stopPropagation()}>
                 <Group gap="xs">
                   <Button
@@ -262,6 +273,7 @@ function QueryRow({ event }: { event: QueryEvent }) {
                     variant="secondary"
                     onClick={runExplain}
                     loading={explainState.status === 'loading'}
+                    disabled={explainState.status === 'loading'}
                   >
                     Run EXPLAIN
                   </Button>
@@ -299,13 +311,16 @@ export function QueryStatsDrawer({ opened, onClose }: Props) {
   const [pathFilter, setPathFilter] = useState(true);
   const [showExplain, setShowExplain] = useState(false);
   const router = useRouter();
-  const currentPath = useMemo(() => {
-    const asPath = router.asPath ?? '';
-    const qIdx = asPath.indexOf('?');
-    const hIdx = asPath.indexOf('#');
-    const end = [qIdx, hIdx].filter(i => i !== -1).sort((a, b) => a - b)[0];
-    return end == null ? asPath : asPath.slice(0, end);
-  }, [router.asPath]);
+
+  // Read from the same source the capture side uses so the strings always
+  // match exactly. Re-render on Next.js client-side nav.
+  const [currentPath, setCurrentPath] = useState(() => currentPathname());
+  useEffect(() => {
+    const update = () => setCurrentPath(currentPathname());
+    update();
+    router.events.on('routeChangeComplete', update);
+    return () => router.events.off('routeChangeComplete', update);
+  }, [router.events]);
 
   const visible = useMemo(() => {
     return events

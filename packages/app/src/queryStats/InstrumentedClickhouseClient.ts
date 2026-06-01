@@ -32,7 +32,9 @@ function detectKind(sql: string): QueryEventKind {
   return /^\s*EXPLAIN\b/i.test(sql) ? 'explain' : 'query';
 }
 
-function currentPathname(): string {
+// Single source of truth for the captured pathname — also used by the
+// drawer's filter so the two never drift apart during client-side nav.
+export function currentPathname(): string {
   if (typeof window === 'undefined') return '';
   try {
     return window.location?.pathname ?? '';
@@ -52,13 +54,15 @@ export class InstrumentedClickhouseClient extends ClickhouseClient {
 
     try {
       queryId = queryId ?? generateQueryId();
-      eventId = queryId;
+      // Internal event correlation key — independent of ClickHouse's query_id
+      // so duplicate caller-supplied query_ids don't conflate events in the store.
+      eventId = generateQueryId();
       startedAt = performance.now();
       appendQueryEvent({
         id: eventId,
         queryId,
         sql: props.query,
-        params: props.query_params ?? {},
+        params: { ...(props.query_params ?? {}) },
         status: 'pending',
         startedAt: startedAt,
         pathname: currentPathname(),
@@ -104,7 +108,9 @@ export class InstrumentedClickhouseClient extends ClickhouseClient {
   }
 }
 
-// Test-only: reset the once-only warn flag between specs.
+// Test-only: reset the once-only warn flag between specs. Guarded so an
+// accidental import from production code is a no-op.
 export function __resetInstrumentationWarnForTests(): void {
+  if (process.env.NODE_ENV === 'production') return;
   warnedOnce = false;
 }

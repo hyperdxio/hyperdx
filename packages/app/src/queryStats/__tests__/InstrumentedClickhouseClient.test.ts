@@ -62,6 +62,35 @@ describe('InstrumentedClickhouseClient', () => {
     expect(call.queryId).toBe('caller-id');
   });
 
+  it('stores an internal event id distinct from queryId', async () => {
+    const client = makeClient();
+    await client.query({ query: 'SELECT 1', queryId: 'caller-id' });
+    const [event] = getSnapshot();
+    expect(event.queryId).toBe('caller-id');
+    expect(event.id).not.toBe('caller-id');
+    expect(event.id.length).toBeGreaterThan(0);
+  });
+
+  it('does not conflate events that share a caller-supplied queryId', async () => {
+    const client = makeClient();
+    await client.query({ query: 'SELECT 1', queryId: 'dup' });
+    await client.query({ query: 'SELECT 2', queryId: 'dup' });
+    const events = getSnapshot();
+    expect(events).toHaveLength(2);
+    expect(events[0].id).not.toBe(events[1].id);
+    expect(events[0].status).toBe('done');
+    expect(events[1].status).toBe('done');
+  });
+
+  it('shallow-clones params so caller mutation does not rewrite the stored event', async () => {
+    const client = makeClient();
+    const params: Record<string, any> = { a: 1 };
+    await client.query({ query: 'SELECT {a:Int32}', query_params: params });
+    params.a = 999;
+    const [event] = getSnapshot();
+    expect(event.params).toEqual({ a: 1 });
+  });
+
   it('records a done event after a successful query', async () => {
     const client = makeClient();
     await client.query({ query: 'SELECT 1' });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import cx from 'classnames';
@@ -266,6 +266,14 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   const [queryStatsOpen, { toggle: toggleQueryStats, close: closeQueryStats }] =
     useDisclosure(false);
+  // The drawer subscribes to a global query-event store; mount it only after
+  // the user opens it for the first time so app-wide renders don't pay for
+  // an unmounted debug panel. Stays mounted after that so close animations
+  // still play.
+  const [queryStatsEverOpened, setQueryStatsEverOpened] = useState(false);
+  useEffect(() => {
+    if (queryStatsOpen) setQueryStatsEverOpened(true);
+  }, [queryStatsOpen]);
 
   const [
     showInstallInstructions,
@@ -527,9 +535,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         opened={UserPreferencesOpen}
         onClose={closeUserPreferences}
       />
-      <QueryStatsErrorBoundary>
-        <QueryStatsDrawer opened={queryStatsOpen} onClose={closeQueryStats} />
-      </QueryStatsErrorBoundary>
+      {queryStatsEverOpened && (
+        <QueryStatsErrorBoundary resetKey={queryStatsOpen}>
+          <QueryStatsDrawer opened={queryStatsOpen} onClose={closeQueryStats} />
+        </QueryStatsErrorBoundary>
+      )}
     </AppNavContext.Provider>
   );
 }
