@@ -445,21 +445,19 @@ export class Metadata {
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
   }) {
-    // Align date range to rollup granularity for consistent cache keys
     const alignedDateRange =
       metadataMVs && dateRange
         ? getAlignedDateRange(dateRange, metadataMVs.granularity)
         : undefined;
 
-    const dateRangeCacheSuffix =
-      dateRange && timestampValueExpression
-        ? `${dateRange[0].getTime()}-${dateRange[1].getTime()}-${timestampValueExpression}`
-        : '';
+    const dateRangeCacheSuffix = dateRange
+      ? `${dateRange[0].getTime()}-${dateRange[1].getTime()}${
+          timestampValueExpression ? `-${timestampValueExpression}` : ''
+        }`
+      : '';
     const cacheKey = metricName
       ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.keys`
-      : metadataMVs && alignedDateRange
-        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.keys`
-        : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.keys`;
+      : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.keys`;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
     if (cachedKeys != null) {

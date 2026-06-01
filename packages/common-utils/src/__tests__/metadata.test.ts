@@ -1592,6 +1592,49 @@ describe('Metadata', () => {
       expect(call.query).not.toContain('mergeTreeTextIndex');
     });
 
+    it('getMapKeys caches text-index results distinctly by raw dateRange when no timestampValueExpression or metadataMVs is provided', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', keysAndItemsEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ key: 'first.range.key' }] }),
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ key: 'second.range.key' }] }),
+        });
+
+      const baseArgs = {
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+      };
+
+      const keysA = await md.getMapKeys({
+        ...baseArgs,
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+      const keysB = await md.getMapKeys({
+        ...baseArgs,
+        dateRange: [
+          new Date('2026-05-11T18:00:00Z'),
+          new Date('2026-05-11T19:00:00Z'),
+        ],
+      });
+
+      expect((mockClickhouseClient.query as jest.Mock).mock.calls.length).toBe(
+        2,
+      );
+      expect(keysA).toEqual(['first.range.key']);
+      expect(keysB).toEqual(['second.range.key']);
+    });
+
     it('getMapValues uses mergeTreeTextIndex when keys are requested and an items index exists', async () => {
       const md = buildMetadata();
       jest
