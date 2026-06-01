@@ -1510,7 +1510,7 @@ function selectColumnMapWithoutAdditionalKeys(
 }
 
 function addMapAliasesToSelect(select: string): string {
-  const selects = select.split(',');
+  const selects = splitAndTrimWithBracket(select);
   for (let i = 0; i < selects.length; i++) {
     const key = selects[i];
     const mapField = parseMapFieldName(key);
