@@ -125,7 +125,7 @@ export const endTimeSchema = z
 export const sourceIdSchema = z
   .string()
   .describe(
-    'Source ID (required). Call hyperdx_list_sources to find available sources.',
+    'Source ID (required). Call clickstack_list_sources to find available sources.',
   );
 
 export const whereSchema = z

@@ -154,14 +154,14 @@ export function registerTable(server: McpServer, context: McpContext) {
   const { teamId } = context;
 
   server.registerTool(
-    'hyperdx_table',
+    'clickstack_table',
     {
       title: 'Aggregation Table',
       description:
         'Compute aggregated metrics as a table, single number, or pie chart. ' +
         'Use this for grouped aggregations, top-N queries, single-value KPIs, ' +
         'or proportional breakdowns.\n\n' +
-        'Requires sourceId — call hyperdx_list_sources then hyperdx_describe_source first.\n\n' +
+        'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
         'Use the top-level "where" to scope the entire query (e.g. filter by service). ' +
         'Each select item can also have its own "where" for per-metric cohort ' +
         'comparisons (compiles to <aggFn>If(...)). Both can be used together.\n\n' +
@@ -173,7 +173,7 @@ export function registerTable(server: McpServer, context: McpContext) {
         'it is transparently upgraded to "table".',
       inputSchema: tableSchema,
     },
-    withToolTracing('hyperdx_table', context, async input => {
+    withToolTracing('clickstack_table', context, async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
         return {
