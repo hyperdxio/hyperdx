@@ -146,6 +146,14 @@ export function buildSearchChartConfig(
     isLogSource(source) || isTraceSource(source)
       ? source.useTextIndexForImplicitColumn
       : undefined;
+  // Logs-only body fallback for bare-text Lucene search; matches the
+  // resolution chain in CustomSchemaSQLSerializerV2.getColumnForField
+  // (context.implicit ?? this.implicit ?? context.body ?? this.body).
+  // Trace sources do not populate bodyExpression (spanNameExpression
+  // has different semantics for trace search and should not auto-fall-back).
+  const bodyExpression = isLogSource(source)
+    ? source.bodyExpression
+    : undefined;
 
   const config: SearchChartConfig = {
     connection: input.connection ?? source.connection,
@@ -160,6 +168,7 @@ export function buildSearchChartConfig(
     ...(useTextIndexForImplicitColumn != null
       ? { useTextIndexForImplicitColumn }
       : {}),
+    ...(bodyExpression != null ? { bodyExpression } : {}),
     ...pickSampleWeightExpressionProps(source),
     ...(mergedFilters.length > 0 ? { filters: mergedFilters } : {}),
     ...(input.groupBy != null ? { groupBy: input.groupBy } : {}),

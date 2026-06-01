@@ -92,6 +92,10 @@ function useOptimizedKeyValuesCalls({
             isTraceSource(source) || isLogSource(source)
               ? source.implicitColumnExpression
               : undefined,
+          // Logs-only body fallback for bare-text Lucene search.
+          bodyExpression: isLogSource(source)
+            ? source.bodyExpression
+            : undefined,
           useTextIndexForImplicitColumn:
             isTraceSource(source) || isLogSource(source)
               ? source.useTextIndexForImplicitColumn
