@@ -14,7 +14,12 @@
   padding: 0 var(--mantine-spacing-sm);
   position: sticky;
   top: 0;
-  z-index: 100;
+
+  /* Top-level drawers in this app are rendered at z-index 10
+     (`contextZIndex + 10` from `ZIndexContext`, see e.g. `DBRowSidePanel`).
+     Sit 8 below that so the drawer overlay always covers the page chrome,
+     while the header still floats above normal scrolling content. */
+  z-index: 2;
 }
 
 /* Applied automatically when a `stickyRow` is provided: the chrome scrolls
@@ -40,7 +45,10 @@
   padding: var(--mantine-spacing-sm);
   position: sticky;
   top: 0;
-  z-index: 100;
+
+  /* Match `.header` — sit 8 below the top-level drawer z-index (10) so
+     drawer overlays always cover this row. */
+  z-index: 2;
 }
 
 /* Applied when the sticky row sits directly under chrome AND is not
