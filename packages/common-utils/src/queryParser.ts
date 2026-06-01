@@ -151,6 +151,13 @@ async function findPrefixMatch({
 interface SerializerContext {
   /** The current implicit column expression, indicating which SQL expression to use when comparing a term to the '<implicit>' field */
   implicitColumnExpression?: string;
+  /**
+   * Fallback used when implicitColumnExpression is unset. Mirrors the one-way
+   * fallback `getEventBody` already implements for row display: an admin who
+   * sets only the Body Expression on a log source can still run bare-text
+   * Lucene search.
+   */
+  bodyExpression?: string;
   isNegatedAndParenthesized?: boolean;
 }
 
@@ -744,6 +751,12 @@ type CustomSchemaSQLColumnExpression = {
 export type CustomSchemaConfig = {
   databaseName: string;
   implicitColumnExpression?: string;
+  /**
+   * Body expression to fall back to when `implicitColumnExpression` is unset
+   * but the source has a body column configured. Populated only by log
+   * sources; trace sources do not auto-fall-back from `spanNameExpression`.
+   */
+  bodyExpression?: string;
   tableName: string;
   connectionId: string;
   /**
@@ -1071,6 +1084,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private tableName: string;
   private databaseName: string;
   private implicitColumnExpression?: string;
+  private bodyExpression?: string;
   private connectionId: string;
   private useTextIndexForImplicitColumn: UseTextIndex;
   private skipIndicesPromise?: Promise<SkipIndexMetadata[]>;
@@ -1083,6 +1097,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     tableName,
     connectionId,
     implicitColumnExpression,
+    bodyExpression,
     useTextIndexForImplicitColumn,
   }: { metadata: Metadata } & CustomSchemaConfig) {
     super();
@@ -1090,6 +1105,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     this.databaseName = databaseName;
     this.tableName = tableName;
     this.implicitColumnExpression = implicitColumnExpression;
+    this.bodyExpression = bodyExpression;
     this.connectionId = connectionId;
     this.useTextIndexForImplicitColumn =
       useTextIndexForImplicitColumn ?? UseTextIndex.Auto;
@@ -1269,7 +1285,12 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     }
 
     if (isImplicitField) {
-      const shouldUseTokenBf = !context.implicitColumnExpression;
+      // Token-bloom-filter and tokens()-index optimizations key on the
+      // source's column. A per-context override (of either implicit or body)
+      // means we're searching a different expression, so skip the index
+      // optimization.
+      const shouldUseTokenBf =
+        !context.implicitColumnExpression && !context.bodyExpression;
 
       if (prefixWildcard || suffixWildcard) {
         return SqlString.format(
@@ -1676,8 +1697,16 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   }
 
   async getColumnForField(field: string, context: SerializerContext) {
+    // Two-stage fallback: implicit wins over body, and per-call context
+    // overrides win over the source defaults. The body fallback lets log
+    // sources that only set Body Expression still serve bare-text Lucene
+    // search; this is the symmetric counterpart to `getEventBody` in
+    // packages/app/src/source.ts.
     const implicitColumnExpression =
-      context.implicitColumnExpression ?? this.implicitColumnExpression;
+      context.implicitColumnExpression ??
+      this.implicitColumnExpression ??
+      context.bodyExpression ??
+      this.bodyExpression;
     if (field === IMPLICIT_FIELD && !implicitColumnExpression) {
       throw new Error(
         'Can not search bare text without an implicit column set.',
@@ -1687,10 +1716,15 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     const fieldFinal =
       field === IMPLICIT_FIELD ? implicitColumnExpression! : field;
 
-    if (
-      field === IMPLICIT_FIELD &&
-      implicitColumnExpression === this.implicitColumnExpression // Source's implicit column has not been overridden
-    ) {
+    // Use the multi-column-concat path whenever the resolved expression came
+    // from the source (either `this.implicitColumnExpression` or its body
+    // fallback `this.bodyExpression`), not when a per-context override was
+    // applied. Mirrors the original "source's implicit column has not been
+    // overridden" intent.
+    const isSourceImplicit =
+      context.implicitColumnExpression === undefined &&
+      context.bodyExpression === undefined;
+    if (field === IMPLICIT_FIELD && isSourceImplicit) {
       // Sources can specify multi-column implicit columns, eg. Body and Message, in
       // which case we search the combined string `concatWithSeparator(';', Body, Message)`.
       const expressions = splitAndTrimWithBracket(fieldFinal);

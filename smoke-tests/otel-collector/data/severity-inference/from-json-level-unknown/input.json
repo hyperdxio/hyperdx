@@ -1,0 +1,35 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "severity-inference"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "from-json-level-unknown"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000000",
+              "body": {
+                "stringValue": "{\"level\":\"verbose\",\"msg\":\"unknown level value\"}"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

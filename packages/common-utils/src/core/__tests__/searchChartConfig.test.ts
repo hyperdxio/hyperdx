@@ -144,6 +144,68 @@ describe('buildSearchChartConfig', () => {
     });
   });
 
+  describe('body expression', () => {
+    // bodyExpression is the search-side fallback for log sources where
+    // implicitColumnExpression is not configured. Symmetric to the
+    // display-side fallback in `getEventBody` (packages/app/src/source.ts).
+    // HDX-4376.
+    it('sets bodyExpression on Log sources when configured', () => {
+      const source = makeLogSource({
+        implicitColumnExpression: undefined,
+        bodyExpression: 'Body',
+      });
+
+      const config = buildSearchChartConfig(source, { where: '' });
+
+      expect(config.bodyExpression).toBe('Body');
+      expect(config.implicitColumnExpression).toBeUndefined();
+    });
+
+    it('sets both implicit and body when both are configured (resolver picks implicit at use site)', () => {
+      const source = makeLogSource({
+        implicitColumnExpression: 'IndexedBody',
+        bodyExpression: 'Body',
+      });
+
+      const config = buildSearchChartConfig(source, { where: '' });
+
+      expect(config.implicitColumnExpression).toBe('IndexedBody');
+      expect(config.bodyExpression).toBe('Body');
+    });
+
+    it('omits bodyExpression for Trace sources (logs-only field)', () => {
+      // Trace sources do not populate bodyExpression; spanNameExpression
+      // has different semantics for trace search and should not
+      // auto-fall-back via the body chain.
+      const source = makeTraceSource({
+        // Even if a runtime payload stuffed it on a trace source, it must
+        // not flow through.
+        bodyExpression: 'should-not-thread',
+      });
+
+      const config = buildSearchChartConfig(source, { where: '' });
+
+      expect(config.bodyExpression).toBeUndefined();
+    });
+
+    it('omits bodyExpression for Metric sources', () => {
+      const source = makeMetricSource();
+
+      const config = buildSearchChartConfig(source, { where: '' });
+
+      expect(config.bodyExpression).toBeUndefined();
+    });
+
+    it('omits the bodyExpression key entirely when unset on a Log source', () => {
+      const source = makeLogSource({ bodyExpression: undefined });
+
+      const config = buildSearchChartConfig(source, { where: '' });
+
+      expect(config.bodyExpression).toBeUndefined();
+      expect('bodyExpression' in config).toBe(false);
+    });
+  });
+
   describe('sample weight expression', () => {
     it('sets sampleWeightExpression from Trace source when sampleRateExpression is set', () => {
       const source = makeTraceSource({
