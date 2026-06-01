@@ -38,6 +38,30 @@ export class ChartExplorerPage {
     return this.getChartContainers().first();
   }
 
+  /**
+   * Wait for the initial page load and any auto-triggered queries to settle
+   * before starting to measure subsequent network activity.
+   */
+  async waitForInitialSettle() {
+    await this.page.waitForLoadState('networkidle');
+  }
+
+  /**
+   * Start counting /clickhouse-proxy responses from this point forward.
+   * Returns a handle whose `getCount()` returns the tally at any time.
+   * Call this *after* waitForInitialSettle() so auto-queries on page load
+   * are not included in the count.
+   */
+  startCountingClickhouseProxyResponses(): { getCount: () => number } {
+    let count = 0;
+    this.page.on('response', response => {
+      if (response.url().includes('/clickhouse-proxy')) {
+        count++;
+      }
+    });
+    return { getCount: () => count };
+  }
+
   // Getters for assertions
 
   get form() {
