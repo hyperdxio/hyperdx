@@ -406,22 +406,35 @@ export class Metadata {
     );
   }
 
-  // `part_name IN (...)` predicate restricting a mergeTreeTextIndex scan to
-  // active data parts overlapping the date range. Fails loudly via throwIf()
-  // if any active part has min_time at the epoch sentinel — that means the
-  // table is not time-partitioned (or partitioning is broken) and we can't
-  // prove which parts overlap, so silently including them would risk
-  // returning data outside the requested range.
-  private partsOverlapFilter(
-    databaseName: string,
-    tableName: string,
-    dateRange?: [Date, Date],
-  ): ChSql {
-    const base = chSql`SELECT name FROM system.parts WHERE database = ${{ String: databaseName }} AND table = ${{ String: tableName }} AND active = 1`;
-    if (!dateRange) return chSql`part_name IN (${base})`;
-    return chSql`part_name IN (${base}
-      AND min_time <= fromUnixTimestamp64Milli(${{ Int64: dateRange[1].getTime() }})
-      AND max_time >= fromUnixTimestamp64Milli(${{ Int64: dateRange[0].getTime() }}))`;
+  private async partsOverlapFilter({
+    databaseName,
+    tableName,
+    connectionId,
+    dateRange,
+    timestampValueExpression,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    dateRange?: [Date, Date];
+    timestampValueExpression?: string;
+  }): Promise<ChSql> {
+    if (!dateRange || !timestampValueExpression) return chSql`1`;
+    const timeFilter = await timeFilterExpr({
+      connectionId,
+      databaseName,
+      tableName,
+      dateRange,
+      dateRangeStartInclusive: true,
+      dateRangeEndInclusive: true,
+      timestampValueExpression,
+      metadata: this,
+    });
+    return chSql`part_name IN (
+      SELECT DISTINCT _part
+      FROM ${tableExpr({ database: databaseName, table: tableName })}
+      WHERE ${timeFilter}
+    )`;
   }
 
   async getMapKeys({
@@ -475,11 +488,13 @@ export class Metadata {
         connectionId,
       })
     ).get(column);
-    const partsFilter = this.partsOverlapFilter(
+    const partsFilter = await this.partsOverlapFilter({
       databaseName,
       tableName,
+      connectionId,
       dateRange,
-    );
+      timestampValueExpression,
+    });
     if (indexes?.keysIndex) {
       const sql = chSql`
         SELECT token AS key
@@ -802,11 +817,13 @@ export class Metadata {
     ).get(column)?.itemsIndex;
     if (idx) {
       try {
-        const partsFilter = this.partsOverlapFilter(
+        const partsFilter = await this.partsOverlapFilter({
           databaseName,
           tableName,
+          connectionId,
           dateRange,
-        );
+          timestampValueExpression,
+        });
         const orChain = concatChSql(
           ' OR ',
           keys.map(

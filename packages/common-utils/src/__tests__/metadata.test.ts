@@ -1467,6 +1467,65 @@ describe('Metadata', () => {
       (timeFilterExpr as jest.Mock).mockClear();
     });
 
+    it('getMapKeys scopes mergeTreeTextIndex via SELECT _part subquery when dateRange and timestampValueExpression are provided', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', keysAndItemsEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () => Promise.resolve({ data: [{ key: 'service.name' }] }),
+      });
+
+      await md.getMapKeys({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+        timestampValueExpression: 'TimestampTime',
+      });
+
+      const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+      expect(call.query).toContain('mergeTreeTextIndex');
+      expect(call.query).toContain('part_name IN');
+      expect(call.query).toContain('SELECT _part');
+      expect(call.query).toContain('GROUP BY _part');
+      expect(call.query).not.toContain('system.parts');
+      expect(call.query).not.toContain('min_time');
+      expect(call.query).not.toContain('max_time');
+    });
+
+    it('getMapKeys emits no part-narrowing predicate when timestampValueExpression is absent', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', keysAndItemsEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () => Promise.resolve({ data: [{ key: 'service.name' }] }),
+      });
+
+      await md.getMapKeys({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+
+      const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+      expect(call.query).toContain('mergeTreeTextIndex');
+      expect(call.query).not.toContain('part_name');
+      expect(call.query).not.toContain('SELECT _part');
+    });
+
     it('getMapKeys prefers the keys-only mapKeys(X) text index over the items index', async () => {
       const md = buildMetadata();
       jest
