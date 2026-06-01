@@ -1492,8 +1492,7 @@ describe('Metadata', () => {
       const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
       expect(call.query).toContain('mergeTreeTextIndex');
       expect(call.query).toContain('part_name IN');
-      expect(call.query).toContain('SELECT _part');
-      expect(call.query).toContain('GROUP BY _part');
+      expect(call.query).toContain('SELECT DISTINCT _part');
       expect(call.query).not.toContain('system.parts');
       expect(call.query).not.toContain('min_time');
       expect(call.query).not.toContain('max_time');
