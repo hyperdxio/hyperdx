@@ -29,6 +29,7 @@ import {
   isJSDataTypeJSONStringifiable,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   BuilderChartConfigWithDateRange,
@@ -1508,6 +1509,18 @@ function selectColumnMapWithoutAdditionalKeys(
   );
 }
 
+export function addMapAliasesToSelect(select: string): string {
+  const selects = splitAndTrimWithBracket(select);
+  for (let i = 0; i < selects.length; i++) {
+    const key = selects[i];
+    const path = parseKeyPath(key);
+    if (path.length === 2) {
+      selects[i] = `${key} as "${path[0]}['${path[1]}']"`;
+    }
+  }
+  return selects.join(',');
+}
+
 export type DBRowTableVariant = 'default' | 'muted';
 
 function DBSqlRowTableComponent({
@@ -1602,6 +1615,9 @@ function DBSqlRowTableComponent({
       ...searchChartConfigDefaults(me?.team),
       ...config,
     };
+    if (typeof base.select === 'string') {
+      base.select = addMapAliasesToSelect(base.select);
+    }
     if (orderByArray.length) {
       base.orderBy = orderByArray.map(o => {
         return {
