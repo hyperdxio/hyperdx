@@ -1,4 +1,4 @@
-runs/
+/runs/
 eval.config.json
 
 # Ablation scratch / run artifacts
