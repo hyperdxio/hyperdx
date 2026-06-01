@@ -3,22 +3,25 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 import * as config from '@/config';
 import {
+  bulkInsertLogs,
   DEFAULT_DATABASE,
+  DEFAULT_LOGS_TABLE,
   DEFAULT_TRACES_TABLE,
   getLoggedInAgent,
   getServer,
 } from '@/fixtures';
 import Connection from '@/models/connection';
-import { Source } from '@/models/source';
+import { Source, type SourceDocument } from '@/models/source';
 
 import { McpContext } from '../tools/types';
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
-describe('MCP Query Tool', () => {
+describe('MCP Query Tools', () => {
   const server = getServer();
   let team: any;
   let user: any;
-  let traceSource: any;
+  let traceSource: SourceDocument;
+  let logSource: SourceDocument;
   let connection: any;
   let client: Client;
 
@@ -51,6 +54,20 @@ describe('MCP Query Tool', () => {
       name: 'Traces',
     });
 
+    logSource = await Source.create({
+      kind: SourceKind.Log,
+      team: team._id,
+      from: {
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_LOGS_TABLE,
+      },
+      timestampValueExpression: 'Timestamp',
+      connection: connection._id,
+      name: 'Logs',
+      bodyExpression: 'Body',
+      severityTextExpression: 'SeverityText',
+    });
+
     const context: McpContext = {
       teamId: team._id.toString(),
       userId: user._id.toString(),
@@ -67,37 +84,85 @@ describe('MCP Query Tool', () => {
     await server.stop();
   });
 
+  // ─── Schema serialization ────────────────────────────────────────────────────
+
   describe('schema serialization', () => {
-    it('should expose inputSchema with all expected properties via tools/list', async () => {
+    it('should expose hyperdx_timeseries with expected properties', async () => {
       const { tools } = await client.listTools();
-      const queryTool = tools.find(t => t.name === 'hyperdx_query');
-      expect(queryTool).toBeDefined();
+      const tool = tools.find(t => t.name === 'hyperdx_timeseries');
+      expect(tool).toBeDefined();
 
-      const schema = queryTool!.inputSchema;
-      expect(schema.type).toBe('object');
-      expect(schema.properties).toBeDefined();
-
-      // Verify key properties are present (not silently stripped by the SDK)
-      const props = Object.keys(schema.properties ?? {});
-      expect(props).toContain('displayType');
+      const props = Object.keys(tool!.inputSchema.properties ?? {});
       expect(props).toContain('sourceId');
       expect(props).toContain('select');
+      expect(props).toContain('shape');
+      expect(props).toContain('granularity');
+      expect(props).toContain('groupBy');
+      expect(tool!.inputSchema.required).toContain('sourceId');
+      expect(tool!.inputSchema.required).toContain('select');
+    });
+
+    it('should expose hyperdx_table with expected properties', async () => {
+      const { tools } = await client.listTools();
+      const tool = tools.find(t => t.name === 'hyperdx_table');
+      expect(tool).toBeDefined();
+
+      const props = Object.keys(tool!.inputSchema.properties ?? {});
+      expect(props).toContain('sourceId');
+      expect(props).toContain('select');
+      expect(props).toContain('shape');
+      expect(props).toContain('groupBy');
+      expect(tool!.inputSchema.required).toContain('sourceId');
+      expect(tool!.inputSchema.required).toContain('select');
+    });
+
+    it('should expose hyperdx_search with expected properties', async () => {
+      const { tools } = await client.listTools();
+      const tool = tools.find(t => t.name === 'hyperdx_search');
+      expect(tool).toBeDefined();
+
+      const props = Object.keys(tool!.inputSchema.properties ?? {});
+      expect(props).toContain('sourceId');
       expect(props).toContain('where');
-      expect(props).toContain('sql');
+      expect(props).toContain('columns');
+      expect(props).toContain('maxResults');
+      expect(tool!.inputSchema.required).toContain('sourceId');
+    });
+
+    it('should expose hyperdx_event_patterns with expected properties', async () => {
+      const { tools } = await client.listTools();
+      const tool = tools.find(t => t.name === 'hyperdx_event_patterns');
+      expect(tool).toBeDefined();
+
+      const props = Object.keys(tool!.inputSchema.properties ?? {});
+      expect(props).toContain('sourceId');
+      expect(props).toContain('where');
+      expect(props).toContain('sampleSize');
+      expect(props).toContain('topN');
+      expect(props).toContain('bodyExpression');
+      expect(tool!.inputSchema.required).toContain('sourceId');
+    });
+
+    it('should expose hyperdx_sql with expected properties', async () => {
+      const { tools } = await client.listTools();
+      const tool = tools.find(t => t.name === 'hyperdx_sql');
+      expect(tool).toBeDefined();
+
+      const props = Object.keys(tool!.inputSchema.properties ?? {});
       expect(props).toContain('connectionId');
+      expect(props).toContain('sql');
       expect(props).toContain('startTime');
       expect(props).toContain('endTime');
-      expect(props).toContain('groupBy');
-
-      // displayType should be required
-      expect(schema.required).toContain('displayType');
+      expect(tool!.inputSchema.required).toContain('connectionId');
+      expect(tool!.inputSchema.required).toContain('sql');
     });
   });
 
-  describe('builder queries', () => {
-    it('should execute a number query', async () => {
-      const result = await callTool(client, 'hyperdx_query', {
-        displayType: 'number',
+  // ─── hyperdx_timeseries ─────────────────────────────────────────────────────
+
+  describe('hyperdx_timeseries', () => {
+    it('should execute a line chart query', async () => {
+      const result = await callTool(client, 'hyperdx_timeseries', {
         sourceId: traceSource._id.toString(),
         select: [{ aggFn: 'count' }],
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -110,11 +175,11 @@ describe('MCP Query Tool', () => {
       expect(output).toHaveProperty('result');
     });
 
-    it('should execute a line chart query', async () => {
-      const result = await callTool(client, 'hyperdx_query', {
-        displayType: 'line',
+    it('should execute a stacked bar chart query', async () => {
+      const result = await callTool(client, 'hyperdx_timeseries', {
         sourceId: traceSource._id.toString(),
         select: [{ aggFn: 'count' }],
+        shape: 'stacked_bar',
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
         endTime: new Date().toISOString(),
       });
@@ -123,12 +188,64 @@ describe('MCP Query Tool', () => {
       expect(result.content).toHaveLength(1);
     });
 
+    it('should default to line shape when shape is omitted', async () => {
+      const result = await callTool(client, 'hyperdx_timeseries', {
+        sourceId: traceSource._id.toString(),
+        select: [{ aggFn: 'count' }],
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
+    it('should accept granularity in correct format', async () => {
+      const result = await callTool(client, 'hyperdx_timeseries', {
+        sourceId: traceSource._id.toString(),
+        select: [{ aggFn: 'count' }],
+        granularity: '1 minute',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
+    it('should return error for invalid time range', async () => {
+      const result = await callTool(client, 'hyperdx_timeseries', {
+        sourceId: traceSource._id.toString(),
+        select: [{ aggFn: 'count' }],
+        startTime: 'invalid-date',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('Invalid');
+    });
+  });
+
+  // ─── hyperdx_table ──────────────────────────────────────────────────────────
+
+  describe('hyperdx_table', () => {
     it('should execute a table query', async () => {
-      const result = await callTool(client, 'hyperdx_query', {
-        displayType: 'table',
+      const result = await callTool(client, 'hyperdx_table', {
         sourceId: traceSource._id.toString(),
         select: [{ aggFn: 'count' }],
         groupBy: 'SpanName',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+      const output = JSON.parse(getFirstText(result));
+      expect(output).toHaveProperty('result');
+    });
+
+    it('should execute a number query', async () => {
+      const result = await callTool(client, 'hyperdx_table', {
+        sourceId: traceSource._id.toString(),
+        select: [{ aggFn: 'count' }],
+        shape: 'number',
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
         endTime: new Date().toISOString(),
       });
@@ -138,10 +255,10 @@ describe('MCP Query Tool', () => {
     });
 
     it('should execute a pie query', async () => {
-      const result = await callTool(client, 'hyperdx_query', {
-        displayType: 'pie',
+      const result = await callTool(client, 'hyperdx_table', {
         sourceId: traceSource._id.toString(),
         select: [{ aggFn: 'count' }],
+        shape: 'pie',
         groupBy: 'SpanName',
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
         endTime: new Date().toISOString(),
@@ -151,11 +268,32 @@ describe('MCP Query Tool', () => {
       expect(result.content).toHaveLength(1);
     });
 
-    it('should execute a stacked_bar query', async () => {
-      const result = await callTool(client, 'hyperdx_query', {
-        displayType: 'stacked_bar',
+    it('should auto-upgrade shape:"number" to "table" when select has multiple items', async () => {
+      // This should NOT error — it should silently upgrade to table
+      const result = await callTool(client, 'hyperdx_table', {
         sourceId: traceSource._id.toString(),
-        select: [{ aggFn: 'count' }],
+        select: [
+          { aggFn: 'count' },
+          { aggFn: 'avg', valueExpression: 'Duration' },
+        ],
+        shape: 'number',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
+    it('should auto-upgrade shape:"pie" to "table" when select has multiple items', async () => {
+      const result = await callTool(client, 'hyperdx_table', {
+        sourceId: traceSource._id.toString(),
+        select: [
+          { aggFn: 'count' },
+          { aggFn: 'sum', valueExpression: 'Duration' },
+        ],
+        shape: 'pie',
+        groupBy: 'SpanName',
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
         endTime: new Date().toISOString(),
       });
@@ -165,8 +303,7 @@ describe('MCP Query Tool', () => {
     });
 
     it('should use default time range when not provided', async () => {
-      const result = await callTool(client, 'hyperdx_query', {
-        displayType: 'number',
+      const result = await callTool(client, 'hyperdx_table', {
         sourceId: traceSource._id.toString(),
         select: [{ aggFn: 'count' }],
       });
@@ -174,25 +311,13 @@ describe('MCP Query Tool', () => {
       expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
     });
-
-    it('should return result for query with no matching data', async () => {
-      const result = await callTool(client, 'hyperdx_query', {
-        displayType: 'number',
-        sourceId: traceSource._id.toString(),
-        select: [{ aggFn: 'count', where: 'SpanName:z_impossible_value_xyz' }],
-        startTime: new Date(Date.now() - 60 * 1000).toISOString(),
-        endTime: new Date().toISOString(),
-      });
-
-      expect(result.isError).toBeFalsy();
-      expect(result.content).toHaveLength(1);
-    });
   });
 
-  describe('search queries', () => {
+  // ─── hyperdx_search ─────────────────────────────────────────────────────────
+
+  describe('hyperdx_search', () => {
     it('should execute a search query', async () => {
-      const result = await callTool(client, 'hyperdx_query', {
-        displayType: 'search',
+      const result = await callTool(client, 'hyperdx_search', {
         sourceId: traceSource._id.toString(),
         where: '',
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -204,8 +329,7 @@ describe('MCP Query Tool', () => {
     });
 
     it('should respect maxResults parameter', async () => {
-      const result = await callTool(client, 'hyperdx_query', {
-        displayType: 'search',
+      const result = await callTool(client, 'hyperdx_search', {
         sourceId: traceSource._id.toString(),
         maxResults: 10,
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -214,12 +338,208 @@ describe('MCP Query Tool', () => {
 
       expect(result.isError).toBeFalsy();
     });
+
+    it('should use default time range when not provided', async () => {
+      const result = await callTool(client, 'hyperdx_search', {
+        sourceId: traceSource._id.toString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
+    it('should reject calls missing sourceId', async () => {
+      const result = await callTool(client, 'hyperdx_search', {
+        where: 'level:error',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toMatch(/sourceId/i);
+    });
   });
 
-  describe('SQL queries', () => {
+  // ─── hyperdx_event_patterns ─────────────────────────────────────────────────
+
+  describe('hyperdx_event_patterns', () => {
+    it('should execute an event_patterns query on a log source', async () => {
+      const result = await callTool(client, 'hyperdx_event_patterns', {
+        sourceId: logSource._id.toString(),
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+      const output = JSON.parse(getFirstText(result));
+      expect(output).toHaveProperty('summary');
+      expect(output).toHaveProperty('patterns');
+      expect(output.summary).toHaveProperty('totalCount');
+      expect(output.summary).toHaveProperty('sampledCount');
+      expect(output.summary).toHaveProperty('sampleMultiplier');
+      expect(output.summary).toHaveProperty('bodyColumn', 'Body');
+      expect(output.summary).toHaveProperty('timeRange');
+      expect(Array.isArray(output.patterns)).toBe(true);
+    });
+
+    it('should execute with explicit bodyExpression on trace source', async () => {
+      const result = await callTool(client, 'hyperdx_event_patterns', {
+        sourceId: traceSource._id.toString(),
+        bodyExpression: 'SpanName',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+      const output = JSON.parse(getFirstText(result));
+      expect(output).toHaveProperty('summary');
+      expect(Array.isArray(output.patterns)).toBe(true);
+      expect(output.summary).toHaveProperty('bodyColumn', 'SpanName');
+    });
+
+    it('should accept custom bodyExpression on log source', async () => {
+      const result = await callTool(client, 'hyperdx_event_patterns', {
+        sourceId: logSource._id.toString(),
+        bodyExpression: 'SeverityText',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+      const output = JSON.parse(getFirstText(result));
+      expect(output.summary).toHaveProperty('bodyColumn', 'SeverityText');
+    });
+
+    it('should respect sampleSize parameter', async () => {
+      const result = await callTool(client, 'hyperdx_event_patterns', {
+        sourceId: logSource._id.toString(),
+        sampleSize: 100,
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
+    it('should respect where filter', async () => {
+      const result = await callTool(client, 'hyperdx_event_patterns', {
+        sourceId: logSource._id.toString(),
+        where: "SeverityText = 'ERROR'",
+        whereLanguage: 'sql',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
+    it('should reject calls missing sourceId', async () => {
+      const result = await callTool(client, 'hyperdx_event_patterns', {
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toMatch(/sourceId/i);
+    });
+
+    it('should return error for non-existent source', async () => {
+      const result = await callTool(client, 'hyperdx_event_patterns', {
+        sourceId: '000000000000000000000000',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('Source not found');
+    });
+
+    describe('with seeded data', () => {
+      const now = new Date();
+      const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+      beforeEach(async () => {
+        const logs: Parameters<typeof bulkInsertLogs>[0] = [];
+
+        // Template A: "User <name> logged in from <ip>" — 20 rows
+        for (let i = 0; i < 20; i++) {
+          logs.push({
+            Body: `User user_${i} logged in from 10.0.0.${i % 256}`,
+            ServiceName: 'auth-service',
+            SeverityText: 'INFO',
+            Timestamp: new Date(fiveMinAgo.getTime() + i * 1000),
+          });
+        }
+
+        // Template B: "Payment processed for order <id>" — 10 rows
+        for (let i = 0; i < 10; i++) {
+          logs.push({
+            Body: `Payment processed for order ${1000 + i}`,
+            ServiceName: 'payment-service',
+            SeverityText: 'INFO',
+            Timestamp: new Date(fiveMinAgo.getTime() + (20 + i) * 1000),
+          });
+        }
+
+        // Template C: unique single message
+        logs.push({
+          Body: 'System startup complete, all services healthy',
+          ServiceName: 'system',
+          SeverityText: 'INFO',
+          Timestamp: new Date(fiveMinAgo.getTime() + 31000),
+        });
+
+        await bulkInsertLogs(logs);
+      });
+
+      it('should mine patterns from seeded data and return non-empty results', async () => {
+        const result = await callTool(client, 'hyperdx_event_patterns', {
+          sourceId: logSource._id.toString(),
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        const { patterns } = output;
+        const { totalCount, sampledCount } = output.summary;
+
+        expect(totalCount).toBeGreaterThanOrEqual(31);
+        expect(sampledCount).toBeGreaterThanOrEqual(31);
+        expect(patterns.length).toBeGreaterThanOrEqual(1);
+
+        // The most common pattern should contain <*> placeholders
+        const topPattern = patterns[0];
+        expect(topPattern.pattern).toContain('<*>');
+
+        // Patterns should be sorted by estimatedCount descending
+        for (let i = 1; i < patterns.length; i++) {
+          expect(patterns[i - 1].estimatedCount).toBeGreaterThanOrEqual(
+            patterns[i].estimatedCount,
+          );
+        }
+
+        // Each pattern should have trend data with at least some non-zero buckets
+        for (const p of patterns) {
+          expect(p.trend.length).toBeGreaterThan(0);
+        }
+
+        const hasNonZeroTrend = patterns.some((p: any) =>
+          p.trend.some((t: any) => t.count > 0),
+        );
+        expect(hasNonZeroTrend).toBe(true);
+      });
+    });
+  });
+
+  // ─── hyperdx_sql ────────────────────────────────────────────────────────────
+
+  describe('hyperdx_sql', () => {
     it('should execute a raw SQL query', async () => {
-      const result = await callTool(client, 'hyperdx_query', {
-        displayType: 'sql',
+      const result = await callTool(client, 'hyperdx_sql', {
         connectionId: connection._id.toString(),
         sql: 'SELECT 1 AS value',
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -231,8 +551,7 @@ describe('MCP Query Tool', () => {
     });
 
     it('should execute SQL with time macros', async () => {
-      const result = await callTool(client, 'hyperdx_query', {
-        displayType: 'sql',
+      const result = await callTool(client, 'hyperdx_sql', {
         connectionId: connection._id.toString(),
         sql: `SELECT count() AS cnt FROM ${DEFAULT_DATABASE}.${DEFAULT_TRACES_TABLE} WHERE $__timeFilter(Timestamp) LIMIT 10`,
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -242,15 +561,22 @@ describe('MCP Query Tool', () => {
       expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
     });
-  });
 
-  describe('error handling', () => {
+    it('should use default time range when not provided', async () => {
+      const result = await callTool(client, 'hyperdx_sql', {
+        connectionId: connection._id.toString(),
+        sql: 'SELECT 1 AS value',
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
     it('should return error for invalid time range', async () => {
-      const result = await callTool(client, 'hyperdx_query', {
-        displayType: 'number',
-        sourceId: traceSource._id.toString(),
-        select: [{ aggFn: 'count' }],
-        startTime: 'invalid-date',
+      const result = await callTool(client, 'hyperdx_sql', {
+        connectionId: connection._id.toString(),
+        sql: 'SELECT 1',
+        startTime: 'not-a-date',
       });
 
       expect(result.isError).toBe(true);

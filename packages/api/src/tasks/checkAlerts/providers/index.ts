@@ -73,6 +73,7 @@ export interface AlertProvider {
     endTime: Date;
     granularity: string;
     startTime: Date;
+    tileId?: string;
   }): string;
 
   /**

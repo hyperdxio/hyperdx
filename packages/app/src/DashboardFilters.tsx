@@ -1,9 +1,10 @@
+import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
-import { Group, MultiSelect } from '@mantine/core';
-import { IconRefresh } from '@tabler/icons-react';
+import { Group, Stack, Text, Tooltip } from '@mantine/core';
+import { IconHelp, IconRefresh } from '@tabler/icons-react';
 
+import { VirtualMultiSelect } from './components/VirtualMultiSelect/VirtualMultiSelect';
 import { useDashboardFilterValues } from './hooks/useDashboardFilterValues';
-import { FilterState } from './searchFilters';
 
 interface DashboardFilterSelectProps {
   filter: DashboardFilter;
@@ -13,6 +14,12 @@ interface DashboardFilterSelectProps {
   isLoading?: boolean;
 }
 
+const getAppliesToTooltip = (filter: DashboardFilter) => {
+  const count = filter.appliesToSourceIds?.length ?? 0;
+  if (count === 0) return 'Applies to all sources';
+  return `Applies to ${count} source${count === 1 ? '' : 's'}`;
+};
+
 const DashboardFilterSelect = ({
   filter,
   onChange,
@@ -20,27 +27,34 @@ const DashboardFilterSelect = ({
   values,
   isLoading,
 }: DashboardFilterSelectProps) => {
-  const selectValues = values?.toSorted().map(value => ({
-    value,
-    label: value,
-  }));
+  const sortedValues = values?.toSorted() || [];
+  const tooltipText = getAppliesToTooltip(filter);
 
   return (
-    <MultiSelect
-      placeholder={value.length === 0 ? filter.name : undefined}
-      value={value}
-      data={selectValues || []}
-      searchable
-      clearable
-      size="xs"
-      maxDropdownHeight={280}
-      disabled={isLoading}
-      variant="filled"
-      w={250}
-      limit={20}
-      onChange={onChange}
-      data-testid={`dashboard-filter-select-${filter.name}`}
-    />
+    <Stack gap={2}>
+      <Group gap={4} align="center" wrap="nowrap">
+        <Text size="xs" c="dimmed">
+          {filter.name}
+        </Text>
+        <Tooltip label={tooltipText} withinPortal>
+          <IconHelp
+            size={12}
+            color="var(--color-text-muted)"
+            data-testid={`dashboard-filter-help-${filter.name}`}
+          />
+        </Tooltip>
+      </Group>
+      <div style={{ width: 250 }}>
+        <VirtualMultiSelect
+          placeholder={value.length === 0 ? filter.name : undefined}
+          values={value}
+          data={sortedValues}
+          disabled={isLoading}
+          onChange={onChange}
+          data-testid={`dashboard-filter-select-${filter.name}`}
+        />
+      </div>
+    </Stack>
   );
 };
 

@@ -26,7 +26,7 @@ type FilterSourceKey = {
   sourceId: string;
   metricType?: string;
   where: string;
-  whereLanguage: 'sql' | 'lucene';
+  whereLanguage: 'sql' | 'lucene' | 'promql';
 };
 
 const filterToKey = (filter: DashboardFilter): string =>
@@ -91,6 +91,14 @@ function useOptimizedKeyValuesCalls({
           implicitColumnExpression:
             isTraceSource(source) || isLogSource(source)
               ? source.implicitColumnExpression
+              : undefined,
+          // Logs-only body fallback for bare-text Lucene search.
+          bodyExpression: isLogSource(source)
+            ? source.bodyExpression
+            : undefined,
+          useTextIndexForImplicitColumn:
+            isTraceSource(source) || isLogSource(source)
+              ? source.useTextIndexForImplicitColumn
               : undefined,
           dateRange,
           source: source.id,

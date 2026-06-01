@@ -147,6 +147,8 @@ function PodLogs({
       whereLanguage: 'lucene' as const,
       timestampValueExpression: logSource.timestampValueExpression,
       implicitColumnExpression: logSource.implicitColumnExpression,
+      bodyExpression: logSource.bodyExpression,
+      useTextIndexForImplicitColumn: logSource.useTextIndexForImplicitColumn,
       connection: logSource.connection,
       select: [
         {

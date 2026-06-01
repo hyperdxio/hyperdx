@@ -5,6 +5,10 @@ import {
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  FilterState,
+  filtersToQuery,
+} from '@hyperdx/common-utils/dist/filters';
+import {
   BuilderChartConfigWithDateRange,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
@@ -47,9 +51,15 @@ import {
   IconSitemap,
 } from '@tabler/icons-react';
 
+import api from '@/api';
 import { IS_CLICKHOUSE_BUILD } from '@/config';
 import {
+  DEFAULT_FILTER_KEYS_FETCH_LIMIT,
+  DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS,
+} from '@/defaults';
+import {
   useAllFields,
+  useAllFieldsAndValues,
   useColumns,
   useGetKeyValues,
   useGetValuesDistribution,
@@ -60,7 +70,6 @@ import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { usePinnedFiltersApi } from '@/pinnedFilters';
 import {
-  type FilterState,
   FilterStateHook,
   IS_ROOT_SPAN_COLUMN_NAME,
   usePinnedFilters,
@@ -75,7 +84,11 @@ import {
   PinShareMenu,
 } from './DBSearchPageFilters/PinShareMenu';
 import { SharedFiltersSection } from './DBSearchPageFilters/SharedFilters';
-import { groupFacetsByBaseName } from './DBSearchPageFilters/utils';
+import {
+  getFilterStateEntry,
+  groupFacetsByBaseName,
+  toClickHouseKeyExpression,
+} from './DBSearchPageFilters/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
 import classes from '../../styles/SearchPage.module.scss';
@@ -1119,16 +1132,37 @@ const DBSearchPageFiltersComponent = ({
     'hdx-shared-filters-expanded',
     true,
   );
+  const [showAllValues, setShowAllValues] = useLocalStorage(
+    'hdx-show-all-filter-values',
+    true,
+  );
   const { size, startResize } = useResizable(16, 'left');
 
-  const { data: jsonColumns } = useJsonColumns({
-    databaseName: chartConfig.from.databaseName,
-    tableName: chartConfig.from.tableName,
-    connectionId: chartConfig.connection,
-  });
   const { data: source } = useSource({ id: sourceId });
   const sourceTableConnection = tcFromSource(source);
-  const { data, isLoading, error } = useAllFields(
+  const { data: jsonColumns } = useJsonColumns(sourceTableConnection);
+  const filterMode = showAllValues ? ('all' as const) : ('exact' as const);
+
+  const hasMVs = !!sourceTableConnection.metadataMVs;
+  const useExactPipeline = !hasMVs || filterMode === 'exact';
+
+  const { data: me } = api.useMe();
+  const defaultLimit = hasMVs
+    ? DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS
+    : DEFAULT_FILTER_KEYS_FETCH_LIMIT;
+  const maxKeys = me?.team?.filterKeysFetchLimit ?? defaultLimit;
+
+  // Special case for live tail
+  const [dateRange, setDateRange] = useState<[Date, Date]>(
+    chartConfig.dateRange,
+  );
+
+  // Exact pipeline step 1: discover keys from column metadata
+  const {
+    data: allFields,
+    isLoading: isFieldsLoading,
+    error: fieldsError,
+  } = useAllFields(
     {
       databaseName: chartConfig.from.databaseName,
       tableName: chartConfig.from.tableName,
@@ -1136,9 +1170,33 @@ const DBSearchPageFiltersComponent = ({
       metadataMVs: sourceTableConnection.metadataMVs,
     },
     {
-      dateRange: chartConfig.dateRange,
+      dateRange,
+      timestampValueExpression: chartConfig.timestampValueExpression,
+      enabled: useExactPipeline,
     },
   );
+
+  // MV pipeline: combined key+value rollup query
+  const {
+    data: mvFieldsAndValues,
+    isLoading: isMVLoading,
+    isFetching: isMVFetching,
+    error: mvError,
+  } = useAllFieldsAndValues(
+    {
+      databaseName: chartConfig.from.databaseName,
+      tableName: chartConfig.from.tableName,
+      connectionId: chartConfig.connection,
+      metadataMVs: sourceTableConnection.metadataMVs,
+      dateRange,
+      maxKeys,
+    },
+    { enabled: !useExactPipeline },
+  );
+
+  const isLoading = useExactPipeline ? isFieldsLoading : isMVLoading;
+  const error = useExactPipeline ? fieldsError : mvError;
+
   const { data: columns } = useColumns({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
@@ -1161,11 +1219,11 @@ const DBSearchPageFiltersComponent = ({
   const [showMoreFields, setShowMoreFields] = useState(false);
 
   const keysToFetch = useMemo(() => {
-    if (!data) {
+    if (!allFields) {
       return [];
     }
 
-    const strings = data
+    const strings = allFields
       .sort((a, b) => {
         // First show low cardinality fields
         const isLowCardinality = (type: string) =>
@@ -1199,18 +1257,13 @@ const DBSearchPageFiltersComponent = ({
       );
     return strings;
   }, [
-    data,
+    allFields,
     jsonColumns,
     filterState,
     showMoreFields,
     isFieldPinned,
     isSharedFieldPinned,
   ]);
-
-  // Special case for live tail
-  const [dateRange, setDateRange] = useState<[Date, Date]>(
-    chartConfig.dateRange,
-  );
 
   useEffect(() => {
     if (!isLive) {
@@ -1226,15 +1279,36 @@ const DBSearchPageFiltersComponent = ({
 
   const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
 
+  // In 'all' mode, strip WHERE/filters so we get all values regardless of
+  // the current search query. In 'exact' mode, keep the full chart config
+  // so values are scoped to the current query results.
+  const facetsChartConfig = useMemo(
+    () =>
+      filterMode === 'all'
+        ? { ...chartConfig, dateRange, where: '', filters: [] }
+        : { ...chartConfig, dateRange },
+    [chartConfig, dateRange, filterMode],
+  );
+
+  // Exact pipeline step 2: fetch values for discovered keys
   const {
-    data: facets,
-    isLoading: isFacetsLoading,
-    isFetching: isFacetsFetching,
-  } = useGetKeyValues({
-    chartConfig: { ...chartConfig, dateRange },
-    limit: INITIAL_LOAD_LIMIT,
-    keys: keysToFetch,
-  });
+    data: exactFacets,
+    isLoading: isExactFacetsLoading,
+    isFetching: isExactFacetsFetching,
+  } = useGetKeyValues(
+    {
+      chartConfig: facetsChartConfig,
+      limit: INITIAL_LOAD_LIMIT,
+      keys: keysToFetch,
+    },
+    { enabled: useExactPipeline },
+  );
+
+  const facets = useExactPipeline ? exactFacets : mvFieldsAndValues;
+  const isFacetsLoading = useExactPipeline ? isExactFacetsLoading : isMVLoading;
+  const isFacetsFetching = useExactPipeline
+    ? isExactFacetsFetching
+    : isMVFetching;
 
   // Merge pinned filter values into the queried facets, so that pinned values are always available
   const facetsWithPinnedValues = useMemo(() => {
@@ -1266,17 +1340,50 @@ const DBSearchPageFiltersComponent = ({
     async (key: string) => {
       setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
       try {
-        const newKeyVals = await metadata.getKeyValuesWithMVs({
-          chartConfig: {
-            ...chartConfig,
+        // Coerce dot-form Map sub-keys (LogAttributes.foo) into bracket form
+        // (LogAttributes['foo']) before handing them to ClickHouse. Bracket
+        // form is the canonical SQL key produced by mergePath; dot form ends
+        // up in filterState after setFilterValue's parseKeyPath().join('.')
+        // normalization or after a Lucene URL round-trip, and ClickHouse
+        // cannot resolve it as map access.
+        const sqlKey = toClickHouseKeyExpression(key);
+        let newValues: string[];
+        if (!useExactPipeline) {
+          const results = await metadata.getAllKeyValues({
+            databaseName: chartConfig.from.databaseName,
+            tableName: chartConfig.from.tableName,
+            connectionId: chartConfig.connection,
+            keyExpressions: [sqlKey],
+            maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
+            metadataMVs: sourceTableConnection.metadataMVs,
             dateRange,
-          },
-          keys: [key],
-          limit: LOAD_MORE_LOAD_LIMIT,
-          disableRowLimit: true,
-          source,
-        });
-        const newValues = newKeyVals[0].value?.map(val => val.toString()) ?? [];
+            timestampValueExpression: chartConfig.timestampValueExpression,
+          });
+          newValues = results[0] ? results[0].value : [];
+        } else {
+          // Drop this key's own filter from the WHERE clause so "Load more"
+          // can surface alternative values when the dropdown has self-restricted
+          // to the user's current selection (exact filter mode, with selections
+          // on this key). Other dimensions' filters and the free-text where
+          // stay applied so counts remain search-aware for unrelated fields.
+          // Strip under both bracket and dot forms since filterState may carry
+          // either depending on how the filter was authored.
+          const strippedFilterState: FilterState = { ...filterState };
+          delete strippedFilterState[key];
+          if (sqlKey !== key) delete strippedFilterState[sqlKey];
+          const newKeyVals = await metadata.getKeyValuesWithMVs({
+            chartConfig: {
+              ...chartConfig,
+              dateRange,
+              filters: filtersToQuery(strippedFilterState),
+            },
+            keys: [sqlKey],
+            limit: LOAD_MORE_LOAD_LIMIT,
+            disableRowLimit: true,
+            source,
+          });
+          newValues = newKeyVals[0].value?.map(val => val.toString()) ?? [];
+        }
         if (newValues.length > 0) {
           setExtraFacets(prev => ({
             ...prev,
@@ -1293,7 +1400,16 @@ const DBSearchPageFiltersComponent = ({
         });
       }
     },
-    [chartConfig, setExtraFacets, dateRange, metadata, source],
+    [
+      chartConfig,
+      setExtraFacets,
+      dateRange,
+      filterState,
+      metadata,
+      source,
+      useExactPipeline,
+      sourceTableConnection.metadataMVs,
+    ],
   );
 
   // Build the set of team-pinned fields for the Shared Filters section,
@@ -1558,7 +1674,10 @@ const DBSearchPageFiltersComponent = ({
               name={group.key}
               childFilters={group.children}
               selectedValues={group.children.reduce((acc, child) => {
-                acc[child.key] = filterState[child.key] ?? {
+                acc[child.key] = getFilterStateEntry(
+                  filterState,
+                  child.key,
+                ) ?? {
                   included: new Set(),
                   excluded: new Set(),
                 };
@@ -1600,14 +1719,15 @@ const DBSearchPageFiltersComponent = ({
               )}
               isDefaultExpanded={
                 forceExpanded ??
-                group.children.some(
-                  child =>
-                    (filterState[child.key] &&
-                      (filterState[child.key].included.size > 0 ||
-                        filterState[child.key].excluded.size > 0)) ||
+                group.children.some(child => {
+                  const entry = getFilterStateEntry(filterState, child.key);
+                  return (
+                    (entry &&
+                      (entry.included.size > 0 || entry.excluded.size > 0)) ||
                     isFieldPinned(child.key) ||
-                    isSharedFieldPinned(child.key),
-                )
+                    isSharedFieldPinned(child.key)
+                  );
+                })
               }
               chartConfig={chartConfig}
               isLive={isLive}
@@ -1625,7 +1745,7 @@ const DBSearchPageFiltersComponent = ({
               }))}
               optionsLoading={isFacetsLoading}
               selectedValues={
-                filterState[facet.key] ?? {
+                getFilterStateEntry(filterState, facet.key) ?? {
                   included: new Set(),
                   excluded: new Set(),
                 }
@@ -1645,16 +1765,19 @@ const DBSearchPageFiltersComponent = ({
               onLoadMore={loadMoreFilterValuesForKey}
               loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
               hasLoadedMore={Boolean(extraFacets[facet.key])}
-              isDefaultExpanded={
-                forceExpanded ??
-                (isFieldPrimary(tableMetadata, facet.key) ||
-                  isFieldPinned(facet.key) ||
-                  isSharedFieldPinned(facet.key) ||
-                  (filterState[facet.key] != null &&
-                    (filterState[facet.key].included.size > 0 ||
-                      filterState[facet.key].excluded.size > 0 ||
-                      filterState[facet.key].range != null)))
-              }
+              isDefaultExpanded={(() => {
+                const entry = getFilterStateEntry(filterState, facet.key);
+                return (
+                  forceExpanded ??
+                  (isFieldPrimary(tableMetadata, facet.key) ||
+                    isFieldPinned(facet.key) ||
+                    isSharedFieldPinned(facet.key) ||
+                    (entry != null &&
+                      (entry.included.size > 0 ||
+                        entry.excluded.size > 0 ||
+                        entry.range != null)))
+                );
+              })()}
               chartConfig={chartConfig}
               isLive={isLive}
               onRangeChange={range => setFilterRange(facet.key, range)}
@@ -1727,6 +1850,8 @@ const DBSearchPageFiltersComponent = ({
                 onResetPersonalPins={resetPersonalPins}
                 hasSharedPins={hasSharedPins}
                 onResetSharedFilters={resetSharedFilters}
+                showAllValues={showAllValues}
+                onShowAllValuesChange={setShowAllValues}
               />
               {onCollapse && (
                 <Tooltip label="Hide filters" position="bottom">

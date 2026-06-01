@@ -1,10 +1,7 @@
 import { memo, useMemo } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
-import {
-  BuilderChartConfigWithOptTimestamp,
-  RawSqlConfigWithDateRange,
-} from '@hyperdx/common-utils/dist/types';
+import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 import { Box, Flex, ScrollArea, Text } from '@mantine/core';
 
 import {
@@ -14,7 +11,7 @@ import {
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useResolvedNumberFormat, useSource } from '@/source';
+import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
 import { formatNumber, getColorProps, truncateMiddle } from '@/utils';
 
@@ -109,7 +106,7 @@ export const DBPieChart = ({
   toolbarSuffix,
   errorVariant,
 }: {
-  config: BuilderChartConfigWithOptTimestamp | RawSqlConfigWithDateRange;
+  config: ChartConfigWithOptTimestamp;
   title?: React.ReactNode;
   enabled?: boolean;
   queryKeyPrefix?: string;
@@ -122,13 +119,13 @@ export const DBPieChart = ({
     id: config.source,
   });
 
-  const resolvedNumberFormat = useResolvedNumberFormat(config);
-
   const queriedConfig = useMemo(() => {
     return isBuilderChartConfig(config)
       ? convertToPieChartConfig(config)
       : config;
   }, [config]);
+
+  const resolvedNumberFormat = useSingleSeriesNumberFormat(queriedConfig);
 
   const builderQueriedConfig = isBuilderChartConfig(queriedConfig)
     ? queriedConfig

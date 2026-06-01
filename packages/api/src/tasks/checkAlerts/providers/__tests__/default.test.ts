@@ -990,6 +990,44 @@ describe('DefaultAlertProvider', () => {
       expect(params.has('granularity')).toBe(true);
     });
 
+    it('should include highlightedTileId when tileId is provided', () => {
+      const result = provider.buildChartLink({
+        dashboardId: 'dashboard-123',
+        startTime: new Date('2023-03-17T22:13:03.103Z'),
+        endTime: new Date('2023-03-17T22:13:59.103Z'),
+        granularity: '5m',
+        tileId: 'tile-abc-789',
+      });
+
+      const url = new URL(result);
+      expect(url.searchParams.get('highlightedTileId')).toBe('tile-abc-789');
+    });
+
+    it('should omit highlightedTileId when tileId is undefined', () => {
+      const result = provider.buildChartLink({
+        dashboardId: 'dashboard-123',
+        startTime: new Date('2023-03-17T22:13:03.103Z'),
+        endTime: new Date('2023-03-17T22:13:59.103Z'),
+        granularity: '5m',
+      });
+
+      const url = new URL(result);
+      expect(url.searchParams.has('highlightedTileId')).toBe(false);
+    });
+
+    it('should omit highlightedTileId when tileId is an empty string', () => {
+      const result = provider.buildChartLink({
+        dashboardId: 'dashboard-123',
+        startTime: new Date('2023-03-17T22:13:03.103Z'),
+        endTime: new Date('2023-03-17T22:13:59.103Z'),
+        granularity: '5m',
+        tileId: '',
+      });
+
+      const url = new URL(result);
+      expect(url.searchParams.has('highlightedTileId')).toBe(false);
+    });
+
     it('should handle very close dates', () => {
       const startTime = new Date('2023-03-17T22:13:03.103Z');
       const endTime = new Date('2023-03-17T22:13:03.104Z'); // 1ms difference

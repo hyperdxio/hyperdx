@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
   ChartConfigWithDateRange,
   DisplayType,
   NumberFormat,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  Alert,
   Box,
   Button,
   Checkbox,
@@ -13,11 +14,13 @@ import {
   Drawer,
   Group,
   Stack,
+  Text,
 } from '@mantine/core';
 
 import { shouldFillNullsWithZero } from '@/ChartUtils';
 import { FormatTime } from '@/useFormatTime';
 
+import { ColorSwatchInput } from './ColorSwatchInput';
 import { CheckBoxControlled } from './InputControlled';
 import { DEFAULT_NUMBER_FORMAT, NumberFormatForm } from './NumberFormat';
 
@@ -27,6 +30,7 @@ export type ChartConfigDisplaySettings = Pick<
   | 'alignDateRangeToGranularity'
   | 'fillNulls'
   | 'compareToPreviousPeriod'
+  | 'color'
 > & {
   groupByColumnsOnLeft?: boolean;
 };
@@ -39,10 +43,11 @@ interface ChartDisplaySettingsDrawerProps {
   defaultNumberFormat?: NumberFormat;
   displayType: DisplayType;
   /** 'sql' for raw SQL chart configs; anything else is treated as a builder config. */
-  configType?: 'sql' | 'builder';
+  configType?: 'sql' | 'builder' | 'promql';
   previousDateRange?: [Date, Date];
   onChange: (settings: ChartConfigDisplaySettings) => void;
   onClose: () => void;
+  isPerSeriesNumberFormatAllowed?: boolean;
 }
 
 function applyDefaultSettings(
@@ -59,6 +64,7 @@ function applyDefaultSettings(
     fillNulls: settings.fillNulls ?? 0,
     compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
     groupByColumnsOnLeft: settings.groupByColumnsOnLeft ?? false,
+    color: settings.color,
   };
 }
 
@@ -71,6 +77,7 @@ export default function ChartDisplaySettingsDrawer({
   onChange,
   onClose,
   previousDateRange,
+  isPerSeriesNumberFormatAllowed = false,
 }: ChartDisplaySettingsDrawerProps) {
   const appliedDefaults = useMemo(
     () => applyDefaultSettings(settings, defaultNumberFormat),
@@ -110,6 +117,11 @@ export default function ChartDisplaySettingsDrawer({
   // configs let the user author whatever column order they want directly.
   const showGroupByColumnsOnLeft =
     displayType === DisplayType.Table && configType !== 'sql';
+
+  // Tile-level color is only meaningful for number tiles today.
+  // Per-series colors on line / bar / pie ship in a follow-up PR via
+  // `select[i].color`.
+  const showTileColor = displayType === DisplayType.Number;
 
   return (
     <Drawer
@@ -169,7 +181,41 @@ export default function ChartDisplaySettingsDrawer({
           </>
         )}
 
-        <NumberFormatForm control={control} setValue={setValue} />
+        {showTileColor && (
+          <>
+            <Box>
+              <Text size="xs" c="dimmed" mb={4}>
+                Color
+              </Text>
+              <Controller
+                control={control}
+                name="color"
+                render={({ field: { onChange, value } }) => (
+                  <ColorSwatchInput
+                    value={value}
+                    onChange={onChange}
+                    ariaLabel="Number tile color"
+                  />
+                )}
+              />
+            </Box>
+            <Divider />
+          </>
+        )}
+
+        <NumberFormatForm
+          control={control}
+          setValue={setValue}
+          disclaimer={
+            isPerSeriesNumberFormatAllowed ? (
+              <Alert variant="outline" color="yellow" p="xs">
+                <Text size="xs" m={0}>
+                  Format may be overridden on individual series.
+                </Text>
+              </Alert>
+            ) : undefined
+          }
+        />
         <Divider />
         <Group gap="xs" mt="xs" justify="space-between">
           <Button type="submit" variant="secondary" onClick={resetToDefaults}>

@@ -79,6 +79,8 @@ function formatExternalSource(source: SourceDocument) {
           return source.toJSON({ getters: true });
         case SourceKind.Session:
           return source.toJSON({ getters: true });
+        case SourceKind.Promql:
+          return source.toJSON({ getters: true });
         default:
           source satisfies never;
           return {};
@@ -353,6 +355,12 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log.
  *           nullable: true
  *           example: Body
+ *         useTextIndexForImplicitColumn:
+ *           type: string
+ *           enum: [auto, enabled, disabled]
+ *           description: Controls whether lucene rendering uses ClickHouse text indices via hasAllTokens() against the implicit column. "auto" detects a covering index at query time, "enabled" forces text index usage, "disabled" forces a LIKE/hasToken fallback.
+ *           nullable: true
+ *           example: auto
  *         highlightedTraceAttributeExpressions:
  *           type: array
  *           description: Expressions defining trace-level attributes which are displayed in the trace view for the selected trace.
@@ -520,6 +528,12 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log.
  *           nullable: true
  *           example: SpanName
+ *         useTextIndexForImplicitColumn:
+ *           type: string
+ *           enum: [auto, enabled, disabled]
+ *           description: Controls whether lucene rendering uses ClickHouse text indices via hasAllTokens() against the implicit column. "auto" detects a covering index at query time, "enabled" forces text index usage, "disabled" forces a LIKE/hasToken fallback.
+ *           nullable: true
+ *           example: auto
  *         highlightedTraceAttributeExpressions:
  *           type: array
  *           description: Expressions defining trace-level attributes which are displayed in the trace view for the selected trace.

@@ -33,7 +33,6 @@ export const HYPERDX_LOG_LEVEL = env.HYPERDX_LOG_LEVEL as string;
 export const IS_CI = NODE_ENV === 'test';
 export const IS_DEV = NODE_ENV === 'development';
 export const IS_PROD = NODE_ENV === 'production';
-export const MINER_API_URL = env.MINER_API_URL as string;
 export const MONGO_URI = env.MONGO_URI;
 export const OTEL_SERVICE_NAME = env.OTEL_SERVICE_NAME as string;
 export const PORT = Number.parseInt(env.PORT as string);
@@ -49,6 +48,8 @@ export const IS_LOCAL_APP_MODE =
 // Only used to bootstrap empty instances
 export const DEFAULT_CONNECTIONS = env.DEFAULT_CONNECTIONS;
 export const DEFAULT_SOURCES = env.DEFAULT_SOURCES;
+
+export const IS_PROMQL_ENABLED = env.ENABLE_PROMQL === 'true';
 
 // FOR CI ONLY
 export const CLICKHOUSE_HOST = env.CLICKHOUSE_HOST as string;

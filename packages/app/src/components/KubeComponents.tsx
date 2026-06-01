@@ -89,6 +89,9 @@ export const useV2LogBatch = <T = any,>(
           dateRange,
           timestampValueExpression: logSource.timestampValueExpression,
           implicitColumnExpression: logSource.implicitColumnExpression,
+          bodyExpression: logSource.bodyExpression,
+          useTextIndexForImplicitColumn:
+            logSource.useTextIndexForImplicitColumn,
           where,
           whereLanguage,
           connection: logSource.connection,

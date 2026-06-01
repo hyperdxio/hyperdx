@@ -168,11 +168,16 @@ function buildAliasWith(
 /**
  * Generate a RowWhereResult from a row, column map, and alias map.
  * Non-React equivalent of the useRowWhere hook's returned callback.
+ *
+ * When primaryKeyColumns is provided, only those columns are used in the
+ * WHERE clause. This avoids filtering on large columns like Body that
+ * trigger expensive index loading in ClickHouse.
  */
 export function getRowWhere(
   row: Record<string, unknown>,
   columnMap: Map<string, ColumnWithMeta>,
   aliasMap: Record<string, string | undefined> | undefined,
+  primaryKeyColumns?: Set<string>,
 ): RowWhereResult {
   // Filter out synthetic columns that aren't in the database schema
   const {
@@ -180,8 +185,15 @@ export function getRowWhere(
     [INTERNAL_ROW_FIELDS.ALIAS_WITH]: _aliasWith,
     ...dbRow
   } = row;
+
+  const filteredRow = primaryKeyColumns
+    ? Object.fromEntries(
+        Object.entries(dbRow).filter(([col]) => primaryKeyColumns.has(col)),
+      )
+    : dbRow;
+
   return {
-    where: processRowToWhereClause(dbRow, columnMap),
+    where: processRowToWhereClause(filteredRow, columnMap),
     aliasWith: buildAliasWith(aliasMap),
   };
 }

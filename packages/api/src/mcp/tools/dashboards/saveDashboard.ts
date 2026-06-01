@@ -1,26 +1,37 @@
+import type { DashboardContainer } from '@hyperdx/common-utils/dist/types';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { uniq } from 'lodash';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
-import Dashboard from '@/models/dashboard';
+import Dashboard, { IDashboard } from '@/models/dashboard';
 import {
   cleanupDashboardAlerts,
+  collectTileContainerRefIssues,
   convertExternalFiltersToInternal,
   convertExternalTilesToInternal,
   convertToExternalDashboard,
   createDashboardBodySchema,
+  fetchSourcesForValidation,
+  filterChangedHeatmapTiles,
+  getHeatmapTilesWithIncompatibleSources,
+  getInvalidOnClickSearchSources,
   getMissingConnections,
+  getMissingOnClickDashboards,
   getMissingSources,
   resolveSavedQueryLanguage,
   updateDashboardBodySchema,
 } from '@/routers/external-api/v2/utils/dashboards';
-import type { ExternalDashboardTileWithId } from '@/utils/zod';
+import type {
+  ExternalDashboardFilter,
+  ExternalDashboardFilterWithId,
+  ExternalDashboardTileWithId,
+} from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
-import { mcpTilesParam } from './schemas';
+import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
 
 export function registerSaveDashboard(
   server: McpServer,
@@ -49,12 +60,21 @@ export function registerSaveDashboard(
         name: z.string().describe('Dashboard name'),
         tiles: mcpTilesParam,
         tags: z.array(z.string()).optional().describe('Dashboard tags'),
+        containers: mcpContainersParam.optional(),
+        filters: mcpFiltersParam.optional(),
       }),
     },
     withToolTracing(
       'hyperdx_save_dashboard',
       context,
-      async ({ id: dashboardId, name, tiles: inputTiles, tags }) => {
+      async ({
+        id: dashboardId,
+        name,
+        tiles: inputTiles,
+        tags,
+        containers,
+        filters: inputFilters,
+      }) => {
         if (!dashboardId) {
           return createDashboard({
             teamId,
@@ -62,6 +82,8 @@ export function registerSaveDashboard(
             name,
             inputTiles,
             tags,
+            containers,
+            inputFilters,
           });
         }
         return updateDashboard({
@@ -71,6 +93,8 @@ export function registerSaveDashboard(
           name,
           inputTiles,
           tags,
+          containers,
+          inputFilters,
         });
       },
     ),
@@ -79,23 +103,67 @@ export function registerSaveDashboard(
 
 // ─── Create helper ────────────────────────────────────────────────────────────
 
+// The MCP input schema marks filter `id` as optional so the same shape
+// serves both create (no id, generated on save) and update (preserved
+// id) flows. The underlying body schemas are stricter: create uses
+// `externalDashboardFilterSchema` which rejects any `id` field, update
+// uses `externalDashboardFilterSchemaWithId` which requires it. Normalize
+// the input here so an LLM can copy a filter from the get-dashboard
+// response into a create payload (or omit the id on a new filter added
+// during update) without hitting a confusing strict-validation rejection.
+function stripFilterIds(
+  filters:
+    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
+    | undefined,
+): ExternalDashboardFilter[] | undefined {
+  if (!filters) return undefined;
+  return filters.map(filter => {
+    const { id: _id, ...rest } = filter as ExternalDashboardFilterWithId;
+    return rest as ExternalDashboardFilter;
+  });
+}
+
+function assignFilterIds(
+  filters:
+    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
+    | undefined,
+): ExternalDashboardFilterWithId[] | undefined {
+  if (!filters) return undefined;
+  return filters.map(filter => {
+    const withId = filter as ExternalDashboardFilterWithId;
+    if (typeof withId.id === 'string' && withId.id.length > 0) return withId;
+    return {
+      ...filter,
+      id: new mongoose.Types.ObjectId().toString(),
+    } as ExternalDashboardFilterWithId;
+  });
+}
+
 async function createDashboard({
   teamId,
   frontendUrl,
   name,
   inputTiles,
   tags,
+  containers,
+  inputFilters,
 }: {
   teamId: string;
   frontendUrl: string | undefined;
   name: string;
   inputTiles: unknown[];
   tags: string[] | undefined;
+  containers: DashboardContainer[] | undefined;
+  inputFilters:
+    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
+    | undefined;
 }) {
   const parsed = createDashboardBodySchema.safeParse({
     name,
     tiles: inputTiles,
     tags,
+    containers,
+    filters: stripFilterIds(inputFilters),
   });
   if (!parsed.success) {
     return {
@@ -109,13 +177,44 @@ async function createDashboard({
     };
   }
 
-  const { tiles, filters } = parsed.data;
+  const { tiles, filters, containers: parsedContainers } = parsed.data;
   const tilesWithId = tiles as ExternalDashboardTileWithId[];
 
-  const [missingSources, missingConnections] = await Promise.all([
-    getMissingSources(teamId, tilesWithId, filters),
+  // Mirror the v2 router POST handler: structural container checks ran
+  // through the body schema; per-tile containerId/tabId resolution runs
+  // against the request body's containers (no existing dashboard to fall
+  // back to on create).
+  const tileRefIssues = collectTileContainerRefIssues(
+    parsedContainers ?? [],
+    tilesWithId,
+  );
+  if (tileRefIssues.length > 0) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Validation error: ${tileRefIssues.join('; ')}`,
+        },
+      ],
+    };
+  }
+
+  // Hoist the source fetch so missing-source and heatmap-source-kind
+  // checks share a single DB round-trip, mirroring the REST POST path.
+  const [
+    sources,
+    missingConnections,
+    missingOnClickDashboards,
+    invalidOnClickSearchSources,
+  ] = await Promise.all([
+    fetchSourcesForValidation(teamId),
     getMissingConnections(teamId, tilesWithId),
+    getMissingOnClickDashboards(teamId, tilesWithId),
+    getInvalidOnClickSearchSources(teamId, tilesWithId),
   ]);
+
+  const missingSources = getMissingSources(sources, tilesWithId, filters);
   if (missingSources.length > 0) {
     return {
       isError: true,
@@ -134,6 +233,50 @@ async function createDashboard({
         {
           type: 'text' as const,
           text: `Could not find connection IDs: ${missingConnections.join(', ')}`,
+        },
+      ],
+    };
+  }
+
+  // Source-kind gate for heatmap tiles. Mirrors the REST POST path so
+  // an MCP-issued create cannot persist a heatmap that the REST PUT
+  // would reject with 400 on the next round-trip.
+  const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
+    sources,
+    tilesWithId,
+  );
+  if (heatmapNonTraceSources.length > 0) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`,
+        },
+      ],
+    };
+  }
+
+  // Validate that a table tile's row-click will not land on a
+  // missing dashboard or a non-log/trace source.
+  if (missingOnClickDashboards.length > 0) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(', ')}`,
+        },
+      ],
+    };
+  }
+  if (invalidOnClickSearchSources.length > 0) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `The following onClick search source IDs are not log or trace sources: ${invalidOnClickSearchSources.join(', ')}`,
         },
       ],
     };
@@ -155,6 +298,7 @@ async function createDashboard({
     savedQueryLanguage: normalizedSavedQueryLanguage,
     savedFilterValues: parsed.data.savedFilterValues,
     team: teamId,
+    ...(parsedContainers !== undefined ? { containers: parsedContainers } : {}),
   }).save();
 
   return {
@@ -167,7 +311,7 @@ async function createDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${newDashboard._id}` }
               : {}),
-            hint: 'Use hyperdx_query to test individual tile queries before viewing the dashboard.',
+            hint: 'Use hyperdx_query_tile to test individual tile queries before viewing the dashboard.',
           },
           null,
           2,
@@ -186,6 +330,8 @@ async function updateDashboard({
   name,
   inputTiles,
   tags,
+  containers,
+  inputFilters,
 }: {
   teamId: string;
   frontendUrl: string | undefined;
@@ -193,6 +339,10 @@ async function updateDashboard({
   name: string;
   inputTiles: unknown[];
   tags: string[] | undefined;
+  containers: DashboardContainer[] | undefined;
+  inputFilters:
+    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
+    | undefined;
 }) {
   if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
     return {
@@ -205,6 +355,8 @@ async function updateDashboard({
     name,
     tiles: inputTiles,
     tags,
+    containers,
+    filters: assignFilterIds(inputFilters),
   });
   if (!parsed.success) {
     return {
@@ -218,13 +370,34 @@ async function updateDashboard({
     };
   }
 
-  const { tiles, filters } = parsed.data;
+  const { tiles, filters, containers: parsedContainers } = parsed.data;
   const tilesWithId = tiles as ExternalDashboardTileWithId[];
 
-  const [missingSources, missingConnections] = await Promise.all([
-    getMissingSources(teamId, tilesWithId, filters),
+  // Hoist sources, connections, and existing-dashboard fetches into a
+  // single Promise.all so the source list is shared across helpers and
+  // the heatmap source-kind check can scope itself to tiles whose
+  // sourceId/displayType actually changed in this request, matching
+  // the REST PUT path. `containers` is in the projection so the
+  // container/tab ref check can fall back to the persisted containers
+  // when the payload omits them.
+  const [
+    sources,
+    missingConnections,
+    missingOnClickDashboards,
+    invalidOnClickSearchSources,
+    existingDashboard,
+  ] = await Promise.all([
+    fetchSourcesForValidation(teamId),
     getMissingConnections(teamId, tilesWithId),
+    getMissingOnClickDashboards(teamId, tilesWithId),
+    getInvalidOnClickSearchSources(teamId, tilesWithId),
+    Dashboard.findOne(
+      { _id: dashboardId, team: teamId },
+      { tiles: 1, filters: 1, containers: 1 },
+    ).lean(),
   ]);
+
+  const missingSources = getMissingSources(sources, tilesWithId, filters);
   if (missingSources.length > 0) {
     return {
       isError: true,
@@ -248,15 +421,77 @@ async function updateDashboard({
     };
   }
 
-  const existingDashboard = await Dashboard.findOne(
-    { _id: dashboardId, team: teamId },
-    { tiles: 1, filters: 1 },
-  ).lean();
-
   if (!existingDashboard) {
     return {
       isError: true,
       content: [{ type: 'text' as const, text: 'Dashboard not found' }],
+    };
+  }
+
+  // Mirror the v2 router PUT handler: resolve tile container/tab refs
+  // against an effective container set so a payload that omits the
+  // `containers` field falls back to the persisted dashboard rather
+  // than an empty fallback. Otherwise a tile pointing at a preserved
+  // container would be rejected with "Tile references unknown
+  // containerId".
+  const effectiveContainers =
+    parsedContainers ?? existingDashboard.containers ?? [];
+  const tileRefIssues = collectTileContainerRefIssues(
+    effectiveContainers,
+    tilesWithId,
+  );
+  if (tileRefIssues.length > 0) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Validation error: ${tileRefIssues.join('; ')}`,
+        },
+      ],
+    };
+  }
+
+  // Source-kind gate, scoped to heatmap tiles whose source or
+  // displayType changed in this request. Mirrors the REST PUT path.
+  const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
+    sources,
+    filterChangedHeatmapTiles(tilesWithId, existingDashboard.tiles ?? []),
+  );
+  if (heatmapNonTraceSources.length > 0) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`,
+        },
+      ],
+    };
+  }
+
+  // Validate that a table tile's row-click will not land on a
+  // missing dashboard or a non-log/trace source.
+  if (missingOnClickDashboards.length > 0) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(', ')}`,
+        },
+      ],
+    };
+  }
+  if (invalidOnClickSearchSources.length > 0) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `The following onClick search source IDs are not log or trace sources: ${invalidOnClickSearchSources.join(', ')}`,
+        },
+      ],
     };
   }
 
@@ -272,7 +507,11 @@ async function updateDashboard({
     existingTileIds,
   );
 
-  const setPayload: Record<string, unknown> = {
+  // Typed as `Partial<IDashboard>` (the canonical Mongo doc shape) so
+  // misnamed or wrong-shape fields fail at compile time, mirroring the
+  // v2 PUT handler's tightening at
+  // `routers/external-api/v2/dashboards.ts:2015`.
+  const setPayload: Partial<IDashboard> = {
     name,
     tiles: internalTiles,
     tags: tags && uniq(tags),
@@ -295,6 +534,10 @@ async function updateDashboard({
 
   if (parsed.data.savedFilterValues !== undefined) {
     setPayload.savedFilterValues = parsed.data.savedFilterValues;
+  }
+
+  if (parsedContainers !== undefined) {
+    setPayload.containers = parsedContainers;
   }
 
   const updatedDashboard = await Dashboard.findOneAndUpdate(
@@ -327,7 +570,7 @@ async function updateDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${updatedDashboard._id}` }
               : {}),
-            hint: 'Use hyperdx_query to test individual tile queries before viewing the dashboard.',
+            hint: 'Use hyperdx_query_tile to test individual tile queries before viewing the dashboard.',
           },
           null,
           2,

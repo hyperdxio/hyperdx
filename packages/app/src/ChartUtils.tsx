@@ -17,6 +17,10 @@ import {
   getAlignedDateRange,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  type FilterState,
+  filtersToQuery,
+} from '@hyperdx/common-utils/dist/filters';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunction as AggFnV2,
@@ -60,6 +64,7 @@ export const AGG_FNS = [
     isAttributable: false,
   },
   { value: 'any' as const, label: 'Any' },
+  { value: 'increase' as const, label: 'Increase', isAttributable: false },
   { value: 'none' as const, label: 'Custom' },
 ];
 
@@ -116,17 +121,26 @@ export function convertToTimeChartConfig(
     granularity,
   );
 
+  // When the range is bucket-aligned, the end is the start of the next bucket,
+  // so end-exclusive is required to avoid double-counting boundary events.
+  // When alignment is off the end is the user's exact selection — fall back to
+  // the caller's setting, if there is one.
+  const isAligned = config.alignDateRangeToGranularity !== false;
+  const dateRangeEndInclusive = isAligned
+    ? false
+    : (config.dateRangeEndInclusive ?? false);
+
   return isBuilderChartConfig(config)
     ? {
         ...config,
         dateRange,
-        dateRangeEndInclusive: false,
+        dateRangeEndInclusive,
         granularity,
         limit: { limit: 100000 },
       }
     : {
         ...config,
-        dateRangeEndInclusive: false,
+        dateRangeEndInclusive,
         dateRange,
         granularity,
       };
@@ -454,6 +468,8 @@ export interface LineData {
   currentPeriodKey: string;
   previousPeriodKey: string;
   displayName: string;
+  /** The original result column name this series' values were pulled from. */
+  valueColumnName: string;
   color: string;
   isDashed?: boolean;
 }
@@ -580,6 +596,7 @@ function addResponseToFormattedData({
         currentPeriodKey,
         previousPeriodKey,
         displayName: keyName,
+        valueColumnName: valueColumn.name,
         color,
         isDashed: isPreviousPeriod,
       };
@@ -910,13 +927,19 @@ export function buildEventsSearchUrl({
 
   // Add group-by column filters
   if (groupFilters && groupFilters.length > 0) {
-    groupFilters.forEach(({ column, value }) => {
+    const filterState: FilterState = {};
+    for (const { column, value } of groupFilters) {
       if (column && value != null) {
-        // Can't use SQLString.escape here because the search endpoint relies on exist match for UI
-        const condition = `${column} IN (${SqlString.escape(value)})`;
-        additionalFilters.push({ type: 'sql', condition });
+        if (!filterState[column]) {
+          filterState[column] = {
+            included: new Set(),
+            excluded: new Set(),
+          };
+        }
+        filterState[column].included.add(String(value));
       }
-    });
+    }
+    additionalFilters.push(...filtersToQuery(filterState));
   }
 
   // Add Y-axis value range filter (±threshold) for charts

@@ -214,15 +214,19 @@ export const getServer = () => new MockServer();
 export const getAgent = (server: MockServer) =>
   request.agent(server.getHttpServer());
 
-export const getLoggedInAgent = async (server: MockServer) => {
+export const getLoggedInAgent = async (
+  server: MockServer,
+  credentials?: { email: string; password: string },
+) => {
   const agent = getAgent(server);
+  const creds = credentials ?? MOCK_USER;
 
   await agent
     .post('/register/password')
-    .send({ ...MOCK_USER, confirmPassword: MOCK_USER.password })
+    .send({ ...creds, confirmPassword: creds.password })
     .expect(200);
 
-  const user = await findUserByEmail(MOCK_USER.email);
+  const user = await findUserByEmail(creds.email);
   const team = await getTeam(user?.team as any);
 
   if (team === null || user === null) {
@@ -231,7 +235,7 @@ export const getLoggedInAgent = async (server: MockServer) => {
 
   // login app — 303 See Other so the browser follows the redirect with GET
   // (see redirectToDashboard in middleware/auth.ts).
-  await agent.post('/login/password').send(MOCK_USER).expect(303);
+  await agent.post('/login/password').send(creds).expect(303);
 
   return {
     agent,

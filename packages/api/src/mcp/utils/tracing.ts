@@ -32,9 +32,7 @@ export function withToolTracing<TArgs>(
 
       span.setAttribute('mcp.tool.name', toolName);
       span.setAttribute('mcp.team.id', context.teamId);
-      if (context.userId) {
-        span.setAttribute('mcp.user.id', context.userId);
-      }
+      span.setAttribute('mcp.user.id', context.userId);
 
       logger.info(logContext, `MCP tool invoked: ${toolName}`);
 

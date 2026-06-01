@@ -2,7 +2,13 @@ import React, { useContext, useEffect, useRef, useState } from 'react';
 import cx from 'classnames';
 import { Popover } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { notifications } from '@mantine/notifications';
 import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
+
+import {
+  CLIPBOARD_ERROR_MESSAGE,
+  copyTextToClipboard,
+} from '@/utils/clipboard';
 
 import { RowSidePanelContext } from '../DBRowSidePanel';
 
@@ -83,16 +89,18 @@ const DBRowTableFieldWithPopover = ({
   };
 
   const copyFieldValue = async () => {
-    try {
-      const value =
-        typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
-      await navigator.clipboard.writeText(value);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
-      // Optionally show an error toast notification to the user
+    const value =
+      typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
+    const copied = await copyTextToClipboard(value);
+    if (!copied) {
+      notifications.show({
+        color: 'red',
+        message: CLIPBOARD_ERROR_MESSAGE,
+      });
+      return;
     }
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
   };
 
   const addFilter = () => {

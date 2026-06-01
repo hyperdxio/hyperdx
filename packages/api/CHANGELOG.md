@@ -1,5 +1,418 @@
 # @hyperdx/api
 
+## 2.28.0
+
+### Minor Changes
+
+- 3123db53: feat: experimental promql support
+- cb6a74ce: fix(otel-collector): allow `CUSTOM_OTELCOL_CONFIG_FILE` to override the
+  default `memory_limiter`, `batch` (and other pipeline processors)
+
+  Pipeline `processors:` lists used to be defined in the OpAMP remote config
+  sent by the API (`packages/api/src/opamp/controllers/opampController.ts`).
+  That meant the remote config overwrote any pipeline `processors:` list a
+  user supplied via `CUSTOM_OTELCOL_CONFIG_FILE`, making it impossible to
+  substitute the default `memory_limiter` with one configured for
+  `limit_percentage`/`spike_limit_percentage` mode (#2145).
+
+  The pipeline `processors:` lists now live in the bootstrap config
+  (`docker/otel-collector/config.yaml` for supervisor mode, and
+  `docker/otel-collector/config.standalone.yaml` for standalone mode). The
+  OpAMP remote config no longer sets `processors:` on these pipelines, so the
+  bootstrap+custom merge wins. Receivers and exporters are still configured
+  dynamically by the OpAMP controller.
+
+  To override `memory_limiter`, define a new processor with a different name
+  in `CUSTOM_OTELCOL_CONFIG_FILE` and swap the pipeline `processors:` lists:
+
+  ```yaml
+  processors:
+    memory_limiter/custom:
+      check_interval: 5s
+      limit_percentage: 75
+      spike_limit_percentage: 25
+
+  service:
+    pipelines:
+      traces:
+        processors: [memory_limiter/custom, batch]
+      metrics:
+        processors: [memory_limiter/custom, batch]
+      logs/out-default:
+        processors: [memory_limiter/custom, transform, batch]
+      logs/out-rrweb:
+        processors: [memory_limiter/custom, batch]
+  ```
+
+  The default `memory_limiter` block defined in the base config is left in
+  the merged config but is no longer referenced by any pipeline; the
+  collector only instantiates `memory_limiter/custom` at runtime.
+
+  The same swap pattern works for the `batch` processor (and any other base
+  processor). For example, to lower the export timeout on a specific
+  pipeline:
+
+  ```yaml
+  processors:
+    batch/lowlatency:
+      send_batch_size: 1000
+      send_batch_max_size: 2000
+      timeout: 500ms
+
+  service:
+    pipelines:
+      traces:
+        processors: [memory_limiter, batch/lowlatency]
+      logs/out-default:
+        processors: [memory_limiter, transform, batch/lowlatency]
+  ```
+
+  Lighter-weight env-var tuning is also available for the default `batch`
+  processor without writing a custom config file:
+  `HYPERDX_OTEL_BATCH_SEND_BATCH_SIZE`,
+  `HYPERDX_OTEL_BATCH_SEND_BATCH_MAX_SIZE`, and `HYPERDX_OTEL_BATCH_TIMEOUT`.
+  See the README for details.
+
+### Patch Changes
+
+- d1342121: feat(mcp): add hyperdx_describe_source tool and slim list_sources to catalog
+
+  Add `hyperdx_describe_source` — returns full column schema, map attribute
+  keys, and sampled low-cardinality values (SeverityText, StatusCode,
+  ServiceName, etc.) for a single source. Uses existing rollup tables for
+  performant value sampling.
+
+  Slim `hyperdx_list_sources` to a lightweight MongoDB-only catalog (no
+  ClickHouse queries). Source tools moved to a dedicated `tools/sources/`
+  module.
+
+  All query tool descriptions and prompts updated to reference the two-step
+  `list_sources → describe_source` discovery workflow.
+
+- a945fa07: feat(mcp): add hyperdx_event_deltas tool
+
+  Add `hyperdx_event_deltas` MCP tool that compares two row groups (target
+  vs baseline) and ranks properties by how much their value distributions
+  differ. Same algorithm as the in-app Event Deltas view.
+
+  Extract shared event-deltas algorithm from the UI into
+  `@hyperdx/common-utils/src/core/eventDeltas.ts` so it can be used by
+  both the frontend and the MCP server.
+
+- e1c4381b: fix: bare-text Lucene search now falls back from Implicit Column Expression to
+  Body Expression on log sources
+
+  Previously, a log source configured with `bodyExpression` set but
+  `implicitColumnExpression` unset threw `Can not search bare text without an
+implicit column set.` on every bare-token search, even though the row panel
+  rendered correctly using the body column.
+
+  Search now reuses the same one-way fallback that `getEventBody` already
+  implements: when no Implicit Column Expression is set, bare-text search runs
+  against the configured Body Expression. Trace sources are unchanged
+  (`spanNameExpression` is not a body equivalent for trace search).
+
+- c3a8aa55: feat(mcp): rewrite dashboard authoring prompts and expose `filters` on `hyperdx_save_dashboard`
+
+  The `create_dashboard` prompt now leads with a design checklist (alias every select item including number tiles, schema gap on `groupBy` so tables don't render `arrayElement(SpanAttributes, '...')` as the column header, RED columns with aliases, per-series `numberFormat` for durations, `groupByColumnsOnLeft` for inventory tables, dashboard-level filters instead of per-tile `where` literals, one-metric-per-tile for metric sources, required containers at five or more tiles, post-save validation of every tile, no title-recap markdown). The wall-of-JSON canonical example is gone; the `dashboard_examples` patterns carry the concrete shapes.
+
+  The `dashboard_examples` set is replaced with four verified patterns (`service_inventory`, `service_detail`, `log_analytics`, `backend_dependencies`) plus the existing `infrastructure_sql`. Each non-SQL example leads with a "When to use" header and a "Why this shape" note so the model picks by intent, not by surface keyword match. Examples were built and rendered on a live dev stack before landing.
+
+  The `query_guide` prompt gains a `DASHBOARD FILTERS` section that documents the `filters: [{ type, name, expression, sourceId, where?, whereLanguage? }]` shape, a `NUMBER FORMAT` section that explains the per-series vs. chart-level distinction, and a `PER-TILE TYPE CONSTRAINTS` note that metric tiles take exactly one select item per tile.
+
+  `hyperdx_save_dashboard` now accepts `filters` on its input schema, reusing `externalDashboardFilterSchemaWithId` so the MCP and REST surfaces stay in lockstep and the existing `convertExternalFiltersToInternal` helper handles the conversion without translation. Filters round-trip through create, get, and update.
+
+  Voice pass: every prompt string is now em-dash-free.
+
+- a4b9fa85: feat(mcp): improve MCP tool quality — error hints, shared helpers, better messages
+
+  Extract duplicated ClickHouse error handling into a shared helper with
+  pattern-matched error hints (DateTime64 casting, AS alias quoting, response
+  size limits) so agents get actionable guidance on common failures. Add
+  reusable mergeWhereIntoSelectItems() helper for consistent top-level where
+  injection. Improve source/connection-not-found messages to suggest calling
+  hyperdx_list_sources.
+
+- 07911fd2: feat(mcp): add trace waterfall and breakdown tools
+
+  Add `hyperdx_trace_waterfall` — fetch all spans in a single trace as a
+  parent/child waterfall tree with optional correlated logs. Supports
+  auto-pick by slowest, first error, or most recent trace.
+
+  Add `hyperdx_trace_top_time_consuming_operations` — aggregate breakdown
+  of child operations consuming the most cumulative time across traces
+  matching a parent-span filter. Same algorithm as the in-app "Top Most
+  Time Consuming Operations" chart.
+
+- 04a5a925: feat: Add source scoping to dashboard filters
+- 8810ff0f: feat: Add option for force-enabling/disabling text index support
+- a8eb27dc: feat: filters reflect all values, not search aware; filters use metadata MVs if available
+- Updated dependencies [3123db53]
+- Updated dependencies [dcab1cb6]
+- Updated dependencies [a945fa07]
+- Updated dependencies [1df7583d]
+- Updated dependencies [6a5ac3e3]
+- Updated dependencies [e1c4381b]
+- Updated dependencies [b30dfe0a]
+- Updated dependencies [dcb85826]
+- Updated dependencies [b5148c85]
+- Updated dependencies [04a5a925]
+- Updated dependencies [8810ff0f]
+- Updated dependencies [a8eb27dc]
+  - @hyperdx/common-utils@0.20.0
+
+## 2.27.0
+
+### Minor Changes
+
+- fbe5a9a2: feat: Add POST /api/v2/search endpoint for querying raw log and trace rows programmatically
+
+### Patch Changes
+
+- f5ae0062: refactor(mcp): split hyperdx_query into 5 display-type-specific tools
+
+  Replace the monolithic `hyperdx_query` tool with five narrow tools:
+
+  - `hyperdx_timeseries` (line + stacked_bar)
+  - `hyperdx_table` (table + number + pie, with shape auto-upgrade)
+  - `hyperdx_search` (raw event browsing)
+  - `hyperdx_event_patterns` (Drain pattern mining)
+  - `hyperdx_sql` (raw ClickHouse SQL)
+
+  Each tool's schema contains only its relevant parameters — no displayType
+  discriminator, no fields from other modes, no conditional required fields.
+  `hyperdx_query` is removed from the tool surface.
+
+## 2.26.0
+
+### Minor Changes
+
+- 4c2c3f37: feat: add file-based dashboard provisioner that watches a directory for JSON files and upserts dashboards into MongoDB
+- 46fe675b: feat(mcp): add alert, saved search, and webhook MCP tools
+
+  Add five new MCP tools for managing alerts, saved searches, and webhooks:
+
+  - `hyperdx_get_alert` / `hyperdx_save_alert` for listing, creating, and updating alerts
+  - `hyperdx_get_webhook` for listing webhook destinations
+  - `hyperdx_get_saved_search` / `hyperdx_save_saved_search` for listing, creating, and updating saved searches
+
+  Also makes `McpContext.userId` required, rejecting MCP requests without a user ID.
+
+### Patch Changes
+
+- 7386f14b: Small improvements to MCP Server (Alert Names, Event Pattern Docs, Saved Search Improvements)
+- 6c55978b: feat(alerts): include tileId in Slack alert URLs
+- 46c1459b: refactor(api/alerts): route runtime values through the Handlebars view
+- 40336e9e: feat: Add dashboard table onClick to MCP schemas and prompts
+- Updated dependencies [84117a7a]
+- Updated dependencies [51abe987]
+  - @hyperdx/common-utils@0.19.1
+
+## 2.25.0
+
+### Minor Changes
+
+- eb16df44: Add ability to disable data sources with improved UX
+- 143f7a79: feat: Add per-series number formats
+- f6a1d021: Add support for event patterns in MCP server, reduce code duplication
+- 4d22d4ba: feat(api): support heatmap tiles in external dashboards API
+
+  Heatmap is the only builder-mode display type that did not round-trip
+  through the external dashboards API. The serializer dropped it into the
+  "unsupported" fall-through, so creating, fetching, and updating heatmap
+  tiles via `/api/v2/dashboards` lost the config. Heatmap now serializes
+  and parses on both directions, with `valueExpression`,
+  `countExpression`, `heatmapScaleType`, and `numberFormat` preserved
+  across save/get. The heatmap select item does not expose `aggFn` or
+  `alias`: the chart-level `displayType: "heatmap"` is the discriminator,
+  the heatmap aggregation function is fixed internally, and
+  `HeatmapSeriesEditor` does not render an alias input. Raw-SQL heatmap
+  remains unsupported (heatmap rendering requires builder mode).
+
+- 7d7269a7: feat: introducing rollup and source support for full autocomplete
+- 4cc5eb3f: Add support for increase aggFn on sum counter metrics and rewrite sum metric rate computation to fix correctness issues.
+- 41395ca7: External Dashboards API now round-trips the new dashboard organization
+  layer added in #2015: `containers` on the dashboard, optional `tabs` on each
+  container, and `containerId` / `tabId` on each tile. Create, get, list, and
+  update all preserve the structure. The body validates that tile
+  `containerId` references resolve to a real container, that tile `tabId`
+  references resolve to a tab inside that container, and that tab ids are
+  unique within a container. Container id uniqueness is already enforced by
+  the shared schema. Dashboards saved without `containers` round-trip
+  unchanged.
+- 41eefec7: MCP `hyperdx_save_dashboard` now accepts the dashboard organization layer
+  added in #2201: an optional `containers` array on the dashboard, plus
+  `containerId` and `tabId` on each tile. The same five cross-field rules
+  the external API enforces fire on the MCP path: container ids unique,
+  tab ids unique within a container, tile.containerId resolves, tile.tabId
+  resolves to a tab on that container, and tile.tabId requires
+  tile.containerId. The MCP `buildQueryGuidePrompt` documents the new
+  shape under a CONTAINERS AND TABS section.
+- d3a5a575: feat: add optional note field to alerts
+
+  Adds a freeform note/reason field to alerts that supports markdown formatting,
+  allowing on-call responders to document why an alert exists, threshold decision
+  history, and links to runbooks.
+
+  - New `note` field on the Alert model (optional, max 4096 chars, supports
+    markdown)
+  - Note textarea in both the saved-search alert modal and the dashboard tile
+    alert editor
+  - Notes displayed on the /alerts page in a collapsible section (hidden by
+    default) with full markdown rendering
+  - Alert tabs in the saved-search modal show a red bell firing indicator
+    alongside the webhook channel icon, matching the AlertStatusIcon pattern
+    used on dashboard tiles and the app nav
+  - The Alerts button on the search page shows a red bell icon when at least one
+    alert in the saved search is firing
+  - External API v2 updated with `note` field in OpenAPI docs
+
+- 5c6da48c: refactor(alerts/search): consolidate the saved-search → chart-config builder
+  into a single shared helper, `buildSearchChartConfig`, in
+  `@hyperdx/common-utils/core/searchChartConfig.ts`. The app search page, the
+  alert preview chart, and the scheduled alert task's `SAVED_SEARCH` branch now
+  all route through it, so `tableFilterExpression`, `implicitColumnExpression`,
+  sample-weight expressions, SELECT precedence, and the `count()` default
+  SELECT shape are applied identically by construction.
+
+  Behavior fixes that fall out of consolidation:
+
+  - The alert task and the alert preview now apply `source.tableFilterExpression`
+    on Log sources, matching what the search page already did.
+  - A latent bug in the search-page builder is fixed: a non-null `filters`
+    array no longer silently drops the `tableFilterExpression` SQL filter via
+    spread-overwrite.
+
+- a50db927: fix(security): redact sensitive fields from internal webhook API responses
+
+  The `GET /api/webhooks` endpoint now masks webhook URLs (`<origin>/****`) and
+  redacts header and query parameter values (keys preserved, values replaced with
+  `****`), preventing team members from retrieving secrets configured by others.
+
+  The `PUT` handler merges redacted markers back to stored values so editing a
+  webhook without re-entering secrets preserves the originals. Changing the URL
+  while preserving masked secrets is rejected to prevent exfiltration.
+
+  `GET /api/webhooks`, `POST /api/webhooks`, and `PUT /api/webhooks/:id`
+  responses now return masked values for `url`, `headers`, and `queryParams`
+  instead of plaintext secrets.
+
+### Patch Changes
+
+- fecbfff7: fix: flatten MCP query tool schema so SDK serializes inputSchema correctly
+- 41395ca7: External Dashboards API: tighten validation around container/tab references
+  on the v2 dashboards routes.
+
+  - Cap tile `containerId` and `tabId` at 256 characters to mirror the
+    internal `DashboardContainer` schema and the `DASHBOARD_CONTAINER_ID_MAX`
+    constant, now exported from `@hyperdx/common-utils`.
+  - Cap a single dashboard payload at 500 tiles via the new
+    `DASHBOARD_MAX_TILES` constant to keep one request from pushing tens of
+    MB into Mongo.
+  - Treat empty-string `containerId` / `tabId` on legacy Mongo docs as
+    absent on read, so dashboards predating the containers feature still
+    round-trip through the external schema's `min(1)` cap.
+  - Extract the cross-tile container/tab consistency check into a shared
+    `validateDashboardContainersConsistency` helper so the canonical
+    schema and the request body schema agree on what a valid payload is.
+  - OpenAPI now publishes the matching `maxLength` and `maxItems` bounds
+    on `DashboardContainer.id`, `DashboardContainerTab.id`, the
+    `containers` array, and the request `tiles` array.
+
+- 41395ca7: External Dashboards API: fix `PUT` round-trip when the request body omits
+  `containers`, and self-heal orphan `containerId` / `tabId` references on
+  read.
+
+  - Move tile-level container/tab reference resolution out of the request
+    body schema and into the `POST` and `PUT` handlers, so a `PUT` whose
+    body omits `containers` validates tile refs against the existing
+    dashboard's containers (the documented "preserve on omit" branch)
+    rather than against an empty fallback. Without this, a `PUT` that
+    changes only `tiles` while keeping a tile homed in a real preserved
+    container was rejected with `Tile references unknown containerId`.
+  - Split the shared validation helper into a structure-only pass
+    (`validateDashboardContainersStructure`) and a tile-ref pass
+    (`validateDashboardTileContainerRefs`) on
+    `@hyperdx/common-utils`. The composite
+    `validateDashboardContainersConsistency` now wraps both, so existing
+    callers keep their current behavior.
+  - On read, drop `tile.containerId` / `tile.tabId` when the ref does not
+    resolve to a container (or tab) in the same dashboard. A pre-existing
+    doc with an orphan ref now round-trips on `GET` as if the ref were
+    absent, so the next `PUT` validates instead of failing with
+    `Tile references unknown containerId`. Each drop is logged with the
+    dashboard id, tile id, and the offending ref.
+  - Document in the OpenAPI `PUT /api/v2/dashboards/{id}` description that
+    the endpoint does not support optimistic concurrency. Concurrent PUTs
+    may silently overwrite each other; clients should serialize edits to
+    a given dashboard.
+
+- 41395ca7: Internal refactor: move `validateDashboardContainersStructure` and
+  `validateDashboardTileContainerRefs` (and their two helper types) out
+  of `@hyperdx/common-utils/dist/types` into a new
+  `@hyperdx/common-utils/dist/dashboardValidation` module. The `types`
+  file now only contains types and type guards, matching the rest of the
+  codebase. The previously exported `validateDashboardContainersConsistency`
+  composite was only used by its own unit test and is dropped; production
+  code in the v2 dashboards router uses the two underlying helpers
+  directly. No behaviour change for callers of the external API.
+- 29586e7b: Enable end-to-end PR testing on Vercel previews by inlining the Express API into the Next.js `/api/[...all]` serverless function (opt-in via `HDX_PREVIEW_INLINE_API=true`). Production deploys (Docker fullstack image, standalone Next output) are unchanged — they keep proxying `/api/*` to the separately-deployed API service.
+
+  Also realigns `clickhouseProxy.ts` with the upstream EE implementation (modulo CHC and RBAC code paths): query params are now parsed from the request URL via `validateAndSanitizePath()` + `URL.searchParams` instead of `req.query`, which fixes a `Setting all is neither a builtin setting nor started with the prefix 'custom_'` regression on Vercel previews where Next.js's `[...all]` catch-all route polluted `req.query`. Adds path-injection hardening, POST-only enforcement, and exposes `X-ClickHouse-Mixed-Response` / `X-ClickHouse-Service-Unavailable` response headers for the browser ClickHouse client.
+
+- 1c73d0c4: Add groupByColumnsOnLeft to MCP dashboard table tile schema
+- 694e3c92: Increase MCP rate limit to 10 req/s
+- eb7fdb4b: fix(api): tighten redactSecrets after deep-review on #2188
+
+  Several security/correctness gaps surfaced by deep-review across
+  two passes on the original redactSecrets PR.
+
+  - The `bearer` value alphabet is now `\S+`. Real-world payloads
+    carry plenty of opaque non-JWT bearers with `:`, `%`, or quote
+    chars in them, and any alphabet narrower than `\S+` leaks the
+    suffix past `[REDACTED]`. RFC 6750's b64token alphabet is a
+    strict subset of `\S+`. (Same fix subsumes the earlier change
+    that added `_` to cover JWT signatures.)
+  - The `basic-auth-url` scheme allowlist now covers
+    http(s) / ws(s) / ftp / sftp / ssh / postgres(ql) / mysql /
+    mariadb / mongodb(+srv) / mssql / sqlserver / snowflake /
+    redis(s) / amqp(s) / kafka(+ssl) / clickhouse / smtp(s) /
+    ldap(s) / nats. The match is also case-insensitive (RFC 3986
+    declares schemes case-insensitive), so `HTTPS://user:pw@host`
+    no longer bypasses redaction.
+  - The `llm-vendor-key` pattern now catches OpenAI ("sk-..."),
+    Anthropic ("sk-ant-..."), and Google Gemini ("AIza..." with 35
+    trailing chars). Without Gemini coverage, a Gemini API key in
+    an observability payload would be exfiltrated to the very
+    provider that issued it.
+
+  Docstring scopes the redactor explicitly to LLM input. Tests
+  cover each new shape, the JWT-with-underscore regression, the
+  opaque-bearer-with-`:` / `%` regressions, the uppercase-scheme
+  bypass, and the Gemini key shape.
+
+- 9d5f14f3: feat: Add custom onClick field to external dashboards API
+- 88b2b646: fix: use block_number/block_offset to uniquely identify log rows
+- Updated dependencies [a5294f8d]
+- Updated dependencies [eb16df44]
+- Updated dependencies [24699cde]
+- Updated dependencies [143f7a79]
+- Updated dependencies [f6a1d021]
+- Updated dependencies [aa1a8523]
+- Updated dependencies [022fe893]
+- Updated dependencies [7d7269a7]
+- Updated dependencies [41395ca7]
+- Updated dependencies [41395ca7]
+- Updated dependencies [41395ca7]
+- Updated dependencies [d3a5a575]
+- Updated dependencies [5c6da48c]
+- Updated dependencies [ef571cc0]
+- Updated dependencies [c2a9f96f]
+- Updated dependencies [a36c5b19]
+- Updated dependencies [9d5f14f3]
+- Updated dependencies [401dff5a]
+  - @hyperdx/common-utils@0.19.0
+
 ## 2.24.1
 
 ### Patch Changes

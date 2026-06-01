@@ -15,14 +15,15 @@ import {
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Anchor,
-  Box,
   Button,
   Code,
   Flex,
   Group,
   Paper,
   Stepper,
+  Tooltip,
 } from '@mantine/core';
 import {
   IconDeviceLaptop,
@@ -32,8 +33,11 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import EmptyState from '@/components/EmptyState';
+import { PageHeader } from '@/components/PageHeader';
+import { PageLayout } from '@/components/PageLayout';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
+import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
 import OnboardingModal from './components/OnboardingModal';
@@ -275,10 +279,16 @@ export default function SessionsPage() {
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);
 
-  const { searchedTimeRange, onSearch } = useNewTimeQuery({
+  const { searchedTimeRange, onSearch, onTimeRangeSelect } = useNewTimeQuery({
     initialDisplayValue: DEFAULT_INTERVAL,
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
+  });
+
+  const { refresh, manualRefreshCooloff } = useDashboardRefresh({
+    searchedTimeRange,
+    onTimeRangeSelect,
+    isLive: false,
   });
 
   const onSubmit = useCallback(() => {
@@ -352,11 +362,7 @@ export default function SessionsPage() {
   const targetSession = sessions.find(s => s.sessionId === selectedSession?.id);
 
   return (
-    <div
-      className="SessionsPage"
-      data-testid="sessions-page"
-      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
-    >
+    <>
       <Head>
         <title>Client Sessions - {brandName}</title>
       </Head>
@@ -382,80 +388,108 @@ export default function SessionsPage() {
             }
           />
         )}
-      <Box p="sm" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <form
-          data-testid="sessions-search-form"
-          onSubmit={e => {
-            e.preventDefault();
-            onSubmit();
-            return false;
-          }}
-        >
-          <Flex gap="xs" direction="column" wrap="nowrap">
-            <Group justify="space-between" gap="xs" wrap="nowrap" flex={1}>
-              <SourceSelectControlled
-                control={control}
-                name="source"
-                allowedSourceKinds={[SourceKind.Session]}
-              />
-              <SearchWhereInput
-                tableConnection={tcFromSource(traceTrace)}
-                control={control}
-                name="where"
-                onSubmit={onSubmit}
-                enableHotkey
-                width="50%"
-              />
-              <TimePicker
-                inputValue={displayedTimeInputValue}
-                setInputValue={setDisplayedTimeInputValue}
-                onSearch={range => {
-                  onSearch(range);
-                }}
-              />
-              <Button
-                variant="primary"
-                type="submit"
-                px="sm"
-                leftSection={<IconPlayerPlay size={16} />}
-                style={{ flexShrink: 0 }}
+      <form
+        className={`SessionsPage ${styles.pageForm}`}
+        data-testid="sessions-search-form"
+        onSubmit={e => {
+          e.preventDefault();
+          onSubmit();
+          return false;
+        }}
+      >
+        <PageLayout
+          data-testid="sessions-page"
+          header={
+            <PageHeader>
+              <Group
+                justify="space-between"
+                gap="xs"
+                wrap="nowrap"
+                w="100%"
+                className={styles.toolbar}
               >
-                Run
-              </Button>
-            </Group>
-          </Flex>
-        </form>
-
-        {isSessionsLoading || isSessionSourceLoading ? (
-          <Group mt="md" align="center" justify="center" gap="xs">
-            <IconRefresh className="spin-animate" size={14} />
-            {isSessionSourceLoading ? 'Loading...' : 'Searching sessions...'}
-          </Group>
-        ) : (
-          <>
-            {!sessions.length ? (
-              <Flex
-                align="center"
-                justify="center"
-                style={{ flex: 1, minHeight: 0 }}
-              >
-                <SessionSetupInstructions />
-              </Flex>
-            ) : (
-              <div style={{ minHeight: 0 }} className="mt-4">
-                <SessionCardList
-                  onClick={session => {
-                    setSelectedSession(session);
-                  }}
-                  sessions={sessions}
-                  isSessionLoading={isSessionsLoading}
+                <SourceSelectControlled
+                  control={control}
+                  name="source"
+                  allowedSourceKinds={[SourceKind.Session]}
                 />
-              </div>
-            )}
-          </>
-        )}
-      </Box>
-    </div>
+                <SearchWhereInput
+                  tableConnection={tcFromSource(traceTrace)}
+                  control={control}
+                  name="where"
+                  onSubmit={onSubmit}
+                  enableHotkey
+                  width="50%"
+                />
+                <TimePicker
+                  inputValue={displayedTimeInputValue}
+                  setInputValue={setDisplayedTimeInputValue}
+                  onSearch={range => {
+                    onSearch(range);
+                  }}
+                />
+                <Button
+                  variant="primary"
+                  type="submit"
+                  px="sm"
+                  leftSection={<IconPlayerPlay size={16} />}
+                  style={{ flexShrink: 0 }}
+                >
+                  Run
+                </Button>
+                <Tooltip withArrow label="Refresh results" fz="xs" color="gray">
+                  <ActionIcon
+                    onClick={refresh}
+                    loading={manualRefreshCooloff}
+                    disabled={manualRefreshCooloff}
+                    variant="secondary"
+                    title="Refresh results"
+                    size="input-sm"
+                  >
+                    <IconRefresh size={18} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+            </PageHeader>
+          }
+          padded
+          content={
+            <>
+              {isSessionsLoading || isSessionSourceLoading ? (
+                <Group mt="md" align="center" justify="center" gap="xs">
+                  <IconRefresh className="spin-animate" size={14} />
+                  {isSessionSourceLoading
+                    ? 'Loading...'
+                    : 'Searching sessions...'}
+                </Group>
+              ) : (
+                <>
+                  {!sessions.length ? (
+                    <Flex
+                      align="center"
+                      justify="center"
+                      style={{ flex: 1, minHeight: 0 }}
+                    >
+                      <SessionSetupInstructions />
+                    </Flex>
+                  ) : (
+                    <div style={{ minHeight: 0 }}>
+                      <SessionCardList
+                        onClick={session => {
+                          setSelectedSession(session);
+                        }}
+                        sessions={sessions}
+                        isSessionLoading={isSessionsLoading}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          }
+        />
+      </form>
+    </>
   );
 }
 

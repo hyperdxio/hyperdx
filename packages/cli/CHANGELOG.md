@@ -1,5 +1,48 @@
 # @hyperdx/cli
 
+## 0.5.0
+
+### Minor Changes
+
+- 3123db53: feat: experimental promql support
+
+### Patch Changes
+
+- b20275c9: fix(cli): exit with non-zero code when `upload-sourcemaps` fails
+
+  The `upload-sourcemaps` command now exits with code 1 when uploads fail
+  (missing source maps, pre-signed URL request failure, authentication failure,
+  or any per-file upload failure after retries). Previously these failures were
+  logged to stderr but the process exited cleanly with code 0, causing CI
+  pipelines to treat failed uploads as successes.
+
+- 19cd7c91: fix: only use pk and row uniqueness to look up a row
+- 8810ff0f: feat: Add option for force-enabling/disabling text index support
+
+## 0.4.1
+
+### Patch Changes
+
+- f6a1d021: Add support for event patterns in MCP server, reduce code duplication
+- 253cf5b7: Fix CLI version flag reporting hardcoded 0.1.0 instead of the actual package version
+- 41043645: feat: support multiple teams and kubectx-style team switching in the CLI
+
+  Adds three new commands for users that belong to multiple teams (HyperDX Cloud /
+  EE):
+
+  - `hdx team list` — list every team the authenticated user belongs to, marking
+    the active one
+  - `hdx team current` — print the currently active team
+  - `hdx team use <name-or-id>` — switch the active team (matched by team ID or
+    case-insensitive name)
+
+  The active team is persisted to `~/.config/hyperdx/cli/session.json` so the
+  choice survives across CLI invocations, and the CLI now sends an `x-hdx-team`
+  header on every API and ClickHouse-proxy request so the server scopes data to
+  the chosen team. `hdx auth status` also surfaces the active team.
+
+  On single-team OSS deployments these commands are effectively no-ops.
+
 ## 0.4.0
 
 ### Minor Changes

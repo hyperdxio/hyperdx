@@ -1,4 +1,11 @@
-import type { OnClick, OnClickDashboard, OnClickSearch } from '../types';
+import { FilterState, filtersToQuery } from '../filters';
+import type {
+  Filter,
+  OnClick,
+  OnClickDashboard,
+  OnClickFilterTemplate,
+  OnClickSearch,
+} from '../types';
 import {
   LinkTemplateError,
   MissingTemplateVariableError,
@@ -28,6 +35,37 @@ function renderOrError(
       error: message,
     };
   }
+}
+
+/**
+ * Render the filter entries into `{expression} IN (v1, v2, ...)` SQL
+ * conditions. Entries that share the same `filter` expression are merged
+ * into a single IN clause so the destination sees all requested values.
+ * Expressions appear in the URL in order of first occurrence; values within
+ * a group retain their input order.
+ */
+function renderFilterTemplates(
+  templates: OnClickFilterTemplate[] | undefined,
+  row: Record<string, unknown>,
+): { ok: true; filters: Filter[] } | { ok: false; error: string } {
+  if (!templates || templates.length === 0) return { ok: true, filters: [] };
+
+  const state: FilterState = {};
+  for (const template of templates) {
+    const rendered = renderOrError(template.template, row);
+    if (!rendered.ok) return rendered;
+
+    if (state[template.expression]) {
+      state[template.expression].included.add(rendered.value);
+    } else {
+      state[template.expression] = {
+        included: new Set([rendered.value]),
+        excluded: new Set(),
+      };
+    }
+  }
+
+  return { ok: true, filters: filtersToQuery(state) };
 }
 
 /**
@@ -94,12 +132,23 @@ export function renderOnClickSearch({
 
   const params = new URLSearchParams({
     source: sourceId,
-    where,
+    where: encodeURIComponent(where),
     whereLanguage: onClick.whereLanguage ?? 'lucene',
     isLive: 'false',
     from: String(dateRange[0].getTime()),
     to: String(dateRange[1].getTime()),
   });
+
+  const filterRenderResult = renderFilterTemplates(onClick.filters, row);
+  if (!filterRenderResult.ok) return filterRenderResult;
+
+  if (filterRenderResult.filters.length > 0) {
+    params.set(
+      'filters',
+      encodeURIComponent(JSON.stringify(filterRenderResult.filters)),
+    );
+  }
+
   return { ok: true, url: `/search?${params.toString()}` };
 }
 
@@ -170,13 +219,69 @@ export function renderOnClickDashboard({
   }
 
   const params = new URLSearchParams({
-    where,
+    where: encodeURIComponent(where),
     whereLanguage: onClick.whereLanguage ?? 'lucene',
     from: String(dateRange[0].getTime()),
     to: String(dateRange[1].getTime()),
   });
 
+  const filterRenderResult = renderFilterTemplates(onClick.filters, row);
+  if (!filterRenderResult.ok) return filterRenderResult;
+
+  if (filterRenderResult.filters.length > 0) {
+    params.set(
+      'filters',
+      encodeURIComponent(JSON.stringify(filterRenderResult.filters)),
+    );
+  }
+
   return { ok: true, url: `/dashboards/${dashboardId}?${params.toString()}` };
+}
+
+/**
+ * Build a one-line, row-independent description of an OnClick action,
+ * suitable for a hover hint shown before the user commits to the click.
+ *
+ * Returns one of four shapes:
+ * - `Search <SourceName>` when targeting a known source by ID.
+ * - `Open in search` when targeting a source by template, or when the
+ *   ID does not resolve to a known source.
+ * - `Open dashboard "<Name>"` when targeting a known dashboard by ID.
+ * - `Open dashboard` when targeting a dashboard by template, or when
+ *   the ID does not resolve to a known dashboard.
+ *
+ * Template-mode targets resolve a different name per row (the name
+ * is itself templated); the generic verb form keeps the hint stable
+ * across rows. Per-row scope preview belongs to a separate hint
+ * surface and is not the responsibility of this helper.
+ */
+export function describeOnClick({
+  onClick,
+  sourceNamesById,
+  dashboardNamesById,
+}: {
+  onClick: OnClick;
+  sourceNamesById: Map<string, string>;
+  dashboardNamesById: Map<string, string>;
+}): string {
+  if (onClick.type === 'search') {
+    if (onClick.target.mode === 'id') {
+      const name = sourceNamesById.get(onClick.target.id);
+      if (name) return `Search ${name}`;
+    }
+    return 'Open in search';
+  }
+  if (onClick.type === 'dashboard') {
+    if (onClick.target.mode === 'id') {
+      const name = dashboardNamesById.get(onClick.target.id);
+      if (name) return `Open dashboard "${name}"`;
+    }
+    return 'Open dashboard';
+  }
+  // Exhaustiveness check: adding a new OnClickSchema variant must
+  // also extend describeOnClick.
+  const _exhaustive: never = onClick;
+  return _exhaustive;
 }
 
 /** Throws if the given OnClick includes a template with invalid syntax */
@@ -184,6 +289,15 @@ export function validateOnClickTemplate(onClick: OnClick) {
   if (onClick.target.mode === 'template') {
     validateTemplate(onClick.target.template);
   }
+
+  if (onClick.filters) {
+    for (const filter of onClick.filters) {
+      if (filter.kind === 'expressionTemplate') {
+        validateTemplate(filter.template);
+      }
+    }
+  }
+
   if (onClick.whereTemplate) {
     validateTemplate(onClick.whereTemplate);
   }

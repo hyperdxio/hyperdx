@@ -9,6 +9,7 @@ import {
   extractInnerCHArrayJSType,
   JSDataType,
 } from '@/clickhouse';
+import { supportsDirectReadMap } from '@/core/clickhouseVersion';
 import {
   Metadata,
   parseKeyPath,
@@ -19,6 +20,7 @@ import {
   parseTokenizerFromTextIndex,
   splitAndTrimWithBracket,
 } from '@/core/utils';
+import { UseTextIndex } from '@/types';
 
 /** Max number of tokens to pass to hasAllTokens(), which supports up to 64 tokens as of ClickHouse v25.12. */
 const HAS_ALL_TOKENS_CHUNK_SIZE = 50;
@@ -31,7 +33,7 @@ function encodeSpecialTokens(query: string): string {
     .replace(/localhost:(\d{1,5})/, 'localhost_COLON_$1')
     .replace(/\\:/g, 'HDX_COLON');
 }
-function decodeSpecialTokens(query: string): string {
+export function decodeSpecialTokens(query: string): string {
   return query
     .replace(/\\"/g, '"')
     .replace(/HDX_BACKSLASH_LITERAL/g, '\\')
@@ -51,20 +53,29 @@ function buildMapContains(mapField: string) {
   return SqlString.format('mapContains(??, ?)', [path[0], path[1]]);
 }
 
+/** Strip whitespace and backtick-quoting from a ClickHouse expression for comparison */
+function normalizeChExpression(expr: string): string {
+  return expr.replace(/\s+/g, '').replace(/`/g, '');
+}
+
 const IMPLICIT_FIELD = '<implicit>';
 
 // Type guards for lucene AST types
-function isNodeTerm(node: lucene.Node | lucene.AST): node is lucene.NodeTerm {
+export function isNodeTerm(
+  node: lucene.Node | lucene.AST,
+): node is lucene.NodeTerm {
   return 'term' in node && node.term != null;
 }
 
-function isNodeRangedTerm(
+export function isNodeRangedTerm(
   node: lucene.Node | lucene.AST,
 ): node is lucene.NodeRangedTerm {
   return 'inclusive' in node && node.inclusive != null;
 }
 
-function isBinaryAST(ast: lucene.AST | lucene.Node): ast is lucene.BinaryAST {
+export function isBinaryAST(
+  ast: lucene.AST | lucene.Node,
+): ast is lucene.BinaryAST {
   return 'right' in ast && ast.right != null;
 }
 
@@ -74,7 +85,7 @@ function hasStart(
   return 'start' in ast && !!ast.start;
 }
 
-function isLeftOnlyAST(
+export function isLeftOnlyAST(
   ast: lucene.AST | lucene.Node,
 ): ast is lucene.LeftOnlyAST {
   return (
@@ -140,6 +151,13 @@ async function findPrefixMatch({
 interface SerializerContext {
   /** The current implicit column expression, indicating which SQL expression to use when comparing a term to the '<implicit>' field */
   implicitColumnExpression?: string;
+  /**
+   * Fallback used when implicitColumnExpression is unset. Mirrors the one-way
+   * fallback `getEventBody` already implements for row display: an admin who
+   * sets only the Body Expression on a log source can still run bare-text
+   * Lucene search.
+   */
+  bodyExpression?: string;
   isNegatedAndParenthesized?: boolean;
 }
 
@@ -394,6 +412,7 @@ export abstract class SQLSerializer implements Serializer {
     found: boolean;
     mapKeyIndexExpression?: string;
     arrayMapKeyExpression?: string;
+    kvItemsExpression?: KvItemsInfo & { mapColumn: string; mapKey: string };
   }>;
 
   operator(op: lucene.Operator) {
@@ -432,6 +451,7 @@ export abstract class SQLSerializer implements Serializer {
       isArray,
       mapKeyIndexExpression,
       arrayMapKeyExpression,
+      kvItemsExpression,
     } = await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
@@ -446,6 +466,29 @@ export abstract class SQLSerializer implements Serializer {
         isNegatedField,
         exactMatch: true,
       });
+    }
+
+    // KV items index optimization: use has(KvItemsColumn, concat('key','<sep>','value'))
+    // instead of Map['key'] = 'value' when a text(tokenizer=array) index exists.
+    // For empty-term equality we also match absent keys (Map subscript returns default ''),
+    // so we emit: has(arr, 'key<sep>') OR NOT mapContains(Map, 'key')
+    if (kvItemsExpression && propertyType === JSDataType.String) {
+      const hasExpr = SqlString.format(`has(??, concat(?, ?, ?))`, [
+        kvItemsExpression.kvItemsColumn,
+        kvItemsExpression.mapKey,
+        kvItemsExpression.separator,
+        term,
+      ]);
+      if (term === '') {
+        const notContains = SqlString.format(`NOT mapContains(??, ?)`, [
+          kvItemsExpression.mapColumn,
+          kvItemsExpression.mapKey,
+        ]);
+        return isNegatedField
+          ? `(NOT ${hasExpr} AND ${SqlString.format(`mapContains(??, ?)`, [kvItemsExpression.mapColumn, kvItemsExpression.mapKey])})`
+          : `(${hasExpr} OR ${notContains})`;
+      }
+      return `(${isNegatedField ? 'NOT ' : ''}${hasExpr})`;
     }
 
     const expressionPostfix =
@@ -701,13 +744,28 @@ type CustomSchemaSQLColumnExpression = {
   };
   mapKeyIndexExpression?: string;
   arrayMapKeyExpression?: string;
+  /** When a KV items index exists for a Map column, carries the info needed for the has() optimization */
+  kvItemsExpression?: KvItemsInfo & { mapColumn: string; mapKey: string };
 };
 
 export type CustomSchemaConfig = {
   databaseName: string;
   implicitColumnExpression?: string;
+  /**
+   * Body expression to fall back to when `implicitColumnExpression` is unset
+   * but the source has a body column configured. Populated only by log
+   * sources; trace sources do not auto-fall-back from `spanNameExpression`.
+   */
+  bodyExpression?: string;
   tableName: string;
   connectionId: string;
+  /**
+   * Source-level override for whether to use a ClickHouse text index when
+   * rendering implicit-field lucene matches. When `undefined` (or
+   * `UseTextIndex.Auto`), the renderer detects a covering index from table
+   * metadata; otherwise, it forces the chosen behavior.
+   */
+  useTextIndexForImplicitColumn?: UseTextIndex;
 };
 
 function renderArrayFieldExpression({
@@ -799,14 +857,239 @@ function renderArrayFieldExpression({
         );
 }
 
+/** Describes a KV items column and its concat separator */
+export type KvItemsInfo = {
+  kvItemsColumn: string;
+  separator: string;
+};
+
+/** Map from map column name to its KV items info */
+export type KvItemsLookup = Map<string, KvItemsInfo>;
+
+/**
+ * Tokenizes a ClickHouse expression into meaningful tokens (identifiers, parens,
+ * commas, arrows, quoted strings, operators). Whitespace is skipped.
+ * Returns null if the expression contains unrecognized characters.
+ */
+function tokenizeExpression(expr: string): string[] | null {
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < expr.length) {
+    // Skip whitespace
+    if (/\s/.test(expr[i])) {
+      i++;
+      continue;
+    }
+    // Arrow operator ->
+    if (expr[i] === '-' && expr[i + 1] === '>') {
+      tokens.push('->');
+      i += 2;
+      continue;
+    }
+    // Cast operator ::
+    if (expr[i] === ':' && expr[i + 1] === ':') {
+      tokens.push('::');
+      i += 2;
+      continue;
+    }
+    // Single-char tokens
+    if ('(),.'.includes(expr[i])) {
+      tokens.push(expr[i]);
+      i++;
+      continue;
+    }
+    // Quoted string (single or double)
+    if (expr[i] === "'" || expr[i] === '"') {
+      const quote = expr[i];
+      let str = '';
+      i++; // skip opening quote
+      while (i < expr.length && expr[i] !== quote) {
+        if (expr[i] === '\\') {
+          str += expr[i + 1] ?? '';
+          i += 2;
+        } else {
+          str += expr[i];
+          i++;
+        }
+      }
+      i++; // skip closing quote
+      tokens.push(`'${str}'`); // normalize to single-quote wrapper
+      continue;
+    }
+    // Identifier or keyword (word chars)
+    if (/\w/.test(expr[i])) {
+      let ident = '';
+      while (i < expr.length && /\w/.test(expr[i])) {
+        ident += expr[i];
+        i++;
+      }
+      tokens.push(ident);
+      continue;
+    }
+    // Unknown character — return null to signal unparseable expression
+    return null;
+  }
+  return tokens;
+}
+
+/**
+ * Helper: parses the common arrayMap lambda prefix and concat body, returning the
+ * lambda variable name, separator, and remaining token position.
+ * Handles both parenthesized `(x) ->` and bare `x ->` lambda parameter forms.
+ */
+function parseArrayMapConcatPrefix(
+  tokens: string[],
+): { lambdaVar: string; separator: string; pos: number } | undefined {
+  let pos = 0;
+  const expect = (expected: string): boolean => {
+    if (pos >= tokens.length || tokens[pos] !== expected) return false;
+    pos++;
+    return true;
+  };
+  const read = (): string | undefined => tokens[pos++];
+
+  if (!expect('arrayMap') || !expect('(')) return undefined;
+
+  // Lambda param: either (x) -> or x ->
+  let lambdaVar: string | undefined;
+  if (tokens[pos] === '(') {
+    pos++; // skip (
+    lambdaVar = read();
+    if (!lambdaVar || !expect(')')) return undefined;
+  } else {
+    lambdaVar = read();
+    if (!lambdaVar) return undefined;
+  }
+  if (!expect('->')) return undefined;
+
+  // concat(lambdaVar.1, '<sep>', lambdaVar.2)
+  if (!expect('concat') || !expect('(')) return undefined;
+  if (!expect(lambdaVar) || !expect('.') || !expect('1') || !expect(','))
+    return undefined;
+
+  const sepToken = read();
+  if (!sepToken || !sepToken.startsWith("'") || !expect(',')) return undefined;
+  const separator = sepToken.slice(1, -1);
+
+  if (
+    !expect(lambdaVar) ||
+    !expect('.') ||
+    !expect('2') ||
+    !expect(')') ||
+    !expect(',')
+  )
+    return undefined;
+
+  return { lambdaVar, separator, pos };
+}
+
+/**
+ * Parses a KV items column's default_expression to extract the source map column name
+ * and the constant separator string used in the concat.
+ * Matches the inline-cast form:
+ *   arrayMap((arr) -> concat(arr.1, '=', arr.2), X::Array(Tuple(String, String)))
+ * Also supports bare lambda param: arrayMap(x -> concat(...), ...)
+ * Returns { mapColumn, separator } if the expression matches, otherwise undefined.
+ */
+export function parseKvItemsExpression(
+  defaultExpression: string,
+): { mapColumn: string; separator: string } | undefined {
+  const tokens = tokenizeExpression(defaultExpression);
+  if (!tokens) return undefined;
+
+  const prefix = parseArrayMapConcatPrefix(tokens);
+  if (!prefix) return undefined;
+
+  let pos = prefix.pos;
+  const expect = (expected: string): boolean => {
+    if (pos >= tokens.length || tokens[pos] !== expected) return false;
+    pos++;
+    return true;
+  };
+  const read = (): string | undefined => tokens[pos++];
+
+  // X::Array(Tuple(String, String))
+  const mapColumn = read();
+  if (!mapColumn) return undefined;
+  if (
+    !expect('::') ||
+    !expect('Array') ||
+    !expect('(') ||
+    !expect('Tuple') ||
+    !expect('(') ||
+    !expect('String') ||
+    !expect(',') ||
+    !expect('String') ||
+    !expect(')') ||
+    !expect(')') ||
+    !expect(')')
+  )
+    return undefined;
+
+  if (pos !== tokens.length) return undefined;
+
+  return { mapColumn, separator: prefix.separator };
+}
+
+/**
+ * Parses a KV items column's default_expression using the CAST function form:
+ *   arrayMap((arr) -> concat(arr.1, '=', arr.2), CAST(X, 'Array(Tuple(String, String))'))
+ * Also supports bare lambda param: arrayMap(x -> concat(...), ...)
+ * Returns { mapColumn, separator } if the expression matches, otherwise undefined.
+ */
+export function parseKvItemsCastExpression(
+  defaultExpression: string,
+): { mapColumn: string; separator: string } | undefined {
+  const tokens = tokenizeExpression(defaultExpression);
+  if (!tokens) return undefined;
+
+  const prefix = parseArrayMapConcatPrefix(tokens);
+  if (!prefix) return undefined;
+
+  let pos = prefix.pos;
+  const expect = (expected: string): boolean => {
+    if (pos >= tokens.length || tokens[pos] !== expected) return false;
+    pos++;
+    return true;
+  };
+  const read = (): string | undefined => tokens[pos++];
+
+  // CAST(X, 'Array(Tuple(String, String))')
+  if (!expect('CAST') || !expect('(')) return undefined;
+  const mapColumn = read();
+  if (!mapColumn || !expect(',')) return undefined;
+
+  // The type argument is a quoted string like 'Array(Tuple(String, String))'
+  const typeToken = read();
+  if (!typeToken || !typeToken.startsWith("'")) return undefined;
+  const typeStr = typeToken.slice(1, -1); // strip quotes
+  const normalizedType = typeStr.replace(/\s+/g, '');
+  if (normalizedType !== 'Array(Tuple(String,String))') return undefined;
+
+  if (!expect(')') || !expect(')')) return undefined;
+
+  if (pos !== tokens.length) return undefined;
+
+  return { mapColumn, separator: prefix.separator };
+}
+
+// To add another known KV items parsing strategy, simply define another function with the same signature and add the strategy to this array
+const KV_ITEMS_STRATEGIES = [
+  parseKvItemsExpression,
+  parseKvItemsCastExpression,
+] as const;
+
 export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private metadata: Metadata;
   private tableName: string;
   private databaseName: string;
   private implicitColumnExpression?: string;
+  private bodyExpression?: string;
   private connectionId: string;
+  private useTextIndexForImplicitColumn: UseTextIndex;
   private skipIndicesPromise?: Promise<SkipIndexMetadata[]>;
   private enableTextIndexPromise?: Promise<boolean>;
+  private kvItemsLookupPromise?: Promise<KvItemsLookup>;
 
   constructor({
     metadata,
@@ -814,13 +1097,18 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     tableName,
     connectionId,
     implicitColumnExpression,
+    bodyExpression,
+    useTextIndexForImplicitColumn,
   }: { metadata: Metadata } & CustomSchemaConfig) {
     super();
     this.metadata = metadata;
     this.databaseName = databaseName;
     this.tableName = tableName;
     this.implicitColumnExpression = implicitColumnExpression;
+    this.bodyExpression = bodyExpression;
     this.connectionId = connectionId;
+    this.useTextIndexForImplicitColumn =
+      useTextIndexForImplicitColumn ?? UseTextIndex.Auto;
 
     // Pre-fetch skip indices for potential bloom filter optimization
     this.skipIndicesPromise = this.metadata
@@ -842,9 +1130,85 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       })
       .then(value => value === '1')
       .catch(error => {
-        console.error('Error fetching enable_full_text_index setting:', error);
+        console.warn('Error fetching enable_full_text_index setting:', error);
         return false;
       });
+
+    // Pre-fetch KV items lookup (map column -> KV items column with text(tokenizer=array) index)
+    this.kvItemsLookupPromise = this.buildKvItemsLookup().catch(error => {
+      console.warn('Error building KV items lookup:', error);
+      return new Map();
+    });
+  }
+
+  /**
+   * Builds a lookup from map column name to KV items column name.
+   * A KV items column is an ALIAS/MATERIALIZED column whose expression is
+   * arrayMap((k,v)->concat(k,'=',v), mapKeys(X), mapValues(X)) and which has
+   * a text(tokenizer=array) skip index.
+   *
+   * The version gate (`supportsDirectReadMap`) only applies to ALIAS items
+   * columns: ALIAS columns are computed at query time, so `has(items, ...)`
+   * against an ALIAS only realizes its speedup when the server can perform a
+   * direct_read against the underlying Map's tuple storage. MATERIALIZED items
+   * columns are physically stored on disk, so `has()` reads them directly and
+   * is fast on any ClickHouse version that supports the text index itself.
+   */
+  private async buildKvItemsLookup(): Promise<KvItemsLookup> {
+    const [serverVersion, columns, skipIndices] = await Promise.all([
+      this.metadata.getServerVersion({ connectionId: this.connectionId }),
+      this.metadata.getColumns({
+        databaseName: this.databaseName,
+        tableName: this.tableName,
+        connectionId: this.connectionId,
+      }),
+      this.skipIndicesPromise ?? Promise.resolve([]),
+    ]);
+
+    const directReadSupported = supportsDirectReadMap(serverVersion);
+
+    const lookup: KvItemsLookup = new Map();
+
+    const kvItemsCandidates = columns.filter(
+      c =>
+        (c.default_type === 'ALIAS' || c.default_type === 'MATERIALIZED') &&
+        c.default_expression,
+    );
+
+    for (const candidate of kvItemsCandidates) {
+      if (candidate.default_type === 'ALIAS' && !directReadSupported) {
+        continue;
+      }
+
+      const parsed = (() => {
+        let parsed: { mapColumn: string; separator: string } | undefined;
+        for (const strategy of KV_ITEMS_STRATEGIES) {
+          parsed = strategy(candidate.default_expression);
+          if (parsed) break;
+        }
+        return parsed;
+      })();
+      if (!parsed) continue;
+
+      const candidateName = normalizeChExpression(candidate.name);
+      const candidateExpr = normalizeChExpression(candidate.default_expression);
+      const hasArrayTextIndex = skipIndices.some(idx => {
+        if (idx.type !== 'text') return false;
+        const tokenizer = parseTokenizerFromTextIndex(idx);
+        if (tokenizer?.type !== 'array') return false;
+        const idxExpr = normalizeChExpression(idx.expression);
+        return idxExpr === candidateName || idxExpr === candidateExpr;
+      });
+
+      if (hasArrayTextIndex) {
+        lookup.set(parsed.mapColumn, {
+          kvItemsColumn: candidate.name,
+          separator: parsed.separator,
+        });
+      }
+    }
+
+    return lookup;
   }
 
   /**
@@ -921,7 +1285,12 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     }
 
     if (isImplicitField) {
-      const shouldUseTokenBf = !context.implicitColumnExpression;
+      // Token-bloom-filter and tokens()-index optimizations key on the
+      // source's column. A per-context override (of either implicit or body)
+      // means we're searching a different expression, so skip the index
+      // optimization.
+      const shouldUseTokenBf =
+        !context.implicitColumnExpression && !context.bodyExpression;
 
       if (prefixWildcard || suffixWildcard) {
         return SqlString.format(
@@ -932,43 +1301,73 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           ],
         );
       } else if (shouldUseTokenBf) {
-        // First check for a text index, and use it if possible
-        // Note: We check that enable_full_text_index = 1, otherwise hasAllTokens() errors
-        const isTextIndexEnabled = await this.enableTextIndexPromise;
-        const textIndex = isTextIndexEnabled
-          ? await this.findTextIndex(column)
-          : undefined;
+        // Source preference for the text index:
+        //   - auto (default): detect a covering text index from skip-index metadata
+        //   - enabled: force hasAllTokens(), even if no text index is detected
+        //   - disabled: skip the text-index branch entirely
+        let useHasAllTokens = false;
+        let textIndexHasLower = false;
+        if (this.useTextIndexForImplicitColumn === UseTextIndex.Enabled) {
+          useHasAllTokens = true;
+          const textIndexResult = await this.findTextIndex(column);
+          if (textIndexResult) {
+            textIndexHasLower = textIndexResult.indexHasLower;
+          }
+        } else if (this.useTextIndexForImplicitColumn === UseTextIndex.Auto) {
+          // Note: We check that enable_full_text_index = 1, otherwise hasAllTokens() errors
+          const isTextIndexEnabled = await this.enableTextIndexPromise;
+          const textIndexResult = isTextIndexEnabled
+            ? await this.findTextIndex(column)
+            : undefined;
 
-        if (textIndex) {
-          const tokenizer = parseTokenizerFromTextIndex(textIndex);
-
-          // HDX-3259: Support other tokenizers by overriding tokenizeTerm, termHasSeparators, and batching logic
-          if (tokenizer?.type === 'splitByNonAlpha') {
-            const tokens = this.tokenizeTerm(term);
-            const hasSeparators = this.termHasSeparators(term);
-
-            // Batch tokens to avoid exceeding hasAllTokens limit (64)
-            const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
-            const hasAllTokensExpressions = tokenBatches.map(batch =>
-              SqlString.format(`hasAllTokens(?, ?)`, [
-                SqlString.raw(column),
-                batch.join(' '),
-              ]),
+          if (textIndexResult) {
+            const tokenizer = parseTokenizerFromTextIndex(
+              textIndexResult.index,
             );
-
-            if (hasSeparators || tokenBatches.length > 1) {
-              // Multi-token, or term containing token separators: hasAllTokens(..., 'foo bar') AND lower(...) LIKE '%foo bar%'
-              return `(${isNegatedField ? 'NOT (' : ''}${[
-                ...hasAllTokensExpressions,
-                SqlString.format(`(lower(?) LIKE lower(?))`, [
-                  SqlString.raw(column),
-                  `%${term}%`,
-                ]),
-              ].join(' AND ')}${isNegatedField ? ')' : ''})`;
-            } else {
-              // Single token, without token separators: hasAllTokens(..., 'term')
-              return `(${isNegatedField ? 'NOT ' : ''}${hasAllTokensExpressions.join(' AND ')})`;
+            // HDX-3259: Support other tokenizers by overriding tokenizeTerm, termHasSeparators, and batching logic
+            if (tokenizer?.type === 'splitByNonAlpha') {
+              useHasAllTokens = true;
+              textIndexHasLower = textIndexResult.indexHasLower;
             }
+          }
+        }
+
+        if (useHasAllTokens) {
+          const tokens = this.tokenizeTerm(term);
+          const hasSeparators = this.termHasSeparators(term);
+
+          // When the text index is on lower(column), we must pass lower(column)
+          // as the first argument and wrap the tokens in lower() to match.
+          const hasAllTokensColumn = textIndexHasLower
+            ? `lower(${column})`
+            : column;
+
+          // Batch tokens to avoid exceeding hasAllTokens limit (64)
+          const tokenBatches = chunk(tokens, HAS_ALL_TOKENS_CHUNK_SIZE);
+          const hasAllTokensExpressions = tokenBatches.map(batch =>
+            textIndexHasLower
+              ? SqlString.format(`hasAllTokens(?, lower(?))`, [
+                  SqlString.raw(hasAllTokensColumn),
+                  batch.join(' '),
+                ])
+              : SqlString.format(`hasAllTokens(?, ?)`, [
+                  SqlString.raw(hasAllTokensColumn),
+                  batch.join(' '),
+                ]),
+          );
+
+          if (hasSeparators || tokenBatches.length > 1) {
+            // Multi-token, or term containing token separators: hasAllTokens(..., 'foo bar') AND lower(...) LIKE '%foo bar%'
+            return `(${isNegatedField ? 'NOT (' : ''}${[
+              ...hasAllTokensExpressions,
+              SqlString.format(`(lower(?) LIKE lower(?))`, [
+                SqlString.raw(column),
+                `%${term}%`,
+              ]),
+            ].join(' AND ')}${isNegatedField ? ')' : ''})`;
+          } else {
+            // Single token, without token separators: hasAllTokens(..., 'term')
+            return `(${isNegatedField ? 'NOT ' : ''}${hasAllTokensExpressions.join(' AND ')})`;
           }
         }
 
@@ -977,7 +1376,9 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         const bloomIndex = await this.findBloomFilterTokensIndex(column);
 
         if (bloomIndex.found) {
-          const indexHasLower = /\blower\s*\(/.test(bloomIndex.indexExpression);
+          const indexHasLower = this.isLowerExpression(
+            bloomIndex.indexExpression,
+          );
           const termTokensExpression = indexHasLower
             ? SqlString.format('tokens(lower(?))', [term])
             : SqlString.format('tokens(?)', [term]);
@@ -1108,6 +1509,11 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
 
       if (prefixMatch.type.startsWith('Map')) {
         const valueType = prefixMatch.type.match(/,\s+(\w+)\)$/)?.[1];
+
+        // Check if a KV items index exists for this map column
+        const kvItemsLookup = await this.kvItemsLookupPromise;
+        const kvItemsInfo = kvItemsLookup?.get(prefixMatch.name);
+
         return {
           found: true,
           columnExpression: SqlString.format(`??[?]`, [
@@ -1116,6 +1522,16 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           ]),
           mapKeyIndexExpression: `indexHint(${buildMapContains(`${prefixMatch.name}['${fieldPostfix}']`)})`,
           columnType: valueType ?? 'Unknown',
+          ...(kvItemsInfo
+            ? {
+                kvItemsExpression: {
+                  kvItemsColumn: kvItemsInfo.kvItemsColumn,
+                  mapColumn: prefixMatch.name,
+                  mapKey: fieldPostfix,
+                  separator: kvItemsInfo.separator,
+                },
+              }
+            : {}),
         };
       } else if (prefixMatch.type.startsWith('JSON')) {
         // ignore original column expression at here
@@ -1169,21 +1585,36 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     // throw new Error(`Column not found: ${field}`);
   }
 
+  private isLowerExpression(expr: string): boolean {
+    return /\blower\s*\(/i.test(expr);
+  }
+
   private async findTextIndex(
     columnExpression: string,
-  ): Promise<SkipIndexMetadata | undefined> {
+  ): Promise<{ index: SkipIndexMetadata; indexHasLower: boolean } | undefined> {
     const skipIndices = await this.skipIndicesPromise;
 
     if (!skipIndices || skipIndices.length === 0) {
       return undefined;
     }
 
-    // Note: Text index expressions should not be wrapped in tokens() or preprocessing functions like lower().
-    return skipIndices.find(
+    const idx = skipIndices.find(
       idx =>
         idx.type === 'text' &&
         this.indexCoversColumn(idx.expression, columnExpression),
     );
+
+    if (!idx) {
+      return undefined;
+    }
+
+    const normalizedExpr = normalizeChExpression(idx.expression);
+    const normalizedCol = normalizeChExpression(columnExpression);
+    const indexHasLower =
+      normalizedExpr !== normalizedCol &&
+      this.isLowerExpression(idx.expression);
+
+    return { index: idx, indexHasLower };
   }
 
   /**
@@ -1241,12 +1672,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
    * Handles cases where index expression may have transformations like lower(Body) vs Body.
    */
   indexCoversColumn(indexExpression: string, searchColumn: string): boolean {
-    // Normalize expressions for comparison
-    const normalize = (expr: string) =>
-      expr.replace(/\s+/g, '').replace(/`/g, '');
-
-    const normalizedIndex = normalize(indexExpression);
-    const normalizedSearch = normalize(searchColumn);
+    const normalizedIndex = normalizeChExpression(indexExpression);
+    const normalizedSearch = normalizeChExpression(searchColumn);
 
     // Direct match
     if (normalizedIndex === normalizedSearch) {
@@ -1270,8 +1697,16 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   }
 
   async getColumnForField(field: string, context: SerializerContext) {
+    // Two-stage fallback: implicit wins over body, and per-call context
+    // overrides win over the source defaults. The body fallback lets log
+    // sources that only set Body Expression still serve bare-text Lucene
+    // search; this is the symmetric counterpart to `getEventBody` in
+    // packages/app/src/source.ts.
     const implicitColumnExpression =
-      context.implicitColumnExpression ?? this.implicitColumnExpression;
+      context.implicitColumnExpression ??
+      this.implicitColumnExpression ??
+      context.bodyExpression ??
+      this.bodyExpression;
     if (field === IMPLICIT_FIELD && !implicitColumnExpression) {
       throw new Error(
         'Can not search bare text without an implicit column set.',
@@ -1281,10 +1716,15 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     const fieldFinal =
       field === IMPLICIT_FIELD ? implicitColumnExpression! : field;
 
-    if (
-      field === IMPLICIT_FIELD &&
-      implicitColumnExpression === this.implicitColumnExpression // Source's implicit column has not been overridden
-    ) {
+    // Use the multi-column-concat path whenever the resolved expression came
+    // from the source (either `this.implicitColumnExpression` or its body
+    // fallback `this.bodyExpression`), not when a per-context override was
+    // applied. Mirrors the original "source's implicit column has not been
+    // overridden" intent.
+    const isSourceImplicit =
+      context.implicitColumnExpression === undefined &&
+      context.bodyExpression === undefined;
+    if (field === IMPLICIT_FIELD && isSourceImplicit) {
       // Sources can specify multi-column implicit columns, eg. Body and Message, in
       // which case we search the combined string `concatWithSeparator(';', Body, Message)`.
       const expressions = splitAndTrimWithBracket(fieldFinal);
@@ -1316,6 +1756,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       arrayMapKeyExpression: isArray
         ? expression.arrayMapKeyExpression
         : undefined,
+      kvItemsExpression: expression.kvItemsExpression,
     };
   }
 }
@@ -1325,9 +1766,14 @@ async function nodeTerm(
   serializer: Serializer,
   context: SerializerContext,
 ): Promise<string> {
-  const field = node.field[0] === '-' ? node.field.slice(1) : node.field;
-  let isNegatedField = node.field[0] === '-';
   const isImplicitField = node.field === IMPLICIT_FIELD;
+  const rawField = node.field[0] === '-' ? node.field.slice(1) : node.field;
+  // Decode special-token placeholders the emitter inserted in the field name
+  // (e.g. HDX_COLON for an escaped `:` in a Map sub-key). Leave the implicit
+  // field sentinel untouched so downstream comparisons against IMPLICIT_FIELD
+  // still match.
+  const field = isImplicitField ? rawField : decodeSpecialTokens(rawField);
+  let isNegatedField = node.field[0] === '-';
 
   // NodeTerm
   if (isNodeTerm(node)) {
@@ -1429,7 +1875,7 @@ function createSerializerContext(
 
     return {
       ...currentContext,
-      implicitColumnExpression: fieldWithoutNegation,
+      implicitColumnExpression: decodeSpecialTokens(fieldWithoutNegation),
       ...(isNegatedAndParenthesized(ast)
         ? { isNegatedAndParenthesized: true }
         : {}),

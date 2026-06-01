@@ -25,7 +25,10 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 
 import { loadSession, saveSession, clearSession } from '@/utils/config';
-import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertThresholdType,
+  UseTextIndex,
+} from '@hyperdx/common-utils/dist/types';
 
 // ------------------------------------------------------------------
 // API Client (session management + REST calls)
@@ -93,7 +96,11 @@ export class ApiClient {
 
   // ---- Auth --------------------------------------------------------
 
-  async login(email: string, password: string): Promise<boolean> {
+  /**
+   * Attempt to log in.  Returns `null` on success or a human-readable
+   * error string on failure so callers can display a meaningful message.
+   */
+  async login(email: string, password: string): Promise<string | null> {
     try {
       const res = await fetch(`${this.apiUrl}/login/password`, {
         method: 'POST',
@@ -102,13 +109,13 @@ export class ApiClient {
         redirect: 'manual',
       });
 
-      if (res.status === 302 || res.status === 200) {
+      if (res.status === 200 || res.status === 302 || res.status === 303) {
         this.extractCookies(res);
 
         // Verify the session is actually valid — some servers return
         // 302/200 without setting a real session (e.g. SSO redirects).
         if (!(await this.checkSession())) {
-          return false;
+          return 'Login succeeded but the session is not valid. The server may require SSO.';
         }
 
         // Reset active team on a fresh login — the previous selection
@@ -119,12 +126,37 @@ export class ApiClient {
           cookies: this.cookies,
           activeTeamId: undefined,
         });
-        return true;
+        return null; // success
       }
 
-      return false;
-    } catch {
-      return false;
+      if (res.status === 401 || res.status === 403) {
+        return 'Invalid email or password.';
+      }
+
+      // Try to extract a message from the response body
+      let detail = '';
+      try {
+        const body = await res.text();
+        if (body) {
+          try {
+            const json = JSON.parse(body);
+            detail = json.message || json.error || '';
+          } catch {
+            // Not JSON — use raw body if short enough
+            if (body.length < 200) detail = body;
+          }
+        }
+      } catch {
+        // ignore body read errors
+      }
+
+      return detail
+        ? `Login failed (HTTP ${res.status}): ${detail}`
+        : `Login failed (HTTP ${res.status}). Check your server URL and credentials.`;
+    } catch (error) {
+      const msg =
+        error instanceof Error ? error.message : 'Unknown network error';
+      return `Could not reach the server: ${msg}`;
     }
   }
 
@@ -395,6 +427,7 @@ export interface SourceResponse {
   displayedTimestampValueExpression?: string;
   defaultTableSelectExpression?: string;
   implicitColumnExpression?: string;
+  useTextIndexForImplicitColumn?: UseTextIndex;
   orderByExpression?: string;
   querySettings?: Array<{ setting: string; value: string }>;
 

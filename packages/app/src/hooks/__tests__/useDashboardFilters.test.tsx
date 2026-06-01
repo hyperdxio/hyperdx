@@ -90,7 +90,7 @@ describe('useDashboardFilters', () => {
     );
   });
 
-  it('should generate IN clause for multi-select values', () => {
+  it('should generate lucene condition for multi-select values', () => {
     const { result } = renderHook(() => useDashboardFilters(mockFilters));
 
     act(() => {
@@ -105,7 +105,7 @@ describe('useDashboardFilters', () => {
     const query = result2.current.filterQueries[0];
     const condition = 'condition' in query ? query.condition : '';
     expect(condition).toEqual(
-      "toString(environment) IN ('production', 'staging')",
+      '(environment:"production" OR environment:"staging")',
     );
   });
 
@@ -207,5 +207,146 @@ describe('useDashboardFilters', () => {
     expect(result2.current.filterValues['service.name'].included).toEqual(
       new Set(['api']),
     );
+  });
+
+  describe('ignoredFilterExpressions', () => {
+    it('is empty when no URL filters are set', () => {
+      const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+      expect(result.current.ignoredFilterExpressions).toEqual([]);
+    });
+
+    it('is empty when URL filters only reference declared expressions', () => {
+      mockState = [
+        { type: 'sql', condition: "environment IN ('production')" },
+        { type: 'sql', condition: "service.name IN ('api')" },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+      expect(result.current.ignoredFilterExpressions).toEqual([]);
+    });
+
+    it('lists a single ignored expression not declared by the dashboard', () => {
+      mockState = [
+        { type: 'sql', condition: "environment IN ('production')" },
+        { type: 'sql', condition: "team IN ('platform')" },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+      expect(result.current.ignoredFilterExpressions).toEqual(['team']);
+      // sanity: declared expression still wins through normal path
+      expect(result.current.filterValues.environment.included).toEqual(
+        new Set(['production']),
+      );
+    });
+
+    it('lists multiple ignored expressions in URL-encounter order', () => {
+      mockState = [
+        { type: 'sql', condition: "team IN ('platform')" },
+        { type: 'sql', condition: "environment IN ('production')" },
+        { type: 'sql', condition: "region IN ('us-east-1')" },
+        { type: 'sql', condition: "owner IN ('drew')" },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+      expect(result.current.ignoredFilterExpressions).toEqual([
+        'team',
+        'region',
+        'owner',
+      ]);
+      expect(Object.keys(result.current.filterValues)).toEqual(['environment']);
+    });
+
+    it('does not flag declared expressions with no URL values as ignored', () => {
+      // URL is empty — every declared expression has no values, but none of
+      // them should be reported as ignored since they are valid dashboard
+      // filters that just happen to be unset.
+      mockState = null;
+
+      const { result } = renderHook(() => useDashboardFilters(mockFilters));
+
+      expect(result.current.filterValues).toEqual({});
+      expect(result.current.ignoredFilterExpressions).toEqual([]);
+    });
+  });
+
+  it('should match bracket-notation expressions after Lucene round-trip', () => {
+    const bracketFilters: DashboardFilter[] = [
+      {
+        id: 'filter-bracket',
+        type: 'QUERY_EXPRESSION',
+        name: 'Pod',
+        expression: "SpanAttributes['k8s.pod.name']",
+        source: 'traces',
+      },
+    ];
+
+    const { result } = renderHook(() => useDashboardFilters(bracketFilters));
+
+    act(() => {
+      result.current.setFilterValue("SpanAttributes['k8s.pod.name']", [
+        'pod-1',
+      ]);
+    });
+
+    const { result: result2 } = renderHook(() =>
+      useDashboardFilters(bracketFilters),
+    );
+
+    // The bracket-notation expression should still match after the Lucene
+    // round-trip converts the key to dot notation internally.
+    expect(
+      result2.current.filterValues["SpanAttributes['k8s.pod.name']"]?.included,
+    ).toEqual(new Set(['pod-1']));
+    expect(result2.current.ignoredFilterExpressions).toEqual([]);
+  });
+
+  it('should match dot-notation URL key to bracket-notation expression', () => {
+    const bracketFilters: DashboardFilter[] = [
+      {
+        id: 'filter-bracket',
+        type: 'QUERY_EXPRESSION',
+        name: 'Pod',
+        expression: "SpanAttributes['k8s.pod.name']",
+        source: 'traces',
+      },
+    ];
+
+    // Pre-seed URL state with a dot-notation Lucene filter (as would be
+    // stored after a round-trip through filtersToQuery → parseQuery).
+    mockState = [
+      {
+        type: 'lucene',
+        condition: 'SpanAttributes.k8s.pod.name:"pod-1"',
+      },
+    ];
+
+    const { result } = renderHook(() => useDashboardFilters(bracketFilters));
+
+    expect(
+      result.current.filterValues["SpanAttributes['k8s.pod.name']"]?.included,
+    ).toEqual(new Set(['pod-1']));
+    expect(result.current.ignoredFilterExpressions).toEqual([]);
+  });
+
+  it('should migrate legacy SQL filters to Lucene on load', () => {
+    // Pre-seed URL with old-format SQL filters
+    mockState = [{ type: 'sql', condition: "environment IN ('production')" }];
+
+    renderHook(() => useDashboardFilters(mockFilters));
+
+    // Migration should have called setFilterQueries with Lucene format
+    expect(mockSetState).toHaveBeenCalled();
+    const lastCall =
+      mockSetState.mock.calls[mockSetState.mock.calls.length - 1];
+    // setFilterQueries receives an updater or a value; resolve it
+    const result =
+      typeof lastCall[0] === 'function' ? lastCall[0](mockState) : lastCall[0];
+    expect(result).toEqual([
+      { type: 'lucene', condition: 'environment:"production"' },
+    ]);
   });
 });
