@@ -29,6 +29,7 @@ import {
   isJSDataTypeJSONStringifiable,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   BuilderChartConfigWithDateRange,
@@ -100,7 +101,6 @@ import {
   usePrevious,
 } from '@/utils';
 
-import { parseMapFieldName } from './DBSearchPageFilters/utils';
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import TableHeader from './DBTable/TableHeader';
@@ -1513,10 +1513,9 @@ export function addMapAliasesToSelect(select: string): string {
   const selects = splitAndTrimWithBracket(select);
   for (let i = 0; i < selects.length; i++) {
     const key = selects[i];
-    const mapField = parseMapFieldName(key);
-    if (mapField) {
-      selects[i] =
-        `${key} as "${mapField.baseName}['${mapField.propertyPath}']"`;
+    const path = parseKeyPath(key);
+    if (path.length === 2) {
+      selects[i] = `${key} as "${path[0]}['${path[1]}']"`;
     }
   }
   return selects.join(',');

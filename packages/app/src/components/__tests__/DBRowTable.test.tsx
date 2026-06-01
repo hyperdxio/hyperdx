@@ -449,10 +449,55 @@ describe('addMapAliasesToSelect', () => {
     ).toBe(`Timestamp,toDateTime(now64(3, 'UTC')),ServiceName`);
   });
 
+  it('aliases an arrayElement(Col, key) Map subscript', () => {
+    expect(
+      addMapAliasesToSelect("arrayElement(ResourceAttributes, 'service.name')"),
+    ).toBe(
+      `arrayElement(ResourceAttributes, 'service.name') as "ResourceAttributes['service.name']"`,
+    );
+  });
+
   it('passes already-aliased plain columns through unchanged', () => {
     expect(addMapAliasesToSelect('Timestamp as ts, ServiceName as svc')).toBe(
       'Timestamp as ts,ServiceName as svc',
     );
+  });
+
+  it('does NOT re-alias a bracket-form map subscript that already carries an "as <alias>" clause', () => {
+    expect(
+      addMapAliasesToSelect("ResourceAttributes['service.name'] as svc"),
+    ).toBe("ResourceAttributes['service.name'] as svc");
+  });
+
+  it('does NOT re-alias an already-aliased map subscript within a multi-column input', () => {
+    expect(
+      addMapAliasesToSelect(
+        "Timestamp, ResourceAttributes['service.name'] as svc, SeverityText",
+      ),
+    ).toBe("Timestamp,ResourceAttributes['service.name'] as svc,SeverityText");
+  });
+
+  it('does NOT alias unbracketed dot-notation tokens', () => {
+    expect(addMapAliasesToSelect('user_data.name')).toBe('user_data.name');
+    expect(addMapAliasesToSelect('user_data.address.city')).toBe(
+      'user_data.address.city',
+    );
+  });
+
+  it('does NOT alias multi-segment dotted native columns', () => {
+    expect(addMapAliasesToSelect('SpanAttributes.k8s.resource.name')).toBe(
+      'SpanAttributes.k8s.resource.name',
+    );
+  });
+
+  it('does NOT alias toString(x).y attribute-access expressions', () => {
+    expect(addMapAliasesToSelect('toString(SpanAttributes).k8s')).toBe(
+      'toString(SpanAttributes).k8s',
+    );
+  });
+
+  it('does NOT alias backtick-quoted dotted JSON paths', () => {
+    expect(addMapAliasesToSelect('`host`.`arch`')).toBe('`host`.`arch`');
   });
 
   it('returns an empty string for empty input', () => {
