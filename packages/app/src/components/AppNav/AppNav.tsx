@@ -34,6 +34,8 @@ import { Dashboard, useDashboards } from '@/dashboard';
 import { useFavorites } from '@/favorites';
 import InstallInstructionModal from '@/InstallInstructionsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
+import { QueryStatsDrawer } from '@/queryStats/QueryStatsDrawer';
+import { QueryStatsErrorBoundary } from '@/queryStats/QueryStatsErrorBoundary';
 import { useSavedSearches } from '@/savedSearch';
 import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
@@ -261,6 +263,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   const {
     userPreferences: { isUTC },
   } = useUserPreferences();
+
+  const [queryStatsOpen, { toggle: toggleQueryStats, close: closeQueryStats }] =
+    useDisclosure(false);
 
   const [
     showInstallInstructions,
@@ -521,6 +526,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             userName={meData?.name}
             teamName={meData?.team?.name}
             onClickUserPreferences={openUserPreferences}
+            onClickQueryStats={toggleQueryStats}
             logoutUrl={IS_LOCAL_MODE ? null : `/api/logout`}
           />
           {meData && meData.usageStatsEnabled && (
@@ -535,6 +541,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         opened={UserPreferencesOpen}
         onClose={closeUserPreferences}
       />
+      <QueryStatsErrorBoundary>
+        <QueryStatsDrawer opened={queryStatsOpen} onClose={closeQueryStats} />
+      </QueryStatsErrorBoundary>
     </AppNavContext.Provider>
   );
 }

@@ -14,6 +14,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
+  IconActivity,
   IconBook,
   IconBrandDiscord,
   IconBulb,
@@ -66,6 +67,7 @@ type AppNavUserMenuProps = {
   teamName?: string;
   logoutUrl?: string | null;
   onClickUserPreferences?: () => void;
+  onClickQueryStats?: () => void;
 };
 
 const getUserInitials = (userName: string) => {
@@ -83,6 +85,7 @@ export const AppNavUserMenu = ({
   teamName,
   logoutUrl,
   onClickUserPreferences,
+  onClickQueryStats,
 }: AppNavUserMenuProps) => {
   const { isCollapsed } = React.useContext(AppNavContext);
   const resolvedUserName = userName.trim() || 'User';
@@ -159,6 +162,15 @@ export const AppNavUserMenu = ({
         >
           User Preferences
         </Menu.Item>
+        {onClickQueryStats && (
+          <Menu.Item
+            data-testid="query-stats-menu-item"
+            leftSection={<IconActivity size={16} />}
+            onClick={onClickQueryStats}
+          >
+            Query Stats
+          </Menu.Item>
+        )}
         {logoutUrl && (
           <>
             <Menu.Divider />
