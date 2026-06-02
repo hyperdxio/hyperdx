@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 import { deleteDashboard } from '@/controllers/dashboard';
 import Dashboard, { IDashboard } from '@/models/dashboard';
-import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
+import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
 
 import {
