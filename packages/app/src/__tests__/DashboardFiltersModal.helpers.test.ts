@@ -22,9 +22,9 @@ describe('getFilterVisibility', () => {
   });
 
   it('returns "hidden" for { constant: true, renderMode: "hidden" }', () => {
-    expect(
-      getFilterVisibility({ constant: true, renderMode: 'hidden' }),
-    ).toBe('hidden');
+    expect(getFilterVisibility({ constant: true, renderMode: 'hidden' })).toBe(
+      'hidden',
+    );
   });
 
   it('normalizes { constant: true } with no renderMode to "readonly"', () => {
