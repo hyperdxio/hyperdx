@@ -4,6 +4,24 @@
 
 ### Minor Changes
 
+- feat: apply direct_read KV items optimization to SQL filters
+
+  SQL `type: 'sql'` filters on Map columns (e.g.
+  `LogAttributes['key'] IN ('a', 'b')`) now get the same `has()` /
+  `hasAny()` rewrite that Lucene filters already use. When a KV items
+  column with a `text(tokenizer=array)` skip index exists for the Map,
+  the condition is rewritten at the filter site before rendering:
+
+  - `Map['k'] = 'v'` → `has(Items, concat('k', '=', 'v'))`
+  - `Map['k'] IN ('a', 'b')` → `hasAny(Items, array(concat('k', '=', 'a'), concat('k', '=', 'b')))`
+
+  Empty-string values are left unrewritten to preserve ClickHouse's
+  missing-key semantics (`Map(String, String)['absent'] = ''`).
+
+  Also extracts `buildKvItemsLookup` from `CustomSchemaSQLSerializerV2`
+  into a shared top-level export so both the Lucene serializer and the
+  SQL filter rewriter can use the same lookup logic.
+
 - 3123db53: feat: experimental promql support
 - dcab1cb6: feat: default the direct_read map column optimization on supported ClickHouse versions
 
