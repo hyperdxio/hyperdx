@@ -1384,6 +1384,19 @@ describe('MCP Dashboard Tools', () => {
             sourceId,
           },
         ],
+        // Each constant filter needs a matching savedFilterValues
+        // entry on the same Lucene-keyed expression; the schema-level
+        // coherence rule rejects a locked filter without a value.
+        savedFilterValues: [
+          {
+            type: 'lucene' as const,
+            condition: 'ServiceName:"hdx-private-api"',
+          },
+          {
+            type: 'lucene' as const,
+            condition: 'environment:"production"',
+          },
+        ],
       });
       expect(createResult.isError).toBeFalsy();
       const created = JSON.parse(getFirstText(createResult));
@@ -1410,6 +1423,8 @@ describe('MCP Dashboard Tools', () => {
       expect(fetched.filters).toEqual(created.filters);
 
       // UPDATE: flip the editable filter to read-only and keep the others.
+      // All three filters are now constant: true, so savedFilterValues
+      // must cover all three expressions.
       const updateResult = await callTool(client, 'hyperdx_save_dashboard', {
         id: created.id,
         name: 'Cloneable dashboard template',
@@ -1441,6 +1456,20 @@ describe('MCP Dashboard Tools', () => {
             sourceId,
             constant: true,
             renderMode: 'readonly',
+          },
+        ],
+        savedFilterValues: [
+          {
+            type: 'lucene' as const,
+            condition: 'ServiceName:"hdx-private-api"',
+          },
+          {
+            type: 'lucene' as const,
+            condition: 'environment:"production"',
+          },
+          {
+            type: 'lucene' as const,
+            condition: 'region:"us-east-2"',
           },
         ],
       });
@@ -1601,6 +1630,33 @@ describe('MCP Dashboard Tools', () => {
             renderMode: 'readonly',
           },
         ],
+      });
+      expect(result.isError).toBeTruthy();
+    });
+
+    it('should reject constant: true with no matching savedFilterValues entry (HDX-4404)', async () => {
+      // The clone-and-flip contract: a `constant: true` filter is
+      // useful only when there is a value to lock to. Without a
+      // matching `savedFilterValues` entry on the same Lucene-keyed
+      // expression, the chip renders with a lock icon but the WHERE
+      // clause never applies. Reject at the boundary so an MCP-
+      // authored template can't ship in this broken state.
+      const sourceId = traceSource._id.toString();
+      const result = await callTool(client, 'hyperdx_save_dashboard', {
+        name: 'Locked-but-no-saved-value',
+        tiles: [traceTile(sourceId)],
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service (locked)',
+            expression: 'ServiceName',
+            sourceId,
+            whereLanguage: 'sql',
+            constant: true,
+            renderMode: 'readonly',
+          },
+        ],
+        // No savedFilterValues to back the constant filter.
       });
       expect(result.isError).toBeTruthy();
     });

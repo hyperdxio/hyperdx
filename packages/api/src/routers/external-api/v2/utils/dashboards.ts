@@ -1,8 +1,10 @@
+import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import {
   validateDashboardContainersStructure,
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
+import { parseLuceneFilter } from '@hyperdx/common-utils/dist/filters';
 import {
   isHeatmapCompatibleSource,
   isPromqlSavedChartConfig,
@@ -1162,6 +1164,61 @@ function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
           data.filters as unknown as DashboardFilter[],
           ctx,
         );
+
+        // Cross-schema coherence: a filter with `constant: true` only
+        // applies a WHERE clause if its expression resolves to a value
+        // in `savedFilterValues`. Without this check the clone-and-flip
+        // template path silently ships a "locked" dashboard with no
+        // scope: the chip renders with a lock icon, `setFilterValue`
+        // no-ops, but every tile runs unfiltered. Reject at the
+        // boundary so MCP / external-API callers see the error.
+        //
+        // Lucene-only matching: SQL conditions are opaque strings the
+        // server doesn't parse here, so a `type: 'sql'` saved entry is
+        // counted as "covers all expressions" (best-effort) - the only
+        // way to assert otherwise would be to drag a SQL parser into
+        // the validator. The UI's "Save default" flow writes Lucene by
+        // default, and the MCP example in `mcpFiltersParam` uses
+        // Lucene, so the common path is fully covered.
+        const constantFilters = (
+          data.filters as unknown as DashboardFilter[]
+        ).filter(f => f.constant);
+        if (constantFilters.length > 0) {
+          const saved = data.savedFilterValues ?? [];
+          const hasAnySqlEntry = saved.some(s => s.type === 'sql');
+          const luceneCoveredExpressions = new Set<string>();
+          for (const entry of saved) {
+            if (entry.type !== 'lucene') continue;
+            const parsed = parseLuceneFilter(entry.condition);
+            if (!parsed) continue;
+            for (const term of parsed) {
+              luceneCoveredExpressions.add(parseKeyPath(term.key).join('.'));
+            }
+          }
+          for (let i = 0; i < constantFilters.length; i++) {
+            const f = constantFilters[i];
+            const filterIndex = (
+              data.filters as unknown as DashboardFilter[]
+            ).indexOf(f);
+            const norm = parseKeyPath(f.expression).join('.');
+            const covered =
+              hasAnySqlEntry || luceneCoveredExpressions.has(norm);
+            if (!covered) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['filters', filterIndex],
+                message:
+                  `Filter "${f.name}" has constant: true but no matching ` +
+                  'savedFilterValues entry on the same expression. Add a ' +
+                  'savedFilterValues entry whose Lucene condition references ' +
+                  `"${f.expression}" (e.g. ` +
+                  `{ "type": "lucene", "condition": "${f.expression}:<value>" }), ` +
+                  'or remove constant: true. Without a matching saved value ' +
+                  'the filter renders as locked but applies no WHERE clause.',
+              });
+            }
+          }
+        }
       }
     });
 }

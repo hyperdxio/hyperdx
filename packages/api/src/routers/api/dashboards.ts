@@ -1,8 +1,11 @@
 import {
+  DashboardFilter,
   DashboardSchema,
   DashboardWithoutIdSchema,
   PresetDashboard,
   PresetDashboardFilterSchema,
+  refineDashboardFilterCoherence,
+  refineDashboardFiltersConstantSiblings,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import _ from 'lodash';
@@ -29,6 +32,59 @@ import { objectIdSchema } from '@/utils/zod';
 // create routes that will get and update dashboards
 const router = express.Router();
 
+// Apply the same dashboard-filter coherence refinements the
+// external-API and MCP entry points run, but at the internal API's
+// route boundary. The shared `DashboardSchema` is intentionally left
+// as a plain `ZodObject` so the various `.omit()` / `.partial()` /
+// `.extend()` chains (DashboardWithoutIdSchema, DashboardSchema.partial(),
+// DashboardTemplateSchema) keep working; that means the cross-filter
+// rules are not attached on the schema itself. Wrap the per-route
+// body schemas here so a server-internal caller (or any non-MCP /
+// non-external-API path) gets the same rejection surface for:
+//   1. renderMode: 'readonly' | 'hidden' without constant: true
+//   2. mixed `constant: true` + editable siblings on the same expression
+//
+// Per-filter coherence is checked via a tiny pass-through schema so
+// `refineDashboardFilterCoherence` can run with its existing ctx
+// signature (the helper writes `path: ['renderMode']`; the outer
+// ctx prepends `['filters', i]` on issues raised through the inner
+// parser).
+const perFilterCoherenceSchema = z
+  .object({
+    constant: z.boolean().optional(),
+    renderMode: z.enum(['editable', 'readonly', 'hidden']).optional(),
+  })
+  .passthrough()
+  .superRefine(refineDashboardFilterCoherence);
+
+const refineDashboardFilters = <T extends z.ZodTypeAny>(schema: T) =>
+  schema.superRefine((data, ctx) => {
+    const candidate = data as { filters?: unknown };
+    if (!Array.isArray(candidate.filters) || candidate.filters.length === 0) {
+      return;
+    }
+    const filters = candidate.filters as DashboardFilter[];
+    filters.forEach((f, i) => {
+      const result = perFilterCoherenceSchema.safeParse(f);
+      if (!result.success) {
+        for (const issue of result.error.issues) {
+          ctx.addIssue({
+            ...issue,
+            path: ['filters', i, ...issue.path],
+          });
+        }
+      }
+    });
+    refineDashboardFiltersConstantSiblings(filters, ctx);
+  });
+
+const internalCreateDashboardBodySchema = refineDashboardFilters(
+  DashboardWithoutIdSchema,
+);
+const internalUpdateDashboardBodySchema = refineDashboardFilters(
+  DashboardSchema.partial(),
+);
+
 router.get('/', async (req, res, next) => {
   try {
     const { teamId } = getNonNullUserWithTeam(req);
@@ -44,7 +100,7 @@ router.get('/', async (req, res, next) => {
 router.post(
   '/',
   validateRequest({
-    body: DashboardWithoutIdSchema,
+    body: internalCreateDashboardBodySchema,
   }),
   async (req, res, next) => {
     try {
@@ -67,7 +123,7 @@ router.patch(
     params: z.object({
       id: objectIdSchema,
     }),
-    body: DashboardSchema.partial(),
+    body: internalUpdateDashboardBodySchema,
   }),
   async (req, res, next) => {
     try {

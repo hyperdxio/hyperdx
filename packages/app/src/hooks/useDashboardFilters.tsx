@@ -23,11 +23,25 @@ interface UseDashboardFiltersOptions {
    * Optional; when omitted, constant filters resolve to no value.
    */
   savedFilterValues?: Filter[] | null;
+  /**
+   * Gate the overlay until the dashboard has finished loading. When the
+   * caller is still fetching (`dashboard?.filters` not yet available),
+   * the hook can't tell whether a URL entry collides with an as-yet-
+   * unknown `constant: true` filter, so emitting the URL value into
+   * tile queries would let React Query cache a tile result scoped to
+   * the stale URL value rather than the locked saved value. Pass
+   * `false` while loading and flip to `true` once the dashboard has
+   * resolved (`dashboardReady` in `DBDashboardPage`).
+   *
+   * Defaults to `true` so callers that don't have a loading state
+   * (tests, preset dashboards) keep working unchanged.
+   */
+  enabled?: boolean;
 }
 
 const useDashboardFilters = (
   filters: DashboardFilter[],
-  { savedFilterValues }: UseDashboardFiltersOptions = {},
+  { savedFilterValues, enabled = true }: UseDashboardFiltersOptions = {},
 ) => {
   const [filterQueries, setFilterQueries] = useQueryState(
     'filters',
@@ -89,6 +103,21 @@ const useDashboardFilters = (
     ignoredExpressions,
     filtersByExpression,
   } = useMemo(() => {
+    // Race guard: while `enabled` is false (typically because the
+    // dashboard is still loading), short-circuit to empty results.
+    // Without this gate, the hook would treat URL entries as editable
+    // (no constants known yet) and emit them into tile queries before
+    // `dashboard.filters` and `savedFilterValues` arrive, letting
+    // React Query cache a tile result scoped to the stale URL value
+    // rather than the eventual locked saved value.
+    if (!enabled) {
+      return {
+        valuesForExistingFilters: {} as FilterState,
+        queriesForExistingFilters: [] as Filter[],
+        ignoredExpressions: [] as string[],
+        filtersByExpression: new Map<string, DashboardFilter[]>(),
+      };
+    }
     const { filters: parsedFilters } = parseQuery(filterQueries ?? []);
     const valuesForExistingFilters: FilterState = {};
     const ignored: string[] = [];
@@ -167,7 +196,7 @@ const useDashboardFilters = (
       ignoredExpressions: ignored,
       filtersByExpression,
     };
-  }, [filterQueries, filters, savedFilterValues]);
+  }, [filterQueries, filters, savedFilterValues, enabled]);
 
   // Return only the filter queries that should be applied to a tile whose
   // source is `sourceId`. When multiple filter definitions share the same

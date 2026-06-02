@@ -66,9 +66,21 @@ const MODAL_SIZE = 'md';
 // values are the only meaningful combinations in v1; the schema admits
 // more, leaving room for MCP / external API callers to express future
 // variants (e.g. constant + editable).
+//
+// Deliberate normalization: an MCP-authored filter that arrives with
+// only `constant: true` (no `renderMode`) opens in the editor as the
+// "Read-only" preset. If the user saves the form without changing
+// Visibility, `applyFilterVisibility('readonly')` writes back
+// `{ constant: true, renderMode: 'readonly' }`, so the inbound wire
+// shape gains an explicit `renderMode: 'readonly'`. This is
+// intentional: the editor has only three preset shapes (editable,
+// readonly, hidden) and persisting the resolved shape keeps the
+// wire format aligned with what the editor displays. Round-trip
+// tests pin the shape at the persistence boundary
+// (DashboardFiltersModal.test.tsx).
 type FilterVisibility = z.infer<typeof DashboardFilterRenderMode>;
 
-const getFilterVisibility = (filter: {
+export const getFilterVisibility = (filter: {
   constant?: boolean;
   renderMode?: FilterVisibility;
 }): FilterVisibility => {
@@ -77,7 +89,7 @@ const getFilterVisibility = (filter: {
   return 'editable';
 };
 
-const applyFilterVisibility = (
+export const applyFilterVisibility = (
   visibility: FilterVisibility,
 ): Pick<DashboardFilter, 'constant' | 'renderMode'> => {
   switch (visibility) {

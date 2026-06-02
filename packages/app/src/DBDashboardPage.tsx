@@ -1388,6 +1388,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
   const filters = dashboard?.filters ?? [];
+  const dashboardReady =
+    !!dashboard?.id &&
+    router.isReady &&
+    (isLocalDashboard || !isFetchingDashboard);
   const {
     filterValues,
     setFilterValue,
@@ -1396,12 +1400,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     getFilterQueriesForSource,
   } = useDashboardFilters(filters, {
     savedFilterValues: dashboard?.savedFilterValues,
+    // Gate the overlay until the dashboard has finished loading.
+    // While `dashboardReady` is false, the hook can't tell whether a
+    // URL entry collides with an as-yet-unknown `constant: true`
+    // filter, so it returns empty values/queries and tiles wait for
+    // the dashboard to hydrate before issuing scoped queries.
+    enabled: dashboardReady,
   });
-
-  const dashboardReady =
-    !!dashboard?.id &&
-    router.isReady &&
-    (isLocalDashboard || !isFetchingDashboard);
 
   // Warn when the URL has filter values that don't correspond to any declared
   // dashboard filter — they'd otherwise be silently dropped, and users who
@@ -1437,6 +1442,34 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         const filterIndex =
           draft.filters?.findIndex(p => p.id === filter.id) ?? -1;
         if (draft.filters && filterIndex !== -1) {
+          const oldExpression = draft.filters[filterIndex].expression;
+          // Renaming a filter's expression must take the old saved
+          // entry with it: otherwise an entry keyed by the previous
+          // expression stays in `savedFilterValues`, the renamed
+          // filter resolves to undefined (its new expression has no
+          // match), and any future "lock to default" on the same id
+          // would silently re-bind to the orphaned value. Skip the
+          // strip if another sibling still references the old
+          // expression (two-source locked filters legitimately share
+          // a saved entry).
+          if (
+            oldExpression !== filter.expression &&
+            normalizeExpression(oldExpression) !==
+              normalizeExpression(filter.expression)
+          ) {
+            const siblingStillUsesOld = draft.filters.some(
+              (p, i) =>
+                i !== filterIndex &&
+                normalizeExpression(p.expression) ===
+                  normalizeExpression(oldExpression),
+            );
+            if (!siblingStillUsesOld) {
+              draft.savedFilterValues = removeSavedDefaultForExpression(
+                draft.savedFilterValues,
+                oldExpression,
+              );
+            }
+          }
           draft.filters[filterIndex] = filter;
         } else {
           draft.filters = [...(draft.filters ?? []), filter];
@@ -1703,7 +1736,22 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       produce(dashboard, draft => {
         draft.savedQuery = null;
         draft.savedQueryLanguage = null;
-        draft.savedFilterValues = [];
+        // Preserve any savedFilterValues entry whose normalized
+        // expression matches a `constant: true` filter. The user
+        // intent here is "remove the editor's saved default query +
+        // editable defaults", not "unlock every locked scope filter":
+        // a clone-and-flip template with `constant: true` filters
+        // would otherwise render its lock chip but apply no WHERE
+        // scoping, exactly the failure mode `constant` exists to
+        // prevent. Mirror `mergeConstantFiltersForSave` with an empty
+        // URL input so editable saved entries fall away and constant
+        // entries stay.
+        const constantExpressions = buildConstantExpressionSet(draft.filters);
+        draft.savedFilterValues = mergeConstantFiltersForSave(
+          draft.savedFilterValues,
+          [],
+          constantExpressions,
+        );
       }),
       () => {
         notifications.show({

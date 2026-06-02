@@ -652,4 +652,83 @@ describe('useDashboardFilters', () => {
       expect(condition).toContain('api-pod-1');
     });
   });
+
+  describe('enabled flag (race guard, HDX-4404)', () => {
+    const constantFilters: DashboardFilter[] = [
+      {
+        id: 'filter-svc',
+        type: 'QUERY_EXPRESSION',
+        name: 'Service',
+        expression: 'ServiceName',
+        source: 'traces',
+        constant: true,
+        renderMode: 'readonly',
+      },
+    ];
+
+    it('returns empty filterValues + filterQueries when enabled is false', () => {
+      mockState = [
+        { type: 'lucene', condition: 'ServiceName:"stale-from-url"' },
+      ];
+      const { result } = renderHook(() =>
+        useDashboardFilters(constantFilters, {
+          savedFilterValues: [
+            { type: 'lucene', condition: 'ServiceName:"locked-value"' },
+          ],
+          enabled: false,
+        }),
+      );
+
+      // While the dashboard is still loading, the hook must NOT emit the
+      // URL value (stale) NOR the savedFilterValues value (we don't yet
+      // know which expressions are constant). It short-circuits so tile
+      // queries wait for hydration.
+      expect(result.current.filterValues).toEqual({});
+      expect(result.current.filterQueries).toEqual([]);
+      expect(result.current.getFilterQueriesForSource('source-x')).toEqual([]);
+    });
+
+    it('emits the locked value once enabled flips to true', () => {
+      mockState = [
+        { type: 'lucene', condition: 'ServiceName:"stale-from-url"' },
+      ];
+      const { result, rerender } = renderHook(
+        ({ enabled }: { enabled: boolean }) =>
+          useDashboardFilters(constantFilters, {
+            savedFilterValues: [
+              { type: 'lucene', condition: 'ServiceName:"locked-value"' },
+            ],
+            enabled,
+          }),
+        { initialProps: { enabled: false } },
+      );
+      expect(result.current.filterValues).toEqual({});
+
+      rerender({ enabled: true });
+      expect(
+        result.current.filterValues['ServiceName']?.included,
+      ).toBeDefined();
+      const queries = result.current.getFilterQueriesForSource('source-x');
+      expect(queries).toHaveLength(1);
+      const condition = 'condition' in queries[0] ? queries[0].condition : '';
+      expect(condition).toContain('locked-value');
+      expect(condition).not.toContain('stale-from-url');
+    });
+
+    it('defaults enabled to true when option is omitted', () => {
+      mockState = null;
+      const { result } = renderHook(() =>
+        useDashboardFilters(constantFilters, {
+          savedFilterValues: [
+            { type: 'lucene', condition: 'ServiceName:"locked-value"' },
+          ],
+        }),
+      );
+      // Backward compatible: callers that don't pass `enabled` get the
+      // current behavior (overlay runs immediately).
+      expect(
+        result.current.filterValues['ServiceName']?.included,
+      ).toBeDefined();
+    });
+  });
 });

@@ -7,9 +7,11 @@ import {
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_CONTAINERS,
   DashboardContainerSchema,
+  DashboardFilter,
   DashboardFilterType,
   MetricsDataType,
   refineDashboardFilterCoherence,
+  refineDashboardFiltersConstantSiblings,
   SearchConditionLanguageSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
@@ -742,6 +744,17 @@ const mcpDashboardFilterSchema = z
 
 export const mcpFiltersParam = z
   .array(mcpDashboardFilterSchema)
+  // Mirror the array-level refinement the external API runs in
+  // `buildDashboardBodySchema`: reject mixing constant: true + editable
+  // siblings on the same expression so an MCP caller gets the same
+  // boundary error the v2 HTTP path returns, instead of a downstream
+  // server-side rejection wrapped in a Validation error response.
+  .superRefine((filters, ctx) =>
+    refineDashboardFiltersConstantSiblings(
+      filters as unknown as DashboardFilter[],
+      ctx,
+    ),
+  )
   .describe(
     'Optional dashboard-level filters. These define the dropdowns in the dashboard filter ' +
       'bar AND the expressions that table-tile row-click navigation can populate. ' +
