@@ -25,6 +25,32 @@ const escapeLuceneQuotedTerm = (s: string) => {
 };
 
 /**
+ * Escape a value for use inside a single-quoted SQL string literal. Backslashes
+ * are doubled and single quotes are SQL-escaped (`''`). This is the inverse of
+ * the unescaping `getBooleanOrUnquotedString` performs in the app's
+ * `parseQuery`, so SQL filters emitted here round-trip back into FilterState.
+ */
+const escapeSqlString = (s: string): string =>
+  s.replace(/\\/g, '\\\\').replace(/'/g, "''");
+
+/** Render a FilterState value as a SQL literal (quoted string or bare boolean). */
+const toSqlLiteral = (v: string | boolean): string =>
+  typeof v === 'boolean' ? String(v) : `'${escapeSqlString(v)}'`;
+
+/**
+ * A FilterState key is a raw ClickHouse expression (e.g. a `JSONExtractString(
+ * LogAttributes['k.v'], 'p')` produced by "Add to Filters" on a nested-JSON
+ * attribute) rather than a plain field path whenever it contains characters
+ * that cannot appear in a Lucene field name — parentheses, brackets, quotes, or
+ * whitespace. Emitting a Lucene `field:"value"` for such a key makes
+ * `lucene.parse` throw at render time (HDX nested-JSON "Add to Filters" crash),
+ * so we emit a SQL filter instead; the raw expression is already valid SQL and
+ * flows straight into the WHERE clause.
+ */
+const isSqlExpressionField = (field: string): boolean =>
+  /[()[\]{}"'\s]/.test(field);
+
+/**
  * Escape backslashes and colons so the field name survives Lucene parsing.
  * Map sub-keys can legitimately contain `:` (e.g. `LogAttributes['foo:bar']`
  * normalizes to `LogAttributes.foo:bar` via parseKeyPath().join('.')), and
@@ -37,6 +63,42 @@ const escapeLuceneQuotedTerm = (s: string) => {
 const escapeLuceneFieldName = (key: string): string =>
   key.replace(/\\/g, '\\\\').replace(/:/g, '\\:');
 
+/**
+ * Build SQL `IN` / `NOT IN` / `BETWEEN` filters for a single field whose key is
+ * a raw ClickHouse expression. The emitted shape matches what the app's
+ * `parseQuery`/`extractInClauses` reads back, so these filters round-trip.
+ */
+const filterStateValuesToSql = (
+  column: string,
+  values: FilterState[string],
+): Filter[] => {
+  const conditions: Filter[] = [];
+
+  if (values.included.size > 0) {
+    conditions.push({
+      type: 'sql' as const,
+      condition: `${column} IN (${Array.from(values.included)
+        .map(toSqlLiteral)
+        .join(', ')})`,
+    });
+  }
+  if (values.excluded.size > 0) {
+    conditions.push({
+      type: 'sql' as const,
+      condition: `${column} NOT IN (${Array.from(values.excluded)
+        .map(toSqlLiteral)
+        .join(', ')})`,
+    });
+  }
+  if (values.range != null) {
+    conditions.push({
+      type: 'sql' as const,
+      condition: `${column} BETWEEN ${values.range.min} AND ${values.range.max}`,
+    });
+  }
+  return conditions;
+};
+
 export const filtersToQuery = (filters: FilterState): Filter[] => {
   return Object.entries(filters)
     .filter(
@@ -46,8 +108,18 @@ export const filtersToQuery = (filters: FilterState): Filter[] => {
         values.range != null,
     )
     .flatMap(([key, values]) => {
+      const normalizedField = parseKeyPath(key).join('.');
+
+      // Raw SQL expressions (e.g. JSONExtractString(...) from nested-JSON "Add
+      // to Filters") can't be represented as a Lucene field name without
+      // breaking lucene.parse, so emit SQL filters for them instead. The
+      // original `key` already holds the valid ClickHouse expression.
+      if (isSqlExpressionField(normalizedField)) {
+        return filterStateValuesToSql(key, values);
+      }
+
       const conditions: Filter[] = [];
-      const luceneField = escapeLuceneFieldName(parseKeyPath(key).join('.'));
+      const luceneField = escapeLuceneFieldName(normalizedField);
 
       if (values.included.size > 0) {
         const terms = Array.from(values.included).map(

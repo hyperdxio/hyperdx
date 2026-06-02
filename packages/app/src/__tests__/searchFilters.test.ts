@@ -636,6 +636,70 @@ describe('searchFilters', () => {
     });
   });
 
+  // "Add to Filters" on a nested-JSON attribute produces a ClickHouse SQL
+  // expression as the filter key (JSONExtractString(...)). filtersToQuery emits
+  // these as SQL filters (not Lucene, which lucene.parse can't parse), and
+  // parseQuery must read them back so the selection survives a URL round-trip.
+  describe('round-trip: SQL-expression field filters (nested-JSON "Add to Filters")', () => {
+    const sqlExprKey =
+      "JSONExtractString(LogAttributes['weird.key.payload'], 'abc.def.jqk/abcd')";
+
+    it('round-trips a JSONExtractString included filter as SQL', () => {
+      const filters = {
+        [sqlExprKey]: {
+          included: new Set<string | boolean>(['asdf-14']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      const query = filtersToQuery(filters);
+      expect(query).toEqual([
+        { type: 'sql', condition: `${sqlExprKey} IN ('asdf-14')` },
+      ]);
+      const parsed = parseQuery(query);
+      expect(parsed.filters).toEqual({
+        [sqlExprKey]: {
+          included: new Set(['asdf-14']),
+          excluded: new Set(),
+        },
+      });
+      expect(parsed.passthroughFilters).toEqual([]);
+    });
+
+    it('round-trips JSONExtractString included + excluded values', () => {
+      const filters = {
+        [sqlExprKey]: {
+          included: new Set<string | boolean>(['a', 'b']),
+          excluded: new Set<string | boolean>(['c']),
+        },
+      };
+      const query = filtersToQuery(filters);
+      expect(query).toEqual([
+        { type: 'sql', condition: `${sqlExprKey} IN ('a', 'b')` },
+        { type: 'sql', condition: `${sqlExprKey} NOT IN ('c')` },
+      ]);
+      const parsed = parseQuery(query);
+      expect(parsed.filters).toEqual({
+        [sqlExprKey]: {
+          included: new Set(['a', 'b']),
+          excluded: new Set(['c']),
+        },
+      });
+    });
+
+    it('round-trips values with single quotes through SQL escaping', () => {
+      const filters = {
+        [sqlExprKey]: {
+          included: new Set<string | boolean>(["it's a test"]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+      const parsed = parseQuery(filtersToQuery(filters));
+      expect(parsed.filters[sqlExprKey].included).toEqual(
+        new Set(["it's a test"]),
+      );
+    });
+  });
+
   describe('round-trip: Lucene filters', () => {
     it('round-trips Map filter with single included value', () => {
       const filters = {
