@@ -6,7 +6,7 @@ import {
 import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
-// MCP-compatible flat Zod schema for hyperdx_save_alert.
+// MCP-compatible flat Zod schema for clickstack_save_alert.
 //
 // The MCP SDK's normalizeObjectSchema() cannot serialize ZodEffects
 // (superRefine) or discriminatedUnion.  We keep the inputSchema as a plain

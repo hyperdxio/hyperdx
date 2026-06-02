@@ -71,9 +71,9 @@ describe('MCP Event Deltas Tool', () => {
   });
 
   describe('schema serialization', () => {
-    it('exposes hyperdx_event_deltas via tools/list with target + baseline groups', async () => {
+    it('exposes clickstack_event_deltas via tools/list with target + baseline groups', async () => {
       const { tools } = await client.listTools();
-      const t = tools.find(t => t.name === 'hyperdx_event_deltas');
+      const t = tools.find(t => t.name === 'clickstack_event_deltas');
       expect(t).toBeDefined();
       const schema = t!.inputSchema;
       const props = Object.keys(schema.properties ?? {});
@@ -90,7 +90,7 @@ describe('MCP Event Deltas Tool', () => {
 
   describe('validation', () => {
     it('rejects target where endTime <= startTime', async () => {
-      const result = await callTool(client, 'hyperdx_event_deltas', {
+      const result = await callTool(client, 'clickstack_event_deltas', {
         sourceId: logSource._id.toString(),
         target: {
           startTime: '2026-05-10T01:00:00Z',
@@ -147,7 +147,7 @@ describe('MCP Event Deltas Tool', () => {
     });
 
     it('ranks SeverityText and ServiceName as top differentiating properties', async () => {
-      const result = await callTool(client, 'hyperdx_event_deltas', {
+      const result = await callTool(client, 'clickstack_event_deltas', {
         sourceId: logSource._id.toString(),
         target: {
           startTime: new Date(now - 5 * 60_000).toISOString(),
@@ -208,7 +208,7 @@ describe('MCP Event Deltas Tool', () => {
     });
 
     it('returns includeHidden:true with a hidden array containing high-cardinality / id fields', async () => {
-      const result = await callTool(client, 'hyperdx_event_deltas', {
+      const result = await callTool(client, 'clickstack_event_deltas', {
         sourceId: logSource._id.toString(),
         target: {
           startTime: new Date(now - 5 * 60_000).toISOString(),
