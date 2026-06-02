@@ -765,7 +765,7 @@ SQL TEMPLATE REFERENCE:
 }
 
 export function buildQueryGuidePrompt(): string {
-  return `Reference guide for writing queries with HyperDX MCP tools (clickstack_timeseries, clickstack_table, clickstack_search, clickstack_event_patterns, clickstack_sql, and clickstack_save_dashboard).
+  return `Reference guide for writing queries with ClickStack MCP tools (clickstack_timeseries, clickstack_table, clickstack_search, clickstack_event_patterns, clickstack_sql, and clickstack_save_dashboard).
 
 == AGGREGATION FUNCTIONS (aggFn) ==
 
@@ -1015,7 +1015,7 @@ Destination types:
   { type: "search",    target, whereLanguage, whereTemplate?, filters? }
     Opens the /search page for a log or trace source. Metric and session sources are rejected by the server (the /search page does not render those kinds).
   { type: "dashboard", target, whereLanguage, whereTemplate?, filters? }
-    Opens another HyperDX dashboard owned by the same team.
+    Opens another ClickStack dashboard owned by the same team.
 
 Target shape, how the destination is identified:
   target: { mode: "id", id: "<object-id>" }

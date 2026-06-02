@@ -71,7 +71,7 @@ export async function runEventPatterns(
       content: [
         {
           type: 'text' as const,
-          text: `Source not found: ${sourceId}. Call hyperdx_list_sources to discover available source IDs.`,
+          text: `Source not found: ${sourceId}. Call clickstack_list_sources to discover available source IDs.`,
         },
       ],
     };
@@ -88,7 +88,7 @@ export async function runEventPatterns(
       content: [
         {
           type: 'text' as const,
-          text: `Connection not found for source: ${sourceId}. Call hyperdx_list_sources to discover available source IDs.`,
+          text: `Connection not found for source: ${sourceId}. Call clickstack_list_sources to discover available source IDs.`,
         },
       ],
     };
@@ -286,7 +286,7 @@ export async function runEventPatterns(
   // ── Format response ──
   // Convert trend timestamps to ISO strings, extract sample body texts,
   // and build a whereSnippet per pattern so the agent can drill into
-  // matching events via a follow-up hyperdx_search query.
+  // matching events via a follow-up clickstack_search query.
   const sampledCount = sampleRows.length;
   const slicedPatterns = rawPatterns.slice(0, topN);
 
@@ -349,7 +349,7 @@ export async function runEventPatterns(
       (trendBuckets > 0
         ? 'trend.count is similarly extrapolated from sample bucket counts. '
         : '') +
-      'Use whereSnippet as the "where" parameter in a hyperdx_search call to browse matching raw events.',
+      'Use whereSnippet as the "where" parameter in a clickstack_search call to browse matching raw events.',
   };
 
   const { data: trimmedOutput, isTrimmed } = trimToolResponse(output);

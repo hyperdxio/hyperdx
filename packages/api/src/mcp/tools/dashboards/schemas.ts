@@ -245,7 +245,9 @@ const mcpOnClickSearchSchema = z
 
 const mcpOnClickDashboardSchema = z
   .object({
-    type: z.literal('dashboard').describe('Link to another HyperDX dashboard.'),
+    type: z
+      .literal('dashboard')
+      .describe('Link to another ClickStack dashboard.'),
     target: mcpOnClickTargetSchema,
     whereTemplate: z
       .string()

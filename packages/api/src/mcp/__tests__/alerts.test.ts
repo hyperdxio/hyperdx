@@ -124,15 +124,15 @@ describe('MCP Alert Tools', () => {
     }).save();
   }
 
-  // ─── hyperdx_get_alert ────────────────────────────────────────────────────
+  // ─── clickstack_get_alert ────────────────────────────────────────────────────
 
-  describe('hyperdx_get_alert', () => {
+  describe('clickstack_get_alert', () => {
     describe('list (no id)', () => {
       it('should list all alerts with slim summary fields', async () => {
         await createTestAlert({ name: 'Alert 1' });
         await createTestAlert({ name: 'Alert 2' });
 
-        const result = await callTool(client, 'hyperdx_get_alert', {});
+        const result = await callTool(client, 'clickstack_get_alert', {});
 
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
@@ -153,7 +153,7 @@ describe('MCP Alert Tools', () => {
       });
 
       it('should return empty array when no alerts exist', async () => {
-        const result = await callTool(client, 'hyperdx_get_alert', {});
+        const result = await callTool(client, 'clickstack_get_alert', {});
 
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
@@ -165,7 +165,7 @@ describe('MCP Alert Tools', () => {
         await createTestAlert({ name: 'OK', state: AlertState.OK });
         await createTestAlert({ name: 'Disabled', state: AlertState.DISABLED });
 
-        const result = await callTool(client, 'hyperdx_get_alert', {
+        const result = await callTool(client, 'clickstack_get_alert', {
           state: 'ALERT',
         });
 
@@ -179,7 +179,7 @@ describe('MCP Alert Tools', () => {
       it('should return empty array when no alerts match state filter', async () => {
         await createTestAlert({ name: 'All Good', state: AlertState.OK });
 
-        const result = await callTool(client, 'hyperdx_get_alert', {
+        const result = await callTool(client, 'clickstack_get_alert', {
           state: 'ALERT',
         });
 
@@ -198,7 +198,7 @@ describe('MCP Alert Tools', () => {
         const client2 = await createTestClient(otherTeamContext);
 
         // List should be empty for the other team
-        const listResult = await callTool(client2, 'hyperdx_get_alert', {});
+        const listResult = await callTool(client2, 'clickstack_get_alert', {});
         const output = JSON.parse(getFirstText(listResult));
         expect(output).toHaveLength(0);
 
@@ -220,7 +220,7 @@ describe('MCP Alert Tools', () => {
           // no name set
         }).save();
 
-        const result = await callTool(client, 'hyperdx_get_alert', {});
+        const result = await callTool(client, 'clickstack_get_alert', {});
 
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
@@ -244,7 +244,7 @@ describe('MCP Alert Tools', () => {
           // no name set
         }).save();
 
-        const result = await callTool(client, 'hyperdx_get_alert', {});
+        const result = await callTool(client, 'clickstack_get_alert', {});
 
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
@@ -257,7 +257,7 @@ describe('MCP Alert Tools', () => {
       it('should get full alert detail with history when valid id is provided', async () => {
         const alert = await createTestAlert({ name: 'Detail Test' });
 
-        const result = await callTool(client, 'hyperdx_get_alert', {
+        const result = await callTool(client, 'clickstack_get_alert', {
           id: alert._id.toString(),
         });
 
@@ -274,7 +274,7 @@ describe('MCP Alert Tools', () => {
       });
 
       it('should return error for invalid ObjectId format', async () => {
-        const result = await callTool(client, 'hyperdx_get_alert', {
+        const result = await callTool(client, 'clickstack_get_alert', {
           id: 'not-a-valid-id',
         });
 
@@ -284,7 +284,7 @@ describe('MCP Alert Tools', () => {
 
       it('should return error for non-existent alert id', async () => {
         const fakeId = '000000000000000000000000';
-        const result = await callTool(client, 'hyperdx_get_alert', {
+        const result = await callTool(client, 'clickstack_get_alert', {
           id: fakeId,
         });
 
@@ -301,7 +301,7 @@ describe('MCP Alert Tools', () => {
         };
         const client2 = await createTestClient(otherTeamContext);
 
-        const getResult = await callTool(client2, 'hyperdx_get_alert', {
+        const getResult = await callTool(client2, 'clickstack_get_alert', {
           id: alert._id.toString(),
         });
         expect(getResult.isError).toBe(true);
@@ -312,15 +312,15 @@ describe('MCP Alert Tools', () => {
     });
   });
 
-  // ─── hyperdx_save_alert ───────────────────────────────────────────────────
+  // ─── clickstack_save_alert ───────────────────────────────────────────────────
 
-  describe('hyperdx_save_alert', () => {
+  describe('clickstack_save_alert', () => {
     describe('create', () => {
       it('should create a saved-search alert', async () => {
         const savedSearch = await createTestSavedSearch();
         const webhook = await createTestWebhook();
 
-        const result = await callTool(client, 'hyperdx_save_alert', {
+        const result = await callTool(client, 'clickstack_save_alert', {
           source: 'saved_search',
           savedSearchId: savedSearch._id.toString(),
           threshold: 50,
@@ -346,7 +346,7 @@ describe('MCP Alert Tools', () => {
         const dashboard = await createTestDashboardWithTile();
         const webhook = await createTestWebhook();
 
-        const result = await callTool(client, 'hyperdx_save_alert', {
+        const result = await callTool(client, 'clickstack_save_alert', {
           source: 'tile',
           dashboardId: dashboard._id.toString(),
           tileId: 'tile-1',
@@ -371,7 +371,7 @@ describe('MCP Alert Tools', () => {
       it('should reject tile source without dashboardId', async () => {
         const webhook = await createTestWebhook();
 
-        const result = await callTool(client, 'hyperdx_save_alert', {
+        const result = await callTool(client, 'clickstack_save_alert', {
           source: 'tile',
           tileId: 'tile-1',
           threshold: 100,
@@ -391,7 +391,7 @@ describe('MCP Alert Tools', () => {
         const dashboard = await createTestDashboardWithTile();
         const webhook = await createTestWebhook();
 
-        const result = await callTool(client, 'hyperdx_save_alert', {
+        const result = await callTool(client, 'clickstack_save_alert', {
           source: 'tile',
           dashboardId: dashboard._id.toString(),
           threshold: 100,
@@ -410,7 +410,7 @@ describe('MCP Alert Tools', () => {
       it('should reject saved_search source without savedSearchId', async () => {
         const webhook = await createTestWebhook();
 
-        const result = await callTool(client, 'hyperdx_save_alert', {
+        const result = await callTool(client, 'clickstack_save_alert', {
           source: 'saved_search',
           threshold: 100,
           thresholdType: 'above',
@@ -429,7 +429,7 @@ describe('MCP Alert Tools', () => {
         const webhook = await createTestWebhook();
         const fakeId = '000000000000000000000000';
 
-        const result = await callTool(client, 'hyperdx_save_alert', {
+        const result = await callTool(client, 'clickstack_save_alert', {
           source: 'saved_search',
           savedSearchId: fakeId,
           threshold: 100,
@@ -448,7 +448,7 @@ describe('MCP Alert Tools', () => {
       it('should reject webhook channel without webhookId', async () => {
         const savedSearch = await createTestSavedSearch();
 
-        const result = await callTool(client, 'hyperdx_save_alert', {
+        const result = await callTool(client, 'clickstack_save_alert', {
           source: 'saved_search',
           savedSearchId: savedSearch._id.toString(),
           threshold: 100,
@@ -467,7 +467,7 @@ describe('MCP Alert Tools', () => {
         const savedSearch = await createTestSavedSearch();
         const webhook = await createTestWebhook();
 
-        const result = await callTool(client, 'hyperdx_save_alert', {
+        const result = await callTool(client, 'clickstack_save_alert', {
           source: 'saved_search',
           savedSearchId: savedSearch._id.toString(),
           threshold: 100,
@@ -487,7 +487,7 @@ describe('MCP Alert Tools', () => {
         const savedSearch = await createTestSavedSearch();
         const webhook = await createTestWebhook();
 
-        const result = await callTool(client, 'hyperdx_save_alert', {
+        const result = await callTool(client, 'clickstack_save_alert', {
           source: 'saved_search',
           savedSearchId: savedSearch._id.toString(),
           threshold: 75,
@@ -532,7 +532,7 @@ describe('MCP Alert Tools', () => {
           name: 'Original Name',
         }).save();
 
-        const result = await callTool(client, 'hyperdx_save_alert', {
+        const result = await callTool(client, 'clickstack_save_alert', {
           id: alert._id.toString(),
           source: 'saved_search',
           savedSearchId: savedSearch._id.toString(),
@@ -559,7 +559,7 @@ describe('MCP Alert Tools', () => {
         const webhook = await createTestWebhook();
         const fakeId = '000000000000000000000000';
 
-        const result = await callTool(client, 'hyperdx_save_alert', {
+        const result = await callTool(client, 'clickstack_save_alert', {
           id: fakeId,
           source: 'saved_search',
           savedSearchId: savedSearch._id.toString(),
@@ -580,7 +580,7 @@ describe('MCP Alert Tools', () => {
         const savedSearch = await createTestSavedSearch();
         const webhook = await createTestWebhook();
 
-        const result = await callTool(client, 'hyperdx_save_alert', {
+        const result = await callTool(client, 'clickstack_save_alert', {
           id: '!!!',
           source: 'saved_search',
           savedSearchId: savedSearch._id.toString(),
@@ -599,9 +599,9 @@ describe('MCP Alert Tools', () => {
     });
   });
 
-  // ─── hyperdx_get_webhook ──────────────────────────────────────────────────
+  // ─── clickstack_get_webhook ──────────────────────────────────────────────────
 
-  describe('hyperdx_get_webhook', () => {
+  describe('clickstack_get_webhook', () => {
     it('should list all webhooks with slim fields', async () => {
       await Webhook.create({
         team: team._id,
@@ -616,7 +616,7 @@ describe('MCP Alert Tools', () => {
         url: 'https://example.com/hook2',
       });
 
-      const result = await callTool(client, 'hyperdx_get_webhook', {});
+      const result = await callTool(client, 'clickstack_get_webhook', {});
 
       expect(result.isError).toBeFalsy();
       const output = JSON.parse(getFirstText(result));
@@ -635,7 +635,7 @@ describe('MCP Alert Tools', () => {
     });
 
     it('should return empty array when no webhooks exist', async () => {
-      const result = await callTool(client, 'hyperdx_get_webhook', {});
+      const result = await callTool(client, 'clickstack_get_webhook', {});
 
       expect(result.isError).toBeFalsy();
       const output = JSON.parse(getFirstText(result));
@@ -656,7 +656,7 @@ describe('MCP Alert Tools', () => {
       };
       const client2 = await createTestClient(otherTeamContext);
 
-      const listResult = await callTool(client2, 'hyperdx_get_webhook', {});
+      const listResult = await callTool(client2, 'clickstack_get_webhook', {});
       const output = JSON.parse(getFirstText(listResult));
       expect(output).toHaveLength(0);
 
