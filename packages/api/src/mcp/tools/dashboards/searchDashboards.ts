@@ -19,12 +19,12 @@ export function registerSearchDashboards(
   const frontendUrl = config.FRONTEND_URL;
 
   server.registerTool(
-    'hyperdx_search_dashboards',
+    'clickstack_search_dashboards',
     {
       title: 'Search Dashboards',
       description:
         'Search dashboards by name and/or tags. Returns matching dashboards with ' +
-        'their IDs, names, and tags. More targeted than hyperdx_get_dashboard (which ' +
+        'their IDs, names, and tags. More targeted than clickstack_get_dashboard (which ' +
         'lists all dashboards). At least one of query or tags must be provided.',
       inputSchema: z.object({
         query: z
@@ -41,7 +41,7 @@ export function registerSearchDashboards(
       }),
     },
     withToolTracing(
-      'hyperdx_search_dashboards',
+      'clickstack_search_dashboards',
       context,
       async ({ query, tags }) => {
         const hasQuery = typeof query === 'string' && query.length > 0;
@@ -109,7 +109,7 @@ export function registerSearchDashboards(
         } catch (err) {
           logger.error(
             { err, teamId, query, tags },
-            'hyperdx_search_dashboards: query failed',
+            'clickstack_search_dashboards: query failed',
           );
           return {
             isError: true,

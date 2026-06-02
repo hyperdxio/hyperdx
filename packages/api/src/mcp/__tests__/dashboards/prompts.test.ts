@@ -11,7 +11,7 @@ describe('MCP Dashboard Prompts', () => {
       const prompt = buildQueryGuidePrompt();
       // Ensure each section the bot called out has a heatmap entry so
       // the LLM cannot skip the constraints when producing a heatmap
-      // tile through hyperdx_save_dashboard.
+      // tile through clickstack_save_dashboard.
       const sections = [
         '== AGGREGATION FUNCTIONS (aggFn) ==',
         '== PER-TILE TYPE CONSTRAINTS ==',
@@ -223,7 +223,7 @@ describe('MCP Dashboard Prompts', () => {
       const mistakesIdx = prompt.indexOf('== COMMON MISTAKES ==');
       const section = prompt.slice(mistakesIdx);
       expect(section).toMatch(
-        /on EVERY tile after hyperdx_save_dashboard, not just one/,
+        /on EVERY tile after clickstack_save_dashboard, not just one/,
       );
     });
 
@@ -362,8 +362,8 @@ describe('MCP Dashboard Prompts', () => {
       for (let i = 1; i <= 6; i++) {
         expect(wf).toMatch(new RegExp(`^${i}\\. `, 'm'));
       }
-      // Step 2 must point at hyperdx_get_dashboard with no id.
-      expect(wf).toMatch(/hyperdx_get_dashboard \(no id\)/);
+      // Step 2 must point at clickstack_get_dashboard with no id.
+      expect(wf).toMatch(/clickstack_get_dashboard \(no id\)/);
       // Step 4 must call out grouping tiles into containers before save.
       expect(wf).toMatch(/group them into 2-4 containers/);
       // Step 6 must call out EVERY tile, not just one.

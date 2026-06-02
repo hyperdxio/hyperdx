@@ -154,7 +154,7 @@ export default function AutocompleteInput({
   }, [language, onLanguageChange, inputRef]);
 
   // Height including the 2px border from .textarea (1px top + 1px bottom)
-  const baseHeight = size === 'xs' ? 32 : size === 'lg' ? 44 : 38;
+  const baseHeight = size === 'xs' ? 30 : size === 'lg' ? 44 : 38;
 
   return (
     <div

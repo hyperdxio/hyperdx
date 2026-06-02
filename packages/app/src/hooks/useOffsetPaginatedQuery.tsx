@@ -19,6 +19,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
+  isPromqlChartConfig,
   isRawSqlChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -115,8 +116,12 @@ function getNextPageParam(
   config: ChartConfigWithOptTimestamp,
   windowDurationsSeconds: number[],
 ): TPageParam | undefined {
-  // Pagination is not supported for raw SQL tables since they may not be ordered at all.
-  if (lastPage == null || isRawSqlChartConfig(config)) {
+  // Pagination is not supported for raw SQL or PromQL tables since they may not be ordered at all.
+  if (
+    lastPage == null ||
+    isRawSqlChartConfig(config) ||
+    isPromqlChartConfig(config)
+  ) {
     return undefined;
   }
 

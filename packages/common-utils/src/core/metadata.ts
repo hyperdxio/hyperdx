@@ -21,6 +21,7 @@ import type {
 } from '@/types';
 import { isLogSource, isTraceSource, SourceKind } from '@/types';
 
+import { ClickHouseVersion, parseClickHouseVersion } from './clickhouseVersion';
 import {
   optimizeGetKeyValuesCalls,
   renderStartOfBucketExpr,
@@ -922,6 +923,39 @@ export class Metadata {
         }
 
         throw e;
+      }
+    });
+  }
+
+  /**
+   * Returns the parsed ClickHouse server version (from `SELECT version()`).
+   * Returns undefined when the query fails or the value cannot be parsed; the
+   * result is cached per connection and callers should treat undefined as
+   * "unknown / assume older".
+   */
+  async getServerVersion({
+    connectionId,
+  }: {
+    connectionId: string;
+  }): Promise<ClickHouseVersion | undefined> {
+    return this.cache.getOrFetch(`${connectionId}.serverVersion`, async () => {
+      try {
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            connectionId,
+            query: 'SELECT version() AS version',
+            query_params: undefined,
+            clickhouse_settings: this.getClickHouseSettings(),
+            shouldSkipApplySettings: true,
+          })
+          .then(res => res.json<{ version: string }>());
+
+        const versionString = json.data[0]?.version;
+        if (!versionString) return undefined;
+        return parseClickHouseVersion(versionString);
+      } catch (e) {
+        console.warn('Error fetching ClickHouse server version:', e);
+        return undefined;
       }
     });
   }

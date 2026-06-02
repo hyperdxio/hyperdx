@@ -4,57 +4,65 @@ import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { callTool, getFirstText } from '../mcpTestUtils';
 import { setupDashboardTests } from './setup';
 
-describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
+describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
   const ctx = setupDashboardTests();
 
   it('should patch a tile config without affecting other tiles', async () => {
     const sourceId = ctx.traceSource._id.toString();
-    const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
-      name: 'Patch Test Dashboard',
-      tiles: [
-        {
-          name: 'Tile A',
-          x: 0,
-          y: 0,
-          w: 12,
-          h: 4,
-          config: {
-            displayType: 'line',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Patch Test Dashboard',
+        tiles: [
+          {
+            name: 'Tile A',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 4,
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-        {
-          name: 'Tile B',
-          x: 0,
-          y: 4,
-          w: 12,
-          h: 4,
-          config: {
-            displayType: 'number',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+          {
+            name: 'Tile B',
+            x: 0,
+            y: 4,
+            w: 12,
+            h: 4,
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+    );
     const created = JSON.parse(getFirstText(createResult));
     const dashboardId = created.id;
     const tileAId = created.tiles[0].id;
 
     // Patch only tile A: change its name and displayType
-    const patchResult = await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
-      dashboardId,
-      tileId: tileAId,
-      tile: {
-        name: 'Patched Tile A',
-        config: {
-          displayType: 'table',
-          sourceId,
-          select: [{ aggFn: 'count' }],
+    const patchResult = await callTool(
+      ctx.client!,
+      'clickstack_patch_dashboard',
+      {
+        dashboardId,
+        tileId: tileAId,
+        tile: {
+          name: 'Patched Tile A',
+          config: {
+            displayType: 'table',
+            sourceId,
+            select: [{ aggFn: 'count' }],
+          },
         },
       },
-    });
+    );
 
     expect(patchResult.isError).toBeFalsy();
     const patchOutput = JSON.parse(getFirstText(patchResult));
@@ -62,7 +70,7 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
     expect(patchOutput.patchedTile.config.displayType).toBe('table');
 
     // Verify the full dashboard: tile B should be untouched
-    const getResult = await callTool(ctx.client!, 'hyperdx_get_dashboard', {
+    const getResult = await callTool(ctx.client!, 'clickstack_get_dashboard', {
       id: dashboardId,
     });
     const dashboard = JSON.parse(getFirstText(getResult));
@@ -83,39 +91,47 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
 
   it('should preserve existing layout when not specified in patch', async () => {
     const sourceId = ctx.traceSource._id.toString();
-    const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
-      name: 'Layout Test',
-      tiles: [
-        {
-          name: 'Positioned Tile',
-          x: 6,
-          y: 10,
-          w: 8,
-          h: 5,
-          config: {
-            displayType: 'line',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Layout Test',
+        tiles: [
+          {
+            name: 'Positioned Tile',
+            x: 6,
+            y: 10,
+            w: 8,
+            h: 5,
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+    );
     const created = JSON.parse(getFirstText(createResult));
     const tileId = created.tiles[0].id;
 
     // Patch without specifying layout — layout should be preserved
-    const patchResult = await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
-      dashboardId: created.id,
-      tileId,
-      tile: {
-        name: 'Renamed Tile',
-        config: {
-          displayType: 'line',
-          sourceId,
-          select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+    const patchResult = await callTool(
+      ctx.client!,
+      'clickstack_patch_dashboard',
+      {
+        dashboardId: created.id,
+        tileId,
+        tile: {
+          name: 'Renamed Tile',
+          config: {
+            displayType: 'line',
+            sourceId,
+            select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+          },
         },
       },
-    });
+    );
 
     expect(patchResult.isError).toBeFalsy();
     const patched = JSON.parse(getFirstText(patchResult));
@@ -134,7 +150,7 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
       tags: ['tag1'],
     }).save();
 
-    const result = await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
+    const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
       dashboardId: dashboard._id.toString(),
       name: 'New Name',
     });
@@ -158,7 +174,7 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
       tags: ['old'],
     }).save();
 
-    const result = await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
+    const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
       dashboardId: dashboard._id.toString(),
       tags: ['new1', 'new2'],
     });
@@ -171,22 +187,26 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
 
   it('should update name and patch tile in one call', async () => {
     const sourceId = ctx.traceSource._id.toString();
-    const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
-      name: 'Combo Test',
-      tiles: [
-        {
-          name: 'A Tile',
-          config: {
-            displayType: 'number',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Combo Test',
+        tiles: [
+          {
+            name: 'A Tile',
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+    );
     const created = JSON.parse(getFirstText(createResult));
 
-    const result = await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
+    const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
       dashboardId: created.id,
       name: 'Combo Updated',
       tileId: created.tiles[0].id,
@@ -213,7 +233,7 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
       team: ctx.team._id,
     }).save();
 
-    const result = await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
+    const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
       dashboardId: dashboard._id.toString(),
       tileId: 'nonexistent',
       tile: {
@@ -227,7 +247,7 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
   });
 
   it('should return error for non-existent dashboard', async () => {
-    const result = await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
+    const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
       dashboardId: '000000000000000000000000',
       name: 'Ghost',
     });
@@ -238,22 +258,26 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
 
   it('should return error for missing source ID on patched tile', async () => {
     const sourceId = ctx.traceSource._id.toString();
-    const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
-      name: 'Source Validation Test',
-      tiles: [
-        {
-          name: 'Valid Tile',
-          config: {
-            displayType: 'line',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Source Validation Test',
+        tiles: [
+          {
+            name: 'Valid Tile',
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+    );
     const created = JSON.parse(getFirstText(createResult));
 
-    const result = await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
+    const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
       dashboardId: created.id,
       tileId: created.tiles[0].id,
       tile: {
@@ -272,47 +296,51 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
 
   it('should not modify other tiles in the database (positional update)', async () => {
     const sourceId = ctx.traceSource._id.toString();
-    const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
-      name: 'Positional Update Test',
-      tiles: [
-        {
-          name: 'Tile A',
-          x: 0,
-          y: 0,
-          w: 6,
-          h: 3,
-          config: {
-            displayType: 'line',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Positional Update Test',
+        tiles: [
+          {
+            name: 'Tile A',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-        {
-          name: 'Tile B',
-          x: 6,
-          y: 0,
-          w: 6,
-          h: 3,
-          config: {
-            displayType: 'number',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+          {
+            name: 'Tile B',
+            x: 6,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-        {
-          name: 'Tile C',
-          x: 0,
-          y: 3,
-          w: 12,
-          h: 4,
-          config: {
-            displayType: 'table',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+          {
+            name: 'Tile C',
+            x: 0,
+            y: 3,
+            w: 12,
+            h: 4,
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+    );
     const created = JSON.parse(getFirstText(createResult));
     const dashboardId = created.id;
 
@@ -323,18 +351,22 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
     const tileCBefore = tilesBeforePatch[2];
 
     // Patch only tile A (index 0)
-    const patchResult = await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
-      dashboardId,
-      tileId: created.tiles[0].id,
-      tile: {
-        name: 'Tile A Patched',
-        config: {
-          displayType: 'line',
-          sourceId,
-          select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+    const patchResult = await callTool(
+      ctx.client!,
+      'clickstack_patch_dashboard',
+      {
+        dashboardId,
+        tileId: created.tiles[0].id,
+        tile: {
+          name: 'Tile A Patched',
+          config: {
+            displayType: 'line',
+            sourceId,
+            select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+          },
         },
       },
-    });
+    );
     expect(patchResult.isError).toBeFalsy();
 
     // Read raw DB tiles again — tiles B and C should be byte-identical
@@ -351,34 +383,42 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
 
   it('should preserve tile name when omitted from patch (config-only patch)', async () => {
     const sourceId = ctx.traceSource._id.toString();
-    const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
-      name: 'Name Preservation Test',
-      tiles: [
-        {
-          name: 'Original Title',
-          config: {
-            displayType: 'line',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Name Preservation Test',
+        tiles: [
+          {
+            name: 'Original Title',
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+    );
     const created = JSON.parse(getFirstText(createResult));
     const tileId = created.tiles[0].id;
 
     // Patch config only — no name field at all
-    const patchResult = await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
-      dashboardId: created.id,
-      tileId,
-      tile: {
-        config: {
-          displayType: 'table',
-          sourceId,
-          select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+    const patchResult = await callTool(
+      ctx.client!,
+      'clickstack_patch_dashboard',
+      {
+        dashboardId: created.id,
+        tileId,
+        tile: {
+          config: {
+            displayType: 'table',
+            sourceId,
+            select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+          },
         },
       },
-    });
+    );
 
     expect(patchResult.isError).toBeFalsy();
     const patched = JSON.parse(getFirstText(patchResult));
@@ -388,7 +428,7 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
     // Verify via get
     const getResult = await callTool(
       ctx.client!,
-      'hyperdx_get_dashboard_tile',
+      'clickstack_get_dashboard_tile',
       { dashboardId: created.id, tileId },
     );
     const tile = JSON.parse(getFirstText(getResult));
@@ -397,27 +437,31 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
 
   it('should return error when tile is removed between read and write', async () => {
     const sourceId = ctx.traceSource._id.toString();
-    const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
-      name: 'Concurrent Delete Test',
-      tiles: [
-        {
-          name: 'Tile A',
-          config: {
-            displayType: 'line',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Concurrent Delete Test',
+        tiles: [
+          {
+            name: 'Tile A',
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-        {
-          name: 'Tile B',
-          config: {
-            displayType: 'number',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+          {
+            name: 'Tile B',
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+    );
     const created = JSON.parse(getFirstText(createResult));
     const tileAId = created.tiles[0].id;
 
@@ -428,18 +472,22 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
     });
 
     // Now try to patch tile A — it no longer exists in the array.
-    const patchResult = await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
-      dashboardId: created.id,
-      tileId: tileAId,
-      tile: {
-        name: 'Patched A',
-        config: {
-          displayType: 'line',
-          sourceId,
-          select: [{ aggFn: 'count' }],
+    const patchResult = await callTool(
+      ctx.client!,
+      'clickstack_patch_dashboard',
+      {
+        dashboardId: created.id,
+        tileId: tileAId,
+        tile: {
+          name: 'Patched A',
+          config: {
+            displayType: 'line',
+            sourceId,
+            select: [{ aggFn: 'count' }],
+          },
         },
       },
-    });
+    );
 
     expect(patchResult.isError).toBe(true);
     // Could be "Tile not found" (caught at read) or "was not found at
@@ -450,24 +498,28 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
 
   it('should round-trip: patch then get_dashboard_tile', async () => {
     const sourceId = ctx.traceSource._id.toString();
-    const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
-      name: 'Round Trip Test',
-      tiles: [
-        {
-          name: 'Original',
-          config: {
-            displayType: 'line',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Round Trip Test',
+        tiles: [
+          {
+            name: 'Original',
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+    );
     const created = JSON.parse(getFirstText(createResult));
     const tileId = created.tiles[0].id;
 
     // Patch
-    await callTool(ctx.client!, 'hyperdx_patch_dashboard', {
+    await callTool(ctx.client!, 'clickstack_patch_dashboard', {
       dashboardId: created.id,
       tileId,
       tile: {
@@ -483,7 +535,7 @@ describe('MCP Dashboard Tools - hyperdx_patch_dashboard', () => {
     // Get the tile back
     const getResult = await callTool(
       ctx.client!,
-      'hyperdx_get_dashboard_tile',
+      'clickstack_get_dashboard_tile',
       {
         dashboardId: created.id,
         tileId,

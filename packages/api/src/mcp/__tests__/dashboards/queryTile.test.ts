@@ -1,11 +1,11 @@
 import { callTool, getFirstText } from '../mcpTestUtils';
 import { setupDashboardTests } from './setup';
 
-describe('MCP Dashboard Tools - hyperdx_query_tile', () => {
+describe('MCP Dashboard Tools - clickstack_query_tile', () => {
   const ctx = setupDashboardTests();
 
   it('should return error for non-existent dashboard', async () => {
-    const result = await callTool(ctx.client!, 'hyperdx_query_tile', {
+    const result = await callTool(ctx.client!, 'clickstack_query_tile', {
       dashboardId: '000000000000000000000000',
       tileId: 'some-tile-id',
     });
@@ -16,22 +16,26 @@ describe('MCP Dashboard Tools - hyperdx_query_tile', () => {
 
   it('should return error for non-existent tile', async () => {
     const sourceId = ctx.traceSource._id.toString();
-    const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
-      name: 'Tile Query Test',
-      tiles: [
-        {
-          name: 'My Tile',
-          config: {
-            displayType: 'number',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Tile Query Test',
+        tiles: [
+          {
+            name: 'My Tile',
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+    );
     const dashboard = JSON.parse(getFirstText(createResult));
 
-    const result = await callTool(ctx.client!, 'hyperdx_query_tile', {
+    const result = await callTool(ctx.client!, 'clickstack_query_tile', {
       dashboardId: dashboard.id,
       tileId: 'non-existent-tile-id',
     });
@@ -42,22 +46,26 @@ describe('MCP Dashboard Tools - hyperdx_query_tile', () => {
 
   it('should return error for invalid time range', async () => {
     const sourceId = ctx.traceSource._id.toString();
-    const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
-      name: 'Time Range Test',
-      tiles: [
-        {
-          name: 'Tile',
-          config: {
-            displayType: 'number',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Time Range Test',
+        tiles: [
+          {
+            name: 'Tile',
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+    );
     const dashboard = JSON.parse(getFirstText(createResult));
 
-    const result = await callTool(ctx.client!, 'hyperdx_query_tile', {
+    const result = await callTool(ctx.client!, 'clickstack_query_tile', {
       dashboardId: dashboard.id,
       tileId: dashboard.tiles[0].id,
       startTime: 'not-a-date',
@@ -69,22 +77,26 @@ describe('MCP Dashboard Tools - hyperdx_query_tile', () => {
 
   it('should execute query for a valid tile', async () => {
     const sourceId = ctx.traceSource._id.toString();
-    const createResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
-      name: 'Query Tile Test',
-      tiles: [
-        {
-          name: 'Count Tile',
-          config: {
-            displayType: 'number',
-            sourceId,
-            select: [{ aggFn: 'count' }],
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Query Tile Test',
+        tiles: [
+          {
+            name: 'Count Tile',
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+    );
     const dashboard = JSON.parse(getFirstText(createResult));
 
-    const result = await callTool(ctx.client!, 'hyperdx_query_tile', {
+    const result = await callTool(ctx.client!, 'clickstack_query_tile', {
       dashboardId: dashboard.id,
       tileId: dashboard.tiles[0].id,
       startTime: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),

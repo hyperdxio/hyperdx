@@ -1,5 +1,120 @@
 # @hyperdx/otel-collector
 
+## 2.28.0
+
+### Minor Changes
+
+- 3123db53: feat: experimental promql support
+- cb6a74ce: fix(otel-collector): allow `CUSTOM_OTELCOL_CONFIG_FILE` to override the
+  default `memory_limiter`, `batch` (and other pipeline processors)
+
+  Pipeline `processors:` lists used to be defined in the OpAMP remote config
+  sent by the API (`packages/api/src/opamp/controllers/opampController.ts`).
+  That meant the remote config overwrote any pipeline `processors:` list a
+  user supplied via `CUSTOM_OTELCOL_CONFIG_FILE`, making it impossible to
+  substitute the default `memory_limiter` with one configured for
+  `limit_percentage`/`spike_limit_percentage` mode (#2145).
+
+  The pipeline `processors:` lists now live in the bootstrap config
+  (`docker/otel-collector/config.yaml` for supervisor mode, and
+  `docker/otel-collector/config.standalone.yaml` for standalone mode). The
+  OpAMP remote config no longer sets `processors:` on these pipelines, so the
+  bootstrap+custom merge wins. Receivers and exporters are still configured
+  dynamically by the OpAMP controller.
+
+  To override `memory_limiter`, define a new processor with a different name
+  in `CUSTOM_OTELCOL_CONFIG_FILE` and swap the pipeline `processors:` lists:
+
+  ```yaml
+  processors:
+    memory_limiter/custom:
+      check_interval: 5s
+      limit_percentage: 75
+      spike_limit_percentage: 25
+
+  service:
+    pipelines:
+      traces:
+        processors: [memory_limiter/custom, batch]
+      metrics:
+        processors: [memory_limiter/custom, batch]
+      logs/out-default:
+        processors: [memory_limiter/custom, transform, batch]
+      logs/out-rrweb:
+        processors: [memory_limiter/custom, batch]
+  ```
+
+  The default `memory_limiter` block defined in the base config is left in
+  the merged config but is no longer referenced by any pipeline; the
+  collector only instantiates `memory_limiter/custom` at runtime.
+
+  The same swap pattern works for the `batch` processor (and any other base
+  processor). For example, to lower the export timeout on a specific
+  pipeline:
+
+  ```yaml
+  processors:
+    batch/lowlatency:
+      send_batch_size: 1000
+      send_batch_max_size: 2000
+      timeout: 500ms
+
+  service:
+    pipelines:
+      traces:
+        processors: [memory_limiter, batch/lowlatency]
+      logs/out-default:
+        processors: [memory_limiter, transform, batch/lowlatency]
+  ```
+
+  Lighter-weight env-var tuning is also available for the default `batch`
+  processor without writing a custom config file:
+  `HYPERDX_OTEL_BATCH_SEND_BATCH_SIZE`,
+  `HYPERDX_OTEL_BATCH_SEND_BATCH_MAX_SIZE`, and `HYPERDX_OTEL_BATCH_TIMEOUT`.
+  See the README for details.
+
+### Patch Changes
+
+- ad3f1c9e: fix(otel-collector): skip string severity inference when JSON body has a
+  `level`/`severity` field
+
+  When the log body parsed as JSON and contained a level-like field, the
+  pipeline still ran its `\b(alert|crit|emerg|fatal|error|err|warn|notice|debug|dbug|trace)`
+  keyword scan over the raw body string. The leading-only `\b` boundary
+  matched any word starting with a severity keyword, so bodies containing
+  words like `alertmanager`, `alerting`, `errors`, `warning`, etc. produced
+  the wrong severity. A Grafana sidecar log with body
+  `{"level":"INFO", "msg":"... mimir-alertmanager-dashboard ..."}` was being
+  tagged `SeverityText="fatal"`, `SeverityNumber=21` because `alert` matched
+  inside `alertmanager`, even though the JSON `level` said `INFO`.
+
+  A new OTTL `log_statements` block in
+  `docker/otel-collector/config.yaml` runs between the existing JSON-parse
+  block and the string-inference block. It promotes a JSON-derived level
+  field (now in `log.attributes`) to `log.severity_text`, which causes the
+  string-inference block to be skipped via its existing
+  `severity_number == 0 and severity_text == ""` guard. The block is
+  case-insensitive across keys by enumerating common casings of common field
+  names used by mainstream logging frameworks: `level` / `Level` / `LEVEL`
+  (pino, winston, zerolog, zap, logrus, slog, Serilog, NLog),
+  `severity` / `Severity` / `SEVERITY` (Datadog, GCP Cloud Logging), and
+  `log.level` (Elastic ECS, flattened from nested JSON). Each `set`
+  self-guards on `severity_text == ""` so the first match wins (priority:
+  `level` > `severity` > `log.level`). The block as a whole is gated on no
+  producer-set severity, so explicit producer values are always preserved.
+
+  `severity_number` is mapped via case-insensitive `(?i)` regex over
+  `severity_text`, mirroring the existing string-inference keyword set.
+  Unrecognized values (e.g. `"verbose"`) fall back to `INFO`, matching
+  block 2's else-branch. The existing `ConvertCase(severity_text, "lower")`
+  normalization is unchanged.
+
+  Behavior preserved for: non-JSON bodies, JSON bodies without a level
+  field, and any log record where the producer already set
+  `severity_text` or `severity_number`.
+
+  Fixes HDX-4383.
+
 ## 2.27.0
 
 ## 2.26.0

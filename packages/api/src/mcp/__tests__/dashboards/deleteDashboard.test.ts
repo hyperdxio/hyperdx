@@ -3,7 +3,7 @@ import Dashboard from '@/models/dashboard';
 import { callTool, getFirstText } from '../mcpTestUtils';
 import { setupDashboardTests } from './setup';
 
-describe('MCP Dashboard Tools - hyperdx_delete_dashboard', () => {
+describe('MCP Dashboard Tools - clickstack_delete_dashboard', () => {
   const ctx = setupDashboardTests();
 
   it('should delete an existing dashboard', async () => {
@@ -13,7 +13,7 @@ describe('MCP Dashboard Tools - hyperdx_delete_dashboard', () => {
       team: ctx.team._id,
     }).save();
 
-    const result = await callTool(ctx.client!, 'hyperdx_delete_dashboard', {
+    const result = await callTool(ctx.client!, 'clickstack_delete_dashboard', {
       id: dashboard._id.toString(),
     });
 
@@ -28,7 +28,7 @@ describe('MCP Dashboard Tools - hyperdx_delete_dashboard', () => {
   });
 
   it('should return error for non-existent dashboard', async () => {
-    const result = await callTool(ctx.client!, 'hyperdx_delete_dashboard', {
+    const result = await callTool(ctx.client!, 'clickstack_delete_dashboard', {
       id: '000000000000000000000000',
     });
 

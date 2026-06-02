@@ -12,6 +12,8 @@ import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
+import { clickHouseErrorResult } from './helpers';
+
 // ─── Source helpers ──────────────────────────────────────────────────────────
 
 interface SourceBodyFields {
@@ -53,9 +55,13 @@ export async function runEventPatterns(
     whereLanguage?: 'lucene' | 'sql';
     bodyExpression?: string;
     sampleSize?: number;
+    topN?: number;
+    trendBuckets?: number;
   },
 ) {
   const sampleSize = options?.sampleSize ?? 10_000;
+  const topN = options?.topN ?? 20;
+  const trendBuckets = options?.trendBuckets ?? 24;
 
   // ── Resolve source & connection ──
   const source = await getSource(teamId, sourceId);
@@ -63,7 +69,10 @@ export async function runEventPatterns(
     return {
       isError: true as const,
       content: [
-        { type: 'text' as const, text: `Source not found: ${sourceId}` },
+        {
+          type: 'text' as const,
+          text: `Source not found: ${sourceId}. Call hyperdx_list_sources to discover available source IDs.`,
+        },
       ],
     };
   }
@@ -79,7 +88,7 @@ export async function runEventPatterns(
       content: [
         {
           type: 'text' as const,
-          text: `Connection not found for source: ${sourceId}`,
+          text: `Connection not found for source: ${sourceId}. Call hyperdx_list_sources to discover available source IDs.`,
         },
       ],
     };
@@ -206,16 +215,7 @@ export async function runEventPatterns(
       }),
     ]);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text: `ClickHouse query failed: ${message}`,
-        },
-      ],
-    };
+    return clickHouseErrorResult(err);
   }
 
   const sampleRows = sampleResult.data;
@@ -228,17 +228,19 @@ export async function runEventPatterns(
           type: 'text' as const,
           text: JSON.stringify(
             {
-              result: {
-                patterns: [],
+              summary: {
                 totalCount,
-                sampledRows: 0,
+                sampledCount: 0,
                 sampleMultiplier: 1,
+                clusterCount: 0,
+                patternsReturned: 0,
                 bodyColumn,
                 timeRange: {
                   start: startDate.toISOString(),
                   end: endDate.toISOString(),
                 },
               },
+              patterns: [],
               hint: 'No data found in the queried time range. Try setting startTime to a wider window (e.g. 24 hours ago) or check that filters match existing data.',
             },
             null,
@@ -257,6 +259,7 @@ export async function runEventPatterns(
       totalCount,
       startDate,
       endDate,
+      trendBuckets,
       maxSamples: 5,
       getBody: row => {
         const raw = row.__hdx_pattern_body;
@@ -284,7 +287,10 @@ export async function runEventPatterns(
   // Convert trend timestamps to ISO strings, extract sample body texts,
   // and build a whereSnippet per pattern so the agent can drill into
   // matching events via a follow-up hyperdx_search query.
-  const patterns = rawPatterns.map(p => {
+  const sampledCount = sampleRows.length;
+  const slicedPatterns = rawPatterns.slice(0, topN);
+
+  const patterns = slicedPatterns.map((p, i) => {
     // Build a Lucene-compatible where clause from the pattern's literal
     // (non-<*>) tokens. This lets agents chain: pattern → search.
     // Escape \ and " (the phrase-query metachars) in each token.
@@ -297,16 +303,25 @@ export async function runEventPatterns(
         ? `${bodyColumn}:"${literalTokens.join(' ')}"`
         : '';
 
+    const shareOfTotal = sampledCount > 0 ? p.sampleCount / sampledCount : 0;
+
+    const formattedTrend =
+      trendBuckets > 0
+        ? p.trend.map(t => ({
+            ts: new Date(t.ts).toISOString(),
+            count: t.count,
+          }))
+        : undefined;
+
     return {
+      rank: i + 1,
       id: p.id,
       pattern: p.pattern,
       estimatedCount: p.estimatedCount,
       sampleCount: p.sampleCount,
+      shareOfTotal: Math.round(shareOfTotal * 10000) / 10000,
       whereSnippet,
-      trend: p.trend.map(t => ({
-        ts: new Date(t.ts).toISOString(),
-        count: t.count,
-      })),
+      ...(formattedTrend ? { trend: formattedTrend } : {}),
       samples: p.samples.map(row => {
         const raw = row.__hdx_pattern_body;
         return raw != null ? String(raw) : '';
@@ -315,37 +330,42 @@ export async function runEventPatterns(
   });
 
   const output = {
-    patterns,
-    totalCount,
-    sampledRows: sampleRows.length,
-    sampleMultiplier: Math.round(sampleMultiplier * 100) / 100,
-    bodyColumn,
-    timeRange: {
-      start: startDate.toISOString(),
-      end: endDate.toISOString(),
+    summary: {
+      totalCount,
+      sampledCount,
+      sampleMultiplier: Math.round(sampleMultiplier * 100) / 100,
+      clusterCount: rawPatterns.length,
+      patternsReturned: patterns.length,
+      bodyColumn,
+      timeRange: {
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+      },
     },
+    patterns,
+    usage:
+      'shareOfTotal is the fraction of sampled rows matching this pattern. ' +
+      'estimatedCount = sampleCount * sampleMultiplier. ' +
+      (trendBuckets > 0
+        ? 'trend.count is similarly extrapolated from sample bucket counts. '
+        : '') +
+      'Use whereSnippet as the "where" parameter in a hyperdx_search call to browse matching raw events.',
   };
 
-  const trimmedOutput = trimToolResponse(output);
-  const isTrimmed =
-    JSON.stringify(trimmedOutput).length < JSON.stringify(output).length;
+  const { data: trimmedOutput, isTrimmed } = trimToolResponse(output);
+
+  const finalOutput = isTrimmed
+    ? {
+        ...trimmedOutput,
+        note: 'Result was trimmed for context size. Narrow the time range, add filters, or reduce topN to reduce data.',
+      }
+    : trimmedOutput;
 
   return {
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify(
-          {
-            result: trimmedOutput,
-            ...(isTrimmed
-              ? {
-                  note: 'Result was trimmed for context size. Narrow the time range or add filters to reduce data.',
-                }
-              : {}),
-          },
-          null,
-          2,
-        ),
+        text: JSON.stringify(finalOutput, null, 2),
       },
     ],
   };

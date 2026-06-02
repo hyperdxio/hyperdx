@@ -1,6 +1,6 @@
 // prose-lint: allow-file
 // MCP tool descriptions intentionally use the established en-dash
-// separator (e.g. "Source ID – call hyperdx_list_sources") for LLM
+// separator (e.g. "Source ID – call clickstack_list_sources") for LLM
 // readability. Reformatting all separators is out of scope here.
 import {
   AggregateFunctionSchema,
@@ -174,8 +174,8 @@ const mcpOnClickTargetSchema = z
           .min(1)
           .describe(
             'Concrete source ID (for type=search) or dashboard ID (for type=dashboard). ' +
-              'Get source IDs from hyperdx_list_sources; get dashboard IDs from ' +
-              'hyperdx_get_dashboard (no id arg returns the list). ' +
+              'Get source IDs from clickstack_list_sources; get dashboard IDs from ' +
+              'clickstack_get_dashboard (no id arg returns the list). ' +
               'For type=search the source kind must be "log" or "trace"; the /search ' +
               'page does not render metric/session sources.',
           ),
@@ -366,7 +366,7 @@ const mcpTileLayoutSchema = z.object({
 const mcpLineTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('line').describe('Line chart over time'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z
       .array(mcpTileSelectItemSchema)
       .min(1)
@@ -397,7 +397,7 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
     displayType: z
       .literal('stacked_bar')
       .describe('Stacked bar chart over time'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).min(1).max(20),
     groupBy: z.string().optional(),
     fillNulls: z.boolean().optional().default(true),
@@ -409,7 +409,7 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
 const mcpTableTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('table').describe('Tabular aggregated data'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).min(1).max(20),
     groupBy: z
       .string()
@@ -444,7 +444,7 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
 const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('number').describe('Single aggregate scalar value'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z
       .array(mcpTileSelectItemSchema)
       .length(1)
@@ -461,7 +461,7 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
 const mcpPieTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('pie').describe('Pie chart'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).length(1),
     groupBy: z
       .string()
@@ -512,7 +512,7 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
     sourceId: z
       .string()
       .describe(
-        'Source ID. Must be a Trace source today; use hyperdx_list_sources and ' +
+        'Source ID. Must be a Trace source today; use clickstack_list_sources and ' +
           'pick one whose kind is "trace".',
       ),
     select: z
@@ -539,7 +539,7 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
 const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('search').describe('Log/event search results list'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     where: z
       .string()
       .optional()
@@ -577,7 +577,7 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
     connectionId: z
       .string()
       .describe(
-        'Connection ID (not sourceId) – call hyperdx_list_sources to find available connections',
+        'Connection ID (not sourceId) – call clickstack_list_sources to find available connections',
       ),
     sqlTemplate: z
       .string()
@@ -654,7 +654,7 @@ export const mcpTilesParam = z
   .array(mcpTileSchema)
   .describe(
     'Array of dashboard tiles. Each tile needs a name, optional layout (x/y/w/h), and a config block. ' +
-      'The config block varies by displayType – use hyperdx_list_sources for sourceId and connectionId values.\n\n' +
+      'The config block varies by displayType – use clickstack_list_sources for sourceId and connectionId values.\n\n' +
       'Example tiles:\n' +
       '1. Line chart: { "name": "Error Rate", "config": { "displayType": "line", "sourceId": "<from list_sources>", ' +
       '"groupBy": "ResourceAttributes[\'service.name\']", "select": [{ "aggFn": "count", "where": "StatusCode:STATUS_CODE_ERROR" }] } }\n' +
@@ -680,7 +680,7 @@ const mcpDashboardFilterSchema = z
       .describe(
         'Filter identity. ' +
           'On UPDATE of an existing dashboard, every filter in the array MUST carry ' +
-          'an id: pass the exact id returned by hyperdx_get_dashboard for any filter ' +
+          'an id: pass the exact id returned by clickstack_get_dashboard for any filter ' +
           'you are keeping (so saved values bound to it stay attached), and generate ' +
           'a fresh random hex/ObjectId string for any filter you are adding in this ' +
           'update. Omitting `id` on an existing filter would orphan its saved values; ' +
@@ -710,7 +710,7 @@ const mcpDashboardFilterSchema = z
       ),
     sourceId: objectIdSchema.describe(
       'Source the filter values are pulled from (for the dropdown). ' +
-        'Get IDs from hyperdx_list_sources.',
+        'Get IDs from clickstack_list_sources.',
     ),
     sourceMetricType: z
       .nativeEnum(MetricsDataType)
@@ -728,6 +728,18 @@ const mcpDashboardFilterSchema = z
     whereLanguage: SearchConditionLanguageSchema.describe(
       'Filter language for `where` ("lucene" or "sql"). Optional, but set it explicitly.',
     ),
+    appliesToSourceIds: z
+      .array(objectIdSchema)
+      .optional()
+      .describe(
+        'Optional list of source IDs that this filter is applied to. ' +
+          'Omit (or pass `undefined`) to apply the filter to ALL tiles regardless of source ' +
+          '— this is the recommended default. ' +
+          'A non-empty array restricts the filter to only tiles whose source ID is in the list; ' +
+          'tiles on other sources are not affected by the dropdown value at all. ' +
+          'Useful on mixed-source dashboards where a column (e.g. SpanName) only exists on ' +
+          'a subset of sources.',
+      ),
   })
   .describe(
     'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
@@ -744,10 +756,20 @@ export const mcpFiltersParam = z
       'If another tile\'s onClick targets THIS dashboard with `filters: [{ expression: "X", ... }]`, ' +
       'this array MUST declare a filter whose `expression` is "X". Otherwise the value is ' +
       'dropped on arrival and the destination opens unfiltered.\n\n' +
-      'Example:\n' +
+      'By default a filter applies to every tile on the dashboard. On mixed-source dashboards, ' +
+      'use the optional `appliesToSourceIds` field to restrict a filter to only the tiles whose ' +
+      'source carries the referenced column — leave `appliesToSourceIds` omitted to keep the ' +
+      'broadcast-to-all-tiles default.\n\n' +
+      'Example (broadcast to every tile):\n' +
       '[\n' +
       '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
       '    "sourceId": "<trace-source-id>", "whereLanguage": "sql" }\n' +
+      ']\n\n' +
+      'Example (scoped on a mixed log/trace/metric dashboard):\n' +
+      '[\n' +
+      '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "SpanName",\n' +
+      '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
+      '    "appliesToSourceIds": ["<trace-source-id>"] }\n' +
       ']',
   );
 

@@ -54,7 +54,11 @@ import {
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
-import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
+import {
+  IS_METRICS_ENABLED,
+  IS_PROMQL_ENABLED,
+  IS_SESSIONS_ENABLED,
+} from '@/config';
 import { useConnections } from '@/connection';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
@@ -147,6 +151,8 @@ function setCorrelationFieldValue(
         return { ...source, [field]: value };
       }
       return source;
+    case SourceKind.Promql:
+      return source;
   }
 }
 
@@ -199,6 +205,7 @@ const CORRELATION_FIELD_MAP: Record<
       { targetKind: SourceKind.Log, targetField: 'metricSourceId' },
     ],
   },
+  [SourceKind.Promql]: {},
 };
 
 function FormRow({
@@ -1514,6 +1521,59 @@ function TraceTableModelForm(props: TableModelProps) {
                   ]}
                   value={value}
                   onChange={onChange}
+                  // Mantine 9's Slider styles use the pattern
+                  // `:where([data-orientation="vertical"]) .<part>`,
+                  // which matches when ANY ancestor has
+                  // `data-orientation="vertical"`. Mantine Card sets
+                  // `data-orientation="vertical"` by default, and the
+                  // SourceForm renders inside a Card, so the slider's
+                  // trackContainer/track/bar/thumb/markWrapper/
+                  // markLabel all pick up the vertical-orientation
+                  // styling: the track collapses to 8px wide and the
+                  // four marks stack on top of each other. Override
+                  // every affected part back to its horizontal
+                  // default so the slider renders correctly inside
+                  // the Card.
+                  styles={{
+                    trackContainer: {
+                      width: '100%',
+                      flexDirection: 'row',
+                      height: 'calc(var(--slider-size) * 2)',
+                    },
+                    track: {
+                      width: '100%',
+                      height: 'var(--slider-size)',
+                    },
+                    bar: {
+                      top: 0,
+                      bottom: 0,
+                      height: '100%',
+                      insetInlineStart: 'var(--slider-bar-offset)',
+                      width: 'var(--slider-bar-width)',
+                    },
+                    thumb: {
+                      left: 'var(--slider-thumb-offset)',
+                      top: '50%',
+                      right: 'auto',
+                      bottom: 'auto',
+                      transform: 'translate(-50%, -50%)',
+                    },
+                    markWrapper: {
+                      insetInlineStart:
+                        'calc(var(--mark-offset) - var(--slider-size) / 2)',
+                      top: 0,
+                      bottom: 'auto',
+                      width: 'auto',
+                    },
+                    markLabel: {
+                      transform:
+                        'translate(calc(-50% + var(--slider-size) / 2), calc(var(--mantine-spacing-xs) / 2))',
+                    },
+                    label: {
+                      top: '-36px',
+                      insetInlineStart: 'auto',
+                    },
+                  }}
                 />
               </div>
             )}
@@ -1897,6 +1957,19 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
   );
 }
 
+function PromqlTableModelForm({
+  control: _control,
+  setValue,
+}: TableModelProps) {
+  useEffect(() => {
+    setValue('timestampValueExpression' as any, 'timestamp');
+  }, [setValue]);
+
+  // PromQL sources use the standard database + table fields from BaseSourceSchema.
+  // No additional fields needed; the table should point to the TimeSeries engine table.
+  return null;
+}
+
 function TableModelForm({
   control,
   setValue,
@@ -1915,6 +1988,8 @@ function TableModelForm({
       return <SessionTableModelForm control={control} setValue={setValue} />;
     case SourceKind.Metric:
       return <MetricTableModelForm control={control} setValue={setValue} />;
+    case SourceKind.Promql:
+      return <PromqlTableModelForm control={control} setValue={setValue} />;
   }
 }
 
@@ -2379,6 +2454,9 @@ export function TableSourceForm({
                   )}
                   {IS_SESSIONS_ENABLED && (
                     <Radio value={SourceKind.Session} label="Session" />
+                  )}
+                  {IS_PROMQL_ENABLED && (
+                    <Radio value={SourceKind.Promql} label="PromQL" />
                   )}
                 </Group>
               </Radio.Group>

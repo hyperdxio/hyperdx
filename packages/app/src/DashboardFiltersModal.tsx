@@ -27,7 +27,7 @@ import {
   IconInfoCircle,
   IconPencil,
   IconRefresh,
-  IconStack,
+  IconSearch,
   IconTrash,
 } from '@tabler/icons-react';
 
@@ -36,7 +36,10 @@ import SearchWhereInput, {
 } from '@/components/SearchInput/SearchWhereInput';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
-import SourceSchemaPreview from './components/SourceSchemaPreview';
+import { SourceMultiSelectControlled } from './components/SourceMultiSelect';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { useSource, useSources } from './source';
 import { getMetricTableName } from './utils';
@@ -104,6 +107,7 @@ const DashboardFilterEditForm = ({
         ...filter,
         where: filter.where ?? '',
         whereLanguage: filter.whereLanguage ?? getStoredLanguage() ?? 'sql',
+        appliesToSourceIds: filter.appliesToSourceIds ?? [],
       },
     });
 
@@ -112,6 +116,7 @@ const DashboardFilterEditForm = ({
       ...filter,
       where: filter.where ?? '',
       whereLanguage: filter.whereLanguage ?? getStoredLanguage() ?? 'sql',
+      appliesToSourceIds: filter.appliesToSourceIds ?? [],
     });
   }, [filter, reset]);
 
@@ -136,6 +141,8 @@ const DashboardFilterEditForm = ({
   const [modalContentRef, setModalContentRef] = useState<HTMLElement | null>(
     null,
   );
+  const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
+    useState(false);
 
   return (
     <Modal
@@ -148,12 +155,16 @@ const DashboardFilterEditForm = ({
         <form
           onSubmit={handleSubmit(values => {
             const trimmedWhere = values.where?.trim() ?? '';
+            const appliesTo = values.appliesToSourceIds?.filter(
+              id => !!id?.length,
+            );
             onSave({
               ...values,
               where: trimmedWhere || undefined,
               whereLanguage: trimmedWhere
                 ? (values.whereLanguage ?? 'sql')
                 : undefined,
+              appliesToSourceIds: appliesTo?.length ? appliesTo : undefined,
             });
           })}
         >
@@ -176,12 +187,31 @@ const DashboardFilterEditForm = ({
                 data-testid="source-selector"
                 rules={{ required: true }}
                 comboboxProps={{ withinPortal: true }}
-                sourceSchemaPreview={
-                  <SourceSchemaPreview source={source} variant="text" />
-                }
+                onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+                isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(source)}
                 disabled={!!presetSource}
               />
+              <SourceSchemaPreview
+                source={source}
+                controlled
+                open={isSourceSchemaPreviewOpen}
+                onClose={() => setIsSourceSchemaPreviewOpen(false)}
+              />
             </CustomInputWrapper>
+            {!presetSource && (
+              <CustomInputWrapper
+                label="Applies to sources"
+                tooltipText="Leave empty to apply to all tiles. Selecting one or more sources restricts the filter to only tiles using those sources."
+              >
+                <SourceMultiSelectControlled
+                  control={control}
+                  name="appliesToSourceIds"
+                  data-testid="applies-to-source-selector"
+                  comboboxProps={{ withinPortal: true }}
+                  placeholder="All sources"
+                />
+              </CustomInputWrapper>
+            )}
             {sourceIsMetric && (
               <CustomInputWrapper
                 label="Metric type"
@@ -297,6 +327,7 @@ const EmptyState = ({ onCreateFilter, onClose }: EmptyStateProps) => {
 interface DashboardFiltersListProps {
   filters: DashboardFilter[];
   isLoading?: boolean;
+  hideAppliesTo?: boolean;
   onEdit: (filter: DashboardFilter) => void;
   onRemove: (id: string) => void;
   onClose: () => void;
@@ -306,6 +337,7 @@ interface DashboardFiltersListProps {
 const DashboardFiltersList = ({
   filters,
   isLoading,
+  hideAppliesTo,
   onEdit,
   onRemove,
   onClose,
@@ -326,42 +358,79 @@ const DashboardFiltersList = ({
         gap="xs"
         data-testid="dashboard-filters-list"
       >
-        {filters.map(filter => (
-          <Paper
-            key={filter.id}
-            withBorder
-            className={styles.filterPaper}
-            p="xs"
-            variant="muted"
-            data-testid={`dashboard-filter-item-${filter.name}`}
-          >
-            <Group justify="space-between" className={styles.filterHeader}>
-              <Text size="xs">{filter.name}</Text>
-              <Group>
-                <UnstyledButton
-                  onClick={() => onEdit(filter)}
-                  className={styles.filterActionButton}
-                  data-testid={`edit-filter-button-${filter.name}`}
-                >
-                  <IconPencil size={16} />
-                </UnstyledButton>
-                <UnstyledButton
-                  onClick={() => onRemove(filter.id)}
-                  className={`${styles.filterActionButton} ${styles.deleteButton}`}
-                  data-testid={`delete-filter-button-${filter.name}`}
-                >
-                  <IconTrash size={16} />
-                </UnstyledButton>
+        {filters.map(filter => {
+          const queriedSourceName = sources?.find(
+            s => s.id === filter.source,
+          )?.name;
+          const appliedSourceNames = filter.appliesToSourceIds?.length
+            ? filter.appliesToSourceIds
+                .map(id => sources?.find(s => s.id === id)?.name)
+                .filter((name): name is string => !!name)
+            : undefined;
+          const appliedDisplay = appliedSourceNames
+            ? appliedSourceNames.join(', ')
+            : 'All sources';
+          return (
+            <Paper
+              key={filter.id}
+              withBorder
+              className={styles.filterPaper}
+              p="xs"
+              variant="muted"
+              data-testid={`dashboard-filter-item-${filter.name}`}
+            >
+              <Group justify="space-between" className={styles.filterHeader}>
+                <Text size="xs">{filter.name}</Text>
+                <Group>
+                  <UnstyledButton
+                    onClick={() => onEdit(filter)}
+                    className={styles.filterActionButton}
+                    data-testid={`edit-filter-button-${filter.name}`}
+                  >
+                    <IconPencil size={16} />
+                  </UnstyledButton>
+                  <UnstyledButton
+                    onClick={() => onRemove(filter.id)}
+                    className={`${styles.filterActionButton} ${styles.deleteButton}`}
+                    data-testid={`delete-filter-button-${filter.name}`}
+                  >
+                    <IconTrash size={16} />
+                  </UnstyledButton>
+                </Group>
               </Group>
-            </Group>
-            <Group gap="xs">
-              <IconStack size={14} />
-              <Text size="xs">
-                {sources?.find(s => s.id === filter.source)?.name}
-              </Text>
-            </Group>
-          </Paper>
-        ))}
+              <Group gap="xs" wrap="nowrap">
+                <Tooltip
+                  label="Source the dropdown values are queried from"
+                  withinPortal
+                >
+                  <IconSearch size={14} />
+                </Tooltip>
+                <Text size="xs" truncate="end">
+                  {queriedSourceName}
+                </Text>
+              </Group>
+              {!hideAppliesTo && (
+                <Group
+                  gap="xs"
+                  wrap="nowrap"
+                  data-testid={`dashboard-filter-applies-to-${filter.name}`}
+                >
+                  <Tooltip
+                    label={'Sources this filter applies to'}
+                    withinPortal
+                    multiline
+                    maw={400}
+                  >
+                    <IconFilter size={14} style={{ flexShrink: 0 }} />
+                  </Tooltip>
+                  <Text size="xs" truncate="end">
+                    {appliedDisplay}
+                  </Text>
+                </Group>
+              )}
+            </Paper>
+          );
+        })}
         {isLoading && (
           <Center>
             <IconRefresh className="spin-animate" />
@@ -473,6 +542,7 @@ const DashboardFiltersModal = ({
         onClose={onClose}
         onAddNew={handleAddNewFilter}
         isLoading={isLoading}
+        hideAppliesTo={!!source}
       />
     );
   }

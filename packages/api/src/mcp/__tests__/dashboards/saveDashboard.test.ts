@@ -9,13 +9,13 @@ import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { callTool, getFirstText } from '../mcpTestUtils';
 import { setupDashboardTests } from './setup';
 
-describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
+describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
   const ctx = setupDashboardTests();
 
   describe('basic CRUD', () => {
     it('should create a new dashboard with tiles', async () => {
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'New MCP Dashboard',
         tiles: [
           {
@@ -49,7 +49,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
     });
 
     it('should create a dashboard with a markdown tile', async () => {
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Markdown Dashboard',
         tiles: [
           {
@@ -74,7 +74,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       // Create first
       const createResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           name: 'Original Name',
           tiles: [
@@ -94,7 +94,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       // Update
       const updateResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           id: created.id,
           name: 'Updated Name',
@@ -123,7 +123,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
     it('should return error for missing source ID', async () => {
       const fakeSourceId = '000000000000000000000000';
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Bad Dashboard',
         tiles: [
           {
@@ -143,7 +143,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
     it('should return error when updating non-existent dashboard', async () => {
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         id: '000000000000000000000000',
         name: 'Ghost Dashboard',
         tiles: [
@@ -164,7 +164,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
     it('should create a dashboard with multiple tile types', async () => {
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Multi-tile Dashboard',
         tiles: [
           {
@@ -242,7 +242,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
     it('should create a dashboard with a raw SQL tile', async () => {
       const connectionId = ctx.connection._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'SQL Dashboard',
         tiles: [
           {
@@ -264,7 +264,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
     it('should create a dashboard with a heatmap tile on a Trace source', async () => {
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Heatmap Dashboard',
         tiles: [
           {
@@ -327,34 +327,42 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
         where: 'level:error AND service:checkout',
       };
 
-      const saveResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
-        name: 'Heatmap Full Round-Trip',
-        tiles: [
-          {
-            name: 'Latency Heatmap',
-            x: 0,
-            y: 0,
-            w: 12,
-            h: 4,
-            config: createConfig,
-          },
-        ],
-      });
+      const saveResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Heatmap Full Round-Trip',
+          tiles: [
+            {
+              name: 'Latency Heatmap',
+              x: 0,
+              y: 0,
+              w: 12,
+              h: 4,
+              config: createConfig,
+            },
+          ],
+        },
+      );
       expect(saveResult.isError).toBeFalsy();
       const saved = JSON.parse(getFirstText(saveResult));
       expect(saved.tiles).toHaveLength(1);
       expect(saved.tiles[0].config).toMatchObject(createConfig);
 
-      const getResult = await callTool(ctx.client!, 'hyperdx_get_dashboard', {
-        id: saved.id,
-      });
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        {
+          id: saved.id,
+        },
+      );
       expect(getResult.isError).toBeFalsy();
       const fetched = JSON.parse(getFirstText(getResult));
       expect(fetched.tiles[0].config).toMatchObject(createConfig);
 
       const updateResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           id: saved.id,
           name: 'Heatmap Full Round-Trip',
@@ -372,7 +380,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
       const getAfterUpdate = await callTool(
         ctx.client!,
-        'hyperdx_get_dashboard',
+        'clickstack_get_dashboard',
         {
           id: saved.id,
         },
@@ -384,7 +392,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
     it('should reject heatmap tile with empty valueExpression at the schema layer', async () => {
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Bad Heatmap',
         tiles: [
           {
@@ -412,7 +420,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
         const saveResult = await callTool(
           ctx.client!,
-          'hyperdx_save_dashboard',
+          'clickstack_save_dashboard',
           {
             name: `NumberFormat ${numberFormat.output}`,
             tiles: [
@@ -447,9 +455,13 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
         expect(saveResult.isError).toBeFalsy();
         const saved = JSON.parse(getFirstText(saveResult));
 
-        const getResult = await callTool(ctx.client!, 'hyperdx_get_dashboard', {
-          id: saved.id,
-        });
+        const getResult = await callTool(
+          ctx.client!,
+          'clickstack_get_dashboard',
+          {
+            id: saved.id,
+          },
+        );
         expect(getResult.isError).toBeFalsy();
         const fetched = JSON.parse(getFirstText(getResult));
 
@@ -467,7 +479,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
     it('should reject numberFormat with an unknown output value', async () => {
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Bad NumberFormat',
         tiles: [
           {
@@ -502,7 +514,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
         name: 'Logs',
       });
 
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Heatmap on Log Source',
         tiles: [
           {
@@ -534,7 +546,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
         name: 'Logs',
       });
 
-      const created = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const created = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Line on Log Source',
         tiles: [
           {
@@ -550,7 +562,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       expect(created.isError).toBeFalsy();
       const saved = JSON.parse(getFirstText(created));
 
-      const update = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const update = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         id: saved.id,
         name: 'Line on Log Source',
         tiles: [
@@ -582,7 +594,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
         name: 'Logs',
       });
 
-      const created = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const created = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Heatmap re-pointed at Log',
         tiles: [
           {
@@ -598,7 +610,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       expect(created.isError).toBeFalsy();
       const saved = JSON.parse(getFirstText(created));
 
-      const update = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const update = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         id: saved.id,
         name: 'Heatmap re-pointed at Log',
         tiles: [
@@ -642,7 +654,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
         numberFormat: { output: 'number' as const, average: true },
       };
 
-      const save = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const save = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Mixed Tile Round-Trip',
         tiles: [
           { name: 'Heatmap Tile', config: heatmapConfig },
@@ -664,7 +676,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
       const fetched = JSON.parse(
         getFirstText(
-          await callTool(ctx.client!, 'hyperdx_get_dashboard', {
+          await callTool(ctx.client!, 'clickstack_get_dashboard', {
             id: saved.id,
           }),
         ),
@@ -725,7 +737,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
       const createResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           name: 'Containers MCP Round-Trip',
           tiles: [
@@ -790,9 +802,13 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       expect(createdTilesByName.Ungrouped.tabId).toBeUndefined();
 
       // Verify a fresh GET via the get tool also returns the structure.
-      const getResult = await callTool(ctx.client!, 'hyperdx_get_dashboard', {
-        id: created.id,
-      });
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        {
+          id: created.id,
+        },
+      );
       const fetched = JSON.parse(getFirstText(getResult));
       expect(fetched.containers).toEqual(containers);
 
@@ -821,7 +837,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
       const updateResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           id: created.id,
           name: 'Containers MCP Round-Trip',
@@ -859,7 +875,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
     it('should reject duplicate container ids', async () => {
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Duplicate Container Ids',
         tiles: [buildTile(sourceId, {})],
         containers: [
@@ -878,7 +894,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       // array. Cross-tile-ref rules (covered below) fire through
       // collectTileContainerRefIssues and produce plain prose.
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Duplicate Tab Ids',
         tiles: [buildTile(sourceId, {})],
         containers: [
@@ -902,7 +918,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
     it('should reject a tile that supplies tabId without containerId', async () => {
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Tab Without Container',
         tiles: [buildTile(sourceId, { tabId: 'errors' })],
         containers: [
@@ -923,7 +939,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
     it('should reject a tile that references an unknown containerId', async () => {
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Unknown Container',
         tiles: [buildTile(sourceId, { containerId: 'does-not-exist' })],
         containers: [{ id: 'real', title: 'Real', collapsed: false }],
@@ -937,7 +953,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
     it('should reject a tile that references an unknown tabId within a container', async () => {
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Unknown Tab',
         tiles: [
           buildTile(sourceId, {
@@ -975,7 +991,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       ];
       const createResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           name: 'PUT-without-containers fallback',
           tiles: [
@@ -993,7 +1009,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
       const updateResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           id: created.id,
           name: 'PUT-without-containers fallback',
@@ -1017,7 +1033,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       const sourceId = ctx.traceSource._id.toString();
       const createResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           name: 'Wipe containers',
           tiles: [buildTile(sourceId, { name: 'Tile' })],
@@ -1035,7 +1051,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       };
       const updateResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           id: created.id,
           name: 'Wipe containers',
@@ -1047,9 +1063,13 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       const updated = JSON.parse(getFirstText(updateResult));
       expect(updated.containers).toBeUndefined();
 
-      const getResult = await callTool(ctx.client!, 'hyperdx_get_dashboard', {
-        id: created.id,
-      });
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        {
+          id: created.id,
+        },
+      );
       const fetched = JSON.parse(getFirstText(getResult));
       expect(fetched.containers).toBeUndefined();
     });
@@ -1061,17 +1081,21 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
     it('should accept a 256-char tile.containerId and reject 257', async () => {
       const sourceId = ctx.traceSource._id.toString();
       const idAtMax = 'c'.repeat(256);
-      const okResult = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
-        name: '256-char containerId',
-        tiles: [buildTile(sourceId, { containerId: idAtMax })],
-        containers: [{ id: idAtMax, title: 'Max', collapsed: false }],
-      });
+      const okResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: '256-char containerId',
+          tiles: [buildTile(sourceId, { containerId: idAtMax })],
+          containers: [{ id: idAtMax, title: 'Max', collapsed: false }],
+        },
+      );
       expect(okResult.isError).toBeFalsy();
 
       const idTooLong = 'c'.repeat(257);
       const tooLongResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           name: '257-char containerId',
           tiles: [buildTile(sourceId, { containerId: idTooLong })],
@@ -1111,7 +1135,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
       const createResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           name: 'Service Detail (MCP filter round-trip)',
           tiles: [traceTile(sourceId)],
@@ -1161,9 +1185,13 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       });
 
       // Fetch and assert the same shape.
-      const getResult = await callTool(ctx.client!, 'hyperdx_get_dashboard', {
-        id: created.id,
-      });
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        {
+          id: created.id,
+        },
+      );
       const fetched = JSON.parse(getFirstText(getResult));
       expect(fetched.filters).toEqual(created.filters);
 
@@ -1171,7 +1199,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       // filter keeps its id, the second is dropped (not preserved).
       const updateResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           id: created.id,
           name: 'Service Detail (MCP filter round-trip)',
@@ -1201,15 +1229,15 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
     });
 
     it('should accept a create payload with stray filter ids (copy-paste round-trip)', async () => {
-      // An LLM that copies a filter out of hyperdx_get_dashboard and
-      // back into hyperdx_save_dashboard for a NEW dashboard ships an
+      // An LLM that copies a filter out of clickstack_get_dashboard and
+      // back into clickstack_save_dashboard for a NEW dashboard ships an
       // `id` on the filter. The body schema for create is
       // `.strict()` and rejects `id`, so saveDashboard normalizes by
       // stripping ids before validation. Without that normalization
       // this payload would 4xx with a confusing strict-validation
       // error.
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Create with stray filter id',
         tiles: [traceTile(sourceId)],
         filters: [
@@ -1243,7 +1271,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       const sourceId = ctx.traceSource._id.toString();
       const createResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           name: 'Update adds new filter',
           tiles: [traceTile(sourceId)],
@@ -1262,7 +1290,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
       const updateResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           id: created.id,
           name: 'Update adds new filter',
@@ -1306,7 +1334,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       // saved tile would include empty-message rows instead of the
       // filtered set the prompt promises.
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'Top Error Messages',
         tiles: [
           {
@@ -1342,7 +1370,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       const sourceId = ctx.traceSource._id.toString();
       const createResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           name: 'OnClick search by id',
           tiles: [
@@ -1390,9 +1418,13 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
         ],
       });
 
-      const getResult = await callTool(ctx.client!, 'hyperdx_get_dashboard', {
-        id: created.id,
-      });
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        {
+          id: created.id,
+        },
+      );
       const fetched = JSON.parse(getFirstText(getResult));
       expect(fetched.tiles[0].config.onClick).toEqual(
         created.tiles[0].config.onClick,
@@ -1409,7 +1441,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
         team: ctx.team._id,
       }).save();
 
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'OnClick dashboard by id',
         tiles: [
           {
@@ -1461,7 +1493,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
 
     it('should round-trip a templated dashboard onClick (mode=template)', async () => {
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'OnClick dashboard by template',
         tiles: [
           {
@@ -1503,7 +1535,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
     it('should round-trip onClick on a raw SQL table tile', async () => {
       const connectionId = ctx.connection._id.toString();
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'SQL onClick',
         tiles: [
           {
@@ -1554,7 +1586,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
     it('should reject a table tile onClick referencing a non-existent dashboard', async () => {
       const sourceId = ctx.traceSource._id.toString();
       const ghostDashboardId = new mongoose.Types.ObjectId().toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'OnClick missing dashboard',
         tiles: [
           {
@@ -1602,7 +1634,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       });
       const sourceId = ctx.traceSource._id.toString();
 
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'OnClick metric source',
         tiles: [
           {
@@ -1635,7 +1667,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       // input schema and surfaces as the SDK's "Input validation error"
       // envelope rather than a custom 400 message.
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'OnClick bad object id',
         tiles: [
           {
@@ -1663,7 +1695,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       // future tightening of the schema doesn't quietly change it
       // without updating the docs that callers rely on.
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'OnClick no whereLanguage',
         tiles: [
           {
@@ -1694,7 +1726,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       // The schema is a discriminated union on `type`; a bogus type
       // must be rejected up front.
       const sourceId = ctx.traceSource._id.toString();
-      const result = await callTool(ctx.client!, 'hyperdx_save_dashboard', {
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'OnClick bad type',
         tiles: [
           {
@@ -1724,7 +1756,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       const sourceId = ctx.traceSource._id.toString();
       const createResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           name: 'OnClick update validation',
           tiles: [
@@ -1745,7 +1777,7 @@ describe('MCP Dashboard Tools - hyperdx_save_dashboard', () => {
       const ghostDashboardId = new mongoose.Types.ObjectId().toString();
       const updateResult = await callTool(
         ctx.client!,
-        'hyperdx_save_dashboard',
+        'clickstack_save_dashboard',
         {
           id: created.id,
           name: 'OnClick update validation',

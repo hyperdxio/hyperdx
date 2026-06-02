@@ -34,16 +34,16 @@ export function registerSaveDashboard(
   const frontendUrl = config.FRONTEND_URL;
 
   server.registerTool(
-    'hyperdx_save_dashboard',
+    'clickstack_save_dashboard',
     {
       title: 'Create or Update Dashboard',
       description:
         'Create a new dashboard (omit id) or update an existing one (provide id). ' +
-        'Call hyperdx_list_sources first to obtain sourceId and connectionId values. ' +
-        'IMPORTANT: After saving a dashboard, always run hyperdx_query_tile on each tile ' +
+        'Call clickstack_list_sources first to obtain sourceId and connectionId values. ' +
+        'IMPORTANT: After saving a dashboard, always run clickstack_query_tile on each tile ' +
         'to confirm the queries work and return expected data. Tiles can silently fail ' +
         'due to incorrect filter syntax, missing attributes, or wrong column names. ' +
-        'TIP: To update a single tile without resubmitting all tiles, use hyperdx_patch_dashboard instead.',
+        'TIP: To update a single tile without resubmitting all tiles, use clickstack_patch_dashboard instead.',
       inputSchema: z.object({
         id: z
           .string()
@@ -59,7 +59,7 @@ export function registerSaveDashboard(
       }),
     },
     withToolTracing(
-      'hyperdx_save_dashboard',
+      'clickstack_save_dashboard',
       context,
       async ({
         id: dashboardId,
@@ -216,7 +216,7 @@ async function createDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${newDashboard._id}` }
               : {}),
-            hint: 'Use hyperdx_query_tile to test individual tile queries before viewing the dashboard.',
+            hint: 'Use clickstack_query_tile to test individual tile queries before viewing the dashboard.',
           },
           null,
           2,
@@ -381,7 +381,7 @@ async function updateDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${updatedDashboard._id}` }
               : {}),
-            hint: 'Use hyperdx_query_tile to test individual tile queries before viewing the dashboard.',
+            hint: 'Use clickstack_query_tile to test individual tile queries before viewing the dashboard.',
           },
           null,
           2,

@@ -39,6 +39,8 @@ jest.mock('../SourceSelect', () => ({
 jest.mock('../SourceSchemaPreview', () => ({
   __esModule: true,
   default: () => <div />,
+  isSourceSchemaPreviewEnabled: () => false,
+  getSourceSchemaTables: () => [],
 }));
 
 describe('DBTracePanel', () => {

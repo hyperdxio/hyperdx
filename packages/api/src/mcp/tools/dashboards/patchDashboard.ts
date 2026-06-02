@@ -26,15 +26,15 @@ export function registerPatchDashboard(
   const frontendUrl = config.FRONTEND_URL;
 
   server.registerTool(
-    'hyperdx_patch_dashboard',
+    'clickstack_patch_dashboard',
     {
       title: 'Patch Dashboard',
       description:
         'Make targeted updates to a dashboard without resubmitting the full object. ' +
         'You can update dashboard-level fields (name, tags) and/or replace a single ' +
         'tile by tileId \u2014 all in one call. Unmentioned tiles and fields are preserved. ' +
-        'Use hyperdx_get_dashboard_tile to inspect a tile before patching it. ' +
-        'IMPORTANT: After patching a tile, run hyperdx_query_tile to confirm the query still works.',
+        'Use clickstack_get_dashboard_tile to inspect a tile before patching it. ' +
+        'IMPORTANT: After patching a tile, run clickstack_query_tile to confirm the query still works.',
       inputSchema: z.object({
         dashboardId: z.string().describe('Dashboard ID.'),
         name: z
@@ -53,7 +53,7 @@ export function registerPatchDashboard(
           .optional()
           .describe(
             'ID of the tile to replace. Must be paired with `tile`. ' +
-              'Obtain tile IDs from hyperdx_get_dashboard.',
+              'Obtain tile IDs from clickstack_get_dashboard.',
           ),
         tile: mcpPatchTileSchema
           .optional()
@@ -65,7 +65,7 @@ export function registerPatchDashboard(
       }),
     },
     withToolTracing(
-      'hyperdx_patch_dashboard',
+      'clickstack_patch_dashboard',
       context,
       async ({ dashboardId, name, tags, tileId, tile: inputTile }) => {
         // Cross-field validation (kept in handler so the inputSchema
@@ -297,7 +297,7 @@ export function registerPatchDashboard(
         if (patchedTile) {
           output.patchedTile = patchedTile;
           output.hint =
-            'Use hyperdx_query_tile to test the patched tile query.';
+            'Use clickstack_query_tile to test the patched tile query.';
         }
 
         return {

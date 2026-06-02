@@ -15,26 +15,26 @@ export function registerGetDashboardTile(
   const { teamId } = context;
 
   server.registerTool(
-    'hyperdx_get_dashboard_tile',
+    'clickstack_get_dashboard_tile',
     {
       title: 'Get a Single Dashboard Tile',
       description:
         'Retrieve a single tile from a dashboard by tileId. ' +
         'Useful for inspecting one tile without loading the full dashboard. ' +
-        'Use hyperdx_get_dashboard (without an ID) to list dashboards, ' +
-        'then hyperdx_get_dashboard (with an ID) to see all tile IDs.',
+        'Use clickstack_get_dashboard (without an ID) to list dashboards, ' +
+        'then clickstack_get_dashboard (with an ID) to see all tile IDs.',
       inputSchema: z.object({
         dashboardId: z.string().describe('Dashboard ID.'),
         tileId: z
           .string()
           .describe(
             'Tile ID within the dashboard. ' +
-              'Obtain from hyperdx_get_dashboard.',
+              'Obtain from clickstack_get_dashboard.',
           ),
       }),
     },
     withToolTracing(
-      'hyperdx_get_dashboard_tile',
+      'clickstack_get_dashboard_tile',
       context,
       async ({ dashboardId, tileId }) => {
         if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
