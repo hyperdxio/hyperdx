@@ -192,6 +192,95 @@ describe('filters', () => {
         { type: 'lucene', condition: 'LogAttributes.latency:[0 TO 100]' },
       ]);
     });
+
+    // A SQL-expression key (e.g. produced by "Add to Filters" on a nested-JSON
+    // attribute) cannot be represented as a Lucene field name. Emitting a
+    // Lucene `field:"value"` for it makes lucene.parse throw at render time, so
+    // filtersToQuery must emit a SQL filter instead. See HDX nested-JSON crash.
+    describe('SQL-expression field keys (nested-JSON "Add to Filters")', () => {
+      const jsonExtractKey =
+        "JSONExtractString(LogAttributes['weird.key.payload'], 'abc.def.jqk/abcd')";
+
+      it('emits a SQL IN filter for a JSONExtractString key', () => {
+        const filters = {
+          [jsonExtractKey]: {
+            included: new Set<string | boolean>(['asdf-14']),
+            excluded: new Set<string | boolean>(),
+          },
+        };
+        expect(filtersToQuery(filters)).toEqual([
+          { type: 'sql', condition: `${jsonExtractKey} IN ('asdf-14')` },
+        ]);
+      });
+
+      it('emits a SQL NOT IN filter for excluded values', () => {
+        const filters = {
+          [jsonExtractKey]: {
+            included: new Set<string | boolean>(),
+            excluded: new Set<string | boolean>(['asdf-14']),
+          },
+        };
+        expect(filtersToQuery(filters)).toEqual([
+          { type: 'sql', condition: `${jsonExtractKey} NOT IN ('asdf-14')` },
+        ]);
+      });
+
+      it('emits separate SQL filters for combined included/excluded', () => {
+        const filters = {
+          [jsonExtractKey]: {
+            included: new Set<string | boolean>(['a', 'b']),
+            excluded: new Set<string | boolean>(['c']),
+          },
+        };
+        expect(filtersToQuery(filters)).toEqual([
+          { type: 'sql', condition: `${jsonExtractKey} IN ('a', 'b')` },
+          { type: 'sql', condition: `${jsonExtractKey} NOT IN ('c')` },
+        ]);
+      });
+
+      it('SQL-escapes single quotes and backslashes in values', () => {
+        const filters = {
+          [jsonExtractKey]: {
+            included: new Set<string | boolean>(["it's a\\test"]),
+            excluded: new Set<string | boolean>(),
+          },
+        };
+        expect(filtersToQuery(filters)).toEqual([
+          {
+            type: 'sql',
+            condition: `${jsonExtractKey} IN ('it''s a\\\\test')`,
+          },
+        ]);
+      });
+
+      it('emits a SQL BETWEEN filter for ranges', () => {
+        const filters = {
+          [jsonExtractKey]: {
+            included: new Set<string | boolean>(),
+            excluded: new Set<string | boolean>(),
+            range: { min: 10, max: 500 },
+          },
+        };
+        expect(filtersToQuery(filters)).toEqual([
+          { type: 'sql', condition: `${jsonExtractKey} BETWEEN 10 AND 500` },
+        ]);
+      });
+
+      it('still emits Lucene for plain field paths', () => {
+        const filters = {
+          'LogAttributes.weird.key.payload': {
+            included: new Set<string | boolean>(['asdf-14']),
+            excluded: new Set<string | boolean>(),
+          },
+        };
+        expect(filtersToQuery(filters)).toEqual([
+          {
+            type: 'lucene',
+            condition: 'LogAttributes.weird.key.payload:"asdf-14"',
+          },
+        ]);
+      });
+    });
   });
 
   describe('parseLuceneFilter', () => {
