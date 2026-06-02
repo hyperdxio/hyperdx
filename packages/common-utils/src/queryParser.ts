@@ -1766,14 +1766,9 @@ async function nodeTerm(
   serializer: Serializer,
   context: SerializerContext,
 ): Promise<string> {
-  const isImplicitField = node.field === IMPLICIT_FIELD;
-  const rawField = node.field[0] === '-' ? node.field.slice(1) : node.field;
-  // Decode special-token placeholders the emitter inserted in the field name
-  // (e.g. HDX_COLON for an escaped `:` in a Map sub-key). Leave the implicit
-  // field sentinel untouched so downstream comparisons against IMPLICIT_FIELD
-  // still match.
-  const field = isImplicitField ? rawField : decodeSpecialTokens(rawField);
+  const field = node.field[0] === '-' ? node.field.slice(1) : node.field;
   let isNegatedField = node.field[0] === '-';
+  const isImplicitField = node.field === IMPLICIT_FIELD;
 
   // NodeTerm
   if (isNodeTerm(node)) {
@@ -1875,7 +1870,7 @@ function createSerializerContext(
 
     return {
       ...currentContext,
-      implicitColumnExpression: decodeSpecialTokens(fieldWithoutNegation),
+      implicitColumnExpression: fieldWithoutNegation,
       ...(isNegatedAndParenthesized(ast)
         ? { isNegatedAndParenthesized: true }
         : {}),
