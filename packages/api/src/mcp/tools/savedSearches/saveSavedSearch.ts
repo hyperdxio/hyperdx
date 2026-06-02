@@ -21,16 +21,16 @@ export function registerSaveSavedSearch(
   const frontendUrl = config.FRONTEND_URL;
 
   server.registerTool(
-    'hyperdx_save_saved_search',
+    'clickstack_save_saved_search',
     {
       title: 'Create or Update Saved Search',
       description:
         'Create a new saved search (omit id) or update an existing one (provide id). ' +
         'A saved search stores a reusable query against a data source. ' +
-        'Use hyperdx_list_sources to find the sourceId.',
+        'Use clickstack_list_sources to find the sourceId.',
       inputSchema: mcpSaveSavedSearchSchema,
     },
-    withToolTracing('hyperdx_save_saved_search', context, async input => {
+    withToolTracing('clickstack_save_saved_search', context, async input => {
       const isUpdate = !!input.id;
 
       // ── Validate ID for updates ──

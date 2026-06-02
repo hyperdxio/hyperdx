@@ -1,6 +1,6 @@
 /**
  * Event-deltas algorithm — pure functions used by both the HyperDX UI
- * (DBDeltaChart) and the MCP server (hyperdx_event_deltas tool).
+ * (DBDeltaChart) and the MCP server (clickstack_event_deltas tool).
  *
  * Given two row sets — a target group and a baseline group — the algorithm
  * ranks each property by how differently its values are distributed between
@@ -22,7 +22,7 @@
  */
 export function flattenData(data: Record<string, any>): Record<string, any> {
   const result: Record<string, any> = {};
-  // eslint-disable-next-line security/detect-object-injection -- prop is built from known object keys via recursion, not user input
+
   function recurse(cur: Record<string, any>, prop: string) {
     if (Object(cur) !== cur) {
       result[prop] = cur; // eslint-disable-line security/detect-object-injection
