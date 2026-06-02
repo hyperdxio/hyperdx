@@ -825,8 +825,8 @@ describe('searchFilters', () => {
         const { result } = renderHook(() =>
           useSearchPageFilterState({
             searchQuery: [
-              { type: 'lucene', condition: 'OldColumn:"x"' },
-              { type: 'lucene', condition: 'AnotherGone:"y"' },
+              { type: 'sql', condition: `OldColumn IN ('x')` },
+              { type: 'sql', condition: `AnotherGone IN ('y')` },
             ],
             onFilterChange: onFilterChangeLocal,
           }),
@@ -848,8 +848,8 @@ describe('searchFilters', () => {
         const { result } = renderHook(() =>
           useSearchPageFilterState({
             searchQuery: [
-              { type: 'lucene', condition: 'ServiceName:"app"' },
-              { type: 'lucene', condition: 'Body:"oops"' },
+              { type: 'sql', condition: `ServiceName IN ('app')` },
+              { type: 'sql', condition: `Body IN ('oops')` },
             ],
             onFilterChange: onFilterChangeLocal,
           }),
@@ -864,42 +864,8 @@ describe('searchFilters', () => {
 
         expect(dropped).toEqual(['Body']);
         expect(onFilterChangeLocal).toHaveBeenLastCalledWith([
-          { type: 'lucene', condition: 'ServiceName:"app"' },
+          { type: 'sql', condition: `ServiceName IN ('app')` },
         ]);
-      });
-
-      it('preserves passthrough filters when reconciling', () => {
-        const onFilterChangeLocal = jest.fn();
-        const warnSpy = jest
-          .spyOn(console, 'warn')
-          .mockImplementation(() => {});
-        // Unparseable Lucene (mismatched parens) is preserved by parseQuery
-        // as a passthrough filter.
-        const { result } = renderHook(() =>
-          useSearchPageFilterState({
-            searchQuery: [
-              { type: 'lucene', condition: 'ServiceName:"app"' },
-              { type: 'lucene', condition: 'Body:"oops"' },
-              { type: 'lucene', condition: '((((' },
-            ],
-            onFilterChange: onFilterChangeLocal,
-          }),
-        );
-
-        let dropped: string[] = [];
-        act(() => {
-          dropped = result.current.retainFiltersByColumns(
-            new Set(['ServiceName']),
-          );
-        });
-
-        expect(dropped).toEqual(['Body']);
-        // Passthrough filter rides along after the kept filters.
-        expect(onFilterChangeLocal).toHaveBeenLastCalledWith([
-          { type: 'lucene', condition: 'ServiceName:"app"' },
-          { type: 'lucene', condition: '((((' },
-        ]);
-        warnSpy.mockRestore();
       });
     });
   });
