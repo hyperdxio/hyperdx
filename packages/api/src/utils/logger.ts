@@ -8,6 +8,8 @@ import pinoHttp from 'pino-http';
 
 import * as config from '@/config';
 
+import { pinoLevelFormatter } from './logFormatters';
+
 const MAX_LEVEL = config.HYPERDX_LOG_LEVEL ?? 'debug';
 
 const hyperdxTransport = config.HYPERDX_API_KEY
@@ -58,6 +60,12 @@ const logger = pino({
   level: MAX_LEVEL,
   transport: getTransport(),
   mixin: getPinoMixinFunction,
+  formatters: {
+    // Keep numeric `level` (the OTLP transport maps PINO_LEVELS[level]) while
+    // adding a string `severity` the OTel collector can promote. See
+    // ./logFormatters for the full rationale.
+    level: pinoLevelFormatter,
+  },
 });
 
 export const expressLogger = pinoHttp({
