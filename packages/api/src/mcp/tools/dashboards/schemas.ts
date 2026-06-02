@@ -311,7 +311,7 @@ const mcpOnClickSchema = z
   );
 
 const mcpTileLayoutSchema = z.object({
-  name: z.string().describe('Tile title shown on the dashboard'),
+  name: z.string().min(1).describe('Tile title shown on the dashboard'),
   x: z
     .number()
     .min(0)
@@ -612,6 +612,46 @@ const mcpTileSchema = z.union([
   mcpSqlTileSchema,
 ]);
 
+// Layout schema without defaults for the patch tool: layout fields stay
+// truly `undefined` when omitted so the merge logic can fall back to the
+// existing tile's values instead of Zod filling in 0/12/4.
+const mcpPatchTileLayoutSchema = z.object({
+  name: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Tile title. Omit to keep the existing title.'),
+  x: z.number().min(0).max(23).optional(),
+  y: z.number().min(0).optional(),
+  w: z.number().min(1).max(24).optional(),
+  h: z.number().min(1).optional(),
+  containerId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
+  tabId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
+});
+
+// Build the patch tile union by extending the default-free layout with
+// each tile type's config shape. We only need the `config` field from
+// each tile schema; the layout wrapper is replaced.
+const mcpPatchTileSchema = z.union([
+  mcpPatchTileLayoutSchema.extend({ config: mcpLineTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpBarTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpTableTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpNumberTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpPieTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpHeatmapTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpSearchTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpMarkdownTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpSqlTileSchema.shape.config }),
+]);
+
 export const mcpTilesParam = z
   .array(mcpTileSchema)
   .describe(
@@ -734,6 +774,49 @@ export const mcpFiltersParam = z
       '    "appliesToSourceIds": ["<trace-source-id>"] }\n' +
       ']',
   );
+
+export const mcpPatchDashboardSchema = z.object({
+  dashboardId: z.string().describe('Dashboard ID.'),
+  name: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('New dashboard name. Omit to keep the current name.'),
+  tags: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'New tags array (replaces all existing tags). Omit to keep the current tags.',
+    ),
+  tileId: z
+    .string()
+    .optional()
+    .describe(
+      'ID of the tile to replace. Must be paired with `tile`. ' +
+        'Obtain tile IDs from clickstack_get_dashboard.',
+    ),
+  tile: mcpPatchTileSchema
+    .optional()
+    .describe(
+      'The full replacement tile definition. Replaces the tile matched by tileId. ' +
+        'Layout fields (x, y, w, h), name, and containerId/tabId default to the ' +
+        "existing tile's values when omitted, so you only need to specify what changed.",
+    ),
+});
+
+export const mcpSearchDashboardsSchema = z.object({
+  query: z
+    .string()
+    .max(200)
+    .optional()
+    .describe(
+      'Search term to match against dashboard names (case-insensitive substring match).',
+    ),
+  tags: z
+    .array(z.string().min(1))
+    .optional()
+    .describe('Filter to dashboards that have ALL of these tags.'),
+});
 
 export const mcpContainersParam = z
   .array(DashboardContainerSchema)

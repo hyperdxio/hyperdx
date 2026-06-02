@@ -821,7 +821,7 @@ Used in the "where" field of select items and search tiles.
   AND:                service.name:api AND http.status_code:>=500
   OR:                 level:error OR level:fatal
   NOT:                NOT level:debug
-  Wildcard:           service.name:front*
+  Wildcard:           ServiceName:front*
   Phrase:             Body:"connection refused"
   Exists:             _exists_:http.route
   Range (numeric):    Duration:>1000000000
@@ -831,16 +831,39 @@ Used in the "where" field of select items and search tiles.
 NOTE: In Lucene filters, use dot notation for attribute keys (service.name, http.method).
 This is different from valueExpression and groupBy which require bracket syntax (SpanAttributes['http.method']).
 
-GOTCHA: Lucene queries that reference map-attribute keys via dotted paths (http.status_code, db.system, deployment.environment, anything under SpanAttributes / ResourceAttributes / LogAttributes) are NOT reliably translated to bracket access. Operators (>=, >, <=, <), wildcards (*), AND simple equality all hit translator gaps depending on the column. Symptoms: tile saves fine; clickstack_query_tile returns an error or returns zero rows when there should be matches; the dashboard renders "Error loading chart" on the tile. Do NOT trust dotted-path Lucene; use SQL with bracket access for ALL map-attribute filtering.
+*** SUBSTRING MATCHING (field:value and field:value*) ***
+
+Lucene field:value does NOT mean exact equality. It translates to ilike(field, '%value%') -- a case-insensitive SUBSTRING match. This has two major consequences:
+
+  1. Plain value is a substring search:
+     SpanKind:Server     matches "Server", "ServerStreaming", "InternalServer", etc.
+     SeverityText:error  matches "error", "error_timeout", "critical_error", etc.
+
+  2. Trailing wildcard (field:val*) is prefix-within-substring, NOT a true prefix match:
+     ServiceName:api*    does NOT mean "starts with api". It means "contains a substring starting with api".
+                         In practice this often works for prefix matching, but it is NOT equivalent to SQL LIKE 'api%'.
+
+  For exact matching or true prefix/suffix/contains patterns, use SQL instead:
+     Exact:    whereLanguage: "sql", where: "SpanKind = 'Server'"
+     Prefix:   whereLanguage: "sql", where: "ServiceName LIKE 'api%'"
+     Contains: whereLanguage: "sql", where: "Body LIKE '%timeout%'"
+     Regex:    whereLanguage: "sql", where: "match(ServiceName, '^api-v[0-9]+')"
+
+  When Lucene substring matching is FINE: free-text columns like Body, StatusMessage where substring is the intent.
+  When Lucene substring matching is WRONG: enum-like columns (SpanKind, SeverityText, StatusCode, ServiceName) where you want exact or true prefix match.
+
+*** MAP-ATTRIBUTE GOTCHA ***
+
+Lucene queries that reference map-attribute keys via dotted paths (http.status_code, db.system, deployment.environment, anything under SpanAttributes / ResourceAttributes / LogAttributes) are NOT reliably translated to bracket access. Operators (>=, >, <=, <), wildcards (*), AND simple equality all hit translator gaps depending on the column. Symptoms: tile saves fine; clickstack_query_tile returns an error or returns zero rows when there should be matches; the dashboard renders "Error loading chart" on the tile. Do NOT trust dotted-path Lucene; use SQL with bracket access for ALL map-attribute filtering.
 
   Unreliable in Lucene (any operation, any operator):
     http.status_code:>=500    (operator)
-    http.route:*              (wildcard)
+    http.route:*              (wildcard -- also hits the substring matching trap above)
     db.system:mongodb         (simple equality; the translator does NOT map this to SpanAttributes['db.system'])
 
   Reliable in Lucene (top-level columns only):
     Duration:>1000000000      (top-level numeric range)
-    ServiceName:checkout      (top-level string, see fuzzy-match note below for what this actually means)
+    ServiceName:checkout      (top-level string -- but remember this is a substring match, not exact!)
 
 Workaround: switch to SQL with bracket access. Map values are stored as strings, so quote the comparison value.
 
@@ -852,11 +875,6 @@ Workaround: switch to SQL with bracket access. Map values are stored as strings,
 
   whereLanguage: "sql"
   where: "SpanAttributes['http.route'] != ''"     (filters out empty keys; map values are often empty)
-
-FUZZY-MATCH NOTE: Lucene field:value on a top-level string column translates to ilike(field, '%value%'), not exact equality. That is fine for free-text columns (Body, StatusMessage) but surprising for enum-like columns (SpanKind, SeverityText, StatusCode). SpanKind:Server matches "Server" AND any other string containing "Server" as a substring. For exact-match semantics on top-level columns, use SQL:
-
-  whereLanguage: "sql"
-  where: "SpanKind = 'Server'"
 
 == SQL FILTER SYNTAX ==
 
@@ -1247,10 +1265,12 @@ Example: find top patterns for production services over the last 4 hours:
     Correct: where: "SpanAttributes['db.system'] = 'mongodb'"        (whereLanguage: "sql")
     Lucene parses dotted-path queries happily at save time but the translator does not reliably map them to bracket access. Behavior varies by column and operator. Treat any Lucene filter on a map-attribute key as a save-time bug and use SQL with bracket access for ALL map-attribute filtering. Map values are stored as strings; quote the comparison value.
 
-15. Lucene field:value on enum-like top-level columns (fuzzy substring match, not equality)
-    Wrong:   where: "SpanKind:Server"             (whereLanguage: "lucene"; translates to ilike(SpanKind, '%Server%') and matches "Server_Client", "Internal_Server_Error", etc.)
-    Correct: where: "SpanKind = 'Server'"          (whereLanguage: "sql")
-    Lucene field:value is a substring match (ilike with surrounding wildcards), not exact equality. Fine for Body and StatusMessage; wrong for enum-like columns where exact match matters (SpanKind, SeverityText, StatusCode). When the column has discrete known values, use SQL with =.
+15. Lucene field:value and field:value* (substring matching, not exact or true prefix)
+    Wrong:   where: "SpanKind:Server"             (whereLanguage: "lucene"; translates to ilike(SpanKind, '%Server%') and matches "ServerStreaming", "InternalServer", etc.)
+    Wrong:   where: "ServiceName:api*"            (whereLanguage: "lucene"; NOT a true prefix match -- it is prefix-within-substring)
+    Correct: where: "SpanKind = 'Server'"          (whereLanguage: "sql"; exact match)
+    Correct: where: "ServiceName LIKE 'api%'"      (whereLanguage: "sql"; true prefix match)
+    Lucene field:value is a substring match (ilike with surrounding wildcards), not exact equality. Lucene field:value* is prefix-within-substring, not SQL LIKE 'value%'. Fine for free-text columns (Body, StatusMessage); wrong for enum-like columns where exact match matters (SpanKind, SeverityText, StatusCode) and wrong when true prefix matching is needed. Use SQL for exact match (=), prefix (LIKE 'x%'), contains (LIKE '%x%'), or regex (match(col, 'pattern')).
 
 16. Forgetting that map-attribute values are often empty strings
     Wrong:   groupBy on SpanAttributes['db.collection.name'] without filtering empty values; the result has an empty-string bucket alongside the real ones, which renders as a blank row in tables and an unlabelled slice in pies.
