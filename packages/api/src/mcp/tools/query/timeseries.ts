@@ -69,20 +69,20 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
   const { teamId } = context;
 
   server.registerTool(
-    'hyperdx_timeseries',
+    'clickstack_timeseries',
     {
       title: 'Time-Series Chart',
       description:
         'Plot metrics over time as a line or stacked bar chart. ' +
         'Use this when you need to visualize trends, compare time-series, ' +
         'or monitor metric changes over a time window.\n\n' +
-        'Requires sourceId — call hyperdx_list_sources then hyperdx_describe_source first. ' +
+        'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first. ' +
         'Each select item defines one plotted series.\n\n' +
         'Column naming: top-level columns are PascalCase (Duration, StatusCode). ' +
         "Map attributes use bracket syntax: SpanAttributes['http.method'].",
       inputSchema: timeseriesSchema,
     },
-    withToolTracing('hyperdx_timeseries', context, async input => {
+    withToolTracing('clickstack_timeseries', context, async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
         return {

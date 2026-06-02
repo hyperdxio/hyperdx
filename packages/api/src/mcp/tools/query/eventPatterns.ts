@@ -66,7 +66,7 @@ export function registerEventPatterns(server: McpServer, context: McpContext) {
   const { teamId } = context;
 
   server.registerTool(
-    'hyperdx_event_patterns',
+    'clickstack_event_patterns',
     {
       title: 'Event Pattern Mining',
       description:
@@ -76,15 +76,15 @@ export function registerEventPatterns(server: McpServer, context: McpContext) {
         'Use this when asked about "top patterns", "common logs", "noisy services", ' +
         '"recurring messages", or log noise analysis.\n\n' +
         'Each pattern includes a "whereSnippet" — use it as the "where" parameter in ' +
-        'a follow-up hyperdx_search call to browse matching raw events.\n\n' +
-        'Requires sourceId — call hyperdx_list_sources then hyperdx_describe_source first.\n\n' +
+        'a follow-up clickstack_search call to browse matching raw events.\n\n' +
+        'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
         'When to use which tool:\n' +
-        '  - hyperdx_event_patterns: clustering / recurring shapes / noise analysis\n' +
-        '  - hyperdx_search: raw individual rows\n' +
-        '  - hyperdx_table: aggregated metrics / counts / top-N',
+        '  - clickstack_event_patterns: clustering / recurring shapes / noise analysis\n' +
+        '  - clickstack_search: raw individual rows\n' +
+        '  - clickstack_table: aggregated metrics / counts / top-N',
       inputSchema: eventPatternsSchema,
     },
-    withToolTracing('hyperdx_event_patterns', context, async input => {
+    withToolTracing('clickstack_event_patterns', context, async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
         return {
