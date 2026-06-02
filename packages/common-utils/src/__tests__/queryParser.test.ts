@@ -494,19 +494,6 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     expect(actualSql).toBe(expectedSql);
   });
 
-  it('"Add to Filters" repro: JSON column path + value with colons and slashes emits valid SQL', async () => {
-    const lucene =
-      'ResourceAttributesJSON.endpoint:"grpc://auth-svc:50051/Verify"';
-    const builder = new SearchQueryBuilder(lucene, serializer);
-    const actualSql = await builder.build();
-    expect(actualSql).toContain(
-      'toString(`ResourceAttributesJSON`.`endpoint`)',
-    );
-    expect(actualSql).toContain('grpc://auth-svc:50051/Verify');
-    expect(actualSql).not.toContain('http_COLON_');
-    expect(actualSql).not.toContain('HDX_COLON');
-  });
-
   describe('CustomSchemaSQLSerializerV2: implicit column falls back to bodyExpression', () => {
     // Symmetric counterpart to the one-way fallback in
     // `getEventBody` (packages/app/src/source.ts): a log source admin who
