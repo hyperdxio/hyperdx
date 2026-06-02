@@ -116,6 +116,8 @@ import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
+import { PageHeader } from '@/components/PageHeader';
+import { PageLayout } from '@/components/PageLayout';
 import { TimePicker } from '@/components/TimePicker';
 import { parseTimeRangeInput } from '@/components/TimePicker/utils';
 import {
@@ -2218,8 +2220,308 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     dashboard?.savedQuery || dashboard?.savedFilterValues?.length,
   );
 
-  return (
-    <Box p="sm" data-testid="dashboard-page">
+  const dashboardMeta =
+    !isLocalDashboard && dashboard ? (
+      <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
+        {dashboard.createdBy && (
+          <span>
+            Created by {dashboard.createdBy.name || dashboard.createdBy.email}.{' '}
+          </span>
+        )}
+        {dashboard.updatedAt && (
+          <Tooltip
+            label={
+              <>
+                <FormatTime value={dashboard.updatedAt} format="short" />
+                {dashboard.updatedBy
+                  ? ` by ${dashboard.updatedBy.name || dashboard.updatedBy.email}`
+                  : ''}
+              </>
+            }
+          >
+            <span>{`Updated ${formatDistanceToNow(new Date(dashboard.updatedAt), { addSuffix: true })}.`}</span>
+          </Tooltip>
+        )}
+      </Text>
+    ) : null;
+
+  const pageBreadcrumbs = (
+    <Flex justify="space-between" align="center" gap="sm" w="100%">
+      <Breadcrumbs fz="sm">
+        <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+          Dashboards
+        </Anchor>
+        <Text fz="sm" c="dimmed" maw={500} truncate="end" lh={1}>
+          {isLocalDashboard
+            ? 'Temporary Dashboard'
+            : (dashboard?.name ?? 'Untitled')}
+        </Text>
+      </Breadcrumbs>
+      {dashboardMeta}
+    </Flex>
+  );
+
+  const dashboardName = (
+    <EditablePageName
+      key={`${dashboardHash}`}
+      name={dashboard?.name ?? ''}
+      onSave={editedName => {
+        if (dashboard != null) {
+          setDashboard({
+            ...dashboard,
+            name: editedName,
+          });
+        }
+      }}
+    />
+  );
+
+  const dashboardActions = !isLocalDashboard ? (
+    <Group gap="xs" wrap="nowrap">
+      {dashboard?.id && (
+        <FavoriteButton resourceType="dashboard" resourceId={dashboard.id} />
+      )}
+      {dashboard?.id && (
+        <Tags
+          allowCreate
+          values={dashboard?.tags || []}
+          onChange={handleUpdateTags}
+        >
+          <Button
+            variant="secondary"
+            px="xs"
+            size="xs"
+            style={{ flexShrink: 0 }}
+          >
+            <IconTags size={14} className="me-2" />
+            {dashboard?.tags?.length || 0}{' '}
+            {dashboard?.tags?.length === 1 ? 'Tag' : 'Tags'}
+          </Button>
+        </Tags>
+      )}
+      {/* local dashboards cant be "deleted" */}
+      <Menu width={250}>
+        <Menu.Target>
+          <ActionIcon
+            variant="secondary"
+            size="input-xs"
+            data-testid="dashboard-menu-button"
+          >
+            <IconDotsVertical size={14} />
+          </ActionIcon>
+        </Menu.Target>
+
+        <Menu.Dropdown>
+          {containers.length > 0 && (
+            <>
+              <Menu.Label>View</Menu.Label>
+              <Menu.Item
+                leftSection={
+                  tocVisible ? (
+                    <IconLayoutSidebarRightCollapse size={16} />
+                  ) : (
+                    <IconLayoutSidebarRightExpand size={16} />
+                  )
+                }
+                onClick={() => setTocVisible(v => !v)}
+                data-testid="toggle-toc-menu-item"
+              >
+                {tocVisible
+                  ? 'Hide table of contents'
+                  : 'Show table of contents'}
+              </Menu.Item>
+              <Menu.Item
+                leftSection={<IconChevronsUp size={16} />}
+                onClick={handleCollapseAll}
+                disabled={collapsibleContainers.length === 0}
+                data-testid="collapse-all-sections-menu-item"
+              >
+                Collapse all sections
+              </Menu.Item>
+              <Menu.Item
+                leftSection={<IconChevronsDown size={16} />}
+                onClick={handleExpandAll}
+                disabled={collapsibleContainers.length === 0}
+                data-testid="expand-all-sections-menu-item"
+              >
+                Expand all sections
+              </Menu.Item>
+              <Menu.Divider />
+            </>
+          )}
+          {hasTiles && (
+            <Menu.Item
+              leftSection={<IconDownload size={16} />}
+              onClick={() => {
+                if (!sources || !dashboard) {
+                  notifications.show({
+                    color: 'red',
+                    message: 'Export Failed',
+                  });
+                  return;
+                }
+                downloadObjectAsJson(
+                  convertToDashboardTemplate(
+                    dashboard,
+                    sources,
+                    connections,
+                    allDashboards ?? [],
+                  ),
+                  dashboard?.name,
+                );
+              }}
+            >
+              Export Dashboard
+            </Menu.Item>
+          )}
+          <Menu.Item
+            leftSection={<IconUpload size={16} />}
+            onClick={() => {
+              if (dashboard && !dashboard.tiles.length) {
+                router.push(`/dashboards/import?dashboardId=${dashboard.id}`);
+              } else {
+                router.push('/dashboards/import');
+              }
+            }}
+          >
+            {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
+          </Menu.Item>
+          <Menu.Divider />
+          <Menu.Item
+            data-testid="save-default-query-filters-menu-item"
+            leftSection={<IconDeviceFloppy size={16} />}
+            onClick={handleSaveQuery}
+          >
+            {hasSavedQueryAndFilterDefaults
+              ? 'Update Default Query & Filters'
+              : 'Save Query & Filters as Default'}
+          </Menu.Item>
+          {hasSavedQueryAndFilterDefaults && (
+            <Menu.Item
+              data-testid="remove-default-query-filters-menu-item"
+              leftSection={<IconX size={16} />}
+              color="red"
+              onClick={handleRemoveSavedQuery}
+            >
+              Remove Default Query & Filters
+            </Menu.Item>
+          )}
+          <Menu.Divider />
+          <Menu.Item
+            leftSection={<IconTrash size={16} />}
+            color="red"
+            onClick={() =>
+              deleteDashboard.mutate(dashboard?.id ?? '', {
+                onSuccess: () => {
+                  router.push('/dashboards');
+                },
+              })
+            }
+          >
+            Delete Dashboard
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu>
+    </Group>
+  ) : null;
+
+  const titleRow = (
+    <Flex justify="space-between" align="flex-start" gap="sm">
+      {dashboardName}
+      {dashboardActions}
+    </Flex>
+  );
+
+  const queryToolbar = (
+    <Flex
+      gap="sm"
+      wrap="wrap"
+      component="form"
+      onSubmit={e => {
+        e.preventDefault();
+        onSubmit();
+      }}
+    >
+      <SearchWhereInput
+        tableConnections={tableConnections}
+        control={control}
+        name="where"
+        onSubmit={onSubmit}
+        onLanguageChange={(lang: 'sql' | 'lucene') =>
+          setValue('whereLanguage', lang)
+        }
+        label="WHERE"
+        enableHotkey
+        allowMultiline
+        minWidth={300}
+        data-testid="search-input"
+      />
+      <TimePicker
+        inputValue={displayedTimeInputValue}
+        setInputValue={setDisplayedTimeInputValue}
+        onSearch={range => {
+          onSearch(range);
+        }}
+      />
+      <GranularityPickerControlled control={control} name="granularity" />
+      <Tooltip
+        withArrow
+        label={
+          isRefreshEnabled
+            ? `Auto-refreshing with ${granularityOverride} interval`
+            : 'Enable auto-refresh'
+        }
+        fz="xs"
+        color="gray"
+      >
+        <Button
+          onClick={() => setIsLive(prev => !prev)}
+          size="sm"
+          variant={isLive ? 'primary' : 'secondary'}
+          title={isLive ? 'Disable auto-refresh' : 'Enable auto-refresh'}
+        >
+          Live
+        </Button>
+      </Tooltip>
+      <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+        <ActionIcon
+          onClick={refresh}
+          loading={manualRefreshCooloff}
+          disabled={manualRefreshCooloff}
+          variant="secondary"
+          title="Refresh dashboard"
+          size="input-sm"
+        >
+          <IconRefresh size={18} />
+        </ActionIcon>
+      </Tooltip>
+      <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+        <ActionIcon
+          variant="secondary"
+          onClick={() => setShowFiltersModal(true)}
+          data-testid="edit-filters-button"
+          size="input-sm"
+        >
+          <IconFilterEdit size={18} />
+        </ActionIcon>
+      </Tooltip>
+      <Button
+        data-testid="search-submit-button"
+        variant="primary"
+        type="submit"
+        leftSection={<IconPlayerPlay size={16} />}
+        style={{ flexShrink: 0 }}
+      >
+        Run
+      </Button>
+    </Flex>
+  );
+
+  // Extracted for the same reason as `KubernetesDashboardPage`: keeps the
+  // `<PageLayout>` return shallow and prevents the tile-grid tree below
+  // from being wrapped in an extra indentation level.
+  const dashboardBody = (
+    <>
       <Head>
         <title>
           {dashboard?.name ? `${dashboard.name}` : 'Dashboard'} – {brandName}
@@ -2261,321 +2563,23 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           );
         }}
       />
-
-      {isLocalDashboard ? (
-        <>
-          <Breadcrumbs mb="xs" mt="xs" fz="sm">
-            <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-              Dashboards
-            </Anchor>
-            <Text fz="sm" c="dimmed">
-              Temporary Dashboard
+      {isLocalDashboard && (
+        <Paper mt="xs" mb="md" p="md" data-testid="temporary-dashboard-banner">
+          <Flex justify="space-between" align="center">
+            <Text size="sm">
+              This is a temporary dashboard and can not be saved.
             </Text>
-          </Breadcrumbs>
-          <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
-            <Flex justify="space-between" align="center">
-              <Text size="sm">
-                This is a temporary dashboard and can not be saved.
-              </Text>
-              <Button
-                variant="primary"
-                fw={400}
-                onClick={onCreateDashboard}
-                data-testid="create-dashboard-button"
-              >
-                Create New Saved Dashboard
-              </Button>
-            </Flex>
-          </Paper>
-        </>
-      ) : (
-        <Group align="flex-start" mb="xs" mt="xs" justify="space-between">
-          <Breadcrumbs fz="sm">
-            <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-              Dashboards
-            </Anchor>
-            <Text fz="sm" c="dimmed" maw={500} truncate="end" lh={1}>
-              {dashboard?.name ?? 'Untitled'}
-            </Text>
-          </Breadcrumbs>
-          {!isLocalDashboard && dashboard && (
-            <Text size="xs" c="dimmed">
-              {dashboard.createdBy && (
-                <span>
-                  Created by{' '}
-                  {dashboard.createdBy.name || dashboard.createdBy.email}.{' '}
-                </span>
-              )}
-              {dashboard.updatedAt && (
-                <Tooltip
-                  label={
-                    <>
-                      <FormatTime value={dashboard.updatedAt} format="short" />
-                      {dashboard.updatedBy
-                        ? ` by ${dashboard.updatedBy.name || dashboard.updatedBy.email}`
-                        : ''}
-                    </>
-                  }
-                >
-                  <span>{`Updated ${formatDistanceToNow(new Date(dashboard.updatedAt), { addSuffix: true })}.`}</span>
-                </Tooltip>
-              )}
-            </Text>
-          )}
-        </Group>
-      )}
-      <Flex mt="xs" mb="md" justify="space-between" align="flex-start">
-        <EditablePageName
-          key={`${dashboardHash}`}
-          name={dashboard?.name ?? ''}
-          onSave={editedName => {
-            if (dashboard != null) {
-              setDashboard({
-                ...dashboard,
-                name: editedName,
-              });
-            }
-          }}
-        />
-        <Group gap="xs">
-          {!isLocalDashboard && dashboard?.id && (
-            <FavoriteButton
-              resourceType="dashboard"
-              resourceId={dashboard.id}
-            />
-          )}
-          {!isLocalDashboard && dashboard?.id && (
-            <Tags
-              allowCreate
-              values={dashboard?.tags || []}
-              onChange={handleUpdateTags}
+            <Button
+              variant="primary"
+              fw={400}
+              onClick={onCreateDashboard}
+              data-testid="create-dashboard-button"
             >
-              <Button
-                variant="secondary"
-                px="xs"
-                size="xs"
-                style={{ flexShrink: 0 }}
-              >
-                <IconTags size={14} className="me-2" />
-                {dashboard?.tags?.length || 0}{' '}
-                {dashboard?.tags?.length === 1 ? 'Tag' : 'Tags'}
-              </Button>
-            </Tags>
-          )}
-          {!isLocalDashboard /* local dashboards cant be "deleted" */ && (
-            <Menu width={250}>
-              <Menu.Target>
-                <ActionIcon
-                  variant="secondary"
-                  size="input-xs"
-                  data-testid="dashboard-menu-button"
-                >
-                  <IconDotsVertical size={14} />
-                </ActionIcon>
-              </Menu.Target>
-
-              <Menu.Dropdown>
-                {containers.length > 0 && (
-                  <>
-                    <Menu.Label>View</Menu.Label>
-                    <Menu.Item
-                      leftSection={
-                        tocVisible ? (
-                          <IconLayoutSidebarRightCollapse size={16} />
-                        ) : (
-                          <IconLayoutSidebarRightExpand size={16} />
-                        )
-                      }
-                      onClick={() => setTocVisible(v => !v)}
-                      data-testid="toggle-toc-menu-item"
-                    >
-                      {tocVisible
-                        ? 'Hide table of contents'
-                        : 'Show table of contents'}
-                    </Menu.Item>
-                    <Menu.Item
-                      leftSection={<IconChevronsUp size={16} />}
-                      onClick={handleCollapseAll}
-                      disabled={collapsibleContainers.length === 0}
-                      data-testid="collapse-all-sections-menu-item"
-                    >
-                      Collapse all sections
-                    </Menu.Item>
-                    <Menu.Item
-                      leftSection={<IconChevronsDown size={16} />}
-                      onClick={handleExpandAll}
-                      disabled={collapsibleContainers.length === 0}
-                      data-testid="expand-all-sections-menu-item"
-                    >
-                      Expand all sections
-                    </Menu.Item>
-                    <Menu.Divider />
-                  </>
-                )}
-                {hasTiles && (
-                  <Menu.Item
-                    leftSection={<IconDownload size={16} />}
-                    onClick={() => {
-                      if (!sources || !dashboard) {
-                        notifications.show({
-                          color: 'red',
-                          message: 'Export Failed',
-                        });
-                        return;
-                      }
-                      downloadObjectAsJson(
-                        convertToDashboardTemplate(
-                          dashboard,
-                          sources,
-                          connections,
-                          allDashboards ?? [],
-                        ),
-                        dashboard?.name,
-                      );
-                    }}
-                  >
-                    Export Dashboard
-                  </Menu.Item>
-                )}
-                <Menu.Item
-                  leftSection={<IconUpload size={16} />}
-                  onClick={() => {
-                    if (dashboard && !dashboard.tiles.length) {
-                      router.push(
-                        `/dashboards/import?dashboardId=${dashboard.id}`,
-                      );
-                    } else {
-                      router.push('/dashboards/import');
-                    }
-                  }}
-                >
-                  {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
-                </Menu.Item>
-                <Menu.Divider />
-                <Menu.Item
-                  data-testid="save-default-query-filters-menu-item"
-                  leftSection={<IconDeviceFloppy size={16} />}
-                  onClick={handleSaveQuery}
-                >
-                  {hasSavedQueryAndFilterDefaults
-                    ? 'Update Default Query & Filters'
-                    : 'Save Query & Filters as Default'}
-                </Menu.Item>
-                {hasSavedQueryAndFilterDefaults && (
-                  <Menu.Item
-                    data-testid="remove-default-query-filters-menu-item"
-                    leftSection={<IconX size={16} />}
-                    color="red"
-                    onClick={handleRemoveSavedQuery}
-                  >
-                    Remove Default Query & Filters
-                  </Menu.Item>
-                )}
-                <Menu.Divider />
-                <Menu.Item
-                  leftSection={<IconTrash size={16} />}
-                  color="red"
-                  onClick={() =>
-                    deleteDashboard.mutate(dashboard?.id ?? '', {
-                      onSuccess: () => {
-                        router.push('/dashboards');
-                      },
-                    })
-                  }
-                >
-                  Delete Dashboard
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          )}
-        </Group>
-        {/* <Button variant="outline" size="sm">
-          Save
-        </Button> */}
-      </Flex>
-      <Flex
-        gap="sm"
-        mt="sm"
-        wrap="wrap"
-        component="form"
-        onSubmit={e => {
-          e.preventDefault();
-          onSubmit();
-        }}
-      >
-        <SearchWhereInput
-          tableConnections={tableConnections}
-          control={control}
-          name="where"
-          onSubmit={onSubmit}
-          onLanguageChange={(lang: 'sql' | 'lucene') =>
-            setValue('whereLanguage', lang)
-          }
-          label="WHERE"
-          enableHotkey
-          allowMultiline
-          minWidth={300}
-          data-testid="search-input"
-        />
-        <TimePicker
-          inputValue={displayedTimeInputValue}
-          setInputValue={setDisplayedTimeInputValue}
-          onSearch={range => {
-            onSearch(range);
-          }}
-        />
-        <GranularityPickerControlled control={control} name="granularity" />
-        <Tooltip
-          withArrow
-          label={
-            isRefreshEnabled
-              ? `Auto-refreshing with ${granularityOverride} interval`
-              : 'Enable auto-refresh'
-          }
-          fz="xs"
-          color="gray"
-        >
-          <Button
-            onClick={() => setIsLive(prev => !prev)}
-            size="sm"
-            variant={isLive ? 'primary' : 'secondary'}
-            title={isLive ? 'Disable auto-refresh' : 'Enable auto-refresh'}
-          >
-            Live
-          </Button>
-        </Tooltip>
-        <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
-          <ActionIcon
-            onClick={refresh}
-            loading={manualRefreshCooloff}
-            disabled={manualRefreshCooloff}
-            variant="secondary"
-            title="Refresh dashboard"
-            size="input-sm"
-          >
-            <IconRefresh size={18} />
-          </ActionIcon>
-        </Tooltip>
-        <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-          <ActionIcon
-            variant="secondary"
-            onClick={() => setShowFiltersModal(true)}
-            data-testid="edit-filters-button"
-            size="input-sm"
-          >
-            <IconFilterEdit size={18} />
-          </ActionIcon>
-        </Tooltip>
-        <Button
-          data-testid="search-submit-button"
-          variant="primary"
-          type="submit"
-          leftSection={<IconPlayerPlay size={16} />}
-          style={{ flexShrink: 0 }}
-        >
-          Run
-        </Button>
-      </Flex>
+              Create New Saved Dashboard
+            </Button>
+          </Flex>
+        </Paper>
+      )}
       {shouldShowIgnoredFiltersBanner &&
         ignoredFilterExpressions.length > 0 && (
           <Alert
@@ -2768,7 +2772,20 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         onRemoveFilter={handleRemoveFilter}
         isLoading={isSavingDashboard || isFetchingDashboard}
       />
-    </Box>
+    </>
+  );
+
+  return (
+    <PageLayout
+      data-testid="dashboard-page"
+      header={
+        <PageHeader breadcrumbs={pageBreadcrumbs} stickyRow={queryToolbar}>
+          {titleRow}
+        </PageHeader>
+      }
+      padded
+      content={dashboardBody}
+    />
   );
 }
 

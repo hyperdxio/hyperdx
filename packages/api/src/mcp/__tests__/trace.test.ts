@@ -147,9 +147,9 @@ describe('MCP Trace Tools', () => {
   // ─── Schema serialization ──────────────────────────────────────────────────
 
   describe('schema serialization', () => {
-    it('should expose hyperdx_trace_waterfall with expected properties', async () => {
+    it('should expose clickstack_trace_waterfall with expected properties', async () => {
       const { tools } = await client.listTools();
-      const tool = tools.find(t => t.name === 'hyperdx_trace_waterfall');
+      const tool = tools.find(t => t.name === 'clickstack_trace_waterfall');
       expect(tool).toBeDefined();
 
       const props = Object.keys(tool!.inputSchema.properties ?? {});
@@ -162,10 +162,10 @@ describe('MCP Trace Tools', () => {
       expect(tool!.inputSchema.required).toContain('sourceId');
     });
 
-    it('should expose hyperdx_trace_top_time_consuming_operations with expected properties', async () => {
+    it('should expose clickstack_trace_top_time_consuming_operations with expected properties', async () => {
       const { tools } = await client.listTools();
       const tool = tools.find(
-        t => t.name === 'hyperdx_trace_top_time_consuming_operations',
+        t => t.name === 'clickstack_trace_top_time_consuming_operations',
       );
       expect(tool).toBeDefined();
 
@@ -183,11 +183,11 @@ describe('MCP Trace Tools', () => {
     });
   });
 
-  // ─── hyperdx_trace_waterfall ───────────────────────────────────────────────
+  // ─── clickstack_trace_waterfall ───────────────────────────────────────────────
 
-  describe('hyperdx_trace_waterfall', () => {
+  describe('clickstack_trace_waterfall', () => {
     it('should return error for non-existent source', async () => {
-      const result = await callTool(client, 'hyperdx_trace_waterfall', {
+      const result = await callTool(client, 'clickstack_trace_waterfall', {
         sourceId: '000000000000000000000000',
       });
       expect(result.isError).toBe(true);
@@ -195,7 +195,7 @@ describe('MCP Trace Tools', () => {
     });
 
     it('should return error for non-trace source', async () => {
-      const result = await callTool(client, 'hyperdx_trace_waterfall', {
+      const result = await callTool(client, 'clickstack_trace_waterfall', {
         sourceId: logSource._id.toString(),
       });
       expect(result.isError).toBe(true);
@@ -203,7 +203,7 @@ describe('MCP Trace Tools', () => {
     });
 
     it('should return error for invalid time range', async () => {
-      const result = await callTool(client, 'hyperdx_trace_waterfall', {
+      const result = await callTool(client, 'clickstack_trace_waterfall', {
         sourceId: traceSource._id.toString(),
         startTime: 'not-a-date',
       });
@@ -212,7 +212,7 @@ describe('MCP Trace Tools', () => {
     });
 
     it('should return no-match hint when no traces exist', async () => {
-      const result = await callTool(client, 'hyperdx_trace_waterfall', {
+      const result = await callTool(client, 'clickstack_trace_waterfall', {
         sourceId: traceSource._id.toString(),
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
         endTime: new Date().toISOString(),
@@ -276,7 +276,7 @@ describe('MCP Trace Tools', () => {
       });
 
       it('should fetch a trace by traceId and return a waterfall tree', async () => {
-        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
           sourceId: traceSource._id.toString(),
           traceId: TRACE_ID,
           startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
@@ -306,7 +306,7 @@ describe('MCP Trace Tools', () => {
       });
 
       it('should auto-pick the slowest trace when traceId is omitted', async () => {
-        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
           sourceId: traceSource._id.toString(),
           pickFilter: `ServiceName:${WF_SVC}`,
           pickBy: 'slowest',
@@ -321,7 +321,7 @@ describe('MCP Trace Tools', () => {
       });
 
       it('should auto-pick the most recent trace', async () => {
-        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
           sourceId: traceSource._id.toString(),
           pickFilter: `ServiceName:${WF_SVC}`,
           pickBy: 'most_recent',
@@ -335,7 +335,7 @@ describe('MCP Trace Tools', () => {
       });
 
       it('should respect maxSpans and note truncation', async () => {
-        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
           sourceId: traceSource._id.toString(),
           traceId: TRACE_ID,
           maxSpans: 2,
@@ -371,7 +371,7 @@ describe('MCP Trace Tools', () => {
           },
         ]);
 
-        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
           sourceId: traceSource._id.toString(),
           traceId: TRACE_ID,
           includeLogs: true,
@@ -388,7 +388,7 @@ describe('MCP Trace Tools', () => {
       });
 
       it('should omit logs when includeLogs is false', async () => {
-        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
           sourceId: traceSource._id.toString(),
           traceId: TRACE_ID,
           includeLogs: false,
@@ -402,7 +402,7 @@ describe('MCP Trace Tools', () => {
       });
 
       it('should apply pickFilter to narrow which trace is picked', async () => {
-        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
           sourceId: traceSource._id.toString(),
           pickFilter: `ServiceName:${WF_SVC}`,
           pickBy: 'slowest',
@@ -416,7 +416,7 @@ describe('MCP Trace Tools', () => {
       });
 
       it('should apply pickFilter with sql language', async () => {
-        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
           sourceId: traceSource._id.toString(),
           pickFilter: `ServiceName = '${WF_SVC}'`,
           pickFilterLanguage: 'sql',
@@ -455,7 +455,7 @@ describe('MCP Trace Tools', () => {
       });
 
       it('should auto-pick trace with an error span', async () => {
-        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
           sourceId: traceSource._id.toString(),
           pickFilter: 'ServiceName:wf-test-err-svc',
           pickBy: 'first_error',
@@ -498,7 +498,7 @@ describe('MCP Trace Tools', () => {
         });
 
         const TRACE_ID = 'aaaabbbbccccddddeeeeffffgggghhhh';
-        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
           sourceId: noLogTraceSource._id.toString(),
           traceId: TRACE_ID,
           includeLogs: true,
@@ -538,7 +538,7 @@ describe('MCP Trace Tools', () => {
         });
 
         const TRACE_ID = 'aaaabbbbccccddddeeeeffffgggghhhh';
-        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
           sourceId: badLogTraceSource._id.toString(),
           traceId: TRACE_ID,
           includeLogs: true,
@@ -579,7 +579,7 @@ describe('MCP Trace Tools', () => {
         });
 
         const TRACE_ID = 'aaaabbbbccccddddeeeeffffgggghhhh';
-        const result = await callTool(client, 'hyperdx_trace_waterfall', {
+        const result = await callTool(client, 'clickstack_trace_waterfall', {
           sourceId: wrongKindTraceSource._id.toString(),
           traceId: TRACE_ID,
           includeLogs: true,
@@ -595,13 +595,13 @@ describe('MCP Trace Tools', () => {
     });
   });
 
-  // ─── hyperdx_trace_top_time_consuming_operations ───────────────────────────
+  // ─── clickstack_trace_top_time_consuming_operations ───────────────────────────
 
-  describe('hyperdx_trace_top_time_consuming_operations', () => {
+  describe('clickstack_trace_top_time_consuming_operations', () => {
     it('should return error for non-existent source', async () => {
       const result = await callTool(
         client,
-        'hyperdx_trace_top_time_consuming_operations',
+        'clickstack_trace_top_time_consuming_operations',
         {
           sourceId: '000000000000000000000000',
           parentFilter: "ServiceName = 'api-gateway'",
@@ -616,7 +616,7 @@ describe('MCP Trace Tools', () => {
     it('should return error for non-trace source', async () => {
       const result = await callTool(
         client,
-        'hyperdx_trace_top_time_consuming_operations',
+        'clickstack_trace_top_time_consuming_operations',
         {
           sourceId: logSource._id.toString(),
           parentFilter: "ServiceName = 'api-gateway'",
@@ -631,7 +631,7 @@ describe('MCP Trace Tools', () => {
     it('should return error for invalid time range', async () => {
       const result = await callTool(
         client,
-        'hyperdx_trace_top_time_consuming_operations',
+        'clickstack_trace_top_time_consuming_operations',
         {
           sourceId: traceSource._id.toString(),
           parentFilter: "ServiceName = 'api-gateway'",
@@ -646,7 +646,7 @@ describe('MCP Trace Tools', () => {
     it('should return empty operations when no traces match', async () => {
       const result = await callTool(
         client,
-        'hyperdx_trace_top_time_consuming_operations',
+        'clickstack_trace_top_time_consuming_operations',
         {
           sourceId: traceSource._id.toString(),
           parentFilter: "ServiceName = 'nonexistent-service'",
@@ -753,7 +753,7 @@ describe('MCP Trace Tools', () => {
       it('should break down child operations ranked by total time', async () => {
         const result = await callTool(
           client,
-          'hyperdx_trace_top_time_consuming_operations',
+          'clickstack_trace_top_time_consuming_operations',
           {
             sourceId: traceSource._id.toString(),
             parentFilter: `ServiceName = '${PARENT_SVC}' AND SpanName = '${PARENT_OP}'`,
@@ -790,7 +790,7 @@ describe('MCP Trace Tools', () => {
         // Only trace 2 has a parent >= 850ms (900ms)
         const result = await callTool(
           client,
-          'hyperdx_trace_top_time_consuming_operations',
+          'clickstack_trace_top_time_consuming_operations',
           {
             sourceId: traceSource._id.toString(),
             parentFilter: `ServiceName = '${PARENT_SVC}' AND SpanName = '${PARENT_OP}'`,
@@ -815,7 +815,7 @@ describe('MCP Trace Tools', () => {
       it('should respect topN parameter', async () => {
         const result = await callTool(
           client,
-          'hyperdx_trace_top_time_consuming_operations',
+          'clickstack_trace_top_time_consuming_operations',
           {
             sourceId: traceSource._id.toString(),
             parentFilter: `ServiceName = '${PARENT_SVC}' AND SpanName = '${PARENT_OP}'`,
@@ -840,7 +840,7 @@ describe('MCP Trace Tools', () => {
 
         const result = await callTool(
           client,
-          'hyperdx_trace_top_time_consuming_operations',
+          'clickstack_trace_top_time_consuming_operations',
           {
             sourceId: traceSource._id.toString(),
             parentFilter: `ServiceName = '${PARENT_SVC}' AND SpanName = '${PARENT_OP}'`,
@@ -860,7 +860,7 @@ describe('MCP Trace Tools', () => {
       it('should return error for invalid parentFilter SQL', async () => {
         const result = await callTool(
           client,
-          'hyperdx_trace_top_time_consuming_operations',
+          'clickstack_trace_top_time_consuming_operations',
           {
             sourceId: traceSource._id.toString(),
             parentFilter: 'INVALID SQL @@@ SYNTAX',

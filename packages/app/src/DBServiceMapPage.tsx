@@ -36,7 +36,9 @@ import { parseAsStringEncoded } from '@/utils/queryParsers';
 import OnboardingModal from './components/OnboardingModal';
 import ServiceMap from './components/ServiceMap/ServiceMap';
 import { TableSourceForm } from './components/Sources/SourceForm';
-import SourceSchemaPreview from './components/SourceSchemaPreview';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { TimePicker } from './components/TimePicker';
 import { useBrandDisplayName } from './theme/ThemeProvider';
@@ -119,6 +121,8 @@ function DBServiceMapPage() {
   });
 
   const watchedSource = useWatch({ control, name: 'source' });
+  const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
+    useState(false);
 
   useEffect(() => {
     if (watchedSource !== sourceId) {
@@ -216,15 +220,22 @@ function DBServiceMapPage() {
   );
 
   const sourceSelect = source ? (
-    <SourceSelectControlled
-      control={control}
-      name="source"
-      size="xs"
-      allowedSourceKinds={[SourceKind.Trace]}
-      sourceSchemaPreview={
-        <SourceSchemaPreview source={source} variant="text" />
-      }
-    />
+    <>
+      <SourceSelectControlled
+        control={control}
+        name="source"
+        size="xs"
+        allowedSourceKinds={[SourceKind.Trace]}
+        onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+        isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(source)}
+      />
+      <SourceSchemaPreview
+        source={source}
+        controlled
+        open={isSourceSchemaPreviewOpen}
+        onClose={() => setIsSourceSchemaPreviewOpen(false)}
+      />
+    </>
   ) : null;
 
   const headerActions = (

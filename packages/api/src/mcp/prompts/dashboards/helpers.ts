@@ -5,7 +5,7 @@ export function buildSourceSummary(
   connections: { _id: unknown; name: string }[],
 ): string {
   if (sources.length === 0 && connections.length === 0) {
-    return 'No sources or connections found. Call hyperdx_list_sources to discover available data.';
+    return 'No sources or connections found. Call clickstack_list_sources to discover available data.';
   }
 
   const lines: string[] = [];
