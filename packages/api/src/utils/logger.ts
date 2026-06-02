@@ -61,9 +61,6 @@ const logger = pino({
   transport: getTransport(),
   mixin: getPinoMixinFunction,
   formatters: {
-    // Keep numeric `level` (the OTLP transport maps PINO_LEVELS[level]) while
-    // adding a string `severity` the OTel collector can promote. See
-    // ./logFormatters for the full rationale.
     level: pinoLevelFormatter,
   },
 });

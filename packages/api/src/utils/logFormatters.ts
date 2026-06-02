@@ -1,20 +1,6 @@
-/**
- * Pino `level` formatter used by the application logger.
- *
- * Pino serializes `level` as a number by default (10=trace … 60=fatal). Two
- * downstream consumers read it differently:
- *
- *  - The HyperDX OTLP transport (`@hyperdx/node-opentelemetry`) maps the
- *    NUMERIC level via `PINO_LEVELS[level]`, so `level` must stay a number.
- *  - The OTel collector that tails container stdout can only promote a log's
- *    severity from a STRING field (`level`/`severity`/...). A numeric level is
- *    ignored, which forces the collector into a body-keyword fallback that
- *    mis-classifies logs (e.g. anything containing the word "alert" becomes
- *    FATAL).
- *
- * Emitting both keeps the OTLP path working while giving the collector a string
- * `severity` it can promote, so structured logs are classified correctly.
- */
+// Keep numeric `level` (the HyperDX OTLP transport maps PINO_LEVELS[level]) and
+// add a string `severity`, which the OTel collector needs to classify severity
+// from stdout-scraped logs instead of guessing from the body.
 export const pinoLevelFormatter = (
   label: string,
   level: number,
