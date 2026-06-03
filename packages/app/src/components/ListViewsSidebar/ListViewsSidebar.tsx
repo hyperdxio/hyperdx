@@ -96,15 +96,33 @@ export function ListViewsSidebar({
           <Text size="xs" fw={600} c="dimmed" tt="uppercase" lts={0.4}>
             Views
           </Text>
-          <ActionIcon
-            variant="subtle"
-            size="xs"
-            onClick={onCreate}
-            aria-label="New view"
-            data-testid="new-list-view-button"
-          >
-            <IconPlus size={12} />
-          </ActionIcon>
+          {/*
+            The primary "save a view" entry now lives next to the
+            filter chips on the listing (filters-first flow). The
+            kebab here is the secondary path to the advanced editor
+            drawer for hand-written rule lists.
+          */}
+          <Menu position="bottom-end" withinPortal>
+            <Menu.Target>
+              <ActionIcon
+                variant="subtle"
+                size="xs"
+                aria-label="Views section menu"
+                data-testid="list-views-section-menu"
+              >
+                <IconDots size={12} />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item
+                leftSection={<IconPlus size={14} />}
+                onClick={onCreate}
+                data-testid="new-list-view-button"
+              >
+                New view (advanced)
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
         </Group>
 
         {isLoading ? (
@@ -112,21 +130,9 @@ export function ListViewsSidebar({
             Loading...
           </Text>
         ) : !hasViews ? (
-          // Quiet empty state: no nag copy, just a single affordance
-          // sized to match a row. The "+" header above is the primary
-          // way in; this is a fallback for users who don't notice it.
-          <UnstyledButton
-            onClick={onCreate}
-            data-testid="new-list-view-empty-button"
-            style={{
-              padding: '6px 10px',
-              borderRadius: 4,
-              color: 'var(--mantine-color-dimmed)',
-              fontSize: 13,
-            }}
-          >
-            + New View
-          </UnstyledButton>
+          <Text size="xs" c="dimmed" px="sm" py={4}>
+            Save your active filters as a view to pin it here.
+          </Text>
         ) : (
           views!.map(view => (
             <SidebarEntry

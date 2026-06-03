@@ -47,6 +47,8 @@ import { ListingRow } from '@/components/ListingListRow';
 import { ListViewEditorDrawer } from '@/components/ListViewsSidebar/ListViewEditorDrawer';
 import { ListViewsSidebar } from '@/components/ListViewsSidebar/ListViewsSidebar';
 import { PageHeader } from '@/components/PageHeader';
+import { SaveAsViewButton } from '@/components/SaveAsViewButton';
+import { SaveAsViewModal } from '@/components/SaveAsViewModal';
 import { IS_K8S_DASHBOARD_ENABLED } from '@/config';
 import {
   type Dashboard,
@@ -134,8 +136,33 @@ export default function DashboardsListPage() {
 
   const [editorOpened, { open: openEditor, close: closeEditor }] =
     useDisclosure(false);
+  const [saveModalOpened, { open: openSaveModal, close: closeSaveModal }] =
+    useDisclosure(false);
   const [editingView, setEditingView] = useState<ListView | undefined>(
     undefined,
+  );
+
+  const hasActiveFilters =
+    selectedTags.length > 0 || !!recentDays || !!withAlerts || !!createdByMe;
+
+  const handleSaveAsView = useCallback(
+    (newId: string) => {
+      // Clear the transient filter state and route to the new view so
+      // the user sees the saved view applied with `?view=<id>` rather
+      // than the (now duplicated) raw filters.
+      setSelectedTags([]);
+      setRecentDays(null);
+      setWithAlerts(null);
+      setCreatedByMe(null);
+      setActiveViewId(newId);
+    },
+    [
+      setActiveViewId,
+      setCreatedByMe,
+      setRecentDays,
+      setSelectedTags,
+      setWithAlerts,
+    ],
   );
 
   const handleCreateListView = useCallback(() => {
@@ -584,6 +611,11 @@ export default function DashboardsListPage() {
               >
                 Created by me
               </Pill>
+              <Box style={{ flex: 1 }} />
+              <SaveAsViewButton
+                disabled={!hasActiveFilters}
+                onClick={openSaveModal}
+              />
             </Group>
 
             {isLoading ? (
@@ -710,6 +742,18 @@ export default function DashboardsListPage() {
         resource="dashboard"
         existingView={editingView}
         availableTags={allTags}
+      />
+      <SaveAsViewModal
+        opened={saveModalOpened}
+        onClose={closeSaveModal}
+        resource="dashboard"
+        filters={{
+          tags: selectedTags,
+          recentDays,
+          withAlerts,
+          createdByMe,
+        }}
+        onSaved={handleSaveAsView}
       />
     </div>
   );
