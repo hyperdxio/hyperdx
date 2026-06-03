@@ -1,0 +1,866 @@
+{
+  "version": "0.1.0",
+  "name": "Browser RUM",
+  "description": "Real-user monitoring overview for browser sessions instrumented with the HyperDX Browser SDK (or any OpenTelemetry browser instrumentation that emits a rum.sessionId resource attribute). Performance Overview shows KPIs, load-time percentiles, and long-task health. Page Views Breakdown groups traffic by URL, browser, country, and device. Errors drills into JS exceptions, failing API calls, and per-page error counts. Top Browsers and Top Countries tiles populate when the OTel collector's useragent and geoip processors are enabled.",
+  "tags": ["Browser / RUM"],
+  "filters": [
+    {
+      "id": "rum-filter-service",
+      "type": "QUERY_EXPRESSION",
+      "name": "Service",
+      "expression": "ServiceName",
+      "source": "Traces",
+      "where": "ResourceAttributes.rum.sessionId:*",
+      "whereLanguage": "lucene"
+    },
+    {
+      "id": "rum-filter-environment",
+      "type": "QUERY_EXPRESSION",
+      "name": "Environment",
+      "expression": "ResourceAttributes['deployment.environment']",
+      "source": "Traces",
+      "where": "ResourceAttributes.rum.sessionId:* AND ResourceAttributes.deployment.environment:*",
+      "whereLanguage": "lucene"
+    },
+    {
+      "id": "rum-filter-version",
+      "type": "QUERY_EXPRESSION",
+      "name": "Service Version",
+      "expression": "ResourceAttributes['service.version']",
+      "source": "Traces",
+      "where": "ResourceAttributes.rum.sessionId:* AND ResourceAttributes.service.version:*",
+      "whereLanguage": "lucene"
+    },
+    {
+      "id": "rum-filter-url",
+      "type": "QUERY_EXPRESSION",
+      "name": "Page URL",
+      "expression": "SpanAttributes['location.href']",
+      "source": "Traces",
+      "where": "ResourceAttributes.rum.sessionId:* AND SpanAttributes.location.href:*",
+      "whereLanguage": "lucene"
+    },
+    {
+      "id": "rum-filter-browser",
+      "type": "QUERY_EXPRESSION",
+      "name": "Browser",
+      "expression": "ResourceAttributes['user_agent.name']",
+      "source": "Traces",
+      "where": "ResourceAttributes.rum.sessionId:* AND ResourceAttributes.user_agent.name:*",
+      "whereLanguage": "lucene"
+    },
+    {
+      "id": "rum-filter-country",
+      "type": "QUERY_EXPRESSION",
+      "name": "Country",
+      "expression": "ResourceAttributes['geo.country.name']",
+      "source": "Traces",
+      "where": "ResourceAttributes.rum.sessionId:* AND ResourceAttributes.geo.country.name:*",
+      "whereLanguage": "lucene"
+    }
+  ],
+  "containers": [
+    {
+      "id": "rum-perf",
+      "title": "Performance Overview",
+      "collapsed": false
+    },
+    {
+      "id": "rum-breakdown",
+      "title": "Page Views Breakdown",
+      "collapsed": false
+    },
+    {
+      "id": "rum-errors",
+      "title": "Errors",
+      "collapsed": false,
+      "tabs": [
+        { "id": "rum-errors-overview", "title": "Overview" },
+        { "id": "rum-errors-js", "title": "JS Exceptions" },
+        { "id": "rum-errors-api", "title": "API Failures" }
+      ]
+    }
+  ],
+  "tiles": [
+    {
+      "id": "rum-006",
+      "containerId": "rum-perf",
+      "x": 0,
+      "y": 0,
+      "w": 6,
+      "h": 4,
+      "config": {
+        "name": "Page Views",
+        "source": "Traces",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [{ "aggFn": "count", "valueExpression": "" }],
+        "where": "SpanName:\"documentLoad\" OR SpanName:\"routeChange\" OR SpanAttributes.component:\"page-view\" OR SpanAttributes.component:\"navigation\"",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "rum-017",
+      "containerId": "rum-perf",
+      "x": 6,
+      "y": 0,
+      "w": 6,
+      "h": 4,
+      "config": {
+        "name": "Median Page Load (ms)",
+        "source": "Traces",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.5,
+            "valueExpression": "Duration / 1000000",
+            "aggCondition": "",
+            "aggConditionLanguage": "lucene"
+          }
+        ],
+        "where": "SpanName:\"documentLoad\"",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "rum-018",
+      "containerId": "rum-perf",
+      "x": 12,
+      "y": 0,
+      "w": 6,
+      "h": 4,
+      "config": {
+        "name": "p90 Page Load (ms)",
+        "source": "Traces",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.9,
+            "valueExpression": "Duration / 1000000",
+            "aggCondition": "",
+            "aggConditionLanguage": "lucene"
+          }
+        ],
+        "where": "SpanName:\"documentLoad\"",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "rum-001",
+      "containerId": "rum-perf",
+      "x": 18,
+      "y": 0,
+      "w": 6,
+      "h": 4,
+      "config": {
+        "name": "LCP p75 (ms)",
+        "source": "Traces",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.75,
+            "valueExpression": "toFloat64OrZero(SpanAttributes['lcp'])",
+            "aggCondition": "",
+            "aggConditionLanguage": "lucene"
+          }
+        ],
+        "where": "SpanName:\"webvitals\" AND SpanAttributes.lcp:*",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "rum-002",
+      "containerId": "rum-perf",
+      "x": 0,
+      "y": 4,
+      "w": 6,
+      "h": 4,
+      "config": {
+        "name": "INP p75 (ms)",
+        "source": "Traces",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.75,
+            "valueExpression": "toFloat64OrZero(SpanAttributes['inp'])",
+            "aggCondition": "",
+            "aggConditionLanguage": "lucene"
+          }
+        ],
+        "where": "SpanName:\"webvitals\" AND SpanAttributes.inp:*",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "rum-003",
+      "containerId": "rum-perf",
+      "x": 6,
+      "y": 4,
+      "w": 6,
+      "h": 4,
+      "config": {
+        "name": "CLS p75",
+        "source": "Traces",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.75,
+            "valueExpression": "toFloat64OrZero(SpanAttributes['cls'])",
+            "aggCondition": "",
+            "aggConditionLanguage": "lucene"
+          }
+        ],
+        "where": "SpanName:\"webvitals\" AND SpanAttributes.cls:*",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 3,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "rum-005",
+      "containerId": "rum-perf",
+      "x": 12,
+      "y": 4,
+      "w": 6,
+      "h": 4,
+      "config": {
+        "name": "Active Sessions",
+        "source": "Traces",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "count_distinct",
+            "valueExpression": "ResourceAttributes['rum.sessionId']"
+          }
+        ],
+        "where": "ResourceAttributes.rum.sessionId:*",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "rum-019",
+      "containerId": "rum-perf",
+      "x": 18,
+      "y": 4,
+      "w": 6,
+      "h": 4,
+      "config": {
+        "name": "Sessions w/ Errors",
+        "source": "Traces",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "count_distinct",
+            "valueExpression": "ResourceAttributes['rum.sessionId']"
+          }
+        ],
+        "where": "ResourceAttributes.rum.sessionId:* AND StatusCode:error",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "rum-020",
+      "containerId": "rum-perf",
+      "x": 0,
+      "y": 8,
+      "w": 24,
+      "h": 7,
+      "config": {
+        "name": "Page Load — median, p75 and p90 (ms)",
+        "source": "Traces",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.5,
+            "valueExpression": "Duration / 1000000",
+            "aggCondition": "",
+            "aggConditionLanguage": "lucene",
+            "alias": "median"
+          },
+          {
+            "aggFn": "quantile",
+            "level": 0.75,
+            "valueExpression": "Duration / 1000000",
+            "aggCondition": "",
+            "aggConditionLanguage": "lucene",
+            "alias": "p75"
+          },
+          {
+            "aggFn": "quantile",
+            "level": 0.9,
+            "valueExpression": "Duration / 1000000",
+            "aggCondition": "",
+            "aggConditionLanguage": "lucene",
+            "alias": "p90"
+          }
+        ],
+        "where": "SpanName:\"documentLoad\"",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "rum-021",
+      "containerId": "rum-perf",
+      "x": 0,
+      "y": 15,
+      "w": 12,
+      "h": 6,
+      "config": {
+        "name": "Page Views over Time",
+        "source": "Traces",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "alias": "Page Views"
+          }
+        ],
+        "where": "SpanName:\"documentLoad\" OR SpanName:\"routeChange\" OR SpanAttributes.component:\"page-view\" OR SpanAttributes.component:\"navigation\"",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "rum-024",
+      "containerId": "rum-perf",
+      "x": 12,
+      "y": 15,
+      "w": 12,
+      "h": 6,
+      "config": {
+        "name": "Long Tasks over Time",
+        "source": "Traces",
+        "displayType": "stacked_bar",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "alias": "Long Tasks"
+          }
+        ],
+        "where": "SpanName:\"longtask\"",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "rum-014",
+      "containerId": "rum-breakdown",
+      "x": 0,
+      "y": 0,
+      "w": 8,
+      "h": 8,
+      "config": {
+        "name": "Top URLs",
+        "source": "Traces",
+        "displayType": "table",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "alias": "Views"
+          },
+          {
+            "aggFn": "count_distinct",
+            "valueExpression": "ResourceAttributes['rum.sessionId']",
+            "alias": "Sessions"
+          }
+        ],
+        "where": "SpanName:\"documentLoad\" OR SpanName:\"routeChange\" OR SpanAttributes.component:\"page-view\" OR SpanAttributes.component:\"navigation\"",
+        "whereLanguage": "lucene",
+        "groupBy": [
+          {
+            "valueExpression": "coalesce(nullif(SpanAttributes['http.url'], ''), nullif(SpanAttributes['page.url'], ''), nullif(SpanAttributes['location.href'], ''))",
+            "alias": "URL"
+          }
+        ],
+        "orderBy": "Views DESC",
+        "limit": { "limit": 20 }
+      }
+    },
+    {
+      "id": "rum-026",
+      "containerId": "rum-breakdown",
+      "x": 8,
+      "y": 0,
+      "w": 8,
+      "h": 8,
+      "config": {
+        "name": "Top Browsers (requires useragent processor)",
+        "source": "Traces",
+        "displayType": "table",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "count_distinct",
+            "valueExpression": "ResourceAttributes['rum.sessionId']",
+            "alias": "Sessions"
+          },
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "alias": "Views"
+          }
+        ],
+        "where": "ResourceAttributes.rum.sessionId:*",
+        "whereLanguage": "lucene",
+        "groupBy": [
+          {
+            "valueExpression": "coalesce(nullif(ResourceAttributes['user_agent.name'], ''), nullif(SpanAttributes['user_agent.name'], ''), nullif(ResourceAttributes['user_agent.original'], ''), nullif(SpanAttributes['user_agent.original'], ''))",
+            "alias": "Browser"
+          }
+        ],
+        "orderBy": "Sessions DESC",
+        "limit": { "limit": 10 }
+      }
+    },
+    {
+      "id": "rum-027",
+      "containerId": "rum-breakdown",
+      "x": 16,
+      "y": 0,
+      "w": 8,
+      "h": 8,
+      "config": {
+        "name": "Top Countries (requires geoip processor)",
+        "source": "Traces",
+        "displayType": "table",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "count_distinct",
+            "valueExpression": "ResourceAttributes['rum.sessionId']",
+            "alias": "Sessions"
+          },
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "alias": "Views"
+          }
+        ],
+        "where": "ResourceAttributes.rum.sessionId:*",
+        "whereLanguage": "lucene",
+        "groupBy": [
+          {
+            "valueExpression": "coalesce(nullif(ResourceAttributes['geo.country.name'], ''), nullif(SpanAttributes['geo.country.name'], ''), nullif(ResourceAttributes['geo.country.iso_code'], ''), nullif(SpanAttributes['geo.country.iso_code'], ''))",
+            "alias": "Country"
+          }
+        ],
+        "orderBy": "Sessions DESC",
+        "limit": { "limit": 10 }
+      }
+    },
+    {
+      "id": "rum-028",
+      "containerId": "rum-breakdown",
+      "x": 0,
+      "y": 8,
+      "w": 12,
+      "h": 8,
+      "config": {
+        "name": "Top Device Sizes",
+        "source": "Traces",
+        "displayType": "table",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "count_distinct",
+            "valueExpression": "ResourceAttributes['rum.sessionId']",
+            "alias": "Sessions"
+          },
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "alias": "Views"
+          }
+        ],
+        "where": "SpanName:\"documentLoad\" AND SpanAttributes.screen.xy:*",
+        "whereLanguage": "lucene",
+        "groupBy": [
+          {
+            "valueExpression": "multiIf(toUInt32OrZero(splitByChar('x', SpanAttributes['screen.xy'])[1]) < 600, 'Mobile (<600px)', toUInt32OrZero(splitByChar('x', SpanAttributes['screen.xy'])[1]) < 1024, 'Tablet (600–1024px)', toUInt32OrZero(splitByChar('x', SpanAttributes['screen.xy'])[1]) < 1440, 'Laptop (1024–1440px)', 'Desktop (≥1440px)')",
+            "alias": "Device"
+          }
+        ],
+        "orderBy": "Sessions DESC",
+        "limit": { "limit": 10 }
+      }
+    },
+    {
+      "id": "rum-011",
+      "containerId": "rum-breakdown",
+      "x": 12,
+      "y": 8,
+      "w": 12,
+      "h": 8,
+      "config": {
+        "name": "Slowest Pages (p75 page load)",
+        "source": "Traces",
+        "displayType": "table",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.75,
+            "valueExpression": "Duration / 1000000",
+            "aggCondition": "",
+            "aggConditionLanguage": "lucene",
+            "alias": "Page Load p75 (ms)"
+          },
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "alias": "Views"
+          }
+        ],
+        "where": "SpanName:\"documentLoad\"",
+        "whereLanguage": "lucene",
+        "groupBy": [
+          {
+            "valueExpression": "coalesce(nullif(SpanAttributes['http.url'], ''), nullif(SpanAttributes['page.url'], ''), nullif(SpanAttributes['location.href'], ''))",
+            "alias": "URL"
+          }
+        ],
+        "orderBy": "`Page Load p75 (ms)` DESC",
+        "limit": { "limit": 20 }
+      }
+    },
+    {
+      "id": "rum-016",
+      "containerId": "rum-breakdown",
+      "x": 0,
+      "y": 16,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Top Errored Sessions",
+        "source": "Traces",
+        "displayType": "table",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "aggCondition": "StatusCode:error",
+            "aggConditionLanguage": "lucene",
+            "alias": "Errors"
+          },
+          {
+            "aggFn": "count_distinct",
+            "valueExpression": "TraceId",
+            "alias": "Traces"
+          },
+          {
+            "aggFn": "any",
+            "valueExpression": "nullif(SpanAttributes['userEmail'], '')",
+            "alias": "User"
+          },
+          {
+            "aggFn": "any",
+            "valueExpression": "ServiceName",
+            "alias": "Service"
+          }
+        ],
+        "where": "ResourceAttributes.rum.sessionId:*",
+        "whereLanguage": "lucene",
+        "groupBy": [
+          {
+            "valueExpression": "ResourceAttributes['rum.sessionId']",
+            "alias": "Session"
+          }
+        ],
+        "having": "Errors > 0",
+        "havingLanguage": "sql",
+        "orderBy": "Errors DESC",
+        "limit": { "limit": 20 }
+      }
+    },
+    {
+      "id": "rum-007",
+      "containerId": "rum-errors",
+      "tabId": "rum-errors-overview",
+      "x": 0,
+      "y": 0,
+      "w": 12,
+      "h": 4,
+      "config": {
+        "name": "JS Errors",
+        "source": "Traces",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [{ "aggFn": "count", "valueExpression": "" }],
+        "where": "ResourceAttributes.rum.sessionId:* AND StatusCode:error AND NOT (SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\")",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "rum-008",
+      "containerId": "rum-errors",
+      "tabId": "rum-errors-overview",
+      "x": 12,
+      "y": 0,
+      "w": 12,
+      "h": 4,
+      "config": {
+        "name": "AJAX Errors",
+        "source": "Traces",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [{ "aggFn": "count", "valueExpression": "" }],
+        "where": "(SpanAttributes['component'] = 'fetch' OR SpanAttributes['component'] = 'xml-http-request') AND (toUInt16OrZero(SpanAttributes['http.status_code']) >= 400 OR StatusCode = 'STATUS_CODE_ERROR')",
+        "whereLanguage": "sql",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "rum-010",
+      "containerId": "rum-errors",
+      "tabId": "rum-errors-overview",
+      "x": 0,
+      "y": 4,
+      "w": 24,
+      "h": 7,
+      "config": {
+        "name": "Errors over Time",
+        "source": "Traces",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "aggCondition": "StatusCode:error AND NOT (SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\")",
+            "aggConditionLanguage": "lucene",
+            "alias": "JS Errors"
+          },
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "aggCondition": "(SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\") AND StatusCode:error",
+            "aggConditionLanguage": "lucene",
+            "alias": "AJAX Errors"
+          }
+        ],
+        "where": "ResourceAttributes.rum.sessionId:*",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "number",
+          "mantissa": 0,
+          "thousandSeparated": true
+        }
+      }
+    },
+    {
+      "id": "rum-012",
+      "containerId": "rum-errors",
+      "tabId": "rum-errors-js",
+      "x": 0,
+      "y": 0,
+      "w": 12,
+      "h": 8,
+      "config": {
+        "name": "Top JS Errors (by message)",
+        "source": "Traces",
+        "displayType": "table",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "alias": "Occurrences"
+          },
+          {
+            "aggFn": "count_distinct",
+            "valueExpression": "ResourceAttributes['rum.sessionId']",
+            "alias": "Sessions"
+          }
+        ],
+        "where": "ResourceAttributes.rum.sessionId:* AND StatusCode:error AND NOT (SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\")",
+        "whereLanguage": "lucene",
+        "groupBy": [
+          {
+            "valueExpression": "coalesce(nullif(SpanAttributes['exception.message'], ''), nullif(SpanAttributes['message'], ''), SpanName)",
+            "alias": "Error"
+          }
+        ],
+        "orderBy": "Occurrences DESC",
+        "limit": { "limit": 20 }
+      }
+    },
+    {
+      "id": "rum-015",
+      "containerId": "rum-errors",
+      "tabId": "rum-errors-js",
+      "x": 12,
+      "y": 0,
+      "w": 12,
+      "h": 8,
+      "config": {
+        "name": "Errors per Page",
+        "source": "Traces",
+        "displayType": "table",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "alias": "Errors"
+          },
+          {
+            "aggFn": "count_distinct",
+            "valueExpression": "ResourceAttributes['rum.sessionId']",
+            "alias": "Sessions"
+          }
+        ],
+        "where": "ResourceAttributes.rum.sessionId:* AND StatusCode:error AND NOT (SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\")",
+        "whereLanguage": "lucene",
+        "groupBy": [
+          {
+            "valueExpression": "coalesce(nullif(SpanAttributes['http.url'], ''), nullif(SpanAttributes['page.url'], ''), nullif(SpanAttributes['location.href'], ''))",
+            "alias": "URL"
+          }
+        ],
+        "orderBy": "Errors DESC",
+        "limit": { "limit": 20 }
+      }
+    },
+    {
+      "id": "rum-013",
+      "containerId": "rum-errors",
+      "tabId": "rum-errors-api",
+      "x": 0,
+      "y": 0,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Top Failing API Calls",
+        "source": "Traces",
+        "displayType": "table",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "alias": "Failures"
+          },
+          {
+            "aggFn": "count_distinct",
+            "valueExpression": "ResourceAttributes['rum.sessionId']",
+            "alias": "Sessions"
+          }
+        ],
+        "where": "(SpanAttributes['component'] = 'fetch' OR SpanAttributes['component'] = 'xml-http-request') AND (toUInt16OrZero(SpanAttributes['http.status_code']) >= 400 OR StatusCode = 'STATUS_CODE_ERROR')",
+        "whereLanguage": "sql",
+        "groupBy": [
+          {
+            "valueExpression": "concat(coalesce(nullif(SpanAttributes['http.method'], ''), 'GET'), ' ', coalesce(nullif(SpanAttributes['http.url'], ''), ''), ' → ', coalesce(nullif(SpanAttributes['http.status_code'], ''), 'error'))",
+            "alias": "Endpoint"
+          }
+        ],
+        "orderBy": "Failures DESC",
+        "limit": { "limit": 20 }
+      }
+    }
+  ]
+}
