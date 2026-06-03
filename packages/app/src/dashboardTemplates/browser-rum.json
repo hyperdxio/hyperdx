@@ -1,7 +1,7 @@
 {
   "version": "0.1.0",
   "name": "Browser RUM",
-  "description": "Real-user monitoring overview for browser sessions instrumented with the HyperDX Browser SDK (or any OpenTelemetry browser instrumentation that emits a rum.sessionId resource attribute). Performance Overview shows KPIs, load-time percentiles, and long-task health. Page Views Breakdown groups traffic by URL, browser, country, and device. Errors drills into JS exceptions, failing API calls, and per-page error counts. Top Browsers and Top Countries tiles populate when the OTel collector's useragent and geoip processors are enabled.",
+  "description": "Core Web Vitals, page-load percentiles, traffic breakdowns, and error tracking for browser sessions instrumented with the HyperDX Browser SDK (or any OpenTelemetry RUM instrumentation emitting rum.sessionId).",
   "tags": ["Browser / RUM"],
   "filters": [
     {
