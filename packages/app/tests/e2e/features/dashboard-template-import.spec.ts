@@ -682,6 +682,102 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
   );
 
   test(
+    'should warn about invalid saved filter values and saved query without blocking import',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Import Invalid Saved Values ${ts}`;
+      const tileName = `Logs Count ${ts}`;
+      const invalidFilterCondition = 'ServiceName = = =';
+      const invalidSavedQuery = 'ServiceName:((("broken';
+
+      // Tile uses the workspace logs source so its mapping auto-resolves and
+      // the import can be finished without manual mapping. The saved filter
+      // value and saved query carry deliberately malformed conditions.
+      const dashboardFile = {
+        version: '0.1.0',
+        name: dashboardName,
+        tiles: [
+          {
+            id: 'tile-1',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: tileName,
+              source: DEFAULT_LOGS_SOURCE_NAME,
+              displayType: 'number',
+              granularity: 'auto',
+              select: [{ aggFn: 'count', valueExpression: '' }],
+              where: '',
+              whereLanguage: 'sql',
+            },
+          },
+        ],
+        savedFilterValues: [{ type: 'sql', condition: invalidFilterCondition }],
+        savedQuery: invalidSavedQuery,
+        savedQueryLanguage: 'lucene',
+      };
+
+      await test.step('Upload the dashboard file and reach the mapping step', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadDashboardFile(
+          JSON.stringify(dashboardFile),
+        );
+        // Warnings are non-blocking: the mapping step is still reached.
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+        await expect(dashboardImportPage.dashboardNameInput).toHaveValue(
+          dashboardName,
+        );
+      });
+
+      await test.step('Verify the invalid saved filter value warning is shown and lists the bad condition', async () => {
+        const warning = dashboardImportPage.getSavedFilterValuesWarning();
+        await expect(warning).toBeVisible();
+        await expect(
+          warning.getByText(
+            '1 saved filter value has an invalid condition and will not be applied.',
+          ),
+        ).toBeVisible();
+        await dashboardImportPage.showDetails(warning);
+        await expect(
+          warning.getByText(`Invalid sql condition: ${invalidFilterCondition}`),
+        ).toBeVisible();
+      });
+
+      await test.step('Verify the invalid saved query warning is shown and lists the bad query', async () => {
+        const warning = dashboardImportPage.getSavedQueryWarning();
+        await expect(warning).toBeVisible();
+        await expect(
+          warning.getByText(
+            "The dashboard's saved query has an invalid condition and will not be applied.",
+          ),
+        ).toBeVisible();
+        await dashboardImportPage.showDetails(warning);
+        await expect(
+          warning.getByText(`Invalid lucene query: ${invalidSavedQuery}`),
+        ).toBeVisible();
+      });
+
+      await test.step('Finish the import despite the warnings and verify success', async () => {
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify the imported dashboard retained its name and tile', async () => {
+        const dashboardId = dashboardPage.getCurrentDashboardId();
+        const dashboard = await fetchDashboardById(page, dashboardId);
+        expect(dashboard.name).toBe(dashboardName);
+        expect(dashboard.tiles).toHaveLength(1);
+      });
+    },
+  );
+
+  test(
     'should drop an unmapped onClick from the imported tile',
     { tag: '@full-stack' },
     async ({ page }) => {
