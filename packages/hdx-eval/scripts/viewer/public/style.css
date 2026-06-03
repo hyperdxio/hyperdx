@@ -52,6 +52,16 @@ header {
   gap: 0.5rem;
 }
 
+.back-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 12px;
+  margin-left: 0.5rem;
+}
+.back-link:hover {
+  text-decoration: underline;
+}
+
 select,
 input[type="search"] {
   background: var(--panel-2);
@@ -458,4 +468,212 @@ pre.code.error {
 .tag.error {
   color: var(--bad);
   border-color: var(--bad);
+}
+.tag.small {
+  font-size: 10px;
+  padding: 0 0.3rem;
+}
+.small {
+  font-size: 11px;
+}
+
+/* ===== Summary Dashboard ===== */
+
+#summary {
+  display: block;
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+}
+
+#summary[hidden] {
+  display: none;
+}
+
+.summary-dashboard {
+  padding: 1rem 1.5rem 2rem;
+  max-width: 1200px;
+}
+
+.summary-header {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 1.2rem;
+  flex-wrap: wrap;
+}
+.summary-header .label {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.summary-header .value {
+  font-weight: 500;
+}
+.summary-header .accent {
+  color: var(--accent);
+}
+
+.summary-section {
+  margin-bottom: 1.5rem;
+}
+.summary-section h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 0.6rem 0;
+  color: var(--text);
+}
+
+.sub-table {
+  margin-top: 0.8rem;
+}
+.sub-table h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.4rem 0;
+}
+
+/* Summary tables */
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+}
+.summary-table th,
+.summary-table td {
+  padding: 0.4rem 0.7rem;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+.summary-table th {
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.summary-table th:first-child,
+.summary-table td:first-child {
+  text-align: left;
+}
+.summary-table tbody tr:hover {
+  background: var(--panel-2);
+}
+.summary-table .baseline-col {
+  color: var(--accent);
+}
+.summary-table .delta-col {
+  color: var(--muted);
+  font-size: 10px;
+}
+.scenario-name {
+  font-weight: 600;
+}
+.metric-label {
+  color: var(--text);
+  font-weight: 500;
+}
+.metric-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 12px;
+}
+
+/* Score cells */
+.score-cell {
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+}
+.score-cell.good {
+  color: var(--good);
+}
+.score-cell.warn {
+  color: var(--warn);
+}
+.score-cell.bad {
+  color: var(--bad);
+}
+
+/* Delta cells */
+.delta-cell {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 12px;
+  font-weight: 600;
+}
+.delta-pos {
+  color: var(--good);
+}
+.delta-neg {
+  color: var(--bad);
+}
+.delta-neutral {
+  color: var(--muted);
+}
+
+/* Heatmap cells */
+.heatmap-cell {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 12px;
+  text-align: center !important;
+}
+.heat-high {
+  color: var(--good);
+  background: rgba(108, 217, 126, 0.08);
+}
+.heat-mid {
+  color: var(--accent);
+  background: rgba(124, 196, 255, 0.06);
+}
+.heat-low {
+  color: var(--warn);
+  background: rgba(255, 200, 87, 0.06);
+}
+.heat-bad {
+  color: var(--bad);
+  background: rgba(255, 107, 107, 0.08);
+}
+
+/* Programmatic check cells */
+.check-pass {
+  color: var(--good);
+  background: rgba(108, 217, 126, 0.08);
+}
+.check-partial {
+  color: var(--warn);
+  background: rgba(255, 200, 87, 0.06);
+}
+.check-fail {
+  color: var(--bad);
+  background: rgba(255, 107, 107, 0.08);
+}
+
+/* Runs comparison table */
+.runs-table td {
+  vertical-align: middle;
+}
+.run-cell {
+  white-space: nowrap;
+}
+.run-cell.clickable {
+  cursor: pointer;
+}
+.run-cell.clickable:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+}
+
+/* Scenario breakdown spacing */
+.scenario-breakdown {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem 1.2rem;
 }

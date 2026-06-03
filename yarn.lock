@@ -4641,7 +4641,7 @@ __metadata:
     "@anthropic-ai/sdk": "npm:^0.92.0"
     "@clickhouse/client": "npm:^1.12.1"
     "@dotenvx/dotenvx": "npm:^1.51.1"
-    "@hyperdx/common-utils": "npm:^0.19.0"
+    "@hyperdx/common-utils": "npm:^0.20.0"
     "@types/jest": "npm:^29.5.14"
     "@types/ms": "npm:^0.7.31"
     "@types/node": "npm:^22.15.18"

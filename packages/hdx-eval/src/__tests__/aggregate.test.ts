@@ -4,7 +4,7 @@ import { buildAggregate, type GradedRunPair } from '../reports/aggregate';
 
 function pair(args: {
   scenario: string;
-  mcp: 'hyperdx' | 'clickhouse';
+  mcp: string;
   i: number;
   programmaticScore: number;
   judgeScore: number;
@@ -95,8 +95,18 @@ function pair(args: {
 }
 
 describe('buildAggregate', () => {
-  it('groups by scenario and computes per-cell means', () => {
+  it('groups by scenario and computes per-cell means with baseline delta', () => {
     const pairs: GradedRunPair[] = [
+      pair({
+        scenario: 'error-root-cause',
+        mcp: 'clickhouse',
+        i: 0,
+        programmaticScore: 1,
+        judgeScore: 1,
+        toolCalls: 7,
+        outputTokens: 1500,
+        durationMs: 30_000,
+      }),
       pair({
         scenario: 'error-root-cause',
         mcp: 'hyperdx',
@@ -117,6 +127,41 @@ describe('buildAggregate', () => {
         outputTokens: 3500,
         durationMs: 50_000,
       }),
+    ];
+    // Baseline defaults to first MCP alphabetically: 'clickhouse'.
+    const summary = buildAggregate({ batchDir: '/tmp/x', pairs });
+    expect(summary.scenarios).toHaveLength(1);
+    expect(summary.baseline).toBe('clickhouse');
+    expect(summary.mcpOrder).toEqual(['clickhouse', 'hyperdx']);
+    const sc = summary.scenarios[0];
+    const h = sc.cells['hyperdx']!;
+    const c = sc.cells['clickhouse']!;
+    expect(h.n).toBe(2);
+    expect(c.n).toBe(1);
+    expect(h.toolCalls.mean).toBeCloseTo(12, 5);
+    expect(c.toolCalls.mean).toBeCloseTo(7, 5);
+    expect(h.programmatic.mean).toBeCloseTo(0.9, 5);
+    expect(h.judge.weightedMean).toBeCloseTo(0.85, 5);
+    expect(h.combinedScore.mean).toBeCloseTo(0.87, 5);
+    // Delta is hyperdx (challenger) - clickhouse (baseline)
+    expect(sc.deltas['hyperdx'].toolCalls).toBeCloseTo(5, 5);
+    expect(sc.deltas['hyperdx'].combinedScore!).toBeCloseTo(-0.13, 5);
+    // No delta for baseline itself
+    expect(sc.deltas['clickhouse']).toBeUndefined();
+  });
+
+  it('supports explicit baseline selection', () => {
+    const pairs: GradedRunPair[] = [
+      pair({
+        scenario: 'error-root-cause',
+        mcp: 'hyperdx',
+        i: 0,
+        programmaticScore: 1,
+        judgeScore: 0.9,
+        toolCalls: 13,
+        outputTokens: 4000,
+        durationMs: 60_000,
+      }),
       pair({
         scenario: 'error-root-cause',
         mcp: 'clickhouse',
@@ -128,23 +173,16 @@ describe('buildAggregate', () => {
         durationMs: 30_000,
       }),
     ];
-    const summary = buildAggregate({ batchDir: '/tmp/x', pairs });
-    expect(summary.scenarios).toHaveLength(1);
+    const summary = buildAggregate({
+      batchDir: '/tmp/x',
+      pairs,
+      baseline: 'hyperdx',
+    });
+    expect(summary.baseline).toBe('hyperdx');
     const sc = summary.scenarios[0];
-    const h = sc.cells.hyperdx!;
-    const c = sc.cells.clickhouse!;
-    expect(h.n).toBe(2);
-    expect(c.n).toBe(1);
-    expect(h.toolCalls.mean).toBeCloseTo(12, 5);
-    expect(c.toolCalls.mean).toBeCloseTo(7, 5);
-    expect(h.programmatic.mean).toBeCloseTo(0.9, 5);
-    expect(h.judge.weightedMean).toBeCloseTo(0.85, 5);
-    // combinedScore is mean of per-run combined values, not combined of means.
-    // Run 0: 0.4*1 + 0.6*0.9 = 0.94. Run 1: 0.4*0.8 + 0.6*0.8 = 0.8. Mean = 0.87.
-    expect(h.combinedScore.mean).toBeCloseTo(0.87, 5);
-    expect(sc.delta.toolCalls).toBeCloseTo(5, 5);
-    // HDX combined 0.87 vs CH 1.0 → -0.13
-    expect(sc.delta.combinedScore!).toBeCloseTo(-0.13, 5);
+    // Delta should be clickhouse (challenger) - hyperdx (baseline)
+    expect(sc.deltas['clickhouse']).toBeDefined();
+    expect(sc.deltas['hyperdx']).toBeUndefined();
   });
 
   it('produces an ordered, multi-scenario summary', () => {
@@ -175,5 +213,52 @@ describe('buildAggregate', () => {
       'error-root-cause',
       'noisy-signals',
     ]);
+  });
+
+  it('handles 3+ MCPs with baseline + challengers model', () => {
+    const pairs: GradedRunPair[] = [
+      pair({
+        scenario: 'error-root-cause',
+        mcp: 'alpha',
+        i: 0,
+        programmaticScore: 0.8,
+        judgeScore: 0.8,
+        toolCalls: 10,
+        outputTokens: 3000,
+        durationMs: 40_000,
+      }),
+      pair({
+        scenario: 'error-root-cause',
+        mcp: 'beta',
+        i: 0,
+        programmaticScore: 0.9,
+        judgeScore: 0.9,
+        toolCalls: 12,
+        outputTokens: 3500,
+        durationMs: 50_000,
+      }),
+      pair({
+        scenario: 'error-root-cause',
+        mcp: 'gamma',
+        i: 0,
+        programmaticScore: 1,
+        judgeScore: 1,
+        toolCalls: 8,
+        outputTokens: 2000,
+        durationMs: 25_000,
+      }),
+    ];
+    const summary = buildAggregate({
+      batchDir: '/tmp/x',
+      pairs,
+      baseline: 'alpha',
+    });
+    expect(summary.mcpOrder).toEqual(['alpha', 'beta', 'gamma']);
+    const sc = summary.scenarios[0];
+    // Challengers: beta and gamma
+    expect(sc.deltas['alpha']).toBeUndefined();
+    expect(sc.deltas['beta']).toBeDefined();
+    expect(sc.deltas['gamma']).toBeDefined();
+    expect(sc.deltas['gamma'].toolCalls).toBeCloseTo(-2, 5);
   });
 });

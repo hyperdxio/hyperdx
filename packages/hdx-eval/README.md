@@ -1,40 +1,192 @@
 # @hyperdx/hdx-eval
 
-Eval framework for benchmarking AI agents against HyperDX's observability
-platform. Generates deterministic synthetic telemetry (traces + logs) with
-planted anomalies, spawns Claude Code as an SRE agent with access to either
-the HyperDX MCP server or a raw ClickHouse MCP, records full trajectories,
-and grades answers using programmatic checks + an LLM-as-judge.
+Eval framework for benchmarking AI agents against observability MCP servers.
+Generates deterministic synthetic telemetry (traces + logs) with planted
+anomalies, spawns Claude Code as an SRE agent with access to any configured
+MCP, records full trajectories, and grades answers using programmatic checks and
+an LLM-as-judge. The framework is **MCP-agnostic** — compare any combination of
+MCPs: HyperDX vs ClickHouse, feature-branch vs main, two different HyperDX
+instances, or any N-way comparison. MCPs are defined in a config registry and
+selected at run time.
 
 ## Prerequisites
 
-- **`yarn dev` running** so ClickHouse, MongoDB, and the HyperDX API are up
+- **`yarn dev` running** on at least one worktree (ClickHouse, MongoDB, API)
 - **`claude` CLI installed** (the harness spawns it in streaming JSON mode)
-- **`ANTHROPIC_API_KEY`** exported (for the `run` and `grade` commands)
-- **[`uv`](https://docs.astral.sh/uv/)** installed (the ClickHouse MCP server
-  is launched via `uv run --with mcp-clickhouse`; without `uv` on `PATH` the
-  MCP process silently fails to start and the agent gets no tools)
-
-Port detection is automatic — the CLI computes the same worktree-based slot
-as `scripts/dev-env.sh`, so no manual `source` step is needed.
+- **`ANTHROPIC_API_KEY`** or **`AI_API_KEY`** in `.env.local` (for `run` and
+  `grade` commands)
+- **[`uv`](https://docs.astral.sh/uv/)** installed (only needed if you
+  configure a `stdio`-type ClickHouse MCP — it launches via
+  `uv run --with mcp-clickhouse`)
 
 ## Quick Start
 
 ```bash
-# 1. One-time setup: register eval account + create Sources
+# 1. One-time setup: register eval account + create Sources + write config
 yarn workspace @hyperdx/hdx-eval dev setup-hyperdx
 
 # 2. Seed a scenario (use --volume-factor 0.1 for faster iteration)
 yarn workspace @hyperdx/hdx-eval dev seed error-root-cause --volume-factor 0.1
 
-# 3. Run the agent eval (both MCPs, 3 runs each)
-ANTHROPIC_API_KEY=sk-... yarn workspace @hyperdx/hdx-eval dev run error-root-cause
+# 3. Run the eval (all enabled MCPs, 3 runs each)
+yarn workspace @hyperdx/hdx-eval dev run error-root-cause
 
-# 4. Grade the batch
+# 4. Grade + report (auto-runs after step 3 by default)
 yarn workspace @hyperdx/hdx-eval dev grade <batch>
-
-# 5. Generate a markdown report
 yarn workspace @hyperdx/hdx-eval dev report <batch>
+
+# 5. Browse results in the web viewer
+yarn workspace @hyperdx/hdx-eval viewer
+```
+
+## Recommended: Dual-Slot Eval Setup
+
+For reliable A/B comparison of two HyperDX branches (e.g. feature vs main),
+we recommend reserving two fixed dev slots. This gives you two fully isolated
+HyperDX stacks (separate ClickHouse, MongoDB, API) that can run
+simultaneously.
+
+### 1. Start two dev stacks with fixed slots
+
+```bash
+# Slot 98: "baseline" — run from your main branch checkout
+HDX_DEV_SLOT=98 yarn dev
+
+# Slot 99: "candidate" — run from your feature branch checkout
+HDX_DEV_SLOT=99 yarn dev
+```
+
+This gives you:
+
+| | Slot 98 (baseline) | Slot 99 (candidate) |
+|---|---|---|
+| API | `http://localhost:30198` | `http://localhost:30199` |
+| App | `http://localhost:30298` | `http://localhost:30299` |
+| ClickHouse | `http://localhost:30598` | `http://localhost:30599` |
+| MCP | `http://localhost:30198/mcp` | `http://localhost:30199/mcp` |
+
+### 2. Run `setup-hyperdx` against each instance
+
+```bash
+# Setup baseline (slot 98)
+yarn workspace @hyperdx/hdx-eval dev setup-hyperdx --api-url http://localhost:30198
+
+# Setup candidate (slot 99)
+yarn workspace @hyperdx/hdx-eval dev setup-hyperdx --api-url http://localhost:30199
+```
+
+After setup, `eval.config.json` will have the `hyperdx` MCP pointing at the
+slot it was set up against. You can then manually add the second MCP entry
+(see [MCP Configuration](#mcp-configuration) below).
+
+### 3. Seed both ClickHouse instances
+
+Both instances need the eval data:
+
+```bash
+yarn workspace @hyperdx/hdx-eval dev seed error-root-cause --ch-url http://localhost:30598
+yarn workspace @hyperdx/hdx-eval dev seed error-root-cause --ch-url http://localhost:30599
+```
+
+### 4. Run the comparison
+
+```bash
+yarn workspace @hyperdx/hdx-eval dev run error-root-cause \
+  --mcp hyperdx-main,hyperdx-feature \
+  --baseline hyperdx-main \
+  --runs 5
+```
+
+## MCP Configuration
+
+MCPs are defined in `eval.config.json` under the `mcps` key. Each entry
+fully specifies how to connect, which tools to allow/deny, and how to
+anonymize the MCP identity for fair LLM judging.
+
+### Config structure
+
+```json
+{
+  "mcps": {
+    "<name>": {
+      "type": "http" | "stdio",
+      "url": "...",                    // http only
+      "headers": { ... },             // http only
+      "command": "...",               // stdio only
+      "args": ["..."],               // stdio only
+      "env": { ... },                // stdio only
+      "toolPattern": "mcp__<name>__*",
+      "label": "Display Name",
+      "brandTerms": ["Brand", "brand"],
+      "deniedTools": ["mcp__<name>__tool_to_hide"],
+      "enabled": true
+    }
+  },
+  "scenarios": { ... },
+  "hyperdxApi": { ... },
+  "clickhouse": { ... }
+}
+```
+
+### Field reference
+
+| Field | Required | Description |
+|---|---|---|
+| `type` | yes | `"http"` for HTTP/SSE transport, `"stdio"` for subprocess |
+| `url` | http | MCP server URL |
+| `headers` | no | HTTP headers (e.g. `Authorization: Bearer ...`) |
+| `command` | stdio | Executable to spawn |
+| `args` | no | Command arguments |
+| `env` | no | Environment variables for the subprocess |
+| `toolPattern` | yes | Glob for allowed tools (e.g. `mcp__myname__*`) |
+| `label` | yes | Human-readable name for reports |
+| `brandTerms` | no | Terms to redact when blinding answers for the LLM judge |
+| `deniedTools` | no | Tool names to deny (reduces tool count for faster schema loading) |
+| `enabled` | no | `false` to exclude from `--mcp all` (default: `true`). Can still be explicitly named with `--mcp name`. |
+
+### Top-level config sections
+
+| Section | Required | Purpose |
+|---|---|---|
+| `mcps` | yes | MCP registry (see above) |
+| `scenarios` | no | Per-scenario HyperDX Source IDs (populated by `setup-hyperdx`) |
+| `hyperdxApi` | no | HyperDX API URL + access key (used only by `setup-hyperdx`) |
+| `clickhouse` | no | ClickHouse connection for `seed`, `drop`, `runs-instrument` commands |
+
+### Example: HTTP MCP (HyperDX)
+
+```json
+{
+  "type": "http",
+  "url": "http://localhost:30198/mcp",
+  "headers": { "Authorization": "Bearer <access-key>" },
+  "toolPattern": "mcp__hyperdx__*",
+  "label": "HyperDX",
+  "brandTerms": ["HyperDX", "hyperdx"],
+  "deniedTools": [
+    "mcp__hyperdx__hyperdx_delete_dashboard",
+    "mcp__hyperdx__hyperdx_get_dashboard"
+  ]
+}
+```
+
+### Example: stdio MCP (raw ClickHouse)
+
+```json
+{
+  "type": "stdio",
+  "command": "uv",
+  "args": ["run", "--with", "mcp-clickhouse==0.3.0", "--python", "3.10", "mcp-clickhouse"],
+  "env": {
+    "CLICKHOUSE_HOST": "localhost",
+    "CLICKHOUSE_PORT": "30598",
+    "CLICKHOUSE_USER": "default",
+    "CLICKHOUSE_PASSWORD": ""
+  },
+  "toolPattern": "mcp__clickhouse__*",
+  "label": "ClickHouse MCP",
+  "brandTerms": ["ClickHouse MCP", "clickhouse"]
+}
 ```
 
 ## Scenarios
@@ -45,14 +197,14 @@ mirrors HyperDX's `otel_traces` / `otel_logs` exactly.
 
 | Scenario | Agent Prompt | What's Planted |
 |---|---|---|
-| `error-root-cause` | "Checkout requests are failing for some users in the last 10 minutes. Find the root cause." | `payment-service` DB connection timeout cascading into `checkout-api` 5xx. 6M+ background spans, 12M logs, 5 distractor anomalies. |
-| `latency-spike` | "p99 latency on api-server has jumped in the last 15 minutes. What's slow and why?" | `/api/orders/search` p99 spike for enterprise tenants (missing-index DB query). 12M+ spans, 5 regions, 5K tenants, GC/cold-start/cache distractors. |
-| `noisy-signals` | "We want to cut log ingest cost. What are the top noisy signals we should drop or throttle?" | ~16M logs across composite (service, severity) cells. Each noisy cell also has a high-volume load-bearing pattern — grouping by service+severity alone won't work. |
-| `segmented-regression` | "API error rate has gone up in the last 10 minutes for some users. Find the segment(s)." | Enterprise x cache-miss errors at ~12% from a schema-mismatch bug. Single-axis aggregates dilute the signal. Concurrent recommendation-service 502 burst as distractor. |
-| `service-health-check` | "Generate a service health report for api-server for the last hour." | Peace-time report — no incident, but 4 novel-but-non-critical signals to call out, plus recurring baseline patterns the agent should NOT escalate. |
+| `error-root-cause` | "Checkout requests are failing..." | `payment-service` DB timeout cascading into `checkout-api` 5xx. 6M+ spans, 12M logs, 5 distractors. |
+| `latency-spike` | "p99 latency on api-server has jumped..." | `/api/orders/search` p99 spike for enterprise tenants. 12M+ spans, 5 regions, 5 distractors. |
+| `noisy-signals` | "We want to cut log ingest cost..." | ~16M logs across composite cells. Each noisy cell has a load-bearing pattern mixed in. |
+| `segmented-regression` | "API error rate has gone up..." | Enterprise x cache-miss errors at ~12%. Single-axis aggregates dilute the signal. |
+| `service-health-check` | "Generate a service health report..." | Peace-time report — no incident, but 4 novel signals to call out. |
 
 Use `--volume-factor` to scale background row counts for faster iteration.
-Planted anomaly counts stay fixed regardless of the factor.
+Planted anomaly counts stay fixed.
 
 ```bash
 # Full volume (default) — realistic needle-in-haystack difficulty
@@ -69,11 +221,10 @@ All commands are run via `yarn workspace @hyperdx/hdx-eval dev <command>`.
 ### Setup
 
 ```bash
-# One-time: register account, create ClickHouse connection, create Sources
-dev setup-hyperdx
-dev setup-hyperdx --api-url http://localhost:30176  # explicit port
-dev setup-hyperdx --check                           # validate existing config
-dev setup-hyperdx --reset-sources                   # recreate all Sources
+dev setup-hyperdx                           # one-time: register + create Sources
+dev setup-hyperdx --api-url http://...      # explicit API URL
+dev setup-hyperdx --check                   # validate existing config
+dev setup-hyperdx --reset-sources           # recreate all Sources
 ```
 
 ### Data Management
@@ -84,21 +235,26 @@ dev seed <scenario>                         # seed with defaults (seed=42, now=D
 dev seed <scenario> --seed 7                # custom PRNG seed
 dev seed <scenario> --now 2026-05-08T15:00:00Z  # fixed anchor time
 dev seed <scenario> --volume-factor 0.1     # 10% background volume
+dev seed <scenario> --ch-url http://localhost:30599  # target specific CH
 dev drop <scenario>                         # drop scenario tables
 ```
 
 ### Running Evals
 
 ```bash
-dev run <scenario>                          # both MCPs, 3 runs each
-dev run <scenario> --mcp hyperdx            # HyperDX MCP only
-dev run <scenario> --mcp clickhouse         # raw ClickHouse MCP only
+dev run <scenario>                          # all enabled MCPs, 3 runs each
+dev run <scenario> --mcp hyperdx            # single MCP
+dev run <scenario> --mcp hyperdx-main,hyperdx-feature  # compare two
+dev run <scenario> --mcp all                # all enabled MCPs (default)
+dev run <scenario> --baseline hyperdx-main  # set baseline for delta reports
 dev run <scenario> --runs 5                 # 5 runs per cell
-dev run <scenario> --model claude-sonnet-4-6
+dev run <scenario> --model claude-opus-4-6
 dev run <scenario> --max-turns 20           # default: 15
 dev run <scenario> --concurrency 4          # parallel cells
 dev run <scenario> --prompt-variant hypothesis  # hypothesis-first variant
 dev run <scenario> --no-reseed --anchor-time 2026-05-08T15:00:00Z
+dev run <scenario> --no-grade               # skip auto-grading
+dev run <scenario> --no-judge               # programmatic checks only (faster)
 ```
 
 ### Inspecting Results
@@ -114,35 +270,62 @@ dev runs-instrument <batch>                 # enrich with ClickHouse query_log t
 ### Grading & Reporting
 
 ```bash
-dev grade <batch>                           # programmatic + LLM-as-judge (Opus 4.7)
+dev grade <batch>                           # programmatic + LLM-as-judge
 dev grade <batch> --judge-model claude-sonnet-4-6
-dev grade <batch> --no-judge                # programmatic checks only (no LLM cost)
+dev grade <batch> --no-judge                # programmatic checks only
 dev grade <batch> --rerun-judge             # re-run judge even if grades exist
 dev report <batch>                          # render _summary.md + _summary.json
+dev report <batch> --baseline hyperdx-main  # override baseline for deltas
 ```
 
 ### Viewer
 
 ```bash
-yarn workspace @hyperdx/hdx-eval viewer    # web UI at http://localhost:3333
+yarn workspace @hyperdx/hdx-eval viewer    # web UI at http://localhost:5176
 ```
+
+The viewer shows a **comparison dashboard** when you select a batch:
+
+- **Top-line verdict table** — combined scores per MCP with delta columns
+- **Per-scenario breakdown** — metrics, judge criterion heatmap, programmatic
+  check pass rates
+- **Side-by-side runs** — click any run to drill into the full trajectory
 
 ## Scoring
 
 Combined score = `0.4 * programmatic + 0.6 * judge - toolErrorPenalty`
 
 - **Programmatic (40%)** — regex-based keyword checks against the final
-  answer, defined per-scenario in `ground-truth.json`.
-- **LLM-as-judge (60%)** — multi-criteria rubric scored 0-5 by Claude Opus 4.7
-  (configurable). Criteria are scenario-specific.
+  answer, defined per-scenario in `ground-truth.json`. Includes both positive
+  checks (must find the right thing) and negative checks (must not blame a
+  distractor).
+- **LLM-as-judge (60%)** — multi-criteria rubric scored 0-5 by Claude Opus
+  (configurable). Criteria are scenario-specific. Answers are **blinded** —
+  MCP tool names and brand terms are redacted so the judge can't tell which
+  MCP produced the answer.
 - **Tool error penalty** — up to 20% deducted for high tool-call error rates.
-  Prevents agents from papering over correctness with volume.
+
+### Baseline + Challengers
+
+Reports use a **baseline + challengers** model. One MCP is designated as the
+baseline (default: first MCP alphabetically, or set explicitly with
+`--baseline`). All other MCPs show deltas relative to it:
+
+```
+| Metric         | hyperdx-main | hyperdx-feature | Δ (hyperdx-feature) |
+|----------------|-------------|-----------------|---------------------|
+| Combined score | 85%         | 91%             | +6%                 |
+```
 
 ## Determinism
 
 All randomness flows through a `mulberry32(seed)` PRNG. Same `(seed, now)`
-produces byte-identical row content. This is what makes side-by-side
-comparison of HyperDX MCP vs ClickHouse MCP meaningful.
+produces byte-identical row content. This makes side-by-side comparison
+meaningful — both MCPs query the exact same data.
+
+When using `--anchor-time` with `--no-reseed`, the agent's system prompt
+treats the anchor as "now" for relative time references. This is required
+when running against pre-seeded data from an earlier session.
 
 ## Tests
 
@@ -152,5 +335,5 @@ yarn workspace @hyperdx/hdx-eval dev:unit  # watch mode
 ```
 
 Unit tests verify PRNG determinism, planted anomaly invariants, grading
-pipeline, stream parsing, prompt construction, and report aggregation.
-No ClickHouse needed.
+pipeline, stream parsing, prompt construction, blinding, and report
+aggregation. No ClickHouse needed.

@@ -1,4 +1,4 @@
-import type { EvalConfig } from '../hyperdx/config';
+import { type EvalConfig, getMcpDefinition } from '../hyperdx/config';
 import { runClaude } from './claudeSpawn';
 import type { ParsedEvent } from './streamParser';
 import { buildSystemPrompt } from './systemPrompt';
@@ -33,9 +33,9 @@ export async function runCell(opts: RunCellOptions): Promise<RunRecord> {
   const startedAtIso = new Date().toISOString();
   const startedAtMs = Date.now();
   const promptVariant: PromptVariant = opts.promptVariant ?? 'baseline';
+  const mcpDef = getMcpDefinition(opts.config, opts.mcp);
   const systemPromptAppend = buildSystemPrompt(
     opts.scenario,
-    opts.mcp,
     opts.anchorTimeIso,
     promptVariant,
     opts.maxTurns,
@@ -45,6 +45,7 @@ export async function runCell(opts: RunCellOptions): Promise<RunRecord> {
     config: opts.config,
     scenario: opts.scenario,
     mcp: opts.mcp,
+    mcpDef,
     model: opts.model,
     maxTurns: opts.maxTurns,
     timeoutMs: opts.timeoutMs,

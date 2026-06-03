@@ -11,12 +11,14 @@ import {
   type ParsedEvent,
   parseStreamLine,
 } from './streamParser';
-import type { McpKind, PromptVariant } from './types';
+import type { McpDefinition, McpKind, PromptVariant } from './types';
 
 export type SpawnOptions = {
   config: EvalConfig;
   scenario: string;
   mcp: McpKind;
+  /** The resolved MCP definition from the config. */
+  mcpDef: McpDefinition;
   model: string;
   maxTurns: number;
   timeoutMs: number;
@@ -44,14 +46,15 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
   const mcpConfigPath = join(tempdir, 'mcp-config.json');
   const settingsPath = join(tempdir, 'settings.json');
 
+  const mcpDef = opts.mcpDef;
   writeFileSync(
     mcpConfigPath,
-    JSON.stringify(buildMcpConfig(opts.config, opts.mcp), null, 2),
+    JSON.stringify(buildMcpConfig(mcpDef, opts.mcp), null, 2),
   );
   const promptVariant: PromptVariant = opts.promptVariant ?? 'baseline';
   writeFileSync(
     settingsPath,
-    JSON.stringify(buildSettings(opts.mcp, promptVariant, tempdir), null, 2),
+    JSON.stringify(buildSettings(mcpDef, promptVariant, tempdir), null, 2),
   );
 
   const argv = [
@@ -59,9 +62,9 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
     '--mcp-config',
     mcpConfigPath,
     '--allowedTools',
-    `${allowedToolsPattern(opts.mcp)},Read(${tempdir}/*)`,
+    `${allowedToolsPattern(mcpDef)},Read(${tempdir}/*)`,
     '--disallowedTools',
-    deniedToolsFor(promptVariant, opts.mcp).join(','),
+    deniedToolsFor(promptVariant, mcpDef).join(','),
     '--dangerously-skip-permissions',
     '--setting-sources',
     'local',

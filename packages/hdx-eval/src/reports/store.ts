@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 import type { GradeRecord } from '../grading/types';
-import type { RunRecord } from '../harness/types';
+import type { McpKind, RunRecord } from '../harness/types';
 import { SCENARIO_NAMES } from '../scenarios';
 import { buildAggregate, type GradedRunPair } from './aggregate';
 import { renderMarkdownReport } from './markdown';
@@ -38,9 +38,10 @@ export function loadGradedPairs(batchDir: string): GradedRunPair[] {
 export function writeBatchSummary(
   batchDir: string,
   outPath: string,
+  baseline?: McpKind,
 ): { jsonPath: string; mdPath: string; pairsCount: number } {
   const pairs = loadGradedPairs(batchDir);
-  const summary = buildAggregate({ batchDir, pairs });
+  const summary = buildAggregate({ batchDir, pairs, baseline });
 
   const jsonPath = outPath.replace(/\.md$/, '.json');
   writeFileSync(jsonPath, JSON.stringify(summary, null, 2) + '\n', 'utf8');

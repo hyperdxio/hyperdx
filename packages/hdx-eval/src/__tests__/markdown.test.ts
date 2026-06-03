@@ -3,11 +3,7 @@ import type { RunRecord } from '../harness/types';
 import { buildAggregate, type GradedRunPair } from '../reports/aggregate';
 import { renderMarkdownReport } from '../reports/markdown';
 
-function pair(
-  scenario: string,
-  mcp: 'hyperdx' | 'clickhouse',
-  i: number,
-): GradedRunPair {
+function pair(scenario: string, mcp: string, i: number): GradedRunPair {
   const run: RunRecord = {
     schemaVersion: 1,
     runId: `${scenario}-${mcp}-${i}`,
@@ -73,7 +69,9 @@ describe('renderMarkdownReport', () => {
 
   it('renders a top-line verdict table', () => {
     expect(md).toContain('### Top-line verdict');
-    expect(md).toContain('| Scenario | HyperDX | ClickHouse | Δ (combined) |');
+    // Dynamic column headers with MCP names
+    expect(md).toContain('clickhouse');
+    expect(md).toContain('hyperdx');
   });
 
   it('emits a section per scenario', () => {
@@ -109,5 +107,10 @@ describe('renderMarkdownReport', () => {
 
   it('uses the batch basename in the title', () => {
     expect(md.split('\n')[0]).toContain('2026-05-09T07-50-58-566Z');
+  });
+
+  it('shows MCPs and baseline in the header', () => {
+    expect(md).toContain('MCPs: clickhouse, hyperdx');
+    expect(md).toContain('Baseline: clickhouse');
   });
 });

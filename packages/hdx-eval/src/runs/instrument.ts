@@ -34,7 +34,7 @@ export type TimingRecord = {
   schemaVersion: 1;
   runId: string;
   scenario: string;
-  mcp: 'hyperdx' | 'clickhouse';
+  mcp: string;
   toolCalls: ToolCallTiming[];
   totalWallMs: number;
   totalServerMs: number;

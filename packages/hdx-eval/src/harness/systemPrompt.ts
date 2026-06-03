@@ -1,9 +1,8 @@
 import { scenarioTables } from '../clickhouse/schema';
-import type { McpKind, PromptVariant } from './types';
+import type { PromptVariant } from './types';
 
 export function buildSystemPrompt(
   scenario: string,
-  mcp: McpKind,
   anchorTimeIso?: string,
   variant: PromptVariant = 'baseline',
   maxTurns?: number,

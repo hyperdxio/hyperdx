@@ -24,22 +24,32 @@ export type CellSummary = {
   termination: Record<string, number>;
 };
 
+export type DeltaSummary = {
+  combinedScore: number | null;
+  programmaticScore: number | null;
+  judgeWeightedMean: number | null;
+  toolCalls: number | null;
+  outputTokens: number | null;
+  durationMs: number | null;
+};
+
 export type ScenarioSummary = {
   scenario: string;
-  cells: Partial<Record<McpKind, CellSummary>>;
-  delta: {
-    combinedScore: number | null;
-    programmaticScore: number | null;
-    judgeWeightedMean: number | null;
-    toolCalls: number | null;
-    outputTokens: number | null;
-    durationMs: number | null;
-  };
+  /** All MCP cells keyed by MCP name. */
+  cells: Record<McpKind, CellSummary>;
+  /** Which MCP is the baseline (first MCP, or explicitly set). */
+  baseline?: McpKind;
+  /** Per-challenger deltas vs the baseline. Keyed by challenger MCP name. */
+  deltas: Record<McpKind, DeltaSummary>;
 };
 
 export type BatchSummary = {
   batchDir: string;
   generatedAt: string;
+  /** The baseline MCP used for delta computation. */
+  baseline?: McpKind;
+  /** Ordered list of MCP names as they appear in the report columns. */
+  mcpOrder: McpKind[];
   scenarios: ScenarioSummary[];
 };
 
@@ -51,12 +61,19 @@ export type GradedRunPair = {
 export function buildAggregate(args: {
   batchDir: string;
   pairs: GradedRunPair[];
+  /** Explicit baseline MCP. If not set, the first MCP encountered is used. */
+  baseline?: McpKind;
 }): BatchSummary {
   const byScenario = new Map<string, GradedRunPair[]>();
+  // Track all MCP names in insertion order.
+  const mcpSet = new Set<McpKind>();
   for (const p of args.pairs) {
     if (!byScenario.has(p.run.scenario)) byScenario.set(p.run.scenario, []);
     byScenario.get(p.run.scenario)!.push(p);
+    mcpSet.add(p.run.mcp);
   }
+  const mcpOrder = [...mcpSet].sort();
+  const baseline = args.baseline ?? mcpOrder[0];
 
   const scenarios: ScenarioSummary[] = [];
   for (const [name, ps] of byScenario.entries()) {
@@ -65,14 +82,24 @@ export function buildAggregate(args: {
       if (!byMcp.has(p.run.mcp)) byMcp.set(p.run.mcp, []);
       byMcp.get(p.run.mcp)!.push(p);
     }
-    const cells: Partial<Record<McpKind, CellSummary>> = {};
+    const cells: Record<McpKind, CellSummary> = {};
     for (const [mcp, list] of byMcp.entries()) {
       cells[mcp] = buildCellSummary(name, mcp, list);
     }
+
+    // Compute deltas: each non-baseline MCP vs the baseline.
+    const deltas: Record<McpKind, DeltaSummary> = {};
+    const baselineCell = cells[baseline];
+    for (const mcp of Object.keys(cells)) {
+      if (mcp === baseline) continue;
+      deltas[mcp] = computeDelta(cells[mcp], baselineCell);
+    }
+
     scenarios.push({
       scenario: name,
       cells,
-      delta: computeDelta(cells.hyperdx, cells.clickhouse),
+      baseline,
+      deltas,
     });
   }
 
@@ -80,6 +107,8 @@ export function buildAggregate(args: {
   return {
     batchDir: args.batchDir,
     generatedAt: new Date().toISOString(),
+    baseline,
+    mcpOrder,
     scenarios,
   };
 }
@@ -170,11 +199,15 @@ function buildCellSummary(
   };
 }
 
+/**
+ * Compute the delta between a challenger and the baseline.
+ * Delta = challenger − baseline.
+ */
 function computeDelta(
-  hyperdx: CellSummary | undefined,
-  clickhouse: CellSummary | undefined,
-): ScenarioSummary['delta'] {
-  if (!hyperdx || !clickhouse) {
+  challenger: CellSummary | undefined,
+  baseline: CellSummary | undefined,
+): DeltaSummary {
+  if (!challenger || !baseline) {
     return {
       combinedScore: null,
       programmaticScore: null,
@@ -185,13 +218,14 @@ function computeDelta(
     };
   }
   return {
-    combinedScore: hyperdx.combinedScore.mean - clickhouse.combinedScore.mean,
-    programmaticScore: hyperdx.programmatic.mean - clickhouse.programmatic.mean,
+    combinedScore: challenger.combinedScore.mean - baseline.combinedScore.mean,
+    programmaticScore:
+      challenger.programmatic.mean - baseline.programmatic.mean,
     judgeWeightedMean:
-      hyperdx.judge.weightedMean - clickhouse.judge.weightedMean,
-    toolCalls: hyperdx.toolCalls.mean - clickhouse.toolCalls.mean,
-    outputTokens: hyperdx.tokens.output - clickhouse.tokens.output,
-    durationMs: hyperdx.durationMs.mean - clickhouse.durationMs.mean,
+      challenger.judge.weightedMean - baseline.judge.weightedMean,
+    toolCalls: challenger.toolCalls.mean - baseline.toolCalls.mean,
+    outputTokens: challenger.tokens.output - baseline.tokens.output,
+    durationMs: challenger.durationMs.mean - baseline.durationMs.mean,
   };
 }
 

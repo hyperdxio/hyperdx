@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-import { blindAnswer } from './blind';
+import { blindAnswer, type BlindingEntry } from './blind';
 import {
   buildJudgeSystem,
   buildJudgeUser,
@@ -19,6 +19,8 @@ export type JudgeOptions = {
   finalAnswer: string;
   judgeModel?: string;
   client?: Anthropic;
+  /** Blinding entries for anonymizing MCP identity in the answer. */
+  blindingEntries?: BlindingEntry[];
 };
 
 export async function judgeTrajectory(
@@ -32,7 +34,7 @@ export async function judgeTrajectory(
   const userPrompt = buildJudgeUser({
     scenarioPrompt: opts.scenarioPrompt,
     groundTruthFacts: formatGroundTruthFacts(opts.groundTruth),
-    candidateAnswer: blindAnswer(opts.finalAnswer),
+    candidateAnswer: blindAnswer(opts.finalAnswer, opts.blindingEntries),
   });
 
   const startedMs = Date.now();

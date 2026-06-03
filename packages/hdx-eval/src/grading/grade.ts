@@ -6,6 +6,7 @@ import type { RunRecord } from '../harness/types';
 import { runsRoot } from '../runs/path';
 import { readRun } from '../runs/store';
 import { getScenario, SCENARIO_NAMES } from '../scenarios';
+import type { BlindingEntry } from './blind';
 import { judgeTrajectory } from './judge';
 import { runProgrammaticChecks } from './programmatic';
 import { loadScenarioRubric } from './rubric';
@@ -72,6 +73,8 @@ export type GradeBatchOptions = {
   rerunJudge?: boolean;
   skipJudge?: boolean;
   apiKey?: string;
+  /** Blinding entries for anonymizing MCP identity during judging. */
+  blindingEntries?: BlindingEntry[];
 };
 
 export type GradeBatchSummary = {
@@ -180,6 +183,7 @@ async function gradeOne(args: {
       finalAnswer: record.finalAnswer,
       judgeModel: opts.judgeModel,
       client,
+      blindingEntries: opts.blindingEntries,
     });
   }
 

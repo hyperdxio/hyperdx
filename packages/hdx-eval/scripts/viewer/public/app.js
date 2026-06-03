@@ -20,9 +20,11 @@
     batches: [],
     batch: null,
     cells: [],
+    summary: null,
     selectedRun: null, // { scenario, mcp, idx }
     runData: null, // { trajectory, grade }
     activeTab: 'trajectory',
+    view: 'summary', // 'summary' | 'run'
   };
 
   // ----- formatting helpers -----
@@ -169,8 +171,11 @@
     state.batch = data.batch;
     state.cells = data.cells || [];
     state.summary = data.summary;
+    state.selectedRun = null;
+    state.runData = null;
     renderBatchMeta();
     renderNav();
+    showView('summary');
   }
 
   async function loadRun(scenario, mcp, idx) {
@@ -178,6 +183,7 @@
     const u = `/api/batches/${encodeURIComponent(state.batch)}/runs/${encodeURIComponent(scenario)}/${encodeURIComponent(mcp)}/${idx}`;
     state.runData = await fetchJson(u);
     renderNav();
+    showView('run');
     renderRun();
   }
 
@@ -195,7 +201,20 @@
   function renderBatchMeta() {
     const sc = state.summary?.scenarios?.length ?? state.cells.length;
     const cells = state.cells.length;
-    $('#batch-meta').textContent = `${sc} scenario(s) · ${cells} cell(s)`;
+    const meta = $('#batch-meta');
+    meta.innerHTML = '';
+    meta.appendChild(document.createTextNode(`${sc} scenario(s) \u00B7 ${cells} cell(s)  `));
+    const link = el('a', {
+      href: '#',
+      class: 'back-link',
+      onclick: (e) => {
+        e.preventDefault();
+        state.selectedRun = null;
+        renderNav();
+        showView('summary');
+      },
+    }, '\u2190 Summary');
+    meta.appendChild(link);
   }
 
   // ----- rendering: sidebar nav -----
@@ -267,6 +286,7 @@
   // ----- rendering: run -----
 
   function renderRun() {
+    $('#summary').hidden = true;
     $('#empty').hidden = true;
     $('#run').hidden = false;
 
@@ -665,6 +685,406 @@
     );
   }
 
+  // ----- view switching -----
+
+  function showView(view) {
+    state.view = view;
+    const summaryEl = $('#summary');
+    const runEl = $('#run');
+    const emptyEl = $('#empty');
+    if (view === 'summary') {
+      summaryEl.hidden = false;
+      runEl.hidden = true;
+      emptyEl.hidden = true;
+      renderSummary();
+    } else {
+      summaryEl.hidden = true;
+      runEl.hidden = false;
+      emptyEl.hidden = true;
+    }
+  }
+
+  // ----- rendering: summary comparison dashboard -----
+
+  const pct = (x) => (x == null ? '—' : `${(x * 100).toFixed(0)}%`);
+  const signedPct = (x) => {
+    if (x == null) return '—';
+    const sign = x >= 0 ? '+' : '';
+    return `${sign}${(x * 100).toFixed(0)}%`;
+  };
+  const signedNum = (x, d = 1) => {
+    if (x == null) return '—';
+    const sign = x >= 0 ? '+' : '';
+    return `${sign}${x.toFixed(d)}`;
+  };
+  const deltaClass = (x, invert = false) => {
+    if (x == null) return '';
+    const v = invert ? -x : x;
+    if (Math.abs(v) < 0.005) return 'delta-neutral';
+    return v > 0 ? 'delta-pos' : 'delta-neg';
+  };
+
+  function renderSummary() {
+    const root = $('#summary-content');
+    root.innerHTML = '';
+
+    const s = state.summary;
+    if (!s || !s.scenarios || s.scenarios.length === 0) {
+      root.className = 'muted center';
+      root.textContent = 'No summary data. Run grading and report first.';
+      return;
+    }
+    root.className = 'summary-dashboard';
+
+    const mcpOrder = s.mcpOrder || Object.keys(s.scenarios[0]?.cells || {}).sort();
+    const baseline = s.baseline || mcpOrder[0];
+    const challengers = mcpOrder.filter((m) => m !== baseline);
+
+    // Header info
+    root.appendChild(
+      el(
+        'div',
+        { class: 'summary-header' },
+        el('span', { class: 'label' }, 'Baseline:'),
+        el('span', { class: 'value accent' }, baseline),
+        el('span', { class: 'label' }, 'MCPs:'),
+        el('span', { class: 'value' }, mcpOrder.join(', ')),
+        s.generatedAt
+          ? el(
+              'span',
+              { class: 'muted small' },
+              new Date(s.generatedAt).toLocaleString(),
+            )
+          : null,
+      ),
+    );
+
+    // Top-line verdict table
+    root.appendChild(renderVerdictTable(s, mcpOrder, baseline, challengers));
+
+    // Per-scenario breakdowns
+    for (const scenario of s.scenarios) {
+      root.appendChild(
+        renderScenarioBreakdown(scenario, mcpOrder, baseline, challengers),
+      );
+    }
+  }
+
+  function renderVerdictTable(s, mcpOrder, baseline, challengers) {
+    const headerCells = [el('th', {}, 'Scenario')];
+    for (const m of mcpOrder) {
+      headerCells.push(
+        el('th', { class: m === baseline ? 'baseline-col' : '' }, m),
+      );
+    }
+    for (const m of challengers) {
+      headerCells.push(el('th', { class: 'delta-col' }, `\u0394 ${m}`));
+    }
+
+    const rows = s.scenarios.map((sc) => {
+      const cells = [el('td', { class: 'scenario-name' }, sc.scenario)];
+      for (const m of mcpOrder) {
+        const c = sc.cells?.[m];
+        const score = c?.combinedScore?.mean;
+        cells.push(
+          el(
+            'td',
+            { class: `score-cell ${scoreClass(score)}` },
+            pct(score),
+          ),
+        );
+      }
+      for (const m of challengers) {
+        const d = sc.deltas?.[m]?.combinedScore;
+        cells.push(
+          el('td', { class: `delta-cell ${deltaClass(d)}` }, signedPct(d)),
+        );
+      }
+      return el('tr', {}, ...cells);
+    });
+
+    return el(
+      'div',
+      { class: 'summary-section' },
+      el('h2', {}, 'Top-line Verdict'),
+      el(
+        'table',
+        { class: 'summary-table' },
+        el('thead', {}, el('tr', {}, ...headerCells)),
+        el('tbody', {}, ...rows),
+      ),
+    );
+  }
+
+  function renderScenarioBreakdown(scenario, mcpOrder, baseline, challengers) {
+    const section = el('div', { class: 'summary-section scenario-breakdown' });
+    section.appendChild(el('h2', {}, scenario.scenario));
+
+    // Metrics table
+    const metrics = [
+      {
+        label: 'Combined score',
+        get: (c) => c?.combinedScore?.mean,
+        fmt: pct,
+        dKey: 'combinedScore',
+        dFmt: signedPct,
+      },
+      {
+        label: 'Programmatic',
+        get: (c) => c?.programmatic?.mean,
+        fmt: pct,
+        dKey: 'programmaticScore',
+        dFmt: signedPct,
+      },
+      {
+        label: 'Judge (weighted)',
+        get: (c) => c?.judge?.weightedMean,
+        fmt: pct,
+        dKey: 'judgeWeightedMean',
+        dFmt: signedPct,
+      },
+      {
+        label: 'Tool calls',
+        get: (c) => c?.toolCalls?.mean,
+        fmt: (x) => (x == null ? '—' : x.toFixed(1)),
+        dKey: 'toolCalls',
+        dFmt: (x) => signedNum(x, 1),
+        invert: true,
+      },
+      {
+        label: 'Tool errors',
+        get: (c) => c?.toolErrors?.mean,
+        fmt: (x) => (x == null ? '—' : x.toFixed(1)),
+      },
+      {
+        label: 'Error penalty',
+        get: (c) => c?.toolErrors?.penaltyMean,
+        fmt: (x) => (x == null ? '—' : `${(x * 100).toFixed(0)}pp`),
+      },
+      {
+        label: 'Output tokens',
+        get: (c) => c?.tokens?.output,
+        fmt: (x) => (x == null ? '—' : Math.round(x).toLocaleString()),
+        dKey: 'outputTokens',
+        dFmt: (x) => signedNum(x, 0),
+        invert: true,
+      },
+      {
+        label: 'Duration (s)',
+        get: (c) => c?.durationMs?.mean,
+        fmt: (x) => (x == null ? '—' : (x / 1000).toFixed(1)),
+        dKey: 'durationMs',
+        dFmt: (x) => (x == null ? '—' : signedNum(x / 1000, 1)),
+        invert: true,
+      },
+      {
+        label: 'Termination',
+        get: (c) => c?.termination,
+        fmt: (x) => {
+          if (!x) return '—';
+          return Object.entries(x)
+            .sort((a, b) => b[1] - a[1])
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(', ');
+        },
+      },
+      {
+        label: 'N',
+        get: (c) => c?.n,
+        fmt: (x) => (x == null ? '—' : String(x)),
+      },
+    ];
+
+    const headerCells = [el('th', {}, 'Metric')];
+    for (const m of mcpOrder) {
+      headerCells.push(
+        el('th', { class: m === baseline ? 'baseline-col' : '' }, m),
+      );
+    }
+    for (const m of challengers) {
+      headerCells.push(el('th', { class: 'delta-col' }, `\u0394 ${m}`));
+    }
+
+    const metricRows = metrics.map((metric) => {
+      const cells = [el('td', { class: 'metric-label' }, metric.label)];
+      for (const m of mcpOrder) {
+        const c = scenario.cells?.[m];
+        const v = metric.get(c);
+        cells.push(el('td', { class: 'metric-value' }, metric.fmt(v)));
+      }
+      for (const m of challengers) {
+        if (metric.dKey) {
+          const d = scenario.deltas?.[m]?.[metric.dKey];
+          cells.push(
+            el(
+              'td',
+              { class: `delta-cell ${deltaClass(d, metric.invert)}` },
+              metric.dFmt(d),
+            ),
+          );
+        } else {
+          cells.push(el('td', { class: 'delta-cell' }, '—'));
+        }
+      }
+      return el('tr', {}, ...cells);
+    });
+
+    section.appendChild(
+      el(
+        'table',
+        { class: 'summary-table metrics-table' },
+        el('thead', {}, el('tr', {}, ...headerCells)),
+        el('tbody', {}, ...metricRows),
+      ),
+    );
+
+    // Judge per-criterion heatmap
+    const allCriteria = new Set();
+    for (const cell of Object.values(scenario.cells || {})) {
+      if (cell?.judge?.perCriterion) {
+        for (const id of Object.keys(cell.judge.perCriterion)) allCriteria.add(id);
+      }
+    }
+    if (allCriteria.size > 0) {
+      const jHeader = [el('th', {}, 'Criterion')];
+      for (const m of mcpOrder) jHeader.push(el('th', {}, m));
+      const jRows = [...allCriteria].sort().map((id) => {
+        const cells = [el('td', { class: 'metric-label' }, id)];
+        for (const m of mcpOrder) {
+          const v = scenario.cells?.[m]?.judge?.perCriterion?.[id];
+          const cls = criterionHeatClass(v);
+          cells.push(
+            el('td', { class: `heatmap-cell ${cls}` }, v != null ? `${v.toFixed(1)}/5` : '—'),
+          );
+        }
+        return el('tr', {}, ...cells);
+      });
+      section.appendChild(
+        el(
+          'div',
+          { class: 'sub-table' },
+          el('h3', {}, 'Judge per-criterion (0\u20135)'),
+          el(
+            'table',
+            { class: 'summary-table heatmap' },
+            el('thead', {}, el('tr', {}, ...jHeader)),
+            el('tbody', {}, ...jRows),
+          ),
+        ),
+      );
+    }
+
+    // Programmatic per-check
+    const allChecks = new Set();
+    for (const cell of Object.values(scenario.cells || {})) {
+      if (cell?.programmatic?.perCheck) {
+        for (const id of Object.keys(cell.programmatic.perCheck)) allChecks.add(id);
+      }
+    }
+    if (allChecks.size > 0) {
+      const pHeader = [el('th', {}, 'Check')];
+      for (const m of mcpOrder) pHeader.push(el('th', {}, m));
+      const pRows = [...allChecks].sort().map((id) => {
+        const isNeg = id.startsWith('false_');
+        const label = isNeg ? `${id} (neg)` : id;
+        const cells = [el('td', { class: 'metric-label' }, label)];
+        for (const m of mcpOrder) {
+          const v = scenario.cells?.[m]?.programmatic?.perCheck?.[id];
+          const cls = v != null ? (v >= 0.99 ? 'check-pass' : v >= 0.5 ? 'check-partial' : 'check-fail') : '';
+          cells.push(
+            el('td', { class: `heatmap-cell ${cls}` }, v != null ? pct(v) : '—'),
+          );
+        }
+        return el('tr', {}, ...cells);
+      });
+      section.appendChild(
+        el(
+          'div',
+          { class: 'sub-table' },
+          el('h3', {}, 'Programmatic per-check (pass rate)'),
+          el(
+            'table',
+            { class: 'summary-table heatmap' },
+            el('thead', {}, el('tr', {}, ...pHeader)),
+            el('tbody', {}, ...pRows),
+          ),
+        ),
+      );
+    }
+
+    // Side-by-side run comparison
+    const scenarioCells = state.cells.filter((c) => c.scenario === scenario.scenario);
+    if (scenarioCells.length > 0) {
+      const maxRuns = Math.max(...scenarioCells.map((c) => c.runs.length));
+      const runHeader = [el('th', {}, 'Run')];
+      for (const c of scenarioCells) {
+        runHeader.push(el('th', {}, c.mcp));
+      }
+      const runRows = [];
+      for (let i = 0; i < maxRuns; i++) {
+        const cells = [el('td', { class: 'metric-label' }, `#${i}`)];
+        for (const c of scenarioCells) {
+          const r = c.runs[i];
+          if (!r) {
+            cells.push(el('td', {}, '—'));
+            continue;
+          }
+          const chip = el(
+            'span',
+            { class: `score-chip ${scoreClass(r.combinedScore)}` },
+            fmtScore(r.combinedScore),
+          );
+          const errBit =
+            r.toolErrors > 0
+              ? el('span', { class: 'tag error small' }, `${r.toolErrors}err`)
+              : null;
+          const termBit =
+            r.termination !== 'final_answer'
+              ? el('span', { class: 'tag small' }, r.termination)
+              : null;
+          cells.push(
+            el(
+              'td',
+              {
+                class: 'run-cell clickable',
+                onclick: () => loadRun(scenario.scenario, c.mcp, r.idx),
+              },
+              chip,
+              ' ',
+              el('span', { class: 'muted small' }, `${r.toolCalls ?? '?'}c ${fmtMs(r.durationMs)}`),
+              termBit ? el('span', {}, ' ', termBit) : null,
+              errBit ? el('span', {}, ' ', errBit) : null,
+            ),
+          );
+        }
+        runRows.push(el('tr', {}, ...cells));
+      }
+      section.appendChild(
+        el(
+          'div',
+          { class: 'sub-table' },
+          el('h3', {}, 'Runs (click to inspect)'),
+          el(
+            'table',
+            { class: 'summary-table runs-table' },
+            el('thead', {}, el('tr', {}, ...runHeader)),
+            el('tbody', {}, ...runRows),
+          ),
+        ),
+      );
+    }
+
+    return section;
+  }
+
+  function criterionHeatClass(v) {
+    if (v == null) return '';
+    if (v >= 4) return 'heat-high';
+    if (v >= 3) return 'heat-mid';
+    if (v >= 2) return 'heat-low';
+    return 'heat-bad';
+  }
+
   // ----- wiring -----
 
   for (const btn of document.querySelectorAll('.tab')) {
@@ -680,6 +1100,6 @@
   });
 
   loadBatches().catch((e) => {
-    $('#empty').textContent = `Error loading batches: ${e.message}`;
+    $('#summary-content').textContent = `Error loading batches: ${e.message}`;
   });
 })();

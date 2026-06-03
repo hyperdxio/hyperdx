@@ -1,22 +1,34 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, resolve } from 'path';
 
-import { SCENARIO_NAMES } from '../scenarios';
+import type { McpDefinition, McpKind } from '../harness/types';
 
 export type ScenarioSourceIds = {
   tracesSourceId: string;
   logsSourceId: string;
 };
 
+/**
+ * Configuration for the HyperDX API — only needed by the `setup-hyperdx`
+ * command to create Connections and Sources. Not required for running evals.
+ */
+export type HyperdxApiConfig = {
+  apiUrl: string;
+  accessKey: string;
+  connectionId: string;
+};
+
 export type EvalConfig = {
-  hyperdx: {
-    apiUrl: string;
-    mcpUrl: string;
-    accessKey: string;
-    connectionId: string;
-    scenarios: Record<string, ScenarioSourceIds>;
-  };
-  clickhouse: {
+  /** Registry of MCP definitions keyed by a free-form name. */
+  mcps: Record<McpKind, McpDefinition>;
+  /** Per-scenario HyperDX Source IDs (only needed when an MCP points at
+   *  HyperDX and the Sources must exist). */
+  scenarios?: Record<string, ScenarioSourceIds>;
+  /** HyperDX API config — only needed for `setup-hyperdx`. */
+  hyperdxApi?: HyperdxApiConfig;
+  /** ClickHouse connection details — used by seed/drop/instrument commands
+   *  and as the default for stdio MCP env vars. */
+  clickhouse?: {
     host: string;
     port: string;
     user: string;
@@ -54,42 +66,82 @@ export function writeConfig(
   writeFileSync(path, JSON.stringify(config, null, 2) + '\n', 'utf8');
 }
 
+/** Return all MCP names defined in the config. */
+export function configMcpNames(config: EvalConfig): McpKind[] {
+  return Object.keys(config.mcps);
+}
+
+/** Return only the enabled MCP names (where `enabled` is not `false`). */
+export function enabledMcpNames(config: EvalConfig): McpKind[] {
+  return Object.entries(config.mcps)
+    .filter(([, def]) => def.enabled !== false)
+    .map(([name]) => name);
+}
+
+/** Get a single MCP definition by name, or throw. */
+export function getMcpDefinition(
+  config: EvalConfig,
+  name: McpKind,
+): McpDefinition {
+  const def = config.mcps[name];
+  if (!def) {
+    const available = configMcpNames(config).join(', ');
+    throw new Error(
+      `MCP "${name}" not found in config. Available: ${available}`,
+    );
+  }
+  return def;
+}
+
 function validateConfig(raw: unknown, path: string): EvalConfig {
   if (!raw || typeof raw !== 'object') {
     throw new Error(`Eval config at ${path} is not an object.`);
   }
   const obj = raw as Record<string, unknown>;
-  const hdx = obj.hyperdx as Record<string, unknown> | undefined;
-  const ch = obj.clickhouse as Record<string, unknown> | undefined;
-  if (!hdx) throw new Error(`Eval config missing 'hyperdx' section`);
-  if (!ch) throw new Error(`Eval config missing 'clickhouse' section`);
 
-  for (const f of ['apiUrl', 'mcpUrl', 'accessKey', 'connectionId'] as const) {
-    if (typeof hdx[f] !== 'string' || !hdx[f]) {
-      throw new Error(`Eval config 'hyperdx.${f}' must be a non-empty string`);
+  // Require the `mcps` section.
+  const mcps = obj.mcps as Record<string, unknown> | undefined;
+  if (!mcps || typeof mcps !== 'object') {
+    throw new Error(
+      `Eval config at ${path} missing 'mcps' section. ` +
+        `Re-run \`hdx-eval setup-hyperdx\` to generate a new config.`,
+    );
+  }
+
+  // Validate each MCP definition.
+  for (const [name, def] of Object.entries(mcps)) {
+    if (!def || typeof def !== 'object') {
+      throw new Error(`Eval config 'mcps.${name}' must be an object`);
     }
-  }
-  const scenarios = hdx.scenarios as Record<string, ScenarioSourceIds>;
-  if (!scenarios || typeof scenarios !== 'object') {
-    throw new Error(`Eval config 'hyperdx.scenarios' must be an object`);
-  }
-  for (const name of SCENARIO_NAMES) {
-    const s = scenarios[name];
-    if (!s || !s.tracesSourceId || !s.logsSourceId) {
+    const d = def as Record<string, unknown>;
+    if (d.type !== 'http' && d.type !== 'stdio') {
       throw new Error(
-        `Eval config missing source IDs for scenario '${name}'. ` +
-          `Re-run \`hdx-eval setup-hyperdx\`.`,
+        `Eval config 'mcps.${name}.type' must be "http" or "stdio"`,
       );
     }
-  }
-
-  for (const f of ['host', 'port', 'user'] as const) {
-    if (typeof ch[f] !== 'string') {
-      throw new Error(`Eval config 'clickhouse.${f}' must be a string`);
+    if (d.type === 'http') {
+      if (typeof d.url !== 'string' || !d.url) {
+        throw new Error(
+          `Eval config 'mcps.${name}.url' must be a non-empty string`,
+        );
+      }
+    } else {
+      if (typeof d.command !== 'string' || !d.command) {
+        throw new Error(
+          `Eval config 'mcps.${name}.command' must be a non-empty string`,
+        );
+      }
     }
-  }
-  if (typeof ch.password !== 'string') {
-    throw new Error(`Eval config 'clickhouse.password' must be a string`);
+    if (typeof d.toolPattern !== 'string' || !d.toolPattern) {
+      throw new Error(
+        `Eval config 'mcps.${name}.toolPattern' must be a non-empty string`,
+      );
+    }
+    if (typeof d.label !== 'string' || !d.label) {
+      throw new Error(
+        `Eval config 'mcps.${name}.label' must be a non-empty string`,
+      );
+    }
   }
 
   return raw as EvalConfig;

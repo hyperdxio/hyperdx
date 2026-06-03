@@ -1,5 +1,6 @@
 import { scenarioTables } from '../clickhouse/schema';
 import { QUERY_TIMEOUT_SECONDS } from '../harness/mcpConfig';
+import type { McpDefinition } from '../harness/types';
 import { SCENARIO_NAMES } from '../scenarios';
 import { HyperdxApiClient, type HyperdxSource } from './api';
 import {
@@ -113,13 +114,63 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
     };
   }
 
+  const mcpUrl = `${opts.apiUrl.replace(/\/$/, '')}/mcp`;
+
+  const hyperdxMcp: McpDefinition = {
+    type: 'http',
+    url: mcpUrl,
+    headers: { Authorization: `Bearer ${me.accessKey}` },
+    toolPattern: 'mcp__hyperdx__*',
+    label: 'HyperDX',
+    brandTerms: ['HyperDX', 'hyperdx'],
+    deniedTools: [
+      'mcp__hyperdx__hyperdx_delete_dashboard',
+      'mcp__hyperdx__hyperdx_get_dashboard',
+      'mcp__hyperdx__hyperdx_save_dashboard',
+      'mcp__hyperdx__hyperdx_query_tile',
+      'mcp__hyperdx__hyperdx_get_saved_search',
+      'mcp__hyperdx__hyperdx_save_saved_search',
+      'mcp__hyperdx__hyperdx_get_alert',
+      'mcp__hyperdx__hyperdx_get_webhook',
+      'mcp__hyperdx__hyperdx_save_alert',
+    ],
+  };
+
+  const clickhouseMcp: McpDefinition = {
+    type: 'stdio',
+    command: 'uv',
+    args: [
+      'run',
+      '--with',
+      'mcp-clickhouse==0.3.0',
+      '--python',
+      '3.10',
+      'mcp-clickhouse',
+    ],
+    env: {
+      CLICKHOUSE_HOST: opts.clickhouse.host,
+      CLICKHOUSE_PORT: opts.clickhouse.port,
+      CLICKHOUSE_USER: opts.clickhouse.user,
+      CLICKHOUSE_PASSWORD: opts.clickhouse.password,
+      CLICKHOUSE_SECURE: 'false',
+      CLICKHOUSE_VERIFY: 'false',
+      CLICKHOUSE_SEND_RECEIVE_TIMEOUT: String(QUERY_TIMEOUT_SECONDS),
+    },
+    toolPattern: 'mcp__clickhouse__*',
+    label: 'ClickHouse MCP',
+    brandTerms: ['ClickHouse MCP', 'clickhouse'],
+  };
+
   const config: EvalConfig = {
-    hyperdx: {
+    mcps: {
+      hyperdx: hyperdxMcp,
+      clickhouse: clickhouseMcp,
+    },
+    scenarios: scenarioIds,
+    hyperdxApi: {
       apiUrl: opts.apiUrl,
-      mcpUrl: `${opts.apiUrl.replace(/\/$/, '')}/mcp`,
       accessKey: me.accessKey,
       connectionId: connection._id,
-      scenarios: scenarioIds,
     },
     clickhouse: opts.clickhouse,
   };
@@ -236,24 +287,29 @@ export async function runCheck(
   let mcpReachable = false;
   let chReachable = false;
   if (cfg) {
-    mcpReachable = await apiBearerCheck(
-      cfg.hyperdx.mcpUrl,
-      cfg.hyperdx.accessKey,
-    );
-    if (!mcpReachable) {
-      errors.push(
-        `HyperDX MCP at ${cfg.hyperdx.mcpUrl} did not respond as expected`,
-      );
+    // Check the HyperDX MCP if there's an http-type MCP in the config.
+    const httpMcp = Object.values(cfg.mcps).find(m => m.type === 'http');
+    if (httpMcp && httpMcp.type === 'http') {
+      const accessKey =
+        httpMcp.headers?.Authorization?.replace('Bearer ', '') ?? '';
+      mcpReachable = await apiBearerCheck(httpMcp.url, accessKey);
+      if (!mcpReachable) {
+        errors.push(
+          `HyperDX MCP at ${httpMcp.url} did not respond as expected`,
+        );
+      }
     }
-    try {
-      const chUrl = `http://${cfg.clickhouse.host}:${cfg.clickhouse.port}/ping`;
-      const res = await fetch(chUrl);
-      chReachable = res.ok;
-      if (!chReachable) errors.push(`ClickHouse ping → ${res.status}`);
-    } catch (e) {
-      errors.push(
-        `ClickHouse not reachable: ${e instanceof Error ? e.message : e}`,
-      );
+    if (cfg.clickhouse) {
+      try {
+        const chUrl = `http://${cfg.clickhouse.host}:${cfg.clickhouse.port}/ping`;
+        const res = await fetch(chUrl);
+        chReachable = res.ok;
+        if (!chReachable) errors.push(`ClickHouse ping → ${res.status}`);
+      } catch (e) {
+        errors.push(
+          `ClickHouse not reachable: ${e instanceof Error ? e.message : e}`,
+        );
+      }
     }
   }
 

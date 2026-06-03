@@ -1,5 +1,5 @@
 import { allowedToolsPattern } from './mcpConfig';
-import type { McpKind, PromptVariant } from './types';
+import type { McpDefinition, PromptVariant } from './types';
 
 /**
  * Filesystem / shell / built-in tools we never want the eval agent to use.
@@ -37,44 +37,31 @@ export const DENIED_BUILT_IN_TOOLS = [
 ] as const;
 
 /**
- * HyperDX MCP tools that are irrelevant to eval investigation scenarios.
- * Denying these reduces the total visible tool count so Claude Code is more
- * likely to load schemas eagerly (instead of deferring them behind
- * ToolSearch), saving 1-2 turns per run.
+ * Build the list of denied tools for a given MCP and prompt variant.
+ * Per-MCP denied tools come from `McpDefinition.deniedTools`.
  */
-const DENIED_HYPERDX_NON_INVESTIGATION_TOOLS = [
-  'mcp__hyperdx__hyperdx_delete_dashboard',
-  'mcp__hyperdx__hyperdx_get_dashboard',
-  'mcp__hyperdx__hyperdx_save_dashboard',
-  'mcp__hyperdx__hyperdx_query_tile',
-  'mcp__hyperdx__hyperdx_get_saved_search',
-  'mcp__hyperdx__hyperdx_save_saved_search',
-  'mcp__hyperdx__hyperdx_get_alert',
-  'mcp__hyperdx__hyperdx_get_webhook',
-  'mcp__hyperdx__hyperdx_save_alert',
-] as const;
-
 export function deniedToolsFor(
   variant: PromptVariant,
-  kind?: McpKind,
+  def?: McpDefinition,
 ): readonly string[] {
   const builtIn =
     variant === 'hypothesis'
       ? DENIED_BUILT_IN_TOOLS_BASE
       : DENIED_BUILT_IN_TOOLS;
 
-  if (kind === 'hyperdx') {
-    return [...builtIn, ...DENIED_HYPERDX_NON_INVESTIGATION_TOOLS];
+  const mcpDenied = def?.deniedTools ?? [];
+  if (mcpDenied.length > 0) {
+    return [...builtIn, ...mcpDenied];
   }
   return builtIn;
 }
 
 export function buildSettings(
-  kind: McpKind,
+  def: McpDefinition,
   variant: PromptVariant = 'baseline',
   tempdir?: string,
 ): Record<string, unknown> {
-  const allow: string[] = [allowedToolsPattern(kind)];
+  const allow: string[] = [allowedToolsPattern(def)];
 
   // Allow Read scoped to the agent's tempdir so it can recover oversized
   // tool responses that Claude Code saves to disk. The tempdir is an
@@ -86,7 +73,7 @@ export function buildSettings(
   return {
     permissions: {
       allow,
-      deny: [...deniedToolsFor(variant, kind)],
+      deny: [...deniedToolsFor(variant, def)],
     },
   };
 }

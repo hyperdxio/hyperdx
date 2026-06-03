@@ -1,10 +1,20 @@
-import type { BatchSummary, ScenarioSummary } from './aggregate';
+import type { McpKind } from '../harness/types';
+import type {
+  BatchSummary,
+  CellSummary,
+  DeltaSummary,
+  ScenarioSummary,
+} from './aggregate';
 
 export function renderMarkdownReport(summary: BatchSummary): string {
   const lines: string[] = [];
   lines.push(`# Eval Batch — ${basename(summary.batchDir)}`);
   lines.push('');
   lines.push(`Generated: ${summary.generatedAt}`);
+  if (summary.baseline) {
+    lines.push(`Baseline: ${summary.baseline}`);
+  }
+  lines.push(`MCPs: ${summary.mcpOrder.join(', ')}`);
   lines.push('');
   lines.push(renderTopVerdict(summary));
   lines.push('');
@@ -12,14 +22,17 @@ export function renderMarkdownReport(summary: BatchSummary): string {
   for (const scenario of summary.scenarios) {
     lines.push(`## ${scenario.scenario}`);
     lines.push('');
-    lines.push(renderScenarioTable(scenario));
+    lines.push(renderScenarioTable(scenario, summary.mcpOrder));
     lines.push('');
-    const judgeBreakdown = renderJudgeBreakdown(scenario);
+    const judgeBreakdown = renderJudgeBreakdown(scenario, summary.mcpOrder);
     if (judgeBreakdown) {
       lines.push(judgeBreakdown);
       lines.push('');
     }
-    const programmaticBreakdown = renderProgrammaticBreakdown(scenario);
+    const programmaticBreakdown = renderProgrammaticBreakdown(
+      scenario,
+      summary.mcpOrder,
+    );
     if (programmaticBreakdown) {
       lines.push(programmaticBreakdown);
       lines.push('');
@@ -29,165 +42,172 @@ export function renderMarkdownReport(summary: BatchSummary): string {
 }
 
 function renderTopVerdict(summary: BatchSummary): string {
-  const rows = [
-    '| Scenario | HyperDX | ClickHouse | Δ (combined) |',
-    '|---|---|---|---|',
-  ];
+  const mcps = summary.mcpOrder;
+  const baseline = summary.baseline;
+  // Header: | Scenario | MCP1 | MCP2 | ... | Δ₁ | Δ₂ | ...
+  const mcpHeaders = mcps.map(m => m).join(' | ');
+  const challengers = mcps.filter(m => m !== baseline);
+  const deltaHeaders =
+    challengers.length > 0
+      ? ' | ' + challengers.map(m => `Δ (${m})`).join(' | ')
+      : '';
+  const header = `| Scenario | ${mcpHeaders}${deltaHeaders} |`;
+  const sep = '|---' + '|---'.repeat(mcps.length + challengers.length) + '|';
+
+  const rows = [header, sep];
   for (const s of summary.scenarios) {
-    const h = s.cells.hyperdx;
-    const c = s.cells.clickhouse;
-    const hCell = h ? pct(h.combinedScore.mean) : '—';
-    const cCell = c ? pct(c.combinedScore.mean) : '—';
-    const delta =
-      s.delta.combinedScore === null ? '—' : signedPct(s.delta.combinedScore);
-    rows.push(`| ${s.scenario} | ${hCell} | ${cCell} | ${delta} |`);
+    const mcpCells = mcps.map(m => {
+      const c = s.cells[m];
+      return c ? pct(c.combinedScore.mean) : '—';
+    });
+    const deltaCells = challengers.map(m => {
+      const d = s.deltas[m];
+      return d?.combinedScore !== null && d?.combinedScore !== undefined
+        ? signedPct(d.combinedScore)
+        : '—';
+    });
+    const allCells = [...mcpCells, ...deltaCells];
+    rows.push(`| ${s.scenario} | ${allCells.join(' | ')} |`);
   }
   return ['### Top-line verdict', '', ...rows].join('\n');
 }
 
-function renderScenarioTable(scenario: ScenarioSummary): string {
-  const h = scenario.cells.hyperdx;
-  const c = scenario.cells.clickhouse;
-  const rows = [
-    '| Metric | HyperDX | ClickHouse | Δ (HDX − CH) |',
-    '|---|---|---|---|',
-  ];
-  rows.push(
-    row(
-      'Combined score',
-      val(h?.combinedScore.mean, pct),
-      val(c?.combinedScore.mean, pct),
-      signedPct(scenario.delta.combinedScore),
-    ),
+function renderScenarioTable(
+  scenario: ScenarioSummary,
+  mcpOrder: McpKind[],
+): string {
+  const baseline = scenario.baseline;
+  const challengers = mcpOrder.filter(m => m !== baseline);
+  const hasDelta = challengers.length > 0;
+
+  // Build dynamic headers: | Metric | MCP1 | MCP2 | ... | Δ₁ | ...
+  const mcpHeaders = mcpOrder.map(m => m).join(' | ');
+  const deltaHeaders = hasDelta
+    ? ' | ' + challengers.map(m => `Δ (${m})`).join(' | ')
+    : '';
+  const header = `| Metric | ${mcpHeaders}${deltaHeaders} |`;
+  const sep =
+    '|---' + '|---'.repeat(mcpOrder.length + challengers.length) + '|';
+
+  const rows = [header, sep];
+
+  const cellFor = (m: McpKind): CellSummary | undefined => scenario.cells[m];
+  const deltaFor = (m: McpKind): DeltaSummary | undefined => scenario.deltas[m];
+
+  function addRow(
+    label: string,
+    valueFn: (c: CellSummary | undefined) => string,
+    deltaFn?: (d: DeltaSummary | undefined) => string,
+  ) {
+    const mcpCells = mcpOrder.map(m => valueFn(cellFor(m)));
+    const deltaCells = hasDelta
+      ? challengers.map(m => (deltaFn ? deltaFn(deltaFor(m)) : '—'))
+      : [];
+    rows.push(`| ${label} | ${[...mcpCells, ...deltaCells].join(' | ')} |`);
+  }
+
+  addRow(
+    'Combined score',
+    c => val(c?.combinedScore.mean, pct),
+    d => signedPct(d?.combinedScore),
   );
-  rows.push(
-    row(
-      'Programmatic score',
-      val(h?.programmatic.mean, pct),
-      val(c?.programmatic.mean, pct),
-      signedPct(scenario.delta.programmaticScore),
-    ),
+  addRow(
+    'Programmatic score',
+    c => val(c?.programmatic.mean, pct),
+    d => signedPct(d?.programmaticScore),
   );
-  rows.push(
-    row(
-      'Judge mean (weighted)',
-      val(h?.judge.weightedMean, pct),
-      val(c?.judge.weightedMean, pct),
-      signedPct(scenario.delta.judgeWeightedMean),
-    ),
+  addRow(
+    'Judge mean (weighted)',
+    c => val(c?.judge.weightedMean, pct),
+    d => signedPct(d?.judgeWeightedMean),
   );
-  rows.push(
-    row(
-      'Tool calls (mean)',
-      val(h?.toolCalls.mean, oneDecimal),
-      val(c?.toolCalls.mean, oneDecimal),
-      signedNumber(scenario.delta.toolCalls, 1),
-    ),
+  addRow(
+    'Tool calls (mean)',
+    c => val(c?.toolCalls.mean, oneDecimal),
+    d => signedNumber(d?.toolCalls, 1),
   );
-  rows.push(
-    row(
-      'Tool errors (mean)',
-      val(h?.toolErrors?.mean, oneDecimal),
-      val(c?.toolErrors?.mean, oneDecimal),
-      h && c
-        ? signedNumber((h.toolErrors?.mean ?? 0) - (c.toolErrors?.mean ?? 0), 1)
+  addRow('Tool errors (mean)', c => val(c?.toolErrors?.mean, oneDecimal));
+  addRow('Tool-error penalty', c =>
+    val(c?.toolErrors?.penaltyMean, x => `${(x * 100).toFixed(0)}pp`),
+  );
+  addRow(
+    'Output tokens (mean)',
+    c => val(c?.tokens.output, intStr),
+    d => signedNumber(d?.outputTokens, 0),
+  );
+  addRow('Cache reads (mean)', c => val(c?.tokens.cacheRead, intStr));
+  addRow(
+    'Wall clock (s, mean)',
+    c => val(c?.durationMs.mean, secondsFromMs),
+    d =>
+      d?.durationMs !== null && d?.durationMs !== undefined
+        ? signedNumber(d.durationMs / 1000, 1)
         : '—',
-    ),
   );
-  rows.push(
-    row(
-      'Tool-error penalty',
-      val(h?.toolErrors?.penaltyMean, x => `${(x * 100).toFixed(0)}pp`),
-      val(c?.toolErrors?.penaltyMean, x => `${(x * 100).toFixed(0)}pp`),
-      '—',
-    ),
-  );
-  rows.push(
-    row(
-      'Output tokens (mean)',
-      val(h?.tokens.output, intStr),
-      val(c?.tokens.output, intStr),
-      signedNumber(scenario.delta.outputTokens, 0),
-    ),
-  );
-  rows.push(
-    row(
-      'Cache reads (mean)',
-      val(h?.tokens.cacheRead, intStr),
-      val(c?.tokens.cacheRead, intStr),
-      h && c ? signedNumber(h.tokens.cacheRead - c.tokens.cacheRead, 0) : '—',
-    ),
-  );
-  rows.push(
-    row(
-      'Wall clock (s, mean)',
-      val(h?.durationMs.mean, secondsFromMs),
-      val(c?.durationMs.mean, secondsFromMs),
-      scenario.delta.durationMs === null
-        ? '—'
-        : signedNumber(scenario.delta.durationMs / 1000, 1),
-    ),
-  );
-  rows.push(
-    row(
-      'Termination',
-      h ? terminationBreakdown(h.termination) : '—',
-      c ? terminationBreakdown(c.termination) : '—',
-      '—',
-    ),
-  );
-  rows.push(row('N', h ? String(h.n) : '—', c ? String(c.n) : '—', '—'));
+  addRow('Termination', c => (c ? terminationBreakdown(c.termination) : '—'));
+  addRow('N', c => (c ? String(c.n) : '—'));
+
   return rows.join('\n');
 }
 
-function renderJudgeBreakdown(scenario: ScenarioSummary): string | null {
+function renderJudgeBreakdown(
+  scenario: ScenarioSummary,
+  mcpOrder: McpKind[],
+): string | null {
   const allCriteria = new Set<string>();
-  for (const cell of [scenario.cells.hyperdx, scenario.cells.clickhouse]) {
+  for (const cell of Object.values(scenario.cells)) {
     if (!cell) continue;
     for (const id of Object.keys(cell.judge.perCriterion)) allCriteria.add(id);
   }
   if (allCriteria.size === 0) return null;
+
+  const mcpHeaders = mcpOrder.join(' | ');
   const rows = [
     '#### Judge per-criterion (mean 0–5)',
     '',
-    '| Criterion | HyperDX | ClickHouse |',
-    '|---|---|---|',
+    `| Criterion | ${mcpHeaders} |`,
+    '|---' + '|---'.repeat(mcpOrder.length) + '|',
   ];
   for (const id of [...allCriteria].sort()) {
-    const h = scenario.cells.hyperdx?.judge.perCriterion[id];
-    const c = scenario.cells.clickhouse?.judge.perCriterion[id];
-    rows.push(`| ${id} | ${fmtScore(h)} | ${fmtScore(c)} |`);
+    const mcpCells = mcpOrder.map(m => {
+      const v = scenario.cells[m]?.judge.perCriterion[id];
+      return fmtScore(v);
+    });
+    rows.push(`| ${id} | ${mcpCells.join(' | ')} |`);
   }
   return rows.join('\n');
 }
 
-function renderProgrammaticBreakdown(scenario: ScenarioSummary): string | null {
+function renderProgrammaticBreakdown(
+  scenario: ScenarioSummary,
+  mcpOrder: McpKind[],
+): string | null {
   const allChecks = new Set<string>();
-  for (const cell of [scenario.cells.hyperdx, scenario.cells.clickhouse]) {
+  for (const cell of Object.values(scenario.cells)) {
     if (!cell) continue;
     for (const id of Object.keys(cell.programmatic.perCheck)) allChecks.add(id);
   }
   if (allChecks.size === 0) return null;
+
+  const mcpHeaders = mcpOrder.join(' | ');
   const rows = [
     '#### Programmatic per-check (pass rate)',
     '',
     'Pass rate = positive checks matched + negative checks not matched.',
     '',
-    '| Check | HyperDX | ClickHouse |',
-    '|---|---|---|',
+    `| Check | ${mcpHeaders} |`,
+    '|---' + '|---'.repeat(mcpOrder.length) + '|',
   ];
   for (const id of [...allChecks].sort()) {
-    const h = scenario.cells.hyperdx?.programmatic.perCheck[id];
-    const c = scenario.cells.clickhouse?.programmatic.perCheck[id];
+    const mcpCells = mcpOrder.map(m => {
+      const v = scenario.cells[m]?.programmatic.perCheck[id];
+      return fmtRate(v);
+    });
     const isNegative = id.startsWith('false_');
     const label = isNegative ? `${id} (neg)` : id;
-    rows.push(`| ${label} | ${fmtRate(h)} | ${fmtRate(c)} |`);
+    rows.push(`| ${label} | ${mcpCells.join(' | ')} |`);
   }
   return rows.join('\n');
-}
-
-function row(label: string, h: string, c: string, delta: string): string {
-  return `| ${label} | ${h} | ${c} | ${delta} |`;
 }
 
 function val<T>(v: T | undefined, fmt: (x: T) => string): string {

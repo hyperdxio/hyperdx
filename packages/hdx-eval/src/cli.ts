@@ -4,6 +4,7 @@ import { resolve } from 'path';
 
 import { createEvalClient, defaultClickHouseUrl } from './clickhouse/client';
 import { dropScenarioTables, scenarioTables } from './clickhouse/schema';
+import { buildBlindingEntries } from './grading/blind';
 import {
   gradeBatch,
   type GradeBatchOptions,
@@ -11,7 +12,14 @@ import {
 } from './grading/grade';
 import { runCell } from './harness/runRun';
 import type { McpKind, PromptVariant } from './harness/types';
-import { configExists, configPath, readConfig } from './hyperdx/config';
+import {
+  configExists,
+  configMcpNames,
+  configPath,
+  enabledMcpNames,
+  getMcpDefinition,
+  readConfig,
+} from './hyperdx/config';
 import { runCheck, runSetup } from './hyperdx/setup';
 import { writeBatchSummary } from './reports/store';
 import { instrumentBatch, summarizeTimingRecord } from './runs/instrument';
@@ -61,9 +69,12 @@ function buildClientFromConfig(
 ) {
   return createEvalClient({
     url:
-      globals.chUrl ?? `http://${cfg.clickhouse.host}:${cfg.clickhouse.port}`,
-    username: globals.chUser ?? cfg.clickhouse.user,
-    password: globals.chPassword ?? cfg.clickhouse.password,
+      globals.chUrl ??
+      (cfg.clickhouse
+        ? `http://${cfg.clickhouse.host}:${cfg.clickhouse.port}`
+        : defaultClickHouseUrl()),
+    username: globals.chUser ?? cfg.clickhouse?.user,
+    password: globals.chPassword ?? cfg.clickhouse?.password,
   });
 }
 
@@ -292,9 +303,17 @@ program
 program
   .command('run <scenario>')
   .description(
-    'Run Claude Code as the agent against one or both MCPs and capture trajectories',
+    'Run Claude Code as the agent against one or more MCPs and capture trajectories',
   )
-  .option('--mcp <kind>', 'hyperdx | clickhouse | both', 'both')
+  .option(
+    '--mcp <names>',
+    'Comma-separated MCP names from config, or "all" (default: all)',
+    'all',
+  )
+  .option(
+    '--baseline <name>',
+    'MCP to use as baseline in reports (default: first MCP in list)',
+  )
   .option('--runs <n>', 'Number of runs per (scenario,MCP) cell', '3')
   .option(
     '--model <id>',
@@ -350,6 +369,7 @@ program
       scenarioName: string,
       cmdOpts: {
         mcp: string;
+        baseline?: string;
         runs: string;
         model: string;
         maxTurns: string;
@@ -381,7 +401,17 @@ program
       }
       const config = readConfig();
 
-      const mcpKinds: McpKind[] = parseMcpFlag(cmdOpts.mcp);
+      const mcpKinds: McpKind[] = parseMcpFlag(cmdOpts.mcp, config);
+      // Validate that all requested MCPs exist in config.
+      for (const mcp of mcpKinds) {
+        getMcpDefinition(config, mcp);
+      }
+      const baseline = cmdOpts.baseline ?? mcpKinds[0];
+      if (cmdOpts.baseline && !mcpKinds.includes(cmdOpts.baseline)) {
+        throw new Error(
+          `--baseline "${cmdOpts.baseline}" is not in the MCP list: ${mcpKinds.join(', ')}`,
+        );
+      }
       const promptVariant: PromptVariant = parsePromptVariant(
         cmdOpts.promptVariant,
       );
@@ -531,9 +561,17 @@ program
       // ─── Auto-grade ──────────────────────────────────────────────
       if (cmdOpts.grade !== false) {
         console.log('\n--- Auto-grading ---');
+        // Build blinding entries from the MCPs we ran against.
+        const blindingEntries = buildBlindingEntries(
+          mcpKinds.map(k => ({
+            kind: k,
+            def: getMcpDefinition(config, k),
+          })),
+        );
         const gradeOpts: GradeBatchOptions = {
           judgeModel: cmdOpts.judgeModel,
           skipJudge: cmdOpts.judge === false,
+          blindingEntries,
         };
         const gradeResult = await gradeBatch(batchDir, gradeOpts);
         console.log(
@@ -549,7 +587,11 @@ program
           console.log('\n--- Auto-report ---');
           const resolvedDir = resolveBatchDir(batchDir);
           const outPath = `${resolvedDir}/_summary.md`;
-          const reportResult = writeBatchSummary(resolvedDir, outPath);
+          const reportResult = writeBatchSummary(
+            resolvedDir,
+            outPath,
+            baseline,
+          );
           console.log(`Wrote ${reportResult.mdPath}`);
           console.log(`Wrote ${reportResult.jsonPath}`);
           console.log(
@@ -624,18 +666,13 @@ program
         r.toolCalls.forEach((c, i) => {
           const inp = c.input as Record<string, unknown>;
           let summary: string;
-          if (c.name === 'mcp__clickhouse__run_query') {
-            summary = `query=${String(inp?.query ?? '')
-              .replace(/\s+/g, ' ')
-              .trim()}`;
-          } else if (c.name === 'mcp__hyperdx__hyperdx_query') {
-            if (inp?.displayType === 'sql') {
-              summary = `[sql] ${String(inp?.sql ?? '')
-                .replace(/\s+/g, ' ')
-                .trim()}`;
-            } else {
-              summary = `[${inp?.displayType ?? '?'}] where=${inp?.where ?? '—'}  groupBy=${inp?.groupBy ?? '—'}  select=${JSON.stringify(inp?.select ?? null)}`;
-            }
+          // Generic tool display — detect query-like tools by input shape.
+          if (typeof inp?.query === 'string') {
+            summary = `query=${String(inp.query).replace(/\s+/g, ' ').trim()}`;
+          } else if (typeof inp?.sql === 'string') {
+            summary = `[sql] ${String(inp.sql).replace(/\s+/g, ' ').trim()}`;
+          } else if (inp?.displayType) {
+            summary = `[${inp.displayType ?? '?'}] where=${inp?.where ?? '—'}  groupBy=${inp?.groupBy ?? '—'}  select=${JSON.stringify(inp?.select ?? null)}`;
           } else {
             summary = JSON.stringify(inp).slice(0, 200);
           }
@@ -673,10 +710,26 @@ program
     ) => {
       const dir = resolveBatchDir(batch);
       console.log(`Grading batch at ${dir}`);
+      // Build blinding entries from config if available.
+      let blindingEntries;
+      if (configExists()) {
+        try {
+          const cfg = readConfig();
+          blindingEntries = buildBlindingEntries(
+            configMcpNames(cfg).map(k => ({
+              kind: k,
+              def: getMcpDefinition(cfg, k),
+            })),
+          );
+        } catch {
+          // Config may be stale — grade without blinding.
+        }
+      }
       const summary = await gradeBatch(dir, {
         judgeModel: cmdOpts.judgeModel,
         rerunJudge: cmdOpts.rerunJudge ?? false,
         skipJudge: cmdOpts.judge === false,
+        blindingEntries,
       });
       console.log(
         `\nGraded ${summary.graded.length} run${summary.graded.length === 1 ? '' : 's'}; ${summary.errors.length} error${summary.errors.length === 1 ? '' : 's'}.`,
@@ -701,9 +754,11 @@ program
     let chPassword = opts.chPassword;
     if (!chUrl && cfgPath) {
       const cfg = readConfig();
-      chUrl = `http://${cfg.clickhouse.host}:${cfg.clickhouse.port}`;
-      chUser = chUser ?? cfg.clickhouse.user;
-      chPassword = chPassword ?? cfg.clickhouse.password;
+      if (cfg.clickhouse) {
+        chUrl = `http://${cfg.clickhouse.host}:${cfg.clickhouse.port}`;
+        chUser = chUser ?? cfg.clickhouse.user;
+        chPassword = chPassword ?? cfg.clickhouse.password;
+      }
     }
     chUrl = chUrl ?? defaultClickHouseUrl();
     const records = await instrumentBatch(batch, {
@@ -721,21 +776,58 @@ program
   .command('report <batch>')
   .description('Render markdown + JSON summary from grade JSONs in the batch')
   .option('--out <path>', 'Output markdown path (default: <batch>/_summary.md)')
-  .action(async (batch: string, cmdOpts: { out?: string }) => {
-    const dir = resolveBatchDir(batch);
-    const out = resolve(cmdOpts.out ?? `${dir}/_summary.md`);
-    const result = writeBatchSummary(dir, out);
-    console.log(`Wrote ${result.mdPath}`);
-    console.log(`Wrote ${result.jsonPath}`);
-    console.log(
-      `Aggregated ${result.pairsCount} run${result.pairsCount === 1 ? '' : 's'}.`,
-    );
-  });
+  .option(
+    '--baseline <name>',
+    'MCP to use as baseline for delta computation (default: first MCP found)',
+  )
+  .action(
+    async (batch: string, cmdOpts: { out?: string; baseline?: string }) => {
+      const dir = resolveBatchDir(batch);
+      const out = resolve(cmdOpts.out ?? `${dir}/_summary.md`);
+      const result = writeBatchSummary(dir, out, cmdOpts.baseline);
+      console.log(`Wrote ${result.mdPath}`);
+      console.log(`Wrote ${result.jsonPath}`);
+      console.log(
+        `Aggregated ${result.pairsCount} run${result.pairsCount === 1 ? '' : 's'}.`,
+      );
+    },
+  );
 
-function parseMcpFlag(v: string): McpKind[] {
-  if (v === 'both') return ['hyperdx', 'clickhouse'];
-  if (v === 'hyperdx' || v === 'clickhouse') return [v];
-  throw new Error(`--mcp must be hyperdx | clickhouse | both, got: ${v}`);
+function parseMcpFlag(
+  v: string,
+  config: import('./hyperdx/config').EvalConfig,
+): McpKind[] {
+  // "all" returns only enabled MCPs (where enabled !== false).
+  if (v === 'all') {
+    const enabled = enabledMcpNames(config);
+    if (enabled.length === 0) {
+      throw new Error(
+        'No enabled MCPs in config. Set "enabled": true on at least one MCP, ' +
+          'or name MCPs explicitly with --mcp.',
+      );
+    }
+    return enabled;
+  }
+  // Explicit names bypass the enabled flag — you can run a disabled MCP
+  // by naming it directly.
+  const names = v
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (names.length === 0) {
+    throw new Error(
+      `--mcp must be comma-separated MCP names or "all", got: ${v}`,
+    );
+  }
+  const available = configMcpNames(config);
+  for (const name of names) {
+    if (!available.includes(name)) {
+      throw new Error(
+        `--mcp: "${name}" not found in config. Available: ${available.join(', ')}`,
+      );
+    }
+  }
+  return names;
 }
 
 function parsePromptVariant(v: string): PromptVariant {

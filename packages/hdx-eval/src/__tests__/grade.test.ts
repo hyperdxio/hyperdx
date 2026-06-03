@@ -54,7 +54,7 @@ function buildRun(args: {
 function writeBatch(
   batchDir: string,
   scenario: string,
-  mcp: 'hyperdx' | 'clickhouse',
+  mcp: string,
   run: RunRecord,
 ): void {
   const dir = join(batchDir, scenario, mcp);
