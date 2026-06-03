@@ -1,10 +1,10 @@
-import { SmartViewSchema } from '@hyperdx/common-utils/dist/types';
+import { ListViewSchema } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 import { z } from 'zod';
 
 import type { ObjectId } from '.';
 
-export interface ISmartView extends z.infer<typeof SmartViewSchema> {
+export interface IListView extends z.infer<typeof ListViewSchema> {
   _id: ObjectId;
   team: ObjectId;
   owner: ObjectId;
@@ -12,9 +12,9 @@ export interface ISmartView extends z.infer<typeof SmartViewSchema> {
   updatedAt: Date;
 }
 
-export type SmartViewDocument = mongoose.HydratedDocument<ISmartView>;
+export type ListViewDocument = mongoose.HydratedDocument<IListView>;
 
-const smartViewSchema = new Schema<ISmartView>(
+const listViewSchema = new Schema<IListView>(
   {
     name: {
       type: String,
@@ -78,6 +78,6 @@ const smartViewSchema = new Schema<ISmartView>(
 // views the same intentionally (e.g. "checkout" dashboards vs
 // "checkout" saved searches across resources, or two iterations
 // during editing).
-smartViewSchema.index({ team: 1, owner: 1, resource: 1, ordering: 1 });
+listViewSchema.index({ team: 1, owner: 1, resource: 1, ordering: 1 });
 
-export default mongoose.model<ISmartView>('SmartView', smartViewSchema);
+export default mongoose.model<IListView>('ListView', listViewSchema);

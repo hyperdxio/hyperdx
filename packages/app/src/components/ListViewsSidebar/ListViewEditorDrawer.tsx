@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  SmartViewCombinator,
-  SmartViewResource,
-  SmartViewTagRule,
+  ListViewCombinator,
+  ListViewResource,
+  ListViewRule,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -20,10 +20,10 @@ import { notifications } from '@mantine/notifications';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
 
 import {
-  type SmartView,
-  useCreateSmartView,
-  useUpdateSmartView,
-} from '@/smartView';
+  type ListView,
+  useCreateListView,
+  useUpdateListView,
+} from '@/listView';
 
 type RuleDraft =
   | { kind: 'tag-includes'; tag: string }
@@ -39,7 +39,7 @@ const RULE_KIND_LABEL: Record<RuleDraft['kind'], string> = {
 const DEFAULT_DRAFT: {
   name: string;
   icon: string;
-  combinator: SmartViewCombinator;
+  combinator: ListViewCombinator;
   rules: RuleDraft[];
 } = {
   name: '',
@@ -48,7 +48,7 @@ const DEFAULT_DRAFT: {
   rules: [{ kind: 'tag-includes', tag: '' }],
 };
 
-export function SmartViewEditorDrawer({
+export function ListViewEditorDrawer({
   opened,
   onClose,
   resource,
@@ -57,20 +57,20 @@ export function SmartViewEditorDrawer({
 }: {
   opened: boolean;
   onClose: () => void;
-  resource: SmartViewResource;
-  existingView?: SmartView;
+  resource: ListViewResource;
+  existingView?: ListView;
   availableTags: string[];
 }) {
   const [draft, setDraft] = useState(DEFAULT_DRAFT);
   const [nameError, setNameError] = useState<string | null>(null);
 
-  const createSmartView = useCreateSmartView();
-  const updateSmartView = useUpdateSmartView();
+  const createListView = useCreateListView();
+  const updateListView = useUpdateListView();
 
   // Seed the draft from the existing view when the drawer opens for
   // editing; reset to defaults when opening for a new view.
   //
-  // Defensive on every field: an older SmartView document stored before
+  // Defensive on every field: an older ListView document stored before
   // the local-mode default kicked in (or returned by a server that
   // dropped a field) may have `rules` undefined, `combinator` missing,
   // or any rule entry null. Coerce to safe defaults rather than letting
@@ -98,7 +98,7 @@ export function SmartViewEditorDrawer({
     setNameError(null);
   }, [opened, existingView]);
 
-  const isPending = createSmartView.isPending || updateSmartView.isPending;
+  const isPending = createListView.isPending || updateListView.isPending;
 
   const tagOptions = useMemo(
     () => availableTags.map(t => ({ value: t, label: t })),
@@ -139,7 +139,7 @@ export function SmartViewEditorDrawer({
     // tag-includes row left with an empty tag). Saving an empty list
     // is allowed: a view with no rules matches everything, which
     // matches the "pin" semantics of bookmarking the current state.
-    const rules: SmartViewTagRule[] = draft.rules.filter(r => {
+    const rules: ListViewRule[] = draft.rules.filter(r => {
       if (r.kind === 'untagged') return true;
       return r.tag.trim().length > 0;
     });
@@ -155,7 +155,7 @@ export function SmartViewEditorDrawer({
 
     const onSuccess = () => {
       notifications.show({
-        message: existingView ? 'Smart view updated' : 'Smart view created',
+        message: existingView ? 'View updated' : 'View created',
         color: 'green',
       });
       onClose();
@@ -163,19 +163,19 @@ export function SmartViewEditorDrawer({
     const onError = () => {
       notifications.show({
         message: existingView
-          ? 'Failed to update smart view'
-          : 'Failed to create smart view',
+          ? 'Failed to update view'
+          : 'Failed to create view',
         color: 'red',
       });
     };
 
     if (existingView) {
-      updateSmartView.mutate(
+      updateListView.mutate(
         { id: existingView.id, patch: payload },
         { onSuccess, onError },
       );
     } else {
-      createSmartView.mutate(payload, { onSuccess, onError });
+      createListView.mutate(payload, { onSuccess, onError });
     }
   };
 
@@ -185,8 +185,8 @@ export function SmartViewEditorDrawer({
       onClose={onClose}
       position="right"
       size="md"
-      title={existingView ? 'Edit Smart View' : 'New Smart View'}
-      data-testid="smart-view-editor-drawer"
+      title={existingView ? 'Edit View' : 'New View'}
+      data-testid="list-view-editor-drawer"
     >
       <Stack gap="md">
         <TextInput
@@ -206,7 +206,7 @@ export function SmartViewEditorDrawer({
           }}
           placeholder="e.g. Checkout team"
           error={nameError}
-          data-testid="smart-view-name-input"
+          data-testid="list-view-name-input"
         />
 
         <TextInput
@@ -228,7 +228,7 @@ export function SmartViewEditorDrawer({
           onChange={value =>
             setDraft(d => ({
               ...d,
-              combinator: value as SmartViewCombinator,
+              combinator: value as ListViewCombinator,
             }))
           }
         >
@@ -248,7 +248,7 @@ export function SmartViewEditorDrawer({
               size="xs"
               leftSection={<IconPlus size={14} />}
               onClick={addRule}
-              data-testid="add-smart-view-rule"
+              data-testid="add-list-view-rule"
             >
               Add rule
             </Button>
@@ -264,7 +264,7 @@ export function SmartViewEditorDrawer({
                   key={i}
                   gap="xs"
                   wrap="nowrap"
-                  data-testid={`smart-view-rule-${i}`}
+                  data-testid={`list-view-rule-${i}`}
                 >
                   <Select
                     data={[
@@ -306,7 +306,7 @@ export function SmartViewEditorDrawer({
                       placeholder="Select tag"
                       searchable
                       style={{ flex: 1 }}
-                      data-testid={`smart-view-rule-tag-${i}`}
+                      data-testid={`list-view-rule-tag-${i}`}
                     />
                   )}
                   <ActionIcon
@@ -314,7 +314,7 @@ export function SmartViewEditorDrawer({
                     color="red"
                     onClick={() => removeRule(i)}
                     aria-label="Remove rule"
-                    data-testid={`remove-smart-view-rule-${i}`}
+                    data-testid={`remove-list-view-rule-${i}`}
                   >
                     <IconTrash size={14} />
                   </ActionIcon>
@@ -332,7 +332,7 @@ export function SmartViewEditorDrawer({
             variant="primary"
             onClick={handleSave}
             loading={isPending}
-            data-testid="save-smart-view-button"
+            data-testid="save-list-view-button"
           >
             {existingView ? 'Save' : 'Create'}
           </Button>

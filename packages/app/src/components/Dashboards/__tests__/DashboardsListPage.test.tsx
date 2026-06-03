@@ -10,8 +10,8 @@ const mockUseDashboards = jest.fn();
 const mockUseFavorites = jest.fn();
 const mockUseCreateDashboard = jest.fn();
 const mockUseDeleteDashboard = jest.fn();
-const mockUseSmartViews = jest.fn();
-const mockUseDeleteSmartView = jest.fn();
+const mockUseListViews = jest.fn();
+const mockUseDeleteListView = jest.fn();
 const mockUseConfirm = jest.fn();
 const mockUseBrandDisplayName = jest.fn();
 
@@ -63,11 +63,11 @@ jest.mock('nuqs', () => ({
   },
 }));
 
-jest.mock('@/smartView', () => ({
-  useSmartViews: () => mockUseSmartViews(),
-  useDeleteSmartView: () => mockUseDeleteSmartView(),
-  useCreateSmartView: () => ({ mutate: jest.fn(), isPending: false }),
-  useUpdateSmartView: () => ({ mutate: jest.fn(), isPending: false }),
+jest.mock('@/listView', () => ({
+  useListViews: () => mockUseListViews(),
+  useDeleteListView: () => mockUseDeleteListView(),
+  useCreateListView: () => ({ mutate: jest.fn(), isPending: false }),
+  useUpdateListView: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 
 jest.mock('@/dashboard', () => ({
@@ -139,8 +139,8 @@ beforeEach(() => {
     isPending: false,
   });
   mockUseDeleteDashboard.mockReturnValue({ mutate: jest.fn() });
-  mockUseSmartViews.mockReturnValue({ data: [], isLoading: false });
-  mockUseDeleteSmartView.mockReturnValue({ mutate: jest.fn() });
+  mockUseListViews.mockReturnValue({ data: [], isLoading: false });
+  mockUseDeleteListView.mockReturnValue({ mutate: jest.fn() });
   mockUseConfirm.mockReturnValue(jest.fn());
   mockUseBrandDisplayName.mockReturnValue('HyperDX');
 });
@@ -180,7 +180,7 @@ describe('DashboardsListPage', () => {
     expect(screen.getByText('No matching dashboards yet')).toBeInTheDocument();
   });
 
-  it('filters the listing through the active smart view rules', () => {
+  it('filters the listing through the active list view rules', () => {
     const checkoutView = {
       id: 'view-1',
       name: 'Checkout team',
@@ -190,7 +190,7 @@ describe('DashboardsListPage', () => {
       ordering: 0,
       isShared: false,
     };
-    mockUseSmartViews.mockReturnValue({
+    mockUseListViews.mockReturnValue({
       data: [checkoutView],
       isLoading: false,
     });

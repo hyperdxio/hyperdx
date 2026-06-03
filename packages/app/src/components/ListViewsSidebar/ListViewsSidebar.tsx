@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { SmartViewResource } from '@hyperdx/common-utils/dist/types';
+import { ListViewResource } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Box,
@@ -12,15 +12,15 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconDots, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
 
-import { type SmartView, useDeleteSmartView, useSmartViews } from '@/smartView';
+import { type ListView, useDeleteListView, useListViews } from '@/listView';
 import { useConfirm } from '@/useConfirm';
 
-const ALL_VIEW_LABEL: Record<SmartViewResource, string> = {
+const ALL_VIEW_LABEL: Record<ListViewResource, string> = {
   dashboard: 'All Dashboards',
   savedSearch: 'All Saved Searches',
 };
 
-export function SmartViewsSidebar({
+export function ListViewsSidebar({
   resource,
   activeId,
   onActivate,
@@ -29,11 +29,11 @@ export function SmartViewsSidebar({
   totalCount,
   viewCounts,
 }: {
-  resource: SmartViewResource;
+  resource: ListViewResource;
   activeId: string | null;
   onActivate: (id: string | null) => void;
   onCreate: () => void;
-  onEdit: (view: SmartView) => void;
+  onEdit: (view: ListView) => void;
   /** Total number of items in the listing, shown next to the
    *  default "All ..." entry. */
   totalCount: number;
@@ -43,19 +43,19 @@ export function SmartViewsSidebar({
    *  badges in lockstep. */
   viewCounts: Record<string, number>;
 }) {
-  const { data: views, isLoading } = useSmartViews(resource);
-  const deleteSmartView = useDeleteSmartView();
+  const { data: views, isLoading } = useListViews(resource);
+  const deleteListView = useDeleteListView();
   const confirm = useConfirm();
 
   const handleDelete = useCallback(
-    async (view: SmartView) => {
+    async (view: ListView) => {
       const confirmed = await confirm(
-        `Delete the "${view.name}" smart view? This action cannot be undone.`,
+        `Delete the "${view.name}" view? This action cannot be undone.`,
         'Delete',
         { variant: 'danger' },
       );
       if (!confirmed) return;
-      deleteSmartView.mutate(
+      deleteListView.mutate(
         { id: view.id, resource: view.resource },
         {
           onSuccess: () => {
@@ -63,45 +63,45 @@ export function SmartViewsSidebar({
               onActivate(null);
             }
             notifications.show({
-              message: 'Smart view deleted',
+              message: 'View deleted',
               color: 'green',
             });
           },
           onError: () => {
             notifications.show({
-              message: 'Failed to delete smart view',
+              message: 'Failed to delete view',
               color: 'red',
             });
           },
         },
       );
     },
-    [activeId, confirm, deleteSmartView, onActivate],
+    [activeId, confirm, deleteListView, onActivate],
   );
 
   const hasViews = (views?.length ?? 0) > 0;
 
   return (
-    <Box w={220} data-testid="smart-views-sidebar">
+    <Box w={220} data-testid="list-views-sidebar">
       <Stack gap={2}>
         <SidebarEntry
           label={ALL_VIEW_LABEL[resource]}
           count={totalCount}
           isActive={activeId == null}
           onClick={() => onActivate(null)}
-          testId="smart-view-row-all"
+          testId="list-view-row-all"
         />
 
         <Group justify="space-between" align="center" mt="md" mb={4} px="sm">
           <Text size="xs" fw={600} c="dimmed" tt="uppercase" lts={0.4}>
-            Smart Views
+            Views
           </Text>
           <ActionIcon
             variant="subtle"
             size="xs"
             onClick={onCreate}
-            aria-label="New smart view"
-            data-testid="new-smart-view-button"
+            aria-label="New view"
+            data-testid="new-list-view-button"
           >
             <IconPlus size={12} />
           </ActionIcon>
@@ -117,7 +117,7 @@ export function SmartViewsSidebar({
           // way in; this is a fallback for users who don't notice it.
           <UnstyledButton
             onClick={onCreate}
-            data-testid="new-smart-view-empty-button"
+            data-testid="new-list-view-empty-button"
             style={{
               padding: '6px 10px',
               borderRadius: 4,
@@ -125,7 +125,7 @@ export function SmartViewsSidebar({
               fontSize: 13,
             }}
           >
-            + New Smart View
+            + New View
           </UnstyledButton>
         ) : (
           views!.map(view => (
@@ -136,15 +136,15 @@ export function SmartViewsSidebar({
               count={viewCounts[view.id]}
               isActive={view.id === activeId}
               onClick={() => onActivate(view.id === activeId ? null : view.id)}
-              testId={`smart-view-row-${view.id}`}
+              testId={`list-view-row-${view.id}`}
               menu={
                 <Menu position="bottom-end" withinPortal>
                   <Menu.Target>
                     <ActionIcon
                       variant="subtle"
                       size="sm"
-                      aria-label={`Smart view "${view.name}" menu`}
-                      data-testid={`smart-view-menu-${view.id}`}
+                      aria-label={`View "${view.name}" menu`}
+                      data-testid={`list-view-menu-${view.id}`}
                     >
                       <IconDots size={14} />
                     </ActionIcon>

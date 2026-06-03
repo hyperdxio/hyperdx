@@ -1262,10 +1262,10 @@ export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
 export type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
 
 // --------------------------
-// SMART VIEWS
+// LIST VIEWS
 // --------------------------
 //
-// A SmartView is a per-user, per-resource saved filter pinned to the
+// A ListView is a per-user, per-resource saved filter pinned to the
 // listing sidebar. Rules are evaluated client-side over the listing
 // endpoint's response, AND/OR combined via `combinator`.
 //
@@ -1275,32 +1275,26 @@ export type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
 // `updated-within-days`, `has-active-alerts`, `created-by-me`,
 // `provisioned`, `has-tile-type`; the existing stored documents keep
 // parsing because the union extension is additive.
-export const SmartViewTagRuleSchema = z.discriminatedUnion('kind', [
+export const ListViewRuleSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('tag-includes'), tag: z.string().min(1).max(64) }),
   z.object({ kind: z.literal('tag-excludes'), tag: z.string().min(1).max(64) }),
   z.object({ kind: z.literal('untagged') }),
 ]);
-export type SmartViewTagRule = z.infer<typeof SmartViewTagRuleSchema>;
+export type ListViewRule = z.infer<typeof ListViewRuleSchema>;
 
-// In v1 every supported rule is a tag rule. The alias keeps call
-// sites future-proof: when PR-3 widens the union, references to
-// `SmartViewRuleSchema` flip without rewrites at every consumer.
-export const SmartViewRuleSchema = SmartViewTagRuleSchema;
-export type SmartViewRule = SmartViewTagRule;
+export const ListViewResourceSchema = z.enum(['dashboard', 'savedSearch']);
+export type ListViewResource = z.infer<typeof ListViewResourceSchema>;
 
-export const SmartViewResourceSchema = z.enum(['dashboard', 'savedSearch']);
-export type SmartViewResource = z.infer<typeof SmartViewResourceSchema>;
+export const ListViewCombinatorSchema = z.enum(['all', 'any']);
+export type ListViewCombinator = z.infer<typeof ListViewCombinatorSchema>;
 
-export const SmartViewCombinatorSchema = z.enum(['all', 'any']);
-export type SmartViewCombinator = z.infer<typeof SmartViewCombinatorSchema>;
-
-export const SmartViewSchema = z.object({
+export const ListViewSchema = z.object({
   id: z.string(),
   name: z.string().min(1).max(120),
   icon: z.string().max(64).optional(),
-  resource: SmartViewResourceSchema,
-  rules: z.array(SmartViewRuleSchema).max(32),
-  combinator: SmartViewCombinatorSchema,
+  resource: ListViewResourceSchema,
+  rules: z.array(ListViewRuleSchema).max(32),
+  combinator: ListViewCombinatorSchema,
   ordering: z.number().int().nonnegative(),
   // Optional in the wire shape; defaults to `false` in the Mongoose
   // model. UI for promoting a per-user view to a team-shared one
@@ -1308,10 +1302,10 @@ export const SmartViewSchema = z.object({
   // as `false`.
   isShared: z.boolean().optional(),
 });
-export type SmartView = z.infer<typeof SmartViewSchema>;
+export type ListView = z.infer<typeof ListViewSchema>;
 
-export const SmartViewWithoutIdSchema = SmartViewSchema.omit({ id: true });
-export type SmartViewWithoutId = z.infer<typeof SmartViewWithoutIdSchema>;
+export const ListViewWithoutIdSchema = ListViewSchema.omit({ id: true });
+export type ListViewWithoutId = z.infer<typeof ListViewWithoutIdSchema>;
 
 export const ConnectionSchema = z.object({
   id: z.string(),

@@ -35,9 +35,9 @@ import EmptyState from '@/components/EmptyState';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { ListingCard } from '@/components/ListingCard';
 import { ListingRow } from '@/components/ListingListRow';
+import { ListViewEditorDrawer } from '@/components/ListViewsSidebar/ListViewEditorDrawer';
+import { ListViewsSidebar } from '@/components/ListViewsSidebar/ListViewsSidebar';
 import { PageHeader } from '@/components/PageHeader';
-import { SmartViewEditorDrawer } from '@/components/SmartViewsSidebar/SmartViewEditorDrawer';
-import { SmartViewsSidebar } from '@/components/SmartViewsSidebar/SmartViewsSidebar';
 import { IS_K8S_DASHBOARD_ENABLED } from '@/config';
 import {
   type Dashboard,
@@ -46,10 +46,10 @@ import {
   useDeleteDashboard,
 } from '@/dashboard';
 import { useFavorites } from '@/favorites';
-import { type SmartView, useSmartViews } from '@/smartView';
+import { type ListView, useListViews } from '@/listView';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { useConfirm } from '@/useConfirm';
-import { evaluateSmartView } from '@/utils/evaluateSmartView';
+import { evaluateListView } from '@/utils/evaluateListView';
 
 import { withAppNav } from '../../layout';
 
@@ -99,20 +99,20 @@ export default function DashboardsListPage() {
     defaultValue: 'grid',
   });
 
-  const { data: smartViews } = useSmartViews('dashboard');
+  const { data: listViews } = useListViews('dashboard');
   const [editorOpened, { open: openEditor, close: closeEditor }] =
     useDisclosure(false);
-  const [editingView, setEditingView] = useState<SmartView | undefined>(
+  const [editingView, setEditingView] = useState<ListView | undefined>(
     undefined,
   );
 
-  const handleCreateSmartView = useCallback(() => {
+  const handleCreateListView = useCallback(() => {
     setEditingView(undefined);
     openEditor();
   }, [openEditor]);
 
-  const handleEditSmartView = useCallback(
-    (view: SmartView) => {
+  const handleEditListView = useCallback(
+    (view: ListView) => {
       setEditingView(view);
       openEditor();
     },
@@ -155,23 +155,23 @@ export default function DashboardsListPage() {
   }, [dashboards]);
 
   const activeView = useMemo(
-    () => smartViews?.find(v => v.id === activeViewId) ?? null,
-    [smartViews, activeViewId],
+    () => listViews?.find(v => v.id === activeViewId) ?? null,
+    [listViews, activeViewId],
   );
 
   // Per-view match counts shown as badges in the sidebar. Computed
   // off the same `dashboards` reference that drives the grid so the
   // count and the visible result set never drift apart.
   const viewCounts = useMemo<Record<string, number>>(() => {
-    if (!dashboards || !smartViews) return {};
+    if (!dashboards || !listViews) return {};
     const result: Record<string, number> = {};
-    for (const view of smartViews) {
+    for (const view of listViews) {
       result[view.id] = dashboards.filter(d =>
-        evaluateSmartView(view, d),
+        evaluateListView(view, d),
       ).length;
     }
     return result;
-  }, [dashboards, smartViews]);
+  }, [dashboards, listViews]);
 
   const filteredDashboards = useMemo(() => {
     if (!dashboards) return [];
@@ -188,7 +188,7 @@ export default function DashboardsListPage() {
       );
     }
     if (activeView) {
-      result = result.filter(d => evaluateSmartView(activeView, d));
+      result = result.filter(d => evaluateListView(activeView, d));
     }
     return result.slice().sort((a, b) => a.name.localeCompare(b.name));
   }, [dashboards, search, selectedTags, activeView]);
@@ -259,12 +259,12 @@ export default function DashboardsListPage() {
           style={{ flex: 1 }}
         >
           <Box w={{ base: '100%', md: 220 }} style={{ flexShrink: 0 }}>
-            <SmartViewsSidebar
+            <ListViewsSidebar
               resource="dashboard"
               activeId={activeViewId}
               onActivate={setActiveViewId}
-              onCreate={handleCreateSmartView}
-              onEdit={handleEditSmartView}
+              onCreate={handleCreateListView}
+              onEdit={handleEditListView}
               totalCount={dashboards?.length ?? 0}
               viewCounts={viewCounts}
             />
@@ -530,7 +530,7 @@ export default function DashboardsListPage() {
           </Box>
         </Flex>
       </Container>
-      <SmartViewEditorDrawer
+      <ListViewEditorDrawer
         opened={editorOpened}
         onClose={closeEditor}
         resource="dashboard"

@@ -1,6 +1,6 @@
 import {
-  SmartView as SmartViewBase,
-  SmartViewResource,
+  ListView as ListViewBase,
+  ListViewResource,
 } from '@hyperdx/common-utils/dist/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -8,23 +8,23 @@ import { hdxServer } from './api';
 import { IS_LOCAL_MODE } from './config';
 import { createEntityStore } from './localStore';
 
-export type SmartView = SmartViewBase & {
+export type ListView = ListViewBase & {
   createdAt?: string;
   updatedAt?: string;
 };
 
-export type SmartViewInput = Omit<SmartView, 'id' | 'createdAt' | 'updatedAt'>;
+export type ListViewInput = Omit<ListView, 'id' | 'createdAt' | 'updatedAt'>;
 
 // Local-mode storage mirrors the favorites + dashboards pattern; the
 // Vercel preview deployments and standalone `IS_LOCAL_MODE` builds have
-// no `/smart-views` backend, so all CRUD goes through localStorage and
+// no `/list-views` backend, so all CRUD goes through localStorage and
 // React Query never tries to hit the API.
-const localSmartViews = createEntityStore<SmartView>('hdx-local-smart-views');
+const localListViews = createEntityStore<ListView>('hdx-local-list-views');
 
-function normalizeSmartView(view: Partial<SmartView>): SmartView {
+function normalizeListView(view: Partial<ListView>): ListView {
   // Coerce any missing fields so downstream consumers (sidebar, drawer,
-  // evaluateSmartView) never have to defend against undefined `rules`,
-  // missing `combinator`, etc. A SmartView stored before a default
+  // evaluateListView) never have to defend against undefined `rules`,
+  // missing `combinator`, etc. A ListView stored before a default
   // landed will still render and edit cleanly.
   return {
     id: view.id ?? '',
@@ -40,51 +40,49 @@ function normalizeSmartView(view: Partial<SmartView>): SmartView {
   };
 }
 
-async function fetchSmartViews(
-  resource: SmartViewResource,
-): Promise<SmartView[]> {
+async function fetchListViews(resource: ListViewResource): Promise<ListView[]> {
   if (IS_LOCAL_MODE) {
-    return localSmartViews
+    return localListViews
       .getAll()
       .filter(v => v?.resource === resource)
-      .map(normalizeSmartView)
+      .map(normalizeListView)
       .sort((a, b) => (a.ordering ?? 0) - (b.ordering ?? 0));
   }
-  const raw = await hdxServer(`smart-views?resource=${resource}`).json<
-    Partial<SmartView>[]
+  const raw = await hdxServer(`list-views?resource=${resource}`).json<
+    Partial<ListView>[]
   >();
-  return Array.isArray(raw) ? raw.map(normalizeSmartView) : [];
+  return Array.isArray(raw) ? raw.map(normalizeListView) : [];
 }
 
-export function useSmartViews(resource: SmartViewResource) {
+export function useListViews(resource: ListViewResource) {
   return useQuery({
-    queryKey: ['smart-views', resource],
-    queryFn: () => fetchSmartViews(resource),
+    queryKey: ['list-views', resource],
+    queryFn: () => fetchListViews(resource),
   });
 }
 
-export function useCreateSmartView() {
+export function useCreateListView() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (body: SmartViewInput) => {
+    mutationFn: (body: ListViewInput) => {
       if (IS_LOCAL_MODE) {
-        return Promise.resolve(localSmartViews.create(body));
+        return Promise.resolve(localListViews.create(body));
       }
-      return hdxServer('smart-views', {
+      return hdxServer('list-views', {
         method: 'POST',
         json: body,
-      }).json<SmartView>();
+      }).json<ListView>();
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({
-        queryKey: ['smart-views', vars.resource],
+        queryKey: ['list-views', vars.resource],
       });
     },
   });
 }
 
-export function useUpdateSmartView() {
+export function useUpdateListView() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -93,25 +91,25 @@ export function useUpdateSmartView() {
       patch,
     }: {
       id: string;
-      patch: Partial<SmartViewInput>;
+      patch: Partial<ListViewInput>;
     }) => {
       if (IS_LOCAL_MODE) {
-        return Promise.resolve(localSmartViews.update(id, patch));
+        return Promise.resolve(localListViews.update(id, patch));
       }
-      return hdxServer(`smart-views/${id}`, {
+      return hdxServer(`list-views/${id}`, {
         method: 'PATCH',
         json: patch,
-      }).json<SmartView>();
+      }).json<ListView>();
     },
     onSuccess: data => {
       queryClient.invalidateQueries({
-        queryKey: ['smart-views', data.resource],
+        queryKey: ['list-views', data.resource],
       });
     },
   });
 }
 
-export function useDeleteSmartView() {
+export function useDeleteListView() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -120,17 +118,17 @@ export function useDeleteSmartView() {
       resource: _resource,
     }: {
       id: string;
-      resource: SmartViewResource;
+      resource: ListViewResource;
     }) => {
       if (IS_LOCAL_MODE) {
-        localSmartViews.delete(id);
+        localListViews.delete(id);
         return Promise.resolve();
       }
-      return hdxServer(`smart-views/${id}`, { method: 'DELETE' }).json<void>();
+      return hdxServer(`list-views/${id}`, { method: 'DELETE' }).json<void>();
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({
-        queryKey: ['smart-views', vars.resource],
+        queryKey: ['list-views', vars.resource],
       });
     },
   });

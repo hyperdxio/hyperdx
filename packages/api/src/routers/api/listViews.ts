@@ -1,7 +1,6 @@
 import {
-  SmartViewResourceSchema,
-  SmartViewSchema,
-  SmartViewWithoutIdSchema,
+  ListViewResourceSchema,
+  ListViewWithoutIdSchema,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import _ from 'lodash';
@@ -9,12 +8,12 @@ import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import {
-  createSmartView,
-  deleteSmartView,
-  getSmartView,
-  getSmartViews,
-  updateSmartView,
-} from '@/controllers/smartView';
+  createListView,
+  deleteListView,
+  getListView,
+  getListViews,
+  updateListView,
+} from '@/controllers/listView';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { objectIdSchema } from '@/utils/zod';
 
@@ -24,14 +23,14 @@ router.get(
   '/',
   validateRequest({
     query: z.object({
-      resource: SmartViewResourceSchema.optional(),
+      resource: ListViewResourceSchema.optional(),
     }),
   }),
   async (req, res, next) => {
     try {
       const { teamId, userId } = getNonNullUserWithTeam(req);
 
-      const views = await getSmartViews(
+      const views = await getListViews(
         userId.toString(),
         teamId.toString(),
         req.query.resource,
@@ -47,13 +46,13 @@ router.get(
 router.post(
   '/',
   validateRequest({
-    body: SmartViewWithoutIdSchema,
+    body: ListViewWithoutIdSchema,
   }),
   async (req, res, next) => {
     try {
       const { teamId, userId } = getNonNullUserWithTeam(req);
 
-      const view = await createSmartView(
+      const view = await createListView(
         userId.toString(),
         teamId.toString(),
         req.body,
@@ -70,14 +69,14 @@ router.patch(
   '/:id',
   validateRequest({
     params: z.object({ id: objectIdSchema }),
-    body: SmartViewWithoutIdSchema.partial(),
+    body: ListViewWithoutIdSchema.partial(),
   }),
   async (req, res, next) => {
     try {
       const { teamId, userId } = getNonNullUserWithTeam(req);
       const { id } = req.params;
 
-      const existing = await getSmartView(
+      const existing = await getListView(
         id,
         userId.toString(),
         teamId.toString(),
@@ -87,7 +86,7 @@ router.patch(
       }
 
       const updates = _.omitBy(req.body, _.isUndefined);
-      const updated = await updateSmartView(
+      const updated = await updateListView(
         id,
         userId.toString(),
         teamId.toString(),
@@ -111,7 +110,7 @@ router.delete(
       const { teamId, userId } = getNonNullUserWithTeam(req);
       const { id } = req.params;
 
-      const result = await deleteSmartView(
+      const result = await deleteListView(
         id,
         userId.toString(),
         teamId.toString(),

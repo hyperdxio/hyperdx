@@ -1,10 +1,10 @@
 import {
-  SmartViewCombinator,
-  SmartViewRule,
+  ListViewCombinator,
+  ListViewRule,
 } from '@hyperdx/common-utils/dist/types';
 
 /**
- * Pure client-side evaluator for SmartView rules.
+ * Pure client-side evaluator for ListView rules.
  *
  * A view with zero rules matches everything (the rule list is a
  * narrower filter on top of whatever the listing already shows).
@@ -15,10 +15,10 @@ import {
  * extends with the new kinds and consumers gain `T` constraints for
  * the new fields they reference.
  */
-export function evaluateSmartView<T extends { tags: string[] }>(
+export function evaluateListView<T extends { tags: string[] }>(
   view: {
-    rules?: SmartViewRule[] | null;
-    combinator?: SmartViewCombinator | null;
+    rules?: ListViewRule[] | null;
+    combinator?: ListViewCombinator | null;
   },
   item: T,
 ): boolean {
@@ -28,13 +28,13 @@ export function evaluateSmartView<T extends { tags: string[] }>(
   // don't fit any rule shape rather than crashing the caller.
   const rules = Array.isArray(view.rules)
     ? view.rules.filter(
-        (r): r is SmartViewRule =>
+        (r): r is ListViewRule =>
           r != null && typeof r === 'object' && 'kind' in r,
       )
     : [];
   if (rules.length === 0) return true;
 
-  const pass = (rule: SmartViewRule): boolean => {
+  const pass = (rule: ListViewRule): boolean => {
     switch (rule.kind) {
       case 'tag-includes':
         return item.tags.includes(rule.tag);
