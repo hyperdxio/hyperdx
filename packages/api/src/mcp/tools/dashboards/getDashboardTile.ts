@@ -1,9 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
+import { objectIdSchema } from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
@@ -24,7 +24,7 @@ export function registerGetDashboardTile(
         'Use clickstack_get_dashboard (without an ID) to list dashboards, ' +
         'then clickstack_get_dashboard (with an ID) to see all tile IDs.',
       inputSchema: z.object({
-        dashboardId: z.string().describe('Dashboard ID.'),
+        dashboardId: objectIdSchema.describe('Dashboard ID.'),
         tileId: z
           .string()
           .describe(
@@ -37,13 +37,6 @@ export function registerGetDashboardTile(
       'clickstack_get_dashboard_tile',
       context,
       async ({ dashboardId, tileId }) => {
-        if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
-          return {
-            isError: true,
-            content: [{ type: 'text' as const, text: 'Invalid dashboard ID' }],
-          };
-        }
-
         const dashboard = await Dashboard.findOne({
           _id: dashboardId,
           team: teamId,
