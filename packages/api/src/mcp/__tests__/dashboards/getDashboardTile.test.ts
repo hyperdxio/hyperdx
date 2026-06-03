@@ -98,6 +98,6 @@ describe('MCP Dashboard Tools - clickstack_get_dashboard_tile', () => {
     );
 
     expect(result.isError).toBe(true);
-    expect(getFirstText(result)).toContain('Invalid dashboard ID');
+    expect(getFirstText(result)).toContain('dashboardId');
   });
 });
