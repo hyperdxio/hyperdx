@@ -13,21 +13,7 @@ import {
   IconLayoutSidebarRightExpand,
 } from '@tabler/icons-react';
 
-const LARGE_SCREEN_BREAKPOINT_PX = 1440;
-const LARGE_SCREEN_DRAWER_WIDTH_PERCENT = 60;
-const SMALL_SCREEN_DRAWER_WIDTH_PERCENT = 80;
-
-export function getInitialDrawerWidthPercent(): number {
-  if (typeof window === 'undefined') {
-    return SMALL_SCREEN_DRAWER_WIDTH_PERCENT;
-  }
-
-  if (window.innerWidth > LARGE_SCREEN_BREAKPOINT_PX) {
-    return LARGE_SCREEN_DRAWER_WIDTH_PERCENT;
-  }
-
-  return SMALL_SCREEN_DRAWER_WIDTH_PERCENT;
-}
+export const INITIAL_DRAWER_WIDTH_PERCENT = 80;
 
 export const DrawerFullWidthToggle = React.memo<{
   isFullWidth?: boolean;

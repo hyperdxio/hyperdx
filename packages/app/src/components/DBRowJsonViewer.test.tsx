@@ -61,11 +61,28 @@ describe('DBRowJsonViewer', () => {
     );
   };
 
+  // Line action buttons are now icon-only; locate them by their `title`
+  // tooltip. Maps the friendly action name to a unique title substring.
+  const ACTION_TITLE: Record<string, string> = {
+    Search: 'search for this value only',
+    'Add to Filters': 'add to filters',
+    Column: 'column to results table',
+    'Copy Object': 'copy object',
+    'Copy Value': 'copy value',
+  };
+
+  const findActionButton = (line: HTMLElement, buttonText: string) => {
+    const needle = (ACTION_TITLE[buttonText] ?? buttonText).toLowerCase();
+    return within(line).getByTitle((content: string) =>
+      (content ?? '').toLowerCase().includes(needle),
+    );
+  };
+
   // Helper to click a button on a line
   const clickLineButton = (fieldText: string, buttonText: string) => {
     const line = screen.getByText(fieldText).closest('.line')! as HTMLElement;
     fireEvent.mouseEnter(line);
-    const button = within(line).getByText(buttonText);
+    const button = findActionButton(line, buttonText);
     fireEvent.click(button);
   };
 
@@ -84,7 +101,7 @@ describe('DBRowJsonViewer', () => {
       .getByText(childField)
       .closest('.line')! as HTMLElement;
     fireEvent.mouseEnter(childLine);
-    const button = within(childLine).getByText(buttonText);
+    const button = findActionButton(childLine, buttonText);
     fireEvent.click(button);
   };
 

@@ -2573,6 +2573,66 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
+    it('persists where as empty string when omitted from heatmap tile', async () => {
+      const heatmapNoWhere = {
+        name: 'Heatmap Without Where',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'heatmap',
+          sourceId: traceSource._id.toString(),
+          select: [{ valueExpression: 'Duration' }],
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard Heatmap No Where',
+          tiles: [heatmapNoWhere],
+          tags: [],
+        })
+        .expect(200);
+
+      const dashboardInDb = await Dashboard.findById(
+        response.body.data.id,
+      ).lean();
+
+      expect((dashboardInDb!.tiles[0].config as any).where).toBe('');
+    });
+
+    it('persists select-item where as empty string when omitted', async () => {
+      const lineChartNoWhere = {
+        name: 'Line Chart Without Where',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'line',
+          sourceId: traceSource._id.toString(),
+          select: [{ aggFn: 'count' }],
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard Line No Where',
+          tiles: [lineChartNoWhere],
+          tags: [],
+        })
+        .expect(200);
+
+      const dashboardInDb = await Dashboard.findById(
+        response.body.data.id,
+      ).lean();
+
+      expect(
+        (dashboardInDb!.tiles[0].config as any).select[0].aggCondition,
+      ).toBe('');
+    });
+
     it('does not silently downgrade a corrupted heatmap to line on GET', async () => {
       // Seed a Dashboard directly via Mongo with a heatmap tile whose
       // select[0] lacks a non-empty valueExpression. The current API
