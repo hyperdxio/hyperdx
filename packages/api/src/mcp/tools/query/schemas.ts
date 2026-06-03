@@ -13,7 +13,10 @@ const WHERE_DESCRIPTION =
   '  Lucene uses DOT notation:    SpanAttributes.http.method:GET\n' +
   "  SQL uses BRACKET notation:   SpanAttributes['http.method'] = 'GET'\n\n" +
   "WRONG: SpanAttributes['key']:value   (Lucene cannot parse bracket syntax)\n" +
-  'WRONG: level = "error"               (SQL syntax with whereLanguage:"lucene")';
+  'WRONG: level = "error"               (SQL syntax with whereLanguage:"lucene")\n\n' +
+  'SUBSTRING TRAP: Lucene field:value matches ANY row containing "value" as a substring, not exact equality.\n' +
+  '  SpanKind:Server matches "Server", "ServerStreaming", "InternalServer", etc.\n' +
+  "  For exact match, use SQL: SpanKind = 'Server'";
 
 const WHERE_LANGUAGE_DESCRIPTION =
   'Query language for the "where" filter. Default: lucene.\n' +
@@ -21,8 +24,10 @@ const WHERE_LANGUAGE_DESCRIPTION =
   '  Lucene (default): Column:value, Column.mapKey:value, Column:>100\n' +
   "  SQL:              Column = 'value', SpanAttributes['key'] = 'value'\n\n" +
   'Lucene supports comparisons (>= > < <=), wildcards (field:val*), ranges ([1 TO 5]), ' +
-  'and map attributes via dot notation. ' +
-  'Use "sql" for IN(...) lists, complex expressions, or function calls.\n\n' +
+  'and map attributes via dot notation. Use "sql" for IN(...) lists, complex expressions, or function calls.\n' +
+  'IMPORTANT: Lucene field:value is a SUBSTRING match (ilike), not exact equality. ' +
+  'field:val* is prefix-within-substring, not a true prefix match. ' +
+  "For exact matching or reliable wildcards, use SQL: WHERE field = 'value' or WHERE field LIKE 'val%'.\n\n" +
   'Common mistake: writing Column:value (Lucene) but setting whereLanguage to "sql". ' +
   'If your filter uses colon syntax, leave whereLanguage as "lucene" (the default).';
 
