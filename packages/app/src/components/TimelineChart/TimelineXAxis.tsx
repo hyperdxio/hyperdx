@@ -15,17 +15,20 @@ export type TimelineXAxisHandle = {
   recompute: () => void;
 };
 
+// Minimum horizontal space reserved per tick label. The widest label we render
+// (e.g. "1.234s") is ~45px; the extra headroom keeps adjacent labels from
+// touching. Tune up for a sparser axis, down for a denser one.
+const MIN_TICK_PX = 56;
+
 export function TimelineXAxis({
   maxVal,
   labelWidth,
   heightRef,
-  scaleRef,
   ref,
 }: {
   maxVal: number;
   labelWidth: number;
   heightRef: RefObject<number>;
-  scaleRef: RefObject<number>;
   ref: Ref<TimelineXAxisHandle>;
 }) {
   const ticksContainerRef = useRef<HTMLDivElement>(null);
@@ -45,11 +48,17 @@ export function TimelineXAxis({
       return;
     }
 
-    const scale = scaleRef.current ?? 1;
     const height = heightRef.current ?? 0;
     const max = maxValRef.current;
-    const scaledMaxVal = max / scale;
-    const interval = calculateInterval(scaledMaxVal);
+
+    // Budget ticks by the pixels actually available. The ticks container spans
+    // the (zoom-scaled) events area, so dividing its width by a minimum label
+    // width gives how many labels fit without overlapping. Measuring here keeps
+    // the axis correct on both panel resize and zoom, since both re-invoke
+    // recompute after the layout/scale has changed.
+    const ticksWidthPx = container.getBoundingClientRect().width;
+    const maxTicks = Math.max(1, Math.floor(ticksWidthPx / MIN_TICK_PX));
+    const interval = calculateInterval(max, maxTicks);
     const numTicks = Math.floor(max / interval);
     const percSpacing = (interval / max) * 100;
 
@@ -78,7 +87,7 @@ export function TimelineXAxis({
       tick.style.marginLeft = i === 0 ? '0' : `${percSpacing.toFixed(6)}%`;
       label.textContent = renderMs(i * interval);
     }
-  }, [maxValRef, heightRef, scaleRef]);
+  }, [maxValRef, heightRef]);
 
   useImperativeHandle(ref, () => ({ recompute }), [recompute]);
 

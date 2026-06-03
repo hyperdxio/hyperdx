@@ -40,7 +40,7 @@ export function registerSaveAlert(
   const frontendUrl = config.FRONTEND_URL;
 
   server.registerTool(
-    'hyperdx_save_alert',
+    'clickstack_save_alert',
     {
       title: 'Create or Update Alert',
       description:
@@ -49,7 +49,7 @@ export function registerSaveAlert(
         'metric crosses a threshold. A webhook notification channel is required.',
       inputSchema: mcpSaveAlertSchema,
     },
-    withToolTracing('hyperdx_save_alert', context, async input => {
+    withToolTracing('clickstack_save_alert', context, async input => {
       // ── Runtime cross-field validation ──
       const validationError = validateSaveAlertInput(input);
       if (validationError) {

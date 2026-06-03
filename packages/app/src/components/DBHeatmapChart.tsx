@@ -3,26 +3,12 @@ import dynamic from 'next/dynamic';
 import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
 import UplotReact from 'uplot-react';
-import {
-  ClickHouseQueryError,
-  inferTimestampColumn,
-} from '@hyperdx/common-utils/dist/clickhouse';
+import { inferTimestampColumn } from '@hyperdx/common-utils/dist/clickhouse';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import {
-  Box,
-  Button,
-  Code,
-  Divider,
-  Flex,
-  Group,
-  Modal,
-  Text,
-  useMantineColorScheme,
-} from '@mantine/core';
-import { useDisclosure, useElementSize } from '@mantine/hooks';
-import { IconArrowsDiagonal } from '@tabler/icons-react';
+import { Divider, Flex, Text, useMantineColorScheme } from '@mantine/core';
+import { useElementSize } from '@mantine/hooks';
 
 import { isAggregateFunction, timeBucketByGranularity } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -31,7 +17,9 @@ import { FormatTime } from '@/useFormatTime';
 import { formatDurationMsCompact, formatNumber } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
-import { SQLPreview } from './ChartSQLPreview';
+import ChartErrorState, {
+  ChartErrorStateVariant,
+} from './charts/ChartErrorState';
 
 type Mode2DataArray = [number[], number[], number[]];
 
@@ -619,6 +607,7 @@ function HeatmapContainer({
   toolbarSuffix,
   scaleType = 'log',
   showLegend = false,
+  errorVariant,
 }: {
   config: HeatmapChartConfig;
   enabled?: boolean;
@@ -637,6 +626,7 @@ function HeatmapContainer({
   toolbarSuffix?: React.ReactNode[];
   scaleType?: HeatmapScaleType;
   showLegend?: boolean;
+  errorVariant?: ChartErrorStateVariant;
 }) {
   const dateRange = config.dateRange;
   const granularity = convertDateRangeToGranularityString(dateRange, 245);
@@ -661,8 +651,6 @@ function HeatmapContainer({
     queryKey: ['heatmap', minMaxConfig],
     enabled: enabled,
   });
-
-  const [errorModal, errorModalControls] = useDisclosure();
 
   // UInt64 are returned as strings; quantile returns floats
   const min = Number.parseFloat(minMaxData?.data?.[0]?.['min'] ?? '0');
@@ -799,49 +787,7 @@ function HeatmapContainer({
           Loading...
         </Text>
       ) : _error ? (
-        <Box p="xl" ta="center" h="100%">
-          <Text size="sm" mt="sm">
-            Error loading chart, please check your query or try again later.
-          </Text>
-          <Button
-            className="mx-auto"
-            variant="subtle"
-            color="red"
-            onClick={() => errorModalControls.open()}
-          >
-            <Group gap="xxs">
-              <IconArrowsDiagonal size={16} />
-              See Error Details
-            </Group>
-          </Button>
-          <Modal
-            opened={errorModal}
-            onClose={() => errorModalControls.close()}
-            title="Error Details"
-          >
-            <Group align="start">
-              <Text size="sm" ta="center">
-                Error Message:
-              </Text>
-              <Code
-                block
-                style={{
-                  whiteSpace: 'pre-wrap',
-                }}
-              >
-                {_error.message}
-              </Code>
-              {_error instanceof ClickHouseQueryError && (
-                <>
-                  <Text my="sm" size="sm" ta="center">
-                    Sent Query:
-                  </Text>
-                  <SQLPreview data={_error?.query} enableCopy />
-                </>
-              )}
-            </Group>
-          </Modal>
-        </Box>
+        <ChartErrorState error={_error} variant={errorVariant} />
       ) : time.length < 2 || generatedTsBuckets?.length < 2 ? (
         <Text size="sm" ta="center" p="xl">
           Not enough data points to render heatmap. Try expanding your search

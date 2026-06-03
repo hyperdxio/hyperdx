@@ -1,9 +1,13 @@
-import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  displayTypeSupportsBuilderAlerts,
+  displayTypeSupportsRawSqlAlerts,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   validateDashboardContainersStructure,
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
 import {
+  isBuilderSavedChartConfig,
   isHeatmapCompatibleSource,
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -70,7 +74,7 @@ export type ConfigTile = ExternalDashboardTileWithId & {
   config: Exclude<ExternalDashboardTileWithId['config'], undefined>;
 };
 
-export function isRawSqlExternalTileConfig(
+function isRawSqlExternalTileConfig(
   config: ExternalDashboardTileConfig,
 ): config is ExternalDashboardRawSqlTileConfig {
   return 'configType' in config && config.configType === 'sql';
@@ -767,15 +771,13 @@ export function convertToInternalTileConfig(
  * router can pass a single fetched array into multiple helpers without
  * pulling in `controllers/sources` for the type alone.
  */
-export type SourceForValidation = Awaited<
-  ReturnType<typeof getSources>
->[number];
+type SourceForValidation = Awaited<ReturnType<typeof getSources>>[number];
 
 /** Fetches sources for a team. Re-exports the controller call so callers
  * outside `controllers/sources` don't need a second import for the
  * validation flow. The return type is the awaited shape of `getSources`
  * (an array of Source documents) so callers can `await` it directly. */
-export async function fetchSourcesForValidation(
+async function fetchSourcesForValidation(
   team: string | mongoose.Types.ObjectId,
 ): Promise<SourceForValidation[]> {
   return getSources(team.toString());
@@ -792,7 +794,7 @@ function getTileOnClick(tile: ExternalDashboardTileWithId) {
 }
 
 /** Returns source IDs referenced in tiles/filters that do not exist for the team */
-export function getMissingSources(
+function getMissingSources(
   sources: SourceForValidation[],
   tiles: ExternalDashboardTileWithId[],
   filters?: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[],
@@ -840,7 +842,7 @@ export function getMissingSources(
  * `packages/common-utils/src/guards.ts` and `ChartEditorControls.tsx`), so
  * UI and API gates move together.
  */
-export function getHeatmapTilesWithIncompatibleSources(
+function getHeatmapTilesWithIncompatibleSources(
   sources: SourceForValidation[],
   tiles: ExternalDashboardTileWithId[],
 ): string[] {
@@ -874,7 +876,7 @@ export function getHeatmapTilesWithIncompatibleSources(
  * tiles, tiles whose displayType just changed to heatmap, and tiles
  * whose `sourceId` changed all flow through the check.
  */
-export function filterChangedHeatmapTiles(
+function filterChangedHeatmapTiles(
   requestTiles: ExternalDashboardTileWithId[],
   existingTiles: DashboardDocument['tiles'],
 ): ExternalDashboardTileWithId[] {
@@ -918,7 +920,7 @@ export function filterChangedHeatmapTiles(
  * Sources that don't exist are ignored here, getMissingSources handles that
  * case separately with a clearer error message.
  */
-export async function getInvalidOnClickSearchSources(
+async function getInvalidOnClickSearchSources(
   team: string | mongoose.Types.ObjectId,
   tiles: ExternalDashboardTileWithId[],
 ): Promise<string[]> {
@@ -943,7 +945,7 @@ export async function getInvalidOnClickSearchSources(
  * Returns dashboard IDs referenced by tile OnClick link-outs (mode=id,
  * type=dashboard) that do not exist for the team.
  */
-export async function getMissingOnClickDashboards(
+async function getMissingOnClickDashboards(
   team: string | mongoose.Types.ObjectId,
   tiles: ExternalDashboardTileWithId[],
 ): Promise<string[]> {
@@ -969,7 +971,7 @@ export async function getMissingOnClickDashboards(
 }
 
 /** Returns connection IDs referenced in tiles that do not belong to the team */
-export async function getMissingConnections(
+async function getMissingConnections(
   team: string | mongoose.Types.ObjectId,
   tiles: ExternalDashboardTileWithId[],
 ): Promise<string[]> {
@@ -1074,8 +1076,122 @@ export function convertExternalFiltersToInternal(
 }
 
 /**
- * Delete alerts for tiles that were removed or converted to raw SQL
- * (which doesn't support alerts).
+ * Returns source IDs on raw SQL tiles whose connection doesn't match
+ * the source's persisted connection. Catches copy-paste errors where
+ * the LLM mixes up sourceId and connectionId from different sources.
+ */
+function getSourceConnectionMismatches(
+  sources: SourceForValidation[],
+  tiles: ExternalDashboardTileWithId[],
+): string[] {
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
+
+  const mismatched: string[] = [];
+  for (const tile of tiles) {
+    if (
+      isConfigTile(tile) &&
+      isRawSqlExternalTileConfig(tile.config) &&
+      tile.config.sourceId
+    ) {
+      const source = sourceById.get(tile.config.sourceId);
+      if (source && source.connection.toString() !== tile.config.connectionId) {
+        mismatched.push(tile.config.sourceId);
+      }
+    }
+  }
+
+  return mismatched;
+}
+
+// ── Shared tile validation ───────────────────────────────────────────────
+
+export type TileValidationContext = {
+  teamId: string;
+  tiles: ExternalDashboardTileWithId[];
+  /** Filters to check for missing source IDs (create/full-update paths). */
+  filters?: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[];
+  /** Existing internal tiles for scoping heatmap change detection (update paths). */
+  existingTiles?: DashboardDocument['tiles'];
+  /** Container set to validate tile containerId/tabId refs against. */
+  containers: DashboardContainer[];
+};
+
+/**
+ * Run the full suite of tile validation checks (sources, connections,
+ * heatmap source-kind, onClick targets, container/tab refs). Returns
+ * `null` when all checks pass, or an error message string on failure.
+ *
+ * Consolidates the ~95-line validation block that was previously
+ * duplicated across REST v2 POST/PUT, MCP save (create/update), and
+ * MCP patch handlers.
+ */
+export async function validateDashboardTiles(
+  ctx: TileValidationContext,
+): Promise<string | null> {
+  const { teamId, tiles, filters, existingTiles, containers } = ctx;
+
+  // Container/tab ref resolution.
+  const tileRefIssues = collectTileContainerRefIssues(containers, tiles);
+  if (tileRefIssues.length > 0) {
+    return tileRefIssues.join('; ');
+  }
+
+  // Fetch sources/connections/onClick targets in parallel.
+  const [
+    sources,
+    missingConnections,
+    missingOnClickDashboards,
+    invalidOnClickSearchSources,
+  ] = await Promise.all([
+    fetchSourcesForValidation(teamId),
+    getMissingConnections(teamId, tiles),
+    getMissingOnClickDashboards(teamId, tiles),
+    getInvalidOnClickSearchSources(teamId, tiles),
+  ]);
+
+  const missingSources = getMissingSources(sources, tiles, filters);
+  if (missingSources.length > 0) {
+    return `Could not find the following source IDs: ${missingSources.join(', ')}`;
+  }
+  if (missingConnections.length > 0) {
+    return `Could not find the following connection IDs: ${missingConnections.join(', ')}`;
+  }
+
+  const sourceConnectionMismatches = getSourceConnectionMismatches(
+    sources,
+    tiles,
+  );
+  if (sourceConnectionMismatches.length > 0) {
+    return `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(', ')}`;
+  }
+
+  // Heatmap source-kind gate. On create (no existingTiles), validate all
+  // tiles. On update, scope to tiles whose sourceId/displayType changed.
+  const heatmapTilesToCheck = existingTiles
+    ? filterChangedHeatmapTiles(tiles, existingTiles)
+    : tiles;
+  const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
+    sources,
+    heatmapTilesToCheck,
+  );
+  if (heatmapNonTraceSources.length > 0) {
+    return `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`;
+  }
+
+  if (missingOnClickDashboards.length > 0) {
+    return `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(', ')}`;
+  }
+  if (invalidOnClickSearchSources.length > 0) {
+    return `The following onClick search source IDs are not log or trace sources: ${invalidOnClickSearchSources.join(', ')}`;
+  }
+
+  return null;
+}
+
+/**
+ * Delete alerts for tiles that were removed or whose config no longer
+ * supports alerts (raw SQL with incompatible displayType, or builder
+ * tiles with incompatible displayType like Pie/Table/Heatmap/etc.).
  */
 export async function cleanupDashboardAlerts({
   dashboardId,
@@ -1090,13 +1206,19 @@ export async function cleanupDashboardAlerts({
 }) {
   const newTileIdSet = new Set(internalTiles.map(t => t.id));
   const tileIdsToDeleteAlerts = [
+    // Tiles whose config no longer supports alerts (raw SQL or builder).
     ...internalTiles
-      .filter(
-        tile =>
-          isRawSqlSavedChartConfig(tile.config) &&
-          !displayTypeSupportsRawSqlAlerts(tile.config.displayType),
-      )
+      .filter(tile => {
+        if (isRawSqlSavedChartConfig(tile.config)) {
+          return !displayTypeSupportsRawSqlAlerts(tile.config.displayType);
+        }
+        if (isBuilderSavedChartConfig(tile.config)) {
+          return !displayTypeSupportsBuilderAlerts(tile.config.displayType);
+        }
+        return false;
+      })
       .map(tile => tile.id),
+    // Tiles that were completely removed.
     ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
   ];
   if (tileIdsToDeleteAlerts.length > 0) {

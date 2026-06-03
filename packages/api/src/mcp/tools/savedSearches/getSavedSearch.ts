@@ -17,7 +17,7 @@ export function registerGetSavedSearch(
   const frontendUrl = config.FRONTEND_URL;
 
   server.registerTool(
-    'hyperdx_get_saved_search',
+    'clickstack_get_saved_search',
     {
       title: 'Get Saved Search(es)',
       description:
@@ -34,7 +34,7 @@ export function registerGetSavedSearch(
           ),
       }),
     },
-    withToolTracing('hyperdx_get_saved_search', context, async ({ id }) => {
+    withToolTracing('clickstack_get_saved_search', context, async ({ id }) => {
       // ── List all saved searches (slim query — only fetch the fields we need) ──
       if (!id) {
         const savedSearches = await SavedSearch.find(

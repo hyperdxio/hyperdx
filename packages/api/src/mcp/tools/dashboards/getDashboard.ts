@@ -18,7 +18,7 @@ export function registerGetDashboard(
   const frontendUrl = config.FRONTEND_URL;
 
   server.registerTool(
-    'hyperdx_get_dashboard',
+    'clickstack_get_dashboard',
     {
       title: 'Get Dashboard(s)',
       description:
@@ -33,7 +33,7 @@ export function registerGetDashboard(
           ),
       }),
     },
-    withToolTracing('hyperdx_get_dashboard', context, async ({ id }) => {
+    withToolTracing('clickstack_get_dashboard', context, async ({ id }) => {
       if (!id) {
         const dashboards = await getDashboards(
           new mongoose.Types.ObjectId(teamId),

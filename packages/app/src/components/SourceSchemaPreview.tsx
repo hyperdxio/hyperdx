@@ -44,7 +44,7 @@ const SourceSchemaInfoIcon = ({
         <Text
           fw={500}
           size="xs"
-          className="text-sucess-hover"
+          className="text-success-hover"
           style={{ cursor: isEnabled ? 'pointer' : 'default', ...iconStyles }}
         >
           Schema
@@ -128,6 +128,15 @@ interface SourceSchemaPreviewProps {
   source?: SourceSchemaPreviewSource;
   iconStyles?: React.CSSProperties;
   variant?: 'icon' | 'text';
+  /**
+   * When true, the trigger element (icon or text button) is NOT rendered;
+   * the parent owns open state and drives the modal via `open` / `onClose`.
+   * Useful when the trigger lives outside this component (e.g. a kebab menu
+   * adjacent to a source picker).
+   */
+  controlled?: boolean;
+  open?: boolean;
+  onClose?: () => void;
 }
 
 const METRIC_TYPE_NAMES: Record<MetricsDataType, string> = {
@@ -138,16 +147,21 @@ const METRIC_TYPE_NAMES: Record<MetricsDataType, string> = {
   [MetricsDataType.ExponentialHistogram]: 'Exponential Histogram',
 };
 
-const SourceSchemaPreview = ({
-  source,
-  iconStyles,
-  variant = 'icon',
-}: SourceSchemaPreviewProps) => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  const isMetricSource = source?.kind === 'metric';
+/**
+ * Build the list of tables (and their titles) to show in the schema preview
+ * modal for a given source. Internal helper that powers both
+ * `<SourceSchemaPreview>` rendering and `isSourceSchemaPreviewEnabled`,
+ * so callers can decide whether the preview has anything to show before
+ * rendering a trigger.
+ */
+function getSourceSchemaTables(
+  source?: SourceSchemaPreviewSource,
+): (TableSchemaPreviewProps & { title: string })[] {
   const tables: (TableSchemaPreviewProps & { title: string })[] = [];
-  if (source && isMetricSource) {
+  if (!source) return tables;
+
+  const isMetricSource = source.kind === 'metric';
+  if (isMetricSource) {
     tables.push(
       ...Object.values(MetricsDataType)
         .map(metricType => ({
@@ -162,7 +176,7 @@ const SourceSchemaPreview = ({
           title: METRIC_TYPE_NAMES[metricType],
         })),
     );
-  } else if (source && source.from.tableName) {
+  } else if (source.from.tableName) {
     tables.push({
       databaseName: source.from.databaseName,
       tableName: source.from.tableName,
@@ -171,31 +185,61 @@ const SourceSchemaPreview = ({
     });
   }
 
-  const mvConfigs = source?.materializedViews ?? [];
+  const mvConfigs = source.materializedViews ?? [];
   tables.push(
     ...mvConfigs.map(({ tableName, databaseName }) => ({
       databaseName,
       tableName,
-      connectionId: source!.connection,
+      connectionId: source.connection,
       title: `${tableName} (MV)`,
     })),
   );
 
-  const isEnabled = !!source && tables.length > 0;
+  return tables;
+}
+
+export function isSourceSchemaPreviewEnabled(
+  source?: SourceSchemaPreviewSource,
+): boolean {
+  return !!source && getSourceSchemaTables(source).length > 0;
+}
+
+const SourceSchemaPreview = ({
+  source,
+  iconStyles,
+  variant = 'icon',
+  controlled = false,
+  open,
+  onClose,
+}: SourceSchemaPreviewProps) => {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isModalOpen = controlled ? !!open : internalOpen;
+  const handleClose = () => {
+    if (controlled) {
+      onClose?.();
+    } else {
+      setInternalOpen(false);
+    }
+  };
+
+  const tables = getSourceSchemaTables(source);
+  const isEnabled = isSourceSchemaPreviewEnabled(source);
 
   return (
     <>
-      <SourceSchemaInfoIcon
-        isEnabled={isEnabled}
-        onClick={() => setIsModalOpen(true)}
-        iconStyles={iconStyles}
-        tableCount={tables.length}
-        variant={variant}
-      />
+      {!controlled && (
+        <SourceSchemaInfoIcon
+          isEnabled={isEnabled}
+          onClick={() => setInternalOpen(true)}
+          iconStyles={iconStyles}
+          tableCount={tables.length}
+          variant={variant}
+        />
+      )}
       {isEnabled && (
         <Modal
           opened={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
+          onClose={handleClose}
           size="auto"
           title={tables.length > 1 ? `Table Schemas` : `Table Schema`}
         >

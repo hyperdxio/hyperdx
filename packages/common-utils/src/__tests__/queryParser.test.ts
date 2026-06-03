@@ -494,17 +494,112 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     expect(actualSql).toBe(expectedSql);
   });
 
-  it('"Add to Filters" repro: JSON column path + value with colons and slashes emits valid SQL', async () => {
-    const lucene =
-      'ResourceAttributesJSON.endpoint:"grpc://auth-svc:50051/Verify"';
-    const builder = new SearchQueryBuilder(lucene, serializer);
-    const actualSql = await builder.build();
-    expect(actualSql).toContain(
-      'toString(`ResourceAttributesJSON`.`endpoint`)',
-    );
-    expect(actualSql).toContain('grpc://auth-svc:50051/Verify');
-    expect(actualSql).not.toContain('http_COLON_');
-    expect(actualSql).not.toContain('HDX_COLON');
+  describe('CustomSchemaSQLSerializerV2: implicit column falls back to bodyExpression', () => {
+    // Symmetric counterpart to the one-way fallback in
+    // `getEventBody` (packages/app/src/source.ts): a log source admin who
+    // configures Body Expression but not Implicit Column Expression should
+    // still be able to run bare-text Lucene search. HDX-4376.
+    it('uses bodyExpression when implicitColumnExpression is unset', async () => {
+      const bodyOnlySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: 'message',
+      });
+      const sql = await new SearchQueryBuilder(
+        'Prometheus',
+        bodyOnlySerializer,
+      ).build();
+      expect(sql).toMatch(/lower\(message\)/);
+    });
+
+    it('implicit wins over body when both are set on the source', async () => {
+      const bothSerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'indexed_message',
+        bodyExpression: 'message',
+      });
+      const sql = await new SearchQueryBuilder(
+        'Prometheus',
+        bothSerializer,
+      ).build();
+      expect(sql).toMatch(/lower\(indexed_message\)/);
+      expect(sql).not.toMatch(/lower\(message\)/);
+    });
+
+    it('throws when neither implicit nor body is set', async () => {
+      const emptySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: undefined,
+      });
+      await expect(
+        new SearchQueryBuilder('Prometheus', emptySerializer).build(),
+      ).rejects.toThrow(
+        'Can not search bare text without an implicit column set.',
+      );
+    });
+
+    it('per-context implicit override wins over the source body fallback', async () => {
+      const bodyOnlySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: 'message',
+      });
+      const sql = await bodyOnlySerializer.getColumnForField('<implicit>', {
+        implicitColumnExpression: 'override_col',
+      });
+      expect(sql.column).toBe('override_col');
+    });
+
+    it('per-context body override wins over the source body fallback', async () => {
+      // Arm 3 of the resolution chain
+      // (context.implicit ?? this.implicit ?? context.body ?? this.body).
+      const bodyOnlySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: 'message',
+      });
+      const sql = await bodyOnlySerializer.getColumnForField('<implicit>', {
+        bodyExpression: 'override_col',
+      });
+      expect(sql.column).toBe('override_col');
+    });
+
+    it('renders concatWithSeparator when bodyExpression is multi-column', async () => {
+      // The multi-column-concat path at queryParser.ts:1727 fires
+      // whenever neither context override is set, including the
+      // body-fallback case. Guards splitAndTrimWithBracket +
+      // concatWithSeparator(';',...) rendering on body fallback
+      // against future regressions.
+      const multiColumnBodySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: 'Body, Message',
+      });
+      const sql = await new SearchQueryBuilder(
+        'foo',
+        multiColumnBodySerializer,
+      ).build();
+      expect(sql).toContain("concatWithSeparator(';',Body,Message)");
+    });
   });
 });
 
@@ -873,6 +968,35 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
       tableName,
       connectionId,
       implicitColumnExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo', serializer);
+    const sql = await builder.build();
+
+    expect(sql).toBe("((hasAllTokens(Body, 'foo')))");
+  });
+
+  it('should use hasAllTokens when text index exists on the body-fallback column', async () => {
+    // Pins that shouldUseTokenBf widening preserves the
+    // hasAllTokens optimization when the resolver falls back to
+    // bodyExpression (implicitColumnExpression unset on the source).
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_text',
+        type: 'text',
+        typeFull: 'text(tokenizer=splitByNonAlpha)',
+        expression: 'Body',
+        granularity: '8',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: undefined,
+      bodyExpression: 'Body',
     });
 
     const builder = new SearchQueryBuilder('foo', serializer);

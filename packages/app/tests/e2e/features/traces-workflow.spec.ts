@@ -18,9 +18,10 @@ test.describe('Advanced Search Workflow - Traces', { tag: '@traces' }, () => {
       await expect(sourceSelector).toBeVisible();
       await sourceSelector.click();
 
-      const demoTracesOption = searchPage.page.locator(
-        `text=${DEFAULT_TRACES_SOURCE_NAME}`,
-      );
+      const demoTracesOption = searchPage.page.getByRole('option', {
+        name: DEFAULT_TRACES_SOURCE_NAME,
+        exact: true,
+      });
       await expect(demoTracesOption).toBeVisible();
       await demoTracesOption.click();
     });

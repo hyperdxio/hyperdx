@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useQueryState } from 'nuqs';
-import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   FilterState,
   filtersToQuery,
@@ -22,19 +21,19 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     (expression: string, values: string[]) => {
       setFilterQueries(prev => {
         const { filters: filterValues } = parseQuery(prev ?? []);
-        // Normalize the expression to dot notation so it matches the keys
-        // returned by parseQuery (which converts bracket notation to dots).
-        const key = parseKeyPath(expression).join('.');
         if (values.length === 0) {
-          delete filterValues[key];
+          delete filterValues[expression];
         } else {
-          filterValues[key] = {
+          filterValues[expression] = {
             included: new Set(values),
             excluded: new Set(),
           };
         }
 
-        return filtersToQuery(filterValues);
+        return filtersToQuery(
+          filterValues,
+          { stringifyKeys: false }, // Don't wrap keys with toString(), to preserve exact key names in URL query parameters
+        );
       });
     },
     [setFilterQueries],
@@ -48,28 +47,16 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
   } = useMemo(() => {
     const { filters: parsedFilters } = parseQuery(filterQueries ?? []);
     const valuesForExistingFilters: FilterState = {};
+    const knownExpressions = new Set(filters.map(f => f.expression));
     const ignored: string[] = [];
 
-    // Build a normalized lookup so bracket-notation expressions
-    // (e.g. SpanAttributes['k8s.pod.name']) match the dot-notation keys
-    // returned by parseLuceneFilter (e.g. SpanAttributes.k8s.pod.name).
-    const normalizeKey = (k: string) => parseKeyPath(k).join('.');
-    const normalizedParsed = new Map(
-      Object.entries(parsedFilters).map(([k, v]) => [normalizeKey(k), v]),
-    );
-    const knownNormalized = new Set(
-      filters.map(f => normalizeKey(f.expression)),
-    );
-
     for (const { expression } of filters) {
-      const norm = normalizeKey(expression);
-      const match = normalizedParsed.get(norm);
-      if (match) {
-        valuesForExistingFilters[expression] = match;
+      if (expression in parsedFilters) {
+        valuesForExistingFilters[expression] = parsedFilters[expression];
       }
     }
     for (const key of Object.keys(parsedFilters)) {
-      if (!knownNormalized.has(normalizeKey(key))) {
+      if (!knownExpressions.has(key)) {
         ignored.push(key);
       }
     }
@@ -88,7 +75,12 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
 
     return {
       valuesForExistingFilters,
-      queriesForExistingFilters: filtersToQuery(valuesForExistingFilters),
+      queriesForExistingFilters: filtersToQuery(
+        valuesForExistingFilters,
+        // Wrap keys in `toString()` to support JSON/Dynamic-type columns.
+        // All keys can be stringified, since filter select values are stringified as well.
+        { stringifyKeys: true },
+      ),
       ignoredExpressions: ignored,
       filtersByExpression,
     };
@@ -122,20 +114,6 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     },
     [valuesForExistingFilters, filtersByExpression],
   );
-
-  // Migrate legacy SQL filters in the URL to Lucene on load
-  const hasMigratedRef = useRef(false);
-  useEffect(() => {
-    if (hasMigratedRef.current || !filterQueries) return;
-    const hasSqlFilters = filterQueries.some(
-      f => 'condition' in f && f.type === 'sql',
-    );
-    if (hasSqlFilters) {
-      hasMigratedRef.current = true;
-      const { filters: parsed, passthroughFilters } = parseQuery(filterQueries);
-      setFilterQueries([...filtersToQuery(parsed), ...passthroughFilters]);
-    }
-  }, [filterQueries, setFilterQueries]);
 
   return {
     filterValues: valuesForExistingFilters,

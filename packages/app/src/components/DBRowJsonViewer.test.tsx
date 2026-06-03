@@ -53,11 +53,28 @@ describe('DBRowJsonViewer', () => {
   });
 
   // Helper to render component
-  const renderComponent = (data: any, jsonColumns?: string[]) => {
+  const renderComponent = (data: any) => {
     return renderWithMantine(
       <RowSidePanelContext.Provider value={defaultContext}>
-        <DBRowJsonViewer data={data} jsonColumns={jsonColumns} />
+        <DBRowJsonViewer data={data} />
       </RowSidePanelContext.Provider>,
+    );
+  };
+
+  // Line action buttons are now icon-only; locate them by their `title`
+  // tooltip. Maps the friendly action name to a unique title substring.
+  const ACTION_TITLE: Record<string, string> = {
+    Search: 'search for this value only',
+    'Add to Filters': 'add to filters',
+    Column: 'column to results table',
+    'Copy Object': 'copy object',
+    'Copy Value': 'copy value',
+  };
+
+  const findActionButton = (line: HTMLElement, buttonText: string) => {
+    const needle = (ACTION_TITLE[buttonText] ?? buttonText).toLowerCase();
+    return within(line).getByTitle((content: string) =>
+      (content ?? '').toLowerCase().includes(needle),
     );
   };
 
@@ -65,7 +82,7 @@ describe('DBRowJsonViewer', () => {
   const clickLineButton = (fieldText: string, buttonText: string) => {
     const line = screen.getByText(fieldText).closest('.line')! as HTMLElement;
     fireEvent.mouseEnter(line);
-    const button = within(line).getByText(buttonText);
+    const button = findActionButton(line, buttonText);
     fireEvent.click(button);
   };
 
@@ -84,7 +101,7 @@ describe('DBRowJsonViewer', () => {
       .getByText(childField)
       .closest('.line')! as HTMLElement;
     fireEvent.mouseEnter(childLine);
-    const button = within(childLine).getByText(buttonText);
+    const button = findActionButton(childLine, buttonText);
     fireEvent.click(button);
   };
 
@@ -130,21 +147,6 @@ describe('DBRowJsonViewer', () => {
     expect(mockOnPropertyAddClick).toHaveBeenCalledWith(
       "LogAttributes['field1']",
       'value1',
-    );
-  });
-
-  it('adds filters on JSON-typed column as plain dot notation (no toString, no backticks)', () => {
-    const jsonData = {
-      Metadata: {
-        endpoint: 'grpc://thingy:8888/Verify',
-      },
-    };
-    renderComponent(jsonData, ['Metadata']);
-    clickLineButton('endpoint', 'Add to Filters');
-
-    expect(mockOnPropertyAddClick).toHaveBeenCalledWith(
-      'Metadata.endpoint',
-      'grpc://thingy:8888/Verify',
     );
   });
 

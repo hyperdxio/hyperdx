@@ -50,7 +50,7 @@ export function registerGetAlert(server: McpServer, context: McpContext): void {
   const frontendUrl = config.FRONTEND_URL;
 
   server.registerTool(
-    'hyperdx_get_alert',
+    'clickstack_get_alert',
     {
       title: 'Get Alert(s)',
       description:
@@ -75,7 +75,7 @@ export function registerGetAlert(server: McpServer, context: McpContext): void {
           ),
       }),
     },
-    withToolTracing('hyperdx_get_alert', context, async ({ id, state }) => {
+    withToolTracing('clickstack_get_alert', context, async ({ id, state }) => {
       // ── List all alerts (slim summary) ──
       if (!id) {
         const query: Record<string, unknown> = {

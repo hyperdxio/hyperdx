@@ -15,6 +15,7 @@ import {
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Anchor,
   Button,
   Code,
@@ -22,6 +23,7 @@ import {
   Group,
   Paper,
   Stepper,
+  Tooltip,
 } from '@mantine/core';
 import {
   IconDeviceLaptop,
@@ -35,6 +37,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { PageLayout } from '@/components/PageLayout';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
+import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
 import OnboardingModal from './components/OnboardingModal';
@@ -276,10 +279,16 @@ export default function SessionsPage() {
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);
 
-  const { searchedTimeRange, onSearch } = useNewTimeQuery({
+  const { searchedTimeRange, onSearch, onTimeRangeSelect } = useNewTimeQuery({
     initialDisplayValue: DEFAULT_INTERVAL,
     initialTimeRange: defaultTimeRange,
     setDisplayedTimeInputValue,
+  });
+
+  const { refresh, manualRefreshCooloff } = useDashboardRefresh({
+    searchedTimeRange,
+    onTimeRangeSelect,
+    isLive: false,
   });
 
   const onSubmit = useCallback(() => {
@@ -428,6 +437,18 @@ export default function SessionsPage() {
                 >
                   Run
                 </Button>
+                <Tooltip withArrow label="Refresh results" fz="xs" color="gray">
+                  <ActionIcon
+                    onClick={refresh}
+                    loading={manualRefreshCooloff}
+                    disabled={manualRefreshCooloff}
+                    variant="secondary"
+                    title="Refresh results"
+                    size="input-sm"
+                  >
+                    <IconRefresh size={18} />
+                  </ActionIcon>
+                </Tooltip>
               </Group>
             </PageHeader>
           }

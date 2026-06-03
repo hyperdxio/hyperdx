@@ -96,11 +96,11 @@ describe('MCP Source Tools', () => {
     await server.stop();
   });
 
-  // ── hyperdx_list_sources ──────────────────────────────────────────────────
+  // ── clickstack_list_sources ──────────────────────────────────────────────────
 
-  describe('hyperdx_list_sources', () => {
+  describe('clickstack_list_sources', () => {
     it('should list sources and connections as a lightweight catalog', async () => {
-      const result = await callTool(client, 'hyperdx_list_sources');
+      const result = await callTool(client, 'clickstack_list_sources');
 
       expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
@@ -129,11 +129,11 @@ describe('MCP Source Tools', () => {
 
       // Should include nextStep guidance pointing to describe_source
       expect(output.nextStep).toBeDefined();
-      expect(output.nextStep).toContain('hyperdx_describe_source');
+      expect(output.nextStep).toContain('clickstack_describe_source');
     });
 
     it('should include keyColumns from source config without ClickHouse queries', async () => {
-      const result = await callTool(client, 'hyperdx_list_sources');
+      const result = await callTool(client, 'clickstack_list_sources');
       const output = JSON.parse(getFirstText(result));
 
       const trace = output.sources.find(
@@ -159,7 +159,7 @@ describe('MCP Source Tools', () => {
       };
       const client2 = await createTestClient(context2);
 
-      const result = await callTool(client2, 'hyperdx_list_sources');
+      const result = await callTool(client2, 'clickstack_list_sources');
       const output = JSON.parse(getFirstText(result));
 
       expect(output.sources).toHaveLength(0);
@@ -169,11 +169,11 @@ describe('MCP Source Tools', () => {
     });
   });
 
-  // ── hyperdx_describe_source ───────────────────────────────────────────────
+  // ── clickstack_describe_source ───────────────────────────────────────────────
 
-  describe('hyperdx_describe_source', () => {
+  describe('clickstack_describe_source', () => {
     it('should return full column schema for a trace source', async () => {
-      const result = await callTool(client, 'hyperdx_describe_source', {
+      const result = await callTool(client, 'clickstack_describe_source', {
         sourceId: traceSource._id.toString(),
       });
 
@@ -197,7 +197,7 @@ describe('MCP Source Tools', () => {
     });
 
     it('should return full column schema for a log source', async () => {
-      const result = await callTool(client, 'hyperdx_describe_source', {
+      const result = await callTool(client, 'clickstack_describe_source', {
         sourceId: logSource._id.toString(),
       });
 
@@ -223,7 +223,7 @@ describe('MCP Source Tools', () => {
     });
 
     it('should include map attribute keys', async () => {
-      const result = await callTool(client, 'hyperdx_describe_source', {
+      const result = await callTool(client, 'clickstack_describe_source', {
         sourceId: traceSource._id.toString(),
       });
       const output = JSON.parse(getFirstText(result));
@@ -237,7 +237,7 @@ describe('MCP Source Tools', () => {
     });
 
     it('should include keyColumns for trace source', async () => {
-      const result = await callTool(client, 'hyperdx_describe_source', {
+      const result = await callTool(client, 'clickstack_describe_source', {
         sourceId: traceSource._id.toString(),
       });
       const output = JSON.parse(getFirstText(result));
@@ -267,7 +267,7 @@ describe('MCP Source Tools', () => {
         name: 'Metrics',
       });
 
-      const result = await callTool(client, 'hyperdx_describe_source', {
+      const result = await callTool(client, 'clickstack_describe_source', {
         sourceId: metricSource._id.toString(),
       });
 
@@ -290,7 +290,7 @@ describe('MCP Source Tools', () => {
     });
 
     it('should include usage guidance and nextSteps', async () => {
-      const result = await callTool(client, 'hyperdx_describe_source', {
+      const result = await callTool(client, 'clickstack_describe_source', {
         sourceId: traceSource._id.toString(),
       });
       const output = JSON.parse(getFirstText(result));
@@ -301,7 +301,7 @@ describe('MCP Source Tools', () => {
     });
 
     it('should return error for non-existent source', async () => {
-      const result = await callTool(client, 'hyperdx_describe_source', {
+      const result = await callTool(client, 'clickstack_describe_source', {
         sourceId: '000000000000000000000000',
       });
 
@@ -330,7 +330,7 @@ describe('MCP Source Tools', () => {
         name: 'Other Traces',
       });
 
-      const result = await callTool(client, 'hyperdx_describe_source', {
+      const result = await callTool(client, 'clickstack_describe_source', {
         sourceId: otherSource._id.toString(),
       });
 

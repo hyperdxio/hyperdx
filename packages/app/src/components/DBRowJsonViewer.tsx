@@ -27,7 +27,6 @@ import {
   IconTextWrap,
 } from '@tabler/icons-react';
 
-import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/utils';
 import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
 import { mergePath } from '@/utils';
 import {
@@ -383,6 +382,8 @@ export function DBRowJsonViewer({
     ({ keyPath, value, isInParsedJson, parsedJsonRootPath }) => {
       const actions: LineAction[] = [];
       const fieldPath = mergePath(keyPath, jsonColumns, mapColumns);
+      const isJsonColumn =
+        keyPath.length > 0 && jsonColumns?.includes(keyPath[0]);
 
       // Add to Filters action (strings only)
       // FIXME: TOTAL HACK To disallow adding timestamp to filters
@@ -395,16 +396,12 @@ export function DBRowJsonViewer({
       ) {
         actions.push({
           key: 'add-to-search',
-          label: (
-            <Group gap={2}>
-              <IconFilter size={14} />
-              Add to Filters
-            </Group>
-          ),
+          label: <IconFilter size={14} />,
           title: 'Add to Filters',
           onClick: () => {
             let filterFieldPath = fieldPath;
 
+            // Handle parsed JSON from string columns using JSONExtractString
             if (isInParsedJson && parsedJsonRootPath) {
               const jsonQuery = buildJSONExtractQuery(
                 keyPath,
@@ -415,14 +412,23 @@ export function DBRowJsonViewer({
               );
               if (jsonQuery) {
                 filterFieldPath = jsonQuery;
+              } else {
+                // We're at the root of the parsed JSON, treat as string
+                filterFieldPath = isJsonColumn
+                  ? `toString(${fieldPath})`
+                  : fieldPath;
               }
+            } else {
+              // Regular JSON column or non-JSON field
+              filterFieldPath = isJsonColumn
+                ? `toString(${fieldPath})`
+                : fieldPath;
             }
 
-            const cleanedPath = cleanClickHouseExpression(filterFieldPath);
-            onPropertyAddClick(cleanedPath, value);
+            onPropertyAddClick(filterFieldPath, value);
             notifications.show({
               color: 'green',
-              message: `Added "${cleanedPath} = ${value}" to filters`,
+              message: `Added "${fieldPath} = ${value}" to filters`,
             });
           },
         });
@@ -431,12 +437,7 @@ export function DBRowJsonViewer({
       if (generateSearchUrl && typeof value !== 'object') {
         actions.push({
           key: 'search',
-          label: (
-            <Group gap={2}>
-              <IconSearch size={14} />
-              Search
-            </Group>
-          ),
+          label: <IconSearch size={14} />,
           title: 'Search for this value only',
           onClick: () => {
             let searchFieldPath = fieldPath;
@@ -540,17 +541,7 @@ export function DBRowJsonViewer({
         const isIncluded = displayedColumns?.includes(columnFieldPath);
         actions.push({
           key: 'toggle-column',
-          label: isIncluded ? (
-            <Group gap={2}>
-              <IconMinus size={14} />
-              Column
-            </Group>
-          ) : (
-            <Group gap={2}>
-              <IconPlus size={14} />
-              Column
-            </Group>
-          ),
+          label: isIncluded ? <IconMinus size={14} /> : <IconPlus size={14} />,
           title: isIncluded
             ? `Remove ${fieldPath} column from results table`
             : `Add ${fieldPath} column to results table`,
@@ -597,18 +588,15 @@ export function DBRowJsonViewer({
       if (typeof value === 'object') {
         actions.push({
           key: 'copy-object',
-          label: 'Copy Object',
+          label: <IconCopy size={14} />,
+          title: 'Copy object',
           onClick: handleCopyObject,
         });
       } else {
         actions.push({
           key: 'copy-value',
-          label: (
-            <Group gap={2}>
-              <IconCopy size={14} />
-              Copy Value
-            </Group>
-          ),
+          label: <IconCopy size={14} />,
+          title: 'Copy value',
           onClick: async () => {
             const copied = await copyTextToClipboard(
               typeof value === 'string'
