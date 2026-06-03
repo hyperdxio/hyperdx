@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import Router from 'next/router';
-import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
+import {
+  parseAsArrayOf,
+  parseAsBoolean,
+  parseAsInteger,
+  parseAsString,
+  useQueryState,
+} from 'nuqs';
 import {
   ActionIcon,
   Anchor,
@@ -13,6 +19,8 @@ import {
   Group,
   Menu,
   MultiSelect,
+  Pill,
+  Popover,
   SimpleGrid,
   Table,
   Text,
@@ -95,6 +103,20 @@ export default function DashboardsListPage() {
   );
   const [legacyTag, setLegacyTag] = useQueryState('tag');
   const [activeViewId, setActiveViewId] = useQueryState('view');
+  // Pill filter state. Each pill is independent and AND-combines
+  // with tag chips, search, and the active list view.
+  const [recentDays, setRecentDays] = useQueryState(
+    'recentDays',
+    parseAsInteger,
+  );
+  const [withAlerts, setWithAlerts] = useQueryState(
+    'withAlerts',
+    parseAsBoolean,
+  );
+  const [createdByMe, setCreatedByMe] = useQueryState(
+    'createdByMe',
+    parseAsBoolean,
+  );
   const [viewMode, setViewMode] = useLocalStorage<'grid' | 'list'>({
     key: 'dashboardsViewMode',
     defaultValue: 'grid',
@@ -208,8 +230,40 @@ export default function DashboardsListPage() {
         }),
       );
     }
+    // Filter pills layer on top of everything else; reuse the
+    // evaluator so the pill semantics match what the save flow
+    // persists.
+    if (recentDays && recentDays > 0) {
+      result = result.filter(d =>
+        evaluateListView(
+          { rules: [{ kind: 'updated-within-days', days: recentDays }] },
+          d,
+        ),
+      );
+    }
+    if (withAlerts) {
+      result = result.filter(d => getDashboardAlerts(d.tiles).length > 0);
+    }
+    if (createdByMe) {
+      result = result.filter(d =>
+        evaluateListView(
+          { rules: [{ kind: 'created-by-me' }] },
+          d,
+          evalContext,
+        ),
+      );
+    }
     return result.slice().sort((a, b) => a.name.localeCompare(b.name));
-  }, [dashboards, search, selectedTags, activeView, evalContext]);
+  }, [
+    dashboards,
+    search,
+    selectedTags,
+    activeView,
+    evalContext,
+    recentDays,
+    withAlerts,
+    createdByMe,
+  ]);
 
   const handleCreate = useCallback(() => {
     createDashboard.mutate(
@@ -344,8 +398,14 @@ export default function DashboardsListPage() {
               Team Dashboards
             </Text>
 
-            <Flex justify="space-between" align="center" mb="lg" gap="sm">
-              <Group gap="xs" style={{ flex: 1 }}>
+            <Flex
+              justify="space-between"
+              align="center"
+              mb="sm"
+              gap="sm"
+              wrap="wrap"
+            >
+              <Group gap="xs" style={{ flex: 1 }} wrap="wrap">
                 <TextInput
                   placeholder="Search by name"
                   leftSection={<IconSearch size={16} />}
@@ -435,6 +495,97 @@ export default function DashboardsListPage() {
               </Group>
             </Flex>
 
+            <Group
+              gap="xs"
+              mb="lg"
+              align="center"
+              data-testid="list-view-pills"
+            >
+              <Text size="xs" c="dimmed">
+                Quick filters
+              </Text>
+              <Popover position="bottom-start" withinPortal>
+                <Popover.Target>
+                  <Pill
+                    withRemoveButton={!!recentDays}
+                    onRemove={() => setRecentDays(null)}
+                    onClick={() => {
+                      if (!recentDays) setRecentDays(7);
+                    }}
+                    style={{
+                      cursor: 'pointer',
+                      backgroundColor: recentDays
+                        ? 'var(--mantine-color-default-hover)'
+                        : undefined,
+                      boxShadow: recentDays
+                        ? 'inset 2px 0 0 var(--color-text-brand)'
+                        : undefined,
+                    }}
+                    data-testid="list-view-pill-recent"
+                  >
+                    {recentDays
+                      ? `Updated in ${recentDays}d`
+                      : 'Recently updated'}
+                  </Pill>
+                </Popover.Target>
+                <Popover.Dropdown>
+                  <Group gap="xs">
+                    {[1, 7, 30].map(d => (
+                      <Pill
+                        key={d}
+                        withRemoveButton={false}
+                        onClick={() => setRecentDays(d)}
+                        style={{
+                          cursor: 'pointer',
+                          backgroundColor:
+                            recentDays === d
+                              ? 'var(--mantine-color-default-hover)'
+                              : undefined,
+                        }}
+                        data-testid={`list-view-pill-recent-preset-${d}`}
+                      >
+                        {d}d
+                      </Pill>
+                    ))}
+                  </Group>
+                </Popover.Dropdown>
+              </Popover>
+              <Pill
+                withRemoveButton={!!withAlerts}
+                onRemove={() => setWithAlerts(null)}
+                onClick={() => setWithAlerts(withAlerts ? null : true)}
+                style={{
+                  cursor: 'pointer',
+                  backgroundColor: withAlerts
+                    ? 'var(--mantine-color-default-hover)'
+                    : undefined,
+                  boxShadow: withAlerts
+                    ? 'inset 2px 0 0 var(--color-text-brand)'
+                    : undefined,
+                }}
+                data-testid="list-view-pill-alerts"
+              >
+                With active alerts
+              </Pill>
+              <Pill
+                withRemoveButton={!!createdByMe}
+                onRemove={() => setCreatedByMe(null)}
+                onClick={() => setCreatedByMe(createdByMe ? null : true)}
+                style={{
+                  cursor: 'pointer',
+                  backgroundColor: createdByMe
+                    ? 'var(--mantine-color-default-hover)'
+                    : undefined,
+                  boxShadow: createdByMe
+                    ? 'inset 2px 0 0 var(--color-text-brand)'
+                    : undefined,
+                }}
+                data-testid="list-view-pill-created-by-me"
+              >
+                Created by me
+              </Pill>
+            </Group>
+
             {isLoading ? (
               <Text size="sm" c="dimmed" ta="center" py="xl">
                 Loading dashboards...
@@ -452,7 +603,12 @@ export default function DashboardsListPage() {
                 <EmptyState
                   icon={<IconLayoutGrid size={32} />}
                   title={
-                    search || selectedTags.length > 0
+                    search ||
+                    selectedTags.length > 0 ||
+                    recentDays ||
+                    withAlerts ||
+                    createdByMe ||
+                    activeViewId
                       ? 'No matching dashboards yet'
                       : 'No dashboards yet'
                   }
