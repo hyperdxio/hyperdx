@@ -104,10 +104,18 @@ export type SearchWhereInputProps = {
    */
   additionalSuggestions?: string[];
   /**
+   * Date range for filter or autocomplete queries
+   */
+  dateRange?: [Date, Date];
+  /**
    * Form field name for the language value ('sql' | 'lucene').
    * If not provided, defaults to `${name}Language` (e.g. name="where" → "whereLanguage").
    */
   languageName?: string;
+  /**
+   * Source id used in various queries
+   */
+  sourceId?: string;
 } & TableConnectionChoice &
   UseControllerProps<any>;
 
@@ -152,7 +160,9 @@ export default function SearchWhereInput({
   minWidth,
   'data-testid': dataTestId,
   additionalSuggestions,
+  dateRange,
   languageName = `${name}Language`,
+  sourceId,
 }: SearchWhereInputProps) {
   const { field: languageField } = useController({
     control,
@@ -205,6 +215,8 @@ export default function SearchWhereInput({
             allowMultiline={allowMultiline}
             size={size}
             additionalSuggestions={additionalSuggestions}
+            dateRange={dateRange}
+            sourceId={sourceId}
           />
         ) : (
           <SearchInputV2
@@ -218,6 +230,8 @@ export default function SearchWhereInput({
             size={size}
             data-testid={dataTestId}
             additionalSuggestions={additionalSuggestions}
+            dateRange={dateRange}
+            sourceId={sourceId}
           />
         )}
         {enableHotkey && (

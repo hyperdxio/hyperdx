@@ -26,9 +26,9 @@ const dashboardPrompts: PromptDefinition = (server, context) => {
     {
       title: 'Create a Dashboard',
       description:
-        'Create a HyperDX dashboard with the MCP tools. ' +
+        'Create a ClickStack dashboard with the MCP tools. ' +
         'Follow the recommended workflow, pick tile types, write queries, ' +
-        'and validate results — using your real data sources.',
+        'and validate results against your real data sources.',
       argsSchema: {
         description: z
           .string()
@@ -72,7 +72,7 @@ const dashboardPrompts: PromptDefinition = (server, context) => {
           'Failed to fetch sources for create_dashboard prompt',
         );
         sourceSummary =
-          'Could not fetch sources. Call hyperdx_list_sources to discover available data.';
+          'Could not fetch sources. Call clickstack_list_sources to discover available data.';
         traceSourceId = '<SOURCE_ID>';
         logSourceId = '<SOURCE_ID>';
       }
@@ -103,14 +103,16 @@ const dashboardPrompts: PromptDefinition = (server, context) => {
     {
       title: 'Dashboard Examples',
       description:
-        'Get copy-paste-ready dashboard examples for common observability patterns: ' +
-        'service_overview, error_tracking, latency, log_analysis, infrastructure_sql.',
+        'Concrete dashboard example shapes for common observability patterns: ' +
+        'service_inventory, service_detail, log_analytics, backend_dependencies, drilldown_links, infrastructure_sql. ' +
+        'Each example carries a "when to use" header. Adapt the structure to the user\'s request; ' +
+        'do not copy literal column names or status values without verifying via clickstack_list_sources first.',
       argsSchema: {
         pattern: z
           .string()
           .optional()
           .describe(
-            'Filter to a specific pattern: service_overview, error_tracking, latency, log_analysis, infrastructure_sql',
+            'Filter to a specific pattern: service_inventory, service_detail, log_analytics, backend_dependencies, drilldown_links, infrastructure_sql',
           ),
       },
     },

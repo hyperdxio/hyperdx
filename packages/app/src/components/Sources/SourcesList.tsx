@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Alert,
+  Badge,
   Box,
   Button,
   Card,
@@ -71,6 +73,29 @@ export function SourcesList({
 
   const [editedSourceId, setEditedSourceId] = useState<string | null>(null);
   const [isCreatingSource, setIsCreatingSource] = useState(false);
+
+  // Honor `?source=<id>` from the URL so kebab "Edit source" deep-links
+  // expand the right entry. We auto-expand once per param value, then
+  // strip it from the URL so subsequent in-page interactions don't
+  // re-fight the user. `expandedFromQueryRef` prevents the effect from
+  // toggling back on every keystroke that ticks `router.query`.
+  const router = useRouter();
+  const expandedFromQueryRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!router.isReady) return;
+    const sourceParam = router.query.source;
+    const sourceId = Array.isArray(sourceParam) ? sourceParam[0] : sourceParam;
+    if (!sourceId || expandedFromQueryRef.current === sourceId) return;
+    if (!sources?.some(s => s.id === sourceId)) return;
+    expandedFromQueryRef.current = sourceId;
+    setEditedSourceId(sourceId);
+    const { source: _omit, ...rest } = router.query;
+    void router.replace(
+      { pathname: router.pathname, query: rest, hash: 'sources' },
+      undefined,
+      { shallow: true },
+    );
+  }, [router, sources]);
 
   const isLoading = isLoadingConnections || isLoadingSources;
   const error = connectionsError || sourcesError;
@@ -156,10 +181,23 @@ export function SourcesList({
         {sources?.map((s, index) => (
           <React.Fragment key={s.id}>
             <Flex justify="space-between" align="center">
-              <div>
-                <Text size={textSize} fw={500}>
-                  {s.name}
-                </Text>
+              <div
+                style={{
+                  flex: 1,
+                  opacity: s.disabled ? 0.5 : 1,
+                  transition: 'opacity 0.2s ease',
+                }}
+              >
+                <Group gap="xs" align="center">
+                  <Text size={textSize} fw={500}>
+                    {s.name}
+                  </Text>
+                  {s.disabled && (
+                    <Badge size="xs" variant="light" color="gray">
+                      Disabled
+                    </Badge>
+                  )}
+                </Group>
                 <Text size={subtextSize} c="dimmed" mt={4}>
                   <Group gap="xs">
                     {capitalizeFirstLetter(s.kind)}

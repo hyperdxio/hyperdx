@@ -6,6 +6,7 @@
             <use_uncompressed_cache>0</use_uncompressed_cache>
             <load_balancing>in_order</load_balancing>
             <log_queries>1</log_queries>
+            <allow_experimental_time_series_table>1</allow_experimental_time_series_table>
         </default>
     </profiles>
 

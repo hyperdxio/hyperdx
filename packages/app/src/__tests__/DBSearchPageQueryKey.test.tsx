@@ -39,7 +39,10 @@ jest.mock('@/hooks/useChartConfig', () => ({
 
 jest.mock('@/source', () => ({
   useSource: () => ({ data: null, isLoading: false }),
-  useResolvedNumberFormat: () => undefined,
+  useChartNumberFormats: () => ({
+    formatByColumn: new Map(),
+    chartFormat: undefined,
+  }),
 }));
 
 jest.mock('@/ChartUtils', () => ({

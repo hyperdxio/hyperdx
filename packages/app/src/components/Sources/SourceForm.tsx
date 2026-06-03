@@ -21,6 +21,7 @@ import {
   SourceSchema,
   SourceSchemaNoId,
   TSource,
+  UseTextIndex,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -36,6 +37,7 @@ import {
   Select,
   Slider,
   Stack,
+  Switch,
   Text,
   Tooltip,
 } from '@mantine/core';
@@ -52,7 +54,11 @@ import {
 
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
-import { IS_METRICS_ENABLED, IS_SESSIONS_ENABLED } from '@/config';
+import {
+  IS_METRICS_ENABLED,
+  IS_PROMQL_ENABLED,
+  IS_SESSIONS_ENABLED,
+} from '@/config';
 import { useConnections } from '@/connection';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
@@ -145,6 +151,8 @@ function setCorrelationFieldValue(
         return { ...source, [field]: value };
       }
       return source;
+    case SourceKind.Promql:
+      return source;
   }
 }
 
@@ -197,6 +205,7 @@ const CORRELATION_FIELD_MAP: Record<
       { targetKind: SourceKind.Log, targetField: 'metricSourceId' },
     ],
   },
+  [SourceKind.Promql]: {},
 };
 
 function FormRow({
@@ -541,6 +550,7 @@ function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
 
           <Button
             variant="secondary"
+            data-testid="add-materialized-view-button"
             onClick={() => {
               appendMaterializedView({
                 databaseName: databaseName,
@@ -558,6 +568,96 @@ function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
             </Group>
           </Button>
         </Stack>
+      </FormRow>
+    </Stack>
+  );
+}
+
+/** Component for configuring metadata materialized views (key + KV rollups) */
+function MetadataMaterializedViewsFormSection({
+  control,
+  setValue,
+}: TableModelProps) {
+  const databaseName = useWatch({
+    control,
+    name: `from.databaseName`,
+    defaultValue: DEFAULT_DATABASE,
+  });
+  const connection = useWatch({ control, name: `connection` });
+
+  const metadataMVs = useWatch({
+    control,
+    name: 'metadataMaterializedViews',
+  });
+
+  const hasMetadataMVs = !!metadataMVs;
+
+  return (
+    <Stack gap="md">
+      <FormRow
+        label="Metadata Materialized Views"
+        helpText="Configure materialized views for fast field discovery and value autocomplete. These pre-aggregated tables speed up filter loading and search suggestions."
+      >
+        {hasMetadataMVs ? (
+          <Stack gap="sm">
+            <Group justify="flex-end">
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                onClick={() => setValue('metadataMaterializedViews', undefined)}
+              >
+                <IconTrash size={16} />
+              </ActionIcon>
+            </Group>
+            <Grid>
+              <Grid.Col span={6}>
+                <Text size="xs" mb={4}>
+                  Key Rollup Table
+                </Text>
+                <DBTableSelectControlled
+                  name={'metadataMaterializedViews.keyRollupTable'}
+                  control={control}
+                  database={databaseName}
+                  connectionId={connection}
+                />
+              </Grid.Col>
+              <Grid.Col span={6}>
+                <Text size="xs" mb={4}>
+                  KV Rollup Table
+                </Text>
+                <DBTableSelectControlled
+                  name={'metadataMaterializedViews.kvRollupTable'}
+                  control={control}
+                  database={databaseName}
+                  connectionId={connection}
+                />
+              </Grid.Col>
+            </Grid>
+            <SelectControlled
+              name={'metadataMaterializedViews.granularity'}
+              control={control}
+              label="Granularity"
+              data={MV_GRANULARITY_OPTIONS}
+              placeholder="Select rollup granularity"
+            />
+          </Stack>
+        ) : (
+          <Button
+            variant="secondary"
+            onClick={() =>
+              setValue('metadataMaterializedViews', {
+                keyRollupTable: '',
+                kvRollupTable: '',
+                granularity: '',
+              })
+            }
+          >
+            <Group>
+              <IconCirclePlus size={16} />
+              Add Metadata Materialized Views
+            </Group>
+          </Button>
+        )}
       </FormRow>
     </Stack>
   );
@@ -589,7 +689,7 @@ function MaterializedViewFormSection({
   });
 
   return (
-    <Stack gap="sm">
+    <Stack gap="sm" data-testid="mv-form-section" data-mv-index={mvIndex}>
       <Grid columns={2} flex={1}>
         <Grid.Col span={1}>
           <DatabaseSelectControlled
@@ -600,7 +700,7 @@ function MaterializedViewFormSection({
         </Grid.Col>
         <Grid.Col span={1}>
           <Group>
-            <Box flex={1}>
+            <Box flex={1} data-testid="mv-table-select">
               <DBTableSelectControlled
                 database={mvDatabaseName}
                 control={control}
@@ -614,7 +714,7 @@ function MaterializedViewFormSection({
           </Group>
         </Grid.Col>
 
-        <Grid.Col span={2}>
+        <Grid.Col span={2} data-testid="mv-timestamp-column">
           <Text size="xs" fw={500} mb={4}>
             Timestamp Column
           </Text>
@@ -631,7 +731,7 @@ function MaterializedViewFormSection({
           />
         </Grid.Col>
 
-        <Grid.Col span={1}>
+        <Grid.Col span={1} data-testid="mv-granularity-select">
           <Text size="xs" fw={500} mb={4}>
             Granularity
             <Tooltip
@@ -693,7 +793,7 @@ function MaterializedViewFormSection({
         </Grid.Col>
       </Grid>
 
-      <Box>
+      <Box data-testid="mv-dimension-columns">
         <Text size="xs" fw={500} mb={4}>
           Dimension Columns (comma-separated)
           <Tooltip
@@ -844,7 +944,7 @@ function AggregatedColumnsFormSection({
           <IconHelpCircle size={14} className="cursor-pointer ms-1" />
         </Tooltip>
       </Text>
-      <Grid columns={10}>
+      <Grid columns={10} data-testid="mv-aggregated-columns">
         {aggregates.map((field, colIndex) => (
           <AggregatedColumnRow
             key={field.id}
@@ -856,7 +956,13 @@ function AggregatedColumnsFormSection({
           />
         ))}
       </Grid>
-      <Button size="sm" variant="secondary" onClick={addAggregate} mt="lg">
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={addAggregate}
+        mt="lg"
+        data-testid="add-aggregated-column-button"
+      >
         <Group>
           <IconCirclePlus size={16} />
           Add Column
@@ -901,7 +1007,11 @@ function AggregatedColumnRow({
 
   return (
     <>
-      <Grid.Col span={2}>
+      <Grid.Col
+        span={2}
+        data-testid="mv-aggregated-column-fn"
+        data-col-index={colIndex}
+      >
         <SelectControlled
           control={control}
           name={`materializedViews.${mvIndex}.aggregatedColumns.${colIndex}.aggFn`}
@@ -1061,6 +1171,38 @@ function OrderByFormRow({
         )}
       </FormRow>
     </>
+  );
+}
+
+const USE_TEXT_INDEX_OPTIONS = [
+  {
+    value: UseTextIndex.Auto,
+    label: 'Auto (detect from schema)',
+  },
+  {
+    value: UseTextIndex.Enabled,
+    label: 'Force enable',
+  },
+  {
+    value: UseTextIndex.Disabled,
+    label: 'Force disable',
+  },
+];
+
+function UseTextIndexFormRow({ control }: { control: Control<TSource> }) {
+  return (
+    <FormRow
+      label="Use Text Index"
+      helpText='Whether Lucene-based searches should emit hasAllTokens() when searching the implicit column. "Auto" (the default) detects a covering text index from skip-index metadata at query time; "Force enable" always emits hasAllTokens(), and is useful when querying a table using the merge table engine; "Force disable" falls back to hasToken().'
+    >
+      <SelectControlled
+        control={control}
+        name="useTextIndexForImplicitColumn"
+        data={USE_TEXT_INDEX_OPTIONS}
+        placeholder={USE_TEXT_INDEX_OPTIONS[0].label}
+        allowDeselect={false}
+      />
+    </FormRow>
   );
 }
 
@@ -1256,21 +1398,6 @@ function LogTableModelForm(props: TableModelProps) {
         </FormRow>
 
         <Divider />
-        {/* <FormRow
-          label={'Unique Row ID Expression'}
-          helpText="Unique identifier for a given row, will be primary key if not specified. Used for showing full row details in search results."
-        >
-          <SQLInlineEditorControlled
-            tableConnection={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
-            control={control}
-            name="uniqueRowIdExpression"
-            placeholder="Timestamp, ServiceName, Body"
-          />
-        </FormRow> */}
         {/* <FormRow label={'Table Filter Expression'}>
           <SQLInlineEditorControlled
             tableConnection={{
@@ -1298,6 +1425,7 @@ function LogTableModelForm(props: TableModelProps) {
             placeholder="Body"
           />
         </FormRow>
+        <UseTextIndexFormRow control={control} />
         <Divider />
         <HighlightedAttributeExpressionsFormRow
           {...props}
@@ -1313,6 +1441,8 @@ function LogTableModelForm(props: TableModelProps) {
         />
         <Divider />
         <MaterializedViewsFormSection {...props} />
+        <Divider />
+        <MetadataMaterializedViewsFormSection {...props} />
         <Divider />
         <OrderByFormRow
           control={control}
@@ -1402,6 +1532,59 @@ function TraceTableModelForm(props: TableModelProps) {
                   ]}
                   value={value}
                   onChange={onChange}
+                  // Mantine 9's Slider styles use the pattern
+                  // `:where([data-orientation="vertical"]) .<part>`,
+                  // which matches when ANY ancestor has
+                  // `data-orientation="vertical"`. Mantine Card sets
+                  // `data-orientation="vertical"` by default, and the
+                  // SourceForm renders inside a Card, so the slider's
+                  // trackContainer/track/bar/thumb/markWrapper/
+                  // markLabel all pick up the vertical-orientation
+                  // styling: the track collapses to 8px wide and the
+                  // four marks stack on top of each other. Override
+                  // every affected part back to its horizontal
+                  // default so the slider renders correctly inside
+                  // the Card.
+                  styles={{
+                    trackContainer: {
+                      width: '100%',
+                      flexDirection: 'row',
+                      height: 'calc(var(--slider-size) * 2)',
+                    },
+                    track: {
+                      width: '100%',
+                      height: 'var(--slider-size)',
+                    },
+                    bar: {
+                      top: 0,
+                      bottom: 0,
+                      height: '100%',
+                      insetInlineStart: 'var(--slider-bar-offset)',
+                      width: 'var(--slider-bar-width)',
+                    },
+                    thumb: {
+                      left: 'var(--slider-thumb-offset)',
+                      top: '50%',
+                      right: 'auto',
+                      bottom: 'auto',
+                      transform: 'translate(-50%, -50%)',
+                    },
+                    markWrapper: {
+                      insetInlineStart:
+                        'calc(var(--mark-offset) - var(--slider-size) / 2)',
+                      top: 0,
+                      bottom: 'auto',
+                      width: 'auto',
+                    },
+                    markLabel: {
+                      transform:
+                        'translate(calc(-50% + var(--slider-size) / 2), calc(var(--mantine-spacing-xs) / 2))',
+                    },
+                    label: {
+                      top: '-36px',
+                      insetInlineStart: 'auto',
+                    },
+                  }}
                 />
               </div>
             )}
@@ -1592,6 +1775,7 @@ function TraceTableModelForm(props: TableModelProps) {
           placeholder="SpanName"
         />
       </FormRow>
+      <UseTextIndexFormRow control={control} />
       <FormRow
         label={'Displayed Timestamp Column'}
         helpText="This DateTime column is used to display and order search results."
@@ -1622,6 +1806,8 @@ function TraceTableModelForm(props: TableModelProps) {
       />
       <Divider />
       <MaterializedViewsFormSection {...props} />
+      <Divider />
+      <MetadataMaterializedViewsFormSection {...props} />
       <Divider />
       <OrderByFormRow
         control={control}
@@ -1782,6 +1968,19 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
   );
 }
 
+function PromqlTableModelForm({
+  control: _control,
+  setValue,
+}: TableModelProps) {
+  useEffect(() => {
+    setValue('timestampValueExpression' as any, 'timestamp');
+  }, [setValue]);
+
+  // PromQL sources use the standard database + table fields from BaseSourceSchema.
+  // No additional fields needed; the table should point to the TimeSeries engine table.
+  return null;
+}
+
 function TableModelForm({
   control,
   setValue,
@@ -1800,6 +1999,8 @@ function TableModelForm({
       return <SessionTableModelForm control={control} setValue={setValue} />;
     case SourceKind.Metric:
       return <MetricTableModelForm control={control} setValue={setValue} />;
+    case SourceKind.Promql:
+      return <PromqlTableModelForm control={control} setValue={setValue} />;
   }
 }
 
@@ -1891,6 +2092,10 @@ export function TableSourceForm({
               });
             }
             Object.entries(config).forEach(([key, value]) => {
+              if (value && typeof value === 'object' && !Array.isArray(value)) {
+                setValue(key as any, value);
+                return;
+              }
               resetField(key as any, {
                 keepDirty: true,
                 defaultValue: value,
@@ -1909,6 +2114,7 @@ export function TableSourceForm({
     watchedKind,
     resetField,
     metadata,
+    setValue,
   ]);
 
   // Sets the default connection field to the first connection after the
@@ -2217,7 +2423,23 @@ export function TableSourceForm({
       }
     >
       <Stack gap="md" mb="md">
-        <Text mb="lg">Source Settings</Text>
+        <Flex justify="space-between" align="center" mb="lg">
+          <Text>Source Settings</Text>
+          {!isNew && (
+            <Controller
+              control={control}
+              name="disabled"
+              render={({ field: { value, onChange } }) => (
+                <Switch
+                  size="sm"
+                  checked={!value}
+                  onChange={event => onChange(!event.currentTarget.checked)}
+                  label={value ? 'Disabled' : 'Enabled'}
+                />
+              )}
+            />
+          )}
+        </Flex>
         <FormRow label={'Name'}>
           <InputControlled
             control={control}
@@ -2243,6 +2465,9 @@ export function TableSourceForm({
                   )}
                   {IS_SESSIONS_ENABLED && (
                     <Radio value={SourceKind.Session} label="Session" />
+                  )}
+                  {IS_PROMQL_ENABLED && (
+                    <Radio value={SourceKind.Promql} label="PromQL" />
                   )}
                 </Group>
               </Radio.Group>

@@ -5,14 +5,17 @@ import { act, renderHook } from '@testing-library/react';
 import { MetricsDataType, NumberFormat } from '../types';
 import * as utils from '../utils';
 import {
+  COLORS,
   formatAttributeClause,
   formatDurationMs,
   formatDurationMsCompact,
   formatNumber,
   getAllMetricTables,
+  getColorFromCSSToken,
   getMetricTableName,
   mapKeyBy,
   orderByStringToSortingState,
+  parseTimestampToMs,
   sortingStateToOrderByString,
   stripTrailingSlash,
   useQueryHistory,
@@ -1125,6 +1128,37 @@ describe('mapKeyBy', () => {
   });
 });
 
+describe('parseTimestampToMs', () => {
+  it('returns integer ms when there are no sub-millisecond digits', () => {
+    const result = parseTimestampToMs('2024-01-01T00:00:01.000000000Z');
+    expect(result).toBe(new Date('2024-01-01T00:00:01.000Z').getTime());
+  });
+
+  it('preserves sub-millisecond precision as a fractional ms', () => {
+    const base = new Date('2024-01-01T00:00:01.000Z').getTime();
+    const result = parseTimestampToMs('2024-01-01T00:00:01.000500000Z');
+    expect(result).toBeCloseTo(base + 0.5, 4);
+  });
+
+  it('preserves whole-millisecond component when sub-ms digits are also present', () => {
+    const base = new Date('2024-01-01T00:00:01.500Z').getTime();
+    const result = parseTimestampToMs('2024-01-01T00:00:01.500500000Z');
+    expect(result).toBeCloseTo(base + 0.5, 4);
+  });
+
+  it('handles max sub-millisecond value (999 µs + 999 ns)', () => {
+    const base = new Date('2024-01-01T00:00:01.000Z').getTime();
+    const result = parseTimestampToMs('2024-01-01T00:00:01.000999999Z');
+    expect(result).toBeCloseTo(base + 0.999999, 3);
+  });
+
+  it('orders two timestamps within the same millisecond correctly', () => {
+    const earlier = parseTimestampToMs('2024-01-01T00:00:01.000400000Z');
+    const later = parseTimestampToMs('2024-01-01T00:00:01.000800000Z');
+    expect(earlier).toBeLessThan(later);
+  });
+});
+
 describe('formatDurationMsCompact', () => {
   it('returns 0 for zero', () => {
     expect(formatDurationMsCompact(0)).toBe('0');
@@ -1168,5 +1202,66 @@ describe('formatDurationMsCompact', () => {
   it('formats hours (>= 1 hour)', () => {
     expect(formatDurationMsCompact(3_600_000)).toBe('1h');
     expect(formatDurationMsCompact(7_200_000)).toBe('2h');
+  });
+});
+
+describe('getColorFromCSSToken', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('returns the CSS variable value when getComputedStyle provides one', () => {
+    jest.spyOn(global, 'getComputedStyle').mockReturnValue({
+      getPropertyValue: (name: string) =>
+        name === '--color-chart-1' ? '#custom-green' : '',
+    } as unknown as CSSStyleDeclaration);
+
+    expect(getColorFromCSSToken('chart-1')).toBe('#custom-green');
+  });
+
+  it('returns the CSS variable value for semantic tokens when provided', () => {
+    jest.spyOn(global, 'getComputedStyle').mockReturnValue({
+      getPropertyValue: (name: string) =>
+        name === '--color-chart-success' ? '#theme-green' : '',
+    } as unknown as CSSStyleDeclaration);
+
+    expect(getColorFromCSSToken('chart-success')).toBe('#theme-green');
+  });
+
+  it('falls back to COLORS[0] for chart-1 when the CSS variable is empty', () => {
+    jest.spyOn(global, 'getComputedStyle').mockReturnValue({
+      getPropertyValue: () => '',
+    } as unknown as CSSStyleDeclaration);
+
+    expect(getColorFromCSSToken('chart-1')).toBe(COLORS[0]);
+  });
+
+  it('falls back to the SSR palette when getComputedStyle throws', () => {
+    jest.spyOn(global, 'getComputedStyle').mockImplementation(() => {
+      throw new Error('getComputedStyle unavailable');
+    });
+
+    // Semantic tokens fall back to their designated palette colors.
+    // These hex values are the CHART_PALETTE constants used in paletteTokenSSRFallback.
+    expect(getColorFromCSSToken('chart-success')).toBe('#00c28a');
+    expect(getColorFromCSSToken('chart-warning')).toBe('#efb118');
+    expect(getColorFromCSSToken('chart-error')).toBe('#ff725c');
+    // Categorical token falls back to the COLORS array by index.
+    expect(getColorFromCSSToken('chart-1')).toBe(COLORS[0]);
+    expect(getColorFromCSSToken('chart-10')).toBe(COLORS[9]);
+  });
+
+  it('falls back to the SSR palette for all categorical indices (chart-1 through chart-10)', () => {
+    // Verify every categorical token resolves to its expected COLORS entry.
+    // The throw-branch exercises the same paletteTokenSSRFallback code as the
+    // SSR branch (window === undefined), which jsdom prevents from being
+    // simulated via Object.defineProperty.
+    jest.spyOn(global, 'getComputedStyle').mockImplementation(() => {
+      throw new Error('not available');
+    });
+
+    for (let i = 1; i <= 10; i++) {
+      expect(getColorFromCSSToken(`chart-${i}` as any)).toBe(COLORS[i - 1]);
+    }
   });
 });

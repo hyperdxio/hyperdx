@@ -3,10 +3,12 @@ import {
   LogSourceSchema,
   MetricsDataType,
   MetricSourceSchema,
+  PromqlSourceSchema,
   QuerySettings,
   SessionSourceSchema,
   SourceKind,
   TraceSourceSchema,
+  UseTextIndex,
 } from '@hyperdx/common-utils/dist/types';
 import mongoose, { Schema } from 'mongoose';
 import z from 'zod';
@@ -30,6 +32,10 @@ export const ISourceSchema = z.discriminatedUnion('kind', [
     connection: objectIdSchema.or(z.string()),
   }),
   MetricSourceSchema.omit({ connection: true }).extend({
+    team: objectIdSchema,
+    connection: objectIdSchema.or(z.string()),
+  }),
+  PromqlSourceSchema.omit({ connection: true }).extend({
     team: objectIdSchema,
     connection: objectIdSchema.or(z.string()),
   }),
@@ -85,6 +91,10 @@ const sourceBaseSchema = new Schema<MongooseSourceBase>(
       ref: 'Connection',
     },
     name: String,
+    disabled: {
+      type: Boolean,
+      default: false,
+    },
     from: {
       databaseName: String,
       tableName: String,
@@ -133,7 +143,10 @@ export const LogSource = Source.discriminator<ILogSource>(
     traceIdExpression: String,
     spanIdExpression: String,
     implicitColumnExpression: String,
-    uniqueRowIdExpression: String,
+    useTextIndexForImplicitColumn: {
+      type: String,
+      enum: Object.values(UseTextIndex),
+    },
     /** @deprecated See LogSourceSchema in @hyperdx/common-utils/types.ts. */
     tableFilterExpression: String,
     highlightedTraceAttributeExpressions: {
@@ -144,6 +157,14 @@ export const LogSource = Source.discriminator<ILogSource>(
     },
     materializedViews: {
       type: mongoose.Schema.Types.Array,
+    },
+    metadataMaterializedViews: {
+      type: {
+        keyRollupTable: String,
+        kvRollupTable: String,
+        granularity: String,
+      },
+      default: undefined,
     },
     orderByExpression: String,
   }),
@@ -175,6 +196,10 @@ export const TraceSource = Source.discriminator<ITraceSource>(
     eventAttributesExpression: String,
     spanEventsValueExpression: String,
     implicitColumnExpression: String,
+    useTextIndexForImplicitColumn: {
+      type: String,
+      enum: Object.values(UseTextIndex),
+    },
     displayedTimestampValueExpression: String,
     highlightedTraceAttributeExpressions: {
       type: mongoose.Schema.Types.Array,
@@ -184,6 +209,14 @@ export const TraceSource = Source.discriminator<ITraceSource>(
     },
     materializedViews: {
       type: mongoose.Schema.Types.Array,
+    },
+    metadataMaterializedViews: {
+      type: {
+        keyRollupTable: String,
+        kvRollupTable: String,
+        granularity: String,
+      },
+      default: undefined,
     },
     orderByExpression: String,
   }),
@@ -222,4 +255,13 @@ export const MetricSource = Source.discriminator<IMetricSource>(
     serviceNameExpression: String,
     logSourceId: String,
   }),
+);
+
+// --------------------------
+// PromQL discriminator
+// --------------------------
+type IPromqlSource = Extract<ISource, { kind: SourceKind.Promql }>;
+export const PromqlSource = Source.discriminator<IPromqlSource>(
+  SourceKind.Promql,
+  new Schema<Extract<ISource, { kind: SourceKind.Promql }>>({}),
 );

@@ -1,26 +1,30 @@
+import type { DashboardContainer } from '@hyperdx/common-utils/dist/types';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { uniq } from 'lodash';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
-import Dashboard from '@/models/dashboard';
+import Dashboard, { IDashboard } from '@/models/dashboard';
 import {
   cleanupDashboardAlerts,
   convertExternalFiltersToInternal,
   convertExternalTilesToInternal,
   convertToExternalDashboard,
   createDashboardBodySchema,
-  getMissingConnections,
-  getMissingSources,
   resolveSavedQueryLanguage,
   updateDashboardBodySchema,
+  validateDashboardTiles,
 } from '@/routers/external-api/v2/utils/dashboards';
-import type { ExternalDashboardTileWithId } from '@/utils/zod';
+import type {
+  ExternalDashboardFilter,
+  ExternalDashboardFilterWithId,
+  ExternalDashboardTileWithId,
+} from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
-import { mcpTilesParam } from './schemas';
+import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
 
 export function registerSaveDashboard(
   server: McpServer,
@@ -30,15 +34,16 @@ export function registerSaveDashboard(
   const frontendUrl = config.FRONTEND_URL;
 
   server.registerTool(
-    'hyperdx_save_dashboard',
+    'clickstack_save_dashboard',
     {
       title: 'Create or Update Dashboard',
       description:
         'Create a new dashboard (omit id) or update an existing one (provide id). ' +
-        'Call hyperdx_list_sources first to obtain sourceId and connectionId values. ' +
-        'IMPORTANT: After saving a dashboard, always run hyperdx_query_tile on each tile ' +
+        'Call clickstack_list_sources first to obtain sourceId and connectionId values. ' +
+        'IMPORTANT: After saving a dashboard, always run clickstack_query_tile on each tile ' +
         'to confirm the queries work and return expected data. Tiles can silently fail ' +
-        'due to incorrect filter syntax, missing attributes, or wrong column names.',
+        'due to incorrect filter syntax, missing attributes, or wrong column names. ' +
+        'TIP: To update a single tile without resubmitting all tiles, use clickstack_patch_dashboard instead.',
       inputSchema: z.object({
         id: z
           .string()
@@ -49,12 +54,21 @@ export function registerSaveDashboard(
         name: z.string().describe('Dashboard name'),
         tiles: mcpTilesParam,
         tags: z.array(z.string()).optional().describe('Dashboard tags'),
+        containers: mcpContainersParam.optional(),
+        filters: mcpFiltersParam.optional(),
       }),
     },
     withToolTracing(
-      'hyperdx_save_dashboard',
+      'clickstack_save_dashboard',
       context,
-      async ({ id: dashboardId, name, tiles: inputTiles, tags }) => {
+      async ({
+        id: dashboardId,
+        name,
+        tiles: inputTiles,
+        tags,
+        containers,
+        filters: inputFilters,
+      }) => {
         if (!dashboardId) {
           return createDashboard({
             teamId,
@@ -62,6 +76,8 @@ export function registerSaveDashboard(
             name,
             inputTiles,
             tags,
+            containers,
+            inputFilters,
           });
         }
         return updateDashboard({
@@ -71,6 +87,8 @@ export function registerSaveDashboard(
           name,
           inputTiles,
           tags,
+          containers,
+          inputFilters,
         });
       },
     ),
@@ -79,23 +97,67 @@ export function registerSaveDashboard(
 
 // ─── Create helper ────────────────────────────────────────────────────────────
 
+// The MCP input schema marks filter `id` as optional so the same shape
+// serves both create (no id, generated on save) and update (preserved
+// id) flows. The underlying body schemas are stricter: create uses
+// `externalDashboardFilterSchema` which rejects any `id` field, update
+// uses `externalDashboardFilterSchemaWithId` which requires it. Normalize
+// the input here so an LLM can copy a filter from the get-dashboard
+// response into a create payload (or omit the id on a new filter added
+// during update) without hitting a confusing strict-validation rejection.
+function stripFilterIds(
+  filters:
+    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
+    | undefined,
+): ExternalDashboardFilter[] | undefined {
+  if (!filters) return undefined;
+  return filters.map(filter => {
+    const { id: _id, ...rest } = filter as ExternalDashboardFilterWithId;
+    return rest as ExternalDashboardFilter;
+  });
+}
+
+function assignFilterIds(
+  filters:
+    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
+    | undefined,
+): ExternalDashboardFilterWithId[] | undefined {
+  if (!filters) return undefined;
+  return filters.map(filter => {
+    const withId = filter as ExternalDashboardFilterWithId;
+    if (typeof withId.id === 'string' && withId.id.length > 0) return withId;
+    return {
+      ...filter,
+      id: new mongoose.Types.ObjectId().toString(),
+    } as ExternalDashboardFilterWithId;
+  });
+}
+
 async function createDashboard({
   teamId,
   frontendUrl,
   name,
   inputTiles,
   tags,
+  containers,
+  inputFilters,
 }: {
   teamId: string;
   frontendUrl: string | undefined;
   name: string;
   inputTiles: unknown[];
   tags: string[] | undefined;
+  containers: DashboardContainer[] | undefined;
+  inputFilters:
+    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
+    | undefined;
 }) {
   const parsed = createDashboardBodySchema.safeParse({
     name,
     tiles: inputTiles,
     tags,
+    containers,
+    filters: stripFilterIds(inputFilters),
   });
   if (!parsed.success) {
     return {
@@ -109,33 +171,19 @@ async function createDashboard({
     };
   }
 
-  const { tiles, filters } = parsed.data;
+  const { tiles, filters, containers: parsedContainers } = parsed.data;
   const tilesWithId = tiles as ExternalDashboardTileWithId[];
 
-  const [missingSources, missingConnections] = await Promise.all([
-    getMissingSources(teamId, tilesWithId, filters),
-    getMissingConnections(teamId, tilesWithId),
-  ]);
-  if (missingSources.length > 0) {
+  const validationError = await validateDashboardTiles({
+    teamId,
+    tiles: tilesWithId,
+    filters,
+    containers: parsedContainers ?? [],
+  });
+  if (validationError) {
     return {
       isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Could not find source IDs: ${missingSources.join(', ')}`,
-        },
-      ],
-    };
-  }
-  if (missingConnections.length > 0) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Could not find connection IDs: ${missingConnections.join(', ')}`,
-        },
-      ],
+      content: [{ type: 'text' as const, text: validationError }],
     };
   }
 
@@ -155,6 +203,7 @@ async function createDashboard({
     savedQueryLanguage: normalizedSavedQueryLanguage,
     savedFilterValues: parsed.data.savedFilterValues,
     team: teamId,
+    ...(parsedContainers !== undefined ? { containers: parsedContainers } : {}),
   }).save();
 
   return {
@@ -167,7 +216,7 @@ async function createDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${newDashboard._id}` }
               : {}),
-            hint: 'Use hyperdx_query to test individual tile queries before viewing the dashboard.',
+            hint: 'Use clickstack_query_tile to test individual tile queries before viewing the dashboard.',
           },
           null,
           2,
@@ -186,6 +235,8 @@ async function updateDashboard({
   name,
   inputTiles,
   tags,
+  containers,
+  inputFilters,
 }: {
   teamId: string;
   frontendUrl: string | undefined;
@@ -193,6 +244,10 @@ async function updateDashboard({
   name: string;
   inputTiles: unknown[];
   tags: string[] | undefined;
+  containers: DashboardContainer[] | undefined;
+  inputFilters:
+    | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
+    | undefined;
 }) {
   if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
     return {
@@ -205,6 +260,8 @@ async function updateDashboard({
     name,
     tiles: inputTiles,
     tags,
+    containers,
+    filters: assignFilterIds(inputFilters),
   });
   if (!parsed.success) {
     return {
@@ -218,45 +275,34 @@ async function updateDashboard({
     };
   }
 
-  const { tiles, filters } = parsed.data;
+  const { tiles, filters, containers: parsedContainers } = parsed.data;
   const tilesWithId = tiles as ExternalDashboardTileWithId[];
-
-  const [missingSources, missingConnections] = await Promise.all([
-    getMissingSources(teamId, tilesWithId, filters),
-    getMissingConnections(teamId, tilesWithId),
-  ]);
-  if (missingSources.length > 0) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Could not find source IDs: ${missingSources.join(', ')}`,
-        },
-      ],
-    };
-  }
-  if (missingConnections.length > 0) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Could not find connection IDs: ${missingConnections.join(', ')}`,
-        },
-      ],
-    };
-  }
 
   const existingDashboard = await Dashboard.findOne(
     { _id: dashboardId, team: teamId },
-    { tiles: 1, filters: 1 },
+    { tiles: 1, filters: 1, containers: 1 },
   ).lean();
 
   if (!existingDashboard) {
     return {
       isError: true,
       content: [{ type: 'text' as const, text: 'Dashboard not found' }],
+    };
+  }
+
+  const effectiveContainers =
+    parsedContainers ?? existingDashboard.containers ?? [];
+  const validationError = await validateDashboardTiles({
+    teamId,
+    tiles: tilesWithId,
+    filters,
+    existingTiles: existingDashboard.tiles ?? [],
+    containers: effectiveContainers,
+  });
+  if (validationError) {
+    return {
+      isError: true,
+      content: [{ type: 'text' as const, text: validationError }],
     };
   }
 
@@ -272,7 +318,11 @@ async function updateDashboard({
     existingTileIds,
   );
 
-  const setPayload: Record<string, unknown> = {
+  // Typed as `Partial<IDashboard>` (the canonical Mongo doc shape) so
+  // misnamed or wrong-shape fields fail at compile time, mirroring the
+  // v2 PUT handler's tightening at
+  // `routers/external-api/v2/dashboards.ts:2015`.
+  const setPayload: Partial<IDashboard> = {
     name,
     tiles: internalTiles,
     tags: tags && uniq(tags),
@@ -295,6 +345,10 @@ async function updateDashboard({
 
   if (parsed.data.savedFilterValues !== undefined) {
     setPayload.savedFilterValues = parsed.data.savedFilterValues;
+  }
+
+  if (parsedContainers !== undefined) {
+    setPayload.containers = parsedContainers;
   }
 
   const updatedDashboard = await Dashboard.findOneAndUpdate(
@@ -327,7 +381,7 @@ async function updateDashboard({
             ...(frontendUrl
               ? { url: `${frontendUrl}/dashboards/${updatedDashboard._id}` }
               : {}),
-            hint: 'Use hyperdx_query to test individual tile queries before viewing the dashboard.',
+            hint: 'Use clickstack_query_tile to test individual tile queries before viewing the dashboard.',
           },
           null,
           2,

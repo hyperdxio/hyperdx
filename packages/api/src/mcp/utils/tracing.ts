@@ -5,7 +5,7 @@ import logger from '@/utils/logger';
 
 import type { McpContext } from '../tools/types';
 
-const mcpTracer = opentelemetry.trace.getTracer('hyperdx-mcp', CODE_VERSION);
+const mcpTracer = opentelemetry.trace.getTracer('clickstack-mcp', CODE_VERSION);
 
 type ToolResult = {
   content: { type: 'text'; text: string }[];
@@ -32,9 +32,7 @@ export function withToolTracing<TArgs>(
 
       span.setAttribute('mcp.tool.name', toolName);
       span.setAttribute('mcp.team.id', context.teamId);
-      if (context.userId) {
-        span.setAttribute('mcp.user.id', context.userId);
-      }
+      span.setAttribute('mcp.user.id', context.userId);
 
       logger.info(logContext, `MCP tool invoked: ${toolName}`);
 

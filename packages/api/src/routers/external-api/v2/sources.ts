@@ -30,17 +30,29 @@ export function mapGranularityToExternalFormat(granularity: string): string {
 
 function mapSourceToExternalSource(source: TSource): TSource {
   if (!('materializedViews' in source)) return source;
-  if (!Array.isArray(source.materializedViews)) return source;
 
-  return {
-    ...source,
-    materializedViews: source.materializedViews.map(view => {
-      return {
-        ...view,
-        minGranularity: mapGranularityToExternalFormat(view.minGranularity),
-      };
-    }),
-  };
+  const mapped = { ...source };
+
+  if (Array.isArray(source.materializedViews)) {
+    mapped.materializedViews = source.materializedViews.map(view => ({
+      ...view,
+      minGranularity: mapGranularityToExternalFormat(view.minGranularity),
+    }));
+  }
+
+  if (
+    'metadataMaterializedViews' in source &&
+    source.metadataMaterializedViews
+  ) {
+    mapped.metadataMaterializedViews = {
+      ...source.metadataMaterializedViews,
+      granularity: mapGranularityToExternalFormat(
+        source.metadataMaterializedViews.granularity,
+      ),
+    };
+  }
+
+  return mapped;
 }
 
 function applyLegacyDefaults(
@@ -66,6 +78,8 @@ function formatExternalSource(source: SourceDocument) {
         case SourceKind.Metric:
           return source.toJSON({ getters: true });
         case SourceKind.Session:
+          return source.toJSON({ getters: true });
+        case SourceKind.Promql:
           return source.toJSON({ getters: true });
         default:
           source satisfies never;
@@ -341,6 +355,12 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log.
  *           nullable: true
  *           example: Body
+ *         useTextIndexForImplicitColumn:
+ *           type: string
+ *           enum: [auto, enabled, disabled]
+ *           description: Controls whether lucene rendering uses ClickHouse text indices via hasAllTokens() against the implicit column. "auto" detects a covering index at query time, "enabled" forces text index usage, "disabled" forces a LIKE/hasToken fallback.
+ *           nullable: true
+ *           example: auto
  *         highlightedTraceAttributeExpressions:
  *           type: array
  *           description: Expressions defining trace-level attributes which are displayed in the trace view for the selected trace.
@@ -359,6 +379,23 @@ function formatExternalSource(source: SourceDocument) {
  *           items:
  *             $ref: '#/components/schemas/MaterializedView'
  *           nullable: true
+ *         metadataMaterializedViews:
+ *           type: object
+ *           description: Configure materialized views for fast field discovery and value autocomplete.
+ *           nullable: true
+ *           properties:
+ *             keyRollupTable:
+ *               type: string
+ *               description: ClickHouse table name for the key rollup (field discovery).
+ *               example: otel_logs_key_rollup_15m
+ *             kvRollupTable:
+ *               type: string
+ *               description: ClickHouse table name for the key-value rollup (value autocomplete).
+ *               example: otel_logs_kv_rollup_15m
+ *             granularity:
+ *               type: string
+ *               description: The time granularity of the rollup tables.
+ *               example: 15m
  *     TraceSource:
  *       type: object
  *       required:
@@ -491,6 +528,12 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log.
  *           nullable: true
  *           example: SpanName
+ *         useTextIndexForImplicitColumn:
+ *           type: string
+ *           enum: [auto, enabled, disabled]
+ *           description: Controls whether lucene rendering uses ClickHouse text indices via hasAllTokens() against the implicit column. "auto" detects a covering index at query time, "enabled" forces text index usage, "disabled" forces a LIKE/hasToken fallback.
+ *           nullable: true
+ *           example: auto
  *         highlightedTraceAttributeExpressions:
  *           type: array
  *           description: Expressions defining trace-level attributes which are displayed in the trace view for the selected trace.
@@ -509,6 +552,23 @@ function formatExternalSource(source: SourceDocument) {
  *           items:
  *             $ref: '#/components/schemas/MaterializedView'
  *           nullable: true
+ *         metadataMaterializedViews:
+ *           type: object
+ *           description: Configure materialized views for fast field discovery and value autocomplete.
+ *           nullable: true
+ *           properties:
+ *             keyRollupTable:
+ *               type: string
+ *               description: ClickHouse table name for the key rollup (field discovery).
+ *               example: otel_traces_key_rollup_15m
+ *             kvRollupTable:
+ *               type: string
+ *               description: ClickHouse table name for the key-value rollup (value autocomplete).
+ *               example: otel_traces_kv_rollup_15m
+ *             granularity:
+ *               type: string
+ *               description: The time granularity of the rollup tables.
+ *               example: 15m
  *     MetricSource:
  *       type: object
  *       required:

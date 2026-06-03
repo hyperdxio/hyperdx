@@ -8,6 +8,7 @@ import { expect, test } from '../utils/base-test';
 import {
   DEFAULT_LOGS_SOURCE_NAME,
   DEFAULT_METRICS_SOURCE_NAME,
+  DEFAULT_TRACES_SOURCE_NAME,
 } from '../utils/constants';
 
 test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
@@ -499,6 +500,112 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
   });
 
+  test(
+    'should scope a filter to a specific source via "Applies to sources"',
+    {},
+    async () => {
+      test.setTimeout(45000);
+
+      await test.step('Create new dashboard', async () => {
+        await expect(dashboardPage.createButton).toBeVisible();
+        await dashboardPage.createNewDashboard();
+      });
+
+      await test.step('Add a logs table tile', async () => {
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createTable({
+          chartName: 'Logs Table',
+          sourceName: DEFAULT_LOGS_SOURCE_NAME,
+          groupBy: 'ServiceName',
+        });
+      });
+
+      await test.step('Add a traces table tile', async () => {
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createTable({
+          chartName: 'Traces Table',
+          sourceName: DEFAULT_TRACES_SOURCE_NAME,
+          groupBy: 'SpanName',
+        });
+      });
+
+      await test.step('Add a Span filter scoped to the trace source', async () => {
+        await dashboardPage.openEditFiltersModal();
+        await expect(dashboardPage.emptyFiltersList).toBeVisible();
+        await dashboardPage.addFilterToDashboard(
+          'SpanName',
+          DEFAULT_TRACES_SOURCE_NAME,
+          'SpanName',
+          undefined,
+          [DEFAULT_TRACES_SOURCE_NAME],
+        );
+        await expect(
+          dashboardPage.getFilterItemByName('SpanName'), // Not a valid column for the logs table
+        ).toBeVisible();
+        await dashboardPage.closeFiltersModal();
+      });
+
+      await test.step('Filter label tooltip shows the scoped count', async () => {
+        const label = dashboardPage.getFilterLabel('SpanName');
+        await expect(label).toBeVisible();
+        await label.hover();
+        await expect(
+          dashboardPage.page.getByText('Applies to 1 source'),
+        ).toBeVisible();
+      });
+
+      await test.step('Selecting a value filters only the traces tile', async () => {
+        await dashboardPage.clickFilterOption('SpanName', 'GET /api/logs');
+
+        // Traces tile: only the "GET /api/logs" span should remain.
+        const tracesAccountingCell = dashboardPage.page.getByTitle(
+          'GET /api/logs',
+          {
+            exact: true,
+          },
+        );
+        await expect(tracesAccountingCell).toBeVisible();
+
+        // The logs tile must still render its rows — the filter scope
+        // excluded it, so the dropdown value should not have affected it.
+        // (Even if the traces source has no `SpanName` column, the tile
+        // must not be broken by an inapplicable WHERE.)
+        const logsTile = dashboardPage.getTile(0);
+        await expect(logsTile.locator('table tbody tr').first()).toBeVisible({
+          timeout: 15000,
+        });
+      });
+    },
+  );
+
+  test(
+    'filter label tooltip shows "all sources" when scope is empty',
+    {},
+    async () => {
+      await dashboardPage.createNewDashboard();
+      await dashboardPage.addTile();
+      await dashboardPage.chartEditor.createTable({
+        chartName: 'Logs Table',
+        sourceName: DEFAULT_LOGS_SOURCE_NAME,
+        groupBy: 'ServiceName',
+      });
+
+      await dashboardPage.openEditFiltersModal();
+      await dashboardPage.addFilterToDashboard(
+        'Service',
+        DEFAULT_LOGS_SOURCE_NAME,
+        'ServiceName',
+      );
+      await dashboardPage.closeFiltersModal();
+
+      const label = dashboardPage.getFilterLabel('Service');
+      await label.hover();
+      await expect(
+        dashboardPage.page.getByText('Applies to all sources'),
+      ).toBeVisible();
+    },
+  );
+
   test('should save and restore query and filter values', {}, async () => {
     const testQuery = 'SeverityText:error';
     let dashboardUrl: string;
@@ -651,13 +758,13 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   );
 
   test.describe('Raw SQL Dashboard Tiles', () => {
-    const LINE_SQL = `SELECT toStartOfInterval(TimestampTime, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ts ORDER BY ts ASC`;
+    const LINE_SQL = `SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ts ORDER BY ts ASC`;
 
-    const TABLE_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName LIMIT 200`;
+    const TABLE_SQL = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName LIMIT 200`;
 
-    const NUMBER_SQL = `SELECT 1234 FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})`;
+    const NUMBER_SQL = `SELECT 1234 FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})`;
 
-    const PIE_SQL = `SELECT ServiceName, count() FROM default.e2e_otel_logs WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName`;
+    const PIE_SQL = `SELECT ServiceName, count() FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName`;
 
     test.beforeEach(async () => {
       await dashboardPage.createNewDashboard();
@@ -836,7 +943,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         name: DELETABLE_SOURCE_NAME,
         connection,
         from,
-        timestampValueExpression: 'TimestampTime',
+        timestampValueExpression: 'Timestamp',
         defaultTableSelectExpression:
           'Timestamp, ServiceName, SeverityText, Body',
         serviceNameExpression: 'ServiceName',
@@ -1136,6 +1243,247 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           const tile = dashboardPage.getTiles().filter({ hasText: chartName });
           await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
         });
+      });
+    },
+  );
+
+  test.describe(
+    'Table chart - per-series number formats',
+    { tag: ['@full-stack', '@dashboard'] },
+    () => {
+      test.beforeEach(async () => {
+        await dashboardPage.createNewDashboard();
+      });
+
+      test('per-series format overrides chart-wide format and falls back when reset to inherit', async () => {
+        test.setTimeout(15000);
+        const ts = Date.now();
+        const chartName = `E2E Per-Series Format ${ts}`;
+
+        await test.step('Configure a Table chart with two series and a group-by', async () => {
+          await dashboardPage.addTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+          await dashboardPage.chartEditor.waitForDataToLoad();
+          await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+          await dashboardPage.chartEditor.selectSource(
+            DEFAULT_LOGS_SOURCE_NAME,
+          );
+          await dashboardPage.chartEditor.setChartName(chartName);
+          await dashboardPage.chartEditor.setGroupBy('ServiceName');
+          await dashboardPage.chartEditor.addSeries();
+          await dashboardPage.chartEditor.setSeriesAlias(0, 'CountA');
+          await dashboardPage.chartEditor.setSeriesAlias(1, 'CountB');
+          await dashboardPage.chartEditor.runQuery(false);
+
+          const headers =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          expect(headers).toContain('CountA');
+          expect(headers).toContain('CountB');
+          expect(headers).toContain('ServiceName');
+        });
+
+        let countAIndex = -1;
+        let countBIndex = -1;
+
+        await test.step('Set chart-wide format to Currency and assert both series render with $', async () => {
+          await dashboardPage.chartEditor.setChartWideNumberFormat('Currency');
+
+          const headers =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          countAIndex = headers.indexOf('CountA');
+          countBIndex = headers.indexOf('CountB');
+          expect(countAIndex).toBeGreaterThan(-1);
+          expect(countBIndex).toBeGreaterThan(-1);
+
+          const countACells =
+            await dashboardPage.chartEditor.getPreviewTableCellTexts(
+              countAIndex,
+            );
+          const countBCells =
+            await dashboardPage.chartEditor.getPreviewTableCellTexts(
+              countBIndex,
+            );
+
+          expect(countACells.length).toBeGreaterThan(0);
+          expect(countBCells.length).toBeGreaterThan(0);
+          for (const cell of countACells) {
+            expect(cell).toContain('$');
+          }
+          for (const cell of countBCells) {
+            expect(cell).toContain('$');
+          }
+        });
+
+        await test.step('Override Series 0 (CountA) to Percentage; per-series wins, other series still inherits chart-wide', async () => {
+          await dashboardPage.chartEditor.setSeriesNumberFormat(
+            0,
+            'Percentage',
+          );
+
+          const countACells =
+            await dashboardPage.chartEditor.getPreviewTableCellTexts(
+              countAIndex,
+            );
+          const countBCells =
+            await dashboardPage.chartEditor.getPreviewTableCellTexts(
+              countBIndex,
+            );
+
+          expect(countACells.length).toBeGreaterThan(0);
+          for (const cell of countACells) {
+            expect(cell).toContain('%');
+          }
+
+          expect(countBCells.length).toBeGreaterThan(0);
+          for (const cell of countBCells) {
+            expect(cell).toContain('$');
+          }
+        });
+
+        // Asserts that all cells of the given tile column contain `substring`.
+        // Polls because saveTile() returns before the dashboard tile finishes
+        // re-rendering with the new chart config, and the table briefly shows
+        // the previously-rendered values.
+        const expectAllTileCellsToContain = async (
+          tileIndex: number,
+          columnIndex: number,
+          substring: string,
+        ) => {
+          await expect
+            .poll(
+              async () => {
+                const cells = await dashboardPage.getTileTableCellTexts(
+                  tileIndex,
+                  columnIndex,
+                );
+                return (
+                  cells.length > 0 && cells.every(c => c.includes(substring))
+                );
+              },
+              { timeout: 10000 },
+            )
+            .toBe(true);
+        };
+
+        await test.step('Save the tile and verify the saved tile retains per-series formatting', async () => {
+          await dashboardPage.saveTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeHidden({
+            timeout: 5000,
+          });
+
+          const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+          await expect(tile.locator('table')).toBeVisible({ timeout: 15000 });
+
+          const tileHeaders = await dashboardPage.getTileTableHeaders(0);
+          const tileCountAIndex = tileHeaders.indexOf('CountA');
+          const tileCountBIndex = tileHeaders.indexOf('CountB');
+          expect(tileCountAIndex).toBeGreaterThan(-1);
+          expect(tileCountBIndex).toBeGreaterThan(-1);
+
+          await expectAllTileCellsToContain(0, tileCountAIndex, '%');
+          await expectAllTileCellsToContain(0, tileCountBIndex, '$');
+        });
+
+        await test.step('Reset Series 0 (CountA) to Inherit; column falls back to chart-wide Currency', async () => {
+          await dashboardPage.editTile(0);
+          await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+
+          await dashboardPage.chartEditor.clearSeriesNumberFormat(0);
+          await dashboardPage.chartEditor.runQuery(false);
+
+          const headers =
+            await dashboardPage.chartEditor.getPreviewTableHeaders();
+          const updatedCountAIndex = headers.indexOf('CountA');
+          expect(updatedCountAIndex).toBeGreaterThan(-1);
+
+          const countACells =
+            await dashboardPage.chartEditor.getPreviewTableCellTexts(
+              updatedCountAIndex,
+            );
+          expect(countACells.length).toBeGreaterThan(0);
+          for (const cell of countACells) {
+            expect(cell).toContain('$');
+          }
+
+          await dashboardPage.saveTile();
+          await expect(dashboardPage.chartEditor.nameInput).toBeHidden({
+            timeout: 5000,
+          });
+
+          const tileHeaders = await dashboardPage.getTileTableHeaders(0);
+          const tileCountAIndex = tileHeaders.indexOf('CountA');
+          await expectAllTileCellsToContain(0, tileCountAIndex, '$');
+        });
+      });
+    },
+  );
+
+  test(
+    'should isolate the fullscreen tile time picker from the dashboard time range',
+    { tag: ['@full-stack', '@dashboard'] },
+    async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `Fullscreen TP Test ${ts}`;
+
+      await test.step('Create a new dashboard', async () => {
+        await expect(dashboardPage.createButton).toBeVisible();
+        await dashboardPage.createNewDashboard();
+      });
+
+      await test.step('Add a basic chart tile', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.createBasicChart(chartName);
+
+        const dashboardTiles = dashboardPage.getTiles();
+        await expect(dashboardTiles).toHaveCount(1, { timeout: 10000 });
+      });
+
+      let mainTimePickerValueBefore = '';
+      await test.step('Set the dashboard time range to "Last 1 hour"', async () => {
+        await dashboardPage.timePicker.selectRelativeTime('Last 1 hour');
+        mainTimePickerValueBefore =
+          await dashboardPage.timePicker.input.inputValue();
+        console.log(
+          'Main time picker value before opening fullscreen:',
+          mainTimePickerValueBefore,
+        );
+      });
+
+      await test.step('Open the tile in fullscreen and verify the modal appears', async () => {
+        await dashboardPage.openFullscreenForTile(0);
+        await expect(dashboardPage.fullscreenTimePickerInput).toBeVisible();
+      });
+
+      await test.step('Verify the fullscreen TimePicker is initialized with a non-empty value', async () => {
+        // The fullscreen picker is seeded with dateRangeToString — an absolute
+        // date-range string — not the "Last 1 hour" relative label.
+        const fullscreenValue =
+          await dashboardPage.fullscreenTimePickerInput.inputValue();
+        expect(fullscreenValue.length).toBeGreaterThan(0);
+      });
+
+      await test.step('Change the fullscreen time range to "Last 15 minutes"', async () => {
+        await dashboardPage.selectFullscreenRelativeTime('Last 15 minutes');
+        // Verify the chart inside the modal re-renders with the new range
+        await expect(
+          dashboardPage.fullscreenModalBody.locator(
+            '.recharts-responsive-container',
+          ),
+        ).toBeVisible({ timeout: 15000 });
+      });
+
+      await test.step('Close the fullscreen modal', async () => {
+        await dashboardPage.closeFullscreen();
+      });
+
+      await test.step('Verify the dashboard main time picker is unchanged', async () => {
+        // The fullscreen time-range change must NOT have propagated to the
+        // dashboard-level time picker.
+        await expect(dashboardPage.timePicker.input).toHaveValue(
+          mainTimePickerValueBefore,
+        );
       });
     },
   );

@@ -17,7 +17,6 @@ CREATE DATABASE IF NOT EXISTS ${DATABASE};
 CREATE TABLE IF NOT EXISTS ${DATABASE}.e2e_otel_logs
 (
   \`Timestamp\` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-  \`TimestampTime\` DateTime DEFAULT toDateTime(Timestamp),
   \`TraceId\` String CODEC(ZSTD(1)),
   \`SpanId\` String CODEC(ZSTD(1)),
   \`TraceFlags\` UInt8,
@@ -32,6 +31,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.e2e_otel_logs
   \`ScopeVersion\` LowCardinality(String) CODEC(ZSTD(1)),
   \`ScopeAttributes\` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
   \`LogAttributes\` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+  \`EventName\` String CODEC(ZSTD(1)),
   \`__hdx_materialized_k8s.cluster.name\` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.cluster.name'] CODEC(ZSTD(1)),
   \`__hdx_materialized_k8s.container.name\` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.container.name'] CODEC(ZSTD(1)),
   \`__hdx_materialized_k8s.deployment.name\` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.deployment.name'] CODEC(ZSTD(1)),
@@ -40,20 +40,19 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.e2e_otel_logs
   \`__hdx_materialized_k8s.pod.name\` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.pod.name'] CODEC(ZSTD(1)),
   \`__hdx_materialized_k8s.pod.uid\` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.pod.uid'] CODEC(ZSTD(1)),
   \`__hdx_materialized_deployment.environment.name\` LowCardinality(String) MATERIALIZED ResourceAttributes['deployment.environment.name'] CODEC(ZSTD(1)),
-  INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
-  INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-  INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-  INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-  INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-  INDEX idx_log_attr_key mapKeys(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-  INDEX idx_log_attr_value mapValues(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
-  INDEX idx_lower_body lower(Body) TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8
+  INDEX idx_trace_id TraceId TYPE text(tokenizer = 'array'),
+  INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE text(tokenizer = 'array'),
+  INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE text(tokenizer = 'array'),
+  INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE text(tokenizer = 'array'),
+  INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE text(tokenizer = 'array'),
+  INDEX idx_log_attr_key mapKeys(LogAttributes) TYPE text(tokenizer = 'array'),
+  INDEX idx_log_attr_value mapValues(LogAttributes) TYPE text(tokenizer = 'array'),
+  INDEX idx_lower_body lower(Body) TYPE text(tokenizer = 'splitByNonAlpha')
 )
 ENGINE = MergeTree
-PARTITION BY toDate(TimestampTime)
-PRIMARY KEY (ServiceName, TimestampTime)
-ORDER BY (ServiceName, TimestampTime, Timestamp)
-TTL TimestampTime + toIntervalDay(30)
+PARTITION BY toDate(Timestamp)
+ORDER BY (toStartOfFiveMinutes(Timestamp), ServiceName, Timestamp)
+TTL toDateTime(Timestamp) + toIntervalDay(30)
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 
 CREATE TABLE IF NOT EXISTS ${DATABASE}.e2e_otel_traces
@@ -82,12 +81,16 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.e2e_otel_traces
     \`Links.Attributes\` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
     \`__hdx_materialized_rum.sessionId\` String MATERIALIZED ResourceAttributes['rum.sessionId'] CODEC(ZSTD(1)),
     \`SampleRate\` UInt64 MATERIALIZED greatest(toUInt64OrZero(SpanAttributes['SampleRate']), 1) CODEC(T64, ZSTD(1)),
+    \`ResourceAttributeItems\` Array(String) ALIAS arrayMap((arr) -> concat(arr.1, '=', arr.2), ResourceAttributes::Array(Tuple(String, String))),
+    \`SpanAttributeItems\` Array(String) ALIAS arrayMap((arr) -> concat(arr.1, '=', arr.2), SpanAttributes::Array(Tuple(String, String))),
     INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
     INDEX idx_rum_session_id __hdx_materialized_rum.sessionId TYPE bloom_filter(0.001) GRANULARITY 1,
     INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
     INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_res_attr_items ResourceAttributeItems TYPE text(tokenizer = 'array'),
     INDEX idx_span_attr_key mapKeys(SpanAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
     INDEX idx_span_attr_value mapValues(SpanAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_span_attr_items SpanAttributeItems TYPE text(tokenizer = 'array'),
     INDEX idx_duration Duration TYPE minmax GRANULARITY 1,
     INDEX idx_lower_span_name lower(SpanName) TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8
 )
@@ -206,5 +209,38 @@ ENGINE = MergeTree
 PARTITION BY toDate(TimeUnix)
 ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
 TTL toDate(TimeUnix) + toIntervalDay(30)
-SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
+SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
+
+-- Materialized view rollup for traces, used by E2E tests covering MV
+-- acceleration. The target table pre-aggregates Duration over 1-minute
+-- buckets grouped by the dimension columns ServiceName and StatusCode.
+-- The 'E2E Traces MV' fixture source references e2e_otel_traces_1m.
+CREATE TABLE IF NOT EXISTS ${DATABASE}.e2e_otel_traces_1m
+(
+    \`Timestamp\` DateTime,
+    \`ServiceName\` LowCardinality(String),
+    \`StatusCode\` LowCardinality(String),
+    \`count\` SimpleAggregateFunction(sum, UInt64),
+    \`avg__Duration\` AggregateFunction(avg, UInt64),
+    \`max__Duration\` SimpleAggregateFunction(max, UInt64),
+    \`quantile__Duration\` AggregateFunction(quantile(0.95), UInt64)
+)
+ENGINE = AggregatingMergeTree
+ORDER BY (Timestamp, ServiceName, StatusCode)
+SETTINGS index_granularity = 8192;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS ${DATABASE}.e2e_otel_traces_1m_mv TO ${DATABASE}.e2e_otel_traces_1m
+AS SELECT
+    toStartOfMinute(Timestamp) AS Timestamp,
+    ServiceName,
+    StatusCode,
+    count() AS count,
+    avgState(Duration) AS avg__Duration,
+    maxSimpleState(Duration) AS max__Duration,
+    quantileState(0.95)(Duration) AS quantile__Duration
+FROM ${DATABASE}.e2e_otel_traces
+GROUP BY
+    Timestamp,
+    ServiceName,
+    StatusCode
 EOFSQL

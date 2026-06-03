@@ -5,7 +5,7 @@ export function buildSourceSummary(
   connections: { _id: unknown; name: string }[],
 ): string {
   if (sources.length === 0 && connections.length === 0) {
-    return 'No sources or connections found. Call hyperdx_list_sources to discover available data.';
+    return 'No sources or connections found. Call clickstack_list_sources to discover available data.';
   }
 
   const lines: string[] = [];
@@ -14,7 +14,7 @@ export function buildSourceSummary(
     lines.push('AVAILABLE SOURCES (use sourceId with builder tiles):');
     for (const s of sources) {
       lines.push(
-        `  - "${s.name}" (${s.kind}) — sourceId: "${s._id}", connectionId: "${s.connection}"`,
+        `  - "${s.name}" (${s.kind}): sourceId "${s._id}", connectionId "${s.connection}"`,
       );
     }
   }
@@ -25,7 +25,7 @@ export function buildSourceSummary(
       'AVAILABLE CONNECTIONS (use connectionId with raw SQL tiles only):',
     );
     for (const c of connections) {
-      lines.push(`  - "${c.name}" — connectionId: "${c._id}"`);
+      lines.push(`  - "${c.name}": connectionId "${c._id}"`);
     }
   }
 

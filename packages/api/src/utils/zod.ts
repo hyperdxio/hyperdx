@@ -1,10 +1,15 @@
 import {
   addDuplicateTileIdIssues,
   AggregateFunctionSchema,
+  alertNoteSchema,
   AlertThresholdType,
+  DASHBOARD_CONTAINER_ID_MAX,
+  DASHBOARD_MAX_TILES,
   DashboardFilterSchema,
   MetricsDataType,
   NumberFormatSchema,
+  OnClickDashboardSchema,
+  OnClickSearchSchema,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
   validateAlertScheduleOffsetMinutes,
@@ -19,14 +24,6 @@ import { AlertSource } from '@/models/alert';
 export const objectIdSchema = z.string().refine(val => {
   return Types.ObjectId.isValid(val);
 });
-
-const sourceTableSchema = z.union([
-  z.literal('logs'),
-  z.literal('rrweb'),
-  z.literal('metrics'),
-]);
-
-type SourceTable = z.infer<typeof sourceTableSchema>;
 
 // ================================
 // Charts & Dashboards (old format)
@@ -168,6 +165,31 @@ export const externalQuantileLevelSchema = z.union([
   z.literal(0.99),
 ]);
 
+// -----------------------------------------------------
+// OnClick (link-out) schemas for table chart tiles
+// -----------------------------------------------------
+
+const externalOnClickTargetSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('id'), id: objectIdSchema }),
+  z.object({
+    mode: z.literal('template'),
+    template: z.string().min(1).max(10000),
+  }),
+]);
+
+const externalOnClickSearchSchema = OnClickSearchSchema.extend({
+  target: externalOnClickTargetSchema,
+});
+
+const externalOnClickDashboardSchema = OnClickDashboardSchema.extend({
+  target: externalOnClickTargetSchema,
+});
+
+const externalOnClickSchema = z.discriminatedUnion('type', [
+  externalOnClickSearchSchema,
+  externalOnClickDashboardSchema,
+]);
+
 const externalDashboardSelectItemSchema = z
   .object({
     // For logs, traces, and metrics
@@ -177,6 +199,7 @@ const externalDashboardSelectItemSchema = z
     level: externalQuantileLevelSchema.optional(),
     where: z.string().max(10000).optional().default(''),
     whereLanguage: whereLanguageSchema.optional(),
+    numberFormat: NumberFormatSchema.optional(),
 
     // For metrics only
     metricType: z.nativeEnum(MetricsDataType).optional(),
@@ -264,11 +287,13 @@ const externalDashboardTableChartConfigSchema = z.object({
   asRatio: z.boolean().optional(),
   numberFormat: NumberFormatSchema.optional(),
   groupByColumnsOnLeft: z.boolean().optional(),
+  onClick: externalOnClickSchema.optional(),
 });
 
 const externalDashboardTableRawSqlChartConfigSchema =
   externalDashboardRawSqlChartConfigBaseSchema.extend({
     displayType: z.literal('table'),
+    onClick: externalOnClickSchema.optional(),
   });
 
 const externalDashboardNumberRawSqlChartConfigSchema =
@@ -296,6 +321,44 @@ const externalDashboardPieChartConfigSchema = z.object({
   numberFormat: NumberFormatSchema.optional(),
 });
 
+// Heatmap charts use a dedicated select item schema because they carry the
+// heatmap-specific fields `countExpression` and `heatmapScaleType` from
+// `DerivedColumnSchema` in common-utils, and they do not expose the line/bar
+// `aggFn` or `alias`. The chart-level discriminator is
+// `displayType: 'heatmap'`; the heatmap aggregation function is fixed
+// internally (`count`) and `HeatmapSeriesEditor` does not render an alias
+// input. `valueExpression` must be non-empty to match the editor-form rule
+// (validateChartForm in
+// packages/app/src/components/ChartEditor/utils.ts: "Value expression is
+// required for heatmap charts").
+const externalDashboardHeatmapSelectItemSchema = z.object({
+  valueExpression: z.string().min(1).max(10000),
+  countExpression: z.string().max(10000).optional(),
+  heatmapScaleType: z.enum(['log', 'linear']).optional(),
+});
+
+export type ExternalDashboardHeatmapSelectItem = z.infer<
+  typeof externalDashboardHeatmapSelectItemSchema
+>;
+
+// Heatmap exposes the row-level filter at the chart-config level (matching
+// the editor: HeatmapSeriesEditor renders a single SearchWhereInput bound
+// to the top-level `where` / `whereLanguage`). There is no groupBy in the
+// heatmap UI (HeatmapSeriesEditor doesn't render one), so it is omitted
+// from the schema.
+const externalDashboardHeatmapChartConfigSchema = z.object({
+  displayType: z.literal('heatmap'),
+  sourceId: objectIdSchema,
+  select: z.array(externalDashboardHeatmapSelectItemSchema).length(1),
+  where: z.string().max(10000).optional().default(''),
+  // `whereLanguageSchema` (an alias for `SearchConditionLanguageSchema`)
+  // is already `.optional()` internally; sibling chart-config schemas
+  // in this file (e.g. `externalDashboardSearchChartConfigSchema`) drop
+  // the redundant outer `.optional()`.
+  whereLanguage: whereLanguageSchema,
+  numberFormat: NumberFormatSchema.optional(),
+});
+
 const externalDashboardSearchChartConfigSchema = z.object({
   displayType: z.literal('search'),
   sourceId: objectIdSchema,
@@ -303,6 +366,17 @@ const externalDashboardSearchChartConfigSchema = z.object({
   where: z.string().max(10000).optional().default(''),
   whereLanguage: whereLanguageSchema,
 });
+
+// Extended schema for the /api/v2/search endpoint — adds orderBy which is not
+// applicable to dashboard tiles.
+export const externalDashboardSearchRequestSchema =
+  externalDashboardSearchChartConfigSchema.extend({
+    orderBy: z.string().max(1024).optional(),
+  });
+
+export type ExternalDashboardSearchRequestConfig = z.infer<
+  typeof externalDashboardSearchRequestSchema
+>;
 
 const externalDashboardMarkdownChartConfigSchema = z.object({
   displayType: z.literal('markdown'),
@@ -317,6 +391,7 @@ const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
     externalDashboardTableChartConfigSchema,
     externalDashboardNumberChartConfigSchema,
     externalDashboardPieChartConfigSchema,
+    externalDashboardHeatmapChartConfigSchema,
     externalDashboardMarkdownChartConfigSchema,
     externalDashboardSearchChartConfigSchema,
   ],
@@ -420,6 +495,11 @@ export const externalDashboardTileSchema = z
       })
       .optional(),
     config: externalDashboardTileConfigSchema.optional(),
+    // Bounds match the internal `DashboardContainerSchema` cap (see
+    // `DASHBOARD_CONTAINER_ID_MAX` in common-utils/src/types.ts) so a
+    // valid container id from the editor always fits.
+    containerId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
+    tabId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.series && data.config) {
@@ -471,6 +551,11 @@ export type ExternalDashboardTileWithId = z.infer<
 
 export const externalDashboardTileListSchema = z
   .array(externalDashboardTileSchemaWithOptionalId)
+  // Cap the per-dashboard tile fan-out so an external-API caller can't push
+  // a payload tens of MB into Mongo in one request. The 500 limit sits well
+  // above any real dashboard; the dashboard editor's add-tile affordance
+  // is one-at-a-time.
+  .max(DASHBOARD_MAX_TILES)
   .superRefine((tiles, ctx) =>
     addDuplicateTileIdIssues(tiles, ctx, {
       messageSuffix: '. Omit the ID to generate a unique one.',
@@ -509,6 +594,7 @@ export const alertSchema = z
     source: z.nativeEnum(AlertSource).default(AlertSource.SAVED_SEARCH),
     name: z.string().min(1).max(512).nullish(),
     message: z.string().min(1).max(4096).nullish(),
+    note: alertNoteSchema,
   })
   .and(zSavedSearchAlert.or(zTileAlert))
   .superRefine(validateAlertScheduleOffsetMinutes)

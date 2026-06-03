@@ -25,7 +25,10 @@ import {
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  ClickHouseQueryError,
+  ColumnMeta,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
@@ -80,6 +83,7 @@ import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
+import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -123,13 +127,16 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
-import SourceSchemaPreview from './components/SourceSchemaPreview';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from './components/SourceSchemaPreview';
 import {
   getRelativeTimeOptionLabel,
   LIVE_TAIL_DURATION_MS,
 } from './components/TimePicker/utils';
-import { useTableMetadata } from './hooks/useMetadata';
+import { useColumns, useTableMetadata } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
+import { useStableCallback } from './hooks/useStableCallback';
 import {
   buildDirectTraceWhereClause,
   getDefaultDirectTraceDateRange,
@@ -185,17 +192,22 @@ const QUERY_KEY_PREFIX = 'search';
 
 // Helper function to get the default source id
 export function getDefaultSourceId(
-  sources: { id: string }[] | undefined,
+  sources: { id: string; disabled?: boolean }[] | undefined,
   lastSelectedSourceId: string | undefined,
 ): string {
   if (!sources || sources.length === 0) return '';
+
+  // Filter out disabled sources
+  const enabledSources = sources.filter(s => !s.disabled);
+  if (enabledSources.length === 0) return '';
+
   if (
     lastSelectedSourceId &&
-    sources.some(s => s.id === lastSelectedSourceId)
+    enabledSources.some(s => s.id === lastSelectedSourceId)
   ) {
     return lastSelectedSourceId;
   }
-  return sources[0].id;
+  return enabledSources[0].id;
 }
 
 function SourceEditModal({
@@ -267,6 +279,7 @@ function SearchSubmitButton({
       type="submit"
       leftSection={<IconPlayerPlay size={16} />}
       style={{ flexShrink: 0 }}
+      size="xs"
     >
       Run
     </Button>
@@ -777,6 +790,12 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
   }, [source, tableMetadata]);
 }
 
+function formatDroppedFiltersMessage(count: number): string {
+  const noun = count === 1 ? 'filter' : 'filters';
+  const verb = count === 1 ? 'was' : 'were';
+  return `${count} ${noun} didn't apply to this source and ${verb} removed.`;
+}
+
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
@@ -1064,6 +1083,23 @@ export function DBSearchPage() {
     defaultValue: searchedConfig.source ?? undefined,
   });
   const prevSourceRef = useRef(watchedSource);
+  // Set when the user switches sources via the dropdown. The follow-up
+  // effect waits for the new source's columns to load and then drops any
+  // sidebar filters that don't apply to the new schema.
+  const pendingFilterReconcileRef = useRef<string | null>(null);
+
+  const watchedSourceObj = useMemo(
+    () => inputSourceObjs?.find(s => s.id === watchedSource),
+    [inputSourceObjs, watchedSource],
+  );
+  const { data: watchedSourceColumns } = useColumns(
+    {
+      databaseName: watchedSourceObj?.from?.databaseName ?? '',
+      tableName: watchedSourceObj?.from?.tableName ?? '',
+      connectionId: watchedSourceObj?.connection ?? '',
+    },
+    { enabled: !!watchedSourceObj },
+  );
 
   useEffect(() => {
     // If the user changes the source dropdown, reset the select and orderby fields
@@ -1081,14 +1117,19 @@ export function DBSearchPage() {
         if (savedSearchId == null || savedSearch?.source !== watchedSource) {
           setValue('select', '');
           setValue('orderBy', '');
-          // Clear all search filters only when switching to a different source
-          searchFilters.clearAllFilters();
+          // Defer filter clearing: wait until the new source's columns load,
+          // then keep filters whose root column exists on the new schema.
+          pendingFilterReconcileRef.current = watchedSource ?? null;
           // If the user is in a saved search, prefer the saved search's select/orderBy if available
         } else {
           setValue('select', savedSearch?.select ?? '');
           setValue('orderBy', savedSearch?.orderBy ?? '');
           // Don't clear filters - we're loading from saved search
         }
+        // Push the new source to URL/searchedConfig so the chart re-queries.
+        // Debounced so a later filter reconcile (which also submits) collapses
+        // into a single run.
+        debouncedSubmit();
       }
     }
   }, [
@@ -1097,9 +1138,33 @@ export function DBSearchPage() {
     savedSearch,
     savedSearchId,
     inputSourceObjs,
-    searchFilters,
     setLastSelectedSourceId,
+    debouncedSubmit,
   ]);
+
+  const retainCompatibleFilters = useStableCallback((columns: ColumnMeta[]) => {
+    pendingFilterReconcileRef.current = null;
+
+    const allowed = new Set(columns.map(c => c.name));
+
+    const dropped = searchFilters.retainFiltersByColumns(allowed);
+
+    if (dropped.length > 0) {
+      notifications.show({
+        color: 'yellow',
+        message: formatDroppedFiltersMessage(dropped.length),
+      });
+    }
+  });
+
+  useEffect(() => {
+    if (
+      pendingFilterReconcileRef.current === watchedSource &&
+      watchedSourceColumns
+    ) {
+      retainCompatibleFilters(watchedSourceColumns);
+    }
+  }, [watchedSource, watchedSourceColumns, retainCompatibleFilters]);
 
   const onTableScroll = useCallback(
     (scrollTop: number) => {
@@ -1308,6 +1373,14 @@ export function DBSearchPage() {
     };
   }, [chartConfig, searchedTimeRange]);
 
+  // Stable key for persisting column widths in localStorage. Scoped per saved
+  // search when one is loaded, else per source for ad-hoc searches.
+  const columnSizeTableId = savedSearchId
+    ? `db-search-saved-${savedSearchId}`
+    : searchedConfig.source
+      ? `db-search-source-${searchedConfig.source}`
+      : undefined;
+
   const displayedColumns = useMemo(() => {
     // `select` is typed as `string | DerivedColumn[]` upstream, but in the
     // search page we always supply a string. Guard for type safety.
@@ -1452,7 +1525,9 @@ export function DBSearchPage() {
       return undefined;
     }
 
-    const variableConfig: any = {};
+    const variableConfig: Partial<
+      Pick<BuilderChartConfigWithDateRange, 'groupBy'>
+    > = {};
     switch (searchedSource?.kind) {
       case SourceKind.Log:
         variableConfig.groupBy = searchedSource?.severityTextExpression;
@@ -1477,19 +1552,24 @@ export function DBSearchPage() {
       displayType: DisplayType.StackedBar,
       with: aliasWith,
       // Preserve the original table select string for "View Events" links
-      eventTableSelect: searchedConfig.select,
-      // In live mode, when the end date is aligned to the granularity, the end date does
-      // not change on every query, resulting in cached data being re-used.
-      alignDateRangeToGranularity: !isLive,
+      eventTableSelect: searchedConfig.select ?? undefined,
+      // Never align to granularity boundaries on the search page: the histogram
+      // and total count must reflect the user's exact selected range so they
+      // match the rows shown in the results table. Aligning to bucket
+      // boundaries (e.g. expanding a 2s selection to a 15s bucket) inflates
+      // the count beyond what the table shows. In live mode this also avoids
+      // stale cached data from an unchanging aligned end date.
+      alignDateRangeToGranularity: false,
+      // Make sure the end date is inclusive so that the histogram and table counts match
+      dateRangeEndInclusive: true,
       ...variableConfig,
-    };
+    } satisfies BuilderChartConfigWithDateRange;
   }, [
     chartConfig,
     searchedSource,
     aliasWith,
     searchedTimeRange,
     searchedConfig.select,
-    isLive,
   ]);
 
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
@@ -1587,10 +1667,8 @@ export function DBSearchPage() {
     [inputSourceObj],
   );
 
-  const sourceSchemaPreview = useMemo(
-    () => <SourceSchemaPreview source={inputSourceObj} variant="text" />,
-    [inputSourceObj],
-  );
+  const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
+    useState(false);
 
   const onTimePickerSearch = useCallback(
     (range: string) => {
@@ -1665,13 +1743,38 @@ export function DBSearchPage() {
     setModelFormExpanded(false);
   }, [setModelFormExpanded]);
 
-  const onEditSources = useCallback(() => {
+  // `Edit source` (singular): operate on the currently selected source.
+  // Local mode opens the inline edit modal seeded with `inputSource`;
+  // non-local uses a hard navigation so the page's `useQueryStates`
+  // (source/where/select/whereLanguage/filters/orderBy) can't merge
+  // stale /search state into the destination URL, and so
+  // `router.basePath` is correctly prepended for the /clickstack build.
+  const onEditCurrentSource = useCallback(() => {
     if (IS_LOCAL_MODE) {
-      setModelFormExpanded(v => !v);
-    } else {
-      router.push('/team');
+      setModelFormExpanded(true);
+      return;
     }
-  }, [setModelFormExpanded]);
+    if (inputSource) {
+      window.location.assign(`${router.basePath}/team?source=${inputSource}`);
+    } else {
+      window.location.assign(`${router.basePath}/team`);
+    }
+  }, [inputSource, setModelFormExpanded]);
+
+  // `Manage sources`: open the all-sources list view. Only wired in
+  // non-local mode; local has no list-view surface so the menu item
+  // hides itself when this prop is undefined. We use `window.location`
+  // for a hard navigation instead of `router.push` so the page's
+  // `useQueryStates` (source/where/select/whereLanguage/filters/orderBy)
+  // can't restore its state into the new URL during the client-side
+  // transition, and so `router.basePath` is correctly prepended for
+  // the /clickstack build.
+  const onManageSources = useMemo(() => {
+    if (IS_LOCAL_MODE) return undefined;
+    return () => {
+      window.location.assign(`${router.basePath}/team`);
+    };
+  }, []);
 
   const setNewSourceModalClosed = useCallback(
     () => setNewSourceModalOpened(false),
@@ -1808,11 +1911,21 @@ export function DBSearchPage() {
             control={control}
             name="source"
             onCreate={openNewSourceModal}
-            onEdit={onEditSources}
+            onEdit={onEditCurrentSource}
+            onManageSources={onManageSources}
+            onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+            isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(
+              inputSourceObj,
+            )}
             allowedSourceKinds={ALLOWED_SOURCE_KINDS}
             data-testid="source-selector"
-            sourceSchemaPreview={sourceSchemaPreview}
             style={{ minWidth: 150 }}
+          />
+          <SourceSchemaPreview
+            source={inputSourceObj}
+            controlled
+            open={isSourceSchemaPreviewOpen}
+            onClose={() => setIsSourceSchemaPreviewOpen(false)}
           />
           <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
             <SQLInlineEditorControlled
@@ -1825,6 +1938,8 @@ export function DBSearchPage() {
               label="SELECT"
               size="xs"
               allowMultiline
+              dateRange={searchedTimeRange}
+              sourceId={inputSource}
             />
           </Box>
           <Box style={{ maxWidth: 400, width: '20%' }}>
@@ -1836,6 +1951,8 @@ export function DBSearchPage() {
               onSubmit={onSubmit}
               label="ORDER BY"
               size="xs"
+              dateRange={searchedTimeRange}
+              sourceId={inputSource}
             />
           </Box>
           <>
@@ -1870,7 +1987,10 @@ export function DBSearchPage() {
                 onClick={openAlertModal}
                 style={{ flexShrink: 0 }}
               >
-                Alerts
+                <Group gap={4}>
+                  Alerts
+                  <AlertStatusIcon alerts={savedSearch?.alerts} />
+                </Group>
               </Button>
             )}
           </>
@@ -1896,6 +2016,9 @@ export function DBSearchPage() {
             enableHotkey
             data-testid="search-input"
             minWidth="min(600px, 100%)"
+            dateRange={searchedTimeRange}
+            sourceId={inputSource}
+            size="xs"
           />
           <Flex
             gap="sm"
@@ -1915,12 +2038,13 @@ export function DBSearchPage() {
                 isLive && interval !== LIVE_TAIL_DURATION_MS
               }
               width="100%"
+              size="xs"
             />
             {isLive && (
               <Tooltip label="Live tail refresh interval">
                 <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
                   <Select
-                    size="sm"
+                    size="xs"
                     w="100%"
                     data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
                     value={String(refreshFrequency)}
@@ -2262,6 +2386,7 @@ export function DBSearchPage() {
                             context={rowTableContext}
                             config={dbSqlRowTableConfig}
                             sourceId={searchedConfig.source}
+                            tableId={columnSizeTableId}
                             onSidebarOpen={onSidebarOpen}
                             onExpandedRowsChange={onExpandedRowsChange}
                             enabled={isReady}

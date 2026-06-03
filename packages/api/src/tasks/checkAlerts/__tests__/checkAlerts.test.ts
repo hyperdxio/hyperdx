@@ -1232,7 +1232,7 @@ describe('checkAlerts', () => {
       expect(
         buildAlertMessageTemplateHdxLink(alertProvider, defaultChartView),
       ).toMatchInlineSnapshot(
-        `"http://app:8080/dashboards/id-123?from=1679089083103&granularity=5+minute&to=1679093339103"`,
+        `"http://app:8080/dashboards/id-123?from=1679089083103&granularity=5+minute&to=1679093339103&highlightedTileId=test-tile-id"`,
       );
     });
 
@@ -2573,7 +2573,7 @@ describe('checkAlerts', () => {
             {
               text: {
                 text: [
-                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1>*`,
+                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000&highlightedTileId=17quud | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1>*`,
                   '',
                   '3 meets or exceeds 1',
                   'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
@@ -3540,7 +3540,7 @@ describe('checkAlerts', () => {
       expect(fetchMock).toHaveBeenCalledWith('https://webhook.site/123', {
         method: 'POST',
         body: JSON.stringify({
-          text: `http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1`,
+          text: `http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000&highlightedTileId=17quud | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1`,
         }),
         headers: {
           'Content-Type': 'application/json',
@@ -5340,7 +5340,7 @@ describe('checkAlerts', () => {
             {
               text: {
                 text: [
-                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "CPU" in "My Dashboard" - 6 meets or exceeds 1>*`,
+                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000&highlightedTileId=17quud | 🚨 Alert for "CPU" in "My Dashboard" - 6 meets or exceeds 1>*`,
                   '',
                   '6 meets or exceeds 1',
                   'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',

@@ -10,7 +10,12 @@ import {
   TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithDateRange,
+  isLogSource,
+  isTraceSource,
+  MetadataMaterializedViews,
+} from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
   useQuery,
@@ -123,14 +128,21 @@ export function useJsonColumns(
 
 export function useMultipleAllFields(
   tableConnections: TableConnection[],
-  options?: Partial<UseQueryOptions<Field[]>>,
+  options?: Partial<UseQueryOptions<Field[]>> & {
+    dateRange?: [Date, Date];
+    timestampValueExpression?: string;
+  },
 ) {
   const metadata = useMetadataWithSettings();
   const { data: me, isFetched } = api.useMe();
+  const { dateRange, timestampValueExpression, ...queryOptions } =
+    options ?? {};
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useMultipleAllFields',
       ...tableConnections.map(tc => ({ ...tc })),
+      dateRange ? [dateRange[0].getTime(), dateRange[1].getTime()] : undefined,
+      timestampValueExpression,
     ],
     queryFn: async () => {
       const team = me?.team;
@@ -139,7 +151,9 @@ export function useMultipleAllFields(
       }
 
       const promiseResults = await Promise.allSettled(
-        tableConnections.map(tc => metadata.getAllFields(tc)),
+        tableConnections.map(tc =>
+          metadata.getAllFields({ ...tc, dateRange, timestampValueExpression }),
+        ),
       );
 
       const fields2d: Field[][] = promiseResults.map(result => {
@@ -164,13 +178,16 @@ export function useMultipleAllFields(
         tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
       ) &&
       isFetched,
-    ...options,
+    ...queryOptions,
   });
 }
 
 export function useAllFields(
   tableConnection: TableConnection | undefined,
-  options?: Partial<UseQueryOptions<Field[]>>,
+  options?: Partial<UseQueryOptions<Field[]>> & {
+    dateRange?: [Date, Date];
+    timestampValueExpression?: string;
+  },
 ) {
   return useMultipleAllFields(
     tableConnection ? [tableConnection] : [],
@@ -212,6 +229,8 @@ export function useMultipleGetKeyValues(
     keys,
     limit,
     disableRowLimit,
+    mode = 'exact',
+    metadataMVs: metadataMVsOverride,
   }: {
     chartConfigs:
       | BuilderChartConfigWithDateRange
@@ -219,6 +238,9 @@ export function useMultipleGetKeyValues(
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
+    mode?: 'all' | 'exact';
+    /** Pass directly to skip source-based resolution (e.g. when chartConfig has no source) */
+    metadataMVs?: MetadataMaterializedViews;
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
@@ -235,12 +257,46 @@ export function useMultipleGetKeyValues(
   const query = useQuery<{ key: string; value: string[] }[]>({
     queryKey: [
       'useMetadata.useGetKeyValues',
+      mode,
+      metadataMVsOverride,
       ...chartConfigsArr.map(cc => ({ ...cc })),
       ...keys,
       disableRowLimit,
       maxKeys,
     ],
     queryFn: async ({ signal }) => {
+      if (mode === 'all') {
+        const firstConfig = chartConfigsArr[0];
+        if (!firstConfig || keys.length === 0) return [];
+
+        // Use explicit override, or resolve from source
+        const firstSource = firstConfig.source
+          ? sources?.find(s => s.id === firstConfig.source)
+          : undefined;
+        const metadataMVs =
+          metadataMVsOverride ??
+          (firstSource &&
+          (isLogSource(firstSource) || isTraceSource(firstSource))
+            ? firstSource.metadataMaterializedViews
+            : undefined);
+
+        const { databaseName, tableName } = firstConfig.from;
+        const connectionId = firstConfig.connection;
+        const dateRange = firstConfig.dateRange;
+
+        return metadata.getAllKeyValues({
+          databaseName,
+          tableName,
+          keyExpressions: keys.slice(0, maxKeys),
+          connectionId,
+          metadataMVs,
+          dateRange,
+          timestampValueExpression: firstConfig.timestampValueExpression,
+          signal,
+        });
+      }
+
+      // 'exact' mode
       return (
         await Promise.all(
           chartConfigsArr.map(chartConfig => {
@@ -312,11 +368,15 @@ export function useGetKeyValues(
     keys,
     limit,
     disableRowLimit,
+    mode,
+    metadataMVs,
   }: {
     chartConfig?: BuilderChartConfigWithDateRange;
     keys: string[];
     limit?: number;
     disableRowLimit?: boolean;
+    mode?: 'all' | 'exact';
+    metadataMVs?: MetadataMaterializedViews;
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
@@ -326,9 +386,80 @@ export function useGetKeyValues(
       keys,
       limit,
       disableRowLimit,
+      mode,
+      metadataMVs,
     },
     options,
   );
+}
+
+/**
+ * Combined key + value discovery in a single rollup query.
+ * Returns all fields and their top N values without needing a separate
+ * useAllFields + useGetKeyValues chain.
+ */
+export function useAllFieldsAndValues(
+  {
+    databaseName,
+    tableName,
+    connectionId,
+    metadataMVs,
+    dateRange,
+    maxValuesPerKey,
+    maxKeys,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    metadataMVs?: MetadataMaterializedViews;
+    dateRange?: [Date, Date];
+    maxValuesPerKey?: number;
+    maxKeys?: number;
+  },
+  options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
+) {
+  const metadata = useMetadataWithSettings();
+  const { data: me } = api.useMe();
+  const { enabled = true } = options || {};
+  const fieldMetadataDisabled = !!me?.team?.fieldMetadataDisabled;
+
+  return useQuery<{ key: string; value: string[] }[]>({
+    queryKey: [
+      'useMetadata.useAllFieldsAndValues',
+      databaseName,
+      tableName,
+      connectionId,
+      metadataMVs,
+      dateRange?.[0]?.getTime(),
+      dateRange?.[1]?.getTime(),
+      maxValuesPerKey,
+      maxKeys,
+    ],
+    queryFn: async ({ signal }) => {
+      if (fieldMetadataDisabled) {
+        return [];
+      }
+      return metadata.getAllFieldsAndValues({
+        databaseName,
+        tableName,
+        connectionId,
+        metadataMVs,
+        dateRange,
+        maxValuesPerKey,
+        maxKeys,
+        signal,
+      });
+    },
+    staleTime: 1000 * 60 * 5,
+    placeholderData: keepPreviousData,
+    ...options,
+    enabled:
+      !!enabled &&
+      !fieldMetadataDisabled &&
+      !!databaseName &&
+      !!tableName &&
+      !!connectionId,
+  });
 }
 
 export function deduplicateArray<T extends object>(array: T[]): T[] {

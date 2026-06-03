@@ -132,6 +132,10 @@ jest.mock('../hooks/useMetadata', () => ({
     data: { sorting_key: 'Timestamp' },
     isLoading: false,
   }),
+  useColumns: () => ({
+    data: undefined,
+    isLoading: false,
+  }),
 }));
 
 jest.mock('../hooks/useSqlSuggestions', () => ({
@@ -204,7 +208,12 @@ jest.mock('../components/PatternTable', () => () => <div />);
 jest.mock('../components/Search/DBSearchHeatmapChart', () => ({
   DBSearchHeatmapChart: () => <div />,
 }));
-jest.mock('../components/SourceSchemaPreview', () => () => <div />);
+jest.mock('../components/SourceSchemaPreview', () => ({
+  __esModule: true,
+  default: () => <div />,
+  isSourceSchemaPreviewEnabled: () => false,
+  getSourceSchemaTables: () => [],
+}));
 jest.mock('../components/Error/ErrorBoundary', () => ({
   ErrorBoundary: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>

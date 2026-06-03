@@ -99,6 +99,7 @@ export async function buildEventSearchQuery(
     connection: source.connection,
     timestampValueExpression: tsExpr,
     implicitColumnExpression: source.implicitColumnExpression,
+    useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
     orderBy,
     limit: { limit, offset },
     dateRange: [startTime, endTime],
@@ -132,6 +133,7 @@ async function buildAliasWithClauses(
     connection: source.connection,
     timestampValueExpression: tsExpr,
     implicitColumnExpression: source.implicitColumnExpression,
+    useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
     limit: { limit: 0 },
     dateRange: [new Date(), new Date()],
   };
@@ -194,6 +196,7 @@ export async function buildPatternSampleQuery(
     connection: source.connection,
     timestampValueExpression: tsExpr,
     implicitColumnExpression: source.implicitColumnExpression,
+    useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
     orderBy: 'rand()',
     limit: { limit: sampleLimit },
     dateRange: [startTime, endTime],
@@ -237,6 +240,7 @@ export async function buildTotalCountQuery(
     connection: source.connection,
     timestampValueExpression: tsExpr,
     implicitColumnExpression: source.implicitColumnExpression,
+    useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
     limit: { limit: 1 },
     dateRange: [startTime, endTime],
     ...(aliasWith ? { with: aliasWith } : {}),
@@ -333,9 +337,12 @@ export async function buildFullRowQuery(
     /** Column metadata from the table query response */
     tableMeta: ColumnMetaType[];
     metadata: Metadata;
+    /** When provided, only these columns are used in the row WHERE clause */
+    primaryKeyColumns?: Set<string>;
   },
 ): Promise<FullRowQueryResult> {
-  const { source, row, tableChSql, tableMeta, metadata } = opts;
+  const { source, row, tableChSql, tableMeta, metadata, primaryKeyColumns } =
+    opts;
 
   // Parse the rendered table SQL to get alias → expression mapping
   const aliasMap = chSqlToAliasMap(tableChSql);
@@ -348,6 +355,7 @@ export async function buildFullRowQuery(
     row as Record<string, unknown>,
     columnMap,
     aliasMap,
+    primaryKeyColumns,
   );
 
   const selectList = buildRowDataSelectList(source);

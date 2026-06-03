@@ -1,9 +1,32 @@
 .resizeHandle {
   position: absolute;
-  right: -3px;
+  right: 0;
   top: 0;
   bottom: 0;
+  width: 3px;
+  cursor: col-resize;
+  transition: all 150ms ease;
+  z-index: 10;
+
+  &:hover,
+  &:active {
+    background-color: var(--color-bg-neutral);
+  }
+
+  &:active {
+    background-color: var(--color-bg-neutral);
+    width: 5px;
+    margin-right: -1px;
+  }
+}
+
+.resizeHandleInline {
+  position: relative;
+  right: auto;
+  top: auto;
+  bottom: auto;
   width: 6px;
+  flex-shrink: 0;
   cursor: col-resize;
   transition: all 150ms ease;
   z-index: 10;
@@ -16,7 +39,6 @@
   &:active {
     background-color: var(--color-bg-neutral);
     width: 8px;
-    margin-right: -1px;
   }
 }
 

@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ErrorBoundary } from 'react-error-boundary';
 import {
   filterColumnMetaByType,
   JSDataType,
@@ -8,8 +9,8 @@ import {
   isRawSqlChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
-  BuilderChartConfigWithDateRange,
-  RawSqlConfigWithDateRange,
+  ChartConfigWithDateRange,
+  isChartPaletteToken,
 } from '@hyperdx/common-utils/dist/types';
 import { Flex, Text } from '@mantine/core';
 
@@ -19,14 +20,179 @@ import {
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useResolvedNumberFormat, useSource } from '@/source';
-import { formatNumber } from '@/utils';
+import { useSingleSeriesNumberFormat, useSource } from '@/source';
+import { formatNumber, getColorFromCSSToken } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
   ChartErrorStateVariant,
 } from './charts/ChartErrorState';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
+
+const NUMBER_TILE_MIN_FONT_SIZE = 10;
+const NUMBER_TILE_MAX_FONT_SIZE = 72;
+// Initial / fallback font size used before the first measurement runs
+// (and as a sensible mid-range size if measurement is unavailable).
+// Tuned to look reasonable in a typical "default" tile (~6 columns wide
+// on a 24-col grid) without overflowing.
+const NUMBER_TILE_DEFAULT_FONT_SIZE = 36;
+const NUMBER_TILE_PADDING = 12;
+
+function fitFontSize(
+  textEl: HTMLElement,
+  availableWidth: number,
+  availableHeight: number,
+  minFontSize: number,
+  maxFontSize: number,
+): number {
+  if (availableWidth <= 0 || availableHeight <= 0) {
+    return minFontSize;
+  }
+
+  let lo = minFontSize;
+  let hi = maxFontSize;
+  let best = minFontSize;
+
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    textEl.style.fontSize = `${mid}px`;
+    if (
+      textEl.scrollWidth <= availableWidth &&
+      textEl.scrollHeight <= availableHeight
+    ) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  return best;
+}
+
+// Plain centered rendering used as a fallback when AutoSizeNumber's
+// measurement / ResizeObserver pipeline throws unexpectedly. Mirrors the
+// pre-auto-size implementation so dashboards keep showing the value even
+// if the resize logic encounters a runtime error.
+function SimpleNumber({
+  children,
+  color,
+}: {
+  children: React.ReactNode;
+  color?: string;
+}) {
+  return (
+    <Flex align="center" justify="center" h="100%" style={{ flexGrow: 1 }}>
+      <Text size="4rem" c={color}>
+        {children}
+      </Text>
+    </Flex>
+  );
+}
+
+// Renders the formatted number at the largest font size (between
+// NUMBER_TILE_MIN_FONT_SIZE and NUMBER_TILE_MAX_FONT_SIZE) that fits the
+// surrounding tile, recomputing whenever the tile resizes or the value
+// changes. Prevents long values (large counts, currency, percentages)
+// from overflowing small dashboard tiles.
+function AutoSizeNumber({
+  children,
+  color,
+}: {
+  children: React.ReactNode;
+  color?: string;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const textRef = useRef<HTMLParagraphElement | null>(null);
+  const [fontSize, setFontSize] = useState<number>(
+    NUMBER_TILE_DEFAULT_FONT_SIZE,
+  );
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const textEl = textRef.current;
+    if (!container || !textEl) return;
+
+    let raf: number | null = null;
+    const recalc = () => {
+      raf = null;
+      if (!container || !textEl) return;
+      const availW = container.clientWidth - NUMBER_TILE_PADDING * 2;
+      const availH = container.clientHeight - NUMBER_TILE_PADDING * 2;
+      const next = fitFontSize(
+        textEl,
+        availW,
+        availH,
+        NUMBER_TILE_MIN_FONT_SIZE,
+        NUMBER_TILE_MAX_FONT_SIZE,
+      );
+      setFontSize(next);
+    };
+
+    recalc();
+
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const ro = new ResizeObserver(() => {
+      if (raf != null) return;
+      raf = requestAnimationFrame(recalc);
+    });
+    ro.observe(container);
+
+    return () => {
+      ro.disconnect();
+      if (raf != null) cancelAnimationFrame(raf);
+    };
+  }, [children]);
+
+  return (
+    <Flex
+      ref={containerRef}
+      align="center"
+      justify="center"
+      h="100%"
+      w="100%"
+      style={{
+        flexGrow: 1,
+        overflow: 'hidden',
+        padding: NUMBER_TILE_PADDING,
+      }}
+    >
+      <Text
+        ref={textRef}
+        c={color}
+        style={{
+          fontSize,
+          lineHeight: 1.1,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {children}
+      </Text>
+    </Flex>
+  );
+}
+
+// Wraps AutoSizeNumber in an error boundary so a runtime failure in the
+// measurement / ResizeObserver pipeline never blanks out the tile —
+// instead the dashboard falls back to the original fixed-size rendering.
+function SafeAutoSizeNumber({
+  children,
+  color,
+}: {
+  children: React.ReactNode;
+  color?: string;
+}) {
+  return (
+    <ErrorBoundary
+      fallback={<SimpleNumber color={color}>{children}</SimpleNumber>}
+    >
+      <AutoSizeNumber color={color}>{children}</AutoSizeNumber>
+    </ErrorBoundary>
+  );
+}
 
 export default function DBNumberChart({
   config,
@@ -38,7 +204,7 @@ export default function DBNumberChart({
   showMVOptimizationIndicator = true,
   errorVariant,
 }: {
-  config: BuilderChartConfigWithDateRange | RawSqlConfigWithDateRange;
+  config: ChartConfigWithDateRange;
   queryKeyPrefix?: string;
   enabled?: boolean;
   title?: React.ReactNode;
@@ -81,7 +247,7 @@ export default function DBNumberChart({
         )
       : error;
 
-  const resolvedNumberFormat = useResolvedNumberFormat(config);
+  const resolvedNumberFormat = useSingleSeriesNumberFormat(queriedConfig);
 
   const value = valueColumn
     ? data?.data?.[0]?.[valueColumn.name]
@@ -91,6 +257,14 @@ export default function DBNumberChart({
   const { data: source } = useSource({
     id: config.source,
   });
+
+  // Tile-level color override resolved at render time so token choices
+  // reflow correctly across light / dark / IDE themes. Unknown tokens
+  // (legacy strings, schema gaps) fall back to the default text color.
+  const tileColor =
+    config.color && isChartPaletteToken(config.color)
+      ? getColorFromCSSToken(config.color)
+      : undefined;
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
@@ -149,9 +323,9 @@ export default function DBNumberChart({
           No data found within time range.
         </div>
       ) : (
-        <Flex align="center" justify="center" h="100%" style={{ flexGrow: 1 }}>
-          <Text size="4rem">{formattedValue ?? 'N/A'}</Text>
-        </Flex>
+        <SafeAutoSizeNumber color={tileColor}>
+          {formattedValue ?? 'N/A'}
+        </SafeAutoSizeNumber>
       )}
     </ChartContainer>
   );

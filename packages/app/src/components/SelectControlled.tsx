@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { Select, SelectProps } from '@mantine/core';
 
-export enum SelectControlledSpecialValues {
+enum SelectControlledSpecialValues {
   CreateNewValue = '_create_new_value',
   EditValue = '_edit_value',
 }

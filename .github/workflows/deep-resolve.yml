@@ -1,0 +1,196 @@
+name: Deep Review Resolver
+
+# Triggered by a collaborator commenting `/just-fix-it` on a PR. Reads the
+# latest <!-- deep-review --> sticky comment posted by deep-review.yml,
+# hands the findings to Claude with edit + git tools, and pushes a single
+# fix commit to the PR head branch.
+#
+# Limitations:
+#   - Same-repo PRs only. Fork PRs cannot be pushed to from CI with the
+#     default GITHUB_TOKEN; the workflow exits early on forks.
+#   - Collaborator-gated. The job `if` requires OWNER/MEMBER/COLLABORATOR
+#     association on the triggering comment to prevent random drive-by use.
+#   - Single-shot. Re-trigger by commenting `/just-fix-it` again after the
+#     follow-up deep-review run posts an updated finding list.
+
+on:
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: deep-resolve-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    if: |
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/just-fix-it') &&
+      (github.event.comment.author_association == 'OWNER' ||
+       github.event.comment.author_association == 'MEMBER' ||
+       github.event.comment.author_association == 'COLLABORATOR')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+
+    steps:
+      - name: Acknowledge trigger
+        uses: actions/github-script@v9
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes',
+            });
+
+      - name: Resolve PR metadata
+        id: pr
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.issue.number,
+            });
+            const isFork = pr.head.repo.full_name !== pr.base.repo.full_name;
+            core.setOutput('number', String(pr.number));
+            core.setOutput('head_repo', pr.head.repo.full_name);
+            core.setOutput('head_ref', pr.head.ref);
+            core.setOutput('is_fork', String(isFork));
+
+      - name: Reject fork PRs
+        if: steps.pr.outputs.is_fork == 'true'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: '<!-- deep-resolve -->\n⚠️ `/just-fix-it` is not supported on fork PRs — CI cannot push to a fork branch with the default token. Apply the review findings locally and push.',
+            });
+            core.setFailed('Fork PR — auto-fix unavailable');
+
+      - name: Fetch latest deep review comment
+        id: review
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                per_page: 100,
+              }
+            );
+            const review = [...comments].reverse().find(c =>
+              c.body && c.body.includes('<!-- deep-review -->'));
+            if (!review) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                body: '<!-- deep-resolve -->\n⚠️ No deep review comment found on this PR. Wait for the review to post, then re-trigger with `/just-fix-it`.',
+              });
+              core.setFailed('No deep review comment found');
+              return;
+            }
+            core.setOutput('body', review.body);
+
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.pr.outputs.head_repo }}
+          ref: ${{ steps.pr.outputs.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Run Claude to apply fixes
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ steps.pr.outputs.number }}
+            BRANCH: ${{ steps.pr.outputs.head_ref }}
+
+            The deep multi-agent review posted findings on this PR. Apply
+            fixes per the rules below. The PR head is already checked out
+            with push credentials configured.
+
+            Review findings (verbatim):
+            ---
+            ${{ steps.review.outputs.body }}
+            ---
+
+            Rules:
+            1. Apply ALL P0 and P1 findings.
+            2. Apply P2 findings only if the fix is mechanical (rename,
+               missing await, obvious typo, dead import). Skip ambiguous P2.
+            3. Skip P3 entirely.
+            4. If a finding is wrong (false positive) or out of scope for
+               the PR, skip it and note why in your summary.
+            5. Make the smallest change that addresses each finding. Do not
+               refactor surrounding code, rename unrelated identifiers, or
+               touch files not cited by a finding.
+
+            After edits:
+            6. Run `yarn lint:fix` to auto-fix formatting. If it errors on
+               files you didn't touch, leave those alone.
+            7. Stage and commit in a single commit:
+                 git add -A
+                 git commit -m "fix: address deep review findings"
+               Use that exact message. No Co-Authored-By trailers
+               (project convention; see AGENTS.md).
+            8. Push: `git push origin HEAD`
+            9. Post a summary comment on PR ${{ steps.pr.outputs.number }}
+               via `gh pr comment`. The comment body MUST start with
+               `<!-- deep-resolve -->` on its own line so future runs
+               can locate it. Then a brief markdown list:
+                 - **Fixed:** one line per finding addressed (file:line - what)
+                 - **Skipped:** one line per finding deliberately not fixed,
+                   with reason
+               Keep the whole comment under 30 lines.
+
+            If you make no edits at all (every finding skipped), do not
+            create an empty commit and do not push. Still post the summary
+            comment so the author sees why.
+
+          claude_args: |
+            --setting-sources user
+            --allowedTools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(yarn lint:fix),Bash(yarn:*),Edit,Write,MultiEdit,Read,Grep,Glob"
+
+      - name: React on failure
+        if: failure()
+        uses: actions/github-script@v9
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'confused',
+            });

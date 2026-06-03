@@ -40,7 +40,7 @@
     "app:storybook": "nx run @hyperdx/app:storybook",
     "build:clickhouse": "nx run @hyperdx/common-utils:build && nx run @hyperdx/app:build:clickhouse",
     "run:clickhouse": "nx run @hyperdx/app:run:clickhouse",
-    "dev": "sh -c '. ./scripts/dev-env.sh && yarn build:common-utils && dotenvx run --convention=nextjs -- docker compose -p \"$HDX_DEV_PROJECT\" -f docker-compose.dev.yml up -d && yarn app:dev; dotenvx run --convention=nextjs -- docker compose -p \"$HDX_DEV_PROJECT\" -f docker-compose.dev.yml down'",
+    "dev": "sh -c '. ./scripts/dev-env.sh && yarn build:common-utils && dotenvx run --convention=nextjs -- docker compose -p \"$HDX_DEV_PROJECT\" -f docker-compose.dev.yml up -d --build && yarn app:dev; dotenvx run --convention=nextjs -- docker compose -p \"$HDX_DEV_PROJECT\" -f docker-compose.dev.yml down'",
     "dev:local": "IS_LOCAL_APP_MODE='DANGEROUSLY_is_local_app_mode💀' yarn dev",
     "cli:dev": "yarn workspace @hyperdx/cli dev",
     "dev:down": "sh -c '. ./scripts/dev-env.sh && docker compose -p \"$HDX_DEV_PROJECT\" -f docker-compose.dev.yml down && sh ./scripts/dev-kill-ports.sh'",

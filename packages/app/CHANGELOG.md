@@ -1,5 +1,378 @@
 # @hyperdx/app
 
+## 2.28.0
+
+### Minor Changes
+
+- 3123db53: feat: experimental promql support
+- 1df7583d: feat: emit Lucene conditions from sidebar/dashboard filters to enable KV items direct_read optimization on Map columns
+
+  Legacy `type: 'sql'` filters in URLs are automatically migrated to Lucene
+  on page load. The persisted `DashboardFilter.expression` in MongoDB is unchanged.
+
+- cb6a74ce: fix(otel-collector): allow `CUSTOM_OTELCOL_CONFIG_FILE` to override the
+  default `memory_limiter`, `batch` (and other pipeline processors)
+
+  Pipeline `processors:` lists used to be defined in the OpAMP remote config
+  sent by the API (`packages/api/src/opamp/controllers/opampController.ts`).
+  That meant the remote config overwrote any pipeline `processors:` list a
+  user supplied via `CUSTOM_OTELCOL_CONFIG_FILE`, making it impossible to
+  substitute the default `memory_limiter` with one configured for
+  `limit_percentage`/`spike_limit_percentage` mode (#2145).
+
+  The pipeline `processors:` lists now live in the bootstrap config
+  (`docker/otel-collector/config.yaml` for supervisor mode, and
+  `docker/otel-collector/config.standalone.yaml` for standalone mode). The
+  OpAMP remote config no longer sets `processors:` on these pipelines, so the
+  bootstrap+custom merge wins. Receivers and exporters are still configured
+  dynamically by the OpAMP controller.
+
+  To override `memory_limiter`, define a new processor with a different name
+  in `CUSTOM_OTELCOL_CONFIG_FILE` and swap the pipeline `processors:` lists:
+
+  ```yaml
+  processors:
+    memory_limiter/custom:
+      check_interval: 5s
+      limit_percentage: 75
+      spike_limit_percentage: 25
+
+  service:
+    pipelines:
+      traces:
+        processors: [memory_limiter/custom, batch]
+      metrics:
+        processors: [memory_limiter/custom, batch]
+      logs/out-default:
+        processors: [memory_limiter/custom, transform, batch]
+      logs/out-rrweb:
+        processors: [memory_limiter/custom, batch]
+  ```
+
+  The default `memory_limiter` block defined in the base config is left in
+  the merged config but is no longer referenced by any pipeline; the
+  collector only instantiates `memory_limiter/custom` at runtime.
+
+  The same swap pattern works for the `batch` processor (and any other base
+  processor). For example, to lower the export timeout on a specific
+  pipeline:
+
+  ```yaml
+  processors:
+    batch/lowlatency:
+      send_batch_size: 1000
+      send_batch_max_size: 2000
+      timeout: 500ms
+
+  service:
+    pipelines:
+      traces:
+        processors: [memory_limiter, batch/lowlatency]
+      logs/out-default:
+        processors: [memory_limiter, transform, batch/lowlatency]
+  ```
+
+  Lighter-weight env-var tuning is also available for the default `batch`
+  processor without writing a custom config file:
+  `HYPERDX_OTEL_BATCH_SEND_BATCH_SIZE`,
+  `HYPERDX_OTEL_BATCH_SEND_BATCH_MAX_SIZE`, and `HYPERDX_OTEL_BATCH_TIMEOUT`.
+  See the README for details.
+
+- b8f51ed9: feat: upgrade to clickhouse-server 26.5
+
+### Patch Changes
+
+- 55926e5c: fix: "Add to Filters" on a JSON-typed ClickHouse column no longer produces an
+  unparseable Lucene query
+
+  Previously, clicking "Add to Filters" on a field under a JSON column wrapped
+  the field path with `toString(...)` before handing it off as a Lucene filter
+  key. Lucene's grammar forbids parentheses inside field names, so the resulting
+  condition like `toString(JSONColumn.\`foo\`):"…"`failed to parse with`Expected … but ":" found.`
+
+  The handler now passes the clean dot-notation path (e.g. `JSONColumn.foo`)
+  to the filter setter.
+
+- 1648c22c: feat(dashboard): add Table of Contents right rail with bulk collapse/expand
+
+  Adds a toggleable right-rail Table of Contents to the dashboard page, plus
+  "Collapse all sections" and "Expand all sections" actions. All three live
+  under a new "View" section in the dashboard's existing menu. TOC visibility
+  is persisted per-user via localStorage; bulk collapse uses the same
+  per-viewer URL state as single-section toggling, so it's shareable via link
+  and does not change the dashboard's stored defaults. Clicking a TOC entry
+  scrolls the section into view, auto-expanding it first if collapsed.
+
+- 937e043a: fix: collapse duplicate map sub-key entries in the search filter sidebar (HDX-4340)
+
+  A map sub-field stored in `filterState` under dot notation (e.g. `LogAttributes.time`,
+  from a Lucene URL round-trip) and the same key returned by the facet query under
+  bracket notation (e.g. `LogAttributes['time']`) no longer render as two separate
+  accordion items. The merged entry keeps the bracket form so "Load more" stays
+  valid, and the user's selection still resolves via a tolerant filterState lookup.
+
+- dcab1cb6: feat: default the direct_read map column optimization on supported ClickHouse versions
+
+  The full-text-search logs schema (`00002_otel_logs.sql`) now ships with
+  `ResourceAttributeItems`, `ScopeAttributeItems`, and `LogAttributeItems`
+  ALIAS columns plus their `text(tokenizer='array')` skip indexes. The
+  traces schema (`00005_otel_traces.sql`) similarly gains
+  `ResourceAttributeItems` and `SpanAttributeItems` ALIAS columns with
+  matching items indexes. New installs and freshly migrated tables get
+  the optimization automatically — no manual `ALTER TABLE` required.
+
+  Note: the traces table previously used only `bloom_filter` skip indexes
+  and worked on any ClickHouse version. The added `text(tokenizer='array')`
+  items indexes raise the minimum ClickHouse version required to **create**
+  the traces table to **>= 26.2**. Existing tables on older clusters are
+  unaffected (`CREATE TABLE IF NOT EXISTS` is a no-op).
+
+  At query time, the app gates the `Map['key'] = 'value'` →
+  `has(<MapItems>, concat('key', '=', 'value'))` rewrite on the connected
+  ClickHouse server version (`SELECT version()`, cached per connection).
+  The gate only applies to **ALIAS** items columns, which are computed at
+  query time and therefore depend on the server being able to perform a
+  direct_read against the underlying Map's tuple storage. The direct_read
+  feature was backported into multiple stable 26.x release lines, so the
+  gate uses a per-branch minimum:
+
+  - 26.2 line: >= 26.2.19.43
+  - 26.3 line: >= 26.3.12.3
+  - 26.4 line: >= 26.4.3.37
+  - 26.5+ : always supported
+
+  ALIAS items columns on servers below their branch's threshold continue
+  to compile filters into the original Map-subscript form.
+
+  **MATERIALIZED items columns are always used when available**, regardless
+  of ClickHouse version. MATERIALIZED columns are physically stored on
+  disk, so `has(items, ...)` reads them directly and works on any
+  ClickHouse version that supports the text index itself. Operators who
+  want the optimization on servers below the backport cutoffs can
+  `ALTER TABLE` to materialize the items columns.
+
+- 923b544b: feat: preserve compatible filters when switching sources
+- b94b8eff: fix: persist column widths in search results table
+- 996a1139: fix(row-panel): hide empty attribute sections and stop showing "[Empty]"
+  when the source's body column isn't configured
+
+  The row-expand side panel always rendered `Log/Span Attributes` and
+  `Resource Attributes` accordion sections, even when both were empty. The
+  body header fell back to a literal `[Empty]` paper in two visually
+  identical cases that meant different things: the body column was
+  configured but the value was empty, or the body column wasn't configured
+  on the source at all.
+
+  The two attribute accordions now mirror the existing `topLevelAttributes`
+  pattern and only render when their content is non-empty. The body header
+  takes a new `bodyConfigured` prop: when `false` (source has neither body
+  nor implicit column expression configured), the body paper is suppressed
+  entirely. When `true` and the content is empty, the placeholder reads
+  "No body for this event." instead of `[Empty]`.
+
+  `DBRowOverviewPanel` derives `bodyConfigured` from
+  `getEventBody(source) !== undefined`, which already returns `undefined`
+  when neither expression is set.
+
+  Fixes HDX-4373.
+
+- e1c4381b: fix: bare-text Lucene search now falls back from Implicit Column Expression to
+  Body Expression on log sources
+
+  Previously, a log source configured with `bodyExpression` set but
+  `implicitColumnExpression` unset threw `Can not search bare text without an
+implicit column set.` on every bare-token search, even though the row panel
+  rendered correctly using the body column.
+
+  Search now reuses the same one-way fallback that `getEventBody` already
+  implements: when no Implicit Column Expression is set, bare-text search runs
+  against the configured Body Expression. Trace sources are unchanged
+  (`spanNameExpression` is not a body equivalent for trace search).
+
+- 19cd7c91: fix: only use pk and row uniqueness to look up a row
+- a44fa21b: Number tile: pick a static color from the palette in Display Settings. The color picker stores a palette token (not a hex value) so the choice reflows correctly across light, dark, and IDE themes.
+- b5148c85: Dashboard table tiles configured with a row-click action now show a hover hint describing where the click will go (for example, `Search HyperDX Logs` or `Open dashboard "API Latency Drilldown"`). The cell wrapper is now a real link, so cmd-click and middle-click open the destination in a new tab, right-click shows the browser context menu with "Open in New Tab" and "Copy Link Address", and the destination URL appears in the browser status bar on hover. Keyboard users can Tab to a cell and press Enter to navigate, with a visible focus ring.
+- 0e8a5b39: chore: use `PageHeader` `title` prop on Alerts, Dashboards, and Saved Searches list pages for consistency with the shared header API.
+- 800081c5: chore: migrate the ClickHouse dashboard to shared `PageLayout` with breadcrumbs and a sticky header (connection selector, time range, refresh) instead of a duplicate page title.
+- 41d67603: chore: migrate the Kubernetes dashboard to shared `PageLayout` with breadcrumbs and a sticky header (log + metric sources, time range, refresh) instead of a duplicate page title.
+- 4d248bf4: chore: migrate Service Map to shared `PageLayout` with a sticky toolbar (source, sampling, time range) and no duplicate page title.
+- 633eda61: refactor: Use new VirtualMultiSelect for dashboard filter inputs
+- 8938b05e: fix: let "Load more" surface unselected values in exact filter mode
+- 04a5a925: feat: Add source scoping to dashboard filters
+- b24cb88c: fix(app): copy correct session URL on first Share Session click
+
+  The Share Session button captured `window.location.href` at render time, which ran before `nuqs` flushed `sid`/`sfrom`/`sto` into the URL. The button now reads the URL at click time via the shared `copyTextToClipboard` util, so the first copy always contains the session params (no reload needed).
+
+- 8810ff0f: feat: Add option for force-enabling/disabling text index support
+- a8eb27dc: feat: filters reflect all values, not search aware; filters use metadata MVs if available
+- Updated dependencies [3123db53]
+- Updated dependencies [d1342121]
+- Updated dependencies [dcab1cb6]
+- Updated dependencies [a945fa07]
+- Updated dependencies [1df7583d]
+- Updated dependencies [cb6a74ce]
+- Updated dependencies [6a5ac3e3]
+- Updated dependencies [e1c4381b]
+- Updated dependencies [b30dfe0a]
+- Updated dependencies [dcb85826]
+- Updated dependencies [c3a8aa55]
+- Updated dependencies [a4b9fa85]
+- Updated dependencies [07911fd2]
+- Updated dependencies [b5148c85]
+- Updated dependencies [04a5a925]
+- Updated dependencies [8810ff0f]
+- Updated dependencies [a8eb27dc]
+  - @hyperdx/common-utils@0.20.0
+  - @hyperdx/api@2.28.0
+
+## 2.27.0
+
+### Patch Changes
+
+- Updated dependencies [f5ae0062]
+- Updated dependencies [fbe5a9a2]
+  - @hyperdx/api@2.27.0
+
+## 2.26.0
+
+### Patch Changes
+
+- 3becf06e: feat: Minor dashboard improvements
+- e2db2efe: Tune HyperDX theme tokens for sidenav active states, field backgrounds, borders, and hover grays; remove redundant color prop from chart assistant button
+- b1004b73: Fall back when the browser Clipboard API is unavailable and show a clear error
+  if copying still fails.
+- 4e32e9c8: Fix `href interpolation failed` error when loading a dashboard page directly without query params by guarding the granularity URL sync until the router is ready.
+- e268f6aa: Fix label color for red `Menu.Item` rows (for example Logout) by overriding `--menu-item-color` in global CSS. `Menu.extend` item styles do not apply when the menu dropdown is portaled outside the Menu root.
+- d2b6dde0: fix: Persist heatmap drag-select rectangle on Event Deltas and Search heatmaps so the dashed selection stays visible after mouseup
+- 6c55978b: feat(alerts): include tileId in Slack alert URLs
+- 3feaa013: chore: Remove the 'saved searches and dashboards have moved' callout
+- df208247: fix: Fix missing bar chart bar when there is only one bar
+- Updated dependencies [4c2c3f37]
+- Updated dependencies [84117a7a]
+- Updated dependencies [51abe987]
+- Updated dependencies [46fe675b]
+- Updated dependencies [7386f14b]
+- Updated dependencies [6c55978b]
+- Updated dependencies [46c1459b]
+- Updated dependencies [40336e9e]
+  - @hyperdx/api@2.26.0
+  - @hyperdx/common-utils@0.19.1
+
+## 2.25.0
+
+### Minor Changes
+
+- eb16df44: Add ability to disable data sources with improved UX
+- 143f7a79: feat: Add per-series number formats
+- 7d7269a7: feat: introducing rollup and source support for full autocomplete
+- 4cc5eb3f: Add support for increase aggFn on sum counter metrics and rewrite sum metric rate computation to fix correctness issues.
+- d3a5a575: feat: add optional note field to alerts
+
+  Adds a freeform note/reason field to alerts that supports markdown formatting,
+  allowing on-call responders to document why an alert exists, threshold decision
+  history, and links to runbooks.
+
+  - New `note` field on the Alert model (optional, max 4096 chars, supports
+    markdown)
+  - Note textarea in both the saved-search alert modal and the dashboard tile
+    alert editor
+  - Notes displayed on the /alerts page in a collapsible section (hidden by
+    default) with full markdown rendering
+  - Alert tabs in the saved-search modal show a red bell firing indicator
+    alongside the webhook channel icon, matching the AlertStatusIcon pattern
+    used on dashboard tiles and the app nav
+  - The Alerts button on the search page shows a red bell icon when at least one
+    alert in the saved search is firing
+  - External API v2 updated with `note` field in OpenAPI docs
+
+- 5c6da48c: refactor(alerts/search): consolidate the saved-search → chart-config builder
+  into a single shared helper, `buildSearchChartConfig`, in
+  `@hyperdx/common-utils/core/searchChartConfig.ts`. The app search page, the
+  alert preview chart, and the scheduled alert task's `SAVED_SEARCH` branch now
+  all route through it, so `tableFilterExpression`, `implicitColumnExpression`,
+  sample-weight expressions, SELECT precedence, and the `count()` default
+  SELECT shape are applied identically by construction.
+
+  Behavior fixes that fall out of consolidation:
+
+  - The alert task and the alert preview now apply `source.tableFilterExpression`
+    on Log sources, matching what the search page already did.
+  - A latent bug in the search-page builder is fixed: a non-null `filters`
+    array no longer silently drops the `tableFilterExpression` SQL filter via
+    spread-overwrite.
+
+- a50db927: fix(security): redact sensitive fields from internal webhook API responses
+
+  The `GET /api/webhooks` endpoint now masks webhook URLs (`<origin>/****`) and
+  redacts header and query parameter values (keys preserved, values replaced with
+  `****`), preventing team members from retrieving secrets configured by others.
+
+  The `PUT` handler merges redacted markers back to stored values so editing a
+  webhook without re-entering secrets preserves the originals. Changing the URL
+  while preserving masked secrets is rejected to prevent exfiltration.
+
+  `GET /api/webhooks`, `POST /api/webhooks`, and `PUT /api/webhooks/:id`
+  responses now return masked values for `url`, `headers`, and `queryParams`
+  instead of plaintext secrets.
+
+- ef571cc0: feat: heatmap charts in chart editor and dashboards
+
+  - Heatmap is now a selectable display type in the chart editor tabs
+  - Dashboard tiles render heatmaps via the shared `DBHeatmapChart` component
+  - Heatmap source picker restricted to trace sources; value/count expressions auto-populate from the source's duration expression
+  - Display Settings drawer (scale, value, count) shared across search Event Deltas, chart editor, and dashboards
+  - Click a dashboard heatmap tile to open Event Deltas with source, where clause, filters, and time range preserved
+  - Dynamic Y-axis sizing measures formatted tick labels so long labels (e.g. "1.67min") are not clipped
+
+### Patch Changes
+
+- a5294f8d: fix: prevent false "data source not set" error on markdown dashboard tiles
+- 24699cde: fix: Infer singular quantileXXX() from MV quantilesXXXState()
+- 4e9caeca: Support per-signal OTLP exporter endpoints for Hyperdx internal telemetry
+- 32b38c33: fix: ClickStack switch checked-state color not applying theme tokens
+- 29586e7b: Enable end-to-end PR testing on Vercel previews by inlining the Express API into the Next.js `/api/[...all]` serverless function (opt-in via `HDX_PREVIEW_INLINE_API=true`). Production deploys (Docker fullstack image, standalone Next output) are unchanged — they keep proxying `/api/*` to the separately-deployed API service.
+
+  Also realigns `clickhouseProxy.ts` with the upstream EE implementation (modulo CHC and RBAC code paths): query params are now parsed from the request URL via `validateAndSanitizePath()` + `URL.searchParams` instead of `req.query`, which fixes a `Setting all is neither a builtin setting nor started with the prefix 'custom_'` regression on Vercel previews where Next.js's `[...all]` catch-all route polluted `req.query`. Adds path-injection hardening, POST-only enforcement, and exposes `X-ClickHouse-Mixed-Response` / `X-ClickHouse-Service-Unavailable` response headers for the browser ClickHouse client.
+
+- 6811ea05: fix: numbers from filters bar was always showing 0 instead of the count
+- 3af4e920: Standardize query param libraries
+- c2a9f96f: feat: Add more dashboard onClick linking options
+- a36c5b19: feat: Add filter templating to custom dashboard on-click
+- 6dc5d01d: fix: Ensure search histogram count matches result table count
+- 401dff5a: feat: Support import/export for dashboard onClicks
+- 88b2b646: fix: use block_number/block_offset to uniquely identify log rows
+- Updated dependencies [a5294f8d]
+- Updated dependencies [eb16df44]
+- Updated dependencies [24699cde]
+- Updated dependencies [143f7a79]
+- Updated dependencies [f6a1d021]
+- Updated dependencies [aa1a8523]
+- Updated dependencies [4d22d4ba]
+- Updated dependencies [fecbfff7]
+- Updated dependencies [022fe893]
+- Updated dependencies [7d7269a7]
+- Updated dependencies [4cc5eb3f]
+- Updated dependencies [41395ca7]
+- Updated dependencies [41395ca7]
+- Updated dependencies [41395ca7]
+- Updated dependencies [41395ca7]
+- Updated dependencies [41eefec7]
+- Updated dependencies [d3a5a575]
+- Updated dependencies [5c6da48c]
+- Updated dependencies [29586e7b]
+- Updated dependencies [a50db927]
+- Updated dependencies [ef571cc0]
+- Updated dependencies [1c73d0c4]
+- Updated dependencies [694e3c92]
+- Updated dependencies [eb7fdb4b]
+- Updated dependencies [c2a9f96f]
+- Updated dependencies [a36c5b19]
+- Updated dependencies [9d5f14f3]
+- Updated dependencies [401dff5a]
+- Updated dependencies [88b2b646]
+  - @hyperdx/common-utils@0.19.0
+  - @hyperdx/api@2.25.0
+
 ## 2.24.1
 
 ### Patch Changes

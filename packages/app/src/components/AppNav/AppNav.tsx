@@ -49,6 +49,7 @@ import {
   AppNavLink,
   AppNavUserMenu,
 } from './AppNav.components';
+import { AppNavFeedback } from './AppNavFeedback';
 
 import styles from './AppNav.module.scss';
 
@@ -459,22 +460,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               </Collapse>
             )}
 
-            {!isCollapsed && (
-              <Text size="xs" px="lg" py="xs" fw="lighter" fs="italic">
-                Saved searches and dashboards have moved! Try the{' '}
-                <Anchor component={Link} href="/search/list">
-                  Saved Searches
-                </Anchor>{' '}
-                or{' '}
-                <Anchor component={Link} href="/dashboards/list">
-                  Dashboards
-                </Anchor>{' '}
-                page.
-              </Text>
-            )}
-
             {/* Help */}
             <AppNavHelpMenu version={APP_VERSION} />
+
+            {/* Feedback */}
+            <AppNavFeedback />
 
             {/* Team Settings (Cloud only) */}
             {!IS_LOCAL_MODE && (

@@ -247,3 +247,61 @@ yarn run lint
 - **Pages**: `packages/app/pages/`
 - **Components**: `packages/app/src/`
 - **Shared Utils**: `packages/common-utils/src/`
+
+## Vercel Preview Deployments (Inline API)
+
+The `hyperdx-private` Vercel project deploys the `@hyperdx/app` Next.js app
+for preview environments. Normally `/api/*` requests proxy to a separately
+deployed API service (`SERVER_URL`). For PR previews we instead **inline the
+entire Express API** into the Next.js serverless function so a single Vercel
+deployment serves both the app and the API.
+
+### How it works
+
+1. `packages/api/src/serverless.ts` exposes the Express app from
+   `api-app.ts` as a stateless `(req, res) => Promise<void>` handler. It
+   lazily connects to MongoDB on the first invocation and caches the
+   connection across warm invocations.
+2. `packages/app/pages/api/[...all].ts` branches on the
+   `HDX_PREVIEW_INLINE_API` env var. When `true`, it `require()`s the
+   compiled serverless handler and dispatches directly. Otherwise it falls
+   back to the existing http-proxy-middleware path used by Docker/standalone
+   builds.
+3. `packages/app/next.config.mjs` adds a webpack `externals` rule that marks
+   `@hyperdx/api` as a CommonJS external **unless** `HDX_PREVIEW_INLINE_API`
+   is `true`. This keeps production app builds (Docker fullstack image,
+   standalone Next output) byte-for-byte equivalent to before — they never
+   bundle passport-saml, mongoose, AWS SDK, etc.
+4. `vercel.json` declares the repo-root build commands so Vercel builds
+   `common-utils` → `api` → `app` in order.
+
+### Required Vercel project env vars (Preview scope only)
+
+| Key | Notes |
+|---|---|
+| `HDX_PREVIEW_INLINE_API` | `true` — turns on the inline path |
+| `MONGO_URI` | Preview MongoDB connection string |
+| `EXPRESS_SESSION_SECRET` | Random 32+ char string |
+| `DISABLED_AUTH_METHODS` | `google,saml` (avoids per-preview OAuth callback URL config) |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL_NAME` | Optional, only if AI features should work |
+| `FRONTEND_URL` | Optional. Leave unset to use host-only cookies on the preview URL |
+
+Production env vars on the same project must leave `HDX_PREVIEW_INLINE_API`
+unset (or `false`) so production deployments keep using the proxy path.
+
+### Limitations
+
+- **No background tasks.** Scheduled jobs (`packages/api/src/tasks/`,
+  including `CheckAlertTask`) are not run in preview deployments.
+- **No alerts.** Alert evaluation depends on the cron task runner.
+- **No OPAMP server.** The OPAMP control-plane server (`APP_TYPE=opamp`) is
+  not started in preview. The serverless entrypoint asserts
+  `APP_TYPE=api` and refuses to boot otherwise.
+- **Function size.** The bundled function should stay under Vercel's 50 MB
+  unzipped limit. If it grows, mark heavy deps (`@aws-sdk/*`,
+  `@node-saml/passport-saml`, AI SDKs) as `serverExternalPackages` in
+  `next.config.mjs`.
+- **Cold-start latency.** First request after idle pays ~500–1500 ms for
+  the initial Mongo connection.
+- **Shared preview MongoDB.** Unless you partition by database name, all
+  preview deployments share the same Mongo state.

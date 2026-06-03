@@ -2,6 +2,7 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: write
   packages: write
@@ -17,15 +18,20 @@ jobs:
         ${{ steps.changesets.outputs.hasChangesets }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
           # Note: Do NOT set registry-url here — it creates a NODE_AUTH_TOKEN
           # that conflicts with npm OIDC trusted publishing
+      # npm OIDC trusted publishing requires npm >= 11.5.1 client-side. Node 22
+      # LTS ships npm 10.x, which has no OIDC code path and falls back to
+      # NODE_AUTH_TOKEN, failing ENEEDAUTH.
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
       - name: Configure npm registry
         run: npm config set registry https://registry.npmjs.org/
       - name: Install root dependencies
@@ -39,7 +45,6 @@ jobs:
         run: make ci-build
       - name: Create Release Pull Request or Publish to npm
         if: always()
-        continue-on-error: true
         id: changesets
         uses: changesets/action@v1
         with:
@@ -65,7 +70,7 @@ jobs:
       should_release: ${{ steps.check.outputs.should_release }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -105,7 +110,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -141,7 +146,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -185,7 +190,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -229,7 +234,7 @@ jobs:
       app_was_pushed: 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -272,7 +277,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -317,7 +322,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -361,7 +366,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -406,7 +411,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Login to Docker Hub
@@ -442,9 +447,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
           cache-dependency-path: 'yarn.lock'
@@ -582,11 +587,11 @@ jobs:
       needs.publish-app.outputs.app_was_pushed == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Notify Helm-Charts Downstream
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         continue-on-error: true
         env:
           TAG: ${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}
@@ -622,7 +627,7 @@ jobs:
     #   needs.publish-app.outputs.app_was_pushed == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Get Downstream App Installation Token
@@ -633,7 +638,7 @@ jobs:
           private-key: ${{ secrets.DOWNSTREAM_CH_APP_PRIVATE_KEY }}
           owner: ${{ secrets.DOWNSTREAM_CH_OWNER }}
       - name: Notify CH Downstream
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         continue-on-error: true
         env:
           TAG: ${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}
@@ -665,11 +670,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Notify ClickHouse/clickhouse-clickstack Downstream
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         continue-on-error: true
         env:
           TAG: ${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}
@@ -687,6 +692,86 @@ jobs:
               }
             });
 
+  # ---------------------------------------------------------------------------
+  # Failure notification
+  # ---------------------------------------------------------------------------
+  slack-notify-failure:
+    needs:
+      [
+        check_changesets,
+        publish-app,
+        publish-otel-collector,
+        publish-local,
+        publish-all-in-one,
+        release-cli,
+        notify_helm_charts,
+        notify_ch,
+        notify_clickhouse_clickstack,
+      ]
+    runs-on: ubuntu-24.04
+    if: failure()
+    steps:
+      - name: Get failed steps
+        id: get_failed_steps
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+
+            const failedSteps = data.jobs
+              .filter(job => job.conclusion === 'failure')
+              .flatMap(job => {
+                const stepNames = (job.steps ?? [])
+                  .filter(step => step.conclusion === 'failure')
+                  .map(step => `${job.name} → ${step.name}`);
+                return stepNames.length > 0 ? stepNames : [`${job.name} → (unknown step)`];
+              })
+              .join(', ');
+
+            core.setOutput('failed_steps', failedSteps || 'unknown');
+      - name: Slack Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          fields: repo,workflow
+          custom_payload: |
+            {
+              "text": "Release workflow failed!",
+              "attachments": [{
+                "color": "danger",
+                "fields": [
+                  {
+                    "title": "Failed step(s)",
+                    "value": "${{ steps.get_failed_steps.outputs.failed_steps }}",
+                    "short": false
+                  },
+                  {
+                    "title": "Commit",
+                    "value": "<https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>",
+                    "short": false
+                  },
+                  {
+                    "title": "Actor",
+                    "value": "${{ github.actor }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Run",
+                    "value": "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|${{ github.run_id }}>",
+                    "short": true
+                  }
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_ENG_NOTIFS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   otel-cicd-action:
     if: always()
     name: OpenTelemetry Export Trace
@@ -702,6 +787,7 @@ jobs:
         notify_helm_charts,
         notify_ch,
         notify_clickhouse_clickstack,
+        slack-notify-failure,
       ]
     steps:
       - name: Export workflow

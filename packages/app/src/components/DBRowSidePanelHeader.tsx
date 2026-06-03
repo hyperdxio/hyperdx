@@ -6,10 +6,12 @@ import React, {
   useState,
 } from 'react';
 import {
+  ActionIcon,
   Box,
   Breadcrumbs,
   Button,
   Flex,
+  Group,
   Paper,
   Text,
   Tooltip,
@@ -18,8 +20,10 @@ import {
 import {
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
+  IconKeyboard,
 } from '@tabler/icons-react';
 
+import { KeyboardShortcutsModal } from '@/LogSidePanelElements';
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import { formatDistanceToNowStrictShort } from '@/utils';
@@ -30,6 +34,7 @@ import {
   HighlightedAttribute,
 } from './DBHighlightedAttributesList';
 import { RowSidePanelContext } from './DBRowSidePanel';
+import { DrawerFullWidthToggle } from './DrawerUtils';
 import LogLevel from './LogLevel';
 
 const isValidDate = (date: Date) => 'getTime' in date && !isNaN(date.getTime());
@@ -129,22 +134,34 @@ export default function DBRowSidePanelHeader({
   attributes,
   mainContent = '',
   mainContentHeader,
+  // When `true`, the source has a body column configured. An empty value
+  // for that column renders a soft empty-state paper. When `false` (the
+  // source has neither body nor implicit column configured), the body
+  // paper is suppressed entirely; the header still shows timestamp,
+  // severity, and highlighted attributes.
+  bodyConfigured = true,
   date,
   severityText,
   rowData,
   breadcrumbPath,
   onBreadcrumbClick,
+  isFullWidth,
+  onToggleFullWidth,
 }: {
   date: Date;
   mainContent?: string;
   mainContentHeader?: string;
+  bodyConfigured?: boolean;
   attributes?: HighlightedAttribute[];
   severityText?: string;
   rowData?: Record<string, any>;
   breadcrumbPath?: BreadcrumbPath;
   onBreadcrumbClick?: BreadcrumbNavigationCallback;
+  isFullWidth?: boolean;
+  onToggleFullWidth?: () => void;
 }) {
   const [bodyExpanded, setBodyExpanded] = React.useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const { generateSearchUrl } = useContext(RowSidePanelContext);
 
   const isContentTruncated = mainContent.length > MAX_MAIN_CONTENT_LENGTH;
@@ -212,21 +229,46 @@ export default function DBRowSidePanelHeader({
       />
 
       {/* Event timestamp and severity */}
-      <Flex>
-        {severityText && <LogLevel level={severityText} />}
-        {severityText && isValidDate(date) && (
-          <Text size="xs" mx="xs">
-            &middot;
-          </Text>
-        )}
-        {isValidDate(date) && (
-          <Text size="xs">
-            <FormatTime value={date} /> &middot;{' '}
-            {formatDistanceToNowStrictShort(date)} ago
-          </Text>
-        )}
+      <Flex justify="space-between" align="center">
+        <Flex align="center">
+          {severityText && <LogLevel level={severityText} />}
+          {severityText && isValidDate(date) && (
+            <Text size="xs" mx="xs">
+              &middot;
+            </Text>
+          )}
+          {isValidDate(date) && (
+            <Text size="xs">
+              <FormatTime value={date} /> &middot;{' '}
+              {formatDistanceToNowStrictShort(date)} ago
+            </Text>
+          )}
+        </Flex>
+        <Group gap={4} wrap="nowrap">
+          <Tooltip label="Keyboard shortcuts" position="bottom">
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="sm"
+              onClick={() => setShortcutsOpen(true)}
+              aria-label="Keyboard shortcuts"
+            >
+              <IconKeyboard size={16} />
+            </ActionIcon>
+          </Tooltip>
+          {onToggleFullWidth && (
+            <DrawerFullWidthToggle
+              isFullWidth={isFullWidth}
+              onToggle={onToggleFullWidth}
+            />
+          )}
+        </Group>
       </Flex>
-      {mainContent ? (
+      <KeyboardShortcutsModal
+        opened={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
+      />
+      {!bodyConfigured ? null : mainContent ? (
         <Paper
           p="xs"
           mt="sm"
@@ -276,8 +318,8 @@ export default function DBRowSidePanelHeader({
         </Paper>
       ) : (
         <Paper p="xs" mt="sm">
-          <Text size="xs" mb="xs">
-            [Empty]
+          <Text size="xs" c="dimmed">
+            No body for this event.
           </Text>
         </Paper>
       )}

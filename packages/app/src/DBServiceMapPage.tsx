@@ -4,17 +4,20 @@ import Head from 'next/head';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Group, Modal, Slider, Text } from '@mantine/core';
+import { Button, Group, Modal, Slider, Text } from '@mantine/core';
 import { IconConnection } from '@tabler/icons-react';
 
 import EmptyState from '@/components/EmptyState';
+import { PageLayout } from '@/components/PageLayout';
 import { IS_LOCAL_MODE } from '@/config';
 import { withAppNav } from '@/layout';
 
 import OnboardingModal from './components/OnboardingModal';
 import ServiceMap from './components/ServiceMap/ServiceMap';
 import { TableSourceForm } from './components/Sources/SourceForm';
-import SourceSchemaPreview from './components/SourceSchemaPreview';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { TimePicker } from './components/TimePicker';
 import { useBrandDisplayName } from './theme/ThemeProvider';
@@ -85,6 +88,8 @@ function DBServiceMapPage() {
   });
 
   const watchedSource = useWatch({ control, name: 'source' });
+  const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
+    useState(false);
 
   useEffect(() => {
     if (watchedSource !== sourceId) {
@@ -114,113 +119,125 @@ function DBServiceMapPage() {
     [brandName],
   );
 
+  const sourceSelect = source ? (
+    <>
+      <SourceSelectControlled
+        control={control}
+        name="source"
+        size="xs"
+        allowedSourceKinds={[SourceKind.Trace]}
+        onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+        isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(source)}
+      />
+      <SourceSchemaPreview
+        source={source}
+        controlled
+        open={isSourceSchemaPreviewOpen}
+        onClose={() => setIsSourceSchemaPreviewOpen(false)}
+      />
+    </>
+  ) : null;
+
+  const headerActions = (
+    <Group gap="sm" wrap="nowrap">
+      <Text bg="inherit" size="sm">
+        Sampling {samplingLabel}
+      </Text>
+      <div style={{ minWidth: '200px' }}>
+        <Slider
+          label={null}
+          min={0}
+          max={SAMPLING_FACTORS.length - 1}
+          value={SAMPLING_FACTORS.findIndex(
+            factor => factor.value === samplingFactor,
+          )}
+          onChange={v => setSamplingFactor(SAMPLING_FACTORS[v].value)}
+          showLabelOnHover={false}
+        />
+      </div>
+      <TimePicker
+        inputValue={displayedTimeInputValue}
+        setInputValue={setDisplayedTimeInputValue}
+        onSearch={onSearch}
+      />
+    </Group>
+  );
+
   if (!isLoading && !hasTraceSources) {
     return (
-      <Box
-        p="sm"
-        className="bg-body"
-        style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}
-      >
+      <>
         {head}
-        <Text size="xl" mb="md">
-          Service Map
-        </Text>
-        {IS_LOCAL_MODE && (
-          <Modal
-            size="xl"
-            opened={isCreateSourceModalOpen}
-            onClose={() => setIsCreateSourceModalOpen(false)}
-            title="Configure New Trace Source"
-          >
-            <TableSourceForm
-              isNew
-              defaultName="My Trace Source"
-              onCreate={() => setIsCreateSourceModalOpen(false)}
-            />
-          </Modal>
-        )}
-        <EmptyState
-          style={{ flex: 1 }}
-          icon={<IconConnection size={32} />}
-          title="No trace sources configured"
-          description="The Service Map visualizes relationships between your services using trace data. Configure a trace source to get started."
-          maw={600}
-        >
-          {IS_LOCAL_MODE ? (
-            <Button
-              variant="primary"
-              size="sm"
-              mt="sm"
-              onClick={() => setIsCreateSourceModalOpen(true)}
-            >
-              Create Trace Source
-            </Button>
-          ) : (
-            <Button
-              component="a"
-              href="/team"
-              variant="primary"
-              size="sm"
-              mt="sm"
-            >
-              Go to Team Settings
-            </Button>
-          )}
-        </EmptyState>
-      </Box>
+        <PageLayout
+          data-testid="service-map-page"
+          fillViewport
+          content={
+            <>
+              {IS_LOCAL_MODE && (
+                <Modal
+                  size="xl"
+                  opened={isCreateSourceModalOpen}
+                  onClose={() => setIsCreateSourceModalOpen(false)}
+                  title="Configure New Trace Source"
+                >
+                  <TableSourceForm
+                    isNew
+                    defaultName="My Trace Source"
+                    onCreate={() => setIsCreateSourceModalOpen(false)}
+                  />
+                </Modal>
+              )}
+              <EmptyState
+                style={{ flex: 1, margin: 'var(--mantine-spacing-sm)' }}
+                icon={<IconConnection size={32} />}
+                title="No trace sources configured"
+                description="The Service Map visualizes relationships between your services using trace data. Configure a trace source to get started."
+                maw={600}
+              >
+                {IS_LOCAL_MODE ? (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    mt="sm"
+                    onClick={() => setIsCreateSourceModalOpen(true)}
+                  >
+                    Create Trace Source
+                  </Button>
+                ) : (
+                  <Button
+                    component="a"
+                    href="/team"
+                    variant="primary"
+                    size="sm"
+                    mt="sm"
+                  >
+                    Go to Team Settings
+                  </Button>
+                )}
+              </EmptyState>
+            </>
+          }
+        />
+      </>
     );
   }
 
   return source ? (
-    <Box
-      data-testid="service-map-page"
-      p="sm"
-      className="bg-body"
-      style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}
-    >
+    <>
       {head}
-      <Group mb="md" justify="space-between">
-        <Group>
-          <Text size="xl">Service Map</Text>
-          <SourceSelectControlled
-            control={control}
-            name="source"
-            size="xs"
-            allowedSourceKinds={[SourceKind.Trace]}
-            sourceSchemaPreview={
-              <SourceSchemaPreview source={source} variant="text" />
-            }
+      <PageLayout
+        data-testid="service-map-page"
+        leading={sourceSelect}
+        actions={headerActions}
+        fillViewport
+        content={
+          <ServiceMap
+            traceTableSource={source}
+            dateRange={searchedTimeRange}
+            samplingFactor={samplingFactor}
           />
-        </Group>
-        <Group justify="flex-end">
-          <Text bg="inherit" size="sm">
-            Sampling {samplingLabel}
-          </Text>
-          <div style={{ minWidth: '200px' }}>
-            <Slider
-              label={null}
-              min={0}
-              max={SAMPLING_FACTORS.length - 1}
-              value={SAMPLING_FACTORS.findIndex(
-                factor => factor.value === samplingFactor,
-              )}
-              onChange={v => setSamplingFactor(SAMPLING_FACTORS[v].value)}
-              showLabelOnHover={false}
-            />
-          </div>
-          <TimePicker
-            inputValue={displayedTimeInputValue}
-            setInputValue={setDisplayedTimeInputValue}
-            onSearch={onSearch}
-          />
-        </Group>
-      </Group>
-      <ServiceMap
-        traceTableSource={source}
-        dateRange={searchedTimeRange}
-        samplingFactor={samplingFactor}
+        }
       />
-    </Box>
+    </>
   ) : null;
 }
 

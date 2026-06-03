@@ -114,7 +114,8 @@ export function useRowData({
               },
             ]
           : []),
-        ...(source.resourceAttributesExpression
+        ...('resourceAttributesExpression' in source &&
+        source.resourceAttributesExpression
           ? [
               {
                 valueExpression: source.resourceAttributesExpression,
@@ -187,6 +188,34 @@ export function useRowData({
     ...queryResult,
     data: normalizedData,
   };
+}
+
+// Detects whether a normalized row carries Kubernetes resource attributes, used
+// to conditionally surface the Infrastructure tab/panel. Requires the source to
+// expose resource attributes; returns false (rather than throwing) on any gap.
+export function rowHasK8sContext(
+  source: TSource | null | undefined,
+  normalizedRow: Record<string, any> | null | undefined,
+): boolean {
+  try {
+    if (
+      source == null ||
+      !('resourceAttributesExpression' in source) ||
+      !source.resourceAttributesExpression ||
+      !normalizedRow
+    ) {
+      return false;
+    }
+
+    const resourceAttrs = normalizedRow[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES];
+    return (
+      resourceAttrs?.['k8s.pod.uid'] != null ||
+      resourceAttrs?.['k8s.node.name'] != null
+    );
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
 }
 
 export function getJSONColumnNames(meta: ResponseJSON['meta'] | undefined) {
