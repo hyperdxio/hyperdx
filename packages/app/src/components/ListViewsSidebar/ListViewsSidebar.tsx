@@ -14,6 +14,7 @@ import { IconDots, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react';
 
 import { type ListView, useDeleteListView, useListViews } from '@/listView';
 import { useConfirm } from '@/useConfirm';
+import { getDefaultListViews } from '@/utils/defaultListViews';
 
 const ALL_VIEW_LABEL: Record<ListViewResource, string> = {
   dashboard: 'All Dashboards',
@@ -80,6 +81,7 @@ export function ListViewsSidebar({
   );
 
   const hasViews = (views?.length ?? 0) > 0;
+  const systemViews = getDefaultListViews(resource);
 
   return (
     <Box w={220} data-testid="list-views-sidebar">
@@ -92,9 +94,33 @@ export function ListViewsSidebar({
           testId="list-view-row-all"
         />
 
+        <Text
+          size="xs"
+          fw={600}
+          c="dimmed"
+          tt="uppercase"
+          lts={0.4}
+          mt="md"
+          mb={4}
+          px="sm"
+        >
+          Suggested
+        </Text>
+        {systemViews.map(view => (
+          <SidebarEntry
+            key={view.id}
+            label={view.name}
+            icon={view.icon}
+            count={viewCounts[view.id]}
+            isActive={view.id === activeId}
+            onClick={() => onActivate(view.id === activeId ? null : view.id)}
+            testId={`list-view-row-${view.id}`}
+          />
+        ))}
+
         <Group justify="space-between" align="center" mt="md" mb={4} px="sm">
           <Text size="xs" fw={600} c="dimmed" tt="uppercase" lts={0.4}>
-            Views
+            Your views
           </Text>
           {/*
             The primary "save a view" entry now lives next to the

@@ -60,6 +60,7 @@ import { useFavorites } from '@/favorites';
 import { type ListView, useListViews } from '@/listView';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { useConfirm } from '@/useConfirm';
+import { getDefaultListViews } from '@/utils/defaultListViews';
 import { evaluateListView } from '@/utils/evaluateListView';
 
 import { withAppNav } from '../../layout';
@@ -213,18 +214,27 @@ export default function DashboardsListPage() {
     return Array.from(tags).sort();
   }, [dashboards]);
 
-  const activeView = useMemo(
-    () => listViews?.find(v => v.id === activeViewId) ?? null,
-    [listViews, activeViewId],
-  );
+  const systemViews = useMemo(() => getDefaultListViews('dashboard'), []);
+
+  const activeView = useMemo(() => {
+    if (!activeViewId) return null;
+    // Look up system views first; ids never collide with user views
+    // because they carry the `system:` prefix.
+    const sys = systemViews.find(v => v.id === activeViewId);
+    if (sys) return sys;
+    return listViews?.find(v => v.id === activeViewId) ?? null;
+  }, [systemViews, listViews, activeViewId]);
 
   // Per-view match counts shown as badges in the sidebar. Computed
   // off the same `dashboards` reference that drives the grid so the
-  // count and the visible result set never drift apart.
+  // count and the visible result set never drift apart. Includes
+  // system views in the same pass so the suggested rail shows live
+  // counts.
   const viewCounts = useMemo<Record<string, number>>(() => {
-    if (!dashboards || !listViews) return {};
+    if (!dashboards) return {};
     const result: Record<string, number> = {};
-    for (const view of listViews) {
+    const everyView = [...systemViews, ...(listViews ?? [])];
+    for (const view of everyView) {
       result[view.id] = dashboards.filter(d =>
         evaluateListView(view, d, {
           ...evalContext,
@@ -233,7 +243,7 @@ export default function DashboardsListPage() {
       ).length;
     }
     return result;
-  }, [dashboards, listViews, evalContext]);
+  }, [dashboards, listViews, systemViews, evalContext]);
 
   const filteredDashboards = useMemo(() => {
     if (!dashboards) return [];
