@@ -98,6 +98,8 @@ describe('MCP Dashboard Tools - clickstack_get_dashboard_tile', () => {
     );
 
     expect(result.isError).toBe(true);
-    expect(getFirstText(result)).toContain('Invalid ObjectId');
+    const text = getFirstText(result);
+    expect(text).toContain('Invalid ObjectId');
+    expect(text).toContain('dashboardId');
   });
 });
