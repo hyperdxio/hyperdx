@@ -13,6 +13,7 @@ import routers from './routers/api';
 import clickhouseProxyRouter from './routers/api/clickhouseProxy';
 import connectionsRouter from './routers/api/connections';
 import favoritesRouter from './routers/api/favorites';
+import listViewsRouter from './routers/api/listViews';
 import pinnedFiltersRouter from './routers/api/pinnedFilters';
 import savedSearchRouter from './routers/api/savedSearch';
 import sourcesRouter from './routers/api/sources';
@@ -106,6 +107,7 @@ app.use('/connections', isUserAuthenticated, connectionsRouter);
 app.use('/sources', isUserAuthenticated, sourcesRouter);
 app.use('/saved-search', isUserAuthenticated, savedSearchRouter);
 app.use('/favorites', isUserAuthenticated, favoritesRouter);
+app.use('/list-views', isUserAuthenticated, listViewsRouter);
 app.use('/pinned-filters', isUserAuthenticated, pinnedFiltersRouter);
 app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
 if (config.IS_PROMQL_ENABLED) {

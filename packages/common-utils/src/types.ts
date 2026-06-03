@@ -1261,6 +1261,57 @@ export const DashboardTemplateSchema = DashboardWithoutIdSchema.omit({
 });
 export type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
 
+// --------------------------
+// LIST VIEWS
+// --------------------------
+//
+// A ListView is a per-user, per-resource saved filter pinned to the
+// listing sidebar. Rules are evaluated client-side over the listing
+// endpoint's response, AND/OR combined via `combinator`.
+//
+// The rule discriminated union is additive: tag rules (the original
+// v1 set) live alongside the non-tag kinds (recency, has-active-
+// alerts, created-by-me). Stored documents from the tag-only era
+// keep parsing because every rule still carries a `kind` literal
+// and the union includes the original three members.
+export const ListViewRuleSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('tag-includes'), tag: z.string().min(1).max(64) }),
+  z.object({ kind: z.literal('tag-excludes'), tag: z.string().min(1).max(64) }),
+  z.object({ kind: z.literal('untagged') }),
+  z.object({
+    kind: z.literal('updated-within-days'),
+    days: z.number().int().min(1).max(365),
+  }),
+  z.object({ kind: z.literal('has-active-alerts') }),
+  z.object({ kind: z.literal('created-by-me') }),
+]);
+export type ListViewRule = z.infer<typeof ListViewRuleSchema>;
+
+export const ListViewResourceSchema = z.enum(['dashboard', 'savedSearch']);
+export type ListViewResource = z.infer<typeof ListViewResourceSchema>;
+
+export const ListViewCombinatorSchema = z.enum(['all', 'any']);
+export type ListViewCombinator = z.infer<typeof ListViewCombinatorSchema>;
+
+export const ListViewSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(120),
+  icon: z.string().max(64).optional(),
+  resource: ListViewResourceSchema,
+  rules: z.array(ListViewRuleSchema).max(32),
+  combinator: ListViewCombinatorSchema,
+  ordering: z.number().int().nonnegative(),
+  // Optional in the wire shape; defaults to `false` in the Mongoose
+  // model. UI for promoting a per-user view to a team-shared one
+  // arrives in a follow-up; for now consumers should treat absence
+  // as `false`.
+  isShared: z.boolean().optional(),
+});
+export type ListView = z.infer<typeof ListViewSchema>;
+
+export const ListViewWithoutIdSchema = ListViewSchema.omit({ id: true });
+export type ListViewWithoutId = z.infer<typeof ListViewWithoutIdSchema>;
+
 export const ConnectionSchema = z.object({
   id: z.string(),
   name: z.string(),
