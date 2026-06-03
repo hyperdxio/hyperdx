@@ -600,6 +600,88 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
   );
 
   test(
+    'should round-trip a dashboard through export and re-import',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Export Import ${ts}`;
+      const tileName = `Logs Count ${ts}`;
+      const filterName = `Service ${ts}`;
+
+      await test.step('Create a dashboard with a tile and a filter', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.editDashboardName(dashboardName);
+        await dashboardPage.addTileWithSource(
+          tileName,
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addFilterToDashboard(
+          filterName,
+          DEFAULT_LOGS_SOURCE_NAME,
+          'ServiceName',
+        );
+        await expect(
+          dashboardPage.getFilterItemByName(filterName),
+        ).toBeVisible();
+        await dashboardPage.closeFiltersModal();
+        // Export reads the in-memory dashboard state (not the persisted doc),
+        // so the tile + filter we just added are already present — no need to
+        // wait for the fire-and-forget PATCH to land.
+      });
+
+      let exported: Record<string, any> = {};
+      await test.step('Export the dashboard and verify the downloaded template', async () => {
+        exported = await dashboardPage.exportDashboard();
+        expect(exported.name).toBe(dashboardName);
+        expect(exported.tiles).toHaveLength(1);
+        expect(exported.tiles[0].config.source).toBe(DEFAULT_LOGS_SOURCE_NAME);
+        expect(exported.filters).toHaveLength(1);
+        expect(exported.filters[0]).toMatchObject({
+          name: filterName,
+          expression: 'ServiceName',
+          source: DEFAULT_LOGS_SOURCE_NAME,
+        });
+      });
+
+      await test.step('Re-import the exported template and finish (auto-resolved mappings)', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadDashboardFile(JSON.stringify(exported));
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+        await expect(dashboardImportPage.dashboardNameInput).toHaveValue(
+          dashboardName,
+        );
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify the re-imported dashboard matches the original', async () => {
+        const logSources = await getSources(page, 'log');
+        const logsSourceId = logSources.find(
+          (s: { name: string }) => s.name === DEFAULT_LOGS_SOURCE_NAME,
+        ).id;
+
+        const importedId = dashboardPage.getCurrentDashboardId();
+        const imported = await fetchDashboardById(page, importedId);
+        expect(imported.name).toBe(dashboardName);
+        expect(imported.tiles).toHaveLength(1);
+        expect(imported.tiles[0].config.source).toBe(logsSourceId);
+        expect(imported.filters).toHaveLength(1);
+        expect(imported.filters[0]).toMatchObject({
+          name: filterName,
+          expression: 'ServiceName',
+          source: logsSourceId,
+        });
+      });
+    },
+  );
+
+  test(
     'should drop an unmapped onClick from the imported tile',
     { tag: '@full-stack' },
     async ({ page }) => {

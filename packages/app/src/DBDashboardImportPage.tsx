@@ -15,6 +15,12 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  type DashboardFilterQueryIssue,
+  type SavedFilterValueIssue,
+  validateDashboardFilterQueries,
+  validateSavedFilterValues,
+} from '@hyperdx/common-utils/dist/filters';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   type DashboardTemplate,
@@ -80,6 +86,18 @@ function FileSelection({
     details?: ReactNode;
   } | null>(null);
   const [errorDetails, { toggle: toggleErrorDetails }] = useDisclosure(false);
+  const [filterWarnings, setFilterWarnings] = useState<SavedFilterValueIssue[]>(
+    [],
+  );
+  const [filterQueryWarnings, setFilterQueryWarnings] = useState<
+    DashboardFilterQueryIssue[]
+  >([]);
+  const [warningDetails, { toggle: toggleWarningDetails }] =
+    useDisclosure(false);
+  const [
+    filterQueryWarningDetails,
+    { toggle: toggleFilterQueryWarningDetails },
+  ] = useDisclosure(false);
 
   const { control, handleSubmit } = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
@@ -87,6 +105,8 @@ function FileSelection({
 
   const onSubmit = async ({ file }: FormValues) => {
     setError(null);
+    setFilterWarnings([]);
+    setFilterQueryWarnings([]);
     if (!file) return;
 
     let data: unknown;
@@ -119,6 +139,22 @@ function FileSelection({
       });
       return;
     }
+
+    // The schema only guarantees saved filter values are well-shaped, not that
+    // their condition strings parse. Surface a non-blocking warning so users
+    // who hand-edited or generated the file know a value won't actually filter,
+    // while still letting them proceed with the import.
+    setFilterWarnings(
+      validateSavedFilterValues(result.data.savedFilterValues ?? []),
+    );
+
+    // Import never runs the filters' values queries, so a filter whose `where`
+    // clause is malformed would otherwise only surface as a failed query after
+    // opening the dashboard. Statically validate the `where` clauses here so the
+    // problem is visible up front (non-blocking).
+    setFilterQueryWarnings(
+      validateDashboardFilterQueries(result.data.filters ?? []),
+    );
 
     onComplete(result.data);
   };
@@ -210,6 +246,80 @@ function FileSelection({
                 <Collapse expanded={errorDetails}>{error.details}</Collapse>
               </>
             )}
+          </div>
+        )}
+
+        {filterWarnings.length > 0 && (
+          <div>
+            <Text c="yellow">
+              {filterWarnings.length === 1
+                ? '1 saved filter value has an invalid condition and will not be applied.'
+                : `${filterWarnings.length} saved filter values have invalid conditions and will not be applied.`}
+            </Text>
+            <Button variant="transparent" onClick={toggleWarningDetails} px={0}>
+              <Group c="yellow" gap={0} align="center">
+                <IconChevronRight
+                  size="16px"
+                  style={{
+                    transition: 'transform 0.2s ease-in-out',
+                    transform: warningDetails
+                      ? 'rotate(90deg)'
+                      : 'rotate(0deg)',
+                  }}
+                />
+                {warningDetails ? 'Hide Details' : 'Show Details'}
+              </Group>
+            </Button>
+            <Collapse expanded={warningDetails}>
+              <Stack gap={0}>
+                {filterWarnings.map(warning => (
+                  <Text
+                    key={`${warning.index}:${warning.condition}`}
+                    c="yellow"
+                  >
+                    Invalid {warning.language} condition: {warning.condition}
+                  </Text>
+                ))}
+              </Stack>
+            </Collapse>
+          </div>
+        )}
+
+        {filterQueryWarnings.length > 0 && (
+          <div>
+            <Text c="yellow">
+              {filterQueryWarnings.length === 1
+                ? "1 filter has an invalid query and won't load values."
+                : `${filterQueryWarnings.length} filters have invalid queries and won't load values.`}
+            </Text>
+            <Button
+              variant="transparent"
+              onClick={toggleFilterQueryWarningDetails}
+              px={0}
+            >
+              <Group c="yellow" gap={0} align="center">
+                <IconChevronRight
+                  size="16px"
+                  style={{
+                    transition: 'transform 0.2s ease-in-out',
+                    transform: filterQueryWarningDetails
+                      ? 'rotate(90deg)'
+                      : 'rotate(0deg)',
+                  }}
+                />
+                {filterQueryWarningDetails ? 'Hide Details' : 'Show Details'}
+              </Group>
+            </Button>
+            <Collapse expanded={filterQueryWarningDetails}>
+              <Stack gap={0}>
+                {filterQueryWarnings.map(warning => (
+                  <Text key={warning.filterId} c="yellow">
+                    {warning.filterName}: invalid {warning.language} query:{' '}
+                    {warning.where}
+                  </Text>
+                ))}
+              </Stack>
+            </Collapse>
           </div>
         )}
       </Stack>
