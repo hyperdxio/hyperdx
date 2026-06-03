@@ -2,6 +2,8 @@ import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  DENOISE_NOISE_THRESHOLD,
+  DENOISE_SAMPLE_SIZE,
   flattenBody,
   minePatterns,
   TemplateMiner,
@@ -14,14 +16,6 @@ import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 
 import { resolveBodyExpression } from './helpers';
-
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-/** Patterns matching more than this fraction of sampled events are "noisy". */
-const NOISE_THRESHOLD = 0.1;
-
-/** Number of random rows to sample for pattern learning. */
-const DENOISE_SAMPLE_SIZE = 10_000;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -209,7 +203,7 @@ export async function denoiseSearchResults(
   const removedPatterns: DenoiseResult['removedPatterns'] = [];
 
   for (const p of patterns) {
-    if (p.sampleCount / sampledRowCount > NOISE_THRESHOLD) {
+    if (p.sampleCount / sampledRowCount > DENOISE_NOISE_THRESHOLD) {
       noisyTemplates.add(p.pattern);
       removedPatterns.push({
         pattern: p.pattern,

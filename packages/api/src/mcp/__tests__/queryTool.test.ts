@@ -87,9 +87,9 @@ describe('MCP Query Tools', () => {
   // ─── Schema serialization ────────────────────────────────────────────────────
 
   describe('schema serialization', () => {
-    it('should expose hyperdx_timeseries with expected properties', async () => {
+    it('should expose clickstack_timeseries with expected properties', async () => {
       const { tools } = await client.listTools();
-      const tool = tools.find(t => t.name === 'hyperdx_timeseries');
+      const tool = tools.find(t => t.name === 'clickstack_timeseries');
       expect(tool).toBeDefined();
 
       const props = Object.keys(tool!.inputSchema.properties ?? {});
@@ -102,9 +102,9 @@ describe('MCP Query Tools', () => {
       expect(tool!.inputSchema.required).toContain('select');
     });
 
-    it('should expose hyperdx_table with expected properties', async () => {
+    it('should expose clickstack_table with expected properties', async () => {
       const { tools } = await client.listTools();
-      const tool = tools.find(t => t.name === 'hyperdx_table');
+      const tool = tools.find(t => t.name === 'clickstack_table');
       expect(tool).toBeDefined();
 
       const props = Object.keys(tool!.inputSchema.properties ?? {});
@@ -116,9 +116,9 @@ describe('MCP Query Tools', () => {
       expect(tool!.inputSchema.required).toContain('select');
     });
 
-    it('should expose hyperdx_search with expected properties', async () => {
+    it('should expose clickstack_search with expected properties', async () => {
       const { tools } = await client.listTools();
-      const tool = tools.find(t => t.name === 'hyperdx_search');
+      const tool = tools.find(t => t.name === 'clickstack_search');
       expect(tool).toBeDefined();
 
       const props = Object.keys(tool!.inputSchema.properties ?? {});
@@ -129,9 +129,9 @@ describe('MCP Query Tools', () => {
       expect(tool!.inputSchema.required).toContain('sourceId');
     });
 
-    it('should expose hyperdx_event_patterns with expected properties', async () => {
+    it('should expose clickstack_event_patterns with expected properties', async () => {
       const { tools } = await client.listTools();
-      const tool = tools.find(t => t.name === 'hyperdx_event_patterns');
+      const tool = tools.find(t => t.name === 'clickstack_event_patterns');
       expect(tool).toBeDefined();
 
       const props = Object.keys(tool!.inputSchema.properties ?? {});
@@ -143,9 +143,9 @@ describe('MCP Query Tools', () => {
       expect(tool!.inputSchema.required).toContain('sourceId');
     });
 
-    it('should expose hyperdx_sql with expected properties', async () => {
+    it('should expose clickstack_sql with expected properties', async () => {
       const { tools } = await client.listTools();
-      const tool = tools.find(t => t.name === 'hyperdx_sql');
+      const tool = tools.find(t => t.name === 'clickstack_sql');
       expect(tool).toBeDefined();
 
       const props = Object.keys(tool!.inputSchema.properties ?? {});
@@ -158,11 +158,11 @@ describe('MCP Query Tools', () => {
     });
   });
 
-  // ─── hyperdx_timeseries ─────────────────────────────────────────────────────
+  // ─── clickstack_timeseries ─────────────────────────────────────────────────────
 
-  describe('hyperdx_timeseries', () => {
+  describe('clickstack_timeseries', () => {
     it('should execute a line chart query', async () => {
-      const result = await callTool(client, 'hyperdx_timeseries', {
+      const result = await callTool(client, 'clickstack_timeseries', {
         sourceId: traceSource._id.toString(),
         select: [{ aggFn: 'count' }],
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -176,7 +176,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should execute a stacked bar chart query', async () => {
-      const result = await callTool(client, 'hyperdx_timeseries', {
+      const result = await callTool(client, 'clickstack_timeseries', {
         sourceId: traceSource._id.toString(),
         select: [{ aggFn: 'count' }],
         shape: 'stacked_bar',
@@ -189,7 +189,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should default to line shape when shape is omitted', async () => {
-      const result = await callTool(client, 'hyperdx_timeseries', {
+      const result = await callTool(client, 'clickstack_timeseries', {
         sourceId: traceSource._id.toString(),
         select: [{ aggFn: 'count' }],
       });
@@ -199,7 +199,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should accept granularity in correct format', async () => {
-      const result = await callTool(client, 'hyperdx_timeseries', {
+      const result = await callTool(client, 'clickstack_timeseries', {
         sourceId: traceSource._id.toString(),
         select: [{ aggFn: 'count' }],
         granularity: '1 minute',
@@ -212,7 +212,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should return error for invalid time range', async () => {
-      const result = await callTool(client, 'hyperdx_timeseries', {
+      const result = await callTool(client, 'clickstack_timeseries', {
         sourceId: traceSource._id.toString(),
         select: [{ aggFn: 'count' }],
         startTime: 'invalid-date',
@@ -223,11 +223,11 @@ describe('MCP Query Tools', () => {
     });
   });
 
-  // ─── hyperdx_table ──────────────────────────────────────────────────────────
+  // ─── clickstack_table ──────────────────────────────────────────────────────────
 
-  describe('hyperdx_table', () => {
+  describe('clickstack_table', () => {
     it('should execute a table query', async () => {
-      const result = await callTool(client, 'hyperdx_table', {
+      const result = await callTool(client, 'clickstack_table', {
         sourceId: traceSource._id.toString(),
         select: [{ aggFn: 'count' }],
         groupBy: 'SpanName',
@@ -242,7 +242,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should execute a number query', async () => {
-      const result = await callTool(client, 'hyperdx_table', {
+      const result = await callTool(client, 'clickstack_table', {
         sourceId: traceSource._id.toString(),
         select: [{ aggFn: 'count' }],
         shape: 'number',
@@ -255,7 +255,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should execute a pie query', async () => {
-      const result = await callTool(client, 'hyperdx_table', {
+      const result = await callTool(client, 'clickstack_table', {
         sourceId: traceSource._id.toString(),
         select: [{ aggFn: 'count' }],
         shape: 'pie',
@@ -270,7 +270,7 @@ describe('MCP Query Tools', () => {
 
     it('should auto-upgrade shape:"number" to "table" when select has multiple items', async () => {
       // This should NOT error — it should silently upgrade to table
-      const result = await callTool(client, 'hyperdx_table', {
+      const result = await callTool(client, 'clickstack_table', {
         sourceId: traceSource._id.toString(),
         select: [
           { aggFn: 'count' },
@@ -286,7 +286,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should auto-upgrade shape:"pie" to "table" when select has multiple items', async () => {
-      const result = await callTool(client, 'hyperdx_table', {
+      const result = await callTool(client, 'clickstack_table', {
         sourceId: traceSource._id.toString(),
         select: [
           { aggFn: 'count' },
@@ -303,7 +303,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should use default time range when not provided', async () => {
-      const result = await callTool(client, 'hyperdx_table', {
+      const result = await callTool(client, 'clickstack_table', {
         sourceId: traceSource._id.toString(),
         select: [{ aggFn: 'count' }],
       });
@@ -313,11 +313,11 @@ describe('MCP Query Tools', () => {
     });
   });
 
-  // ─── hyperdx_search ─────────────────────────────────────────────────────────
+  // ─── clickstack_search ─────────────────────────────────────────────────────────
 
-  describe('hyperdx_search', () => {
+  describe('clickstack_search', () => {
     it('should execute a search query', async () => {
-      const result = await callTool(client, 'hyperdx_search', {
+      const result = await callTool(client, 'clickstack_search', {
         sourceId: traceSource._id.toString(),
         where: '',
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -329,7 +329,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should respect maxResults parameter', async () => {
-      const result = await callTool(client, 'hyperdx_search', {
+      const result = await callTool(client, 'clickstack_search', {
         sourceId: traceSource._id.toString(),
         maxResults: 10,
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -340,7 +340,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should use default time range when not provided', async () => {
-      const result = await callTool(client, 'hyperdx_search', {
+      const result = await callTool(client, 'clickstack_search', {
         sourceId: traceSource._id.toString(),
       });
 
@@ -349,7 +349,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should reject calls missing sourceId', async () => {
-      const result = await callTool(client, 'hyperdx_search', {
+      const result = await callTool(client, 'clickstack_search', {
         where: 'level:error',
       });
 
@@ -359,14 +359,14 @@ describe('MCP Query Tools', () => {
 
     it('should expose denoise property in schema', async () => {
       const { tools } = await client.listTools();
-      const tool = tools.find(t => t.name === 'hyperdx_search');
+      const tool = tools.find(t => t.name === 'clickstack_search');
       expect(tool).toBeDefined();
       const props = Object.keys(tool!.inputSchema.properties ?? {});
       expect(props).toContain('denoise');
     });
 
     it('should emit denoised block when denoise=true on empty results', async () => {
-      const result = await callTool(client, 'hyperdx_search', {
+      const result = await callTool(client, 'clickstack_search', {
         sourceId: logSource._id.toString(),
         denoise: true,
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -411,7 +411,7 @@ describe('MCP Query Tools', () => {
       });
 
       it('should filter noisy patterns and emit denoised metadata', async () => {
-        const result = await callTool(client, 'hyperdx_search', {
+        const result = await callTool(client, 'clickstack_search', {
           sourceId: logSource._id.toString(),
           denoise: true,
           maxResults: 200,
@@ -447,7 +447,7 @@ describe('MCP Query Tools', () => {
       });
 
       it('should return results without denoised block when denoise=false', async () => {
-        const result = await callTool(client, 'hyperdx_search', {
+        const result = await callTool(client, 'clickstack_search', {
           sourceId: logSource._id.toString(),
           denoise: false,
           maxResults: 200,
@@ -462,11 +462,11 @@ describe('MCP Query Tools', () => {
     });
   });
 
-  // ─── hyperdx_event_patterns ─────────────────────────────────────────────────
+  // ─── clickstack_event_patterns ─────────────────────────────────────────────────
 
-  describe('hyperdx_event_patterns', () => {
+  describe('clickstack_event_patterns', () => {
     it('should execute an event_patterns query on a log source', async () => {
-      const result = await callTool(client, 'hyperdx_event_patterns', {
+      const result = await callTool(client, 'clickstack_event_patterns', {
         sourceId: logSource._id.toString(),
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
         endTime: new Date().toISOString(),
@@ -486,7 +486,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should execute with explicit bodyExpression on trace source', async () => {
-      const result = await callTool(client, 'hyperdx_event_patterns', {
+      const result = await callTool(client, 'clickstack_event_patterns', {
         sourceId: traceSource._id.toString(),
         bodyExpression: 'SpanName',
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -502,7 +502,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should accept custom bodyExpression on log source', async () => {
-      const result = await callTool(client, 'hyperdx_event_patterns', {
+      const result = await callTool(client, 'clickstack_event_patterns', {
         sourceId: logSource._id.toString(),
         bodyExpression: 'SeverityText',
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -516,7 +516,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should respect sampleSize parameter', async () => {
-      const result = await callTool(client, 'hyperdx_event_patterns', {
+      const result = await callTool(client, 'clickstack_event_patterns', {
         sourceId: logSource._id.toString(),
         sampleSize: 100,
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -528,7 +528,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should respect where filter', async () => {
-      const result = await callTool(client, 'hyperdx_event_patterns', {
+      const result = await callTool(client, 'clickstack_event_patterns', {
         sourceId: logSource._id.toString(),
         where: "SeverityText = 'ERROR'",
         whereLanguage: 'sql',
@@ -541,7 +541,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should reject calls missing sourceId', async () => {
-      const result = await callTool(client, 'hyperdx_event_patterns', {
+      const result = await callTool(client, 'clickstack_event_patterns', {
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
         endTime: new Date().toISOString(),
       });
@@ -551,7 +551,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should return error for non-existent source', async () => {
-      const result = await callTool(client, 'hyperdx_event_patterns', {
+      const result = await callTool(client, 'clickstack_event_patterns', {
         sourceId: '000000000000000000000000',
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
         endTime: new Date().toISOString(),
@@ -600,7 +600,7 @@ describe('MCP Query Tools', () => {
       });
 
       it('should mine patterns from seeded data and return non-empty results', async () => {
-        const result = await callTool(client, 'hyperdx_event_patterns', {
+        const result = await callTool(client, 'clickstack_event_patterns', {
           sourceId: logSource._id.toString(),
           startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
           endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
@@ -639,11 +639,11 @@ describe('MCP Query Tools', () => {
     });
   });
 
-  // ─── hyperdx_sql ────────────────────────────────────────────────────────────
+  // ─── clickstack_sql ────────────────────────────────────────────────────────────
 
-  describe('hyperdx_sql', () => {
+  describe('clickstack_sql', () => {
     it('should execute a raw SQL query', async () => {
-      const result = await callTool(client, 'hyperdx_sql', {
+      const result = await callTool(client, 'clickstack_sql', {
         connectionId: connection._id.toString(),
         sql: 'SELECT 1 AS value',
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -655,7 +655,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should execute SQL with time macros', async () => {
-      const result = await callTool(client, 'hyperdx_sql', {
+      const result = await callTool(client, 'clickstack_sql', {
         connectionId: connection._id.toString(),
         sql: `SELECT count() AS cnt FROM ${DEFAULT_DATABASE}.${DEFAULT_TRACES_TABLE} WHERE $__timeFilter(Timestamp) LIMIT 10`,
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -667,7 +667,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should use default time range when not provided', async () => {
-      const result = await callTool(client, 'hyperdx_sql', {
+      const result = await callTool(client, 'clickstack_sql', {
         connectionId: connection._id.toString(),
         sql: 'SELECT 1 AS value',
       });
@@ -677,7 +677,7 @@ describe('MCP Query Tools', () => {
     });
 
     it('should return error for invalid time range', async () => {
-      const result = await callTool(client, 'hyperdx_sql', {
+      const result = await callTool(client, 'clickstack_sql', {
         connectionId: connection._id.toString(),
         sql: 'SELECT 1',
         startTime: 'not-a-date',

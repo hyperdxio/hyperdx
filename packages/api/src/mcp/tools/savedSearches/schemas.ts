@@ -60,7 +60,7 @@ export const mcpSaveSavedSearchSchema = z.object({
   sourceId: z
     .string()
     .describe(
-      'Source ID — call hyperdx_list_sources to find available sources.',
+      'Source ID — call clickstack_list_sources to find available sources.',
     ),
   tags: z
     .array(z.string())

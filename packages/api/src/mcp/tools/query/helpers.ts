@@ -250,7 +250,7 @@ export async function runConfigTile(
         content: [
           {
             type: 'text' as const,
-            text: `Source not found: ${builderConfig.source}. Call hyperdx_list_sources to discover available source IDs.`,
+            text: `Source not found: ${builderConfig.source}. Call clickstack_list_sources to discover available source IDs.`,
           },
         ],
       };
@@ -373,7 +373,7 @@ export async function runConfigTile(
       content: [
         {
           type: 'text' as const,
-          text: `Connection not found: ${savedConfig.connection}. Call hyperdx_list_sources to discover available connection IDs.`,
+          text: `Connection not found: ${savedConfig.connection}. Call clickstack_list_sources to discover available connection IDs.`,
         },
       ],
     };

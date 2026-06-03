@@ -59,23 +59,23 @@ export function registerSearch(server: McpServer, context: McpContext) {
   const { teamId } = context;
 
   server.registerTool(
-    'hyperdx_search',
+    'clickstack_search',
     {
       title: 'Search Events',
       description:
         'Browse individual log/event/trace rows. ' +
         'Use this when you need to see raw events, investigate specific log lines, ' +
         'or drill into individual records matching a filter.\n\n' +
-        'Requires sourceId — call hyperdx_list_sources then hyperdx_describe_source first.\n\n' +
-        'For aggregated metrics, use hyperdx_table instead. ' +
-        'For pattern discovery, use hyperdx_event_patterns instead.\n\n' +
+        'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
+        'For aggregated metrics, use clickstack_table instead. ' +
+        'For pattern discovery, use clickstack_event_patterns instead.\n\n' +
         'Set denoise=true to automatically filter out high-frequency repetitive patterns, ' +
         'surfacing only unusual or interesting events.\n\n' +
         'Column naming: top-level columns are PascalCase (Duration, StatusCode). ' +
         "Map attributes use bracket syntax: SpanAttributes['http.method'].",
       inputSchema: searchSchema,
     },
-    withToolTracing('hyperdx_search', context, async input => {
+    withToolTracing('clickstack_search', context, async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
         return {

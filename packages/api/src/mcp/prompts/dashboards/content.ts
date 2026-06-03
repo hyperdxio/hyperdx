@@ -17,25 +17,25 @@ export function buildCreateDashboardPrompt(
 ${userContext}
 ${sourceSummary}
 
-IMPORTANT: Call hyperdx_list_sources first to get source IDs, then hyperdx_describe_source for each source you plan to query. This gives you the full column schema, attribute keys, and sampled values (e.g. SeverityText, StatusCode). The source IDs above are correct, but you need the schema details to write accurate queries.
+IMPORTANT: Call clickstack_list_sources first to get source IDs, then clickstack_describe_source for each source you plan to query. This gives you the full column schema, attribute keys, and sampled values (e.g. SeverityText, StatusCode). The source IDs above are correct, but you need the schema details to write accurate queries.
 
 == WORKFLOW ==
 
-1. Call hyperdx_list_sources to discover source IDs and connection IDs.
-2. Call hyperdx_describe_source for each source you plan to query to get column schema, attribute keys, and sampled low-cardinality values (SeverityText, StatusCode, ServiceName, etc.).
-3. Call hyperdx_get_dashboard (no id) to list existing dashboards. If any exist, fetch one or two with their id and skim them to pick up local idioms (naming style, time ranges, common groupings) before adding new ones. Skip when the workspace is empty.
+1. Call clickstack_list_sources to discover source IDs and connection IDs.
+2. Call clickstack_describe_source for each source you plan to query to get column schema, attribute keys, and sampled low-cardinality values (SeverityText, StatusCode, ServiceName, etc.).
+3. Call clickstack_get_dashboard (no id) to list existing dashboards. If any exist, fetch one or two with their id and skim them to pick up local idioms (naming style, time ranges, common groupings) before adding new ones. Skip when the workspace is empty.
 4. Pick the right source kind for the question. Trace data for request volume / latency / errors. Log data for severity / messages. Metric data for system telemetry.
 5. Sketch tiles, THEN group them into 2-4 containers (Overview / Trends / Errors is a sane default for a service-health pattern) before assembling the save payload. Ungrouped tiles render as a flat sprawl that fails the readability test at five or more tiles.
-6. Call hyperdx_save_dashboard with the tiles, containers, and dashboard-level filters.
-7. Call hyperdx_query_tile on EVERY tile (not just one) to confirm queries return data and the dashboard is not silently degraded.
+6. Call clickstack_save_dashboard with the tiles, containers, and dashboard-level filters.
+7. Call clickstack_query_tile on EVERY tile (not just one) to confirm queries return data and the dashboard is not silently degraded.
 
 == UPDATING AN EXISTING DASHBOARD ==
 
-When updating a dashboard (passing the top-level \`id\` to hyperdx_save_dashboard),
+When updating a dashboard (passing the top-level \`id\` to clickstack_save_dashboard),
 the \`filters\` array must be fully self-describing: every filter needs an \`id\`:
 
   - Existing filter you are KEEPING: copy its \`id\` verbatim from the
-    hyperdx_get_dashboard response. The same applies if you are renaming
+    clickstack_get_dashboard response. The same applies if you are renaming
     or tweaking it. This preserves any savedFilterValues bound to that id.
   - New filter you are ADDING in this update: generate a fresh random
     24-character hex string (a Mongo-style ObjectId) and set it as \`id\`.
@@ -46,11 +46,11 @@ the \`filters\` array must be fully self-describing: every filter needs an \`id\
 
 Recommended pattern:
 
-  1. \`hyperdx_get_dashboard({ id })\` to capture the current \`filters[]\`
+  1. \`clickstack_get_dashboard({ id })\` to capture the current \`filters[]\`
      and their ids.
   2. Build the new array: spread the kept filters as-is, append new
      filters with freshly-minted ids, omit removed ones.
-  3. \`hyperdx_save_dashboard({ id, ..., filters: <new array> })\`.
+  3. \`clickstack_save_dashboard({ id, ..., filters: <new array> })\`.
 
 == TILE TYPE GUIDE ==
 
@@ -72,15 +72,15 @@ Use RAW SQL tiles (with connectionId) only for queries the builder cannot expres
 
 - Top-level columns use PascalCase by default: Duration, StatusCode, SpanName, Body, SeverityText, ServiceName, SpanKind.
   NOTE: These are defaults for the standard HyperDX schema. Custom sources may use different names.
-  Always call hyperdx_describe_source to get the real column names, keyColumns, and sampled values for each source.
+  Always call clickstack_describe_source to get the real column names, keyColumns, and sampled values for each source.
 - Map-type columns use bracket syntax: SpanAttributes['http.method'], ResourceAttributes['service.name'].
   NEVER use dot notation for Map columns. Always use brackets.
 - JSON-type columns use dot notation: JsonColumn.key.subkey.
-  Check the jsType returned by hyperdx_describe_source to determine whether a column is Map or JSON.
+  Check the jsType returned by clickstack_describe_source to determine whether a column is Map or JSON.
 
 == DESIGN CHECKLIST ==
 
-Apply these before calling hyperdx_save_dashboard. Each rule is enforced by the renderer; ignoring one is a runtime error you will then need to fix.
+Apply these before calling clickstack_save_dashboard. Each rule is enforced by the renderer; ignoring one is a runtime error you will then need to fix.
 
 1. ONE QUESTION PER DASHBOARD. A dashboard answers a single observability question well. Split if the request mixes traces, logs, and metrics into unrelated views.
 
@@ -104,7 +104,7 @@ Apply these before calling hyperdx_save_dashboard. Each rule is enforced by the 
 
 9. FOR FOCUSED PER-DIMENSION DASHBOARDS, DECLARE A DASHBOARD-LEVEL FILTER. Pass filters: [{ type: "QUERY_EXPRESSION", name, expression, sourceId }] at the top level. The user gets a dropdown in the dashboard header; by default every tile is re-scoped when a value is picked. On mixed-source dashboards add appliesToSourceIds: ["<id>", ...] to restrict the filter to only the tiles whose source carries that column. Omit the field to keep the broadcast-to-all-tiles default. Do NOT hardcode the dimension into each tile's where clause.
 
-10. UPDATE IS REPLACE, NOT MERGE. hyperdx_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call hyperdx_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
+10. UPDATE IS REPLACE, NOT MERGE. clickstack_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call clickstack_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
 
 11. GROUP RELATED TILES INTO CONTAINERS. REQUIRED at five or more tiles, no exceptions. An ungrouped wall of nine or ten tiles is a readability failure even when each tile is correct in isolation. Containers are the right way to introduce structure; markdown tiles for section labels are not.
 
@@ -121,17 +121,17 @@ Apply these before calling hyperdx_save_dashboard. Each rule is enforced by the 
      ]
    Use tabs when one container needs to show different views of the same data (Throughput / Latency / Errors over time, for instance); the tab bar appears when a container has two or more tabs declared.
 
-12. VALIDATE EVERY TILE AFTER SAVE. After hyperdx_save_dashboard, call hyperdx_query_tile on EVERY tile (not just one). Save validates input shape; it does NOT validate query semantics. Some queries pass save and fail at render time (known gaps: Lucene comparison/wildcard on map attributes, metric tiles with multiple metricTables, malformed having clauses). If query_tile returns an error, fix the tile and re-save before declaring the dashboard ready.
+12. VALIDATE EVERY TILE AFTER SAVE. After clickstack_save_dashboard, call clickstack_query_tile on EVERY tile (not just one). Save validates input shape; it does NOT validate query semantics. Some queries pass save and fail at render time (known gaps: Lucene comparison/wildcard on map attributes, metric tiles with multiple metricTables, malformed having clauses). If query_tile returns an error, fix the tile and re-save before declaring the dashboard ready.
 
 13. NO TITLE-RECAP MARKDOWN TILE. The dashboard's name shows in the title bar. Adding a markdown tile with the dashboard name (or a "About this dashboard" header) doubles the title and eats a row of vertical space because markdown heading styles render at title-bar scale. Skip the markdown tile entirely on starter dashboards.
 
 == ADAPT, DO NOT COPY ==
 
-The dashboard_examples prompt returns concrete example shapes. Read them as patterns to adapt to the user's actual request and schema, not as literal templates to substitute names into. Specifically: the literal "ServiceName", "StatusCode:STATUS_CODE_ERROR", "Duration" come from the standard HyperDX schema. Real source schemas may use different column names and status values; always verify with hyperdx_list_sources before reusing literals.
+The dashboard_examples prompt returns concrete example shapes. Read them as patterns to adapt to the user's actual request and schema, not as literal templates to substitute names into. Specifically: the literal "ServiceName", "StatusCode:STATUS_CODE_ERROR", "Duration" come from the standard HyperDX schema. Real source schemas may use different column names and status values; always verify with clickstack_list_sources before reusing literals.
 
 IMPORTANT: The exact values for StatusCode and SeverityText vary by deployment.
 Do NOT assume values like "STATUS_CODE_ERROR", "Ok", "error", or "fatal".
-Always call hyperdx_describe_source first and inspect the lowCardinalityValues
+Always call clickstack_describe_source first and inspect the lowCardinalityValues
 returned for each source to discover the real values used in your data.
 
 == DEFAULT TIME WINDOW ==
@@ -143,12 +143,12 @@ Dashboards open with a 15-minute default window. There is no dashboard-level fie
 - Using valueExpression with aggFn "count" (count takes no valueExpression).
 - Forgetting valueExpression for non-count aggFns (avg, sum, min, max, quantile all require it).
 - Using dot notation for Map-type attributes (always use SpanAttributes['key'] bracket syntax).
-- Skipping hyperdx_list_sources + hyperdx_describe_source (you need real source IDs, column names, and values).
-- Skipping hyperdx_query_tile after save (tiles can silently fail on syntax or attribute mismatches).
+- Skipping clickstack_list_sources + clickstack_describe_source (you need real source IDs, column names, and values).
+- Skipping clickstack_query_tile after save (tiles can silently fail on syntax or attribute mismatches).
 - Setting chart-level numberFormat on a table that mixes counts and durations (counts render as 0:00:00).
 - Multiple select items on number / pie / heatmap tiles (each takes exactly one).
 - Missing level on aggFn "quantile" (must specify 0.5, 0.9, 0.95, or 0.99).
-- Assuming StatusCode or SeverityText values (always inspect lowCardinalityValues from hyperdx_describe_source).
+- Assuming StatusCode or SeverityText values (always inspect lowCardinalityValues from clickstack_describe_source).
 - Heatmap on a non-Trace source (heatmap is Trace-only today).
 - Hardcoding a focus dimension into every tile's where clause (use a dashboard-level filter instead).`;
 }
@@ -614,7 +614,7 @@ or a more detailed dashboard. Useful when the dashboard answers
 inside that service?".
 
 Replace <TARGET_DASHBOARD_ID> with the ID of an existing service-detail
-dashboard. Use hyperdx_get_dashboard (no id) to list dashboards and
+dashboard. Use clickstack_get_dashboard (no id) to list dashboards and
 copy the right ID and discover which filters are available.
 
 {
@@ -741,8 +741,8 @@ SQL TEMPLATE REFERENCE:
     'Concrete dashboard examples for common observability patterns. ' +
     'These are PATTERNS to adapt, not literal templates. Adapt the structure ' +
     "(table shape, container layout, filter expression) to the user's request; " +
-    'always verify column names and status literals via hyperdx_list_sources before reusing them.\n' +
-    'Replace ${sourceId} / ${connectionId} placeholders with real IDs from hyperdx_list_sources.\n\n';
+    'always verify column names and status literals via clickstack_list_sources before reusing them.\n' +
+    'Replace ${sourceId} / ${connectionId} placeholders with real IDs from clickstack_list_sources.\n\n';
 
   if (pattern) {
     const key = pattern.toLowerCase().replace(/[\s-]+/g, '_');
@@ -765,7 +765,7 @@ SQL TEMPLATE REFERENCE:
 }
 
 export function buildQueryGuidePrompt(): string {
-  return `Reference guide for writing queries with HyperDX MCP tools (hyperdx_timeseries, hyperdx_table, hyperdx_search, hyperdx_event_patterns, hyperdx_sql, and hyperdx_save_dashboard).
+  return `Reference guide for writing queries with ClickStack MCP tools (clickstack_timeseries, clickstack_table, clickstack_search, clickstack_event_patterns, clickstack_sql, and clickstack_save_dashboard).
 
 == AGGREGATION FUNCTIONS (aggFn) ==
 
@@ -794,7 +794,7 @@ Top-level columns (PascalCase defaults, use directly in valueExpression and grou
   Duration, StatusCode, SpanName, ServiceName, SpanKind, Body, SeverityText,
   Timestamp, TraceId, SpanId, ParentSpanId
   NOTE: These are defaults for the standard HyperDX schema. Custom sources may
-  use different column names. Always verify with hyperdx_describe_source, which returns
+  use different column names. Always verify with clickstack_describe_source, which returns
   the real column names and keyColumns expressions for each source.
 
 Map-type columns (bracket syntax, access keys via ['key']):
@@ -810,7 +810,7 @@ IMPORTANT: Always use bracket syntax for Map-type columns. Never use dot notatio
 
 JSON-type columns (dot notation, access nested keys via dot path):
   JsonColumn.key.subkey
-  NOTE: Check the jsType field returned by hyperdx_describe_source to determine
+  NOTE: Check the jsType field returned by clickstack_describe_source to determine
   whether a column is Map (use brackets) or JSON (use dots).
 
 == LUCENE FILTER SYNTAX ==
@@ -821,7 +821,7 @@ Used in the "where" field of select items and search tiles.
   AND:                service.name:api AND http.status_code:>=500
   OR:                 level:error OR level:fatal
   NOT:                NOT level:debug
-  Wildcard:           service.name:front*
+  Wildcard:           ServiceName:front*
   Phrase:             Body:"connection refused"
   Exists:             _exists_:http.route
   Range (numeric):    Duration:>1000000000
@@ -831,16 +831,39 @@ Used in the "where" field of select items and search tiles.
 NOTE: In Lucene filters, use dot notation for attribute keys (service.name, http.method).
 This is different from valueExpression and groupBy which require bracket syntax (SpanAttributes['http.method']).
 
-GOTCHA: Lucene queries that reference map-attribute keys via dotted paths (http.status_code, db.system, deployment.environment, anything under SpanAttributes / ResourceAttributes / LogAttributes) are NOT reliably translated to bracket access. Operators (>=, >, <=, <), wildcards (*), AND simple equality all hit translator gaps depending on the column. Symptoms: tile saves fine; hyperdx_query_tile returns an error or returns zero rows when there should be matches; the dashboard renders "Error loading chart" on the tile. Do NOT trust dotted-path Lucene; use SQL with bracket access for ALL map-attribute filtering.
+*** SUBSTRING MATCHING (field:value and field:value*) ***
+
+Lucene field:value does NOT mean exact equality. It translates to ilike(field, '%value%') -- a case-insensitive SUBSTRING match. This has two major consequences:
+
+  1. Plain value is a substring search:
+     SpanKind:Server     matches "Server", "ServerStreaming", "InternalServer", etc.
+     SeverityText:error  matches "error", "error_timeout", "critical_error", etc.
+
+  2. Trailing wildcard (field:val*) is prefix-within-substring, NOT a true prefix match:
+     ServiceName:api*    does NOT mean "starts with api". It means "contains a substring starting with api".
+                         In practice this often works for prefix matching, but it is NOT equivalent to SQL LIKE 'api%'.
+
+  For exact matching or true prefix/suffix/contains patterns, use SQL instead:
+     Exact:    whereLanguage: "sql", where: "SpanKind = 'Server'"
+     Prefix:   whereLanguage: "sql", where: "ServiceName LIKE 'api%'"
+     Contains: whereLanguage: "sql", where: "Body LIKE '%timeout%'"
+     Regex:    whereLanguage: "sql", where: "match(ServiceName, '^api-v[0-9]+')"
+
+  When Lucene substring matching is FINE: free-text columns like Body, StatusMessage where substring is the intent.
+  When Lucene substring matching is WRONG: enum-like columns (SpanKind, SeverityText, StatusCode, ServiceName) where you want exact or true prefix match.
+
+*** MAP-ATTRIBUTE GOTCHA ***
+
+Lucene queries that reference map-attribute keys via dotted paths (http.status_code, db.system, deployment.environment, anything under SpanAttributes / ResourceAttributes / LogAttributes) are NOT reliably translated to bracket access. Operators (>=, >, <=, <), wildcards (*), AND simple equality all hit translator gaps depending on the column. Symptoms: tile saves fine; clickstack_query_tile returns an error or returns zero rows when there should be matches; the dashboard renders "Error loading chart" on the tile. Do NOT trust dotted-path Lucene; use SQL with bracket access for ALL map-attribute filtering.
 
   Unreliable in Lucene (any operation, any operator):
     http.status_code:>=500    (operator)
-    http.route:*              (wildcard)
+    http.route:*              (wildcard -- also hits the substring matching trap above)
     db.system:mongodb         (simple equality; the translator does NOT map this to SpanAttributes['db.system'])
 
   Reliable in Lucene (top-level columns only):
     Duration:>1000000000      (top-level numeric range)
-    ServiceName:checkout      (top-level string, see fuzzy-match note below for what this actually means)
+    ServiceName:checkout      (top-level string -- but remember this is a substring match, not exact!)
 
 Workaround: switch to SQL with bracket access. Map values are stored as strings, so quote the comparison value.
 
@@ -852,11 +875,6 @@ Workaround: switch to SQL with bracket access. Map values are stored as strings,
 
   whereLanguage: "sql"
   where: "SpanAttributes['http.route'] != ''"     (filters out empty keys; map values are often empty)
-
-FUZZY-MATCH NOTE: Lucene field:value on a top-level string column translates to ilike(field, '%value%'), not exact equality. That is fine for free-text columns (Body, StatusMessage) but surprising for enum-like columns (SpanKind, SeverityText, StatusCode). SpanKind:Server matches "Server" AND any other string containing "Server" as a substring. For exact-match semantics on top-level columns, use SQL:
-
-  whereLanguage: "sql"
-  where: "SpanKind = 'Server'"
 
 == SQL FILTER SYNTAX ==
 
@@ -927,7 +945,7 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
   search       No select items (select is a column list string). where is the filter.
   markdown     No select items. Set markdown field with content.
 
-NOTE: Authoring builder tiles on a metric source is not reliable today. The MCP select-item shape does not carry the metricName / metricType fields the metric query path needs, and a save with a metric sourceId may render in the UI as "Both table name and UUID are empty" even though the save itself succeeded. For metrics, use a raw SQL tile (configType: "sql") with explicit table reference. The standard tables that back a metric source are otel_metrics_gauge, otel_metrics_sum, and otel_metrics_histogram; hyperdx_list_sources returns the metric source's metricTables map so you know which table holds which metric kind. Discovery: metric source schemas today do NOT publish mapAttributeKeys for ResourceAttributes / Attributes the way log and trace sources do, so attribute keys must be discovered by sampling (SELECT DISTINCT mapKeys(Attributes) FROM ...).
+NOTE: Authoring builder tiles on a metric source is not reliable today. The MCP select-item shape does not carry the metricName / metricType fields the metric query path needs, and a save with a metric sourceId may render in the UI as "Both table name and UUID are empty" even though the save itself succeeded. For metrics, use a raw SQL tile (configType: "sql") with explicit table reference. The standard tables that back a metric source are otel_metrics_gauge, otel_metrics_sum, and otel_metrics_histogram; clickstack_list_sources returns the metric source's metricTables map so you know which table holds which metric kind. Discovery: metric source schemas today do NOT publish mapAttributeKeys for ResourceAttributes / Attributes the way log and trace sources do, so attribute keys must be discovered by sampling (SELECT DISTINCT mapKeys(Attributes) FROM ...).
 
 == NUMBER FORMAT ==
 
@@ -997,11 +1015,11 @@ Destination types:
   { type: "search",    target, whereLanguage, whereTemplate?, filters? }
     Opens the /search page for a log or trace source. Metric and session sources are rejected by the server (the /search page does not render those kinds).
   { type: "dashboard", target, whereLanguage, whereTemplate?, filters? }
-    Opens another HyperDX dashboard owned by the same team.
+    Opens another ClickStack dashboard owned by the same team.
 
 Target shape, how the destination is identified:
   target: { mode: "id", id: "<object-id>" }
-    Pins a specific source (for type=search) or dashboard (for type=dashboard) by its ID. Prefer this when the target is known. Find source IDs with hyperdx_list_sources; find dashboard IDs with hyperdx_get_dashboard (no id arg returns the list of all dashboards).
+    Pins a specific source (for type=search) or dashboard (for type=dashboard) by its ID. Prefer this when the target is known. Find source IDs with clickstack_list_sources; find dashboard IDs with clickstack_get_dashboard (no id arg returns the list of all dashboards).
   target: { mode: "template", template: "<handlebars>" }
     Renders the template against the clicked row's columns, then resolves the result by NAME on the destination team. Example template "{{Service}}" reads the row's Service value and looks up a source/dashboard with that name. Use this when the destination depends on which row was clicked. A constant template like "Service Detail" (no Handlebars vars) simply resolves to the dashboard or source with that exact name.
 
@@ -1088,7 +1106,7 @@ For onClick drill-down on a plain top-level column (ServiceName), no workaround 
 
 == CONTAINERS AND TABS ==
 
-Optional dashboard organization layer. Group related tiles visually with optional tab bars. Pass on hyperdx_save_dashboard as a top-level "containers" array; reference containers from tiles via "containerId" (and "tabId" when the container has tabs).
+Optional dashboard organization layer. Group related tiles visually with optional tab bars. Pass on clickstack_save_dashboard as a top-level "containers" array; reference containers from tiles via "containerId" (and "tabId" when the container has tabs).
 
 Container shape:
   { id, title, collapsed, collapsible?, bordered?, tabs? }
@@ -1112,7 +1130,7 @@ Rules enforced by the API:
   - A tile's tabId requires containerId to be set.
 
 Example:
-  hyperdx_save_dashboard({
+  clickstack_save_dashboard({
     name: "Service Overview",
     containers: [
       {
@@ -1149,7 +1167,7 @@ containers[i].tabs[j].id). Read the path to know which input to fix.
 
 == EVENT PATTERN MINING ==
 
-Use hyperdx_event_patterns when asked to find common log messages, recurring
+Use clickstack_event_patterns when asked to find common log messages, recurring
 patterns, noisy services, or top event types. This is the right choice whenever
 the question is about "most common logs", "top patterns", "what is generating
 the most log volume", or similar pattern-discovery questions.
@@ -1161,7 +1179,7 @@ It samples random events and clusters them with the Drain algorithm, returning:
   - a whereSnippet for each pattern to drill into matching raw events
 
 Required parameters:
-  - sourceId (call hyperdx_list_sources first)
+  - sourceId (call clickstack_list_sources first)
   - startTime / endTime for the time window
 
 Optional parameters:
@@ -1170,7 +1188,7 @@ Optional parameters:
   - bodyExpression: column to mine (auto-detected: Body for logs, SpanName for traces)
 
 Example: find top patterns for production services over the last 4 hours:
-  hyperdx_event_patterns({
+  clickstack_event_patterns({
     sourceId: "<log-source-id>",
     startTime: "<4 hours ago ISO>",
     endTime: "<now ISO>",
@@ -1190,12 +1208,12 @@ Example: find top patterns for production services over the last 4 hours:
 3. Using dot notation for Map-type attributes in valueExpression or groupBy
    Wrong:   groupBy: "SpanAttributes.http.method"
    Correct: groupBy: "SpanAttributes['http.method']"
-   NOTE: JSON-type columns DO use dot notation. Check jsType from hyperdx_describe_source.
+   NOTE: JSON-type columns DO use dot notation. Check jsType from clickstack_describe_source.
 
 4. Multiple select items on number / pie / heatmap tiles
    Wrong:   displayType: "number", select: [{ aggFn: "count" }, { aggFn: "avg", ... }]
    Correct: displayType: "number", select: [{ aggFn: "count" }]
-   Note: hyperdx_table (the query tool) auto-upgrades shape:"number" to "table" when select has >1 item; dashboard tiles do not.
+   Note: clickstack_table (the query tool) auto-upgrades shape:"number" to "table" when select has >1 item; dashboard tiles do not.
 
 5. Missing level for quantile
    Wrong:   { aggFn: "quantile", valueExpression: "Duration" }
@@ -1212,7 +1230,7 @@ Example: find top patterns for production services over the last 4 hours:
    The dashboard filter applies globally; tiles do not need the literal. On mixed-source dashboards where only some tiles carry the column, add appliesToSourceIds: ["<id>", ...] to scope the filter to just those sources instead of breaking the unrelated tiles.
 
 8. Forgetting to validate tiles after saving
-   Always call hyperdx_query_tile on EVERY tile after hyperdx_save_dashboard, not just one. Save validates input shape but not query semantics. Several known gaps (Lucene comparison/wildcard on map attributes, builder tiles on metric sources, malformed having) pass save and fail at render time. A dashboard with one bad tile renders the whole page in a degraded state; the user sees "Error loading chart" with no way to know which tile broke unless you validated. If query_tile returns an error, fix the where / SQL and re-save before declaring the dashboard ready.
+   Always call clickstack_query_tile on EVERY tile after clickstack_save_dashboard, not just one. Save validates input shape but not query semantics. Several known gaps (Lucene comparison/wildcard on map attributes, builder tiles on metric sources, malformed having) pass save and fail at render time. A dashboard with one bad tile renders the whole page in a degraded state; the user sees "Error loading chart" with no way to know which tile broke unless you validated. If query_tile returns an error, fix the where / SQL and re-save before declaring the dashboard ready.
 
 9. Using sourceId with SQL tiles or connectionId with builder tiles
    Builder tiles (line, table, etc.) use sourceId.
@@ -1220,13 +1238,13 @@ Example: find top patterns for production services over the last 4 hours:
 
 10. Assuming StatusCode or SeverityText values
     Values like STATUS_CODE_ERROR, Ok, error, fatal vary by deployment.
-    Always call hyperdx_describe_source and inspect the lowCardinalityValues
+    Always call clickstack_describe_source and inspect the lowCardinalityValues
     before writing filters that depend on these columns.
 
 11. Heatmap tile on a non-Trace source
     Wrong:   { displayType: "heatmap", sourceId: "<log-source-id>", select: [...] }
     Correct: { displayType: "heatmap", sourceId: "<trace-source-id>", select: [...] }
-    Heatmap is currently restricted to Trace sources. Pick a source whose kind is "trace" from hyperdx_list_sources.
+    Heatmap is currently restricted to Trace sources. Pick a source whose kind is "trace" from clickstack_list_sources.
 
 12. Heatmap tile with empty or missing valueExpression
     Wrong:   select: [{}]
@@ -1247,10 +1265,12 @@ Example: find top patterns for production services over the last 4 hours:
     Correct: where: "SpanAttributes['db.system'] = 'mongodb'"        (whereLanguage: "sql")
     Lucene parses dotted-path queries happily at save time but the translator does not reliably map them to bracket access. Behavior varies by column and operator. Treat any Lucene filter on a map-attribute key as a save-time bug and use SQL with bracket access for ALL map-attribute filtering. Map values are stored as strings; quote the comparison value.
 
-15. Lucene field:value on enum-like top-level columns (fuzzy substring match, not equality)
-    Wrong:   where: "SpanKind:Server"             (whereLanguage: "lucene"; translates to ilike(SpanKind, '%Server%') and matches "Server_Client", "Internal_Server_Error", etc.)
-    Correct: where: "SpanKind = 'Server'"          (whereLanguage: "sql")
-    Lucene field:value is a substring match (ilike with surrounding wildcards), not exact equality. Fine for Body and StatusMessage; wrong for enum-like columns where exact match matters (SpanKind, SeverityText, StatusCode). When the column has discrete known values, use SQL with =.
+15. Lucene field:value and field:value* (substring matching, not exact or true prefix)
+    Wrong:   where: "SpanKind:Server"             (whereLanguage: "lucene"; translates to ilike(SpanKind, '%Server%') and matches "ServerStreaming", "InternalServer", etc.)
+    Wrong:   where: "ServiceName:api*"            (whereLanguage: "lucene"; NOT a true prefix match -- it is prefix-within-substring)
+    Correct: where: "SpanKind = 'Server'"          (whereLanguage: "sql"; exact match)
+    Correct: where: "ServiceName LIKE 'api%'"      (whereLanguage: "sql"; true prefix match)
+    Lucene field:value is a substring match (ilike with surrounding wildcards), not exact equality. Lucene field:value* is prefix-within-substring, not SQL LIKE 'value%'. Fine for free-text columns (Body, StatusMessage); wrong for enum-like columns where exact match matters (SpanKind, SeverityText, StatusCode) and wrong when true prefix matching is needed. Use SQL for exact match (=), prefix (LIKE 'x%'), contains (LIKE '%x%'), or regex (match(col, 'pattern')).
 
 16. Forgetting that map-attribute values are often empty strings
     Wrong:   groupBy on SpanAttributes['db.collection.name'] without filtering empty values; the result has an empty-string bucket alongside the real ones, which renders as a blank row in tables and an unlabelled slice in pies.

@@ -31,6 +31,10 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  DENOISE_NOISE_THRESHOLD,
+  DENOISE_SAMPLE_SIZE,
+} from '@hyperdx/common-utils/dist/drain';
+import {
   BuilderChartConfigWithDateRange,
   SelectList,
   SourceKind,
@@ -38,7 +42,6 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
-  Code,
   Flex,
   Group,
   Modal,
@@ -100,6 +103,9 @@ import {
   usePrevious,
 } from '@/utils';
 
+import ChartErrorState, {
+  ChartErrorStateVariant,
+} from './charts/ChartErrorState';
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import TableHeader from './DBTable/TableHeader';
@@ -342,6 +348,7 @@ export const RawLogTable = memo(
     dedupRows,
     isError,
     error,
+    errorVariant = 'inline',
     columnTypeMap,
     dateRange,
     loadingDate,
@@ -378,6 +385,7 @@ export const RawLogTable = memo(
 
     isError?: boolean;
     error?: ClickHouseQueryError | Error;
+    errorVariant?: ChartErrorStateVariant;
     dateRange?: [Date, Date];
     loadingDate?: Date;
     config?: BuilderChartConfigWithDateRange;
@@ -1226,7 +1234,16 @@ export const RawLogTable = memo(
                 })}
                 <tr>
                   <td colSpan={800}>
-                    <div className="rounded fs-7 bg-muted text-center d-flex align-items-center justify-content-center mt-3">
+                    <div
+                      className={cx(
+                        'rounded fs-7 d-flex align-items-center justify-content-center mt-3',
+                        // Errors render the shared ChartErrorState, which carries
+                        // its own styling/alignment; drop the muted background and
+                        // centered text so it matches the error state of other
+                        // chart types.
+                        { 'bg-muted text-center': !isError },
+                      )}
+                    >
                       {isLoading ? (
                         <div className="my-3">
                           <div className="d-inline-block">
@@ -1265,40 +1282,8 @@ export const RawLogTable = memo(
                         isLoading == false &&
                         dedupedRows.length > 0 ? (
                         <div className="my-3">End of Results</div>
-                      ) : isError ? (
-                        <div className="my-3">
-                          <Text ta="center" size="sm">
-                            Error loading results, please check your query or
-                            try again.
-                          </Text>
-                          <Box p="sm">
-                            <Box mt="sm">
-                              <Code
-                                block
-                                style={{
-                                  whiteSpace: 'pre-wrap',
-                                }}
-                              >
-                                {error?.message}
-                              </Code>
-                            </Box>
-                            {error instanceof ClickHouseQueryError && (
-                              <>
-                                <Text my="sm" size="sm" ta="center">
-                                  Sent Query:
-                                </Text>
-                                <Flex
-                                  w="100%"
-                                  ta="initial"
-                                  align="center"
-                                  justify="center"
-                                >
-                                  <SQLPreview data={error?.query} />
-                                </Flex>
-                              </>
-                            )}
-                          </Box>
-                        </div>
+                      ) : isError && error ? (
+                        <ChartErrorState error={error} variant={errorVariant} />
                       ) : hasNextPage == false &&
                         isLoading == false &&
                         dedupedRows.length === 0 ? (
@@ -1531,6 +1516,7 @@ function DBSqlRowTableComponent({
   variant = 'default',
   enableSmallFirstWindow,
   tableId,
+  errorVariant,
 }: {
   config: BuilderChartConfigWithDateRange;
   sourceId?: string;
@@ -1556,6 +1542,7 @@ function DBSqlRowTableComponent({
   variant?: DBRowTableVariant;
   enableSmallFirstWindow?: boolean;
   tableId?: string;
+  errorVariant?: ChartErrorStateVariant;
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
@@ -1730,7 +1717,7 @@ function DBSqlRowTableComponent({
   const patternColumn = columns[columns.length - 1];
   const groupedPatterns = useGroupedPatterns({
     config,
-    samples: 10_000,
+    samples: DENOISE_SAMPLE_SIZE,
     bodyValueExpression: patternColumn ?? '',
     severityTextExpression:
       (source?.kind === SourceKind.Log
@@ -1743,7 +1730,9 @@ function DBSqlRowTableComponent({
     queryKey: ['noisy-patterns', config],
     queryFn: async () => {
       return Object.values(groupedPatterns.data).filter(
-        p => p.count / (groupedPatterns.sampledRowCount ?? 1) > 0.1,
+        p =>
+          p.count / (groupedPatterns.sampledRowCount ?? 1) >
+          DENOISE_NOISE_THRESHOLD,
       );
     },
     enabled:
@@ -1850,6 +1839,7 @@ function DBSqlRowTableComponent({
         generateRowId={getRowWhere}
         isError={isError}
         error={error ?? undefined}
+        errorVariant={errorVariant}
         columnTypeMap={columnMap}
         dateRange={config.dateRange}
         loadingDate={loadingDate}
