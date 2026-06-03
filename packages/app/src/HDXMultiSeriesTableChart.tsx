@@ -3,7 +3,7 @@ import Link from 'next/link';
 import cx from 'classnames';
 import { Tooltip, UnstyledButton } from '@mantine/core';
 import {
-  IconChevronRight,
+  IconArrowUpRight,
   IconDownload,
   IconTextWrap,
 } from '@tabler/icons-react';
@@ -388,12 +388,19 @@ export const Table = ({
             // shares the memoized result from useOnClickLinkBuilder with
             // the per-cell renders.
             const rowAction = getRowAction ? getRowAction(row.original) : null;
+            const isActionable = Boolean(rowAction && rowAction.url);
             const visibleCells = row.getVisibleCells();
             const lastCellIndex = visibleCells.length - 1;
             return (
               <tr
                 key={virtualRow.key}
-                className={cx('bg-muted-hover', styles.tableRow)}
+                className={cx(styles.tableRow, {
+                  // Actionable rows get the stronger `--color-bg-highlighted`
+                  // hover via `.actionableRow`; everything else falls back
+                  // to the global `bg-muted-hover` utility.
+                  [styles.actionableRow]: isActionable,
+                  'bg-muted-hover': !isActionable,
+                })}
                 data-index={virtualRow.index}
                 ref={rowVirtualizer.measureElement}
               >
@@ -411,7 +418,7 @@ export const Table = ({
                         cell.column.columnDef.cell,
                         cell.getContext(),
                       )}
-                      {/* Trailing chevron hint: anchored Mantine Tooltip
+                      {/* Trailing arrow hint: anchored Mantine Tooltip
                           wrapping a Next.js Link in the last cell of
                           rows that resolve to a URL. The icon is hidden
                           (opacity: 0) by default and revealed on row
@@ -422,8 +429,11 @@ export const Table = ({
                           Suppressed when the row's templates failed
                           (rowAction.url === null) so the icon never
                           promises a destination the click won't open.
-                          See HDX-4405. */}
-                      {isLastCell && rowAction && rowAction.url && (
+                          The arrow-up-right shape signals "navigate
+                          elsewhere" without colliding with the
+                          chevron-right used by sidebar group collapse
+                          / expand affordances. See HDX-4405. */}
+                      {isLastCell && isActionable && rowAction && (
                         <Tooltip
                           label={rowAction.description}
                           position="left"
@@ -433,14 +443,14 @@ export const Table = ({
                           fz="xs"
                         >
                           <Link
-                            href={rowAction.url}
+                            href={rowAction.url as string}
                             prefetch={false}
                             tabIndex={-1}
                             aria-hidden="true"
                             className={styles.rowActionHint}
                             data-testid="row-action-hint"
                           >
-                            <IconChevronRight size={14} />
+                            <IconArrowUpRight size={14} />
                           </Link>
                         </Tooltip>
                       )}

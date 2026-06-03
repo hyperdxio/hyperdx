@@ -1,4 +1,4 @@
-// Trailing chevron hint for dashboard table tile rows with a
+// Trailing arrow hint for dashboard table tile rows with a
 // configured onClick row action. The icon sits at the right edge of
 // the last cell and is revealed on row hover. Mirrors the
 // .rowButtons pattern from LogTable.module.scss (lines 156-172),
@@ -13,6 +13,17 @@
   &:hover .rowActionHint {
     opacity: 1;
     pointer-events: auto;
+  }
+}
+
+.actionableRow {
+  // Stronger hover background on rows that resolve to a click
+  // destination. Non-actionable rows keep the default
+  // `bg-muted-hover` utility (`--color-bg-muted`), so the visual
+  // delta between the two reinforces interactivity before the
+  // user even sees the trailing arrow fade in.
+  &:hover {
+    background-color: var(--color-bg-highlighted);
   }
 }
 

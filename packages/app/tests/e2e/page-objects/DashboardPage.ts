@@ -981,8 +981,8 @@ export class DashboardPage {
   }
 
   /**
-   * Locator for the trailing chevron hint element rendered in the last
-   * cell of clickable rows. The icon carries
+   * Locator for the trailing arrow hint element rendered in the last
+   * cell of clickable rows. The icon (arrow-up-right) carries
    * `data-testid="row-action-hint"` and is the trigger element for the
    * anchored Mantine Tooltip describing the row's onClick destination.
    */
@@ -995,10 +995,10 @@ export class DashboardPage {
 
   /**
    * Hover the first data row of a table tile, then hover its trailing
-   * chevron hint so the anchored Mantine Tooltip opens. Returns the
+   * arrow hint so the anchored Mantine Tooltip opens. Returns the
    * tooltip locator so callers can assert on the description text.
    *
-   * The chevron icon (`data-testid="row-action-hint"`) is hidden
+   * The arrow icon (`data-testid="row-action-hint"`) is hidden
    * (`opacity: 0`) until the row is hovered. Hovering the row reveals
    * the icon via the `.tableRow:hover .rowActionHint` CSS rule. The
    * Mantine Tooltip wrapping the icon then opens when the cursor moves

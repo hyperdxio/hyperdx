@@ -77,7 +77,36 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       });
     });
 
-    it('renders a trailing chevron hint in the last cell of a success row', () => {
+    it('marks actionable rows with the actionableRow class so they hover to --color-bg-highlighted', () => {
+      // Rows with a resolved click destination get a stronger hover
+      // background than non-actionable rows. The differentiation is
+      // applied via the `actionableRow` CSS module class on the <tr>;
+      // non-actionable rows fall through to the global
+      // `bg-muted-hover` utility (a lighter muted hover).
+      const getRowAction = jest.fn().mockReturnValue({
+        url: '/search?source=src_1&where=',
+        description: 'Search HyperDX Logs',
+      });
+
+      const { container } = renderWithMantine(
+        <Table
+          data={baseData}
+          columns={baseColumns}
+          getRowAction={getRowAction}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+      const rows = container.querySelectorAll('tbody tr[data-index]');
+      expect(rows.length).toBeGreaterThan(0);
+      rows.forEach(row => {
+        expect(row.className).toContain('actionableRow');
+        expect(row.className).not.toContain('bg-muted-hover');
+      });
+    });
+
+    it('renders a trailing arrow hint in the last cell of a success row', () => {
       const getRowAction = jest.fn().mockReturnValue({
         url: '/search?source=src_1&where=',
         description: 'Search HyperDX Logs',
@@ -99,7 +128,7 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       expect(hint.getAttribute('aria-hidden')).toBe('true');
     });
 
-    it('shows the description in an anchored tooltip when the chevron is hovered', async () => {
+    it('shows the description in an anchored tooltip when the arrow is hovered', async () => {
       const user = userEvent.setup();
       const getRowAction = jest.fn().mockReturnValue({
         url: '/search?source=src_1&where=',
@@ -198,7 +227,35 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       expect(onClickError).toHaveBeenCalledTimes(1);
     });
 
-    it('does not render a trailing chevron hint when rowAction.url is null', () => {
+    it('leaves non-actionable rows on bg-muted-hover (no actionableRow class)', () => {
+      // Mirror of the success-path actionableRow test: rows whose
+      // action returns `url: null` keep the default muted hover
+      // utility and never gain the stronger `actionableRow` class.
+      const getRowAction = jest.fn().mockReturnValue({
+        url: null,
+        description: 'Search HyperDX Logs',
+        onClickError: jest.fn(),
+      });
+
+      const { container } = renderWithMantine(
+        <Table
+          data={baseData}
+          columns={baseColumns}
+          getRowAction={getRowAction}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+      const rows = container.querySelectorAll('tbody tr[data-index]');
+      expect(rows.length).toBeGreaterThan(0);
+      rows.forEach(row => {
+        expect(row.className).not.toContain('actionableRow');
+        expect(row.className).toContain('bg-muted-hover');
+      });
+    });
+
+    it('does not render a trailing arrow hint when rowAction.url is null', () => {
       const getRowAction = jest.fn().mockReturnValue({
         url: null,
         description: 'Search HyperDX Logs',
@@ -216,14 +273,14 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       );
 
       // The icon must not be in the DOM at all on failure rows: showing
-      // a chevron would promise a destination the click can't deliver,
+      // an arrow would promise a destination the click can't deliver,
       // because the click only fires an error toast.
       expect(screen.queryByTestId('row-action-hint')).toBeNull();
     });
   });
 
   describe('legacy getRowSearchLink fallback', () => {
-    it('renders the cell as a Link without a trailing chevron hint when only getRowSearchLink is provided', () => {
+    it('renders the cell as a Link without a trailing arrow hint when only getRowSearchLink is provided', () => {
       const getRowSearchLink = jest
         .fn()
         .mockReturnValue('/search?source=legacy&where=');
@@ -245,14 +302,14 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
         expect(link.getAttribute('href')).toContain('/search?source=legacy');
       });
 
-      // No trailing chevron on the legacy path; it's an additive surface
+      // No trailing arrow on the legacy path; it's an additive surface
       // tied to the new getRowAction prop only.
       expect(screen.queryByTestId('row-action-hint')).toBeNull();
     });
   });
 
   describe('no action configured', () => {
-    it('renders plain cells with no Link, button, or trailing chevron', () => {
+    it('renders plain cells with no Link, button, or trailing arrow', () => {
       renderWithMantine(
         <Table
           data={baseData}
