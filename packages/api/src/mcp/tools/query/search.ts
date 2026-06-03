@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import { withToolTracing } from '../../utils/tracing';
@@ -128,17 +129,54 @@ export function registerSearch(server: McpServer, context: McpContext) {
         return result;
       }
 
-      const denoised = await denoiseSearchResults(
-        teamId.toString(),
-        input.sourceId,
-        startDate,
-        endDate,
-        rows,
-        {
-          where: input.where,
-          whereLanguage: input.whereLanguage,
-        },
-      );
+      let denoised;
+      try {
+        denoised = await denoiseSearchResults(
+          teamId.toString(),
+          input.sourceId,
+          startDate,
+          endDate,
+          rows,
+          {
+            where: input.where,
+            whereLanguage: input.whereLanguage,
+          },
+        );
+      } catch (err) {
+        // Denoise is a post-processing enhancement — a failure here must
+        // never discard the already-successful search result.
+        logger.warn(
+          { err, sourceId: input.sourceId },
+          'denoiseSearchResults failed; returning raw results',
+        );
+
+        const { data: trimmedResult, isTrimmed } = trimToolResponse(resultData);
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify(
+                {
+                  result: trimmedResult,
+                  denoised: {
+                    removedPatterns: [],
+                    returnedRowCountBeforeDenoise: rows.length,
+                    filteredRowCount: rows.length,
+                    skipped: 'denoise_failed',
+                  },
+                  ...(isTrimmed
+                    ? {
+                        note: 'Result was trimmed for context size. Narrow the time range or add filters to reduce data.',
+                      }
+                    : {}),
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      }
 
       // Replace rows in the result with denoised rows and add metadata.
       // Always emit a `denoised` block when denoise=true so callers can
