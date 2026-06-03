@@ -20,6 +20,7 @@ import { PageHeader } from './components/PageHeader';
 import ApiKeysSection from './components/TeamSettings/ApiKeysSection';
 import ConnectionsSection from './components/TeamSettings/ConnectionsSection';
 import IntegrationsSection from './components/TeamSettings/IntegrationsSection';
+import McpServerSection from './components/TeamSettings/McpServerSection';
 import SecurityPoliciesSection from './components/TeamSettings/SecurityPoliciesSection';
 import SourcesSection from './components/TeamSettings/SourcesSection';
 import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
@@ -138,6 +139,10 @@ export default function TeamPage() {
         {
           id: 'team-integrations-webhooks',
           content: <IntegrationsSection />,
+        },
+        {
+          id: 'team-integrations-mcp-server',
+          content: <McpServerSection />,
         },
         {
           id: 'team-integrations-api-keys',
