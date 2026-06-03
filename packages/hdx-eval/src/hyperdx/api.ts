@@ -1,6 +1,6 @@
 type CookieJar = Map<string, string>;
 
-export type HyperdxConnection = {
+type HyperdxConnection = {
   _id: string;
   name: string;
   host: string;
@@ -19,7 +19,7 @@ export type HyperdxSource = {
   [key: string]: unknown;
 };
 
-export type MeResponse = {
+type MeResponse = {
   id: string;
   email: string;
   accessKey: string;

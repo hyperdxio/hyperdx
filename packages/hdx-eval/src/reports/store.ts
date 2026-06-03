@@ -7,7 +7,7 @@ import { SCENARIO_NAMES } from '../scenarios';
 import { buildAggregate, type GradedRunPair } from './aggregate';
 import { renderMarkdownReport } from './markdown';
 
-export function loadGradedPairs(batchDir: string): GradedRunPair[] {
+function loadGradedPairs(batchDir: string): GradedRunPair[] {
   const pairs: GradedRunPair[] = [];
   for (const scenario of safeReaddir(batchDir)) {
     if (!SCENARIO_NAMES.includes(scenario)) continue;

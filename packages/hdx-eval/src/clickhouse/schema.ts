@@ -1,8 +1,8 @@
 import type { ClickHouseClient } from '@clickhouse/client';
 
 export const EVAL_DATABASE = 'default';
-export const SOURCE_TRACES_TABLE = 'otel_traces';
-export const SOURCE_LOGS_TABLE = 'otel_logs';
+const SOURCE_TRACES_TABLE = 'otel_traces';
+const SOURCE_LOGS_TABLE = 'otel_logs';
 
 export type ScenarioTables = {
   traces: string;

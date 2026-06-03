@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { dirname, resolve } from 'path';
+import { resolve } from 'path';
 
 import type { McpDefinition, McpKind } from '../harness/types';
 
@@ -36,7 +36,7 @@ export type EvalConfig = {
   };
 };
 
-export const CONFIG_FILENAME = 'eval.config.json';
+const CONFIG_FILENAME = 'eval.config.json';
 
 export function configPath(): string {
   // Resolve relative to the package root regardless of cwd.
@@ -145,11 +145,4 @@ function validateConfig(raw: unknown, path: string): EvalConfig {
   }
 
   return raw as EvalConfig;
-}
-
-export function ensureConfigDir(path: string = configPath()): void {
-  const dir = dirname(path);
-  if (!existsSync(dir)) {
-    throw new Error(`Config directory does not exist: ${dir}`);
-  }
 }

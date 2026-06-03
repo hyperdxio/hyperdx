@@ -12,10 +12,6 @@ export function loadScenarioRubric(scenarioName: string): Rubric {
   return validateRubric(gt.rubric, scenarioName);
 }
 
-export function getScenarioGroundTruth(scenarioName: string): unknown {
-  return getScenario(scenarioName).groundTruth;
-}
-
 /**
  * Hydrate a compact tuple `[id, weight, pattern, negative?]` into a
  * ProgrammaticCheck object. The `flags` field always defaults to `"i"`.

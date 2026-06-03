@@ -15,7 +15,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
     "@clickhouse/client": "^1.12.1",
-    "@hyperdx/common-utils": "^0.20.0",
     "commander": "^12.1.0",
     "ms": "^2.1.3"
   },

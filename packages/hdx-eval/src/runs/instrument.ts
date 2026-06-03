@@ -225,7 +225,7 @@ function matchQueriesToCalls(
   return { calls: callTimings, unmatched };
 }
 
-export async function instrumentRun(args: {
+async function instrumentRun(args: {
   runPath: string;
   client: ClickHouseClient;
 }): Promise<TimingRecord> {

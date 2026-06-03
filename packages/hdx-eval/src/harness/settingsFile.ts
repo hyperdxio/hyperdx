@@ -17,7 +17,7 @@ import type { McpDefinition, PromptVariant } from './types';
  * asks the agent to spawn parallel subagents to investigate multiple
  * hypotheses concurrently.
  */
-export const DENIED_BUILT_IN_TOOLS_BASE = [
+const DENIED_BUILT_IN_TOOLS_BASE = [
   'Bash',
   'Write',
   'Edit',
