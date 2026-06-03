@@ -41,15 +41,6 @@
       "whereLanguage": "lucene"
     },
     {
-      "id": "rum-filter-browser",
-      "type": "QUERY_EXPRESSION",
-      "name": "Browser",
-      "expression": "ResourceAttributes['user_agent.name']",
-      "source": "Traces",
-      "where": "ResourceAttributes.rum.sessionId:* AND ResourceAttributes.user_agent.name:*",
-      "whereLanguage": "lucene"
-    },
-    {
       "id": "rum-filter-country",
       "type": "QUERY_EXPRESSION",
       "name": "Country",
@@ -467,7 +458,7 @@
       "w": 8,
       "h": 8,
       "config": {
-        "name": "Top Browsers (requires useragent processor)",
+        "name": "Top Browsers",
         "source": "Traces",
         "displayType": "table",
         "granularity": "auto",
@@ -481,14 +472,14 @@
           {
             "aggFn": "count",
             "valueExpression": "",
-            "alias": "Views"
+            "alias": "Page Loads"
           }
         ],
-        "where": "ResourceAttributes.rum.sessionId:*",
+        "where": "ResourceAttributes.rum.sessionId:* AND SpanAttributes.http.user_agent:*",
         "whereLanguage": "lucene",
         "groupBy": [
           {
-            "valueExpression": "coalesce(nullif(ResourceAttributes['user_agent.name'], ''), nullif(SpanAttributes['user_agent.name'], ''), nullif(ResourceAttributes['user_agent.original'], ''), nullif(SpanAttributes['user_agent.original'], ''))",
+            "valueExpression": "multiIf(positionCaseInsensitive(SpanAttributes['http.user_agent'], 'Edg/') > 0, 'Edge', positionCaseInsensitive(SpanAttributes['http.user_agent'], 'OPR/') > 0, 'Opera', positionCaseInsensitive(SpanAttributes['http.user_agent'], 'Firefox/') > 0, 'Firefox', positionCaseInsensitive(SpanAttributes['http.user_agent'], 'Chrome/') > 0, 'Chrome', positionCaseInsensitive(SpanAttributes['http.user_agent'], 'Safari/') > 0, 'Safari', 'Other')",
             "alias": "Browser"
           }
         ],
