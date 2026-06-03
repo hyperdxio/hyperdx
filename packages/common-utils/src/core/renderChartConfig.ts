@@ -343,7 +343,7 @@ const fastifySQL = ({
   }
 };
 
-const rewriteSqlFilterWithKvItems = (
+export const rewriteSqlFilterWithKvItems = (
   condition: string,
   kvItemsLookup: KvItemsLookup,
 ): string => {
@@ -356,15 +356,21 @@ const rewriteSqlFilterWithKvItems = (
       database: 'Postgresql',
     }) as SQLParser.Select;
 
-    const tryOptimize = (node: any): void => {
+    const tryOptimize = (
+      node: SQLParser.ExpressionValue | SQLParser.ExprList,
+    ): void => {
+      if (!('operator' in node)) return;
       const op = String(node.operator ?? '').toUpperCase();
       if (op !== '=' && op !== 'IN') return;
       const left = node.left;
-      if (left?.type !== 'column_ref' || typeof left.column === 'string') {
+      if (
+        left?.type !== 'column_ref' ||
+        ('column' in left && typeof left.column === 'string')
+      ) {
         return;
       }
-      const mapColumn = left.column?.expr?.value;
-      const arrIdx = left.array_index;
+      const mapColumn = left['column']?.expr?.value;
+      const arrIdx = left['array_index'];
       if (
         typeof mapColumn !== 'string' ||
         !Array.isArray(arrIdx) ||
@@ -443,11 +449,17 @@ const rewriteSqlFilterWithKvItems = (
       Object.assign(node, newWhere);
     };
 
-    const traverse = (node: any): void => {
+    const traverse = (
+      node: SQLParser.ExpressionValue | SQLParser.ExprList | null,
+    ): void => {
       if (node == null) return;
       if (node.type === 'binary_expr') {
-        traverse(node.left);
-        traverse(node.right);
+        if ('left' in node) {
+          traverse(node.left);
+        }
+        if ('right' in node) {
+          traverse(node.right);
+        }
         tryOptimize(node);
       } else if (node.type === 'expr_list' && Array.isArray(node.value)) {
         node.value.forEach(traverse);

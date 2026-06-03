@@ -1124,14 +1124,11 @@ export async function buildKvItemsLookup({
         continue;
       }
 
-      const parsed = (() => {
-        let parsed: { mapColumn: string; separator: string } | undefined;
-        for (const strategy of KV_ITEMS_STRATEGIES) {
-          parsed = strategy(candidate.default_expression);
-          if (parsed) break;
-        }
-        return parsed;
-      })();
+      let parsed: { mapColumn: string; separator: string } | undefined;
+      for (const strategy of KV_ITEMS_STRATEGIES) {
+        parsed = strategy(candidate.default_expression);
+        if (parsed) break;
+      }
       if (!parsed) continue;
 
       const candidateName = normalizeChExpression(candidate.name);
