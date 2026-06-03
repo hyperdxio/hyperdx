@@ -1269,16 +1269,21 @@ export type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
 // listing sidebar. Rules are evaluated client-side over the listing
 // endpoint's response, AND/OR combined via `combinator`.
 //
-// The rule discriminated union is intentionally narrow in v1
-// (tag-only) so PR-2 lands the storage + sidebar plumbing without
-// dragging in non-tag rule machinery. PR-3 widens this union with
-// `updated-within-days`, `has-active-alerts`, `created-by-me`,
-// `provisioned`, `has-tile-type`; the existing stored documents keep
-// parsing because the union extension is additive.
+// The rule discriminated union is additive: tag rules (the original
+// v1 set) live alongside the non-tag kinds (recency, has-active-
+// alerts, created-by-me). Stored documents from the tag-only era
+// keep parsing because every rule still carries a `kind` literal
+// and the union includes the original three members.
 export const ListViewRuleSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('tag-includes'), tag: z.string().min(1).max(64) }),
   z.object({ kind: z.literal('tag-excludes'), tag: z.string().min(1).max(64) }),
   z.object({ kind: z.literal('untagged') }),
+  z.object({
+    kind: z.literal('updated-within-days'),
+    days: z.number().int().min(1).max(365),
+  }),
+  z.object({ kind: z.literal('has-active-alerts') }),
+  z.object({ kind: z.literal('created-by-me') }),
 ]);
 export type ListViewRule = z.infer<typeof ListViewRuleSchema>;
 

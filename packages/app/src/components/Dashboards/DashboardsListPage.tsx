@@ -30,6 +30,7 @@ import {
   IconUpload,
 } from '@tabler/icons-react';
 
+import api from '@/api';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import EmptyState from '@/components/EmptyState';
 import { FavoriteButton } from '@/components/FavoriteButton';
@@ -100,6 +101,15 @@ export default function DashboardsListPage() {
   });
 
   const { data: listViews } = useListViews('dashboard');
+  const { data: me } = api.useMe();
+  const evalContext = useMemo(
+    () => ({
+      currentUserId: me?.id,
+      currentUserEmail: me?.email,
+    }),
+    [me?.id, me?.email],
+  );
+
   const [editorOpened, { open: openEditor, close: closeEditor }] =
     useDisclosure(false);
   const [editingView, setEditingView] = useState<ListView | undefined>(
@@ -167,11 +177,14 @@ export default function DashboardsListPage() {
     const result: Record<string, number> = {};
     for (const view of listViews) {
       result[view.id] = dashboards.filter(d =>
-        evaluateListView(view, d),
+        evaluateListView(view, d, {
+          ...evalContext,
+          itemHasActiveAlerts: getDashboardAlerts(d.tiles).length > 0,
+        }),
       ).length;
     }
     return result;
-  }, [dashboards, listViews]);
+  }, [dashboards, listViews, evalContext]);
 
   const filteredDashboards = useMemo(() => {
     if (!dashboards) return [];
@@ -188,10 +201,15 @@ export default function DashboardsListPage() {
       );
     }
     if (activeView) {
-      result = result.filter(d => evaluateListView(activeView, d));
+      result = result.filter(d =>
+        evaluateListView(activeView, d, {
+          ...evalContext,
+          itemHasActiveAlerts: getDashboardAlerts(d.tiles).length > 0,
+        }),
+      );
     }
     return result.slice().sort((a, b) => a.name.localeCompare(b.name));
-  }, [dashboards, search, selectedTags, activeView]);
+  }, [dashboards, search, selectedTags, activeView, evalContext]);
 
   const handleCreate = useCallback(() => {
     createDashboard.mutate(

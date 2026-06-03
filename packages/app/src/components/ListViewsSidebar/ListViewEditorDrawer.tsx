@@ -10,6 +10,8 @@ import {
   Button,
   Drawer,
   Group,
+  NumberInput,
+  Pill,
   Radio,
   Select,
   Stack,
@@ -28,13 +30,21 @@ import {
 type RuleDraft =
   | { kind: 'tag-includes'; tag: string }
   | { kind: 'tag-excludes'; tag: string }
-  | { kind: 'untagged' };
+  | { kind: 'untagged' }
+  | { kind: 'updated-within-days'; days: number }
+  | { kind: 'has-active-alerts' }
+  | { kind: 'created-by-me' };
 
 const RULE_KIND_LABEL: Record<RuleDraft['kind'], string> = {
   'tag-includes': 'tag includes',
   'tag-excludes': 'tag excludes',
   untagged: 'is untagged',
+  'updated-within-days': 'updated within',
+  'has-active-alerts': 'has active alerts',
+  'created-by-me': 'created by me',
 };
+
+const RECENT_PRESETS = [1, 7, 30];
 
 const DEFAULT_DRAFT: {
   name: string;
@@ -136,12 +146,19 @@ export function ListViewEditorDrawer({
     setNameError(null);
 
     // Drop any draft rules that are missing required fields (e.g. a
-    // tag-includes row left with an empty tag). Saving an empty list
-    // is allowed: a view with no rules matches everything, which
-    // matches the "pin" semantics of bookmarking the current state.
+    // tag-includes row left with an empty tag, or an
+    // updated-within-days row with a non-positive day count). Saving an
+    // empty list is allowed: a view with no rules matches everything,
+    // which matches the "pin" semantics of bookmarking the current
+    // state.
     const rules: ListViewRule[] = draft.rules.filter(r => {
-      if (r.kind === 'untagged') return true;
-      return r.tag.trim().length > 0;
+      if (r.kind === 'tag-includes' || r.kind === 'tag-excludes') {
+        return r.tag.trim().length > 0;
+      }
+      if (r.kind === 'updated-within-days') {
+        return Number.isFinite(r.days) && r.days >= 1 && r.days <= 365;
+      }
+      return true;
     });
 
     const payload = {
@@ -280,23 +297,45 @@ export function ListViewEditorDrawer({
                         value: 'untagged',
                         label: RULE_KIND_LABEL.untagged,
                       },
+                      {
+                        value: 'updated-within-days',
+                        label: RULE_KIND_LABEL['updated-within-days'],
+                      },
+                      {
+                        value: 'has-active-alerts',
+                        label: RULE_KIND_LABEL['has-active-alerts'],
+                      },
+                      {
+                        value: 'created-by-me',
+                        label: RULE_KIND_LABEL['created-by-me'],
+                      },
                     ]}
                     value={rule.kind}
                     onChange={value => {
                       if (!value) return;
                       const kind = value as RuleDraft['kind'];
-                      if (kind === 'untagged') {
-                        updateRule(i, { kind: 'untagged' });
-                      } else {
-                        updateRule(i, {
-                          kind,
-                          tag: 'tag' in rule ? rule.tag : '',
-                        });
+                      switch (kind) {
+                        case 'untagged':
+                        case 'has-active-alerts':
+                        case 'created-by-me':
+                          updateRule(i, { kind });
+                          return;
+                        case 'updated-within-days':
+                          updateRule(i, { kind, days: 7 });
+                          return;
+                        case 'tag-includes':
+                        case 'tag-excludes':
+                          updateRule(i, {
+                            kind,
+                            tag: 'tag' in rule ? rule.tag : '',
+                          });
+                          return;
                       }
                     }}
-                    w={150}
+                    w={170}
                   />
-                  {rule.kind !== 'untagged' && (
+                  {(rule.kind === 'tag-includes' ||
+                    rule.kind === 'tag-excludes') && (
                     <Select
                       data={tagOptions}
                       value={rule.tag || null}
@@ -308,6 +347,53 @@ export function ListViewEditorDrawer({
                       style={{ flex: 1 }}
                       data-testid={`list-view-rule-tag-${i}`}
                     />
+                  )}
+                  {rule.kind === 'updated-within-days' && (
+                    <Group gap="xs" wrap="nowrap" style={{ flex: 1 }}>
+                      <NumberInput
+                        value={rule.days}
+                        onChange={value => {
+                          const days =
+                            typeof value === 'number' ? value : Number(value);
+                          updateRule(i, {
+                            kind: 'updated-within-days',
+                            days: Number.isFinite(days) ? days : 7,
+                          });
+                        }}
+                        min={1}
+                        max={365}
+                        step={1}
+                        w={90}
+                        data-testid={`list-view-rule-days-${i}`}
+                      />
+                      <Text size="sm" c="dimmed">
+                        days
+                      </Text>
+                      <Pill.Group>
+                        {RECENT_PRESETS.map(d => (
+                          <Pill
+                            key={d}
+                            withRemoveButton={false}
+                            onClick={() =>
+                              updateRule(i, {
+                                kind: 'updated-within-days',
+                                days: d,
+                              })
+                            }
+                            style={{
+                              cursor: 'pointer',
+                              backgroundColor:
+                                rule.days === d
+                                  ? 'var(--mantine-color-default-hover)'
+                                  : undefined,
+                            }}
+                            data-testid={`list-view-rule-days-preset-${i}-${d}`}
+                          >
+                            {d}
+                          </Pill>
+                        ))}
+                      </Pill.Group>
+                    </Group>
                   )}
                   <ActionIcon
                     variant="subtle"

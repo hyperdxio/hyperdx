@@ -146,7 +146,51 @@ describe('list views router', () => {
       .post('/list-views')
       .send({
         ...dashboardView,
-        rules: [{ kind: 'has-active-alerts' }],
+        rules: [{ kind: 'definitely-not-a-rule' }],
+      })
+      .expect(400);
+  });
+
+  it('round-trips a view that mixes tag and non-tag rule kinds', async () => {
+    // One per non-tag kind plus a tag rule, all under combinator=all.
+    // toMatchObject covers everything in one assertion to keep the
+    // canonical config declared in a single place.
+    const mixed = {
+      name: 'My fresh dashes with checkout',
+      resource: 'dashboard' as const,
+      combinator: 'all' as const,
+      ordering: 0,
+      isShared: false,
+      rules: [
+        { kind: 'tag-includes' as const, tag: 'checkout' },
+        { kind: 'updated-within-days' as const, days: 7 },
+        { kind: 'has-active-alerts' as const },
+        { kind: 'created-by-me' as const },
+      ],
+    };
+
+    const create = await agent.post('/list-views').send(mixed).expect(200);
+    expect(create.body).toMatchObject(mixed);
+    expect(create.body.id).toBeDefined();
+
+    const list = await agent.get('/list-views?resource=dashboard').expect(200);
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0]).toMatchObject(mixed);
+  });
+
+  it('rejects updated-within-days with days out of range', async () => {
+    await agent
+      .post('/list-views')
+      .send({
+        ...dashboardView,
+        rules: [{ kind: 'updated-within-days', days: 0 }],
+      })
+      .expect(400);
+    await agent
+      .post('/list-views')
+      .send({
+        ...dashboardView,
+        rules: [{ kind: 'updated-within-days', days: 366 }],
       })
       .expect(400);
   });

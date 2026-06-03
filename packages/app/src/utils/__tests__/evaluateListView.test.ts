@@ -101,4 +101,116 @@ describe('evaluateListView', () => {
     };
     expect(evaluateListView(nullRulesView, { tags: [] } as Item)).toBe(true);
   });
+
+  describe('updated-within-days', () => {
+    const NOW = Date.parse('2026-06-03T00:00:00.000Z');
+    let nowSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      nowSpy = jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    });
+    afterEach(() => {
+      nowSpy.mockRestore();
+    });
+
+    it('passes items updated within the window', () => {
+      const v = view([{ kind: 'updated-within-days', days: 7 }]);
+      // Updated 1 day ago -> passes
+      expect(
+        evaluateListView(v, {
+          tags: [],
+          updatedAt: new Date(NOW - 1 * 86_400_000).toISOString(),
+        }),
+      ).toBe(true);
+      // Updated 6 days ago -> still inside the 7-day window
+      expect(
+        evaluateListView(v, {
+          tags: [],
+          updatedAt: new Date(NOW - 6 * 86_400_000).toISOString(),
+        }),
+      ).toBe(true);
+    });
+
+    it('rejects items older than the window', () => {
+      const v = view([{ kind: 'updated-within-days', days: 7 }]);
+      // 8 days ago -> outside the window
+      expect(
+        evaluateListView(v, {
+          tags: [],
+          updatedAt: new Date(NOW - 8 * 86_400_000).toISOString(),
+        }),
+      ).toBe(false);
+    });
+
+    it('rejects items with missing or unparseable updatedAt', () => {
+      const v = view([{ kind: 'updated-within-days', days: 7 }]);
+      expect(evaluateListView(v, { tags: [] })).toBe(false);
+      expect(evaluateListView(v, { tags: [], updatedAt: 'not-a-date' })).toBe(
+        false,
+      );
+    });
+  });
+
+  describe('has-active-alerts', () => {
+    it('uses the caller-provided context flag', () => {
+      const v = view([{ kind: 'has-active-alerts' }]);
+      expect(
+        evaluateListView(v, { tags: [] }, { itemHasActiveAlerts: true }),
+      ).toBe(true);
+      expect(
+        evaluateListView(v, { tags: [] }, { itemHasActiveAlerts: false }),
+      ).toBe(false);
+    });
+
+    it('rejects when no context is provided (no alert info available)', () => {
+      const v = view([{ kind: 'has-active-alerts' }]);
+      expect(evaluateListView(v, { tags: [] })).toBe(false);
+    });
+  });
+
+  describe('created-by-me', () => {
+    it('matches on createdBy._id when the user id is in context', () => {
+      const v = view([{ kind: 'created-by-me' }]);
+      expect(
+        evaluateListView(
+          v,
+          { tags: [], createdBy: { _id: 'u-1', email: 'a@b' } },
+          { currentUserId: 'u-1' },
+        ),
+      ).toBe(true);
+    });
+
+    it('falls back to email comparison when _id is missing', () => {
+      const v = view([{ kind: 'created-by-me' }]);
+      expect(
+        evaluateListView(
+          v,
+          { tags: [], createdBy: { email: 'a@b' } },
+          { currentUserEmail: 'a@b' },
+        ),
+      ).toBe(true);
+    });
+
+    it('rejects when neither _id nor email matches', () => {
+      const v = view([{ kind: 'created-by-me' }]);
+      expect(
+        evaluateListView(
+          v,
+          { tags: [], createdBy: { _id: 'u-2', email: 'b@c' } },
+          { currentUserId: 'u-1', currentUserEmail: 'a@b' },
+        ),
+      ).toBe(false);
+    });
+
+    it('rejects when the item has no createdBy at all', () => {
+      const v = view([{ kind: 'created-by-me' }]);
+      expect(
+        evaluateListView(
+          v,
+          { tags: [], createdBy: null },
+          { currentUserId: 'u-1' },
+        ),
+      ).toBe(false);
+    });
+  });
 });

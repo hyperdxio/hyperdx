@@ -12,6 +12,7 @@ const mockUseCreateDashboard = jest.fn();
 const mockUseDeleteDashboard = jest.fn();
 const mockUseListViews = jest.fn();
 const mockUseDeleteListView = jest.fn();
+const mockUseMe = jest.fn();
 const mockUseConfirm = jest.fn();
 const mockUseBrandDisplayName = jest.fn();
 
@@ -68,6 +69,13 @@ jest.mock('@/listView', () => ({
   useDeleteListView: () => mockUseDeleteListView(),
   useCreateListView: () => ({ mutate: jest.fn(), isPending: false }),
   useUpdateListView: () => ({ mutate: jest.fn(), isPending: false }),
+}));
+
+jest.mock('@/api', () => ({
+  __esModule: true,
+  default: {
+    useMe: () => mockUseMe(),
+  },
 }));
 
 jest.mock('@/dashboard', () => ({
@@ -141,6 +149,9 @@ beforeEach(() => {
   mockUseDeleteDashboard.mockReturnValue({ mutate: jest.fn() });
   mockUseListViews.mockReturnValue({ data: [], isLoading: false });
   mockUseDeleteListView.mockReturnValue({ mutate: jest.fn() });
+  mockUseMe.mockReturnValue({
+    data: { id: 'u-tester', email: 'tester@local' },
+  });
   mockUseConfirm.mockReturnValue(jest.fn());
   mockUseBrandDisplayName.mockReturnValue('HyperDX');
 });
