@@ -138,6 +138,38 @@ export function validateSavedFilterValues(
   return issues;
 }
 
+export type SavedQueryIssue = {
+  /** Query language the saved query claims to be written in */
+  language: 'lucene' | 'sql';
+  /** The raw saved query string that failed to parse */
+  query: string;
+};
+
+/**
+ * Validate a dashboard's default saved query (the `where` clause applied to the
+ * whole dashboard). Like the other import-time validators this only checks that
+ * the query *parses* as its declared language. Returns a single issue or `null`.
+ *
+ * Empty / whitespace-only queries are treated as valid (no-ops), and a query in
+ * a non-statically-validated language (`promql`) is treated as valid. A missing
+ * language defaults to `lucene`, mirroring how the dashboard page resolves it.
+ *
+ * A malformed saved query is comparatively low impact at import time — it's
+ * surfaced in the dashboard's search bar where the user can see and edit it —
+ * but validating it keeps the import warnings consistent and avoids silently
+ * carrying over a broken default query.
+ */
+export function validateSavedQuery(
+  savedQuery: string | null | undefined,
+  language: 'lucene' | 'sql' | 'promql' | null | undefined,
+): SavedQueryIssue | null {
+  if (!savedQuery?.trim()) return null;
+  const lang = language ?? 'lucene';
+  if (lang !== 'lucene' && lang !== 'sql') return null;
+  if (isValidFilterCondition(savedQuery, lang)) return null;
+  return { language: lang, query: savedQuery };
+}
+
 export type DashboardFilterQueryIssue = {
   /** ID of the offending dashboard filter */
   filterId: string;

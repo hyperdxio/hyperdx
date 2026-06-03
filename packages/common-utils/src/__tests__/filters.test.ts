@@ -2,6 +2,7 @@ import {
   filtersToQuery,
   validateDashboardFilterQueries,
   validateSavedFilterValues,
+  validateSavedQuery,
 } from '@/filters';
 import type { DashboardFilter, Filter } from '@/types';
 
@@ -268,6 +269,50 @@ describe('filters', () => {
         { index: 1, language: 'lucene', condition: 'Bad:((("' },
         { index: 3, language: 'sql', condition: 'broken = = =' },
       ]);
+    });
+  });
+
+  describe('validateSavedQuery', () => {
+    it('returns null for an empty / nullish query', () => {
+      expect(validateSavedQuery('', 'lucene')).toBeNull();
+      expect(validateSavedQuery('   ', 'sql')).toBeNull();
+      expect(validateSavedQuery(null, 'lucene')).toBeNull();
+      expect(validateSavedQuery(undefined, 'sql')).toBeNull();
+    });
+
+    it('accepts a valid lucene query', () => {
+      expect(validateSavedQuery('ServiceName:"api"', 'lucene')).toBeNull();
+    });
+
+    it('accepts a valid sql query', () => {
+      expect(validateSavedQuery("ServiceName = 'api'", 'sql')).toBeNull();
+    });
+
+    it('defaults a missing language to lucene', () => {
+      expect(validateSavedQuery('ServiceName:"api"', null)).toBeNull();
+      expect(validateSavedQuery('ServiceName:"api"', undefined)).toBeNull();
+      expect(validateSavedQuery('Bad:((("', undefined)).toEqual({
+        language: 'lucene',
+        query: 'Bad:((("',
+      });
+    });
+
+    it('treats promql as valid (not statically validated)', () => {
+      expect(validateSavedQuery('rate(foo[5m]', 'promql')).toBeNull();
+    });
+
+    it('flags a malformed lucene query', () => {
+      expect(validateSavedQuery('ServiceName:((("broken', 'lucene')).toEqual({
+        language: 'lucene',
+        query: 'ServiceName:((("broken',
+      });
+    });
+
+    it('flags a malformed sql query', () => {
+      expect(validateSavedQuery('ServiceName = = ', 'sql')).toEqual({
+        language: 'sql',
+        query: 'ServiceName = = ',
+      });
     });
   });
 
