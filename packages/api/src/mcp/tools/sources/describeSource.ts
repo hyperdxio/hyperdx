@@ -44,7 +44,7 @@ async function describeSourceSchema(
       content: [
         {
           type: 'text' as const,
-          text: `Source "${sourceId}" not found. Call hyperdx_list_sources to see available source IDs.`,
+          text: `Source "${sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
         },
       ],
     };
@@ -103,7 +103,7 @@ async function describeSourceSchema(
             {
               source: meta,
               nextSteps: {
-                query: `Use hyperdx_timeseries, hyperdx_table, or hyperdx_search with sourceId "${sourceId}" and the metric tables above.`,
+                query: `Use clickstack_timeseries, clickstack_table, or clickstack_search with sourceId "${sourceId}" and the metric tables above.`,
               },
             },
             null,
@@ -291,7 +291,7 @@ async function describeSourceSchema(
   const lcValuesHint =
     skippedStages.length > 0
       ? 'Value sampling was partially skipped due to timeout. ' +
-        'The values shown may be incomplete — verify with a hyperdx_search query if needed.'
+        'The values shown may be incomplete — verify with a clickstack_search query if needed.'
       : 'These are the REAL values in your data — use them in filters instead of guessing. ' +
         'Example: where: "SeverityText:error" (if \'error\' appears in the sampled values above).';
 
@@ -305,7 +305,7 @@ async function describeSourceSchema(
       lowCardinalityValues: lcValuesHint,
     },
     nextSteps: {
-      query: `Use hyperdx_timeseries, hyperdx_table, or hyperdx_search with sourceId "${sourceId}" and the columns/attributes above.`,
+      query: `Use clickstack_timeseries, clickstack_table, or clickstack_search with sourceId "${sourceId}" and the columns/attributes above.`,
       mapAttributeAccess:
         "Use bracket syntax for map columns: ResourceAttributes['service.name'], SpanAttributes['http.method']",
     },
@@ -335,14 +335,14 @@ export function registerDescribeSource(
   const { teamId } = context;
 
   server.registerTool(
-    'hyperdx_describe_source',
+    'clickstack_describe_source',
     {
       title: 'Describe Source Schema',
       description:
         'CALL THIS BEFORE WRITING QUERIES — prevents unknown-column errors.\n\n' +
         'Returns the full column schema, map-attribute keys, and sampled low-cardinality ' +
         'values (e.g. SeverityText, StatusCode, ServiceName) for a single data source.\n\n' +
-        'Workflow: call hyperdx_list_sources first to get source IDs, then call this tool ' +
+        'Workflow: call clickstack_list_sources first to get source IDs, then call this tool ' +
         'for each source you plan to query.\n\n' +
         'Returns:\n' +
         '- columns[]: column name, ClickHouse type, and JS type\n' +
@@ -356,12 +356,12 @@ export function registerDescribeSource(
         sourceId: z
           .string()
           .describe(
-            'The source ID to describe. Get this from hyperdx_list_sources.',
+            'The source ID to describe. Get this from clickstack_list_sources.',
           ),
       }),
     },
     withToolTracing(
-      'hyperdx_describe_source',
+      'clickstack_describe_source',
       context,
       async ({ sourceId }) => {
         const controller = new AbortController();
@@ -388,7 +388,7 @@ export function registerDescribeSource(
           if (e instanceof Error && e.message === 'DESCRIBE_TIMEOUT') {
             logger.warn(
               { teamId, sourceId },
-              'hyperdx_describe_source timed out',
+              'clickstack_describe_source timed out',
             );
             return {
               isError: true,
@@ -397,7 +397,7 @@ export function registerDescribeSource(
                   type: 'text' as const,
                   text:
                     'Schema discovery timed out. The ClickHouse server may be under load. ' +
-                    'Try again, or use hyperdx_list_sources for basic source info without schema details.',
+                    'Try again, or use clickstack_list_sources for basic source info without schema details.',
                 },
               ],
             };

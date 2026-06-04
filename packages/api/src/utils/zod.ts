@@ -23,7 +23,7 @@ import { AlertSource } from '@/models/alert';
 
 export const objectIdSchema = z.string().refine(val => {
   return Types.ObjectId.isValid(val);
-});
+}, 'Invalid ObjectId');
 
 // ================================
 // Charts & Dashboards (old format)
@@ -146,7 +146,7 @@ export type ExternalDashboardFilter = z.infer<
 >;
 
 export const externalDashboardSavedFilterValueSchema = z.object({
-  type: z.enum(['sql', 'lucene']).optional().default('sql'),
+  type: z.literal('sql').optional().default('sql'),
   condition: z.string().max(10000),
 });
 

@@ -984,6 +984,154 @@ describe('renderChartConfig', () => {
     });
   });
 
+  describe('SQL filter KV items direct_read optimization', () => {
+    const stubKvItemsMetadata = () => {
+      mockMetadata.getColumns = jest.fn().mockResolvedValue([
+        {
+          name: 'LogAttributes',
+          type: 'Map(String, String)',
+          default_type: '',
+          default_expression: '',
+        },
+        {
+          name: 'LogAttributeItems',
+          type: 'Array(String)',
+          default_type: 'MATERIALIZED',
+          default_expression:
+            "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
+        },
+      ]);
+      mockMetadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_log_attr_items',
+          type: 'text',
+          typeFull: 'text(tokenizer=array)',
+          expression: 'LogAttributeItems',
+          granularity: 10000000,
+        },
+      ]);
+      mockMetadata.getServerVersion = jest
+        .fn()
+        .mockResolvedValue([26, 5, 0, 0]);
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(new Map());
+    };
+
+    const buildConfig = (condition: string): ChartConfigWithOptDateRange => ({
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [{ aggFn: 'count', valueExpression: '' }],
+      where: '',
+      whereLanguage: 'sql',
+      filters: [{ type: 'sql', condition }],
+      timestampValueExpression: 'Timestamp',
+      dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+      granularity: '1 minute',
+    });
+
+    it('rewrites `Map[key] = value` to has() when a KV items column exists', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig("LogAttributes['service.name'] = 'api'"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+      );
+      expect(sql).not.toContain("LogAttributes['service.name'] = 'api'");
+    });
+
+    it('rewrites `Map[key] IN (one)` to has()', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig("LogAttributes['service.name'] IN ('api')"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+      );
+    });
+
+    it('rewrites `Map[key] IN (many)` to hasAny(... array(...))', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig("LogAttributes['k'] IN ('a', 'b', 'c')"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        "hasAny(`LogAttributeItems`, array(concat('k', '=', 'a'), concat('k', '=', 'b'), concat('k', '=', 'c')))",
+      );
+    });
+
+    it('leaves the condition unchanged when no KV items column exists', async () => {
+      mockMetadata.getColumns = jest.fn().mockResolvedValue([
+        {
+          name: 'LogAttributes',
+          type: 'Map(String, String)',
+          default_type: '',
+          default_expression: '',
+        },
+      ]);
+      mockMetadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+      mockMetadata.getServerVersion = jest
+        .fn()
+        .mockResolvedValue([26, 5, 0, 0]);
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(new Map());
+
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig("LogAttributes['k'] = 'v'"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain("LogAttributes['k'] = 'v'");
+      expect(sql).not.toContain('has(');
+    });
+
+    it('does not rewrite when value is empty (Map[k]= preserves missing-key semantics)', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig("LogAttributes['k'] = ''"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain("LogAttributes['k'] = ''");
+      expect(sql).not.toContain('has(');
+    });
+
+    it('rewrites only the matching Map subscript in a compound AND condition', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig(
+            "LogAttributes['service.name'] = 'api' AND SeverityText = 'error'",
+          ),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+      );
+      expect(sql).toContain("SeverityText = 'error'");
+    });
+  });
+
   describe('k8s semantic convention migrations', () => {
     it('should generate SQL with metricNameSql for k8s.pod.cpu.utilization gauge metric', async () => {
       const config: ChartConfigWithOptDateRange = {
