@@ -1,5 +1,10 @@
 import { ClickhouseClient } from '../clickhouse/node';
-import { Metadata, MetadataCache, parseKeyPath } from '../core/metadata';
+import {
+  MapColumnTextIndexes,
+  Metadata,
+  MetadataCache,
+  parseKeyPath,
+} from '../core/metadata';
 import * as renderChartConfigModule from '../core/renderChartConfig';
 import { timeFilterExpr } from '../core/renderChartConfig';
 import { isBuilderChartConfig } from '../guards';
@@ -44,6 +49,9 @@ const source: TSource = {
 beforeAll(() => {
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
+  jest
+    .spyOn(Metadata.prototype, 'getMapColumnTextIndexes')
+    .mockResolvedValue(new Map());
 });
 afterAll(() => {
   jest.restoreAllMocks();
@@ -875,7 +883,7 @@ describe('Metadata', () => {
         databaseName: 'otel',
         tableName: 'generic_logs',
         column: 'LogAttributes',
-        key: 'service.name',
+        keys: ['service.name'],
         connectionId: 'conn-1',
       });
 
@@ -903,7 +911,7 @@ describe('Metadata', () => {
         databaseName: 'otel',
         tableName: 'generic_logs',
         column: 'LogAttributes',
-        key: 'service.name',
+        keys: ['service.name'],
         connectionId: 'conn-1',
         dateRange,
         timestampValueExpression: 'EventTime, EventDate',
@@ -940,7 +948,7 @@ describe('Metadata', () => {
         databaseName: 'otel',
         tableName: 'generic_logs',
         column: 'LogAttributes',
-        key: 'service.name',
+        keys: ['service.name'],
         connectionId: 'conn-1',
         timestampValueExpression: 'EventTime, EventDate',
       };
@@ -960,8 +968,8 @@ describe('Metadata', () => {
         ],
       });
 
-      expect(valuesA).toEqual(['morning']);
-      expect(valuesB).toEqual(['afternoon']);
+      expect(valuesA.get('service.name')).toEqual(['morning']);
+      expect(valuesB.get('service.name')).toEqual(['afternoon']);
     });
   });
 
@@ -1433,6 +1441,945 @@ describe('Metadata', () => {
 
       expect(result).toBeNull();
     });
+  });
+
+  describe('mergeTreeTextIndex attribute lookup', () => {
+    const buildMetadata = () => {
+      const realCache = new (
+        jest.requireActual('../core/metadata') as any
+      ).MetadataCache();
+      return new Metadata(mockClickhouseClient, realCache);
+    };
+
+    const itemsOnlyEntry: MapColumnTextIndexes = {
+      itemsIndex: { indexName: 'idx_log_attrs_items', separator: '=' },
+    };
+    const keysAndItemsEntry: MapColumnTextIndexes = {
+      keysIndex: { indexName: 'idx_log_attrs_key' },
+      itemsIndex: { indexName: 'idx_log_attrs_items', separator: '=' },
+    };
+    const keysOnlyEntry: MapColumnTextIndexes = {
+      keysIndex: { indexName: 'idx_log_attrs_key' },
+    };
+
+    beforeEach(() => {
+      (mockClickhouseClient.query as jest.Mock).mockReset();
+      (timeFilterExpr as jest.Mock).mockClear();
+    });
+
+    it('getMapKeys scopes mergeTreeTextIndex via SELECT _part subquery when dateRange and timestampValueExpression are provided', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', keysAndItemsEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () => Promise.resolve({ data: [{ key: 'service.name' }] }),
+      });
+
+      await md.getMapKeys({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+        timestampValueExpression: 'TimestampTime',
+      });
+
+      const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+      expect(call.query).toContain('mergeTreeTextIndex');
+      expect(call.query).toContain('part_name IN');
+      expect(call.query).toContain('SELECT DISTINCT _part');
+      expect(call.query).not.toContain('system.parts');
+      expect(call.query).not.toContain('min_time');
+      expect(call.query).not.toContain('max_time');
+    });
+
+    it('getMapKeys emits no part-narrowing predicate when timestampValueExpression is absent', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', keysAndItemsEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () => Promise.resolve({ data: [{ key: 'service.name' }] }),
+      });
+
+      await md.getMapKeys({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+
+      const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+      expect(call.query).toContain('mergeTreeTextIndex');
+      expect(call.query).not.toContain('part_name');
+      expect(call.query).not.toContain('SELECT _part');
+    });
+
+    it('getMapKeys prefers the keys-only mapKeys(X) text index over the items index', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', keysAndItemsEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            data: [{ key: 'service.name' }, { key: 'http.method' }],
+          }),
+      });
+
+      const keys = await md.getMapKeys({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+      });
+
+      expect(keys).toEqual(['service.name', 'http.method']);
+      const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+      expect(call.query).toContain('mergeTreeTextIndex');
+      // keys-only path selects `token AS key` directly, no splitByChar.
+      expect(call.query).not.toContain('splitByChar');
+      expect(Object.values(call.query_params)).toContain('idx_log_attrs_key');
+    });
+
+    it('getMapKeys falls back to the items index when no keys-only index exists', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', itemsOnlyEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () => Promise.resolve({ data: [{ key: 'service.name' }] }),
+      });
+
+      const keys = await md.getMapKeys({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+      });
+
+      expect(keys).toEqual(['service.name']);
+      const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+      expect(call.query).toContain('mergeTreeTextIndex');
+      expect(call.query).toContain('splitByChar');
+      expect(Object.values(call.query_params)).toContain('idx_log_attrs_items');
+    });
+
+    it('getMapKeys falls through to MV when the text index returns empty (no cache poisoning)', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', keysAndItemsEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock)
+        // keysIndex query — returns empty (e.g. fresh table, no parts yet)
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ data: [] }) })
+        // itemsIndex query — also empty
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ data: [] }) })
+        // MV rollup query — has data
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ Key: 'service.name' }] }),
+        });
+
+      const keys = await md.getMapKeys({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+        metadataMVs: {
+          keyRollupTable: 'logs_key_rollup_15m',
+          kvRollupTable: 'logs_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+
+      // All three queries fired (proves cache isn't poisoned by intermediate empty results).
+      expect((mockClickhouseClient.query as jest.Mock).mock.calls.length).toBe(
+        3,
+      );
+      expect(keys).toEqual(['service.name']);
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls[2][0];
+      expect(Object.values(mvCall.query_params)).toContain(
+        'logs_key_rollup_15m',
+      );
+    });
+
+    it('getMapKeys falls through to the MV path when no text index exists', async () => {
+      const md = buildMetadata();
+      jest.spyOn(md, 'getMapColumnTextIndexes').mockResolvedValue(new Map());
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () => Promise.resolve({ data: [{ Key: 'service.name' }] }),
+      });
+
+      const keys = await md.getMapKeys({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+        metadataMVs: {
+          keyRollupTable: 'logs_key_rollup_15m',
+          kvRollupTable: 'logs_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+
+      expect(keys).toEqual(['service.name']);
+      const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+      expect(Object.values(call.query_params)).toContain('logs_key_rollup_15m');
+      expect(call.query).not.toContain('mergeTreeTextIndex');
+    });
+
+    it('getMapKeys caches text-index results distinctly by raw dateRange when no timestampValueExpression or metadataMVs is provided', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', keysAndItemsEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ key: 'first.range.key' }] }),
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ key: 'second.range.key' }] }),
+        });
+
+      const baseArgs = {
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+      };
+
+      const keysA = await md.getMapKeys({
+        ...baseArgs,
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+      const keysB = await md.getMapKeys({
+        ...baseArgs,
+        dateRange: [
+          new Date('2026-05-11T18:00:00Z'),
+          new Date('2026-05-11T19:00:00Z'),
+        ],
+      });
+
+      expect((mockClickhouseClient.query as jest.Mock).mock.calls.length).toBe(
+        2,
+      );
+      expect(keysA).toEqual(['first.range.key']);
+      expect(keysB).toEqual(['second.range.key']);
+    });
+
+    it('getMapValues uses mergeTreeTextIndex when keys are requested and an items index exists', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', itemsOnlyEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            data: [
+              { key: 'service.name', value: 'api' },
+              { key: 'service.name', value: 'worker' },
+            ],
+          }),
+      });
+
+      const result = await md.getMapValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        keys: ['service.name'],
+        connectionId: 'conn-1',
+      });
+
+      expect(result.get('service.name')).toEqual(['api', 'worker']);
+      const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+      expect(call.query).toContain('mergeTreeTextIndex');
+      expect(call.query).toContain('startsWith(token');
+    });
+
+    it('getMapValues falls through text-index -> MV -> main-table scan', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', itemsOnlyEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ data: [] }) })
+        .mockResolvedValueOnce({
+          json: () =>
+            Promise.resolve({
+              data: [{ key: 'service.name', value: 'api' }],
+            }),
+        });
+
+      const result = await md.getMapValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        keys: ['service.name'],
+        connectionId: 'conn-1',
+        metadataMVs: {
+          keyRollupTable: 'logs_key_rollup_15m',
+          kvRollupTable: 'logs_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+
+      expect((mockClickhouseClient.query as jest.Mock).mock.calls.length).toBe(
+        2,
+      );
+      const textIndexCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[0][0];
+      expect(textIndexCall.query).toContain('mergeTreeTextIndex');
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls[1][0];
+      expect(Object.values(mvCall.query_params)).toContain(
+        'logs_kv_rollup_15m',
+      );
+      expect(result.get('service.name')).toEqual(['api']);
+    });
+
+    it('getMapValues falls through to main-table scan when text-index and MV both empty', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', itemsOnlyEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ data: [] }) })
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ data: [] }) })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ value: 'api' }] }),
+        });
+
+      const result = await md.getMapValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        keys: ['service.name'],
+        connectionId: 'conn-1',
+        metadataMVs: {
+          keyRollupTable: 'logs_key_rollup_15m',
+          kvRollupTable: 'logs_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+        timestampValueExpression: 'Timestamp',
+      });
+
+      expect((mockClickhouseClient.query as jest.Mock).mock.calls.length).toBe(
+        3,
+      );
+      const mainScanCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[2][0];
+      expect(mainScanCall.query).not.toContain('mergeTreeTextIndex');
+      expect(mainScanCall.query).not.toContain('logs_kv_rollup_15m');
+      expect(mainScanCall.query).toContain('SELECT DISTINCT');
+      expect(result.get('service.name')).toEqual(['api']);
+    });
+
+    it('getAllKeyValues uses mergeTreeTextIndex for map keys whose column has an index, MV for the rest', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', itemsOnlyEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          json: () =>
+            Promise.resolve({
+              data: [{ key: 'service.name', value: 'api' }],
+            }),
+        })
+        .mockResolvedValueOnce({
+          json: () =>
+            Promise.resolve({
+              data: [
+                {
+                  ColumnIdentifier: 'NativeColumn',
+                  Key: 'ServiceName',
+                  Value: 'clickhouse',
+                  total_count: 1,
+                },
+              ],
+            }),
+        });
+
+      const result = await md.getAllKeyValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        keyExpressions: ["LogAttributes['service.name']", 'ServiceName'],
+        connectionId: 'conn-1',
+        metadataMVs: {
+          keyRollupTable: 'logs_key_rollup_15m',
+          kvRollupTable: 'logs_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+
+      expect(result).toEqual([
+        { key: "LogAttributes['service.name']", value: ['api'] },
+        { key: 'ServiceName', value: ['clickhouse'] },
+      ]);
+
+      const textIndexCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[0][0];
+      expect(textIndexCall.query).toContain('mergeTreeTextIndex');
+      // OR-chain of literal `startsWith(token, 'key=')` predicates is the
+      // only shape KeyCondition can range-rewrite — JOINs against
+      // `target_keys` would force a full dictionary scan.
+      expect(textIndexCall.query).toContain('startsWith(token,');
+      expect(textIndexCall.query).not.toContain('INNER JOIN');
+      // The map key was inserted as a String parameter (`{paramN:String}`)
+      // alongside its `=` separator, which CH substitutes as a literal at
+      // parameter-binding time.
+      expect(Object.values(textIndexCall.query_params)).toContain(
+        'service.name=',
+      );
+
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls[1][0];
+      expect(Object.values(mvCall.query_params)).toContain(
+        'logs_kv_rollup_15m',
+      );
+      expect(Object.values(mvCall.query_params)).toContain('NativeColumn');
+    });
+
+    it('getAllFieldsAndValues excludes text-indexed columns from the MV query', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', itemsOnlyEntry]]));
+      // Bypass the keys-discovery composition step so this test stays
+      // focused on the values + MV exclusion behavior.
+      jest.spyOn(md, 'getMapKeys').mockResolvedValue(['service.name']);
+
+      (mockClickhouseClient.query as jest.Mock)
+        // text-index OR-chain values query for LogAttributes
+        .mockResolvedValueOnce({
+          json: () =>
+            Promise.resolve({
+              data: [{ key: 'service.name', value: 'api' }],
+            }),
+        })
+        // MV query for natives + unindexed map columns
+        .mockResolvedValueOnce({
+          json: () =>
+            Promise.resolve({
+              data: [
+                {
+                  ColumnIdentifier: 'NativeColumn',
+                  Key: 'ServiceName',
+                  Values: ['clickhouse'],
+                },
+              ],
+            }),
+        });
+
+      const result = await md.getAllFieldsAndValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        connectionId: 'conn-1',
+        metadataMVs: {
+          keyRollupTable: 'logs_key_rollup_15m',
+          kvRollupTable: 'logs_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls[1][0];
+      expect(mvCall.query).toContain('ColumnIdentifier NOT IN');
+
+      expect(result).toEqual(
+        expect.arrayContaining([
+          { key: 'ServiceName', value: ['clickhouse'] },
+          { key: "LogAttributes['service.name']", value: ['api'] },
+        ]),
+      );
+    });
+
+    it('getMapValues falls through to the main-table scan when only a keys-only index exists', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', keysOnlyEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () => Promise.resolve({ data: [{ value: 'fallback' }] }),
+      });
+
+      const result = await md.getMapValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        keys: ['service.name'],
+        connectionId: 'conn-1',
+      });
+
+      expect(result.get('service.name')).toEqual(['fallback']);
+      const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+      expect(call.query).not.toContain('mergeTreeTextIndex');
+    });
+
+    it('getAllFieldsAndValues keeps keys-only columns in the MV query (excludes only items-indexed columns)', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', keysOnlyEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            data: [
+              {
+                ColumnIdentifier: 'NativeColumn',
+                Key: 'ServiceName',
+                Values: ['clickhouse'],
+              },
+            ],
+          }),
+      });
+
+      await md.getAllFieldsAndValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        connectionId: 'conn-1',
+        metadataMVs: {
+          keyRollupTable: 'logs_key_rollup_15m',
+          kvRollupTable: 'logs_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+
+      // Only one query (the MV one) — no text-index query for a keys-only column.
+      expect((mockClickhouseClient.query as jest.Mock).mock.calls.length).toBe(
+        1,
+      );
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+      expect(mvCall.query).not.toContain('ColumnIdentifier NOT IN');
+    });
+
+    it('getMapValues falls through to main-table scan when items index returns empty (no cache poisoning)', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', itemsOnlyEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock)
+        // text-index query — empty (e.g. no parts indexed yet)
+        .mockResolvedValueOnce({ json: () => Promise.resolve({ data: [] }) })
+        // main-table scan — has data
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ value: 'scan-fallback' }] }),
+        });
+
+      const result = await md.getMapValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        keys: ['service.name'],
+        connectionId: 'conn-1',
+      });
+
+      // Both queries fired — proves cache isn't poisoned by the empty text-index result.
+      expect((mockClickhouseClient.query as jest.Mock).mock.calls.length).toBe(
+        2,
+      );
+      expect(result.get('service.name')).toEqual(['scan-fallback']);
+      const textIndexCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[0][0];
+      expect(textIndexCall.query).toContain('mergeTreeTextIndex');
+      const scanCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[1][0];
+      expect(scanCall.query).not.toContain('mergeTreeTextIndex');
+    });
+
+    it('getAllKeyValues splits across text-index and MV when only some map columns have a text index', async () => {
+      const md = buildMetadata();
+      // LogAttributes has an items text index; ResourceAttributes does not —
+      // its values must come back from the MV (the user-defined attribute
+      // rollup row).
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', itemsOnlyEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock)
+        // text-index call for LogAttributes
+        .mockResolvedValueOnce({
+          json: () =>
+            Promise.resolve({
+              data: [{ key: 'service.name', value: 'api' }],
+            }),
+        })
+        // MV call for the remaining keys (ResourceAttributes + native)
+        .mockResolvedValueOnce({
+          json: () =>
+            Promise.resolve({
+              data: [
+                {
+                  ColumnIdentifier: 'ResourceAttributes',
+                  Key: 'host.name',
+                  Value: 'host-1',
+                  total_count: 1,
+                },
+                {
+                  ColumnIdentifier: 'NativeColumn',
+                  Key: 'ServiceName',
+                  Value: 'clickhouse',
+                  total_count: 1,
+                },
+              ],
+            }),
+        });
+
+      const result = await md.getAllKeyValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        keyExpressions: [
+          "LogAttributes['service.name']",
+          "ResourceAttributes['host.name']",
+          'ServiceName',
+        ],
+        connectionId: 'conn-1',
+        metadataMVs: {
+          keyRollupTable: 'logs_key_rollup_15m',
+          kvRollupTable: 'logs_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+
+      expect(result).toEqual([
+        { key: "LogAttributes['service.name']", value: ['api'] },
+        { key: "ResourceAttributes['host.name']", value: ['host-1'] },
+        { key: 'ServiceName', value: ['clickhouse'] },
+      ]);
+
+      // Both calls were made: text-index for LogAttributes, MV for the rest.
+      expect((mockClickhouseClient.query as jest.Mock).mock.calls.length).toBe(
+        2,
+      );
+      const textIndexCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[0][0];
+      expect(textIndexCall.query).toContain('mergeTreeTextIndex');
+
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls[1][0];
+      expect(Object.values(mvCall.query_params)).toContain(
+        'logs_kv_rollup_15m',
+      );
+      // MV query must include the unindexed map column AND the native, but
+      // NOT the text-indexed column (LogAttributes is omitted from the IN list).
+      expect(Object.values(mvCall.query_params)).toContain(
+        'ResourceAttributes',
+      );
+      expect(Object.values(mvCall.query_params)).toContain('NativeColumn');
+      expect(Object.values(mvCall.query_params)).not.toContain('LogAttributes');
+    });
+
+    it('getAllFieldsAndValues composes getMapKeys + literal OR-chain (no INNER JOIN, no token scan)', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', itemsOnlyEntry]]));
+      const getMapKeysSpy = jest
+        .spyOn(md, 'getMapKeys')
+        .mockResolvedValue(['service.name', 'http.method']);
+
+      (mockClickhouseClient.query as jest.Mock)
+        // text-index values query
+        .mockResolvedValueOnce({
+          json: () =>
+            Promise.resolve({
+              data: [
+                { key: 'service.name', value: 'api' },
+                { key: 'http.method', value: 'GET' },
+              ],
+            }),
+        })
+        // MV query (no rows for this assertion)
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [] }),
+        });
+
+      await md.getAllFieldsAndValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        connectionId: 'conn-1',
+        metadataMVs: {
+          keyRollupTable: 'logs_key_rollup_15m',
+          kvRollupTable: 'logs_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+
+      // Composition: getMapKeys called per items-indexed column.
+      expect(getMapKeysSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ column: 'LogAttributes' }),
+      );
+
+      // Values query is the literal OR-chain shape, not a JOIN.
+      const textIndexCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[0][0];
+      expect(textIndexCall.query).toContain('mergeTreeTextIndex');
+      expect(textIndexCall.query).toContain('startsWith(token,');
+      expect(textIndexCall.query).not.toContain('INNER JOIN');
+      expect(textIndexCall.query).not.toContain('target_keys');
+      // Both keys appear as literal prefixes (`key=`) in query_params, so
+      // KeyCondition can range-rewrite each one independently.
+      expect(Object.values(textIndexCall.query_params)).toContain(
+        'service.name=',
+      );
+      expect(Object.values(textIndexCall.query_params)).toContain(
+        'http.method=',
+      );
+    });
+
+    it('getAllFieldsAndValues serves unindexed map columns from MV alongside text-indexed ones', async () => {
+      const md = buildMetadata();
+      // LogAttributes is text-indexed; ResourceAttributes is in the MV only.
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', itemsOnlyEntry]]));
+      // Bypass keys discovery so we exercise just the values + MV merge.
+      jest.spyOn(md, 'getMapKeys').mockResolvedValue(['service.name']);
+
+      (mockClickhouseClient.query as jest.Mock)
+        // text-index OR-chain values query for LogAttributes
+        .mockResolvedValueOnce({
+          json: () =>
+            Promise.resolve({
+              data: [{ key: 'service.name', value: 'api' }],
+            }),
+        })
+        // MV call returning ResourceAttributes + native (LogAttributes excluded)
+        .mockResolvedValueOnce({
+          json: () =>
+            Promise.resolve({
+              data: [
+                {
+                  ColumnIdentifier: 'ResourceAttributes',
+                  Key: 'host.name',
+                  Values: ['host-1', 'host-2'],
+                },
+                {
+                  ColumnIdentifier: 'NativeColumn',
+                  Key: 'ServiceName',
+                  Values: ['clickhouse'],
+                },
+              ],
+            }),
+        });
+
+      const result = await md.getAllFieldsAndValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        connectionId: 'conn-1',
+        metadataMVs: {
+          keyRollupTable: 'logs_key_rollup_15m',
+          kvRollupTable: 'logs_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+
+      // Both queries fired.
+      expect((mockClickhouseClient.query as jest.Mock).mock.calls.length).toBe(
+        2,
+      );
+      const mvCall = (mockClickhouseClient.query as jest.Mock).mock.calls[1][0];
+      // Only LogAttributes is excluded from the MV; ResourceAttributes stays in.
+      expect(mvCall.query).toContain('ColumnIdentifier NOT IN');
+      expect(Object.values(mvCall.query_params)).toContain('LogAttributes');
+      expect(Object.values(mvCall.query_params)).not.toContain(
+        'ResourceAttributes',
+      );
+
+      expect(result).toEqual(
+        expect.arrayContaining([
+          { key: "LogAttributes['service.name']", value: ['api'] },
+          {
+            key: "ResourceAttributes['host.name']",
+            value: ['host-1', 'host-2'],
+          },
+          { key: 'ServiceName', value: ['clickhouse'] },
+        ]),
+      );
+    });
+
+    it('getMapColumnTextIndexes returns empty Map on ClickHouse < 26.3', async () => {
+      const md = buildMetadata();
+      // Bypass the global beforeAll stub so we exercise the real implementation.
+      const globalStub = Metadata.prototype
+        .getMapColumnTextIndexes as jest.Mock;
+      globalStub.mockRestore();
+      try {
+        jest
+          .spyOn(md, 'getTableMetadata')
+          .mockResolvedValue({ engine: 'MergeTree' } as never);
+        jest
+          .spyOn(md, 'getServerVersion')
+          .mockResolvedValue([26, 2, 99, 99] as const);
+        const getColumnsSpy = jest.spyOn(md, 'getColumns');
+        const getSkipIndicesSpy = jest.spyOn(md, 'getSkipIndices');
+
+        const result = await md.getMapColumnTextIndexes({
+          databaseName: 'otel',
+          tableName: 'generic_logs',
+          connectionId: 'conn-1',
+        });
+
+        expect(result.size).toBe(0);
+        // Bailed out early — no follow-up column/index queries.
+        expect(getColumnsSpy).not.toHaveBeenCalled();
+        expect(getSkipIndicesSpy).not.toHaveBeenCalled();
+      } finally {
+        jest
+          .spyOn(Metadata.prototype, 'getMapColumnTextIndexes')
+          .mockResolvedValue(new Map());
+      }
+    });
+
+    it('getMapColumnTextIndexes returns empty Map when base table does not exist', async () => {
+      const md = buildMetadata();
+      const globalStub = Metadata.prototype
+        .getMapColumnTextIndexes as jest.Mock;
+      globalStub.mockRestore();
+      try {
+        jest.spyOn(md, 'getTableMetadata').mockResolvedValue(undefined);
+        jest
+          .spyOn(md, 'getServerVersion')
+          .mockResolvedValue([26, 3, 0, 0] as const);
+        const getColumnsSpy = jest.spyOn(md, 'getColumns');
+        const getSkipIndicesSpy = jest.spyOn(md, 'getSkipIndices');
+
+        const result = await md.getMapColumnTextIndexes({
+          databaseName: 'default',
+          tableName: 'unused_base_table',
+          connectionId: 'conn-1',
+        });
+
+        expect(result.size).toBe(0);
+        expect(getColumnsSpy).not.toHaveBeenCalled();
+        expect(getSkipIndicesSpy).not.toHaveBeenCalled();
+      } finally {
+        jest
+          .spyOn(Metadata.prototype, 'getMapColumnTextIndexes')
+          .mockResolvedValue(new Map());
+      }
+    });
+
+    it.each([
+      ['ALIAS column name', 'LogAttributeItems'],
+      [
+        'resolved arrayMap expression',
+        "arrayMap((arr) -> concat(arr.1, '=', arr.2), CAST(LogAttributes, 'Array(Tuple(String, String))'))",
+      ],
+    ])(
+      'getMapColumnTextIndexes detects items index when system.data_skipping_indices.expr is %s',
+      async (_label, indexExpression) => {
+        const md = buildMetadata();
+        const globalStub = Metadata.prototype
+          .getMapColumnTextIndexes as jest.Mock;
+        globalStub.mockRestore();
+        try {
+          jest
+            .spyOn(md, 'getTableMetadata')
+            .mockResolvedValue({ engine: 'MergeTree' } as never);
+          jest
+            .spyOn(md, 'getServerVersion')
+            .mockResolvedValue([26, 3, 0, 0] as const);
+          jest.spyOn(md, 'getColumns').mockResolvedValue([
+            {
+              name: 'LogAttributeItems',
+              type: 'Array(String)',
+              default_type: 'ALIAS',
+              default_expression:
+                "arrayMap((arr) -> concat(arr.1, '=', arr.2), CAST(LogAttributes, 'Array(Tuple(String, String))'))",
+              comment: '',
+              codec_expression: '',
+              ttl_expression: '',
+            },
+          ] as never);
+          jest.spyOn(md, 'getSkipIndices').mockResolvedValue([
+            {
+              name: 'idx_log_attr_items',
+              type: 'text',
+              typeFull: "text(tokenizer = 'array')",
+              expression: indexExpression,
+              granularity: 1,
+            },
+          ] as never);
+
+          const result = await md.getMapColumnTextIndexes({
+            databaseName: 'otel',
+            tableName: 'generic_logs',
+            connectionId: 'conn-1',
+          });
+
+          expect(result.get('LogAttributes')?.itemsIndex).toEqual({
+            indexName: 'idx_log_attr_items',
+            separator: '=',
+          });
+        } finally {
+          jest
+            .spyOn(Metadata.prototype, 'getMapColumnTextIndexes')
+            .mockResolvedValue(new Map());
+        }
+      },
+    );
   });
 });
 
