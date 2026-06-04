@@ -7,6 +7,7 @@ import { getDashboards } from '@/controllers/dashboard';
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
 
+import { validateObjectId } from '../../utils/errors';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 
@@ -51,12 +52,8 @@ export function registerGetDashboard(
         };
       }
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Invalid dashboard ID' }],
-        };
-      }
+      const idError = validateObjectId(id, 'dashboard ID');
+      if (idError) return idError;
 
       const dashboard = await Dashboard.findOne({ _id: id, team: teamId });
       if (!dashboard) {

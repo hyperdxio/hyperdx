@@ -23,7 +23,7 @@ import { AlertSource } from '@/models/alert';
 
 export const objectIdSchema = z.string().refine(val => {
   return Types.ObjectId.isValid(val);
-});
+}, 'Invalid ObjectId');
 
 // ================================
 // Charts & Dashboards (old format)

@@ -98,7 +98,15 @@ const mcpTileSelectItemSchema = z
       .default('')
       .describe('Filter in Lucene syntax. Example: "level:error"'),
     whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
-    alias: z.string().optional().describe('Display label for this series'),
+    alias: z
+      .string()
+      .optional()
+      .describe(
+        'Display label for this series — used in chart legends, table column headers, CSV exports, and onClick templates. ' +
+          'Always set a short, human-readable alias (e.g. "Requests", "P95 Latency", "Error Rate"). ' +
+          'Without an alias the UI shows the raw ClickHouse expression (e.g. count(), quantile(0.95)(Duration)) which is hard to read. ' +
+          'Heatmap select items are the only exception (no alias needed).',
+      ),
     level: externalQuantileLevelSchema
       .optional()
       .describe('Percentile level for aggFn="quantile"'),
@@ -659,15 +667,15 @@ export const mcpTilesParam = z
       'The config block varies by displayType – use clickstack_list_sources for sourceId and connectionId values.\n\n' +
       'Example tiles:\n' +
       '1. Line chart: { "name": "Error Rate", "config": { "displayType": "line", "sourceId": "<from list_sources>", ' +
-      '"groupBy": "ResourceAttributes[\'service.name\']", "select": [{ "aggFn": "count", "where": "StatusCode:STATUS_CODE_ERROR" }] } }\n' +
+      '"groupBy": "ResourceAttributes[\'service.name\']", "select": [{ "aggFn": "count", "where": "StatusCode:STATUS_CODE_ERROR", "alias": "Errors" }] } }\n' +
       '2. Table: { "name": "Top Endpoints", "config": { "displayType": "table", "sourceId": "<from list_sources>", ' +
-      '"groupBy": "SpanAttributes[\'http.route\']", "select": [{ "aggFn": "count" }, ' +
-      '{ "aggFn": "avg", "valueExpression": "Duration", "numberFormat": { "output": "duration", "factor": 0.000000001 } }] } }\n' +
+      '"groupBy": "SpanAttributes[\'http.route\']", "select": [{ "aggFn": "count", "alias": "Requests" }, ' +
+      '{ "aggFn": "avg", "valueExpression": "Duration", "alias": "Avg Duration", "numberFormat": { "output": "duration", "factor": 0.000000001 } }] } }\n' +
       '   (per-series numberFormat lets one column render as a duration while a sibling count column stays a plain number)\n' +
       '3. Number: { "name": "Total Requests", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
-      '"select": [{ "aggFn": "count" }], "numberFormat": { "output": "number", "average": true } } }\n' +
+      '"select": [{ "aggFn": "count", "alias": "Requests" }], "numberFormat": { "output": "number", "average": true } } }\n' +
       '4. Number (duration): { "name": "P95 Latency", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
-      '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration" }], ' +
+      '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration", "alias": "P95 Latency" }], ' +
       '"numberFormat": { "output": "duration", "factor": 0.000000001 } } }\n' +
       '5. Heatmap: { "name": "Latency Heatmap", "config": { "displayType": "heatmap", "sourceId": "<from list_sources, must be a Trace source>", ' +
       '"select": [{ "valueExpression": "Duration" }], ' +
@@ -776,7 +784,7 @@ export const mcpFiltersParam = z
   );
 
 export const mcpPatchDashboardSchema = z.object({
-  dashboardId: z.string().describe('Dashboard ID.'),
+  dashboardId: objectIdSchema.describe('Dashboard ID.'),
   name: z
     .string()
     .min(1)

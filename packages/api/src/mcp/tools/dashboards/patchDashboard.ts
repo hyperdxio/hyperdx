@@ -1,6 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { uniq } from 'lodash';
-import mongoose from 'mongoose';
 
 import * as config from '@/config';
 import Dashboard from '@/models/dashboard';
@@ -67,13 +66,6 @@ export function registerPatchDashboard(
                 text: 'tileId and tile must both be provided or both omitted.',
               },
             ],
-          };
-        }
-
-        if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
-          return {
-            isError: true,
-            content: [{ type: 'text' as const, text: 'Invalid dashboard ID' }],
           };
         }
 
