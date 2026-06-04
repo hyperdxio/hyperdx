@@ -3222,7 +3222,9 @@ describe('renderChartConfig', () => {
       );
       const actual = parameterizedQueryToSql(generatedSql);
 
-      expect(actual).toContain('cityHash64(ScopeAttributes, ResourceAttributes, Attributes)');
+      expect(actual).toContain(
+        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
+      );
       expect(actual).not.toContain('toJSONString');
       expect(actual).not.toContain('mapConcat');
       expect(actual).toMatchSnapshot();
@@ -3251,7 +3253,9 @@ describe('renderChartConfig', () => {
       );
       const actual = parameterizedQueryToSql(generatedSql);
 
-      expect(actual).toContain('cityHash64(ScopeAttributes, ResourceAttributes, Attributes)');
+      expect(actual).toContain(
+        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
+      );
       expect(actual).not.toContain('toJSONString');
       expect(actual).not.toContain('mapConcat');
       expect(actual).toMatchSnapshot();
@@ -3279,7 +3283,9 @@ describe('renderChartConfig', () => {
       );
       const actual = parameterizedQueryToSql(generatedSql);
 
-      expect(actual).toContain('cityHash64(ScopeAttributes, ResourceAttributes, Attributes)');
+      expect(actual).toContain(
+        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
+      );
       expect(actual).not.toContain('toJSONString');
       expect(actual).not.toContain('mapConcat');
       expect(actual).toMatchSnapshot();
@@ -3306,7 +3312,9 @@ describe('renderChartConfig', () => {
       );
       const actual = parameterizedQueryToSql(generatedSql);
 
-      expect(actual).toContain('cityHash64(ScopeAttributes, ResourceAttributes, Attributes)');
+      expect(actual).toContain(
+        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
+      );
       expect(actual).not.toContain('toJSONString');
       expect(actual).not.toContain('mapConcat');
       expect(actual).toMatchSnapshot();
