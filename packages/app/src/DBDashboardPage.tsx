@@ -975,6 +975,7 @@ const Tile = forwardRef(
                         isLive={false}
                         queryKeyPrefix={'search'}
                         variant="muted"
+                        errorVariant="collapsible"
                       />
                     </ChartContainer>
                   )}

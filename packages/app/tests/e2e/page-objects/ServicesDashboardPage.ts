@@ -14,7 +14,9 @@ export class ServicesDashboardPage {
 
   async selectSource(sourceName: string) {
     await this.page.getByPlaceholder('Data Source').click();
-    await this.page.getByRole('option', { name: sourceName }).click();
+    await this.page
+      .getByRole('option', { name: sourceName, exact: true })
+      .click();
     await this.page.waitForLoadState('networkidle');
   }
 

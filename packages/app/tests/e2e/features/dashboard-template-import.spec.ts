@@ -306,14 +306,23 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
         );
         await onClickRow.getByPlaceholder('Select a source').click();
         await expect(
-          page.getByRole('option', { name: DEFAULT_LOGS_SOURCE_NAME }),
+          page.getByRole('option', {
+            name: DEFAULT_LOGS_SOURCE_NAME,
+            exact: true,
+          }),
         ).toBeVisible();
         await expect(
-          page.getByRole('option', { name: DEFAULT_TRACES_SOURCE_NAME }),
+          page.getByRole('option', {
+            name: DEFAULT_TRACES_SOURCE_NAME,
+            exact: true,
+          }),
         ).toBeVisible();
         // Metric / session sources must not appear in the onClick search list.
         await expect(
-          page.getByRole('option', { name: DEFAULT_METRICS_SOURCE_NAME }),
+          page.getByRole('option', {
+            name: DEFAULT_METRICS_SOURCE_NAME,
+            exact: true,
+          }),
         ).toBeHidden();
         await page.keyboard.press('Escape');
       });
