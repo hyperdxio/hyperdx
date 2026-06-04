@@ -248,6 +248,7 @@ const externalDashboardTimeChartConfigSchema = z.object({
   asRatio: z.boolean().optional(),
   alignDateRangeToGranularity: z.boolean().optional(),
   fillNulls: z.boolean().optional(),
+  fitYAxisToData: z.boolean().optional(),
   numberFormat: NumberFormatSchema.optional(),
 });
 
@@ -263,6 +264,7 @@ const externalDashboardLineRawSqlChartConfigSchema =
     compareToPreviousPeriod: z.boolean().optional(),
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
+    fitYAxisToData: z.boolean().optional(),
   });
 
 const externalDashboardBarChartConfigSchema =
@@ -275,6 +277,7 @@ const externalDashboardBarRawSqlChartConfigSchema =
     displayType: z.literal('stacked_bar'),
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
+    fitYAxisToData: z.boolean().optional(),
   });
 
 const externalDashboardTableChartConfigSchema = z.object({

@@ -162,6 +162,7 @@ const convertToExternalTileChartConfig = (
           sourceId: config.source,
           alignDateRangeToGranularity: config.alignDateRangeToGranularity,
           fillNulls: config.fillNulls !== false,
+          fitYAxisToData: config.fitYAxisToData,
           numberFormat: config.numberFormat,
           compareToPreviousPeriod: config.compareToPreviousPeriod,
         };
@@ -174,6 +175,7 @@ const convertToExternalTileChartConfig = (
           sourceId: config.source,
           alignDateRangeToGranularity: config.alignDateRangeToGranularity,
           fillNulls: config.fillNulls !== false,
+          fitYAxisToData: config.fitYAxisToData,
           numberFormat: config.numberFormat,
         };
       case DisplayType.Table:
@@ -243,6 +245,7 @@ const convertToExternalTileChartConfig = (
           config.select.length == 2,
         alignDateRangeToGranularity: config.alignDateRangeToGranularity,
         fillNulls: config.fillNulls !== false,
+        fitYAxisToData: config.fitYAxisToData,
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         select: Array.isArray(config.select)
           ? config.select.map(convertToExternalSelectItem)
@@ -260,6 +263,7 @@ const convertToExternalTileChartConfig = (
           config.select.length == 2,
         alignDateRangeToGranularity: config.alignDateRangeToGranularity,
         fillNulls: config.fillNulls !== false,
+        fitYAxisToData: config.fitYAxisToData,
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         select: Array.isArray(config.select)
           ? config.select.map(convertToExternalSelectItem)
@@ -541,6 +545,7 @@ export function convertToInternalTileConfig(
             'numberFormat',
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
+            'fitYAxisToData',
           ]),
           displayType:
             externalConfig.displayType === 'stacked_bar'
@@ -593,6 +598,7 @@ export function convertToInternalTileConfig(
             'numberFormat',
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
+            'fitYAxisToData',
           ]),
           displayType:
             externalConfig.displayType === 'stacked_bar'

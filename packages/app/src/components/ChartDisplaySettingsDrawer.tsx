@@ -30,6 +30,7 @@ export type ChartConfigDisplaySettings = Pick<
   | 'alignDateRangeToGranularity'
   | 'fillNulls'
   | 'compareToPreviousPeriod'
+  | 'fitYAxisToData'
   | 'color'
 > & {
   groupByColumnsOnLeft?: boolean;
@@ -63,6 +64,7 @@ function applyDefaultSettings(
         : settings.alignDateRangeToGranularity,
     fillNulls: settings.fillNulls ?? 0,
     compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
+    fitYAxisToData: settings.fitYAxisToData ?? false,
     groupByColumnsOnLeft: settings.groupByColumnsOnLeft ?? false,
     color: settings.color,
   };
@@ -164,6 +166,13 @@ export default function ChartDisplaySettingsDrawer({
                   </>
                 )
               }
+            />
+            <CheckBoxControlled
+              control={control}
+              name="fitYAxisToData"
+              size="xs"
+              label="Fit Y-Axis to Data"
+              description="Start the y-axis at the minimum of the displayed data instead of zero"
             />
             <Divider />
           </>
