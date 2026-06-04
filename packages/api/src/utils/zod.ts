@@ -255,6 +255,7 @@ const externalDashboardLineChartConfigSchema =
   externalDashboardTimeChartConfigSchema.extend({
     displayType: z.literal('line'),
     compareToPreviousPeriod: z.boolean().optional(),
+    fitYAxisToData: z.boolean().optional(),
   });
 
 const externalDashboardLineRawSqlChartConfigSchema =
@@ -263,6 +264,7 @@ const externalDashboardLineRawSqlChartConfigSchema =
     compareToPreviousPeriod: z.boolean().optional(),
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
+    fitYAxisToData: z.boolean().optional(),
   });
 
 const externalDashboardBarChartConfigSchema =
