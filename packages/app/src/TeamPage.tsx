@@ -141,12 +141,12 @@ export default function TeamPage() {
           content: <IntegrationsSection />,
         },
         {
-          id: 'team-integrations-mcp-server',
-          content: <McpServerSection />,
-        },
-        {
           id: 'team-integrations-api-keys',
           content: <ApiKeysSection />,
+        },
+        {
+          id: 'team-integrations-mcp-server',
+          content: <McpServerSection />,
         },
       ],
     },

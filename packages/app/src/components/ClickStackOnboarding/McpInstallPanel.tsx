@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Group, SegmentedControl, Stack, Text } from '@mantine/core';
+import { Group, SegmentedControl, Stack, Text } from '@mantine/core';
 import {
   IconBrandOpenai,
   IconBrandVisualStudio,
@@ -18,10 +18,10 @@ import {
 
 /**
  * Agent hosts the install panel covers. Five fixed options surface
- * the most common installs (Claude Code, Cursor, VS Code + Copilot,
- * Codex CLI); "Other" is the JSON-fallback escape hatch that
- * handles every other MCP-compatible host (Claude Desktop,
- * Continue, Cline, ...).
+ * the most common installs (Claude Code, Cursor, VS Code, Codex
+ * CLI); "Other" is the JSON-fallback escape hatch that handles
+ * every other MCP-compatible host (Claude Desktop, Continue, Cline,
+ * ...).
  *
  * ChatGPT is intentionally absent: native MCP isn't there yet, and
  * bridges are a user-side decision better tracked in the docs than
@@ -42,7 +42,7 @@ interface HostChoice {
 const CHOICES: HostChoice[] = [
   { id: 'claude-code', label: 'Claude Code' },
   { id: 'cursor', label: 'Cursor' },
-  { id: 'vscode-copilot', label: 'VS Code + Copilot' },
+  { id: 'vscode-copilot', label: 'VS Code' },
   { id: 'codex-cli', label: 'Codex CLI' },
   { id: 'other', label: 'Other' },
 ];
@@ -55,11 +55,12 @@ function isAgentHost(value: string): value is AgentHost {
 
 interface McpInstallPanelProps {
   /**
-   * Deployment shape derived from `useMe()` + `useTeam()` in the
-   * caller. Passing `null` renders a "sign in to load credentials"
-   * alert.
+   * Deployment shape derived from `useMe()` in the caller. The
+   * caller is responsible for not mounting this panel until the
+   * deployment is ready (matching the convention in
+   * `ApiKeysSection`), so the type here is non-nullable.
    */
-  deployment: DeploymentShape | null;
+  deployment: DeploymentShape;
 }
 
 /**
@@ -77,10 +78,7 @@ interface McpInstallPanelProps {
 export default function McpInstallPanel({ deployment }: McpInstallPanelProps) {
   const [host, setHost] = useState<AgentHost>('claude-code');
 
-  const snippets = useMemo(
-    () => (deployment ? buildAllSnippets(deployment) : null),
-    [deployment],
-  );
+  const snippets = useMemo(() => buildAllSnippets(deployment), [deployment]);
 
   return (
     <Stack gap="md">
@@ -108,18 +106,7 @@ export default function McpInstallPanel({ deployment }: McpInstallPanelProps) {
         aria-label="MCP host"
       />
 
-      {!deployment ? (
-        <Alert color="yellow" variant="light">
-          Sign in to load your personal access key before installing.
-        </Alert>
-      ) : !deployment.accessKey ? (
-        <Alert color="yellow" variant="light">
-          No access key on this account yet. Ask an admin to create one and sign
-          back in.
-        </Alert>
-      ) : snippets ? (
-        <HostInstall host={host} snippets={snippets} />
-      ) : null}
+      <HostInstall host={host} snippets={snippets} />
     </Stack>
   );
 }
@@ -137,9 +124,12 @@ function HostIcon({ id }: { id: AgentHost }) {
     case 'other':
       return <IconRobot size={16} />;
   }
-  // Exhaustiveness check: adding a new AgentHost variant without
-  // extending this switch fails the compile here.
-  return assertNever(id);
+  // Exhaustiveness check via `satisfies never`: adding a new
+  // AgentHost variant without extending the switch fails the
+  // compile here. Defensive `return null` (instead of throwing)
+  // keeps a runtime-only unknown variant from crashing the panel.
+  id satisfies never;
+  return null;
 }
 
 interface HostInstallProps {
@@ -198,11 +188,10 @@ function HostInstall({ host, snippets }: HostInstallProps) {
         />
       );
   }
-  // Exhaustiveness check: adding a new AgentHost variant without
-  // extending this switch fails the compile here.
-  return assertNever(host);
-}
-
-function assertNever(value: never): never {
-  throw new Error(`Unhandled AgentHost variant: ${String(value)}`);
+  // Exhaustiveness check via `satisfies never`: adding a new
+  // AgentHost variant without extending the switch fails the
+  // compile here. Defensive `return null` (instead of throwing)
+  // keeps a runtime-only unknown variant from crashing the panel.
+  host satisfies never;
+  return null;
 }

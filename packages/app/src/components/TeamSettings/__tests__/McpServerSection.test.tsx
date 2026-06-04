@@ -57,7 +57,7 @@ describe('McpServerSection', () => {
     renderSection();
 
     expect(screen.getByTestId('mcp-server-section')).toBeInTheDocument();
-    expect(screen.getByText(/^Connect your AI assistant$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Connect your AI Agents$/)).toBeInTheDocument();
   });
 
   it('renders nothing while the me payload is still loading', () => {
@@ -73,19 +73,20 @@ describe('McpServerSection', () => {
 
     expect(screen.getByText('Claude Code')).toBeInTheDocument();
     expect(screen.getByText('Cursor')).toBeInTheDocument();
-    expect(screen.getByText('VS Code + Copilot')).toBeInTheDocument();
+    expect(screen.getByText('VS Code')).toBeInTheDocument();
     expect(screen.getByText('Codex CLI')).toBeInTheDocument();
     expect(screen.getByText('Other')).toBeInTheDocument();
   });
 
-  it('renders the sign-in alert when no access key is loaded', () => {
+  // Auth-gate parity with `ApiKeysSection`: when `me` resolves to
+  // `null` (user not signed in, or `IS_LOCAL_MODE` short-circuit),
+  // the section silently doesn't render. No "sign in" alert.
+  it('renders nothing when me is null', () => {
     setMe(null);
 
     renderSection();
 
-    expect(
-      screen.getByText(/Sign in to load your personal access key/i),
-    ).toBeInTheDocument();
+    expect(screen.queryByTestId('mcp-server-section')).not.toBeInTheDocument();
   });
 
   it('renders the fixed clickstack server name in the install snippet', () => {
@@ -94,14 +95,17 @@ describe('McpServerSection', () => {
     expect(screen.getByText(/claude mcp add clickstack /)).toBeInTheDocument();
   });
 
-  it('renders the no-access-key alert when me is loaded but accessKey is empty', () => {
+  // `MeApiResponseSchema.accessKey` is `z.string()` non-nullable
+  // and the User model generates one at account creation, so an
+  // empty access key isn't reachable from the API in practice.
+  // The defensive guard in `McpServerSection` still skips render
+  // rather than emitting a snippet with an empty bearer.
+  it('renders nothing when accessKey is empty', () => {
     setMe('');
 
     renderSection();
 
-    expect(
-      screen.getByText(/No access key on this account yet/i),
-    ).toBeInTheDocument();
+    expect(screen.queryByTestId('mcp-server-section')).not.toBeInTheDocument();
   });
 
   it('switches to the Codex CLI snippet when the host picker selects Codex CLI', async () => {
@@ -133,7 +137,7 @@ describe('McpServerSection', () => {
     const user = userEvent.setup();
     renderSection();
 
-    await user.click(screen.getByText('VS Code + Copilot'));
+    await user.click(screen.getByText('VS Code'));
 
     const button = screen.getByRole('link', { name: /Add to VS Code/i });
     expect(button.getAttribute('href') ?? '').toMatch(/^vscode:mcp\/install\?/);

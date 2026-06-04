@@ -7,7 +7,7 @@ import { type DeploymentShape } from '../ClickStackOnboarding/installSnippets';
 import McpInstallPanel from '../ClickStackOnboarding/McpInstallPanel';
 
 /**
- * Renders the "Connect your AI assistant" section on the Team
+ * Renders the "Connect your AI Agents" section on the Team
  * Settings page (Integrations tab). Self-managed OSS deployments
  * mount the MCP server at `<origin>/api/mcp` with the per-user
  * access key as bearer; the MCP server resolves the active team
@@ -20,31 +20,32 @@ import McpInstallPanel from '../ClickStackOnboarding/McpInstallPanel';
  * install panel. No subtitle below the header so the visual
  * rhythm matches the rest of the Integrations tab.
  *
- * Renders client-only via `useMe()`, so `window.location.origin`
- * is always defined here; no SSR guard needed.
+ * Auth gating matches `ApiKeysSection`: render nothing until `me`
+ * resolves with a non-empty access key. `MeApiResponseSchema`
+ * declares `accessKey` as `z.string()`, and the User model
+ * generates one on account creation, so the empty-key branch is
+ * defensive against a state the schema disallows; we still skip
+ * mounting the panel in that case rather than rendering a snippet
+ * with an empty bearer.
  */
 export default function McpServerSection() {
   const { data: me, isLoading: isLoadingMe } = api.useMe();
 
   const deployment = useMemo<DeploymentShape | null>(() => {
-    if (!me) return null;
+    if (!me?.accessKey) return null;
     return {
       apiUrl: `${window.location.origin}/api`,
       accessKey: me.accessKey,
     };
   }, [me]);
 
-  // Wait for `me` before mounting the panel: the deployment shape
-  // depends on `me.accessKey`, and rendering mid-load would briefly
-  // emit the "Sign in to load your personal access key" alert path
-  // before the cache hydrates.
-  if (isLoadingMe) {
+  if (isLoadingMe || !deployment) {
     return null;
   }
 
   return (
     <Box id="mcp_server" data-testid="mcp-server-section">
-      <Text size="md">Connect your AI assistant</Text>
+      <Text size="md">Connect your AI Agents</Text>
       <Divider my="md" />
       <Card>
         <McpInstallPanel deployment={deployment} />
