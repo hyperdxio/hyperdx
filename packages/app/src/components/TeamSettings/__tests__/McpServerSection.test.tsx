@@ -68,13 +68,14 @@ describe('McpServerSection', () => {
     expect(screen.queryByTestId('mcp-server-section')).not.toBeInTheDocument();
   });
 
-  it('renders all five host options when the deployment shape is valid', () => {
+  it('renders all six host options when the deployment shape is valid', () => {
     renderSection();
 
     expect(screen.getByText('Claude Code')).toBeInTheDocument();
     expect(screen.getByText('Cursor')).toBeInTheDocument();
     expect(screen.getByText('VS Code')).toBeInTheDocument();
     expect(screen.getByText('Codex CLI')).toBeInTheDocument();
+    expect(screen.getByText('OpenCode')).toBeInTheDocument();
     expect(screen.getByText('Other')).toBeInTheDocument();
   });
 
@@ -150,6 +151,19 @@ describe('McpServerSection', () => {
     await user.click(screen.getByText('Other'));
 
     expect(screen.getByText(/"mcpServers":/)).toBeInTheDocument();
+  });
+
+  it('renders the OpenCode JSON block (`mcp` key with `type: "remote"`) when OpenCode is selected', async () => {
+    const user = userEvent.setup();
+    renderSection();
+
+    await user.click(screen.getByText('OpenCode'));
+
+    // OpenCode's shape diverges from `Other`: outer key is `mcp`
+    // (not `mcpServers`) and the server entry uses `type: "remote"`
+    // (not `type: "http"`).
+    expect(screen.getByText(/"mcp":/)).toBeInTheDocument();
+    expect(screen.getByText(/"type": "remote"/)).toBeInTheDocument();
   });
 
   it('reveals the manual JSON fallback when the Manual setup toggle is clicked on a deeplink host', async () => {

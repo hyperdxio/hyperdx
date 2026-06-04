@@ -36,6 +36,8 @@ export interface BuiltSnippets {
   vscode: string;
   /** OpenAI Codex CLI one-liner. */
   codexCli: string;
+  /** OpenCode JSON config under an `mcp` block (uses `type: "remote"`). */
+  openCode: string;
   /** Canonical `mcpServers` JSON block for any other host. */
   jsonBlock: string;
 }
@@ -171,6 +173,30 @@ function buildVSCodeDeeplink(deployment: DeploymentShape): string {
 }
 
 /**
+ * OpenCode JSON config block. OpenCode's MCP config lives under an
+ * `mcp` key (not `mcpServers`) and uses `type: "remote"` for HTTP
+ * transport (documented at https://opencode.ai/docs/mcp-servers/).
+ * Verified empirically against a running ClickStack instance on
+ * 2026-06-04: OpenCode's `type: "remote"` connects successfully to
+ * our Streamable HTTP server.
+ *
+ * Users paste this into `opencode.json` in their project root, or
+ * into `~/.config/opencode/config.json` for a global install.
+ */
+function buildOpenCodeJsonBlock(deployment: DeploymentShape): string {
+  const block = {
+    mcp: {
+      [SERVER_NAME]: {
+        type: 'remote',
+        url: buildUrl(deployment),
+        headers: buildHeaders(deployment),
+      },
+    },
+  };
+  return JSON.stringify(block, null, 2);
+}
+
+/**
  * Canonical `mcpServers` JSON block. Covers every MCP-compatible
  * host that doesn't have a CLI primitive or deep link yet (Claude
  * Desktop, Continue, Cline, and the long tail).
@@ -199,6 +225,7 @@ export function buildAllSnippets(deployment: DeploymentShape): BuiltSnippets {
     cursor: buildCursorDeeplink(deployment),
     vscode: buildVSCodeDeeplink(deployment),
     codexCli: buildCliOneLiner('codex', deployment),
+    openCode: buildOpenCodeJsonBlock(deployment),
     jsonBlock: buildMcpJsonBlock(deployment),
   };
 }

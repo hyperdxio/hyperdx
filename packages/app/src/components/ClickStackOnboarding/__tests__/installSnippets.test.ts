@@ -98,6 +98,34 @@ describe('buildAllSnippets > VS Code', () => {
   });
 });
 
+describe('buildAllSnippets > OpenCode', () => {
+  it('emits OpenCode JSON config under an `mcp` block with type: "remote"', () => {
+    const { openCode } = buildAllSnippets(DEPLOYMENT);
+    const parsed = JSON.parse(openCode);
+
+    // OpenCode reads MCP servers from the `mcp` key (not
+    // `mcpServers` like the canonical block) and uses
+    // `type: "remote"` for HTTP transport. Verified empirically
+    // against a running ClickStack instance 2026-06-04.
+    expect(parsed).toMatchObject({
+      mcp: {
+        [SERVER_NAME]: {
+          type: 'remote',
+          url: 'https://hyperdx.example.com/api/mcp',
+          headers: { Authorization: 'Bearer k_abcdef123456' },
+        },
+      },
+    });
+  });
+
+  it('does NOT emit type: "http" or an `mcpServers` key (those would be the wrong shape for OpenCode)', () => {
+    const { openCode } = buildAllSnippets(DEPLOYMENT);
+
+    expect(openCode).not.toContain('"type": "http"');
+    expect(openCode).not.toContain('"mcpServers"');
+  });
+});
+
 describe('buildAllSnippets > JSON block', () => {
   it('emits canonical mcpServers JSON keyed on the fixed server name', () => {
     const { jsonBlock } = buildAllSnippets(DEPLOYMENT);
@@ -151,6 +179,7 @@ describe('buildAllSnippets > host coverage', () => {
       cursor: expect.stringContaining('cursor://'),
       vscode: expect.stringContaining('vscode:mcp/install'),
       codexCli: expect.stringContaining(`codex mcp add ${SERVER_NAME}`),
+      openCode: expect.stringContaining(`"${SERVER_NAME}"`),
       jsonBlock: expect.stringContaining(`"${SERVER_NAME}"`),
     });
   });
@@ -162,6 +191,7 @@ describe('buildAllSnippets > host coverage', () => {
     expect(all.codexCli).toContain(SERVER_NAME);
     expect(all.cursor).toContain(`name=${SERVER_NAME}`);
     expect(all.vscode).toContain(SERVER_NAME);
+    expect(all.openCode).toContain(`"${SERVER_NAME}"`);
     expect(all.jsonBlock).toContain(`"${SERVER_NAME}"`);
   });
 });

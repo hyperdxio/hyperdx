@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Group, SegmentedControl, Stack, Text } from '@mantine/core';
 import {
+  IconBraces,
   IconBrandOpenai,
   IconBrandVisualStudio,
   IconCode,
@@ -17,11 +18,10 @@ import {
 } from './installSnippets';
 
 /**
- * Agent hosts the install panel covers. Five fixed options surface
- * the most common installs (Claude Code, Cursor, VS Code, Codex
- * CLI); "Other" is the JSON-fallback escape hatch that handles
- * every other MCP-compatible host (Claude Desktop, Continue, Cline,
- * ...).
+ * Agent hosts the install panel covers. Five named installs (Claude
+ * Code, Cursor, VS Code, Codex CLI, OpenCode) plus "Other" as the
+ * JSON-fallback escape hatch for any other MCP-compatible host
+ * (Claude Desktop, Continue, Cline, ...).
  *
  * ChatGPT is intentionally absent: native MCP isn't there yet, and
  * bridges are a user-side decision better tracked in the docs than
@@ -32,6 +32,7 @@ type AgentHost =
   | 'cursor'
   | 'vscode-copilot'
   | 'codex-cli'
+  | 'opencode'
   | 'other';
 
 interface HostChoice {
@@ -44,6 +45,7 @@ const CHOICES: HostChoice[] = [
   { id: 'cursor', label: 'Cursor' },
   { id: 'vscode-copilot', label: 'VS Code' },
   { id: 'codex-cli', label: 'Codex CLI' },
+  { id: 'opencode', label: 'OpenCode' },
   { id: 'other', label: 'Other' },
 ];
 
@@ -121,6 +123,8 @@ function HostIcon({ id }: { id: AgentHost }) {
       return <IconBrandVisualStudio size={16} />;
     case 'codex-cli':
       return <IconBrandOpenai size={16} />;
+    case 'opencode':
+      return <IconBraces size={16} />;
     case 'other':
       return <IconRobot size={16} />;
   }
@@ -177,6 +181,14 @@ function HostInstall({ host, snippets }: HostInstallProps) {
         <CopySnippet
           label="Paste in your terminal:"
           snippet={snippets.codexCli}
+        />
+      );
+
+    case 'opencode':
+      return (
+        <CopySnippet
+          label="Paste this into `opencode.json` (project) or `~/.config/opencode/config.json` (global):"
+          snippet={snippets.openCode}
         />
       );
 
