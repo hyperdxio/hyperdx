@@ -21,7 +21,9 @@ import type {
   ExternalDashboardFilterWithId,
   ExternalDashboardTileWithId,
 } from '@/utils/zod';
+import { objectIdSchema } from '@/utils/zod';
 
+import { mcpError } from '../../utils/errors';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
@@ -45,8 +47,7 @@ export function registerSaveDashboard(
         'due to incorrect filter syntax, missing attributes, or wrong column names. ' +
         'TIP: To update a single tile without resubmitting all tiles, use clickstack_patch_dashboard instead.',
       inputSchema: z.object({
-        id: z
-          .string()
+        id: objectIdSchema
           .optional()
           .describe(
             'Dashboard ID. Omit to create a new dashboard, provide to update an existing one.',
@@ -249,13 +250,6 @@ async function updateDashboard({
     | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
     | undefined;
 }) {
-  if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
-    return {
-      isError: true,
-      content: [{ type: 'text' as const, text: 'Invalid dashboard ID' }],
-    };
-  }
-
   const parsed = updateDashboardBodySchema.safeParse({
     name,
     tiles: inputTiles,
