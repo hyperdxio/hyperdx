@@ -354,6 +354,7 @@ export const MemoChart = memo(function MemoChart({
   onToggleSeries,
   granularity,
   dateRangeEndInclusive = true,
+  fitYAxisToData = false,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
@@ -375,6 +376,11 @@ export const MemoChart = memo(function MemoChart({
   onToggleSeries?: (seriesName: string, isShiftKey?: boolean) => void;
   granularity: string;
   dateRangeEndInclusive?: boolean;
+  /**
+   * When true, the y-axis lower bound is the minimum of the displayed data
+   * (with padding) instead of zero.
+   **/
+  fitYAxisToData?: boolean;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -441,20 +447,29 @@ export const MemoChart = memo(function MemoChart({
   const yAxisDomain: AxisDomain = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
 
-    if (!hasSelection) {
-      // No selection, let Recharts auto-calculate based on all data
+    // Fitting the y-axis lower bound to the data only applies to line charts.
+    // Bar charts are always anchored at zero so the bar lengths stay
+    // proportional to their values.
+    const shouldFitYAxis =
+      fitYAxisToData && displayType !== DisplayType.StackedBar;
+
+    // The data min/max is only needed to either zoom into a selection or to
+    // fit the lower bound to the data. When neither applies, let Recharts
+    // auto-calculate the upper bound while pinning the lower bound to zero.
+    if (!hasSelection && !shouldFitYAxis) {
       return [0, 'auto'];
     }
 
-    // When series are selected, calculate domain based only on visible series
+    // Calculate domain based on visible series (all series when there's no
+    // explicit selection).
     let minValue = Infinity;
     let maxValue = -Infinity;
 
     graphResults.forEach(dataPoint => {
       lineData.forEach(ld => {
         const seriesName = ld.displayName || ld.dataKey;
-        // Only consider selected series
-        if (selectedSeriesNames.has(seriesName)) {
+        // Only consider visible series
+        if (!hasSelection || selectedSeriesNames.has(seriesName)) {
           const value = dataPoint[ld.dataKey];
           if (typeof value === 'number' && !isNaN(value)) {
             minValue = Math.min(minValue, value);
@@ -466,15 +481,27 @@ export const MemoChart = memo(function MemoChart({
 
     // If we found valid values, return them with some padding
     if (minValue !== Infinity && maxValue !== -Infinity) {
-      const padding = (maxValue - minValue) * 0.1; // 10% padding
-      return [
-        Math.max(0, minValue - padding), // Don't go below 0
-        maxValue + padding,
-      ];
+      const padding = (maxValue - minValue) * 0.05; // 5% padding
+      // When fitting to data, allow the lower bound to follow the data
+      // minimum; otherwise keep it pinned at zero. The 5% padding must not
+      // drag the axis below zero unless the data itself is negative, so
+      // clamp at zero whenever the minimum is non-negative.
+      const lowerBound =
+        shouldFitYAxis && minValue < 0
+          ? minValue - padding
+          : Math.max(0, minValue - padding);
+      const upperBound = maxValue + padding;
+      return [lowerBound, upperBound];
     }
 
     return ['auto', 'auto'];
-  }, [graphResults, lineData, selectedSeriesNames]);
+  }, [
+    graphResults,
+    lineData,
+    selectedSeriesNames,
+    fitYAxisToData,
+    displayType,
+  ]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
   const [containerWidth, setContainerWidth] = useState(0);

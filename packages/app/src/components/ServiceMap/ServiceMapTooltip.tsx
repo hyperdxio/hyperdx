@@ -1,27 +1,48 @@
 import { useCallback } from 'react';
 import SqlString from 'sqlstring';
 import { TTraceSource } from '@hyperdx/common-utils/dist/types';
-import { Button, Stack } from '@mantine/core';
-import { IconSearch } from '@tabler/icons-react';
+import { Button, Group, Stack, Text } from '@mantine/core';
+import {
+  IconActivity,
+  IconClock,
+  IconSearch,
+  IconTarget,
+} from '@tabler/icons-react';
 
-import { formatApproximateNumber, navigateToTraceSearch } from './utils';
+import { formatDurationMs } from '@/utils';
+
+import {
+  formatApproximateNumber,
+  formatRate,
+  navigateToTraceSearch,
+} from './utils';
 
 import styles from './ServiceMap.module.scss';
 
 export default function ServiceMapTooltip({
   totalRequests,
   errorPercentage,
+  latencyMs,
+  requestsPerSecond,
   source,
   dateRange,
   serviceName,
   isSingleTrace,
+  onFocus,
 }: {
   totalRequests: number;
   errorPercentage: number;
+  // p50/p95/p99 already converted to milliseconds; omitted when unavailable.
+  latencyMs?: { p50: number; p95: number; p99: number };
+  // Throughput; omitted for single-trace maps where a rate is meaningless.
+  requestsPerSecond?: number;
   source: TTraceSource;
   dateRange: [Date, Date];
   serviceName: string;
   isSingleTrace?: boolean;
+  // When provided, renders a "Focus" action that filters the map to this
+  // service and its immediate dependencies.
+  onFocus?: () => void;
 }) {
   const requestText = `${isSingleTrace ? totalRequests : formatApproximateNumber(totalRequests)} request${
     totalRequests !== 1 ? 's' : ''
@@ -56,29 +77,69 @@ export default function ServiceMapTooltip({
     });
   }, [dateRange, source, serviceName]);
 
+  const showMetrics =
+    totalRequests > 0 && (requestsPerSecond != null || latencyMs != null);
+
   return (
-    <Stack className={styles.toolbar} gap={0}>
+    <Stack className={styles.toolbar} gap={2} align="stretch">
       <Button
         onClick={handleRequestsClick}
         variant="subtle"
         size="xs"
         color="var(--color-text)"
-        rightSection={<IconSearch size={16} />}
+        justify="space-between"
+        fullWidth
+        rightSection={<IconSearch size={14} />}
       >
         {requestText}
       </Button>
       {errorPercentage > 0 ? (
-        <>
-          <Button
-            onClick={handleErrorsClick}
-            variant="subtle"
-            size="xs"
-            color="var(--color-text-danger)"
-            rightSection={<IconSearch size={16} />}
-          >
-            {errorsText}
-          </Button>
-        </>
+        <Button
+          onClick={handleErrorsClick}
+          variant="subtle"
+          size="xs"
+          color="var(--color-text-danger)"
+          justify="space-between"
+          fullWidth
+          rightSection={<IconSearch size={14} />}
+        >
+          {errorsText}
+        </Button>
+      ) : null}
+      {showMetrics ? (
+        <Stack gap={2} px="xs" py={2} c="var(--color-text)">
+          {requestsPerSecond != null ? (
+            <Group gap={6} wrap="nowrap">
+              <IconActivity size={14} />
+              <Text size="xs">{formatRate(requestsPerSecond)}</Text>
+            </Group>
+          ) : null}
+          {latencyMs != null ? (
+            <Group gap={6} wrap="nowrap">
+              <IconClock size={14} />
+              {/* Percentiles are estimated (approximate quantiles, over sampled
+                  spans), so prefix each value with ~. */}
+              <Text size="xs">
+                p50 ~{formatDurationMs(latencyMs.p50)} · p95 ~
+                {formatDurationMs(latencyMs.p95)} · p99 ~
+                {formatDurationMs(latencyMs.p99)}
+              </Text>
+            </Group>
+          ) : null}
+        </Stack>
+      ) : null}
+      {onFocus ? (
+        <Button
+          onClick={onFocus}
+          variant="subtle"
+          size="xs"
+          color="var(--color-text)"
+          justify="space-between"
+          fullWidth
+          rightSection={<IconTarget size={14} />}
+        >
+          Focus
+        </Button>
       ) : null}
     </Stack>
   );

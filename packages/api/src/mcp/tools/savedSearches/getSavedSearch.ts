@@ -1,11 +1,11 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
 import { getSavedSearch } from '@/controllers/savedSearch';
 import { SavedSearch } from '@/models/savedSearch';
 
+import { validateObjectId } from '../../utils/errors';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 
@@ -55,12 +55,8 @@ export function registerGetSavedSearch(
       }
 
       // ── Get single saved search ──
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Invalid saved search ID' }],
-        };
-      }
+      const idError = validateObjectId(id, 'saved search ID');
+      if (idError) return idError;
 
       const savedSearch = await getSavedSearch(teamId, id);
       if (!savedSearch) {

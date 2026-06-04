@@ -166,7 +166,7 @@ describe('enhancedErrors', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.message).toEqual(
-        "Body validation failed: interval: Invalid enum value. Expected '1m' | '5m' | '15m' | '30m' | '1h' | '6h' | '12h' | '1d', received '99m'; Params validation failed: id: Invalid input",
+        "Body validation failed: interval: Invalid enum value. Expected '1m' | '5m' | '15m' | '30m' | '1h' | '6h' | '12h' | '1d', received '99m'; Params validation failed: id: Invalid ObjectId",
       );
     });
   });
