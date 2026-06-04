@@ -3,7 +3,7 @@ import {
   analyticsEventLog,
   backgroundLog,
   billingEventLog,
-  buildResourceAttrs,
+  buildResourcePool,
   cacheHitLog,
   catalogLog,
   caughtExceptionLog,
@@ -15,7 +15,7 @@ import {
   normalizeSeverityText,
   notificationDeliveryLog,
   pageRenderLog,
-  pickSeverity,
+  pickResource,
   pickSeverityIn,
   searchCacheMissVerboseLog,
   serviceOpsDebugLog,
@@ -104,9 +104,18 @@ function* streamLogPhase(opts: {
   severityText: LogRow['severityText'];
   template: (rng: Rng, t: number, svc: string) => TemplateResult;
   extraAttrs?: (rng: Rng, t: number) => Record<string, string>;
+  resourcePool: Record<string, Record<string, string>[]>;
 }): Iterable<ScenarioBatch> {
-  const { rng, startMs, count, batchSize, severityText, template, extraAttrs } =
-    opts;
+  const {
+    rng,
+    startMs,
+    count,
+    batchSize,
+    severityText,
+    template,
+    extraAttrs,
+    resourcePool,
+  } = opts;
   const resolveSvc =
     typeof opts.serviceName === 'function'
       ? opts.serviceName
@@ -122,7 +131,7 @@ function* streamLogPhase(opts: {
         serviceName: svc,
         severityText,
         body: tmpl.body,
-        resourceAttributes: buildResourceAttrs({ rng, serviceName: svc }),
+        resourceAttributes: pickResource(rng, resourcePool, svc),
         logAttributes: extraAttrs
           ? { ...tmpl.attrs, ...extraAttrs(rng, t) }
           : tmpl.attrs,
@@ -154,7 +163,37 @@ export const noisySignalsScenario: Scenario = {
       'recommendation-service',
     ] as const;
 
-    const base = { rng, startMs, batchSize };
+    // All services used across phases — pre-build a resource pool so we
+    // pick from ~24 pre-built objects per service instead of constructing
+    // a fresh 18-key resource-attributes object on every row.
+    const ALL_SERVICES = [
+      'notification-service',
+      'billing-service',
+      'worker',
+      ...FOUR_SERVICES,
+      'frontend-proxy',
+      'frontend',
+      'search-service',
+      'analytics-service',
+      'product-catalog',
+      // Background varied services
+      'auth-service',
+      'tax-service',
+      'fraud-detection',
+      'kafka',
+      'payment-service',
+      'cart-service',
+      'session-service',
+      'webhook-relay',
+      'feature-flags',
+      'image-service',
+    ] as const;
+    const resourcePool = buildResourcePool({
+      rng,
+      services: ALL_SERVICES,
+    });
+
+    const base = { rng, startMs, batchSize, resourcePool };
 
     // Composite cell 1: notification-service × DEBUG
     yield* streamLogPhase({
@@ -300,6 +339,7 @@ export const noisySignalsScenario: Scenario = {
       startMs,
       counts.BACKGROUND_VARIED,
       batchSize,
+      resourcePool,
     );
   },
   groundTruth,
@@ -321,6 +361,7 @@ function* phaseBackgroundVaried(
   startMs: number,
   count: number,
   batchSize: number,
+  resourcePool: Record<string, Record<string, string>[]>,
 ): Iterable<ScenarioBatch> {
   const buf: LogRow[] = [];
   const services = [
@@ -357,7 +398,7 @@ function* phaseBackgroundVaried(
         serviceName: svc,
         severityText: normalizeSeverityText(sevPick.text),
         body,
-        resourceAttributes: buildResourceAttrs({ rng, serviceName: svc }),
+        resourceAttributes: pickResource(rng, resourcePool, svc),
         logAttributes: {
           'event.name': 'app.background',
           'log.iostream': 'stdout',
@@ -372,7 +413,3 @@ function* phaseBackgroundVaried(
   }
   if (buf.length) yield { traces: [], logs: buf };
 }
-
-// Keep these unused imports tidy for the linter (they're conditionally
-// referenced via dynamic phase functions above).
-void pickSeverity;

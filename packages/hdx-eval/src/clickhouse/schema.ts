@@ -14,6 +14,11 @@ export type ScenarioTables = {
 };
 
 function scenarioSlug(scenario: string): string {
+  if (!/^[a-z0-9_-]+$/.test(scenario)) {
+    throw new Error(
+      `Invalid scenario name "${scenario}": must match /^[a-z0-9_-]+$/`,
+    );
+  }
   return scenario.replace(/-/g, '_');
 }
 

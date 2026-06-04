@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+import fs from 'fs';
 import { resolve } from 'path';
 
 import { createEvalClient, defaultClickHouseUrl } from './clickhouse/client';
@@ -232,8 +233,6 @@ program
       let email = cmdOpts.email;
       let password = cmdOpts.password;
       if (cmdOpts.credsFile) {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const fs = require('fs') as typeof import('fs');
         const expanded = cmdOpts.credsFile.replace(
           /^~(?=$|\/|\\)/,
           process.env.HOME ?? '~',
@@ -647,8 +646,6 @@ program
   )
   .action(
     (path: string, cmdOpts: { queries?: boolean; finalAnswer?: boolean }) => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const fs = require('fs') as typeof import('fs');
       const r = readRun(path);
       console.log(`Run ${r.runId}`);
       console.log(`  scenario:   ${r.scenario}`);

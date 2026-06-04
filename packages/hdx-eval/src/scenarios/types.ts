@@ -22,8 +22,6 @@ export type ScenarioBatch = {
   logs: LogRow[];
 };
 
-export type ScenarioOutput = ScenarioBatch;
-
 export type Scenario = {
   name: string;
   agentPrompt: string;
@@ -34,11 +32,11 @@ export type Scenario = {
    * (scale background volumes — planted anomalies stay constant).
    */
   generate(ctx: GenerateContext): Iterable<ScenarioBatch>;
-  groundTruth: unknown;
+  groundTruth: Record<string, unknown>;
 };
 
 /** Helper for tests: drain an iterable into one combined batch. */
-export function collectScenario(iter: Iterable<ScenarioBatch>): ScenarioOutput {
+export function collectScenario(iter: Iterable<ScenarioBatch>): ScenarioBatch {
   const traces: TraceRow[] = [];
   const logs: LogRow[] = [];
   for (const b of iter) {

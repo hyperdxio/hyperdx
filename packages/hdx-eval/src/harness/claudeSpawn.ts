@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { mkdtempSync, writeFileSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -153,6 +153,13 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
   clearTimeout(timeout);
   if (escalationTimer) clearTimeout(escalationTimer);
   await stdoutDone;
+
+  // Clean up the temp directory to avoid leaking MCP configs with API keys.
+  try {
+    rmSync(tempdir, { recursive: true, force: true });
+  } catch {
+    // Best effort — don't fail the run if cleanup fails.
+  }
 
   return {
     events,

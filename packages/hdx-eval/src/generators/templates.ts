@@ -97,7 +97,7 @@ export function normalizeSeverityText(
 ): 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' {
   const u = raw.toUpperCase();
   if (u.startsWith('WARN')) return 'WARN';
-  if (u.startsWith('ERR') || raw === 'fatal') return 'ERROR';
+  if (u.startsWith('ERR') || u === 'FATAL') return 'ERROR';
   if (u.startsWith('DEB')) return 'DEBUG';
   if (u === 'TRACE') return 'TRACE';
   return 'INFO';

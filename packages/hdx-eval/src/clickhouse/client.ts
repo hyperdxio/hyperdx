@@ -17,7 +17,7 @@ export function createEvalClient(
     password: cfg.password ?? '',
     application,
     request_timeout: ms('2m'),
-    compression: { request: false, response: false },
+    compression: { request: true, response: false },
     clickhouse_settings: {
       date_time_input_format: 'best_effort',
       date_time_output_format: 'iso',

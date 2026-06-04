@@ -302,7 +302,9 @@ export async function runCheck(
     if (cfg.clickhouse) {
       try {
         const chUrl = `http://${cfg.clickhouse.host}:${cfg.clickhouse.port}/ping`;
-        const res = await fetch(chUrl);
+        const res = await fetch(chUrl, {
+          signal: AbortSignal.timeout(10_000),
+        });
         chReachable = res.ok;
         if (!chReachable) errors.push(`ClickHouse ping → ${res.status}`);
       } catch (e) {
@@ -344,6 +346,7 @@ async function defaultMcpCheck(
         'Content-Type': 'application/json',
         Accept: 'application/json, text/event-stream',
       },
+      signal: AbortSignal.timeout(10_000),
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 1,

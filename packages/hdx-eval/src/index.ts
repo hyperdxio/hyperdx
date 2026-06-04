@@ -6,5 +6,5 @@ export { getScenario, SCENARIO_NAMES, SCENARIOS } from './scenarios';
 export type {
   GenerateContext,
   Scenario,
-  ScenarioOutput,
+  ScenarioBatch,
 } from './scenarios/types';

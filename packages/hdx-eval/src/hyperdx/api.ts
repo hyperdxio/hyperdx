@@ -74,6 +74,7 @@ export class HyperdxApiClient {
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
       redirect: 'manual',
+      signal: AbortSignal.timeout(30_000),
     });
     this.absorbSetCookie(res);
 
@@ -101,7 +102,10 @@ export class HyperdxApiClient {
 
   async ping(): Promise<boolean> {
     try {
-      const res = await fetch(this.url('/'), { method: 'GET' });
+      const res = await fetch(this.url('/'), {
+        method: 'GET',
+        signal: AbortSignal.timeout(10_000),
+      });
       return res.status < 500;
     } catch {
       return false;
@@ -117,6 +121,7 @@ export class HyperdxApiClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, confirmPassword: password }),
       redirect: 'manual',
+      signal: AbortSignal.timeout(30_000),
     });
     this.absorbSetCookie(res);
     if (res.status === 200) return 'created';
@@ -131,6 +136,7 @@ export class HyperdxApiClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
       redirect: 'manual',
+      signal: AbortSignal.timeout(30_000),
     });
     this.absorbSetCookie(res);
     // Passport login redirects to /login?err=authFail on bad credentials.
