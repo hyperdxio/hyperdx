@@ -2241,7 +2241,6 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'stacked_bar',
           asRatio: false,
           fillNulls: false,
-          fitYAxisToData: false,
           sourceId: metricSource._id.toString(),
           numberFormat: {
             output: 'byte',
@@ -2724,7 +2723,6 @@ describe('External API v2 Dashboards - new format', () => {
           sourceId,
           fillNulls: false,
           alignDateRangeToGranularity: false,
-          fitYAxisToData: false,
           numberFormat: { output: 'byte', decimalBytes: true },
         },
       };
@@ -2800,12 +2798,13 @@ describe('External API v2 Dashboards - new format', () => {
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(pieRawSql);
     });
 
-    it('persists fitYAxisToData on line/bar tiles and reads it back on GET', async () => {
+    it('persists fitYAxisToData on line tiles only and reads it back on GET', async () => {
       const sourceId = traceSource._id.toString();
 
-      // A line tile that opts into fitYAxisToData and a bar tile that
-      // explicitly opts out; a third tile omits the field entirely to
-      // confirm it stays absent (it is optional with no default).
+      // A line tile that opts into fitYAxisToData; a bar tile that attempts to
+      // set it (it is line-only, so it must be dropped); and a line tile that
+      // omits the field entirely to confirm it stays absent (optional, no
+      // default).
       const fitLine: ExternalDashboardTile = {
         name: 'Fit Line',
         x: 0,
@@ -2820,8 +2819,8 @@ describe('External API v2 Dashboards - new format', () => {
         },
       };
 
-      const noFitBar: ExternalDashboardTile = {
-        name: 'No Fit Bar',
+      const bar: ExternalDashboardTile = {
+        name: 'Bar',
         x: 6,
         y: 0,
         w: 6,
@@ -2829,9 +2828,11 @@ describe('External API v2 Dashboards - new format', () => {
         config: {
           displayType: 'stacked_bar',
           sourceId,
+          // fitYAxisToData only applies to line charts; setting it on a bar
+          // tile should be ignored rather than persisted.
           fitYAxisToData: false,
           select: [{ aggFn: 'count', where: '', whereLanguage: 'sql' }],
-        },
+        } as ExternalDashboardTile['config'],
       };
 
       const unsetLine: ExternalDashboardTile = {
@@ -2850,7 +2851,7 @@ describe('External API v2 Dashboards - new format', () => {
       const createResponse = await authRequest('post', BASE_URL)
         .send({
           name: 'fitYAxisToData dashboard',
-          tiles: [fitLine, noFitBar, unsetLine],
+          tiles: [fitLine, bar, unsetLine],
           tags: [],
         })
         .expect(200);
@@ -2863,7 +2864,8 @@ describe('External API v2 Dashboards - new format', () => {
       const tiles = getResponse.body.data.tiles;
 
       expect(tiles[0].config.fitYAxisToData).toBe(true);
-      expect(tiles[1].config.fitYAxisToData).toBe(false);
+      // Bar charts never carry fitYAxisToData — it is dropped on write.
+      expect(tiles[1].config).not.toHaveProperty('fitYAxisToData');
       // Omitted on input → absent on read-back (optional, no default).
       expect(tiles[2].config).not.toHaveProperty('fitYAxisToData');
     });
@@ -3749,7 +3751,6 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'stacked_bar',
           asRatio: false,
           fillNulls: false,
-          fitYAxisToData: false,
           sourceId: metricSource._id.toString(),
           numberFormat: {
             output: 'byte',
@@ -3983,7 +3984,6 @@ describe('External API v2 Dashboards - new format', () => {
           sourceId,
           fillNulls: false,
           alignDateRangeToGranularity: false,
-          fitYAxisToData: false,
           numberFormat: { output: 'byte', decimalBytes: true },
         },
       };

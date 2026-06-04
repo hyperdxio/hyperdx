@@ -447,10 +447,16 @@ export const MemoChart = memo(function MemoChart({
   const yAxisDomain: AxisDomain = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
 
+    // Fitting the y-axis lower bound to the data only applies to line charts.
+    // Bar charts are always anchored at zero so the bar lengths stay
+    // proportional to their values.
+    const shouldFitYAxis =
+      fitYAxisToData && displayType !== DisplayType.StackedBar;
+
     // The data min/max is only needed to either zoom into a selection or to
     // fit the lower bound to the data. When neither applies, let Recharts
     // auto-calculate the upper bound while pinning the lower bound to zero.
-    if (!hasSelection && !fitYAxisToData) {
+    if (!hasSelection && !shouldFitYAxis) {
       return [0, 'auto'];
     }
 
@@ -481,7 +487,7 @@ export const MemoChart = memo(function MemoChart({
       // drag the axis below zero unless the data itself is negative, so
       // clamp at zero whenever the minimum is non-negative.
       const lowerBound =
-        fitYAxisToData && minValue < 0
+        shouldFitYAxis && minValue < 0
           ? minValue - padding
           : Math.max(0, minValue - padding);
       const upperBound = maxValue + padding;
@@ -489,7 +495,13 @@ export const MemoChart = memo(function MemoChart({
     }
 
     return ['auto', 'auto'];
-  }, [graphResults, lineData, selectedSeriesNames, fitYAxisToData]);
+  }, [
+    graphResults,
+    lineData,
+    selectedSeriesNames,
+    fitYAxisToData,
+    displayType,
+  ]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
   const [containerWidth, setContainerWidth] = useState(0);

@@ -172,7 +172,7 @@ export default function ChartDisplaySettingsDrawer({
               name="fitYAxisToData"
               size="xs"
               label="Fit Y-Axis to Data"
-              description="Start the y-axis at the minimum of the displayed data instead of zero"
+              description="Start the y-axis at the minimum of the displayed data instead of zero. Only applicable to line charts."
             />
             <Divider />
           </>
