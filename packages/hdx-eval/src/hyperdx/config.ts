@@ -34,6 +34,13 @@ export type EvalConfig = {
     user: string;
     password: string;
   };
+  /**
+   * Fixed "now" anchor (ISO 8601) for both seed and agent system prompt.
+   * Defaults to the current time on first run and is persisted so subsequent
+   * runs reuse the same anchor. Override with `--anchor-time` on the CLI, or
+   * pass `--live` to ignore the saved value and use wall-clock time.
+   */
+  anchorTime?: string;
 };
 
 const CONFIG_FILENAME = 'eval.config.json';
@@ -91,6 +98,36 @@ export function getMcpDefinition(
     );
   }
   return def;
+}
+
+/**
+ * Return the config's saved `anchorTime`, creating and persisting a default
+ * (current wall-clock time) when none exists yet.  This makes anchor-time
+ * "sticky" — the first `run` freezes the anchor, and later runs reuse it
+ * automatically.
+ *
+ * Pass `overrideIso` to force a specific value (e.g. from `--anchor-time`).
+ * The override is saved back to the config file.
+ */
+export function ensureAnchorTime(
+  config: EvalConfig,
+  overrideIso?: string,
+): { anchorTimeIso: string; anchorMs: number } {
+  let iso = overrideIso ?? config.anchorTime;
+  if (!iso) {
+    iso = new Date().toISOString();
+  }
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) {
+    throw new Error(`Invalid anchorTime value: ${iso}`);
+  }
+  // Normalise and persist if it changed.
+  const normalised = new Date(ms).toISOString();
+  if (config.anchorTime !== normalised) {
+    config.anchorTime = normalised;
+    writeConfig(config);
+  }
+  return { anchorTimeIso: normalised, anchorMs: ms };
 }
 
 function validateConfig(raw: unknown, path: string): EvalConfig {

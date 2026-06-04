@@ -71,5 +71,6 @@
     "port": "30596",
     "user": "default",
     "password": ""
-  }
+  },
+  "anchorTime": "2026-06-01T00:00:00.000Z"
 }

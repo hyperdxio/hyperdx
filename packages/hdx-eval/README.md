@@ -29,13 +29,17 @@ yarn workspace @hyperdx/hdx-eval dev setup-hyperdx
 yarn workspace @hyperdx/hdx-eval dev seed error-root-cause --volume-factor 0.1
 
 # 3. Run the eval (all enabled MCPs, 3 runs each)
+#    First run saves an anchorTime to eval.config.json automatically.
 yarn workspace @hyperdx/hdx-eval dev run error-root-cause
 
-# 4. Grade + report (auto-runs after step 3 by default)
+# 4. Re-run later — reuses saved anchor, skips reseed
+yarn workspace @hyperdx/hdx-eval dev run error-root-cause
+
+# 5. Grade + report (auto-runs after step 3 by default)
 yarn workspace @hyperdx/hdx-eval dev grade <batch>
 yarn workspace @hyperdx/hdx-eval dev report <batch>
 
-# 5. Browse results in the web viewer
+# 6. Browse results in the web viewer
 yarn workspace @hyperdx/hdx-eval viewer
 ```
 
@@ -152,6 +156,7 @@ anonymize the MCP identity for fair LLM judging.
 | `scenarios` | no | Per-scenario HyperDX Source IDs (populated by `setup-hyperdx`) |
 | `hyperdxApi` | no | HyperDX API URL + access key (used only by `setup-hyperdx`) |
 | `clickhouse` | no | ClickHouse connection for `seed`, `drop`, `runs-instrument` commands |
+| `anchorTime` | no | Fixed "now" anchor (ISO 8601). Auto-generated and saved on first `run`. See [Anchor Time](#anchor-time). |
 
 ### Example: HTTP MCP (HyperDX)
 
@@ -252,7 +257,9 @@ dev run <scenario> --model claude-opus-4-6
 dev run <scenario> --max-turns 20           # default: 15
 dev run <scenario> --concurrency 4          # parallel cells
 dev run <scenario> --prompt-variant hypothesis  # hypothesis-first variant
-dev run <scenario> --no-reseed --anchor-time 2026-05-08T15:00:00Z
+dev run <scenario> --reseed                 # re-seed data before running
+dev run <scenario> --anchor-time 2026-05-08T15:00:00Z  # override + save anchor
+dev run <scenario> --live                   # wall-clock now, no anchor, forces reseed
 dev run <scenario> --no-grade               # skip auto-grading
 dev run <scenario> --no-judge               # programmatic checks only (faster)
 ```
@@ -323,9 +330,26 @@ All randomness flows through a `mulberry32(seed)` PRNG. Same `(seed, now)`
 produces byte-identical row content. This makes side-by-side comparison
 meaningful — both MCPs query the exact same data.
 
-When using `--anchor-time` with `--no-reseed`, the agent's system prompt
-treats the anchor as "now" for relative time references. This is required
-when running against pre-seeded data from an earlier session.
+### Anchor Time
+
+The anchor time is the "now" reference for both seeded data timestamps and
+the agent's system prompt. It is persisted in `eval.config.json` under
+`anchorTime` so that subsequent runs automatically reuse the same value.
+
+- **First run**: if `anchorTime` is not set in the config, the current
+  wall-clock time is saved and used.
+- **Subsequent runs**: the saved `anchorTime` is read from config. No
+  re-seed is needed — the data already matches.
+- **`--anchor-time <iso>`**: override the saved value with a specific
+  timestamp. The new value is saved to config for future runs. Pair with
+  `--reseed` if the data needs to be regenerated to match.
+- **`--live`**: ignore the saved anchor and use wall-clock time. The agent
+  does NOT receive a `FIXED CURRENT TIME` system prompt block. Implies
+  `--reseed` since the data must match the current time.
+
+By default, `run` skips re-seeding (equivalent to the old `--no-reseed`).
+Pass `--reseed` explicitly when you need to regenerate data (e.g. after
+changing the seed or anchor time).
 
 ## Tests
 

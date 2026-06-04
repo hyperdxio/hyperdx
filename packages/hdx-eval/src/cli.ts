@@ -18,6 +18,7 @@ import {
   configMcpNames,
   configPath,
   enabledMcpNames,
+  ensureAnchorTime,
   getMcpDefinition,
   readConfig,
 } from './hyperdx/config';
@@ -329,13 +330,21 @@ program
     'Per-run wall-clock timeout in milliseconds',
     '300000',
   )
-  .option('--no-reseed', 'Skip the re-seed step (use existing data as-is)')
+  .option(
+    '--reseed',
+    'Re-seed ClickHouse data before running (default: skip reseed and reuse ' +
+      'existing data). Use after changing seed parameters or when data is stale.',
+  )
   .option(
     '--anchor-time <iso>',
-    'Fixed "now" anchor for both seed and agent system prompt. When set, ' +
-      'the agent treats this timestamp as the current time for relative ' +
-      'window references in the user prompt. Required when running with ' +
-      '--no-reseed against a shared-anchor batch seed.',
+    'Override the saved "now" anchor with a specific ISO timestamp. ' +
+      'Saved to eval.config.json for future runs.',
+  )
+  .option(
+    '--live',
+    'Ignore the saved anchor time and use wall-clock "now". ' +
+      'The agent will NOT receive a FIXED CURRENT TIME system prompt block. ' +
+      'Implies --reseed since data must be seeded to the current time.',
   )
   .option(
     '--concurrency <n>',
@@ -374,8 +383,9 @@ program
         maxTurns: string;
         seed: string;
         timeout: string;
-        reseed: boolean;
+        reseed?: true;
         anchorTime?: string;
+        live?: true;
         concurrency: string;
         promptVariant: string;
         grade: boolean;
@@ -433,24 +443,39 @@ program
         }
       }
 
+      // ── Anchor-time resolution ───────────────────────────────────
+      // Default: read from config (persisted). First run auto-generates.
+      // --anchor-time <iso>: override + save to config.
+      // --live: ignore saved anchor, use wall-clock now (no FIXED CURRENT
+      //         TIME in system prompt), and force reseed.
       let anchorTimeIso: string | undefined;
       let anchorMs: number;
-      if (cmdOpts.anchorTime) {
-        anchorMs = Date.parse(cmdOpts.anchorTime);
-        if (!Number.isFinite(anchorMs)) {
-          throw new Error(
-            `--anchor-time must be a valid ISO timestamp, got: ${cmdOpts.anchorTime}`,
-          );
+      if (cmdOpts.live) {
+        if (cmdOpts.anchorTime) {
+          throw new Error('--live and --anchor-time are mutually exclusive.');
         }
-        anchorTimeIso = new Date(anchorMs).toISOString();
-      } else {
         anchorMs = Date.now();
         anchorTimeIso = undefined; // no anchor injection when running live
+      } else {
+        if (cmdOpts.anchorTime) {
+          const parsed = Date.parse(cmdOpts.anchorTime);
+          if (!Number.isFinite(parsed)) {
+            throw new Error(
+              `--anchor-time must be a valid ISO timestamp, got: ${cmdOpts.anchorTime}`,
+            );
+          }
+        }
+        const anchor = ensureAnchorTime(config, cmdOpts.anchorTime);
+        anchorTimeIso = anchor.anchorTimeIso;
+        anchorMs = anchor.anchorMs;
       }
 
-      // Re-seed once before running so timestamps are anchored to the chosen
-      // "now". Skip if --no-reseed was passed (e.g. shared-anchor batch seed).
-      if (cmdOpts.reseed !== false) {
+      // ── Re-seed ───────────────────────────────────────────────────
+      // Default: skip reseed (data is assumed to exist from a prior seed).
+      // --reseed: explicitly re-seed before running.
+      // --live: always reseed (data must match wall-clock now).
+      const shouldReseed = cmdOpts.reseed === true || cmdOpts.live === true;
+      if (shouldReseed) {
         console.log(
           `Seeding ${scenario.name} (seed=${seedNum}, now=${new Date(anchorMs).toISOString()})...`,
         );
