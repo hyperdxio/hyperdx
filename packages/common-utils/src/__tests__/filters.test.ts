@@ -1,4 +1,10 @@
-import { filtersToQuery } from '@/filters';
+import {
+  filtersToQuery,
+  validateDashboardFilterQueries,
+  validateSavedFilterValues,
+  validateSavedQuery,
+} from '@/filters';
+import type { DashboardFilter, Filter } from '@/types';
 
 describe('filters', () => {
   describe('filtersToQuery', () => {
@@ -159,6 +165,258 @@ describe('filters', () => {
         {
           type: 'sql',
           condition: "message IN ('a\\\\''b')",
+        },
+      ]);
+    });
+  });
+
+  describe('validateSavedFilterValues', () => {
+    it('returns no issues for an empty array', () => {
+      expect(validateSavedFilterValues([])).toEqual([]);
+    });
+
+    it('accepts a valid single-value lucene condition', () => {
+      const filters: Filter[] = [
+        { type: 'lucene', condition: 'ServiceName:"hdx-oss-dev-api"' },
+      ];
+      expect(validateSavedFilterValues(filters)).toEqual([]);
+    });
+
+    it('accepts a valid multi-value (OR) lucene condition', () => {
+      const filters: Filter[] = [
+        {
+          type: 'lucene',
+          condition:
+            '(ServiceName:"hdx-oss-dev-api" OR ServiceName:"hdx-oss-dev-app")',
+        },
+      ];
+      expect(validateSavedFilterValues(filters)).toEqual([]);
+    });
+
+    it('accepts lucene conditions over map / bracket-notation keys', () => {
+      const filters: Filter[] = [
+        {
+          type: 'lucene',
+          condition: 'ResourceAttributes.k8s\\.pod\\.name:"checkout-0"',
+        },
+      ];
+      expect(validateSavedFilterValues(filters)).toEqual([]);
+    });
+
+    it('accepts a valid sql condition', () => {
+      const filters: Filter[] = [
+        { type: 'sql', condition: "ServiceName = 'hdx-oss-dev-api'" },
+      ];
+      expect(validateSavedFilterValues(filters)).toEqual([]);
+    });
+
+    it('accepts a valid sql condition over a map access column', () => {
+      const filters: Filter[] = [
+        {
+          type: 'sql',
+          condition: "ResourceAttributes['service.name'] = 'checkout'",
+        },
+      ];
+      expect(validateSavedFilterValues(filters)).toEqual([]);
+    });
+
+    it('flags a malformed lucene condition', () => {
+      const filters: Filter[] = [
+        { type: 'lucene', condition: 'ServiceName:((("broken' },
+      ];
+      expect(validateSavedFilterValues(filters)).toEqual([
+        {
+          index: 0,
+          language: 'lucene',
+          condition: 'ServiceName:((("broken',
+        },
+      ]);
+    });
+
+    it('flags a malformed sql condition', () => {
+      const filters: Filter[] = [
+        { type: 'sql', condition: 'ServiceName = = ' },
+      ];
+      expect(validateSavedFilterValues(filters)).toEqual([
+        { index: 0, language: 'sql', condition: 'ServiceName = = ' },
+      ]);
+    });
+
+    it('treats empty / whitespace-only conditions as valid (no-ops)', () => {
+      const filters: Filter[] = [
+        { type: 'lucene', condition: '' },
+        { type: 'sql', condition: '   ' },
+      ];
+      expect(validateSavedFilterValues(filters)).toEqual([]);
+    });
+
+    it('treats structurally-valid sql_ast filters as valid', () => {
+      const filters: Filter[] = [
+        { type: 'sql_ast', operator: '=', left: 'ServiceName', right: 'api' },
+      ];
+      expect(validateSavedFilterValues(filters)).toEqual([]);
+    });
+
+    it('reports the correct index for each invalid value in a mixed list', () => {
+      const filters: Filter[] = [
+        { type: 'lucene', condition: 'ServiceName:"good"' },
+        { type: 'lucene', condition: 'Bad:((("' },
+        { type: 'sql', condition: "Level = 'error'" },
+        { type: 'sql', condition: 'broken = = =' },
+      ];
+      const issues = validateSavedFilterValues(filters);
+      expect(issues).toEqual([
+        { index: 1, language: 'lucene', condition: 'Bad:((("' },
+        { index: 3, language: 'sql', condition: 'broken = = =' },
+      ]);
+    });
+  });
+
+  describe('validateSavedQuery', () => {
+    it('returns null for an empty / nullish query', () => {
+      expect(validateSavedQuery('', 'lucene')).toBeNull();
+      expect(validateSavedQuery('   ', 'sql')).toBeNull();
+      expect(validateSavedQuery(null, 'lucene')).toBeNull();
+      expect(validateSavedQuery(undefined, 'sql')).toBeNull();
+    });
+
+    it('accepts a valid lucene query', () => {
+      expect(validateSavedQuery('ServiceName:"api"', 'lucene')).toBeNull();
+    });
+
+    it('accepts a valid sql query', () => {
+      expect(validateSavedQuery("ServiceName = 'api'", 'sql')).toBeNull();
+    });
+
+    it('defaults a missing language to lucene', () => {
+      expect(validateSavedQuery('ServiceName:"api"', null)).toBeNull();
+      expect(validateSavedQuery('ServiceName:"api"', undefined)).toBeNull();
+      expect(validateSavedQuery('Bad:((("', undefined)).toEqual({
+        language: 'lucene',
+        query: 'Bad:((("',
+      });
+    });
+
+    it('treats promql as valid (not statically validated)', () => {
+      expect(validateSavedQuery('rate(foo[5m]', 'promql')).toBeNull();
+    });
+
+    it('flags a malformed lucene query', () => {
+      expect(validateSavedQuery('ServiceName:((("broken', 'lucene')).toEqual({
+        language: 'lucene',
+        query: 'ServiceName:((("broken',
+      });
+    });
+
+    it('flags a malformed sql query', () => {
+      expect(validateSavedQuery('ServiceName = = ', 'sql')).toEqual({
+        language: 'sql',
+        query: 'ServiceName = = ',
+      });
+    });
+  });
+
+  describe('validateDashboardFilterQueries', () => {
+    const filter = (overrides: Partial<DashboardFilter>): DashboardFilter => ({
+      id: 'f1',
+      type: 'QUERY_EXPRESSION',
+      name: 'ServiceName',
+      expression: 'ServiceName',
+      source: 'logs',
+      ...overrides,
+    });
+
+    it('returns no issues for an empty array', () => {
+      expect(validateDashboardFilterQueries([])).toEqual([]);
+    });
+
+    it('treats a filter with no where clause as valid', () => {
+      expect(
+        validateDashboardFilterQueries([filter({ whereLanguage: 'lucene' })]),
+      ).toEqual([]);
+    });
+
+    it('treats a whitespace-only where clause as valid', () => {
+      expect(
+        validateDashboardFilterQueries([
+          filter({ where: '   ', whereLanguage: 'lucene' }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('accepts a valid lucene where clause', () => {
+      expect(
+        validateDashboardFilterQueries([
+          filter({ where: 'ServiceName:*', whereLanguage: 'lucene' }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('accepts a valid sql where clause', () => {
+      expect(
+        validateDashboardFilterQueries([
+          filter({ where: "ServiceName != ''", whereLanguage: 'sql' }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('flags a malformed lucene where clause', () => {
+      expect(
+        validateDashboardFilterQueries([
+          filter({
+            id: 'svc',
+            name: 'Service',
+            where: 'ServiceName:((("',
+            whereLanguage: 'lucene',
+          }),
+        ]),
+      ).toEqual([
+        {
+          filterId: 'svc',
+          filterName: 'Service',
+          language: 'lucene',
+          where: 'ServiceName:((("',
+        },
+      ]);
+    });
+
+    it('flags a malformed sql where clause', () => {
+      expect(
+        validateDashboardFilterQueries([
+          filter({
+            id: 'svc',
+            name: 'Service',
+            where: 'ServiceName = =',
+            whereLanguage: 'sql',
+          }),
+        ]),
+      ).toEqual([
+        {
+          filterId: 'svc',
+          filterName: 'Service',
+          language: 'sql',
+          where: 'ServiceName = =',
+        },
+      ]);
+    });
+
+    it('only reports the invalid filters in a mixed list', () => {
+      const issues = validateDashboardFilterQueries([
+        filter({ id: 'a', where: 'ServiceName:*', whereLanguage: 'lucene' }),
+        filter({
+          id: 'b',
+          name: 'Bad',
+          where: 'Bad:((("',
+          whereLanguage: 'lucene',
+        }),
+        filter({ id: 'c', where: "Level = 'error'", whereLanguage: 'sql' }),
+      ]);
+      expect(issues).toEqual([
+        {
+          filterId: 'b',
+          filterName: 'Bad',
+          language: 'lucene',
+          where: 'Bad:((("',
         },
       ]);
     });
