@@ -7,12 +7,6 @@
 // in `McpInstallPanel.tsx`. Keeping the builders here makes unit
 // tests cheap and keeps the snippet round-trip stable regardless
 // of which surface renders them.
-//
-// Scoped to the self-managed deployment in this PR. The CHC
-// managed (BYC) and ClickStack Cloud branches require the CP MCP
-// proxy + OAuth-scoped token, tracked as outcome AC18; the
-// `DeploymentShape` will gain a `mode` discriminator and CHC
-// service-id field in that follow-up.
 
 /**
  * MCP server name registered in the host's config. A single fixed
@@ -88,9 +82,9 @@ function base64UrlSafe(value: string): string {
 }
 
 /**
- * Returns the headers map for the MCP HTTP transport. Self-managed
- * mode uses only the `Authorization` header; CHC modes will add
- * `x-service-id` when AC18 (cloud install) lights up.
+ * Returns the headers map for the MCP HTTP transport. The
+ * deployment shape exposed by `useMe()` carries only the bearer
+ * access key, so `Authorization` is the only header emitted here.
  */
 function buildHeaders(deployment: DeploymentShape): Record<string, string> {
   return {
@@ -99,9 +93,9 @@ function buildHeaders(deployment: DeploymentShape): Record<string, string> {
 }
 
 /**
- * Returns the MCP URL the host connects to. Self-managed talks to
- * the per-tenant origin; CHC modes will route through the CP MCP
- * proxy when AC18 lights up.
+ * Returns the MCP URL the host connects to. `apiUrl` is the API
+ * origin derived from the active page; the MCP transport lives at
+ * `/mcp` underneath it.
  */
 function buildUrl(deployment: DeploymentShape): string {
   const base = deployment.apiUrl.endsWith('/')

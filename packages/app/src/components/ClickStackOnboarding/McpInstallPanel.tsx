@@ -66,14 +66,13 @@ interface McpInstallPanelProps {
  * Renders the host picker plus the install primitive (CLI command,
  * deep link, or JSON block) for the chosen host. Presentational;
  * the deployment shape comes in via props so the same component
- * renders from both the EE Team Settings page and the onboarding
- * `done` step in a follow-up PR.
+ * can render from any surface that resolves a deployment + access
+ * key.
  *
  * The access key is inlined in the rendered snippet to match the
  * existing API Keys card pattern, which shows the key in plain
  * text. A follow-up will introduce a shared mask + reveal-to-copy
- * affordance across every credential surface in Team Settings
- * (outcome AC16).
+ * affordance across every credential surface in Team Settings.
  */
 export default function McpInstallPanel({ deployment }: McpInstallPanelProps) {
   const [host, setHost] = useState<AgentHost>('claude-code');
