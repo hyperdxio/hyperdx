@@ -69,8 +69,13 @@ export class ChartEditorComponent {
    */
   async selectSource(sourceName: string) {
     await this.sourceSelector.click();
-    // Use getByRole for more reliable selection
-    const sourceOption = this.page.getByRole('option', { name: sourceName });
+    // Use getByRole for more reliable selection. exact: true avoids matching
+    // sources whose names are prefixes of others (e.g. "E2E Traces MV" vs
+    // "E2E Traces MV AutoPopulate").
+    const sourceOption = this.page.getByRole('option', {
+      name: sourceName,
+      exact: true,
+    });
     if ((await sourceOption.getAttribute('data-combobox-active')) != 'true') {
       await sourceOption.click({ timeout: 5000 });
     }

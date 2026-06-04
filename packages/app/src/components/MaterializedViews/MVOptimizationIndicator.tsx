@@ -23,13 +23,23 @@ function MVOptimizationIcon({
 }) {
   return isInWarningState ? (
     <Tooltip label="Not Accelerated">
-      <ActionIcon onClick={onClick}>
+      <ActionIcon
+        onClick={onClick}
+        aria-label="Not Accelerated"
+        data-testid="mv-optimization-indicator"
+        data-mv-accelerated="false"
+      >
         <IconBoltOff size={16} color={WARNING_COLOR} />
       </ActionIcon>
     </Tooltip>
   ) : (
     <Tooltip label="Accelerated">
-      <ActionIcon onClick={onClick}>
+      <ActionIcon
+        onClick={onClick}
+        aria-label="Accelerated"
+        data-testid="mv-optimization-indicator"
+        data-mv-accelerated="true"
+      >
         <IconBolt size={18} color={SUCCESS_COLOR} />
       </ActionIcon>
     </Tooltip>
@@ -48,6 +58,8 @@ function MVOptimizationBadge({
       color={isInWarningState ? WARNING_COLOR : SUCCESS_COLOR}
       onClick={onClick}
       className="cursor-pointer"
+      data-testid="mv-optimization-indicator"
+      data-mv-accelerated={isInWarningState ? 'false' : 'true'}
     >
       {isInWarningState ? 'Not Accelerated' : 'Accelerated'}
     </Badge>

@@ -1,10 +1,9 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { omit } from 'lodash';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import type { FloatingPosition } from '@mantine/core';
-import { Box, Code, Flex, HoverCard, Text } from '@mantine/core';
+import { Box, Flex, HoverCard, Text } from '@mantine/core';
 
 import { buildMVDateRangeIndicator } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
@@ -14,8 +13,10 @@ import type { NumberFormat } from '@/types';
 import { formatNumber, semanticKeyedColor } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
+import ChartErrorState, {
+  ChartErrorStateVariant,
+} from './charts/ChartErrorState';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-import { SQLPreview } from './ChartSQLPreview';
 
 function ListItem({
   title,
@@ -184,6 +185,7 @@ export default function DBListBarChart({
   title,
   toolbarItems,
   showMVOptimizationIndicator = true,
+  errorVariant,
 }: {
   config: BuilderChartConfigWithDateRange;
   onSettled?: () => void;
@@ -197,6 +199,7 @@ export default function DBListBarChart({
   title?: React.ReactNode;
   toolbarItems?: React.ReactNode[];
   showMVOptimizationIndicator?: boolean;
+  errorVariant?: ChartErrorStateVariant;
 }) {
   const queriedConfig = omit(config, ['granularity']);
   const { data, isLoading, isError, error } = useQueriedChartConfig(
@@ -273,32 +276,7 @@ export default function DBListBarChart({
           Loading Chart Data...
         </div>
       ) : isError ? (
-        <div className="h-100 w-100 align-items-center justify-content-center text-muted">
-          <Text ta="center" size="sm" mt="sm">
-            Error loading chart, please check your query or try again later.
-          </Text>
-          <Box mt="sm">
-            <Text my="sm" size="sm" ta="center">
-              Error Message:
-            </Text>
-            <Code
-              block
-              style={{
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {error.message}
-            </Code>
-            {error instanceof ClickHouseQueryError && (
-              <>
-                <Text my="sm" size="sm" ta="center">
-                  Sent Query:
-                </Text>
-                <SQLPreview data={error?.query} />
-              </>
-            )}
-          </Box>
-        </div>
+        <ChartErrorState error={error} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           No data found within time range.

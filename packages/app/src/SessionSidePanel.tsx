@@ -13,7 +13,7 @@ import { IconLink, IconX } from '@tabler/icons-react';
 
 import {
   DrawerFullWidthToggle,
-  getInitialDrawerWidthPercent,
+  INITIAL_DRAWER_WIDTH_PERCENT,
 } from '@/components/DrawerUtils';
 import useResizable from '@/hooks/useResizable';
 import {
@@ -54,11 +54,11 @@ export default function SessionSidePanel({
   const [subDrawerOpen, setSubDrawerOpen] = useState(false);
 
   const { size, setSize, startResize } = useResizable(
-    getInitialDrawerWidthPercent(),
+    INITIAL_DRAWER_WIDTH_PERCENT,
   );
   const isFullWidth = size >= 99;
   const toggleFullWidth = useCallback(() => {
-    setSize(isFullWidth ? getInitialDrawerWidthPercent() : 100);
+    setSize(isFullWidth ? INITIAL_DRAWER_WIDTH_PERCENT : 100);
   }, [isFullWidth, setSize]);
 
   useHotkeys(

@@ -975,6 +975,7 @@ const Tile = forwardRef(
                         isLive={false}
                         queryKeyPrefix={'search'}
                         variant="muted"
+                        errorVariant="collapsible"
                       />
                     </ChartContainer>
                   )}
@@ -2352,6 +2353,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           {hasTiles && (
             <Menu.Item
               leftSection={<IconDownload size={16} />}
+              data-testid="export-dashboard-menu-item"
               onClick={() => {
                 if (!sources || !dashboard) {
                   notifications.show({

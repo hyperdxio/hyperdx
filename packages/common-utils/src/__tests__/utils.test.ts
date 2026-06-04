@@ -13,6 +13,7 @@ import {
 
 import {
   aliasMapToWithClauses,
+  convertToDashboardDocument,
   convertToDashboardTemplate,
   extractSettingsClauseFromEnd,
   findJsonExpressions,
@@ -602,6 +603,227 @@ describe('utils', () => {
             sourceMetricType: MetricsDataType.Gauge,
           },
         ],
+      });
+    });
+
+    it('should include saved default query and filter values in the template', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Dashboard With Defaults',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'Log Tile',
+              source: 'source1',
+              select: '',
+              where: '',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+        savedQuery: 'level:error',
+        savedQueryLanguage: 'lucene',
+        savedFilterValues: [
+          {
+            type: 'lucene',
+            condition: 'ServiceName:"accounting"',
+          },
+        ],
+      };
+
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: {
+            databaseName: 'db1',
+            tableName: 'logs_table',
+          },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.savedQuery).toBe('level:error');
+      expect(template.savedQueryLanguage).toBe('lucene');
+      expect(template.savedFilterValues).toEqual([
+        { type: 'lucene', condition: 'ServiceName:"accounting"' },
+      ]);
+
+      const document = convertToDashboardDocument(template);
+      expect(document.savedQuery).toBe('level:error');
+      expect(document.savedQueryLanguage).toBe('lucene');
+      expect(document.savedFilterValues).toEqual([
+        { type: 'lucene', condition: 'ServiceName:"accounting"' },
+      ]);
+    });
+
+    describe('savedFilterValues export/import round trip', () => {
+      const baseSources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'logs_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const makeDashboard = (
+        savedFilterValues?: z.infer<
+          typeof DashboardSchema
+        >['savedFilterValues'],
+      ): z.infer<typeof DashboardSchema> => ({
+        id: 'dashboard1',
+        name: 'Service Filter Dashboard',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'Log Tile',
+              source: 'source1',
+              select: '',
+              where: '',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+        filters: [
+          {
+            id: 'filter1',
+            type: 'QUERY_EXPRESSION',
+            name: 'ServiceName Filter',
+            expression: 'ServiceName',
+            source: 'source1',
+          },
+        ],
+        ...(savedFilterValues !== undefined ? { savedFilterValues } : {}),
+      });
+
+      it('omits savedFilterValues when no services are selected (undefined)', () => {
+        const dashboard = makeDashboard(undefined);
+
+        const template = convertToDashboardTemplate(dashboard, baseSources);
+        expect(template.savedFilterValues).toBeUndefined();
+        expect('savedFilterValues' in template).toBe(false);
+
+        const document = convertToDashboardDocument(template);
+        expect(document.savedFilterValues).toBeUndefined();
+        expect('savedFilterValues' in document).toBe(false);
+      });
+
+      it('omits savedFilterValues when the selection is an empty array', () => {
+        const dashboard = makeDashboard([]);
+
+        const template = convertToDashboardTemplate(dashboard, baseSources);
+        expect(template.savedFilterValues).toBeUndefined();
+        expect('savedFilterValues' in template).toBe(false);
+
+        const document = convertToDashboardDocument(template);
+        expect(document.savedFilterValues).toBeUndefined();
+        expect('savedFilterValues' in document).toBe(false);
+      });
+
+      it('carries a single selected service through the round trip', () => {
+        const savedFilterValues = [
+          {
+            type: 'lucene' as const,
+            condition: 'ServiceName:"hdx-oss-dev-api"',
+          },
+        ];
+        const dashboard = makeDashboard(savedFilterValues);
+
+        const template = convertToDashboardTemplate(dashboard, baseSources);
+        expect(template.savedFilterValues).toEqual(savedFilterValues);
+
+        const document = convertToDashboardDocument(template);
+        expect(document.savedFilterValues).toEqual(savedFilterValues);
+      });
+
+      it('carries multiple selected services through the round trip', () => {
+        const savedFilterValues = [
+          {
+            type: 'lucene' as const,
+            condition:
+              '(ServiceName:"hdx-oss-dev-api" OR ServiceName:"hdx-oss-dev-app")',
+          },
+        ];
+        const dashboard = makeDashboard(savedFilterValues);
+
+        const template = convertToDashboardTemplate(dashboard, baseSources);
+        expect(template.savedFilterValues).toEqual(savedFilterValues);
+
+        const document = convertToDashboardDocument(template);
+        expect(document.savedFilterValues).toEqual(savedFilterValues);
+      });
+
+      it('carries selected values across multiple filter expressions', () => {
+        const savedFilterValues = [
+          {
+            type: 'lucene' as const,
+            condition:
+              '(ServiceName:"hdx-oss-dev-api" OR ServiceName:"hdx-oss-dev-app")',
+          },
+          { type: 'lucene' as const, condition: 'SeverityText:"error"' },
+        ];
+        const dashboard = makeDashboard(savedFilterValues);
+
+        const template = convertToDashboardTemplate(dashboard, baseSources);
+        expect(template.savedFilterValues).toEqual(savedFilterValues);
+
+        const document = convertToDashboardDocument(template);
+        expect(document.savedFilterValues).toEqual(savedFilterValues);
+      });
+
+      it('deep-clones savedFilterValues so the template does not alias the input', () => {
+        const savedFilterValues = [
+          {
+            type: 'lucene' as const,
+            condition: 'ServiceName:"hdx-oss-dev-api"',
+          },
+        ];
+        const dashboard = makeDashboard(savedFilterValues);
+
+        const template = convertToDashboardTemplate(dashboard, baseSources);
+        expect(template.savedFilterValues).not.toBe(
+          dashboard.savedFilterValues,
+        );
+        expect(template.savedFilterValues?.[0]).not.toBe(savedFilterValues[0]);
+
+        // Mutating the source after export must not leak into the template.
+        savedFilterValues[0].condition = 'ServiceName:"mutated"';
+        const exported = template.savedFilterValues?.[0];
+        expect(exported).toEqual({
+          type: 'lucene',
+          condition: 'ServiceName:"hdx-oss-dev-api"',
+        });
+      });
+
+      it('produces a template that validates against DashboardTemplateSchema', () => {
+        const dashboard = makeDashboard([
+          {
+            type: 'lucene' as const,
+            condition: 'ServiceName:"hdx-oss-dev-api"',
+          },
+        ]);
+
+        const template = convertToDashboardTemplate(dashboard, baseSources);
+        expect(() => DashboardTemplateSchema.parse(template)).not.toThrow();
       });
     });
 

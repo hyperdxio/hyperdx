@@ -46,6 +46,7 @@ interface SourceManagementMenuProps {
    */
   onManageSources?: () => void;
   onCreate?: () => void;
+  size?: string;
 }
 
 /**
@@ -63,6 +64,7 @@ interface SourceManagementMenuProps {
  */
 export const SourceManagementMenu = ({
   hasSelection,
+  size = 'sm',
   onSchemaPreview,
   isSchemaPreviewEnabled = true,
   onEdit,
@@ -133,7 +135,7 @@ export const SourceManagementMenu = ({
           <ActionIcon
             variant="subtle"
             color="gray"
-            size="input-xs"
+            size={`input-${size}`}
             className={styles.sourceMenuButton}
             data-testid="source-actions-menu"
             aria-label="Source actions"
@@ -236,6 +238,7 @@ function SourceSelectControlledComponent({
       {hasMenu && (
         <SourceManagementMenu
           hasSelection={hasSelection}
+          size={size}
           onSchemaPreview={onSchemaPreview}
           isSchemaPreviewEnabled={isSchemaPreviewEnabled}
           onEdit={onEdit}
