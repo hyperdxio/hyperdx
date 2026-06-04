@@ -22,7 +22,12 @@ import {
   isRawSqlChartConfig,
 } from '@/guards';
 import { replaceMacros } from '@/macros';
-import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
+import {
+  buildKvItemsLookup,
+  CustomSchemaSQLSerializerV2,
+  KvItemsLookup,
+  SearchQueryBuilder,
+} from '@/queryParser';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@/rawSqlParams';
 import {
   AggregateFunction,
@@ -335,6 +340,136 @@ const fastifySQL = ({
     return parser.sqlify(ast);
   } catch (e) {
     return rawSQL;
+  }
+};
+
+export const rewriteSqlFilterWithKvItems = (
+  condition: string,
+  kvItemsLookup: KvItemsLookup,
+): string => {
+  if (kvItemsLookup.size === 0) return condition;
+  try {
+    const parser = new SQLParser.Parser();
+    const prefix = 'SELECT 1 FROM `t` WHERE ';
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const ast = parser.astify(`${prefix}${condition}`, {
+      database: 'Postgresql',
+    }) as SQLParser.Select;
+
+    const tryOptimize = (
+      node: SQLParser.ExpressionValue | SQLParser.ExprList,
+    ): void => {
+      if (!('operator' in node)) return;
+      const op = String(node.operator ?? '').toUpperCase();
+      if (op !== '=' && op !== 'IN') return;
+      const left = node.left;
+      if (
+        left?.type !== 'column_ref' ||
+        ('column' in left && typeof left.column === 'string')
+      ) {
+        return;
+      }
+      const mapColumn = left['column']?.expr?.value;
+      const arrIdx = left['array_index'];
+      if (
+        typeof mapColumn !== 'string' ||
+        !Array.isArray(arrIdx) ||
+        arrIdx.length !== 1
+      ) {
+        return;
+      }
+      const idxNode = arrIdx[0]?.index;
+      if (
+        idxNode?.type !== 'single_quote_string' ||
+        typeof idxNode.value !== 'string'
+      ) {
+        return;
+      }
+      const mapKey: string = idxNode.value;
+      const info = kvItemsLookup.get(mapColumn);
+      if (!info) return;
+
+      let values: string[];
+      if (op === '=') {
+        const right = node.right;
+        if (
+          right?.type !== 'single_quote_string' ||
+          typeof right.value !== 'string'
+        ) {
+          return;
+        }
+        values = [right.value];
+      } else {
+        const right = node.right;
+        if (right?.type !== 'expr_list' || !Array.isArray(right.value)) return;
+        const collected: string[] = [];
+        for (const item of right.value) {
+          if (
+            item?.type !== 'single_quote_string' ||
+            typeof item.value !== 'string'
+          ) {
+            return;
+          }
+          collected.push(item.value);
+        }
+        values = collected;
+      }
+      // Bail on empty values: `Map['k']='' ` also matches absent keys because
+      // Map(String, String)'s subscript default is '', which `has(items, 'k=')`
+      // alone does not preserve. Same rationale for empty entries in IN lists.
+      if (values.length === 0 || values.some(v => v === '')) return;
+
+      const replacement =
+        values.length === 1
+          ? SqlString.format('has(??, concat(?, ?, ?))', [
+              info.kvItemsColumn,
+              mapKey,
+              info.separator,
+              values[0],
+            ])
+          : `hasAny(${SqlString.format('??', [
+              info.kvItemsColumn,
+            ])}, array(${values
+              .map(v =>
+                SqlString.format('concat(?, ?, ?)', [
+                  mapKey,
+                  info.separator,
+                  v,
+                ]),
+              )
+              .join(', ')}))`;
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type, we expect Select
+      const replAst = parser.astify(`${prefix}${replacement}`, {
+        database: 'Postgresql',
+      }) as SQLParser.Select;
+      const newWhere = replAst.where;
+      if (newWhere == null) return;
+      for (const k of Object.keys(node)) delete node[k];
+      Object.assign(node, newWhere);
+    };
+
+    const traverse = (
+      node: SQLParser.ExpressionValue | SQLParser.ExprList | null,
+    ): void => {
+      if (node == null) return;
+      if (node.type === 'binary_expr') {
+        if ('left' in node) {
+          traverse(node.left);
+        }
+        if ('right' in node) {
+          traverse(node.right);
+        }
+        tryOptimize(node);
+      } else if (node.type === 'expr_list' && Array.isArray(node.value)) {
+        node.value.forEach(traverse);
+      }
+    };
+    traverse(ast.where);
+
+    return parser.sqlify(ast).slice(prefix.length);
+  } catch {
+    return condition;
   }
 };
 
@@ -966,6 +1101,21 @@ async function renderWhere(
     ).filter(v => v !== null) as ChSql[];
   }
 
+  const hasSqlFilter =
+    chartConfig.filters?.some(f => f.type === 'sql') ?? false;
+  const kvItemsLookup: KvItemsLookup =
+    hasSqlFilter &&
+    chartConfig.from.databaseName &&
+    chartConfig.from.tableName &&
+    !hasSubqueryCte(chartConfig.with)
+      ? await buildKvItemsLookup({
+          metadata,
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+        })
+      : new Map();
+
   const filterConditions = await Promise.all(
     (chartConfig.filters ?? []).map(async filter => {
       if (filter.type === 'sql_ast') {
@@ -975,9 +1125,13 @@ async function renderWhere(
           ')',
         );
       } else if (filter.type === 'lucene' || filter.type === 'sql') {
+        const condition =
+          filter.type === 'sql'
+            ? rewriteSqlFilterWithKvItems(filter.condition, kvItemsLookup)
+            : filter.condition;
         return wrapChSqlIfNotEmpty(
           await renderWhereExpression({
-            condition: filter.condition,
+            condition,
             from: chartConfig.from,
             language: filter.type,
             implicitColumnExpression: chartConfig.implicitColumnExpression,
