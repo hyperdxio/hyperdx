@@ -47,6 +47,12 @@ const CHOICES: HostChoice[] = [
   { id: 'other', label: 'Other' },
 ];
 
+const HOST_IDS = new Set<string>(CHOICES.map(c => c.id));
+
+function isAgentHost(value: string): value is AgentHost {
+  return HOST_IDS.has(value);
+}
+
 interface McpInstallPanelProps {
   /**
    * Deployment shape derived from `useMe()` + `useTeam()` in the
@@ -82,7 +88,15 @@ export default function McpInstallPanel({ deployment }: McpInstallPanelProps) {
       <SegmentedControl
         fullWidth
         value={host}
-        onChange={value => setHost(value as AgentHost)}
+        onChange={value => {
+          // Narrow the SegmentedControl's `string` callback against
+          // the CHOICES set so a future out-of-band value cannot
+          // silently install an invalid host. CHOICES is the source
+          // of truth for the option list.
+          if (isAgentHost(value)) {
+            setHost(value);
+          }
+        }}
         data={CHOICES.map(c => ({
           value: c.id,
           label: (

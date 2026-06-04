@@ -1,6 +1,7 @@
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import api from '@/api';
 
@@ -101,5 +102,71 @@ describe('McpServerSection', () => {
     expect(
       screen.getByText(/No access key on this account yet/i),
     ).toBeInTheDocument();
+  });
+
+  it('switches to the Codex CLI snippet when the host picker selects Codex CLI', async () => {
+    const user = userEvent.setup();
+    renderSection();
+
+    await user.click(screen.getByText('Codex CLI'));
+
+    expect(screen.getByText(/codex mcp add clickstack /)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/^claude mcp add clickstack /),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders the Cursor deeplink button with a cursor:// href when Cursor is selected', async () => {
+    const user = userEvent.setup();
+    renderSection();
+
+    await user.click(screen.getByText('Cursor'));
+
+    const button = screen.getByRole('link', { name: /Add to Cursor/i });
+    const href = button.getAttribute('href') ?? '';
+    expect(href).toMatch(
+      /^cursor:\/\/anysphere\.cursor-deeplink\/mcp\/install\?name=clickstack&config=[-A-Za-z0-9_]+$/,
+    );
+  });
+
+  it('renders the VS Code deeplink button with a vscode:mcp/install href when VS Code is selected', async () => {
+    const user = userEvent.setup();
+    renderSection();
+
+    await user.click(screen.getByText('VS Code + Copilot'));
+
+    const button = screen.getByRole('link', { name: /Add to VS Code/i });
+    expect(button.getAttribute('href') ?? '').toMatch(/^vscode:mcp\/install\?/);
+  });
+
+  it('renders the canonical JSON block when Other is selected', async () => {
+    const user = userEvent.setup();
+    renderSection();
+
+    await user.click(screen.getByText('Other'));
+
+    expect(screen.getByText(/"mcpServers":/)).toBeInTheDocument();
+  });
+
+  it('reveals the manual JSON fallback when the Manual setup toggle is clicked on a deeplink host', async () => {
+    const user = userEvent.setup();
+    renderSection();
+
+    await user.click(screen.getByText('Cursor'));
+    // The fallback JSON lives inside Mantine's `<Collapse>`, which
+    // keeps the child mounted and animates max-height + visibility
+    // for the open transition. JSDOM does not run CSS transitions,
+    // so the canonical "is the user seeing it" canary is the toggle
+    // label: it flips synchronously with React state.
+    expect(screen.getByText(/^Manual setup$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^Hide manual setup$/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/"mcpServers":/)).not.toBeVisible();
+
+    await user.click(screen.getByText(/^Manual setup$/i));
+    expect(screen.getByText(/^Hide manual setup$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^Manual setup$/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByText(/^Hide manual setup$/i));
+    expect(screen.getByText(/^Manual setup$/i)).toBeInTheDocument();
   });
 });

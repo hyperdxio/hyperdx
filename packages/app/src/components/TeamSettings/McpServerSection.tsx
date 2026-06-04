@@ -6,11 +6,6 @@ import api from '@/api';
 import { type DeploymentShape } from '../ClickStackOnboarding/installSnippets';
 import McpInstallPanel from '../ClickStackOnboarding/McpInstallPanel';
 
-function getApiOrigin(): string {
-  if (typeof window === 'undefined') return '';
-  return `${window.location.origin}/api`;
-}
-
 /**
  * Renders the "Connect your AI assistant" section on the Team
  * Settings page (Integrations tab). Self-managed OSS deployments
@@ -24,6 +19,9 @@ function getApiOrigin(): string {
  * header and `<Divider />`, then a single `<Card>` wrapping the
  * install panel. No subtitle below the header so the visual
  * rhythm matches the rest of the Integrations tab.
+ *
+ * Renders client-only via `useMe()`, so `window.location.origin`
+ * is always defined here; no SSR guard needed.
  */
 export default function McpServerSection() {
   const { data: me, isLoading: isLoadingMe } = api.useMe();
@@ -31,8 +29,8 @@ export default function McpServerSection() {
   const deployment = useMemo<DeploymentShape | null>(() => {
     if (!me) return null;
     return {
-      apiUrl: getApiOrigin(),
-      accessKey: me.accessKey ?? '',
+      apiUrl: `${window.location.origin}/api`,
+      accessKey: me.accessKey,
     };
   }, [me]);
 

@@ -9,8 +9,7 @@ interface CopySnippetProps {
 /**
  * Pre-formatted snippet with a copy-to-clipboard button. The copy
  * affordance handles its own `Copied` affirmation via Mantine's
- * `<CopyButton>`, matching the rest of the ClickStackOnboarding
- * surfaces (`ExporterFormatSelector.tsx`).
+ * `<CopyButton>`.
  */
 export function CopySnippet({ label, snippet }: CopySnippetProps) {
   return (
@@ -35,7 +34,6 @@ export function CopySnippet({ label, snippet }: CopySnippetProps) {
             <Button
               onClick={copy}
               variant="subtle"
-              color="gray"
               size="xs"
               leftSection={
                 copied ? <IconCheck size={14} /> : <IconCopy size={14} />

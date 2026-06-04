@@ -52,12 +52,39 @@ export interface BuiltSnippets {
  * Runs in both the browser (`btoa`) and Node (`Buffer`) so the
  * snippet builders are usable from Jest tests without a JSDOM
  * polyfill.
+ *
+ * UTF-8-encodes the input before `btoa` so a future access-key or
+ * origin format that includes a code point > 0xFF cannot raise
+ * `InvalidCharacterError` and blank the whole panel (since
+ * `buildAllSnippets` builds every host eagerly). Today's inputs
+ * (UUIDv4 key + browser-normalised origin) are all Latin1 so the
+ * defensive path is unreachable, but the encode is cheap.
  */
 function base64(value: string): string {
   if (typeof window !== 'undefined' && typeof window.btoa === 'function') {
-    return window.btoa(value);
+    const utf8 = new TextEncoder().encode(value);
+    let binary = '';
+    for (let i = 0; i < utf8.length; i++) {
+      binary += String.fromCharCode(utf8[i]);
+    }
+    return window.btoa(binary);
   }
-  return Buffer.from(value).toString('base64');
+  return Buffer.from(value, 'utf8').toString('base64');
+}
+
+/**
+ * URL-safe base64. Standard base64 emits `+`, `/`, `=`, all of
+ * which carry special meaning in a query-string value (`+` decodes
+ * as space on the deep-link host side, breaking the JSON payload).
+ * Cursor's deep-link decoder accepts the URL-safe alphabet; emitting
+ * it directly avoids a separate `encodeURIComponent` round on the
+ * already-encoded value.
+ */
+function base64UrlSafe(value: string): string {
+  return base64(value)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 }
 
 /**
@@ -102,30 +129,28 @@ function headerArgs(headers: Record<string, string>): string {
 }
 
 /**
- * Claude Code one-liner. Documented Claude Code MCP install
- * primitive: `claude mcp add <name> --transport http <url>
- * --header "..."`.
+ * Shared one-liner builder for CLI hosts whose `mcp add` primitive
+ * matches Claude Code's documented shape: `<binary> mcp add <name>
+ * --transport http <url> --header "..."`. Codex CLI mirrors this
+ * verbatim (see https://developers.openai.com/codex/mcp), so the
+ * two hosts share the same generator and differ only in the binary
+ * name.
  */
-function buildClaudeCodeOneLiner(deployment: DeploymentShape): string {
+function buildCliOneLiner(binary: string, deployment: DeploymentShape): string {
   const url = buildUrl(deployment);
   const headers = buildHeaders(deployment);
-  return `claude mcp add ${SERVER_NAME} --transport http ${url} ${headerArgs(headers)}`;
-}
-
-/**
- * OpenAI Codex CLI one-liner. Codex's documented MCP install
- * primitive mirrors Claude Code's pattern. See
- * https://developers.openai.com/codex/mcp for the full reference.
- */
-function buildCodexCliOneLiner(deployment: DeploymentShape): string {
-  const url = buildUrl(deployment);
-  const headers = buildHeaders(deployment);
-  return `codex mcp add ${SERVER_NAME} --transport http ${url} ${headerArgs(headers)}`;
+  return `${binary} mcp add ${SERVER_NAME} --transport http ${url} ${headerArgs(headers)}`;
 }
 
 /**
  * Cursor `cursor://` deep link. Documented Cursor MCP install
  * scheme: name in the query string, config as base64-encoded JSON.
+ *
+ * Uses URL-safe base64 (`-`, `_`, no padding) for the `config` value
+ * so the standard alphabet's `+` / `/` / `=` cannot be re-interpreted
+ * by the deep-link host's URL parser. Notably, `+` decodes as space
+ * under `application/x-www-form-urlencoded`, which corrupts the
+ * embedded JSON.
  */
 function buildCursorDeeplink(deployment: DeploymentShape): string {
   const config = {
@@ -133,7 +158,7 @@ function buildCursorDeeplink(deployment: DeploymentShape): string {
     url: buildUrl(deployment),
     headers: buildHeaders(deployment),
   };
-  const encoded = base64(JSON.stringify(config));
+  const encoded = base64UrlSafe(JSON.stringify(config));
   return `cursor://anysphere.cursor-deeplink/mcp/install?name=${SERVER_NAME}&config=${encoded}`;
 }
 
@@ -176,10 +201,10 @@ function buildMcpJsonBlock(deployment: DeploymentShape): string {
  */
 export function buildAllSnippets(deployment: DeploymentShape): BuiltSnippets {
   return {
-    claudeCode: buildClaudeCodeOneLiner(deployment),
+    claudeCode: buildCliOneLiner('claude', deployment),
     cursor: buildCursorDeeplink(deployment),
     vscode: buildVSCodeDeeplink(deployment),
-    codexCli: buildCodexCliOneLiner(deployment),
+    codexCli: buildCliOneLiner('codex', deployment),
     jsonBlock: buildMcpJsonBlock(deployment),
   };
 }

@@ -30,7 +30,7 @@ describe('buildAllSnippets > Codex CLI', () => {
 });
 
 describe('buildAllSnippets > Cursor', () => {
-  it('emits a cursor:// URL with a base64-encoded config that round-trips', () => {
+  it('emits a cursor:// URL with a URL-safe base64-encoded config that round-trips', () => {
     const { cursor } = buildAllSnippets(DEPLOYMENT);
 
     expect(
@@ -40,12 +40,44 @@ describe('buildAllSnippets > Cursor', () => {
     ).toBe(true);
 
     const encoded = cursor.split('config=')[1];
-    const decoded = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+    // base64url accepts both the URL-safe alphabet (`-`, `_`, no
+    // padding) and standard base64; using it explicitly is the
+    // documented decoder for the URL-safe variant we emit.
+    const decoded = JSON.parse(
+      Buffer.from(encoded, 'base64url').toString('utf8'),
+    );
     expect(decoded).toMatchObject({
       type: 'http',
       url: 'https://hyperdx.example.com/api/mcp',
       headers: { Authorization: 'Bearer k_abcdef123456' },
     });
+  });
+
+  it('produces a Cursor config value that only uses the URL-safe alphabet', () => {
+    // The standard base64 characters `+` / `/` / `=` all carry
+    // special meaning inside a query-string value (`+` decodes as
+    // space under form-urlencoded), so the deep link must use the
+    // URL-safe variant. This guards every input that flows through
+    // `buildAllSnippets`, not just the canonical fixture.
+    const inputs: DeploymentShape[] = [
+      DEPLOYMENT,
+      // Inputs chosen to maximise the chance that the standard
+      // base64 alphabet would emit `+` or `/`. Every byte > 0x3E or
+      // > 0x3F flips a `+` or `/` somewhere in the encoded output.
+      {
+        apiUrl: 'https://hyperdx.example.com/api',
+        accessKey: '????>>>>????>>>>',
+      },
+      {
+        apiUrl: 'https://hyperdx.example.com/api',
+        accessKey: 'ÿÿÿÿÿÿ',
+      },
+    ];
+    for (const deployment of inputs) {
+      const { cursor } = buildAllSnippets(deployment);
+      const encoded = cursor.split('config=')[1];
+      expect(encoded).toMatch(/^[-A-Za-z0-9_]+$/);
+    }
   });
 });
 
