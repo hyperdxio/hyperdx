@@ -121,20 +121,37 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
     stderr += chunk;
   });
 
+  let escalationTimer: ReturnType<typeof setTimeout> | undefined;
   const timeout = setTimeout(() => {
     timedOut = true;
-    proc.kill('SIGTERM');
-    setTimeout(() => proc.kill('SIGKILL'), 5_000).unref();
+    try {
+      proc.kill('SIGTERM');
+    } catch {
+      // Process may not have started (ENOENT) — ignore.
+    }
+    escalationTimer = setTimeout(() => {
+      try {
+        proc.kill('SIGKILL');
+      } catch {
+        // Process already exited — ignore.
+      }
+    }, 5_000);
+    escalationTimer.unref();
   }, opts.timeoutMs);
 
   const exitInfo = await new Promise<{
     code: number | null;
     signal: NodeJS.Signals | null;
   }>((resolve, reject) => {
-    proc.on('error', reject);
+    proc.on('error', err => {
+      clearTimeout(timeout);
+      if (escalationTimer) clearTimeout(escalationTimer);
+      reject(err);
+    });
     proc.on('exit', (code, signal) => resolve({ code, signal }));
   });
   clearTimeout(timeout);
+  if (escalationTimer) clearTimeout(escalationTimer);
   await stdoutDone;
 
   return {

@@ -42,7 +42,12 @@ export function listRunsInBatch(batchDir: string): string[] {
           const mcpDir = join(sceneDir, mcp);
           try {
             for (const file of readdirSync(mcpDir)) {
-              if (file.endsWith('.json')) out.push(join(mcpDir, file));
+              if (
+                file.endsWith('.json') &&
+                !file.endsWith('.grade.json') &&
+                !file.endsWith('.timing.json')
+              )
+                out.push(join(mcpDir, file));
             }
           } catch {
             // skip

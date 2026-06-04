@@ -503,45 +503,54 @@ program
 
       const summary: SummaryRow[] = [];
       let cursor = 0;
+      const errors: Array<{ mcp: string; i: number; error: string }> = [];
       async function worker(workerId: number): Promise<void> {
         while (true) {
           const idx = cursor++;
           if (idx >= cells.length) return;
           const { mcp, i } = cells[idx];
           const label = concurrency > 1 ? `[w${workerId}] ` : '  ';
-          process.stdout.write(
-            `${label}${mcp} run ${i + 1}/${runs}... starting\n`,
-          );
-          const startedMs = Date.now();
-          const record = await runCell({
-            config,
-            scenario: scenario.name,
-            agentPrompt: scenario.agentPrompt,
-            mcp,
-            model: cmdOpts.model,
-            maxTurns,
-            timeoutMs,
-            runIndex: i,
-            seed: seedNum,
-            apiKey,
-            anchorTimeIso,
-            promptVariant,
-          });
-          const path = writeRun({ record, batchDir });
-          const seconds = ((Date.now() - startedMs) / 1000).toFixed(1);
-          console.log(
-            `${label}${mcp} run ${i + 1}/${runs}: ${record.termination} · ${record.toolCalls.length} tool calls · ${record.tokens.input}+${record.tokens.output} tok · ${seconds}s`,
-          );
-          summary.push({
-            mcp,
-            i,
-            toolCalls: record.toolCalls.length,
-            inputTokens: record.tokens.input,
-            outputTokens: record.tokens.output,
-            durationS: Math.round((Date.now() - startedMs) / 100) / 10,
-            termination: record.termination,
-            path,
-          });
+          try {
+            process.stdout.write(
+              `${label}${mcp} run ${i + 1}/${runs}... starting\n`,
+            );
+            const startedMs = Date.now();
+            const record = await runCell({
+              config,
+              scenario: scenario.name,
+              agentPrompt: scenario.agentPrompt,
+              mcp,
+              model: cmdOpts.model,
+              maxTurns,
+              timeoutMs,
+              runIndex: i,
+              seed: seedNum,
+              apiKey,
+              anchorTimeIso,
+              promptVariant,
+            });
+            const path = writeRun({ record, batchDir });
+            const seconds = ((Date.now() - startedMs) / 1000).toFixed(1);
+            console.log(
+              `${label}${mcp} run ${i + 1}/${runs}: ${record.termination} · ${record.toolCalls.length} tool calls · ${record.tokens.input}+${record.tokens.output} tok · ${seconds}s`,
+            );
+            summary.push({
+              mcp,
+              i,
+              toolCalls: record.toolCalls.length,
+              inputTokens: record.tokens.input,
+              outputTokens: record.tokens.output,
+              durationS: Math.round((Date.now() - startedMs) / 100) / 10,
+              termination: record.termination,
+              path,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(
+              `${label}${mcp} run ${i + 1}/${runs}: FAILED — ${msg}`,
+            );
+            errors.push({ mcp, i, error: msg });
+          }
         }
       }
       const workerCount = Math.min(concurrency, cells.length);
@@ -549,6 +558,12 @@ program
         Array.from({ length: workerCount }, (_, w) => worker(w + 1)),
       );
 
+      if (errors.length > 0) {
+        console.error(
+          `\n${errors.length} run(s) failed:\n` +
+            errors.map(e => `  ${e.mcp} #${e.i}: ${e.error}`).join('\n'),
+        );
+      }
       console.log('\nResults written under runs/' + batchDir);
       // Sort by (mcp, i) for stable summary output even with parallel workers.
       summary.sort((a, b) => a.mcp.localeCompare(b.mcp) || a.i - b.i);

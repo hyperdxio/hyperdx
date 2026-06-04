@@ -121,7 +121,7 @@ const ROUTES = [
     /^\/api\/batches\/([^/]+)$/,
     (m, _q, res) => {
       const batch = decodeURIComponent(m[1]);
-      const summary = readJsonSafe(path.join(RUNS_DIR, batch, '_summary.json'));
+      const summary = readJsonSafe(safeJoin(RUNS_DIR, batch, '_summary.json'));
       const cells = listCells(batch);
       if (!cells) return sendJson(res, 404, { error: 'batch not found' });
       sendJson(res, 200, { batch, summary, cells });
@@ -177,7 +177,7 @@ const server = http.createServer((req, res) => {
   handleStatic(req, res);
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '127.0.0.1', () => {
   console.log(`hdx-eval viewer: http://localhost:${PORT}`);
   console.log(`  runs dir: ${RUNS_DIR}`);
 });

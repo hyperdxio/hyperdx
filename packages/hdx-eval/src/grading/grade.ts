@@ -187,11 +187,13 @@ async function gradeOne(args: {
     });
   }
 
+  const judgeError = judge && 'error' in judge && judge.error;
   const judgeScore = judge?.weightedScore ?? 0;
-  const rawCombined = judge
-    ? COMBINED_SCORE_PROGRAMMATIC_WEIGHT * programmatic.score +
-      COMBINED_SCORE_JUDGE_WEIGHT * judgeScore
-    : programmatic.score;
+  const rawCombined =
+    judge && !judgeError
+      ? COMBINED_SCORE_PROGRAMMATIC_WEIGHT * programmatic.score +
+        COMBINED_SCORE_JUDGE_WEIGHT * judgeScore
+      : programmatic.score;
   const toolErrors = computeToolErrorStats(record);
   // Apply the tool-error penalty AFTER scoring the answer. Clamp to [0,1].
   const combinedScore = Math.max(
