@@ -33,7 +33,7 @@ function encodeSpecialTokens(query: string): string {
     .replace(/localhost:(\d{1,5})/, 'localhost_COLON_$1')
     .replace(/\\:/g, 'HDX_COLON');
 }
-export function decodeSpecialTokens(query: string): string {
+function decodeSpecialTokens(query: string): string {
   return query
     .replace(/\\"/g, '"')
     .replace(/HDX_BACKSLASH_LITERAL/g, '\\')
@@ -61,21 +61,17 @@ function normalizeChExpression(expr: string): string {
 const IMPLICIT_FIELD = '<implicit>';
 
 // Type guards for lucene AST types
-export function isNodeTerm(
-  node: lucene.Node | lucene.AST,
-): node is lucene.NodeTerm {
+function isNodeTerm(node: lucene.Node | lucene.AST): node is lucene.NodeTerm {
   return 'term' in node && node.term != null;
 }
 
-export function isNodeRangedTerm(
+function isNodeRangedTerm(
   node: lucene.Node | lucene.AST,
 ): node is lucene.NodeRangedTerm {
   return 'inclusive' in node && node.inclusive != null;
 }
 
-export function isBinaryAST(
-  ast: lucene.AST | lucene.Node,
-): ast is lucene.BinaryAST {
+function isBinaryAST(ast: lucene.AST | lucene.Node): ast is lucene.BinaryAST {
   return 'right' in ast && ast.right != null;
 }
 
@@ -85,7 +81,7 @@ function hasStart(
   return 'start' in ast && !!ast.start;
 }
 
-export function isLeftOnlyAST(
+function isLeftOnlyAST(
   ast: lucene.AST | lucene.Node,
 ): ast is lucene.LeftOnlyAST {
   return (
@@ -1766,14 +1762,9 @@ async function nodeTerm(
   serializer: Serializer,
   context: SerializerContext,
 ): Promise<string> {
-  const isImplicitField = node.field === IMPLICIT_FIELD;
-  const rawField = node.field[0] === '-' ? node.field.slice(1) : node.field;
-  // Decode special-token placeholders the emitter inserted in the field name
-  // (e.g. HDX_COLON for an escaped `:` in a Map sub-key). Leave the implicit
-  // field sentinel untouched so downstream comparisons against IMPLICIT_FIELD
-  // still match.
-  const field = isImplicitField ? rawField : decodeSpecialTokens(rawField);
+  const field = node.field[0] === '-' ? node.field.slice(1) : node.field;
   let isNegatedField = node.field[0] === '-';
+  const isImplicitField = node.field === IMPLICIT_FIELD;
 
   // NodeTerm
   if (isNodeTerm(node)) {
@@ -1875,7 +1866,7 @@ function createSerializerContext(
 
     return {
       ...currentContext,
-      implicitColumnExpression: decodeSpecialTokens(fieldWithoutNegation),
+      implicitColumnExpression: fieldWithoutNegation,
       ...(isNegatedAndParenthesized(ast)
         ? { isNegatedAndParenthesized: true }
         : {}),

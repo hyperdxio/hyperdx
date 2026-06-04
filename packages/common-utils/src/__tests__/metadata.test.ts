@@ -1471,28 +1471,4 @@ describe('parseKeyPath', () => {
       "ResourceAttributes['service.name",
     ]);
   });
-
-  it('parses single-quoted arrayElement function-call form', () => {
-    expect(
-      parseKeyPath("arrayElement(ResourceAttributes, 'service.name')"),
-    ).toEqual(['ResourceAttributes', 'service.name']);
-  });
-
-  it('parses arrayElement keys with dots in the map key', () => {
-    expect(
-      parseKeyPath("arrayElement(SpanAttributes, 'http.request.method')"),
-    ).toEqual(['SpanAttributes', 'http.request.method']);
-  });
-
-  it('tolerates whitespace inside arrayElement', () => {
-    expect(
-      parseKeyPath("arrayElement( ResourceAttributes ,  'service.name' )"),
-    ).toEqual(['ResourceAttributes', 'service.name']);
-  });
-
-  it('does not parse arrayElement with a missing closing paren', () => {
-    expect(
-      parseKeyPath("arrayElement(ResourceAttributes, 'service.name'"),
-    ).toEqual(["arrayElement(ResourceAttributes, 'service.name'"]);
-  });
 });

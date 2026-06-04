@@ -1768,17 +1768,9 @@ export type Field = {
 };
 
 /**
- * Parses a Map-access key string into a path array.
- *
- * Handles both ClickHouse Map access forms:
- *   - Bracket form (canonical input):
- *       `ResourceAttributes['service.name']` → `['ResourceAttributes', 'service.name']`
- *       `ResourceAttributes["service.name"]` → `['ResourceAttributes', 'service.name']`
- *   - Function-call form (what ClickHouse renders in result column names):
- *       `arrayElement(ResourceAttributes, 'service.name')` → `['ResourceAttributes', 'service.name']`
- *
- * Native columns return a single-element path:
- *   `ServiceName` → `['ServiceName']`
+ * Parses a bracket-notation key string into a path array.
+ * e.g. `ResourceAttributes['service.name']` → `['ResourceAttributes', 'service.name']`
+ *      `ServiceName` → `['ServiceName']`
  */
 export function parseKeyPath(key: string): string[] {
   const singleIdx = key.indexOf("['");
@@ -1788,15 +1780,6 @@ export function parseKeyPath(key: string): string[] {
   const doubleIdx = key.indexOf('["');
   if (doubleIdx !== -1 && key.endsWith('"]')) {
     return [key.slice(0, doubleIdx), key.slice(doubleIdx + 2, -2)];
-  }
-  // ClickHouse Map access function-call form. ClickHouse renders Map
-  // subscript expressions (e.g. `SpanAttributes['http.route']`) as
-  // `arrayElement(SpanAttributes, 'http.route')` in result column names.
-  const ARRAY_ELEMENT_PREFIX = 'arrayElement(';
-  if (key.startsWith(ARRAY_ELEMENT_PREFIX) && key.endsWith(')')) {
-    const inner = key.slice(ARRAY_ELEMENT_PREFIX.length, -1);
-    const parts = inner.split(',').map(e => e.trim());
-    return [parts[0], parts[1].replaceAll("'", '')];
   }
   return [key];
 }
