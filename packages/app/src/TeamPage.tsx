@@ -133,16 +133,6 @@ export default function TeamPage() {
         ]
       : []),
     {
-      value: 'integrations',
-      label: 'Integrations',
-      sections: [
-        {
-          id: 'team-integrations-webhooks',
-          content: <IntegrationsSection />,
-        },
-      ],
-    },
-    {
       value: 'api-agents',
       label: 'API & Agents',
       sections: [
@@ -153,6 +143,16 @@ export default function TeamPage() {
         {
           id: 'team-api-agents-mcp-server',
           content: <McpServerSection />,
+        },
+      ],
+    },
+    {
+      value: 'integrations',
+      label: 'Integrations',
+      sections: [
+        {
+          id: 'team-integrations-webhooks',
+          content: <IntegrationsSection />,
         },
       ],
     },
