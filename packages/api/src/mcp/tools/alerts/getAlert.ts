@@ -12,6 +12,7 @@ import type { IDashboard } from '@/models/dashboard';
 import type { ISavedSearch } from '@/models/savedSearch';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 
+import { validateObjectId } from '../../utils/errors';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 
@@ -108,12 +109,8 @@ export function registerGetAlert(server: McpServer, context: McpContext): void {
       }
 
       // ── Get single alert (full detail) ──
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Invalid alert ID' }],
-        };
-      }
+      const idError = validateObjectId(id, 'alert ID');
+      if (idError) return idError;
 
       const alert = await getAlertById(id, teamId);
       if (!alert) {

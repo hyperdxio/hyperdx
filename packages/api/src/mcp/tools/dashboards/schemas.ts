@@ -784,7 +784,7 @@ export const mcpFiltersParam = z
   );
 
 export const mcpPatchDashboardSchema = z.object({
-  dashboardId: z.string().describe('Dashboard ID.'),
+  dashboardId: objectIdSchema.describe('Dashboard ID.'),
   name: z
     .string()
     .min(1)

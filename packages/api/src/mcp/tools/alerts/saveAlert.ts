@@ -13,6 +13,7 @@ import { type AlertChannel, AlertSource } from '@/models/alert';
 import { BaseError } from '@/utils/errors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 
+import { mcpError, validateObjectId } from '../../utils/errors';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 import {
@@ -53,19 +54,14 @@ export function registerSaveAlert(
       // ── Runtime cross-field validation ──
       const validationError = validateSaveAlertInput(input);
       if (validationError) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: validationError }],
-        };
+        return mcpError(validationError);
       }
 
       // ── Validate ID for updates (early return narrows input.id to string) ──
       const alertId = input.id;
-      if (alertId != null && !mongoose.Types.ObjectId.isValid(alertId)) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Invalid alert ID' }],
-        };
+      if (alertId != null) {
+        const idError = validateObjectId(alertId, 'alert ID');
+        if (idError) return idError;
       }
 
       // Build the alert input matching the shape expected by controllers.
@@ -102,10 +98,7 @@ export function registerSaveAlert(
             : e instanceof Error
               ? e.message
               : String(e);
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: msg }],
-        };
+        return mcpError(msg);
       }
 
       const mongoUserId = new mongoose.Types.ObjectId(userId);
@@ -114,10 +107,7 @@ export function registerSaveAlert(
       if (alertId) {
         const updated = await updateAlert(alertId, mongoTeamId, alertInput);
         if (!updated) {
-          return {
-            isError: true,
-            content: [{ type: 'text' as const, text: 'Alert not found' }],
-          };
+          return mcpError('Alert not found');
         }
         return {
           content: [

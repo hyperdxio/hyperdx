@@ -1075,6 +1075,85 @@ const KV_ITEMS_STRATEGIES = [
   parseKvItemsCastExpression,
 ] as const;
 
+/**
+ * Builds a lookup from map column name to KV items column name.
+ * A KV items column is an ALIAS/MATERIALIZED column whose expression is
+ * arrayMap((k,v)->concat(k,'=',v), mapKeys(X), mapValues(X)) and which has
+ * a text(tokenizer=array) skip index.
+ *
+ * The version gate (`supportsDirectReadMap`) only applies to ALIAS items
+ * columns: ALIAS columns are computed at query time, so `has(items, ...)`
+ * against an ALIAS only realizes its speedup when the server can perform a
+ * direct_read against the underlying Map's tuple storage. MATERIALIZED items
+ * columns are physically stored on disk, so `has()` reads them directly and
+ * is fast on any ClickHouse version that supports the text index itself.
+ *
+ * Returns an empty Map on any failure; never throws.
+ */
+export async function buildKvItemsLookup({
+  metadata,
+  databaseName,
+  tableName,
+  connectionId,
+}: {
+  metadata: Metadata;
+  databaseName: string;
+  tableName: string;
+  connectionId: string;
+}): Promise<KvItemsLookup> {
+  const lookup: KvItemsLookup = new Map();
+  try {
+    const [serverVersion, columns, skipIndices] = await Promise.all([
+      metadata.getServerVersion({ connectionId }),
+      metadata.getColumns({ databaseName, tableName, connectionId }),
+      metadata
+        .getSkipIndices({ databaseName, tableName, connectionId })
+        .catch(() => [] as SkipIndexMetadata[]),
+    ]);
+
+    const directReadSupported = supportsDirectReadMap(serverVersion);
+
+    const kvItemsCandidates = columns.filter(
+      c =>
+        (c.default_type === 'ALIAS' || c.default_type === 'MATERIALIZED') &&
+        c.default_expression,
+    );
+
+    for (const candidate of kvItemsCandidates) {
+      if (candidate.default_type === 'ALIAS' && !directReadSupported) {
+        continue;
+      }
+
+      let parsed: { mapColumn: string; separator: string } | undefined;
+      for (const strategy of KV_ITEMS_STRATEGIES) {
+        parsed = strategy(candidate.default_expression);
+        if (parsed) break;
+      }
+      if (!parsed) continue;
+
+      const candidateName = normalizeChExpression(candidate.name);
+      const candidateExpr = normalizeChExpression(candidate.default_expression);
+      const hasArrayTextIndex = skipIndices.some(idx => {
+        if (idx.type !== 'text') return false;
+        const tokenizer = parseTokenizerFromTextIndex(idx);
+        if (tokenizer?.type !== 'array') return false;
+        const idxExpr = normalizeChExpression(idx.expression);
+        return idxExpr === candidateName || idxExpr === candidateExpr;
+      });
+
+      if (hasArrayTextIndex) {
+        lookup.set(parsed.mapColumn, {
+          kvItemsColumn: candidate.name,
+          separator: parsed.separator,
+        });
+      }
+    }
+  } catch (error) {
+    console.warn('Error building KV items lookup:', error);
+  }
+  return lookup;
+}
+
 export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private metadata: Metadata;
   private tableName: string;
@@ -1130,81 +1209,16 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         return false;
       });
 
-    // Pre-fetch KV items lookup (map column -> KV items column with text(tokenizer=array) index)
-    this.kvItemsLookupPromise = this.buildKvItemsLookup().catch(error => {
-      console.warn('Error building KV items lookup:', error);
-      return new Map();
-    });
+    this.kvItemsLookupPromise = this.buildKvItemsLookup();
   }
 
-  /**
-   * Builds a lookup from map column name to KV items column name.
-   * A KV items column is an ALIAS/MATERIALIZED column whose expression is
-   * arrayMap((k,v)->concat(k,'=',v), mapKeys(X), mapValues(X)) and which has
-   * a text(tokenizer=array) skip index.
-   *
-   * The version gate (`supportsDirectReadMap`) only applies to ALIAS items
-   * columns: ALIAS columns are computed at query time, so `has(items, ...)`
-   * against an ALIAS only realizes its speedup when the server can perform a
-   * direct_read against the underlying Map's tuple storage. MATERIALIZED items
-   * columns are physically stored on disk, so `has()` reads them directly and
-   * is fast on any ClickHouse version that supports the text index itself.
-   */
-  private async buildKvItemsLookup(): Promise<KvItemsLookup> {
-    const [serverVersion, columns, skipIndices] = await Promise.all([
-      this.metadata.getServerVersion({ connectionId: this.connectionId }),
-      this.metadata.getColumns({
-        databaseName: this.databaseName,
-        tableName: this.tableName,
-        connectionId: this.connectionId,
-      }),
-      this.skipIndicesPromise ?? Promise.resolve([]),
-    ]);
-
-    const directReadSupported = supportsDirectReadMap(serverVersion);
-
-    const lookup: KvItemsLookup = new Map();
-
-    const kvItemsCandidates = columns.filter(
-      c =>
-        (c.default_type === 'ALIAS' || c.default_type === 'MATERIALIZED') &&
-        c.default_expression,
-    );
-
-    for (const candidate of kvItemsCandidates) {
-      if (candidate.default_type === 'ALIAS' && !directReadSupported) {
-        continue;
-      }
-
-      const parsed = (() => {
-        let parsed: { mapColumn: string; separator: string } | undefined;
-        for (const strategy of KV_ITEMS_STRATEGIES) {
-          parsed = strategy(candidate.default_expression);
-          if (parsed) break;
-        }
-        return parsed;
-      })();
-      if (!parsed) continue;
-
-      const candidateName = normalizeChExpression(candidate.name);
-      const candidateExpr = normalizeChExpression(candidate.default_expression);
-      const hasArrayTextIndex = skipIndices.some(idx => {
-        if (idx.type !== 'text') return false;
-        const tokenizer = parseTokenizerFromTextIndex(idx);
-        if (tokenizer?.type !== 'array') return false;
-        const idxExpr = normalizeChExpression(idx.expression);
-        return idxExpr === candidateName || idxExpr === candidateExpr;
-      });
-
-      if (hasArrayTextIndex) {
-        lookup.set(parsed.mapColumn, {
-          kvItemsColumn: candidate.name,
-          separator: parsed.separator,
-        });
-      }
-    }
-
-    return lookup;
+  private buildKvItemsLookup(): Promise<KvItemsLookup> {
+    return buildKvItemsLookup({
+      metadata: this.metadata,
+      databaseName: this.databaseName,
+      tableName: this.tableName,
+      connectionId: this.connectionId,
+    });
   }
 
   /**
