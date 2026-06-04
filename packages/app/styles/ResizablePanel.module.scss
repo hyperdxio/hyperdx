@@ -20,6 +20,28 @@
   }
 }
 
+.resizeHandleInline {
+  position: relative;
+  right: auto;
+  top: auto;
+  bottom: auto;
+  width: 6px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  transition: all 150ms ease;
+  z-index: 10;
+
+  &:hover,
+  &:active {
+    background-color: var(--color-bg-neutral);
+  }
+
+  &:active {
+    background-color: var(--color-bg-neutral);
+    width: 8px;
+  }
+}
+
 .resizeYHandle {
   position: absolute;
   bottom: -3px;

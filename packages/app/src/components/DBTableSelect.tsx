@@ -61,7 +61,7 @@ function DBTableSelect({
         data={data}
         disabled={isTablesLoading}
         value={table}
-        comboboxProps={{ withinPortal: false }}
+        comboboxProps={{ withinPortal: true }}
         onChange={v => setTable(v ?? undefined)}
         onBlur={onBlur}
         name={name}

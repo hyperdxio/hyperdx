@@ -15,6 +15,7 @@ import {
   E2E_METRICS_GAUGE_TABLE,
   E2E_METRICS_SUM_TABLE,
   E2E_SESSIONS_TABLE,
+  E2E_TRACES_MV_TABLE,
   E2E_TRACES_TABLE,
 } from './utils/constants';
 
@@ -642,6 +643,12 @@ async function clearTestData(
   );
   await client.query(
     `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_TRACES_TABLE}`,
+  );
+  // The materialized view target is not cleared by truncating the source
+  // table, so clear it explicitly to avoid accumulating duplicate
+  // pre-aggregated rows across re-seeds.
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_TRACES_MV_TABLE}`,
   );
   await client.query(
     `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_SESSIONS_TABLE}`,

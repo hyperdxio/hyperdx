@@ -209,5 +209,38 @@ ENGINE = MergeTree
 PARTITION BY toDate(TimeUnix)
 ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
 TTL toDate(TimeUnix) + toIntervalDay(30)
-SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1
+SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
+
+-- Materialized view rollup for traces, used by E2E tests covering MV
+-- acceleration. The target table pre-aggregates Duration over 1-minute
+-- buckets grouped by the dimension columns ServiceName and StatusCode.
+-- The 'E2E Traces MV' fixture source references e2e_otel_traces_1m.
+CREATE TABLE IF NOT EXISTS ${DATABASE}.e2e_otel_traces_1m
+(
+    \`Timestamp\` DateTime,
+    \`ServiceName\` LowCardinality(String),
+    \`StatusCode\` LowCardinality(String),
+    \`count\` SimpleAggregateFunction(sum, UInt64),
+    \`avg__Duration\` AggregateFunction(avg, UInt64),
+    \`max__Duration\` SimpleAggregateFunction(max, UInt64),
+    \`quantile__Duration\` AggregateFunction(quantile(0.95), UInt64)
+)
+ENGINE = AggregatingMergeTree
+ORDER BY (Timestamp, ServiceName, StatusCode)
+SETTINGS index_granularity = 8192;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS ${DATABASE}.e2e_otel_traces_1m_mv TO ${DATABASE}.e2e_otel_traces_1m
+AS SELECT
+    toStartOfMinute(Timestamp) AS Timestamp,
+    ServiceName,
+    StatusCode,
+    count() AS count,
+    avgState(Duration) AS avg__Duration,
+    maxSimpleState(Duration) AS max__Duration,
+    quantileState(0.95)(Duration) AS quantile__Duration
+FROM ${DATABASE}.e2e_otel_traces
+GROUP BY
+    Timestamp,
+    ServiceName,
+    StatusCode
 EOFSQL
