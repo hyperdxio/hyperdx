@@ -809,7 +809,7 @@
           {
             "aggFn": "count",
             "valueExpression": "",
-            "aggCondition": "(SpanAttributes['component'] = 'fetch' OR SpanAttributes['component'] = 'xml-http-request') AND (toUInt16OrZero(SpanAttributes['http.status_code']) >= 400 OR StatusCode = 'STATUS_CODE_ERROR')",
+            "aggCondition": "ResourceAttributes['rum.sessionId'] != '' AND (SpanAttributes['component'] = 'fetch' OR SpanAttributes['component'] = 'xml-http-request') AND (toUInt16OrZero(SpanAttributes['http.status_code']) >= 400 OR StatusCode = 'STATUS_CODE_ERROR')",
             "aggConditionLanguage": "sql"
           }
         ],
@@ -847,8 +847,8 @@
           {
             "aggFn": "count",
             "valueExpression": "",
-            "aggCondition": "(SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\") AND StatusCode:error",
-            "aggConditionLanguage": "lucene",
+            "aggCondition": "(SpanAttributes['component'] = 'fetch' OR SpanAttributes['component'] = 'xml-http-request') AND (toUInt16OrZero(SpanAttributes['http.status_code']) >= 400 OR StatusCode = 'STATUS_CODE_ERROR')",
+            "aggConditionLanguage": "sql",
             "alias": "AJAX Errors"
           }
         ],
@@ -986,14 +986,14 @@
             "aggFn": "count",
             "valueExpression": "",
             "alias": "Failures",
-            "aggCondition": "(SpanAttributes['component'] = 'fetch' OR SpanAttributes['component'] = 'xml-http-request') AND (toUInt16OrZero(SpanAttributes['http.status_code']) >= 400 OR StatusCode = 'STATUS_CODE_ERROR')",
+            "aggCondition": "ResourceAttributes['rum.sessionId'] != '' AND (SpanAttributes['component'] = 'fetch' OR SpanAttributes['component'] = 'xml-http-request') AND (toUInt16OrZero(SpanAttributes['http.status_code']) >= 400 OR StatusCode = 'STATUS_CODE_ERROR')",
             "aggConditionLanguage": "sql"
           },
           {
             "aggFn": "count_distinct",
             "valueExpression": "ResourceAttributes['rum.sessionId']",
             "alias": "Sessions",
-            "aggCondition": "(SpanAttributes['component'] = 'fetch' OR SpanAttributes['component'] = 'xml-http-request') AND (toUInt16OrZero(SpanAttributes['http.status_code']) >= 400 OR StatusCode = 'STATUS_CODE_ERROR')",
+            "aggCondition": "ResourceAttributes['rum.sessionId'] != '' AND (SpanAttributes['component'] = 'fetch' OR SpanAttributes['component'] = 'xml-http-request') AND (toUInt16OrZero(SpanAttributes['http.status_code']) >= 400 OR StatusCode = 'STATUS_CODE_ERROR')",
             "aggConditionLanguage": "sql"
           }
         ],
