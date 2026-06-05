@@ -589,6 +589,16 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
       .describe(
         'Connection ID (not sourceId) – call clickstack_list_sources to find available connections',
       ),
+    sourceId: z
+      .string()
+      .optional()
+      .describe(
+        'Source ID for the table this query reads from (call clickstack_list_sources). ' +
+          'ALWAYS set this for raw SQL tiles UNLESS the query reads from multiple tables ' +
+          '(e.g. JOINs or sub-queries spanning several sources), in which case omit it. ' +
+          'sourceId is REQUIRED by two macros: $__filters and $__sourceTable. ' +
+          'The sourceId must belong to the same connection as connectionId.',
+      ),
     sqlTemplate: z
       .string()
       .describe(
@@ -597,7 +607,9 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
           '{intervalSeconds:Int64}, {intervalMilliseconds:Int64}.\n' +
           'Or use macros: $__timeFilter(col), $__timeFilter_ms(col), $__dateFilter(col), ' +
           '$__fromTime, $__toTime, $__fromTime_ms, $__toTime_ms, ' +
-          '$__timeInterval(col), $__timeInterval_ms(col), $__interval_s, $__filters.\n' +
+          '$__timeInterval(col), $__timeInterval_ms(col), $__interval_s, $__filters, $__sourceTable.\n' +
+          'IMPORTANT: $__filters and $__sourceTable both require sourceId to be set on this tile. ' +
+          'Prefer including "AND $__filters" in the WHERE clause so dashboard filters apply.\n' +
           'Example: "SELECT $__timeInterval(TimestampTime) AS ts, ServiceName, count() ' +
           'FROM otel_logs WHERE $__timeFilter(TimestampTime) AND $__filters ' +
           'GROUP BY ServiceName, ts ORDER BY ts"',
