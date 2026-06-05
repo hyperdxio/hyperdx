@@ -224,6 +224,7 @@ function listRunFiles(batchDir: string): string[] {
       const mcpDir = join(sceneDir, mcp);
       for (const file of safeReaddir(mcpDir)) {
         if (file.endsWith('.grade.json')) continue;
+        if (file.endsWith('.timing.json')) continue;
         if (file.endsWith('.json')) out.push(join(mcpDir, file));
       }
     }
