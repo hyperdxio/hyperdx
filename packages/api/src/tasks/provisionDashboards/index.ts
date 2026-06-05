@@ -1,6 +1,8 @@
 import {
   DashboardWithoutId,
   DashboardWithoutIdSchema,
+  resolveChartPaletteToken,
+  walkRawDashboardTileColors,
 } from '@hyperdx/common-utils/dist/types';
 import fs from 'fs';
 import path from 'path';
@@ -11,6 +13,20 @@ import Team from '@/models/team';
 import type { HdxTask } from '@/tasks/types';
 import { ProvisionDashboardsTaskArgs } from '@/tasks/types';
 import logger from '@/utils/logger';
+
+// Heal legacy `chart-1`..`chart-10` tile colors from #2265 before the
+// strict `DashboardWithoutIdSchema` parse rejects them. Same policy as
+// the React `normalizeDashboardTileColors` and the API router's
+// `migrateLegacyDashboardTileColors`: hue tokens pass through, legacy
+// numeric tokens are rewritten to hue-named equivalents, and unknown
+// strings are left intact so the schema's native enum error surfaces
+// in the warn log instead of silently dropping the field.
+function migrateLegacyDashboardTileColorsRaw(raw: unknown): unknown {
+  return walkRawDashboardTileColors(raw, current => {
+    const resolved = resolveChartPaletteToken(current);
+    return resolved ?? current;
+  });
+}
 
 export function readDashboardFiles(dir: string): DashboardWithoutId[] {
   let files: string[];
@@ -24,10 +40,12 @@ export function readDashboardFiles(dir: string): DashboardWithoutId[] {
   const dashboards: DashboardWithoutId[] = [];
   for (const file of files) {
     try {
-      const raw = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+      const raw = migrateLegacyDashboardTileColorsRaw(
+        JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')),
+      ) as Record<string, unknown> | null | undefined;
       const parsed = DashboardWithoutIdSchema.safeParse({
         tags: [],
-        ...raw,
+        ...(raw as object),
       });
       if (!parsed.success) {
         logger.warn(

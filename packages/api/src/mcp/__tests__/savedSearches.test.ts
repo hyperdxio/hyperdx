@@ -87,15 +87,19 @@ describe('MCP Saved Search Tools', () => {
     });
   }
 
-  // ─── hyperdx_get_saved_search ─────────────────────────────────────────────
+  // ─── clickstack_get_saved_search ─────────────────────────────────────────────
 
-  describe('hyperdx_get_saved_search', () => {
+  describe('clickstack_get_saved_search', () => {
     describe('list (no id)', () => {
       it('should list all saved searches with slim summary fields', async () => {
         await createTestSavedSearch({ name: 'Search 1' });
         await createTestSavedSearch({ name: 'Search 2' });
 
-        const result = await callTool(client, 'hyperdx_get_saved_search', {});
+        const result = await callTool(
+          client,
+          'clickstack_get_saved_search',
+          {},
+        );
 
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
@@ -115,7 +119,11 @@ describe('MCP Saved Search Tools', () => {
       });
 
       it('should return empty array when no saved searches exist', async () => {
-        const result = await callTool(client, 'hyperdx_get_saved_search', {});
+        const result = await callTool(
+          client,
+          'clickstack_get_saved_search',
+          {},
+        );
 
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
@@ -133,7 +141,7 @@ describe('MCP Saved Search Tools', () => {
 
         const listResult = await callTool(
           client2,
-          'hyperdx_get_saved_search',
+          'clickstack_get_saved_search',
           {},
         );
         const output = JSON.parse(getFirstText(listResult));
@@ -150,7 +158,7 @@ describe('MCP Saved Search Tools', () => {
           where: 'level:error',
         });
 
-        const result = await callTool(client, 'hyperdx_get_saved_search', {
+        const result = await callTool(client, 'clickstack_get_saved_search', {
           id: savedSearch._id.toString(),
         });
 
@@ -170,7 +178,7 @@ describe('MCP Saved Search Tools', () => {
       });
 
       it('should return error for invalid ObjectId format', async () => {
-        const result = await callTool(client, 'hyperdx_get_saved_search', {
+        const result = await callTool(client, 'clickstack_get_saved_search', {
           id: 'not-a-valid-id',
         });
 
@@ -180,7 +188,7 @@ describe('MCP Saved Search Tools', () => {
 
       it('should return error for non-existent saved search id', async () => {
         const fakeId = '000000000000000000000000';
-        const result = await callTool(client, 'hyperdx_get_saved_search', {
+        const result = await callTool(client, 'clickstack_get_saved_search', {
           id: fakeId,
         });
 
@@ -190,12 +198,12 @@ describe('MCP Saved Search Tools', () => {
     });
   });
 
-  // ─── hyperdx_save_saved_search ────────────────────────────────────────────
+  // ─── clickstack_save_saved_search ────────────────────────────────────────────
 
-  describe('hyperdx_save_saved_search', () => {
+  describe('clickstack_save_saved_search', () => {
     describe('create', () => {
       it('should create a new saved search', async () => {
-        const result = await callTool(client, 'hyperdx_save_saved_search', {
+        const result = await callTool(client, 'clickstack_save_saved_search', {
           name: 'Error Traces',
           sourceId: traceSource._id.toString(),
           where: 'StatusCode:Error',
@@ -220,7 +228,7 @@ describe('MCP Saved Search Tools', () => {
       });
 
       it('should create a saved search with minimal fields', async () => {
-        const result = await callTool(client, 'hyperdx_save_saved_search', {
+        const result = await callTool(client, 'clickstack_save_saved_search', {
           name: 'Minimal Search',
           sourceId: traceSource._id.toString(),
         });
@@ -234,7 +242,7 @@ describe('MCP Saved Search Tools', () => {
       });
 
       it('should create a saved search with SQL where language', async () => {
-        const result = await callTool(client, 'hyperdx_save_saved_search', {
+        const result = await callTool(client, 'clickstack_save_saved_search', {
           name: 'SQL Search',
           sourceId: traceSource._id.toString(),
           where: "StatusCode = 'Error'",
@@ -248,7 +256,7 @@ describe('MCP Saved Search Tools', () => {
       });
 
       it('should create a saved search with select and orderBy', async () => {
-        const result = await callTool(client, 'hyperdx_save_saved_search', {
+        const result = await callTool(client, 'clickstack_save_saved_search', {
           name: 'Full Search',
           sourceId: traceSource._id.toString(),
           select: 'body,service.name,duration',
@@ -263,7 +271,7 @@ describe('MCP Saved Search Tools', () => {
       });
 
       it('should create a saved search with filters', async () => {
-        const result = await callTool(client, 'hyperdx_save_saved_search', {
+        const result = await callTool(client, 'clickstack_save_saved_search', {
           name: 'Filtered Search',
           sourceId: traceSource._id.toString(),
           filters: [
@@ -285,17 +293,19 @@ describe('MCP Saved Search Tools', () => {
       });
 
       it('should reject invalid sourceId', async () => {
-        const result = await callTool(client, 'hyperdx_save_saved_search', {
+        const result = await callTool(client, 'clickstack_save_saved_search', {
           name: 'Bad Source',
           sourceId: 'not-a-valid-id',
         });
 
         expect(result.isError).toBe(true);
-        expect(getFirstText(result)).toContain('Invalid sourceId');
+        const text = getFirstText(result);
+        expect(text).toContain('Invalid ObjectId');
+        expect(text).toContain('sourceId');
       });
 
       it('should include url in response when FRONTEND_URL is set', async () => {
-        const result = await callTool(client, 'hyperdx_save_saved_search', {
+        const result = await callTool(client, 'clickstack_save_saved_search', {
           name: 'URL Test',
           sourceId: traceSource._id.toString(),
         });
@@ -314,7 +324,7 @@ describe('MCP Saved Search Tools', () => {
           name: 'Original Name',
         });
 
-        const result = await callTool(client, 'hyperdx_save_saved_search', {
+        const result = await callTool(client, 'clickstack_save_saved_search', {
           id: savedSearch._id.toString(),
           name: 'Updated Name',
           sourceId: traceSource._id.toString(),
@@ -338,7 +348,7 @@ describe('MCP Saved Search Tools', () => {
 
       it('should return error for non-existent saved search on update', async () => {
         const fakeId = '000000000000000000000000';
-        const result = await callTool(client, 'hyperdx_save_saved_search', {
+        const result = await callTool(client, 'clickstack_save_saved_search', {
           id: fakeId,
           name: 'Ghost Search',
           sourceId: traceSource._id.toString(),
@@ -349,7 +359,7 @@ describe('MCP Saved Search Tools', () => {
       });
 
       it('should return error for invalid ObjectId format on update', async () => {
-        const result = await callTool(client, 'hyperdx_save_saved_search', {
+        const result = await callTool(client, 'clickstack_save_saved_search', {
           id: '!!!',
           name: 'Bad ID',
           sourceId: traceSource._id.toString(),

@@ -6,10 +6,12 @@ import React, {
   useState,
 } from 'react';
 import {
+  ActionIcon,
   Box,
   Breadcrumbs,
   Button,
   Flex,
+  Group,
   Paper,
   Text,
   Tooltip,
@@ -18,8 +20,10 @@ import {
 import {
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
+  IconKeyboard,
 } from '@tabler/icons-react';
 
+import { KeyboardShortcutsModal } from '@/LogSidePanelElements';
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import { formatDistanceToNowStrictShort } from '@/utils';
@@ -157,6 +161,7 @@ export default function DBRowSidePanelHeader({
   onToggleFullWidth?: () => void;
 }) {
   const [bodyExpanded, setBodyExpanded] = React.useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const { generateSearchUrl } = useContext(RowSidePanelContext);
 
   const isContentTruncated = mainContent.length > MAX_MAIN_CONTENT_LENGTH;
@@ -239,13 +244,30 @@ export default function DBRowSidePanelHeader({
             </Text>
           )}
         </Flex>
-        {onToggleFullWidth && (
-          <DrawerFullWidthToggle
-            isFullWidth={isFullWidth}
-            onToggle={onToggleFullWidth}
-          />
-        )}
+        <Group gap={4} wrap="nowrap">
+          <Tooltip label="Keyboard shortcuts" position="bottom">
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="sm"
+              onClick={() => setShortcutsOpen(true)}
+              aria-label="Keyboard shortcuts"
+            >
+              <IconKeyboard size={16} />
+            </ActionIcon>
+          </Tooltip>
+          {onToggleFullWidth && (
+            <DrawerFullWidthToggle
+              isFullWidth={isFullWidth}
+              onToggle={onToggleFullWidth}
+            />
+          )}
+        </Group>
       </Flex>
+      <KeyboardShortcutsModal
+        opened={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
+      />
       {!bodyConfigured ? null : mainContent ? (
         <Paper
           p="xs"

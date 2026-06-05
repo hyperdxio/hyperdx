@@ -69,12 +69,14 @@ describe('ChartDisplaySettingsDrawer', () => {
       await user.click(screen.getByTestId('color-swatch-input-trigger'));
 
       // Pick a categorical token.
-      const swatch = await screen.findByTestId('color-swatch-option-chart-1');
+      const swatch = await screen.findByTestId(
+        'color-swatch-option-chart-blue',
+      );
       await user.click(swatch);
 
       // Verify the trigger shows the selected token.
       const trigger = screen.getByTestId('color-swatch-input-trigger');
-      expect(trigger).toHaveTextContent(/color 1/i);
+      expect(trigger).toHaveTextContent(/blue/i);
 
       // Apply the settings.
       await user.click(screen.getByRole('button', { name: /apply/i }));
@@ -82,7 +84,7 @@ describe('ChartDisplaySettingsDrawer', () => {
       expect(onChange).toHaveBeenCalledTimes(1);
       // react-hook-form passes (values, event) to the onSubmit handler;
       // check the values argument directly.
-      expect(onChange.mock.calls[0][0]).toMatchObject({ color: 'chart-1' });
+      expect(onChange.mock.calls[0][0]).toMatchObject({ color: 'chart-blue' });
     });
 
     it('calls onChange with a semantic token when Apply is clicked', async () => {
@@ -106,6 +108,70 @@ describe('ChartDisplaySettingsDrawer', () => {
       expect(onChange).toHaveBeenCalledTimes(1);
       expect(onChange.mock.calls[0][0]).toMatchObject({
         color: 'chart-success',
+      });
+    });
+  });
+
+  describe('fit y-axis to data setting', () => {
+    it('shows the "Fit Y-Axis to Data" checkbox for line charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', { name: /fit y-axis to data/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not show the "Fit Y-Axis to Data" checkbox for table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', { name: /fit y-axis to data/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('defaults to unchecked (lower bound = 0)', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', { name: /fit y-axis to data/i }),
+      ).not.toBeChecked();
+    });
+
+    it('calls onChange with fitYAxisToData = true when enabled and applied', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(
+        screen.getByRole('checkbox', { name: /fit y-axis to data/i }),
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        fitYAxisToData: true,
       });
     });
   });

@@ -1,0 +1,91 @@
+name: E2E Setup
+description: |
+  Shared setup for E2E test workflows: sets the HDX_E2E_* port env vars and
+  common Playwright env vars, then runs Node.js setup, dependency install,
+  build, Playwright browser install, and starts the E2E Docker Compose stack
+  (MongoDB + ClickHouse) with health checks. The caller is responsible for
+  `actions/checkout`, running Playwright, uploading artifacts, and tearing
+  down the Docker stack.
+runs:
+  using: composite
+  steps:
+    # E2E port configuration (slot 0 defaults — must match scripts/test-e2e.sh)
+    - name: Set E2E environment variables
+      shell: bash
+      run: |
+        MONGO_PORT=21100
+        echo "HDX_E2E_SLOT=0" >> $GITHUB_ENV
+        echo "HDX_E2E_OPAMP_PORT=20320" >> $GITHUB_ENV
+        echo "HDX_E2E_CH_PORT=20500" >> $GITHUB_ENV
+        echo "HDX_E2E_CH_NATIVE_PORT=20600" >> $GITHUB_ENV
+        echo "HDX_E2E_API_PORT=21000" >> $GITHUB_ENV
+        echo "HDX_E2E_MONGO_PORT=$MONGO_PORT" >> $GITHUB_ENV
+        echo "HDX_E2E_APP_LOCAL_PORT=21200" >> $GITHUB_ENV
+        echo "HDX_E2E_APP_PORT=21300" >> $GITHUB_ENV
+        echo "MONGO_URI=mongodb://localhost:$MONGO_PORT/hyperdx-e2e" >> $GITHUB_ENV
+        echo "E2E_FULLSTACK=true" >> $GITHUB_ENV
+        echo "E2E_UNIQUE_USER=true" >> $GITHUB_ENV
+        echo "E2E_API_HEALTH_CHECK_MAX_RETRIES=60" >> $GITHUB_ENV
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version-file: .nvmrc
+        cache-dependency-path: yarn.lock
+        cache: yarn
+
+    - name: Install dependencies
+      shell: bash
+      run: yarn install
+
+    - name: Build dependencies
+      shell: bash
+      run: npx nx run-many -t ci:build
+
+    - name: Install Playwright browsers
+      shell: bash
+      run: cd packages/app && npx playwright install --with-deps chromium
+
+    - name: Start E2E Docker Compose
+      shell: bash
+      run: |
+        # Pre-pull images with retries to handle transient Docker Hub timeouts
+        for attempt in 1 2 3; do
+          if docker compose -p e2e-0 -f packages/app/tests/e2e/docker-compose.yml pull; then
+            echo "Docker images pulled successfully on attempt $attempt"
+            break
+          fi
+          if [ "$attempt" -eq 3 ]; then
+            echo "Failed to pull Docker images after 3 attempts"
+            exit 1
+          fi
+          echo "Docker pull failed (attempt $attempt/3), retrying in 10s..."
+          sleep 10
+        done
+        docker compose -p e2e-0 -f packages/app/tests/e2e/docker-compose.yml up -d
+        echo "Waiting for MongoDB..."
+        for i in $(seq 1 30); do
+          if docker compose -p e2e-0 -f packages/app/tests/e2e/docker-compose.yml exec -T db mongosh --quiet --eval "db.adminCommand({ping:1})" >/dev/null 2>&1; then
+            echo "MongoDB is ready"
+            break
+          fi
+          if [ "$i" -eq 30 ]; then
+            echo "MongoDB failed to become ready after 30 seconds"
+            exit 1
+          fi
+          echo "Waiting for MongoDB... ($i/30)"
+          sleep 1
+        done
+        echo "Waiting for ClickHouse..."
+        for i in $(seq 1 60); do
+          if curl -sf http://localhost:${HDX_E2E_CH_PORT}/ping >/dev/null 2>&1; then
+            echo "ClickHouse is ready"
+            break
+          fi
+          if [ "$i" -eq 60 ]; then
+            echo "ClickHouse failed to become ready after 60 seconds"
+            exit 1
+          fi
+          echo "Waiting for ClickHouse... ($i/60)"
+          sleep 1
+        done

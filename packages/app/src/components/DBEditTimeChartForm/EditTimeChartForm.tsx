@@ -221,6 +221,7 @@ export default function EditTimeChartForm({
     alignDateRangeToGranularity,
     fillNulls,
     compareToPreviousPeriod,
+    fitYAxisToData,
     numberFormat,
     groupByColumnsOnLeft,
     color,
@@ -230,6 +231,7 @@ export default function EditTimeChartForm({
       'alignDateRangeToGranularity',
       'fillNulls',
       'compareToPreviousPeriod',
+      'fitYAxisToData',
       'numberFormat',
       'groupByColumnsOnLeft',
       'color',
@@ -250,6 +252,7 @@ export default function EditTimeChartForm({
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
       color,
@@ -258,6 +261,7 @@ export default function EditTimeChartForm({
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
       color,
@@ -539,6 +543,7 @@ export default function EditTimeChartForm({
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      fitYAxisToData,
       groupByColumnsOnLeft,
       color,
     }: ChartConfigDisplaySettings) => {
@@ -546,6 +551,7 @@ export default function EditTimeChartForm({
       setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
+      setValue('fitYAxisToData', fitYAxisToData);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
       setValue('color', color);
       onSubmit();

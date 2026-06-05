@@ -740,6 +740,7 @@ function DBTimeChartComponent({
             onToggleSeries={handleToggleSeries}
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
+            fitYAxisToData={queriedConfig.fitYAxisToData}
           />
         </>
       )}
