@@ -113,12 +113,7 @@ import {
   useUpdateSavedSearch,
 } from '@/savedSearch';
 import { useSearchPageFilterState } from '@/searchFilters';
-import {
-  getEventBody,
-  getFirstTimestampValueExpression,
-  useSource,
-  useSources,
-} from '@/source';
+import { getEventBody, useSource, useSources } from '@/source';
 import { useAppTheme, useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   parseRelativeTimeQuery,
@@ -848,11 +843,13 @@ export function DBSearchPage() {
   );
   const showMs = useMemo(() => {
     if (!searchedSource || !searchedSourceColumns) return true;
-    const tsCol = getFirstTimestampValueExpression(
+    const tsParts = splitAndTrimWithBracket(
       searchedSource.timestampValueExpression,
     );
-    const colMeta = searchedSourceColumns.find(c => c.name === tsCol);
-    return colMeta?.type?.startsWith('DateTime64') ?? true;
+    return tsParts.some(part => {
+      const colMeta = searchedSourceColumns.find(c => c.name === part);
+      return colMeta?.type?.startsWith('DateTime64') ?? false;
+    });
   }, [searchedSource, searchedSourceColumns]);
 
   const directTraceSource =
