@@ -13,15 +13,23 @@ selected at run time.
 
 - **`yarn dev` running** on at least one worktree (ClickHouse, MongoDB, API)
 - **`claude` CLI installed** (the harness spawns it in streaming JSON mode)
-- **`ANTHROPIC_API_KEY`** or **`AI_API_KEY`** in `.env.local` (for `run` and
-  `grade` commands)
+- **`ANTHROPIC_API_KEY`** or **`AI_API_KEY`** in `.env.local` at the monorepo
+  root (for `run` and `grade` commands)
 - **[`uv`](https://docs.astral.sh/uv/)** installed (only needed if you
   configure a `stdio`-type ClickHouse MCP — it launches via
   `uv run --with mcp-clickhouse`)
 
 ## Quick Start
 
+All eval commands derive ClickHouse and API ports from the `HDX_DEV_SLOT`
+environment variable. If your dev stack is running in a different worktree,
+the auto-detected slot won't match. Set `HDX_DEV_SLOT` to the slot your dev
+stack is using — you can find this in the banner printed by `yarn dev`.
+
 ```bash
+# Set the slot for your session (must match the running dev stack)
+export HDX_DEV_SLOT=80
+
 # 1. One-time setup: register eval account + create Sources + write config
 yarn workspace @hyperdx/hdx-eval dev setup-hyperdx
 
@@ -85,11 +93,11 @@ slot it was set up against. You can then manually add the second MCP entry
 
 ### 3. Seed both ClickHouse instances
 
-Both instances need the eval data:
+Both instances need the eval data. Use `HDX_DEV_SLOT` to target each:
 
 ```bash
-yarn workspace @hyperdx/hdx-eval dev seed error-root-cause --ch-url http://localhost:30598
-yarn workspace @hyperdx/hdx-eval dev seed error-root-cause --ch-url http://localhost:30599
+HDX_DEV_SLOT=98 yarn workspace @hyperdx/hdx-eval dev seed error-root-cause
+HDX_DEV_SLOT=99 yarn workspace @hyperdx/hdx-eval dev seed error-root-cause
 ```
 
 ### 4. Run the comparison
