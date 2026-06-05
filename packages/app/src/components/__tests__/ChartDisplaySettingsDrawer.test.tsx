@@ -69,12 +69,14 @@ describe('ChartDisplaySettingsDrawer', () => {
       await user.click(screen.getByTestId('color-swatch-input-trigger'));
 
       // Pick a categorical token.
-      const swatch = await screen.findByTestId('color-swatch-option-chart-1');
+      const swatch = await screen.findByTestId(
+        'color-swatch-option-chart-blue',
+      );
       await user.click(swatch);
 
       // Verify the trigger shows the selected token.
       const trigger = screen.getByTestId('color-swatch-input-trigger');
-      expect(trigger).toHaveTextContent(/color 1/i);
+      expect(trigger).toHaveTextContent(/blue/i);
 
       // Apply the settings.
       await user.click(screen.getByRole('button', { name: /apply/i }));
@@ -82,7 +84,7 @@ describe('ChartDisplaySettingsDrawer', () => {
       expect(onChange).toHaveBeenCalledTimes(1);
       // react-hook-form passes (values, event) to the onSubmit handler;
       // check the values argument directly.
-      expect(onChange.mock.calls[0][0]).toMatchObject({ color: 'chart-1' });
+      expect(onChange.mock.calls[0][0]).toMatchObject({ color: 'chart-blue' });
     });
 
     it('calls onChange with a semantic token when Apply is clicked', async () => {
