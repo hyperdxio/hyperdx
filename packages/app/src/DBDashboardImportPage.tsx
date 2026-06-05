@@ -65,6 +65,7 @@ import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import { useConnections } from './connection';
 import {
+  normalizeRawDashboardTileColors,
   useCreateDashboard,
   useDashboards,
   useUpdateDashboard,
@@ -161,6 +162,14 @@ function FileSelection({
       });
       return;
     }
+
+    // Heal legacy `chart-1`..`chart-10` tile colors from #2265 *before*
+    // the strict `DashboardTemplateSchema.safeParse` runs. The schema's
+    // `ChartPaletteTokenSchema` is a plain `z.enum` (no `z.preprocess`),
+    // so a template exported from a pre-rename deploy would otherwise
+    // fail import with an opaque enum error and never reach the
+    // write-time normalizer in `useCreateDashboard`.
+    data = normalizeRawDashboardTileColors(data);
 
     const result = DashboardTemplateSchema.safeParse(data);
     if (!result.success) {

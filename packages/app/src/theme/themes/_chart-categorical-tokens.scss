@@ -1,0 +1,62 @@
+/* Shared Chart Tokens - used by both theme files */
+
+/*
+ * Categorical hues and semantic chart colors are unified across HyperDX and
+ * ClickStack. This file is the SCSS source of truth for both layers; each
+ * brand theme `@use`s it and `@include`s the mixins inside its per-theme
+ * `chart-tokens` mixin (categorical first, then semantic — semantics reference
+ * `var(--color-chart-green)` / `var(--color-chart-blue)`).
+ *
+ * Per-brand overrides: if a future brand needs a different semantic hex,
+ * declare it in that theme's `chart-tokens` mixin *after* the shared
+ * `@include chart-semantic-tokens` call.
+ *
+ * Categorical hues — React reads these from `CATEGORICAL_HEX_BY_TOKEN` in
+ * `packages/app/src/utils.ts` directly (`getColorFromCSSVariable` /
+ * `getColorFromCSSToken` skip `getComputedStyle` for categorical tokens).
+ * The CSS vars exist for SCSS modules, inline `var()` consumers, and devtools.
+ * If you change a categorical hex here, update `CATEGORICAL_HEX_BY_TOKEN`
+ * in `utils.ts` to match.
+ *
+ * Semantic tokens — read at runtime via `getComputedStyle` in `utils.ts`.
+ * If you change a semantic hex here, update `SEMANTIC_CHART_PALETTE` in
+ * `utils.ts` to match.
+ *
+ * `chart-blue` is `#437eef` (the brand link color, same hue as
+ * `--click-global-color-text-link-default`) rather than Observable blue
+ * (`#4269d0`); all other hues are straight from Observable 10
+ * (https://observablehq.com/@d3/color-schemes).
+ */
+@mixin chart-categorical-tokens {
+  --color-chart-blue: #437eef;
+  --color-chart-orange: #efb118;
+  --color-chart-red: #ff725c;
+  --color-chart-cyan: #6cc5b0;
+  --color-chart-green: #3ca951;
+  --color-chart-pink: #ff8ab7;
+  --color-chart-purple: #a463f2;
+  --color-chart-light-blue: #97bbf5;
+  --color-chart-brown: #9c6b4e;
+  --color-chart-gray: #9498a0;
+}
+
+/*
+ * Semantic chart colors — unified on both brands. All four semantic vars
+ * alias their matching categorical hue var so a future tweak to e.g.
+ * `--color-chart-orange` propagates to `--color-chart-warning` without
+ * a second edit. Must be `@include`d after `chart-categorical-tokens`.
+ *
+ * Highlight variants stay as concrete hexes — they're a tint of the
+ * base hue, not an alias, so they can't ride the var.
+ */
+@mixin chart-semantic-tokens {
+  --color-chart-success: var(--color-chart-green);
+  --color-chart-warning: var(--color-chart-orange);
+  --color-chart-error: var(--color-chart-red);
+  --color-chart-info: var(--color-chart-blue);
+
+  /* Highlighted variants (hover/selection states) */
+  --color-chart-success-highlight: #80d9b3;
+  --color-chart-warning-highlight: #f5c94d;
+  --color-chart-error-highlight: #ffa090;
+}
