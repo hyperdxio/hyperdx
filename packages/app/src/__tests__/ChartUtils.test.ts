@@ -11,7 +11,15 @@ import {
   formatResponseForPieChart,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
-import { COLORS, getChartColorError } from '@/utils';
+import { COLORS } from '@/utils';
+
+// Anchor info/error to concrete hexes rather than `getChartColorInfo()` /
+// `getChartColorError()` so a regression that breaks the helpers can't
+// move expected and actual in lockstep. Keep in sync with
+// `_chart-categorical-tokens.scss` (`chart-semantic-tokens` mixin) and
+// `SEMANTIC_CHART_PALETTE` in `packages/app/src/utils.ts`.
+const SEMANTIC_INFO_HEX = '#437eef';
+const SEMANTIC_ERROR_HEX = '#ff725c';
 
 describe('ChartUtils', () => {
   describe('formatResponseForTimeChart', () => {
@@ -306,7 +314,7 @@ describe('ChartUtils', () => {
 
       expect(actual.lineData).toEqual([
         {
-          color: COLORS[0],
+          color: SEMANTIC_INFO_HEX,
           dataKey: 'info',
           currentPeriodKey: 'info',
           previousPeriodKey: 'info (previous)',
@@ -315,7 +323,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: COLORS[0],
+          color: SEMANTIC_INFO_HEX,
           dataKey: 'debug',
           currentPeriodKey: 'debug',
           previousPeriodKey: 'debug (previous)',
@@ -324,7 +332,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: getChartColorError(),
+          color: SEMANTIC_ERROR_HEX,
           dataKey: 'error',
           currentPeriodKey: 'error',
           previousPeriodKey: 'error (previous)',

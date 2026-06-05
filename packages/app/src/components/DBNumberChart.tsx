@@ -10,7 +10,7 @@ import {
 } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
-  isChartPaletteToken,
+  resolveChartPaletteToken,
 } from '@hyperdx/common-utils/dist/types';
 import { Flex, Text } from '@mantine/core';
 
@@ -259,12 +259,18 @@ export default function DBNumberChart({
   });
 
   // Tile-level color override resolved at render time so token choices
-  // reflow correctly across light / dark / IDE themes. Unknown tokens
-  // (legacy strings, schema gaps) fall back to the default text color.
-  const tileColor =
-    config.color && isChartPaletteToken(config.color)
-      ? getColorFromCSSToken(config.color)
-      : undefined;
+  // reflow correctly across light / dark / IDE themes.
+  // `resolveChartPaletteToken` accepts both current hue-named tokens and
+  // legacy `chart-1`..`chart-10` values from stored configs. The fetch
+  // path (`normalizeDashboardTileColors`) already heals stored data, so
+  // in practice this resolver only ever sees the migrated hue tokens —
+  // but we keep the call as defense in depth against any tile that gets
+  // constructed in memory without going through the fetch normalizer.
+  // Unknown strings fall back to the default text color.
+  const resolvedColorToken = resolveChartPaletteToken(config.color);
+  const tileColor = resolvedColorToken
+    ? getColorFromCSSToken(resolvedColorToken)
+    : undefined;
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
