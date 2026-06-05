@@ -31,6 +31,7 @@ describe('renderChartConfig', () => {
       { name: 'value', type: 'Float64' },
       { name: 'TraceId', type: 'String' },
       { name: 'ServiceName', type: 'String' },
+      { name: 'severity', type: 'String' },
     ];
     mockMetadata = {
       getColumns: jest.fn().mockResolvedValue([
@@ -2090,6 +2091,192 @@ describe('renderChartConfig', () => {
       const actual = parameterizedQueryToSql(generatedSql);
       expect(actual).toContain('histogramMerge(20)(Duration)');
       expect(actual).toMatchSnapshot();
+    });
+  });
+
+  describe('SELECT alias references in a Lucene WHERE', () => {
+    // ClickHouse resolves SELECT aliases in WHERE. A Lucene WHERE that
+    // references a SELECT alias (here `Body AS Content`) must resolve the alias
+    // to a bare identifier rather than rendering the no-match predicate.
+    it('resolves a Lucene WHERE reference to a SELECT alias', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [{ valueExpression: 'Body', alias: 'Content' }],
+        where: 'Content:"swagger"',
+        whereLanguage: 'lucene',
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain("Content = 'swagger'");
+    });
+
+    it('renders an unknown, non-alias field in a Lucene WHERE as the no-match predicate', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [{ valueExpression: 'Body', alias: 'Content' }],
+        where: 'NotAColumn:"swagger"',
+        whereLanguage: 'lucene',
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('(1 = 0)');
+      expect(actual).not.toContain('NotAColumn');
+    });
+
+    // String-form select lists (e.g. a source's defaultTableSelectExpression)
+    // declare aliases as raw SQL. These are parsed to recover the aliases so
+    // alias references in a Lucene WHERE still resolve.
+    it('resolves a Lucene WHERE reference to an alias in a string-form select', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: 'Body AS Content',
+        where: 'Content:"swagger"',
+        whereLanguage: 'lucene',
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain("Content = 'swagger'");
+    });
+
+    it('resolves an alias from a realistic default-view string select', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: 'Timestamp, ServiceName as service, Body',
+        where: 'service:"prod"',
+        whereLanguage: 'lucene',
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain("service = 'prod'");
+    });
+
+    it('renders an unknown field as the no-match predicate when a string select declares no matching alias', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: 'Timestamp, Body',
+        where: 'NotAColumn:"x"',
+        whereLanguage: 'lucene',
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('(1 = 0)');
+      expect(actual).not.toContain('NotAColumn');
+    });
+
+    // SAVED_SEARCH alerts select count() while injecting the saved search's
+    // select aliases as expression-form WITH clauses (isSubquery: false). A
+    // Lucene WHERE referencing such an alias must resolve to the bare
+    // identifier, not the no-match predicate.
+    it('resolves a Lucene WHERE reference to an expression-form WITH alias', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        with: [
+          {
+            name: 'Content',
+            sql: chSql`toString(Body)`,
+            isSubquery: false,
+          },
+        ],
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        where: 'Content:"swagger"',
+        whereLanguage: 'lucene',
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain("Content = 'swagger'");
+      expect(actual).not.toContain('(1 = 0)');
+    });
+
+    // Subquery CTEs (isSubquery: true) name a table-like source, not a column,
+    // so an alias reference to one in a Lucene WHERE is still unknown and must
+    // render the no-match predicate.
+    it('does not treat a subquery WITH alias as a column reference', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        with: [
+          {
+            name: 'sub',
+            sql: chSql`SELECT 1`,
+            isSubquery: true,
+          },
+        ],
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        where: 'sub:"x"',
+        whereLanguage: 'lucene',
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('(1 = 0)');
     });
   });
 

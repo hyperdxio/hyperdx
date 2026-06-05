@@ -762,6 +762,7 @@ export type CustomSchemaConfig = {
    * metadata; otherwise, it forces the chosen behavior.
    */
   useTextIndexForImplicitColumn?: UseTextIndex;
+  selectAliases?: Set<string>;
 };
 
 function renderArrayFieldExpression({
@@ -1165,6 +1166,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private skipIndicesPromise?: Promise<SkipIndexMetadata[]>;
   private enableTextIndexPromise?: Promise<boolean>;
   private kvItemsLookupPromise?: Promise<KvItemsLookup>;
+  private selectAliases: Set<string> | undefined;
 
   constructor({
     metadata,
@@ -1174,6 +1176,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     implicitColumnExpression,
     bodyExpression,
     useTextIndexForImplicitColumn,
+    selectAliases,
   }: { metadata: Metadata } & CustomSchemaConfig) {
     super();
     this.metadata = metadata;
@@ -1184,6 +1187,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     this.connectionId = connectionId;
     this.useTextIndexForImplicitColumn =
       useTextIndexForImplicitColumn ?? UseTextIndex.Auto;
+    this.selectAliases = selectAliases;
 
     // Pre-fetch skip indices for potential bloom filter optimization
     this.skipIndicesPromise = this.metadata
@@ -1472,13 +1476,14 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       };
       let materializedColumns: Map<string, string>;
       try {
-        // This won't work for CTEs
+        // This won't work for CTEs. Treat a missing lookup (null/undefined) the
+        // same as the catch path below: proceed with no materialized columns.
         materializedColumns =
-          await this.metadata.getMaterializedColumnsLookupTable({
+          (await this.metadata.getMaterializedColumnsLookupTable({
             databaseName: this.databaseName,
             tableName: this.tableName,
             connectionId: this.connectionId,
-          });
+          })) ?? new Map();
       } catch (e) {
         console.debug('Error in getMaterializedColumnsLookupTable', e);
         materializedColumns = new Map();
@@ -1585,14 +1590,19 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
       throw new Error('Unsupported column type for prefix match');
     }
 
-    // It might be an alias, let's just try the column
-    // TODO: Verify aliases
+    if (this.selectAliases?.has(field)) {
+      return {
+        found: true,
+        columnExpression: field,
+        columnType: 'Unknown',
+      };
+    }
+
     return {
-      found: true,
+      found: false,
       columnExpression: field,
       columnType: 'Unknown',
     };
-    // throw new Error(`Column not found: ${field}`);
   }
 
   private isLowerExpression(expr: string): boolean {
