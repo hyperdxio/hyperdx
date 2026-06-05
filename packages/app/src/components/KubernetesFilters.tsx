@@ -27,6 +27,22 @@ type FilterSelectProps = {
   dataTestId?: string;
 };
 
+// Removes a single field's `resourceAttr.field:"..."` clause from a Lucene
+// query string, leaving every other clause (and free-text search) intact. Used
+// both to rewrite the query when a dropdown changes and to build the faceted
+// `where` for each dropdown's value lookup.
+export const stripFieldClause = (
+  query: string,
+  resourceAttr: string,
+  field: string,
+): string => {
+  const fullAttribute = `${resourceAttr}.${field}`;
+  const regex = new RegExp(`${fullAttribute}:"[^"]*"`, 'g');
+  // Replace with a space and collapse runs of whitespace so removing a clause
+  // from the middle of the query doesn't leave a double space.
+  return query.replace(regex, ' ').replace(/\s+/g, ' ').trim();
+};
+
 const FilterSelect: React.FC<FilterSelectProps> = ({
   metricSource,
   placeholder,
@@ -156,19 +172,28 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
     }
   }, [searchQuery, metricSource.resourceAttributesExpression]);
 
-  // Create chart config for fetching key values
-  const chartConfig: BuilderChartConfigWithDateRange = {
+  // Build a chart config for fetching a single field's selectable values.
+  // Faceted filtering: constrain the values by every OTHER active K8s filter and
+  // the free-text search (i.e. the whole searchQuery except this field's own
+  // clause), so e.g. picking a cluster narrows the namespace list.
+  const buildChartConfigForField = (
+    field: string,
+  ): BuilderChartConfigWithDateRange => ({
     from: {
       databaseName: metricSource.from.databaseName,
       tableName: metricSource.metricTables?.gauge || '',
     },
-    where: '',
-    whereLanguage: 'sql',
+    where: stripFieldClause(
+      searchQuery,
+      metricSource.resourceAttributesExpression,
+      field,
+    ),
+    whereLanguage: 'lucene',
     select: '',
     timestampValueExpression: metricSource.timestampValueExpression || '',
     connection: metricSource.connection,
     dateRange,
-  };
+  });
 
   // Helper function to update search query
   const updateSearchQuery = (
@@ -182,9 +207,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
     const fullAttribute = `${resourceAttr}.${attribute}`;
 
     // Remove existing filter for this attribute if it exists
-    let newQuery = searchQuery;
-    const regex = new RegExp(`${fullAttribute}:"[^"]*"`, 'g');
-    newQuery = newQuery.replace(regex, '').trim();
+    let newQuery = stripFieldClause(searchQuery, resourceAttr, attribute);
 
     // Add new filter if value is not null
     if (value) {
@@ -202,7 +225,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
         fieldName="k8s.pod.name"
         value={podName}
         onChange={value => updateSearchQuery('k8s.pod.name', value, setPodName)}
-        chartConfig={chartConfig}
+        chartConfig={buildChartConfigForField('k8s.pod.name')}
         dataTestId="pod-filter-select"
       />
 
@@ -214,7 +237,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
         onChange={value =>
           updateSearchQuery('k8s.deployment.name', value, setDeploymentName)
         }
-        chartConfig={chartConfig}
+        chartConfig={buildChartConfigForField('k8s.deployment.name')}
         dataTestId="deployment-filter-select"
       />
 
@@ -226,7 +249,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
         onChange={value =>
           updateSearchQuery('k8s.node.name', value, setNodeName)
         }
-        chartConfig={chartConfig}
+        chartConfig={buildChartConfigForField('k8s.node.name')}
         dataTestId="node-filter-select"
       />
 
@@ -238,7 +261,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
         onChange={value =>
           updateSearchQuery('k8s.namespace.name', value, setNamespaceName)
         }
-        chartConfig={chartConfig}
+        chartConfig={buildChartConfigForField('k8s.namespace.name')}
         dataTestId="namespace-filter-select"
       />
 
@@ -250,7 +273,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
         onChange={value =>
           updateSearchQuery('k8s.cluster.name', value, setClusterName)
         }
-        chartConfig={chartConfig}
+        chartConfig={buildChartConfigForField('k8s.cluster.name')}
         dataTestId="cluster-filter-select"
       />
       <Box style={{ flex: 1, minWidth: 200 }}>

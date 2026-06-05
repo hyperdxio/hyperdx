@@ -74,6 +74,7 @@ const DashboardFilters = ({
   const { data: filterValuesById, isFetching } = useDashboardFilterValues({
     filters,
     dateRange,
+    filterValues,
   });
 
   return (

@@ -2,6 +2,7 @@
 import React from 'react';
 import { optimizeGetKeyValuesCalls } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
   DashboardFilter,
   MetricsDataType,
@@ -537,6 +538,7 @@ describe('useDashboardFilterValues', () => {
         dateRange: mockDateRange,
         where: '',
         whereLanguage: 'sql',
+        filters: [],
         select: '',
       },
       keys: ['environment'],
@@ -1011,5 +1013,209 @@ describe('useDashboardFilterValues', () => {
         }),
       }),
     );
+  });
+
+  describe('faceted filtering (cascading filters)', () => {
+    // Returns the `filters` array passed to the getKeyValues call whose `keys`
+    // exactly match, or undefined if no such call was made.
+    const filtersForKeys = (keys: string[]) =>
+      (mockMetadata.getKeyValues.mock.calls as any[]).find(
+        ([arg]) => JSON.stringify(arg.keys) === JSON.stringify(keys),
+      )?.[0]?.chartConfig?.filters;
+
+    const envAndStatus: DashboardFilter[] = [
+      {
+        id: 'filter1',
+        type: 'QUERY_EXPRESSION',
+        name: 'Environment',
+        expression: 'environment',
+        source: 'logs-source',
+      },
+      {
+        id: 'filter2',
+        type: 'QUERY_EXPRESSION',
+        name: 'Status',
+        expression: 'status',
+        source: 'logs-source',
+      },
+    ];
+
+    beforeEach(() => {
+      jest.spyOn(sourceModule, 'useSources').mockReturnValue({
+        data: mockSources,
+        isLoading: false,
+      } as any);
+      // A prior test may have overridden the implementation (clearAllMocks
+      // resets call data but not implementations); restore the passthrough so
+      // each key group reaches getKeyValues with its own keys + chartConfig
+      // (including the faceting `filters`).
+      jest
+        .mocked(optimizeGetKeyValuesCalls)
+        .mockImplementation(async ({ keys, chartConfig }) => [
+          { keys, chartConfig },
+        ]);
+    });
+
+    it('narrows sibling filters by the current selection and excludes self', async () => {
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: envAndStatus,
+            dateRange: mockDateRange,
+            filterValues: {
+              environment: {
+                included: new Set<string>(['production']),
+                excluded: new Set<string>(),
+              },
+            },
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // The two filters can no longer batch: each has a distinct constraint set.
+      expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(2);
+
+      // `status` values are constrained by the `environment` selection.
+      expect(filtersForKeys(['status'])).toEqual([
+        { type: 'sql', condition: "environment IN ('production')" },
+      ]);
+
+      // `environment` is NOT constrained by its own selection (exclude-self),
+      // so the user can still see and change among all environments.
+      expect(filtersForKeys(['environment'])).toEqual([]);
+    });
+
+    it('batches unselected same-source filters into one unconstrained query', async () => {
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: envAndStatus,
+            dateRange: mockDateRange,
+            filterValues: {},
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
+      expect(filtersForKeys(['environment', 'status'])).toEqual([]);
+    });
+
+    it('keeps unselected siblings batched while the selected filter splits off', async () => {
+      const filters: DashboardFilter[] = [
+        ...envAndStatus,
+        {
+          id: 'filter3',
+          type: 'QUERY_EXPRESSION',
+          name: 'Log Level',
+          expression: 'log_level',
+          source: 'logs-source',
+        },
+      ];
+
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters,
+            dateRange: mockDateRange,
+            filterValues: {
+              environment: {
+                included: new Set<string>(['production']),
+                excluded: new Set<string>(),
+              },
+            },
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // Two queries: the selected filter alone, and the two unselected siblings
+      // batched together (they share the same constraint set).
+      expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(2);
+      expect(filtersForKeys(['status', 'log_level'])).toEqual([
+        { type: 'sql', condition: "environment IN ('production')" },
+      ]);
+      expect(filtersForKeys(['environment'])).toEqual([]);
+    });
+
+    it('does not apply a selection from one source to filters on another source', async () => {
+      const filters: DashboardFilter[] = [
+        {
+          id: 'filter1',
+          type: 'QUERY_EXPRESSION',
+          name: 'Environment',
+          expression: 'environment',
+          source: 'logs-source',
+        },
+        {
+          id: 'filter2',
+          type: 'QUERY_EXPRESSION',
+          name: 'Service',
+          expression: 'service.name',
+          source: 'traces-source',
+        },
+      ];
+
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters,
+            dateRange: mockDateRange,
+            filterValues: {
+              environment: {
+                included: new Set<string>(['production']),
+                excluded: new Set<string>(),
+              },
+            },
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // A logs-source selection must not leak into a traces-source value query
+      // (the column may not exist there).
+      expect(filtersForKeys(['service.name'])).toEqual([]);
+      expect(filtersForKeys(['environment'])).toEqual([]);
+    });
+
+    it('refetches with updated constraints when a selection changes', async () => {
+      const { result, rerender } = renderHook(
+        ({ filterValues }) =>
+          useDashboardFilterValues({
+            filters: envAndStatus,
+            dateRange: mockDateRange,
+            filterValues,
+          }),
+        {
+          wrapper,
+          initialProps: { filterValues: {} as FilterState },
+        },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+      // Nothing selected → both filters batch into one query.
+      expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
+
+      rerender({
+        filterValues: {
+          environment: {
+            included: new Set<string>(['production']),
+            excluded: new Set<string>(),
+          },
+        },
+      });
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // `status` is re-fetched with the new constraint.
+      expect(filtersForKeys(['status'])).toEqual([
+        { type: 'sql', condition: "environment IN ('production')" },
+      ]);
+    });
   });
 });

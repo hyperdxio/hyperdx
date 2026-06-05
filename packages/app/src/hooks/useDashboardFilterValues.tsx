@@ -5,8 +5,13 @@ import {
   optimizeGetKeyValuesCalls,
 } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
+  FilterState,
+  filtersToQuery,
+} from '@hyperdx/common-utils/dist/filters';
+import {
   BuilderChartConfigWithDateRange,
   DashboardFilter,
+  Filter,
   isLogSource,
   isTraceSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -37,9 +42,6 @@ const filterToKey = (filter: DashboardFilter): string =>
     whereLanguage: filter.whereLanguage ?? 'sql',
   } satisfies FilterSourceKey);
 
-const filterFromKey = (key: string): FilterSourceKey =>
-  JSON.parse(key) as FilterSourceKey;
-
 type EnrichedCall = GetKeyValueCall<BuilderChartConfigWithDateRange> & {
   /** filterIds[i] = array of filter IDs whose values come from keys[i] */
   filterIds: string[][];
@@ -48,36 +50,93 @@ type EnrichedCall = GetKeyValueCall<BuilderChartConfigWithDateRange> & {
 function useOptimizedKeyValuesCalls({
   filters,
   dateRange,
+  filterValues,
 }: {
   filters: DashboardFilter[];
   dateRange: [Date, Date];
+  filterValues: FilterState;
 }) {
   const clickhouseClient = useClickhouseClient();
   const metadata = useMetadataWithSettings();
   const { data: sources, isLoading: isLoadingSources } = useSources();
 
-  // Group filters by (source, metricType, where, whereLanguage) so that we can test each group for MV compatibility separately.
-  const filtersByGroupKey = useMemo(() => {
-    const filtersByGroupKey = new Map<string, DashboardFilter[]>();
+  // Faceted filtering: each filter's selectable values are narrowed by the
+  // CURRENT selections of its sibling filters. For every filter, build the
+  // constraint from the selections of the OTHER filters that target the same
+  // source + metric type (so the constrained columns are guaranteed to exist in
+  // the queried table), excluding the filter's own expression (otherwise a
+  // multi-select would collapse to only its already-selected values).
+  const constraintsByFilterId = useMemo(() => {
+    const byId = new Map<string, Filter[]>();
     for (const filter of filters) {
-      const key = filterToKey(filter);
-      if (!filtersByGroupKey.has(key)) {
-        filtersByGroupKey.set(key, [filter]);
+      const prunedState: FilterState = {};
+      for (const sibling of filters) {
+        if (
+          sibling.source !== filter.source ||
+          sibling.sourceMetricType !== filter.sourceMetricType ||
+          // Exclude-self: FilterState is keyed by expression, so a sibling that
+          // shares this filter's expression carries this filter's own selection.
+          sibling.expression === filter.expression
+        ) {
+          continue;
+        }
+        const selection = filterValues[sibling.expression];
+        if (
+          selection &&
+          (selection.included.size > 0 ||
+            selection.excluded.size > 0 ||
+            selection.range != null)
+        ) {
+          prunedState[sibling.expression] = selection;
+        }
+      }
+      byId.set(
+        filter.id,
+        filtersToQuery(prunedState, { stringifyKeys: false }),
+      );
+    }
+    return byId;
+  }, [filters, filterValues]);
+
+  // Group filters by (source, metricType, where, whereLanguage) AND their
+  // effective constraint signature, so each group can be tested for MV
+  // compatibility separately. Filters with an identical constraint set — in
+  // particular every currently-unselected filter of a source — stay batched in a
+  // single key-values query; each selected filter (which omits its own
+  // expression) splits into its own query.
+  const filtersByGroupKey = useMemo(() => {
+    const byGroupKey = new Map<
+      string,
+      { filters: DashboardFilter[]; constraints: Filter[] }
+    >();
+    for (const filter of filters) {
+      const constraints = constraintsByFilterId.get(filter.id) ?? [];
+      const constraintsSig = constraints
+        .map(c => JSON.stringify(c))
+        .sort()
+        .join('|');
+      const key = `${filterToKey(filter)}::${constraintsSig}`;
+      const existing = byGroupKey.get(key);
+      if (existing) {
+        existing.filters.push(filter);
       } else {
-        filtersByGroupKey.get(key)!.push(filter);
+        byGroupKey.set(key, { filters: [filter], constraints });
       }
     }
-    return filtersByGroupKey;
-  }, [filters]);
+    return byGroupKey;
+  }, [filters, constraintsByFilterId]);
 
   const results: UseQueryResult<EnrichedCall[]>[] = useQueries({
-    queries: Array.from(filtersByGroupKey.entries())
-      .filter(([key]) =>
-        sources?.some(s => s.id === filterFromKey(key).sourceId),
+    queries: Array.from(filtersByGroupKey.values())
+      .filter(({ filters: filtersInGroup }) =>
+        sources?.some(s => s.id === filtersInGroup[0].source),
       )
-      .map(([key, filtersInGroup]) => {
-        const { sourceId, metricType, where, whereLanguage } =
-          filterFromKey(key);
+      .map(({ filters: filtersInGroup, constraints }) => {
+        const representative = filtersInGroup[0];
+        const sourceId = representative.source;
+        const metricType = representative.sourceMetricType;
+        const where = representative.where ?? '';
+        const whereLanguage = representative.whereLanguage ?? 'sql';
         const source = sources!.find(s => s.id === sourceId)!;
         const keyExpressions = filtersInGroup.map(f => f.expression);
         const tableName = getMetricTableName(source, metricType) ?? '';
@@ -104,6 +163,9 @@ function useOptimizedKeyValuesCalls({
           source: source.id,
           where,
           whereLanguage,
+          // Sibling-selection constraints (faceted filtering); combined with the
+          // static `where` via AND inside renderChartConfig.
+          filters: constraints,
           select: '',
         };
 
@@ -116,6 +178,7 @@ function useOptimizedKeyValuesCalls({
             keyExpressions,
             where,
             whereLanguage,
+            constraints,
           ],
           enabled: !isLoadingSources,
           staleTime: 1000 * 60 * 5, // Cache every 5 min
@@ -152,9 +215,11 @@ function useOptimizedKeyValuesCalls({
 export function useDashboardFilterValues({
   filters,
   dateRange,
+  filterValues = {},
 }: {
   filters: DashboardFilter[];
   dateRange: [Date, Date];
+  filterValues?: FilterState;
 }) {
   const metadata = useMetadataWithSettings();
   const {
@@ -164,6 +229,7 @@ export function useDashboardFilterValues({
   } = useOptimizedKeyValuesCalls({
     filters,
     dateRange,
+    filterValues,
   });
 
   const { data: sources, isLoading: isSourcesLoading } = useSources();
