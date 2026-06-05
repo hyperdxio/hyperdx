@@ -646,7 +646,9 @@ export function evaluateColorCondition(
     case 'eq':
       return value === rule.value;
     case 'neq':
-      return value !== rule.value;
+      // Guard on typeof so cross-type mismatches return false, matching the
+      // contract in the docstring (`eq` already gets this from `===`).
+      return typeof value === typeof rule.value && value !== rule.value;
     case 'contains':
       return typeof value === 'string' && value.includes(rule.value);
     case 'startsWith':

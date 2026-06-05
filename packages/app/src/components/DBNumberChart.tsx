@@ -279,12 +279,13 @@ export default function DBNumberChart({
   // strings over JSON (output_format_json_quote_64bit_integers=1), so
   // coerce string values to numbers when possible so numeric operators
   // match correctly.
-  const rawValueRaw = valueColumn
-    ? (data?.data?.[0]?.[valueColumn.name] as number | string | undefined)
-    : (Object.values(data?.data?.[0] ?? {})?.[0] as
-        | number
-        | string
-        | undefined);
+  // Re-use the already-computed `value`; the `?? Number.NaN` fallback there
+  // is for `formatNumber`'s sake, the coercion IIFE below treats undefined
+  // and NaN as "no value" so the rules short-circuit to the fallback color.
+  const rawValueRaw =
+    typeof value === 'number' && Number.isNaN(value)
+      ? undefined
+      : (value as number | string | undefined);
 
   const rawValue: number | string | null | undefined = (() => {
     if (rawValueRaw == null) return rawValueRaw;

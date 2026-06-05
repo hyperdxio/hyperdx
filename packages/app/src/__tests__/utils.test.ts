@@ -1402,6 +1402,27 @@ describe('evaluateColorCondition', () => {
       expect(evaluateColorCondition(1, rule)).toBe(true);
       expect(evaluateColorCondition(0, rule)).toBe(false);
     });
+
+    it('neq: cross-type mismatch returns false (number vs string)', () => {
+      const rule: ColorCondition = {
+        operator: 'neq',
+        value: 'none',
+        color: 'chart-blue',
+      };
+      // Without the typeof guard, `42 !== 'none'` is true, which would make
+      // the rule match every numeric value. Guarding keeps the docstring
+      // contract: cross-type mismatches return false.
+      expect(evaluateColorCondition(42, rule)).toBe(false);
+    });
+
+    it('neq: cross-type mismatch returns false (string vs number)', () => {
+      const rule: ColorCondition = {
+        operator: 'neq',
+        value: 42,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition('none', rule)).toBe(false);
+    });
   });
 
   describe('string operators', () => {
