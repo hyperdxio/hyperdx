@@ -16,7 +16,7 @@ function makeRule(
     localId: id,
     operator: 'gt',
     value: 0,
-    color: 'chart-1',
+    color: 'chart-blue',
     ...overrides,
   } as ColorRuleWithId;
 }
@@ -36,7 +36,10 @@ describe('ColorRulesEditor', () => {
       expect(onChange).toHaveBeenCalledTimes(1);
       const [newRules] = onChange.mock.calls[0];
       expect(newRules).toHaveLength(1);
-      expect(newRules[0]).toMatchObject({ operator: 'gt', color: 'chart-1' });
+      expect(newRules[0]).toMatchObject({
+        operator: 'gt',
+        color: 'chart-blue',
+      });
       expect(typeof newRules[0].localId).toBe('string');
     });
 

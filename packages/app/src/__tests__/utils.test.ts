@@ -1280,7 +1280,7 @@ describe('evaluateColorCondition', () => {
       const rule: ColorCondition = {
         operator: 'gt',
         value: 10,
-        color: 'chart-1',
+        color: 'chart-blue',
       };
       expect(evaluateColorCondition(11, rule)).toBe(true);
       expect(evaluateColorCondition(10, rule)).toBe(false);
@@ -1291,7 +1291,7 @@ describe('evaluateColorCondition', () => {
       const rule: ColorCondition = {
         operator: 'gte',
         value: 10,
-        color: 'chart-1',
+        color: 'chart-blue',
       };
       expect(evaluateColorCondition(10, rule)).toBe(true);
       expect(evaluateColorCondition(11, rule)).toBe(true);
@@ -1302,7 +1302,7 @@ describe('evaluateColorCondition', () => {
       const rule: ColorCondition = {
         operator: 'lt',
         value: 10,
-        color: 'chart-1',
+        color: 'chart-blue',
       };
       expect(evaluateColorCondition(9, rule)).toBe(true);
       expect(evaluateColorCondition(10, rule)).toBe(false);
@@ -1312,7 +1312,7 @@ describe('evaluateColorCondition', () => {
       const rule: ColorCondition = {
         operator: 'lte',
         value: 10,
-        color: 'chart-1',
+        color: 'chart-blue',
       };
       expect(evaluateColorCondition(10, rule)).toBe(true);
       expect(evaluateColorCondition(9, rule)).toBe(true);
@@ -1323,7 +1323,7 @@ describe('evaluateColorCondition', () => {
       const rule: ColorCondition = {
         operator: 'gt',
         value: 10,
-        color: 'chart-1',
+        color: 'chart-blue',
       };
       expect(evaluateColorCondition('15', rule)).toBe(false);
     });
@@ -1334,7 +1334,7 @@ describe('evaluateColorCondition', () => {
       const rule: ColorCondition = {
         operator: 'between',
         value: [10, 100],
-        color: 'chart-1',
+        color: 'chart-blue',
       };
       expect(evaluateColorCondition(50, rule)).toBe(true);
       expect(evaluateColorCondition(10, rule)).toBe(true);
@@ -1347,7 +1347,7 @@ describe('evaluateColorCondition', () => {
       const rule: ColorCondition = {
         operator: 'between',
         value: [100, 10],
-        color: 'chart-1',
+        color: 'chart-blue',
       };
       expect(evaluateColorCondition(50, rule)).toBe(true);
       expect(evaluateColorCondition(5, rule)).toBe(false);
@@ -1357,7 +1357,7 @@ describe('evaluateColorCondition', () => {
       const rule: ColorCondition = {
         operator: 'between',
         value: [10, 100],
-        color: 'chart-1',
+        color: 'chart-blue',
       };
       expect(evaluateColorCondition('50', rule)).toBe(false);
     });
@@ -1368,7 +1368,7 @@ describe('evaluateColorCondition', () => {
       const rule: ColorCondition = {
         operator: 'eq',
         value: 5,
-        color: 'chart-1',
+        color: 'chart-blue',
       };
       expect(evaluateColorCondition(5, rule)).toBe(true);
       expect(evaluateColorCondition(6, rule)).toBe(false);
@@ -1378,7 +1378,7 @@ describe('evaluateColorCondition', () => {
       const rule: ColorCondition = {
         operator: 'eq',
         value: 'CRIT',
-        color: 'chart-1',
+        color: 'chart-blue',
       };
       expect(evaluateColorCondition('CRIT', rule)).toBe(true);
       expect(evaluateColorCondition('crit', rule)).toBe(false);
@@ -1388,7 +1388,7 @@ describe('evaluateColorCondition', () => {
       const rule: ColorCondition = {
         operator: 'eq',
         value: '5',
-        color: 'chart-1',
+        color: 'chart-blue',
       };
       expect(evaluateColorCondition(5, rule)).toBe(false);
     });
@@ -1397,7 +1397,7 @@ describe('evaluateColorCondition', () => {
       const rule: ColorCondition = {
         operator: 'neq',
         value: 0,
-        color: 'chart-1',
+        color: 'chart-blue',
       };
       expect(evaluateColorCondition(1, rule)).toBe(true);
       expect(evaluateColorCondition(0, rule)).toBe(false);

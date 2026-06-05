@@ -63,7 +63,7 @@ function makeDefaultRule(): ColorRuleWithId {
     localId: crypto.randomUUID(),
     operator: 'gt',
     value: 0,
-    color: 'chart-1',
+    color: 'chart-blue',
   };
 }
 
@@ -135,7 +135,7 @@ function SortableRuleRow({
 
   const handleColorChange = useCallback(
     (color?: ChartPaletteToken) => {
-      onUpdate(index, { ...rule, color: color ?? 'chart-1' });
+      onUpdate(index, { ...rule, color: color ?? 'chart-blue' });
     },
     [index, onUpdate, rule],
   );

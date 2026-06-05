@@ -34,7 +34,7 @@ describe('ColorConditionSchema', () => {
       const result = ColorConditionSchema.safeParse({
         operator: 'between',
         value: [10, 100],
-        color: 'chart-1',
+        color: 'chart-blue',
       });
       expect(result.success).toBe(true);
     });
@@ -43,7 +43,7 @@ describe('ColorConditionSchema', () => {
       const result = ColorConditionSchema.safeParse({
         operator: 'between',
         value: [100, 10],
-        color: 'chart-1',
+        color: 'chart-blue',
       });
       expect(result.success).toBe(true);
     });
@@ -72,7 +72,7 @@ describe('ColorConditionSchema', () => {
       const result = ColorConditionSchema.safeParse({
         operator: 'neq',
         value: 0,
-        color: 'chart-2',
+        color: 'chart-orange',
       });
       expect(result.success).toBe(true);
     });
@@ -103,16 +103,16 @@ describe('ColorConditionSchema', () => {
 
   it('parses with all palette tokens', () => {
     const tokens = [
-      'chart-1',
-      'chart-2',
-      'chart-3',
-      'chart-4',
-      'chart-5',
-      'chart-6',
-      'chart-7',
-      'chart-8',
-      'chart-9',
-      'chart-10',
+      'chart-blue',
+      'chart-orange',
+      'chart-red',
+      'chart-cyan',
+      'chart-green',
+      'chart-pink',
+      'chart-purple',
+      'chart-light-blue',
+      'chart-brown',
+      'chart-gray',
       'chart-success',
       'chart-warning',
       'chart-error',
@@ -133,7 +133,7 @@ describe('ColorConditionSchema', () => {
     const result = ColorConditionSchema.safeParse({
       operator: 'notAnOp',
       value: 1,
-      color: 'chart-1',
+      color: 'chart-blue',
     });
     expect(result.success).toBe(false);
   });
@@ -142,7 +142,7 @@ describe('ColorConditionSchema', () => {
     const result = ColorConditionSchema.safeParse({
       operator: 'gt',
       value: Number.NaN,
-      color: 'chart-1',
+      color: 'chart-blue',
     });
     expect(result.success).toBe(false);
   });
@@ -151,7 +151,7 @@ describe('ColorConditionSchema', () => {
     const result = ColorConditionSchema.safeParse({
       operator: 'lt',
       value: Infinity,
-      color: 'chart-1',
+      color: 'chart-blue',
     });
     expect(result.success).toBe(false);
   });
@@ -160,7 +160,7 @@ describe('ColorConditionSchema', () => {
     const result = ColorConditionSchema.safeParse({
       operator: 'gt',
       value: 'oops',
-      color: 'chart-1',
+      color: 'chart-blue',
     });
     expect(result.success).toBe(false);
   });
@@ -169,7 +169,7 @@ describe('ColorConditionSchema', () => {
     const result = ColorConditionSchema.safeParse({
       operator: 'contains',
       value: 42,
-      color: 'chart-1',
+      color: 'chart-blue',
     });
     expect(result.success).toBe(false);
   });
@@ -187,7 +187,7 @@ describe('ColorConditionSchema', () => {
     const result = ColorConditionSchema.safeParse({
       operator: 'contains',
       value: '',
-      color: 'chart-1',
+      color: 'chart-blue',
     });
     expect(result.success).toBe(false);
   });
@@ -196,7 +196,7 @@ describe('ColorConditionSchema', () => {
     const result = ColorConditionSchema.safeParse({
       operator: 'startsWith',
       value: '',
-      color: 'chart-1',
+      color: 'chart-blue',
     });
     expect(result.success).toBe(false);
   });
@@ -205,7 +205,7 @@ describe('ColorConditionSchema', () => {
     const result = ColorConditionSchema.safeParse({
       operator: 'endsWith',
       value: '',
-      color: 'chart-1',
+      color: 'chart-blue',
     });
     expect(result.success).toBe(false);
   });
@@ -214,7 +214,7 @@ describe('ColorConditionSchema', () => {
     const result = ColorConditionSchema.safeParse({
       operator: 'regex',
       value: '',
-      color: 'chart-1',
+      color: 'chart-blue',
     });
     expect(result.success).toBe(false);
   });
@@ -223,7 +223,7 @@ describe('ColorConditionSchema', () => {
     const result = ColorConditionSchema.safeParse({
       operator: 'regex',
       value: '[invalid',
-      color: 'chart-1',
+      color: 'chart-blue',
     });
     expect(result.success).toBe(false);
   });
@@ -232,7 +232,7 @@ describe('ColorConditionSchema', () => {
     const result = ColorConditionSchema.safeParse({
       operator: 'gt',
       value: 1,
-      color: 'chart-1',
+      color: 'chart-blue',
       label: 'a'.repeat(41),
     });
     expect(result.success).toBe(false);
@@ -250,7 +250,7 @@ describe('colorRules array in SharedChartSettingsSchema', () => {
 
   it('accepts 1 rule', () => {
     expect(
-      rulesSchema.safeParse([{ operator: 'gt', value: 0, color: 'chart-1' }])
+      rulesSchema.safeParse([{ operator: 'gt', value: 0, color: 'chart-blue' }])
         .success,
     ).toBe(true);
   });
@@ -259,7 +259,7 @@ describe('colorRules array in SharedChartSettingsSchema', () => {
     const rules = Array.from({ length: 5 }, (_, i) => ({
       operator: 'gt' as const,
       value: i * 10,
-      color: 'chart-1' as const,
+      color: 'chart-blue' as const,
     }));
     expect(rulesSchema.safeParse(rules).success).toBe(true);
   });
@@ -268,7 +268,7 @@ describe('colorRules array in SharedChartSettingsSchema', () => {
     const rules = Array.from({ length: 10 }, (_, i) => ({
       operator: 'gte' as const,
       value: i * 10,
-      color: 'chart-1' as const,
+      color: 'chart-blue' as const,
     }));
     expect(rulesSchema.safeParse(rules).success).toBe(true);
   });
@@ -277,7 +277,7 @@ describe('colorRules array in SharedChartSettingsSchema', () => {
     const rules = Array.from({ length: 11 }, (_, i) => ({
       operator: 'gte' as const,
       value: i * 10,
-      color: 'chart-1' as const,
+      color: 'chart-blue' as const,
     }));
     expect(rulesSchema.safeParse(rules).success).toBe(false);
   });
