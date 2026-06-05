@@ -13,7 +13,7 @@ import { McpContext } from './tools/types';
 
 export function createServer(context: McpContext) {
   const server = new McpServer({
-    name: 'hyperdx',
+    name: 'clickstack',
     version: `${CODE_VERSION}-beta`,
   });
 

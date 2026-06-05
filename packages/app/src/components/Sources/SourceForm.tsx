@@ -550,6 +550,7 @@ function MaterializedViewsFormSection({ control, setValue }: TableModelProps) {
 
           <Button
             variant="secondary"
+            data-testid="add-materialized-view-button"
             onClick={() => {
               appendMaterializedView({
                 databaseName: databaseName,
@@ -688,7 +689,7 @@ function MaterializedViewFormSection({
   });
 
   return (
-    <Stack gap="sm">
+    <Stack gap="sm" data-testid="mv-form-section" data-mv-index={mvIndex}>
       <Grid columns={2} flex={1}>
         <Grid.Col span={1}>
           <DatabaseSelectControlled
@@ -699,7 +700,7 @@ function MaterializedViewFormSection({
         </Grid.Col>
         <Grid.Col span={1}>
           <Group>
-            <Box flex={1}>
+            <Box flex={1} data-testid="mv-table-select">
               <DBTableSelectControlled
                 database={mvDatabaseName}
                 control={control}
@@ -713,7 +714,7 @@ function MaterializedViewFormSection({
           </Group>
         </Grid.Col>
 
-        <Grid.Col span={2}>
+        <Grid.Col span={2} data-testid="mv-timestamp-column">
           <Text size="xs" fw={500} mb={4}>
             Timestamp Column
           </Text>
@@ -730,7 +731,7 @@ function MaterializedViewFormSection({
           />
         </Grid.Col>
 
-        <Grid.Col span={1}>
+        <Grid.Col span={1} data-testid="mv-granularity-select">
           <Text size="xs" fw={500} mb={4}>
             Granularity
             <Tooltip
@@ -792,7 +793,7 @@ function MaterializedViewFormSection({
         </Grid.Col>
       </Grid>
 
-      <Box>
+      <Box data-testid="mv-dimension-columns">
         <Text size="xs" fw={500} mb={4}>
           Dimension Columns (comma-separated)
           <Tooltip
@@ -943,7 +944,7 @@ function AggregatedColumnsFormSection({
           <IconHelpCircle size={14} className="cursor-pointer ms-1" />
         </Tooltip>
       </Text>
-      <Grid columns={10}>
+      <Grid columns={10} data-testid="mv-aggregated-columns">
         {aggregates.map((field, colIndex) => (
           <AggregatedColumnRow
             key={field.id}
@@ -955,7 +956,13 @@ function AggregatedColumnsFormSection({
           />
         ))}
       </Grid>
-      <Button size="sm" variant="secondary" onClick={addAggregate} mt="lg">
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={addAggregate}
+        mt="lg"
+        data-testid="add-aggregated-column-button"
+      >
         <Group>
           <IconCirclePlus size={16} />
           Add Column
@@ -1000,7 +1007,11 @@ function AggregatedColumnRow({
 
   return (
     <>
-      <Grid.Col span={2}>
+      <Grid.Col
+        span={2}
+        data-testid="mv-aggregated-column-fn"
+        data-col-index={colIndex}
+      >
         <SelectControlled
           control={control}
           name={`materializedViews.${mvIndex}.aggregatedColumns.${colIndex}.aggFn`}
@@ -1521,6 +1532,59 @@ function TraceTableModelForm(props: TableModelProps) {
                   ]}
                   value={value}
                   onChange={onChange}
+                  // Mantine 9's Slider styles use the pattern
+                  // `:where([data-orientation="vertical"]) .<part>`,
+                  // which matches when ANY ancestor has
+                  // `data-orientation="vertical"`. Mantine Card sets
+                  // `data-orientation="vertical"` by default, and the
+                  // SourceForm renders inside a Card, so the slider's
+                  // trackContainer/track/bar/thumb/markWrapper/
+                  // markLabel all pick up the vertical-orientation
+                  // styling: the track collapses to 8px wide and the
+                  // four marks stack on top of each other. Override
+                  // every affected part back to its horizontal
+                  // default so the slider renders correctly inside
+                  // the Card.
+                  styles={{
+                    trackContainer: {
+                      width: '100%',
+                      flexDirection: 'row',
+                      height: 'calc(var(--slider-size) * 2)',
+                    },
+                    track: {
+                      width: '100%',
+                      height: 'var(--slider-size)',
+                    },
+                    bar: {
+                      top: 0,
+                      bottom: 0,
+                      height: '100%',
+                      insetInlineStart: 'var(--slider-bar-offset)',
+                      width: 'var(--slider-bar-width)',
+                    },
+                    thumb: {
+                      left: 'var(--slider-thumb-offset)',
+                      top: '50%',
+                      right: 'auto',
+                      bottom: 'auto',
+                      transform: 'translate(-50%, -50%)',
+                    },
+                    markWrapper: {
+                      insetInlineStart:
+                        'calc(var(--mark-offset) - var(--slider-size) / 2)',
+                      top: 0,
+                      bottom: 'auto',
+                      width: 'auto',
+                    },
+                    markLabel: {
+                      transform:
+                        'translate(calc(-50% + var(--slider-size) / 2), calc(var(--mantine-spacing-xs) / 2))',
+                    },
+                    label: {
+                      top: '-36px',
+                      insetInlineStart: 'auto',
+                    },
+                  }}
                 />
               </div>
             )}
@@ -1913,7 +1977,7 @@ function PromqlTableModelForm({
   }, [setValue]);
 
   // PromQL sources use the standard database + table fields from BaseSourceSchema.
-  // No additional fields needed — the table should point to the TimeSeries engine table.
+  // No additional fields needed; the table should point to the TimeSeries engine table.
   return null;
 }
 

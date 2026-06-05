@@ -15,21 +15,21 @@ export function registerListSources(
   const { teamId } = context;
 
   server.registerTool(
-    'hyperdx_list_sources',
+    'clickstack_list_sources',
     {
       title: 'List Sources & Connections',
       description:
         'List all data sources (logs, metrics, traces) and database connections available to this team. ' +
         'Returns source IDs, names, kinds, and connection IDs as a lightweight catalog.\n\n' +
-        'NEXT STEP: After identifying the source(s) you need, call hyperdx_describe_source with the ' +
+        'NEXT STEP: After identifying the source(s) you need, call clickstack_describe_source with the ' +
         'sourceId to get the full column schema, attribute keys, and sampled values. ' +
         'This two-step approach avoids fetching expensive schema details for sources you do not need.\n\n' +
-        'NOTE: For most queries, use source IDs with hyperdx_timeseries, hyperdx_table, ' +
-        'hyperdx_search, or hyperdx_event_patterns. ' +
-        'Connection IDs are only needed for hyperdx_sql (raw ClickHouse SQL).',
+        'NOTE: For most queries, use source IDs with clickstack_timeseries, clickstack_table, ' +
+        'clickstack_search, or clickstack_event_patterns. ' +
+        'Connection IDs are only needed for clickstack_sql (raw ClickHouse SQL).',
       inputSchema: z.object({}),
     },
-    withToolTracing('hyperdx_list_sources', context, async () => {
+    withToolTracing('clickstack_list_sources', context, async () => {
       const [sources, connections] = await Promise.all([
         getSources(teamId.toString()),
         getConnectionsByTeam(teamId.toString()),
@@ -85,9 +85,9 @@ export function registerListSources(
           name: c.name,
         })),
         nextStep:
-          'Call hyperdx_describe_source with a sourceId above to get the full column schema, ' +
+          'Call clickstack_describe_source with a sourceId above to get the full column schema, ' +
           'attribute keys, and sampled low-cardinality values before writing queries. ' +
-          'connectionId is only needed for hyperdx_sql.',
+          'connectionId is only needed for clickstack_sql.',
       };
       return {
         content: [

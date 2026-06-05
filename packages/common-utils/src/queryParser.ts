@@ -33,7 +33,7 @@ function encodeSpecialTokens(query: string): string {
     .replace(/localhost:(\d{1,5})/, 'localhost_COLON_$1')
     .replace(/\\:/g, 'HDX_COLON');
 }
-export function decodeSpecialTokens(query: string): string {
+function decodeSpecialTokens(query: string): string {
   return query
     .replace(/\\"/g, '"')
     .replace(/HDX_BACKSLASH_LITERAL/g, '\\')
@@ -61,21 +61,17 @@ function normalizeChExpression(expr: string): string {
 const IMPLICIT_FIELD = '<implicit>';
 
 // Type guards for lucene AST types
-export function isNodeTerm(
-  node: lucene.Node | lucene.AST,
-): node is lucene.NodeTerm {
+function isNodeTerm(node: lucene.Node | lucene.AST): node is lucene.NodeTerm {
   return 'term' in node && node.term != null;
 }
 
-export function isNodeRangedTerm(
+function isNodeRangedTerm(
   node: lucene.Node | lucene.AST,
 ): node is lucene.NodeRangedTerm {
   return 'inclusive' in node && node.inclusive != null;
 }
 
-export function isBinaryAST(
-  ast: lucene.AST | lucene.Node,
-): ast is lucene.BinaryAST {
+function isBinaryAST(ast: lucene.AST | lucene.Node): ast is lucene.BinaryAST {
   return 'right' in ast && ast.right != null;
 }
 
@@ -85,7 +81,7 @@ function hasStart(
   return 'start' in ast && !!ast.start;
 }
 
-export function isLeftOnlyAST(
+function isLeftOnlyAST(
   ast: lucene.AST | lucene.Node,
 ): ast is lucene.LeftOnlyAST {
   return (
@@ -1079,6 +1075,85 @@ const KV_ITEMS_STRATEGIES = [
   parseKvItemsCastExpression,
 ] as const;
 
+/**
+ * Builds a lookup from map column name to KV items column name.
+ * A KV items column is an ALIAS/MATERIALIZED column whose expression is
+ * arrayMap((k,v)->concat(k,'=',v), mapKeys(X), mapValues(X)) and which has
+ * a text(tokenizer=array) skip index.
+ *
+ * The version gate (`supportsDirectReadMap`) only applies to ALIAS items
+ * columns: ALIAS columns are computed at query time, so `has(items, ...)`
+ * against an ALIAS only realizes its speedup when the server can perform a
+ * direct_read against the underlying Map's tuple storage. MATERIALIZED items
+ * columns are physically stored on disk, so `has()` reads them directly and
+ * is fast on any ClickHouse version that supports the text index itself.
+ *
+ * Returns an empty Map on any failure; never throws.
+ */
+export async function buildKvItemsLookup({
+  metadata,
+  databaseName,
+  tableName,
+  connectionId,
+}: {
+  metadata: Metadata;
+  databaseName: string;
+  tableName: string;
+  connectionId: string;
+}): Promise<KvItemsLookup> {
+  const lookup: KvItemsLookup = new Map();
+  try {
+    const [serverVersion, columns, skipIndices] = await Promise.all([
+      metadata.getServerVersion({ connectionId }),
+      metadata.getColumns({ databaseName, tableName, connectionId }),
+      metadata
+        .getSkipIndices({ databaseName, tableName, connectionId })
+        .catch(() => [] as SkipIndexMetadata[]),
+    ]);
+
+    const directReadSupported = supportsDirectReadMap(serverVersion);
+
+    const kvItemsCandidates = columns.filter(
+      c =>
+        (c.default_type === 'ALIAS' || c.default_type === 'MATERIALIZED') &&
+        c.default_expression,
+    );
+
+    for (const candidate of kvItemsCandidates) {
+      if (candidate.default_type === 'ALIAS' && !directReadSupported) {
+        continue;
+      }
+
+      let parsed: { mapColumn: string; separator: string } | undefined;
+      for (const strategy of KV_ITEMS_STRATEGIES) {
+        parsed = strategy(candidate.default_expression);
+        if (parsed) break;
+      }
+      if (!parsed) continue;
+
+      const candidateName = normalizeChExpression(candidate.name);
+      const candidateExpr = normalizeChExpression(candidate.default_expression);
+      const hasArrayTextIndex = skipIndices.some(idx => {
+        if (idx.type !== 'text') return false;
+        const tokenizer = parseTokenizerFromTextIndex(idx);
+        if (tokenizer?.type !== 'array') return false;
+        const idxExpr = normalizeChExpression(idx.expression);
+        return idxExpr === candidateName || idxExpr === candidateExpr;
+      });
+
+      if (hasArrayTextIndex) {
+        lookup.set(parsed.mapColumn, {
+          kvItemsColumn: candidate.name,
+          separator: parsed.separator,
+        });
+      }
+    }
+  } catch (error) {
+    console.warn('Error building KV items lookup:', error);
+  }
+  return lookup;
+}
+
 export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   private metadata: Metadata;
   private tableName: string;
@@ -1134,81 +1209,16 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
         return false;
       });
 
-    // Pre-fetch KV items lookup (map column -> KV items column with text(tokenizer=array) index)
-    this.kvItemsLookupPromise = this.buildKvItemsLookup().catch(error => {
-      console.warn('Error building KV items lookup:', error);
-      return new Map();
-    });
+    this.kvItemsLookupPromise = this.buildKvItemsLookup();
   }
 
-  /**
-   * Builds a lookup from map column name to KV items column name.
-   * A KV items column is an ALIAS/MATERIALIZED column whose expression is
-   * arrayMap((k,v)->concat(k,'=',v), mapKeys(X), mapValues(X)) and which has
-   * a text(tokenizer=array) skip index.
-   *
-   * The version gate (`supportsDirectReadMap`) only applies to ALIAS items
-   * columns: ALIAS columns are computed at query time, so `has(items, ...)`
-   * against an ALIAS only realizes its speedup when the server can perform a
-   * direct_read against the underlying Map's tuple storage. MATERIALIZED items
-   * columns are physically stored on disk, so `has()` reads them directly and
-   * is fast on any ClickHouse version that supports the text index itself.
-   */
-  private async buildKvItemsLookup(): Promise<KvItemsLookup> {
-    const [serverVersion, columns, skipIndices] = await Promise.all([
-      this.metadata.getServerVersion({ connectionId: this.connectionId }),
-      this.metadata.getColumns({
-        databaseName: this.databaseName,
-        tableName: this.tableName,
-        connectionId: this.connectionId,
-      }),
-      this.skipIndicesPromise ?? Promise.resolve([]),
-    ]);
-
-    const directReadSupported = supportsDirectReadMap(serverVersion);
-
-    const lookup: KvItemsLookup = new Map();
-
-    const kvItemsCandidates = columns.filter(
-      c =>
-        (c.default_type === 'ALIAS' || c.default_type === 'MATERIALIZED') &&
-        c.default_expression,
-    );
-
-    for (const candidate of kvItemsCandidates) {
-      if (candidate.default_type === 'ALIAS' && !directReadSupported) {
-        continue;
-      }
-
-      const parsed = (() => {
-        let parsed: { mapColumn: string; separator: string } | undefined;
-        for (const strategy of KV_ITEMS_STRATEGIES) {
-          parsed = strategy(candidate.default_expression);
-          if (parsed) break;
-        }
-        return parsed;
-      })();
-      if (!parsed) continue;
-
-      const candidateName = normalizeChExpression(candidate.name);
-      const candidateExpr = normalizeChExpression(candidate.default_expression);
-      const hasArrayTextIndex = skipIndices.some(idx => {
-        if (idx.type !== 'text') return false;
-        const tokenizer = parseTokenizerFromTextIndex(idx);
-        if (tokenizer?.type !== 'array') return false;
-        const idxExpr = normalizeChExpression(idx.expression);
-        return idxExpr === candidateName || idxExpr === candidateExpr;
-      });
-
-      if (hasArrayTextIndex) {
-        lookup.set(parsed.mapColumn, {
-          kvItemsColumn: candidate.name,
-          separator: parsed.separator,
-        });
-      }
-    }
-
-    return lookup;
+  private buildKvItemsLookup(): Promise<KvItemsLookup> {
+    return buildKvItemsLookup({
+      metadata: this.metadata,
+      databaseName: this.databaseName,
+      tableName: this.tableName,
+      connectionId: this.connectionId,
+    });
   }
 
   /**
@@ -1766,14 +1776,9 @@ async function nodeTerm(
   serializer: Serializer,
   context: SerializerContext,
 ): Promise<string> {
-  const isImplicitField = node.field === IMPLICIT_FIELD;
-  const rawField = node.field[0] === '-' ? node.field.slice(1) : node.field;
-  // Decode special-token placeholders the emitter inserted in the field name
-  // (e.g. HDX_COLON for an escaped `:` in a Map sub-key). Leave the implicit
-  // field sentinel untouched so downstream comparisons against IMPLICIT_FIELD
-  // still match.
-  const field = isImplicitField ? rawField : decodeSpecialTokens(rawField);
+  const field = node.field[0] === '-' ? node.field.slice(1) : node.field;
   let isNegatedField = node.field[0] === '-';
+  const isImplicitField = node.field === IMPLICIT_FIELD;
 
   // NodeTerm
   if (isNodeTerm(node)) {
@@ -1875,7 +1880,7 @@ function createSerializerContext(
 
     return {
       ...currentContext,
-      implicitColumnExpression: decodeSpecialTokens(fieldWithoutNegation),
+      implicitColumnExpression: fieldWithoutNegation,
       ...(isNegatedAndParenthesized(ast)
         ? { isNegatedAndParenthesized: true }
         : {}),

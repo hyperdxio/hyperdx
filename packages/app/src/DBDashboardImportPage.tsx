@@ -15,6 +15,14 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  type DashboardFilterQueryIssue,
+  type SavedFilterValueIssue,
+  type SavedQueryIssue,
+  validateDashboardFilterQueries,
+  validateSavedFilterValues,
+  validateSavedQuery,
+} from '@hyperdx/common-utils/dist/filters';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   type DashboardTemplate,
@@ -66,6 +74,48 @@ import { getDashboardTemplate } from './dashboardTemplates';
 import { withAppNav } from './layout';
 import { useSources } from './source';
 
+/**
+ * A colored headline message with an optional collapsible "details" section,
+ * toggled by a chevron button. Shared by the import error and the various
+ * non-blocking import warnings so they stay visually consistent. The collapse
+ * state is local, so the details start collapsed each time it's rendered.
+ */
+function CollapsibleMessage({
+  color,
+  message,
+  details,
+  'data-testid': dataTestId,
+}: {
+  color: string;
+  message: ReactNode;
+  details?: ReactNode;
+  'data-testid'?: string;
+}) {
+  const [detailsOpen, { toggle: toggleDetails }] = useDisclosure(false);
+  return (
+    <div data-testid={dataTestId}>
+      <Text c={color}>{message}</Text>
+      {details != null && (
+        <>
+          <Button variant="transparent" onClick={toggleDetails} px={0}>
+            <Group c={color} gap={0} align="center">
+              <IconChevronRight
+                size="16px"
+                style={{
+                  transition: 'transform 0.2s ease-in-out',
+                  transform: detailsOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                }}
+              />
+              {detailsOpen ? 'Hide Details' : 'Show Details'}
+            </Group>
+          </Button>
+          <Collapse expanded={detailsOpen}>{details}</Collapse>
+        </>
+      )}
+    </div>
+  );
+}
+
 function FileSelection({
   onComplete,
 }: {
@@ -80,7 +130,14 @@ function FileSelection({
     message: string;
     details?: ReactNode;
   } | null>(null);
-  const [errorDetails, { toggle: toggleErrorDetails }] = useDisclosure(false);
+  const [filterWarnings, setFilterWarnings] = useState<SavedFilterValueIssue[]>(
+    [],
+  );
+  const [filterQueryWarnings, setFilterQueryWarnings] = useState<
+    DashboardFilterQueryIssue[]
+  >([]);
+  const [savedQueryWarning, setSavedQueryWarning] =
+    useState<SavedQueryIssue | null>(null);
 
   const { control, handleSubmit } = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
@@ -88,6 +145,9 @@ function FileSelection({
 
   const onSubmit = async ({ file }: FormValues) => {
     setError(null);
+    setFilterWarnings([]);
+    setFilterQueryWarnings([]);
+    setSavedQueryWarning(null);
     if (!file) return;
 
     let data: unknown;
@@ -128,6 +188,32 @@ function FileSelection({
       });
       return;
     }
+
+    // The schema only guarantees saved filter values are well-shaped, not that
+    // their condition strings parse. Surface a non-blocking warning so users
+    // who hand-edited or generated the file know a value won't actually filter,
+    // while still letting them proceed with the import.
+    setFilterWarnings(
+      validateSavedFilterValues(result.data.savedFilterValues ?? []),
+    );
+
+    // Import never runs the filters' values queries, so a filter whose `where`
+    // clause is malformed would otherwise only surface as a failed query after
+    // opening the dashboard. Statically validate the `where` clauses here so the
+    // problem is visible up front (non-blocking).
+    setFilterQueryWarnings(
+      validateDashboardFilterQueries(result.data.filters ?? []),
+    );
+
+    // The dashboard's default saved query is also free-form text. A malformed
+    // one is lower impact (it surfaces in the dashboard search bar where it can
+    // be edited), but warn about it for consistency (non-blocking).
+    setSavedQueryWarning(
+      validateSavedQuery(
+        result.data.savedQuery,
+        result.data.savedQueryLanguage,
+      ),
+    );
 
     onComplete(result.data);
   };
@@ -194,32 +280,72 @@ function FileSelection({
         />
 
         {error && (
-          <div>
-            <Text c="red">{error.message}</Text>
-            {error.details != null && (
-              <>
-                <Button
-                  variant="transparent"
-                  onClick={toggleErrorDetails}
-                  px={0}
-                >
-                  <Group c="red" gap={0} align="center">
-                    <IconChevronRight
-                      size="16px"
-                      style={{
-                        transition: 'transform 0.2s ease-in-out',
-                        transform: errorDetails
-                          ? 'rotate(90deg)'
-                          : 'rotate(0deg)',
-                      }}
-                    />
-                    {errorDetails ? 'Hide Details' : 'Show Details'}
-                  </Group>
-                </Button>
-                <Collapse expanded={errorDetails}>{error.details}</Collapse>
-              </>
-            )}
-          </div>
+          <CollapsibleMessage
+            color="red"
+            message={error.message}
+            details={error.details}
+            data-testid="import-error"
+          />
+        )}
+
+        {filterWarnings.length > 0 && (
+          <CollapsibleMessage
+            color="yellow"
+            data-testid="import-warning-saved-filter-values"
+            message={
+              filterWarnings.length === 1
+                ? '1 saved filter value has an invalid condition and will not be applied.'
+                : `${filterWarnings.length} saved filter values have invalid conditions and will not be applied.`
+            }
+            details={
+              <Stack gap={0}>
+                {filterWarnings.map(warning => (
+                  <Text
+                    key={`${warning.index}:${warning.condition}`}
+                    c="yellow"
+                  >
+                    Invalid {warning.language} condition: {warning.condition}
+                  </Text>
+                ))}
+              </Stack>
+            }
+          />
+        )}
+
+        {filterQueryWarnings.length > 0 && (
+          <CollapsibleMessage
+            color="yellow"
+            data-testid="import-warning-filter-queries"
+            message={
+              filterQueryWarnings.length === 1
+                ? "1 filter has an invalid query and won't load values."
+                : `${filterQueryWarnings.length} filters have invalid queries and won't load values.`
+            }
+            details={
+              <Stack gap={0}>
+                {filterQueryWarnings.map(warning => (
+                  <Text key={warning.filterId} c="yellow">
+                    {warning.filterName}: invalid {warning.language} query:{' '}
+                    {warning.where}
+                  </Text>
+                ))}
+              </Stack>
+            }
+          />
+        )}
+
+        {savedQueryWarning && (
+          <CollapsibleMessage
+            color="yellow"
+            data-testid="import-warning-saved-query"
+            message="The dashboard's saved query has an invalid condition and will not be applied."
+            details={
+              <Text c="yellow">
+                Invalid {savedQueryWarning.language} query:{' '}
+                {savedQueryWarning.query}
+              </Text>
+            }
+          />
         )}
       </Stack>
     </form>

@@ -111,4 +111,68 @@ describe('ChartDisplaySettingsDrawer', () => {
       });
     });
   });
+
+  describe('fit y-axis to data setting', () => {
+    it('shows the "Fit Y-Axis to Data" checkbox for line charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', { name: /fit y-axis to data/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not show the "Fit Y-Axis to Data" checkbox for table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', { name: /fit y-axis to data/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('defaults to unchecked (lower bound = 0)', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', { name: /fit y-axis to data/i }),
+      ).not.toBeChecked();
+    });
+
+    it('calls onChange with fitYAxisToData = true when enabled and applied', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(
+        screen.getByRole('checkbox', { name: /fit y-axis to data/i }),
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        fitYAxisToData: true,
+      });
+    });
+  });
 });

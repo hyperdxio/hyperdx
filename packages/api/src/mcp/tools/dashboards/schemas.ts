@@ -1,6 +1,6 @@
 // prose-lint: allow-file
 // MCP tool descriptions intentionally use the established en-dash
-// separator (e.g. "Source ID – call hyperdx_list_sources") for LLM
+// separator (e.g. "Source ID – call clickstack_list_sources") for LLM
 // readability. Reformatting all separators is out of scope here.
 import {
   AggregateFunctionSchema,
@@ -98,7 +98,15 @@ const mcpTileSelectItemSchema = z
       .default('')
       .describe('Filter in Lucene syntax. Example: "level:error"'),
     whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
-    alias: z.string().optional().describe('Display label for this series'),
+    alias: z
+      .string()
+      .optional()
+      .describe(
+        'Display label for this series — used in chart legends, table column headers, CSV exports, and onClick templates. ' +
+          'Always set a short, human-readable alias (e.g. "Requests", "P95 Latency", "Error Rate"). ' +
+          'Without an alias the UI shows the raw ClickHouse expression (e.g. count(), quantile(0.95)(Duration)) which is hard to read. ' +
+          'Heatmap select items are the only exception (no alias needed).',
+      ),
     level: externalQuantileLevelSchema
       .optional()
       .describe('Percentile level for aggFn="quantile"'),
@@ -174,8 +182,8 @@ const mcpOnClickTargetSchema = z
           .min(1)
           .describe(
             'Concrete source ID (for type=search) or dashboard ID (for type=dashboard). ' +
-              'Get source IDs from hyperdx_list_sources; get dashboard IDs from ' +
-              'hyperdx_get_dashboard (no id arg returns the list). ' +
+              'Get source IDs from clickstack_list_sources; get dashboard IDs from ' +
+              'clickstack_get_dashboard (no id arg returns the list). ' +
               'For type=search the source kind must be "log" or "trace"; the /search ' +
               'page does not render metric/session sources.',
           ),
@@ -245,7 +253,9 @@ const mcpOnClickSearchSchema = z
 
 const mcpOnClickDashboardSchema = z
   .object({
-    type: z.literal('dashboard').describe('Link to another HyperDX dashboard.'),
+    type: z
+      .literal('dashboard')
+      .describe('Link to another ClickStack dashboard.'),
     target: mcpOnClickTargetSchema,
     whereTemplate: z
       .string()
@@ -309,7 +319,7 @@ const mcpOnClickSchema = z
   );
 
 const mcpTileLayoutSchema = z.object({
-  name: z.string().describe('Tile title shown on the dashboard'),
+  name: z.string().min(1).describe('Tile title shown on the dashboard'),
   x: z
     .number()
     .min(0)
@@ -366,7 +376,7 @@ const mcpTileLayoutSchema = z.object({
 const mcpLineTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('line').describe('Line chart over time'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z
       .array(mcpTileSelectItemSchema)
       .min(1)
@@ -397,7 +407,7 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
     displayType: z
       .literal('stacked_bar')
       .describe('Stacked bar chart over time'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).min(1).max(20),
     groupBy: z.string().optional(),
     fillNulls: z.boolean().optional().default(true),
@@ -409,7 +419,7 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
 const mcpTableTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('table').describe('Tabular aggregated data'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).min(1).max(20),
     groupBy: z
       .string()
@@ -444,7 +454,7 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
 const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('number').describe('Single aggregate scalar value'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z
       .array(mcpTileSelectItemSchema)
       .length(1)
@@ -461,7 +471,7 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
 const mcpPieTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('pie').describe('Pie chart'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).length(1),
     groupBy: z
       .string()
@@ -512,7 +522,7 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
     sourceId: z
       .string()
       .describe(
-        'Source ID. Must be a Trace source today; use hyperdx_list_sources and ' +
+        'Source ID. Must be a Trace source today; use clickstack_list_sources and ' +
           'pick one whose kind is "trace".',
       ),
     select: z
@@ -539,7 +549,7 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
 const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('search').describe('Log/event search results list'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     where: z
       .string()
       .optional()
@@ -577,7 +587,7 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
     connectionId: z
       .string()
       .describe(
-        'Connection ID (not sourceId) – call hyperdx_list_sources to find available connections',
+        'Connection ID (not sourceId) – call clickstack_list_sources to find available connections',
       ),
     sqlTemplate: z
       .string()
@@ -610,22 +620,62 @@ const mcpTileSchema = z.union([
   mcpSqlTileSchema,
 ]);
 
+// Layout schema without defaults for the patch tool: layout fields stay
+// truly `undefined` when omitted so the merge logic can fall back to the
+// existing tile's values instead of Zod filling in 0/12/4.
+const mcpPatchTileLayoutSchema = z.object({
+  name: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Tile title. Omit to keep the existing title.'),
+  x: z.number().min(0).max(23).optional(),
+  y: z.number().min(0).optional(),
+  w: z.number().min(1).max(24).optional(),
+  h: z.number().min(1).optional(),
+  containerId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
+  tabId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
+});
+
+// Build the patch tile union by extending the default-free layout with
+// each tile type's config shape. We only need the `config` field from
+// each tile schema; the layout wrapper is replaced.
+const mcpPatchTileSchema = z.union([
+  mcpPatchTileLayoutSchema.extend({ config: mcpLineTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpBarTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpTableTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpNumberTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpPieTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpHeatmapTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpSearchTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpMarkdownTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpSqlTileSchema.shape.config }),
+]);
+
 export const mcpTilesParam = z
   .array(mcpTileSchema)
   .describe(
     'Array of dashboard tiles. Each tile needs a name, optional layout (x/y/w/h), and a config block. ' +
-      'The config block varies by displayType – use hyperdx_list_sources for sourceId and connectionId values.\n\n' +
+      'The config block varies by displayType – use clickstack_list_sources for sourceId and connectionId values.\n\n' +
       'Example tiles:\n' +
       '1. Line chart: { "name": "Error Rate", "config": { "displayType": "line", "sourceId": "<from list_sources>", ' +
-      '"groupBy": "ResourceAttributes[\'service.name\']", "select": [{ "aggFn": "count", "where": "StatusCode:STATUS_CODE_ERROR" }] } }\n' +
+      '"groupBy": "ResourceAttributes[\'service.name\']", "select": [{ "aggFn": "count", "where": "StatusCode:STATUS_CODE_ERROR", "alias": "Errors" }] } }\n' +
       '2. Table: { "name": "Top Endpoints", "config": { "displayType": "table", "sourceId": "<from list_sources>", ' +
-      '"groupBy": "SpanAttributes[\'http.route\']", "select": [{ "aggFn": "count" }, ' +
-      '{ "aggFn": "avg", "valueExpression": "Duration", "numberFormat": { "output": "duration", "factor": 0.000000001 } }] } }\n' +
+      '"groupBy": "SpanAttributes[\'http.route\']", "select": [{ "aggFn": "count", "alias": "Requests" }, ' +
+      '{ "aggFn": "avg", "valueExpression": "Duration", "alias": "Avg Duration", "numberFormat": { "output": "duration", "factor": 0.000000001 } }] } }\n' +
       '   (per-series numberFormat lets one column render as a duration while a sibling count column stays a plain number)\n' +
       '3. Number: { "name": "Total Requests", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
-      '"select": [{ "aggFn": "count" }], "numberFormat": { "output": "number", "average": true } } }\n' +
+      '"select": [{ "aggFn": "count", "alias": "Requests" }], "numberFormat": { "output": "number", "average": true } } }\n' +
       '4. Number (duration): { "name": "P95 Latency", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
-      '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration" }], ' +
+      '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration", "alias": "P95 Latency" }], ' +
       '"numberFormat": { "output": "duration", "factor": 0.000000001 } } }\n' +
       '5. Heatmap: { "name": "Latency Heatmap", "config": { "displayType": "heatmap", "sourceId": "<from list_sources, must be a Trace source>", ' +
       '"select": [{ "valueExpression": "Duration" }], ' +
@@ -640,7 +690,7 @@ const mcpDashboardFilterSchema = z
       .describe(
         'Filter identity. ' +
           'On UPDATE of an existing dashboard, every filter in the array MUST carry ' +
-          'an id: pass the exact id returned by hyperdx_get_dashboard for any filter ' +
+          'an id: pass the exact id returned by clickstack_get_dashboard for any filter ' +
           'you are keeping (so saved values bound to it stay attached), and generate ' +
           'a fresh random hex/ObjectId string for any filter you are adding in this ' +
           'update. Omitting `id` on an existing filter would orphan its saved values; ' +
@@ -670,7 +720,7 @@ const mcpDashboardFilterSchema = z
       ),
     sourceId: objectIdSchema.describe(
       'Source the filter values are pulled from (for the dropdown). ' +
-        'Get IDs from hyperdx_list_sources.',
+        'Get IDs from clickstack_list_sources.',
     ),
     sourceMetricType: z
       .nativeEnum(MetricsDataType)
@@ -732,6 +782,49 @@ export const mcpFiltersParam = z
       '    "appliesToSourceIds": ["<trace-source-id>"] }\n' +
       ']',
   );
+
+export const mcpPatchDashboardSchema = z.object({
+  dashboardId: objectIdSchema.describe('Dashboard ID.'),
+  name: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('New dashboard name. Omit to keep the current name.'),
+  tags: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'New tags array (replaces all existing tags). Omit to keep the current tags.',
+    ),
+  tileId: z
+    .string()
+    .optional()
+    .describe(
+      'ID of the tile to replace. Must be paired with `tile`. ' +
+        'Obtain tile IDs from clickstack_get_dashboard.',
+    ),
+  tile: mcpPatchTileSchema
+    .optional()
+    .describe(
+      'The full replacement tile definition. Replaces the tile matched by tileId. ' +
+        'Layout fields (x, y, w, h), name, and containerId/tabId default to the ' +
+        "existing tile's values when omitted, so you only need to specify what changed.",
+    ),
+});
+
+export const mcpSearchDashboardsSchema = z.object({
+  query: z
+    .string()
+    .max(200)
+    .optional()
+    .describe(
+      'Search term to match against dashboard names (case-insensitive substring match).',
+    ),
+  tags: z
+    .array(z.string().min(1))
+    .optional()
+    .describe('Filter to dashboards that have ALL of these tags.'),
+});
 
 export const mcpContainersParam = z
   .array(DashboardContainerSchema)

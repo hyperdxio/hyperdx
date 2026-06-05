@@ -1026,6 +1026,7 @@ const SharedChartSettingsSchema = z.object({
   compareToPreviousPeriod: z.boolean().optional(),
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   alignDateRangeToGranularity: z.boolean().optional(),
+  fitYAxisToData: z.boolean().optional(),
   onClick: OnClickSchema.optional(),
   // Palette-token color override. Applied by the renderer for number
   // tiles only (gated in `ChartDisplaySettingsDrawer`); other display
