@@ -2,12 +2,14 @@
 '@hyperdx/app': patch
 ---
 
-feat(dashboards): cascading (faceted) filter values
+feat(dashboards): opt-in linked (faceted) filter values
 
-Dashboard filter dropdowns now narrow one another: selecting a value in one
-filter constrains the options shown by the others to values that co-occur with
-the current selection (e.g. picking a `cluster` limits the `namespace` dropdown
-to namespaces in that cluster). This applies to both manually-created
-dashboards and the bundled Kubernetes dashboard, where the dropdowns also honor
-the free-text search. A filter never constrains its own options, so
-multi-select within a single filter still works.
+Dashboard and Kubernetes filter bars gain a "link filters" toggle (the
+bidirectional-arrow button at the end of the bar). When enabled, each filter
+dropdown only shows values that co-occur with the other current selections —
+e.g. picking a `cluster` narrows the `namespace` dropdown to namespaces in that
+cluster (the K8s bar also factors in the free-text search). A filter never
+constrains its own options, so multi-select still works. It is off by default
+and, when on, a dropdown's narrowed values are fetched lazily only when it is
+opened, since contingent value lookups can't use the cheap per-key rollups and
+are more expensive at scale. Search-page filters are unaffected.

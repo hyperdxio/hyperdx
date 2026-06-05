@@ -8,6 +8,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Group, Select } from '@mantine/core';
 
+import { FilterLinkToggle } from '@/components/FilterLinkToggle';
 import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 
@@ -26,6 +27,8 @@ type FilterSelectProps = {
   onChange: (value: string | null) => void;
   chartConfig: BuilderChartConfigWithDateRange;
   dataTestId?: string;
+  /** Lazy (link) mode: only fetch this dropdown's values once it's opened. */
+  lazy?: boolean;
 };
 
 // Removes a single field's `resourceAttr.field:"..."` clause from a Lucene
@@ -52,21 +55,32 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
   onChange,
   chartConfig,
   dataTestId,
+  lazy,
 }) => {
-  const { data, isLoading } = useGetKeyValues({
-    chartConfig,
-    keys: [`${metricSource.resourceAttributesExpression}['${fieldName}']`],
-    disableRowLimit: true,
-    limit: 1000000,
-  });
-
-  const options = useMemo(
-    () =>
-      data?.[0]?.value
-        .map(value => ({ value, label: value }))
-        .sort((a, b) => a.value.localeCompare(b.value)) || [], // Sort alphabetically for better search results
-    [data],
+  const [opened, setOpened] = useState(false);
+  const { data, isLoading } = useGetKeyValues(
+    {
+      chartConfig,
+      keys: [`${metricSource.resourceAttributesExpression}['${fieldName}']`],
+      disableRowLimit: true,
+      limit: 1000000,
+    },
+    // Lazy mode only fetches once the dropdown has been opened.
+    { enabled: lazy ? opened : true },
   );
+
+  const options = useMemo(() => {
+    const opts =
+      data?.[0]?.value
+        .map(v => ({ value: v, label: v }))
+        .sort((a, b) => a.value.localeCompare(b.value)) || []; // Sort alphabetically for better search results
+    // Keep the current selection visible even before this dropdown's values
+    // have been fetched (lazy mode), where it wouldn't yet be in `data`.
+    if (value && !opts.some(o => o.value === value)) {
+      opts.unshift({ value, label: value });
+    }
+    return opts;
+  }, [data, value]);
 
   return (
     <Select
@@ -74,12 +88,13 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
       data={options}
       value={value}
       onChange={onChange}
+      onDropdownOpen={() => setOpened(true)}
+      onDropdownClose={() => setOpened(false)}
       searchable
       clearable
       allowDeselect
       size="xs"
       maxDropdownHeight={280}
-      disabled={isLoading}
       variant="filled"
       w={200}
       limit={100} // Show up to 100 search results
@@ -100,6 +115,11 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
   const [nodeName, setNodeName] = useState<string | null>(null);
   const [namespaceName, setNamespaceName] = useState<string | null>(null);
   const [clusterName, setClusterName] = useState<string | null>(null);
+
+  // "Link" mode (opt-in, off by default): narrow each dropdown's values by the
+  // other selections + the free-text search. Off by default because contingent
+  // value lookups can't use the cheap per-key rollups and cost far more at scale.
+  const [linked, setLinked] = useState(false);
 
   const { control, setValue } = useForm({
     defaultValues: {
@@ -186,11 +206,15 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
         databaseName: metricSource.from.databaseName,
         tableName: metricSource.metricTables?.gauge || '',
       },
-      where: stripFieldClause(
-        searchQuery,
-        metricSource.resourceAttributesExpression,
-        field,
-      ),
+      // Only constrain by the other selections when linked; otherwise each
+      // dropdown lists all values independently (no `where`).
+      where: linked
+        ? stripFieldClause(
+            searchQuery,
+            metricSource.resourceAttributesExpression,
+            field,
+          )
+        : '',
       whereLanguage: 'lucene',
       select: '',
       timestampValueExpression: metricSource.timestampValueExpression || '',
@@ -204,7 +228,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
       'k8s.namespace.name': build('k8s.namespace.name'),
       'k8s.cluster.name': build('k8s.cluster.name'),
     };
-  }, [searchQuery, dateRange, metricSource]);
+  }, [searchQuery, dateRange, metricSource, linked]);
 
   // Helper function to update search query
   const updateSearchQuery = (
@@ -237,6 +261,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
         value={podName}
         onChange={value => updateSearchQuery('k8s.pod.name', value, setPodName)}
         chartConfig={chartConfigs['k8s.pod.name']}
+        lazy={linked}
         dataTestId="pod-filter-select"
       />
 
@@ -249,6 +274,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
           updateSearchQuery('k8s.deployment.name', value, setDeploymentName)
         }
         chartConfig={chartConfigs['k8s.deployment.name']}
+        lazy={linked}
         dataTestId="deployment-filter-select"
       />
 
@@ -261,6 +287,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
           updateSearchQuery('k8s.node.name', value, setNodeName)
         }
         chartConfig={chartConfigs['k8s.node.name']}
+        lazy={linked}
         dataTestId="node-filter-select"
       />
 
@@ -273,6 +300,7 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
           updateSearchQuery('k8s.namespace.name', value, setNamespaceName)
         }
         chartConfig={chartConfigs['k8s.namespace.name']}
+        lazy={linked}
         dataTestId="namespace-filter-select"
       />
 
@@ -285,7 +313,13 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
           updateSearchQuery('k8s.cluster.name', value, setClusterName)
         }
         chartConfig={chartConfigs['k8s.cluster.name']}
+        lazy={linked}
         dataTestId="cluster-filter-select"
+      />
+      <FilterLinkToggle
+        linked={linked}
+        onChange={setLinked}
+        data-testid="k8s-filters-link-toggle"
       />
       <Box style={{ flex: 1, minWidth: 200 }}>
         <SearchInputV2

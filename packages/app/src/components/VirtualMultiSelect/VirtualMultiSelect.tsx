@@ -21,18 +21,25 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 type VirtualMultiSelectProps = {
   data: string[];
   disabled?: boolean;
+  /** Show a "Loading…" empty state while values are being fetched. */
+  loading?: boolean;
   placeholder?: string;
   values: string[];
   onChange: (values: string[]) => void;
+  onDropdownOpen?: () => void;
+  onDropdownClose?: () => void;
   'data-testid'?: string;
 };
 
 export function VirtualMultiSelect({
   data,
   disabled,
+  loading,
   placeholder,
   values,
   onChange,
+  onDropdownOpen,
+  onDropdownClose,
   'data-testid': dataTestId,
 }: VirtualMultiSelectProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -52,10 +59,14 @@ export function VirtualMultiSelect({
   });
 
   const combobox = useCombobox({
-    onDropdownClose: () => combobox.resetSelectedOption(),
+    onDropdownClose: () => {
+      combobox.resetSelectedOption();
+      onDropdownClose?.();
+    },
     onDropdownOpen: () => {
       combobox.updateSelectedOptionIndex('active');
       virtualizer.measure();
+      onDropdownOpen?.();
     },
   });
 
@@ -188,7 +199,9 @@ export function VirtualMultiSelect({
               </div>
             </ScrollArea.Autosize>
           ) : (
-            <Combobox.Empty>Nothing found...</Combobox.Empty>
+            <Combobox.Empty>
+              {loading ? 'Loading…' : 'Nothing found...'}
+            </Combobox.Empty>
           )}
         </Combobox.Options>
       </Combobox.Dropdown>

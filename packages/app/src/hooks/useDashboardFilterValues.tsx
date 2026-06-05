@@ -51,10 +51,18 @@ function useOptimizedKeyValuesCalls({
   filters,
   dateRange,
   filterValues,
+  activeFilterIds,
 }: {
   filters: DashboardFilter[];
   dateRange: [Date, Date];
   filterValues: FilterState;
+  /**
+   * When provided, only these filter IDs are fetched (lazy mode). Used to fetch
+   * a filter's constrained values only once its dropdown is opened. Constraints
+   * are still derived from ALL filters' selections, so an open filter is
+   * correctly narrowed by selections made in filters that were never opened.
+   */
+  activeFilterIds?: Set<string>;
 }) {
   const clickhouseClient = useClickhouseClient();
   const metadata = useMetadataWithSettings();
@@ -110,6 +118,10 @@ function useOptimizedKeyValuesCalls({
       { filters: DashboardFilter[]; constraints: Filter[] }
     >();
     for (const filter of filters) {
+      // Lazy mode: skip filters whose dropdown hasn't been opened.
+      if (activeFilterIds !== undefined && !activeFilterIds.has(filter.id)) {
+        continue;
+      }
       const constraints = constraintsByFilterId.get(filter.id) ?? [];
       const constraintsSig = constraints
         .map(c => JSON.stringify(c))
@@ -124,7 +136,7 @@ function useOptimizedKeyValuesCalls({
       }
     }
     return byGroupKey;
-  }, [filters, constraintsByFilterId]);
+  }, [filters, constraintsByFilterId, activeFilterIds]);
 
   const results: UseQueryResult<EnrichedCall[]>[] = useQueries({
     queries: Array.from(filtersByGroupKey.values())
@@ -216,10 +228,13 @@ export function useDashboardFilterValues({
   filters,
   dateRange,
   filterValues = {},
+  activeFilterIds,
 }: {
   filters: DashboardFilter[];
   dateRange: [Date, Date];
   filterValues?: FilterState;
+  /** Lazy mode: only fetch these filter IDs (e.g. dropdowns that are open). */
+  activeFilterIds?: Set<string>;
 }) {
   const metadata = useMetadataWithSettings();
   const {
@@ -230,6 +245,7 @@ export function useDashboardFilterValues({
     filters,
     dateRange,
     filterValues,
+    activeFilterIds,
   });
 
   const { data: sources, isLoading: isSourcesLoading } = useSources();

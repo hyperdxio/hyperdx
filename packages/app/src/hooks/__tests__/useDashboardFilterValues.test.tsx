@@ -1262,5 +1262,57 @@ describe('useDashboardFilterValues', () => {
         { type: 'sql', condition: "environment IN ('production')" },
       ]);
     });
+
+    it('only fetches filters whose id is in activeFilterIds (lazy mode)', async () => {
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: envAndStatus,
+            dateRange: mockDateRange,
+            filterValues: {},
+            // Only the `environment` dropdown has been opened.
+            activeFilterIds: new Set(['filter1']),
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // The un-opened `status` filter is never queried.
+      expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
+      expect(filtersForKeys(['environment'])).toEqual([]);
+      expect(filtersForKeys(['status'])).toBeUndefined();
+      expect(result.current.data?.has('filter1')).toBe(true);
+      expect(result.current.data?.has('filter2')).toBe(false);
+    });
+
+    it('narrows an open filter by a selection from a filter that was never opened', async () => {
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: envAndStatus,
+            dateRange: mockDateRange,
+            // `environment` is selected, but only `status` is open.
+            filterValues: {
+              environment: {
+                included: new Set<string>(['production']),
+                excluded: new Set<string>(),
+              },
+            },
+            activeFilterIds: new Set(['filter2']),
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // Constraints derive from ALL filters' selections, so `status` is narrowed
+      // by the environment selection even though that dropdown was never fetched.
+      expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(1);
+      expect(filtersForKeys(['status'])).toEqual([
+        { type: 'sql', condition: "environment IN ('production')" },
+      ]);
+      expect(filtersForKeys(['environment'])).toBeUndefined();
+    });
   });
 });
