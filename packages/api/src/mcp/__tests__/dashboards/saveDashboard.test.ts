@@ -262,6 +262,115 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       expect(output.tiles).toHaveLength(1);
     });
 
+    it('should persist sourceId on a raw SQL tile that uses $__filters', async () => {
+      const connectionId = ctx.connection._id.toString();
+      const sourceId = ctx.traceSource._id.toString();
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'SQL Dashboard with filters',
+        tiles: [
+          {
+            name: 'Filtered SQL',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sourceId,
+              sqlTemplate:
+                'SELECT ServiceName, count() AS c FROM otel_traces WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY ServiceName LIMIT 10',
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.tiles).toHaveLength(1);
+      // sourceId must round-trip so the $__filters macro can resolve.
+      expect(output.tiles[0].config.sourceId).toBe(sourceId);
+
+      const dashboard = await Dashboard.findById(output.id);
+      expect(dashboard?.tiles?.[0]?.config?.source?.toString()).toBe(sourceId);
+    });
+
+    it('should reject a raw SQL tile that uses $__filters without a sourceId', async () => {
+      const connectionId = ctx.connection._id.toString();
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'SQL Dashboard missing source',
+        tiles: [
+          {
+            name: 'Filtered SQL',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sqlTemplate:
+                'SELECT ServiceName, count() AS c FROM otel_traces WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY ServiceName LIMIT 10',
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      const text = getFirstText(result);
+      expect(text).toContain('sourceId');
+      expect(text).toContain('$__filters');
+      expect(text).toContain('Filtered SQL');
+
+      // Nothing should have been persisted.
+      expect(await Dashboard.countDocuments({})).toBe(0);
+    });
+
+    it('should reject a raw SQL tile that uses $__sourceTable without a sourceId', async () => {
+      const connectionId = ctx.connection._id.toString();
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'SQL Dashboard missing source',
+        tiles: [
+          {
+            name: 'Source Table SQL',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sqlTemplate:
+                'SELECT ServiceName, count() AS c FROM $__sourceTable WHERE $__timeFilter(Timestamp) GROUP BY ServiceName LIMIT 10',
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+      const text = getFirstText(result);
+      expect(text).toContain('sourceId');
+      expect(text).toContain('$__sourceTable');
+      expect(text).toContain('Source Table SQL');
+
+      // Nothing should have been persisted.
+      expect(await Dashboard.countDocuments({})).toBe(0);
+    });
+
+    it('should allow a raw SQL tile without a sourceId when it does not use $__filters', async () => {
+      const connectionId = ctx.connection._id.toString();
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'Multi-table SQL Dashboard',
+        tiles: [
+          {
+            name: 'Joined SQL',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sqlTemplate:
+                'SELECT t.ServiceName, count() AS c FROM otel_traces t JOIN otel_logs l ON t.TraceId = l.TraceId GROUP BY t.ServiceName LIMIT 10',
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.tiles).toHaveLength(1);
+    });
+
     it('should create a dashboard with a heatmap tile on a Trace source', async () => {
       const sourceId = ctx.traceSource._id.toString();
       const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
