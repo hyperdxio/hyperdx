@@ -27,6 +27,7 @@ import { mcpError } from '../../utils/errors';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
+import { getRawSqlMissingSourceError } from './validation';
 
 export function registerSaveDashboard(
   server: McpServer,
@@ -175,6 +176,11 @@ async function createDashboard({
   const { tiles, filters, containers: parsedContainers } = parsed.data;
   const tilesWithId = tiles as ExternalDashboardTileWithId[];
 
+  const sqlFilterSourceError = getRawSqlMissingSourceError(tilesWithId);
+  if (sqlFilterSourceError) {
+    return mcpError(sqlFilterSourceError);
+  }
+
   const validationError = await validateDashboardTiles({
     teamId,
     tiles: tilesWithId,
@@ -271,6 +277,11 @@ async function updateDashboard({
 
   const { tiles, filters, containers: parsedContainers } = parsed.data;
   const tilesWithId = tiles as ExternalDashboardTileWithId[];
+
+  const sqlFilterSourceError = getRawSqlMissingSourceError(tilesWithId);
+  if (sqlFilterSourceError) {
+    return mcpError(sqlFilterSourceError);
+  }
 
   const existingDashboard = await Dashboard.findOne(
     { _id: dashboardId, team: teamId },
