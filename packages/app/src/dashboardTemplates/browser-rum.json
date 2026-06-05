@@ -66,9 +66,18 @@
       "title": "Errors",
       "collapsed": false,
       "tabs": [
-        { "id": "rum-errors-overview", "title": "Overview" },
-        { "id": "rum-errors-js", "title": "JS Exceptions" },
-        { "id": "rum-errors-api", "title": "API Failures" }
+        {
+          "id": "rum-errors-overview",
+          "title": "Overview"
+        },
+        {
+          "id": "rum-errors-js",
+          "title": "JS Exceptions"
+        },
+        {
+          "id": "rum-errors-api",
+          "title": "API Failures"
+        }
       ]
     }
   ],
@@ -86,8 +95,15 @@
         "displayType": "number",
         "granularity": "auto",
         "alignDateRangeToGranularity": true,
-        "select": [{ "aggFn": "count", "valueExpression": "" }],
-        "where": "SpanName:\"documentLoad\" OR SpanName:\"routeChange\" OR SpanAttributes.component:\"page-view\" OR SpanAttributes.component:\"navigation\"",
+        "select": [
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "aggCondition": "SpanName:\"documentLoad\" OR SpanName:\"routeChange\" OR SpanAttributes.component:\"page-view\" OR SpanAttributes.component:\"navigation\"",
+            "aggConditionLanguage": "lucene"
+          }
+        ],
+        "where": "",
         "whereLanguage": "lucene",
         "numberFormat": {
           "output": "number",
@@ -114,11 +130,11 @@
             "aggFn": "quantile",
             "level": 0.5,
             "valueExpression": "Duration / 1000000",
-            "aggCondition": "",
+            "aggCondition": "SpanName:\"documentLoad\"",
             "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "SpanName:\"documentLoad\"",
+        "where": "",
         "whereLanguage": "lucene",
         "numberFormat": {
           "output": "number",
@@ -145,11 +161,11 @@
             "aggFn": "quantile",
             "level": 0.9,
             "valueExpression": "Duration / 1000000",
-            "aggCondition": "",
+            "aggCondition": "SpanName:\"documentLoad\"",
             "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "SpanName:\"documentLoad\"",
+        "where": "",
         "whereLanguage": "lucene",
         "numberFormat": {
           "output": "number",
@@ -176,11 +192,11 @@
             "aggFn": "quantile",
             "level": 0.75,
             "valueExpression": "toFloat64OrZero(SpanAttributes['lcp'])",
-            "aggCondition": "",
+            "aggCondition": "SpanName:\"webvitals\" AND SpanAttributes.lcp:*",
             "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "SpanName:\"webvitals\" AND SpanAttributes.lcp:*",
+        "where": "",
         "whereLanguage": "lucene",
         "numberFormat": {
           "output": "number",
@@ -207,11 +223,11 @@
             "aggFn": "quantile",
             "level": 0.75,
             "valueExpression": "toFloat64OrZero(SpanAttributes['inp'])",
-            "aggCondition": "",
+            "aggCondition": "SpanName:\"webvitals\" AND SpanAttributes.inp:*",
             "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "SpanName:\"webvitals\" AND SpanAttributes.inp:*",
+        "where": "",
         "whereLanguage": "lucene",
         "numberFormat": {
           "output": "number",
@@ -238,11 +254,11 @@
             "aggFn": "quantile",
             "level": 0.75,
             "valueExpression": "toFloat64OrZero(SpanAttributes['cls'])",
-            "aggCondition": "",
+            "aggCondition": "SpanName:\"webvitals\" AND SpanAttributes.cls:*",
             "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "SpanName:\"webvitals\" AND SpanAttributes.cls:*",
+        "where": "",
         "whereLanguage": "lucene",
         "numberFormat": {
           "output": "number",
@@ -267,10 +283,12 @@
         "select": [
           {
             "aggFn": "count_distinct",
-            "valueExpression": "ResourceAttributes['rum.sessionId']"
+            "valueExpression": "ResourceAttributes['rum.sessionId']",
+            "aggCondition": "ResourceAttributes.rum.sessionId:*",
+            "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "ResourceAttributes.rum.sessionId:*",
+        "where": "",
         "whereLanguage": "lucene",
         "numberFormat": {
           "output": "number",
@@ -295,10 +313,12 @@
         "select": [
           {
             "aggFn": "count_distinct",
-            "valueExpression": "ResourceAttributes['rum.sessionId']"
+            "valueExpression": "ResourceAttributes['rum.sessionId']",
+            "aggCondition": "ResourceAttributes.rum.sessionId:* AND StatusCode:error",
+            "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "ResourceAttributes.rum.sessionId:* AND StatusCode:error",
+        "where": "",
         "whereLanguage": "lucene",
         "numberFormat": {
           "output": "number",
@@ -325,7 +345,7 @@
             "aggFn": "quantile",
             "level": 0.5,
             "valueExpression": "Duration / 1000000",
-            "aggCondition": "",
+            "aggCondition": "SpanName:\"documentLoad\"",
             "aggConditionLanguage": "lucene",
             "alias": "median"
           },
@@ -333,7 +353,7 @@
             "aggFn": "quantile",
             "level": 0.75,
             "valueExpression": "Duration / 1000000",
-            "aggCondition": "",
+            "aggCondition": "SpanName:\"documentLoad\"",
             "aggConditionLanguage": "lucene",
             "alias": "p75"
           },
@@ -341,12 +361,12 @@
             "aggFn": "quantile",
             "level": 0.9,
             "valueExpression": "Duration / 1000000",
-            "aggCondition": "",
+            "aggCondition": "SpanName:\"documentLoad\"",
             "aggConditionLanguage": "lucene",
             "alias": "p90"
           }
         ],
-        "where": "SpanName:\"documentLoad\"",
+        "where": "",
         "whereLanguage": "lucene",
         "numberFormat": {
           "output": "number",
@@ -372,10 +392,12 @@
           {
             "aggFn": "count",
             "valueExpression": "",
-            "alias": "Page Views"
+            "alias": "Page Views",
+            "aggCondition": "SpanName:\"documentLoad\" OR SpanName:\"routeChange\" OR SpanAttributes.component:\"page-view\" OR SpanAttributes.component:\"navigation\"",
+            "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "SpanName:\"documentLoad\" OR SpanName:\"routeChange\" OR SpanAttributes.component:\"page-view\" OR SpanAttributes.component:\"navigation\"",
+        "where": "",
         "whereLanguage": "lucene",
         "numberFormat": {
           "output": "number",
@@ -401,10 +423,12 @@
           {
             "aggFn": "count",
             "valueExpression": "",
-            "alias": "Long Tasks"
+            "alias": "Long Tasks",
+            "aggCondition": "SpanName:\"longtask\"",
+            "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "SpanName:\"longtask\"",
+        "where": "",
         "whereLanguage": "lucene",
         "numberFormat": {
           "output": "number",
@@ -430,15 +454,19 @@
           {
             "aggFn": "count",
             "valueExpression": "",
-            "alias": "Views"
+            "alias": "Views",
+            "aggCondition": "SpanName:\"documentLoad\" OR SpanName:\"routeChange\" OR SpanAttributes.component:\"page-view\" OR SpanAttributes.component:\"navigation\"",
+            "aggConditionLanguage": "lucene"
           },
           {
             "aggFn": "count_distinct",
             "valueExpression": "ResourceAttributes['rum.sessionId']",
-            "alias": "Sessions"
+            "alias": "Sessions",
+            "aggCondition": "SpanName:\"documentLoad\" OR SpanName:\"routeChange\" OR SpanAttributes.component:\"page-view\" OR SpanAttributes.component:\"navigation\"",
+            "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "SpanName:\"documentLoad\" OR SpanName:\"routeChange\" OR SpanAttributes.component:\"page-view\" OR SpanAttributes.component:\"navigation\"",
+        "where": "",
         "whereLanguage": "lucene",
         "groupBy": [
           {
@@ -447,7 +475,9 @@
           }
         ],
         "orderBy": "Views DESC",
-        "limit": { "limit": 20 }
+        "limit": {
+          "limit": 20
+        }
       }
     },
     {
@@ -467,15 +497,19 @@
           {
             "aggFn": "count_distinct",
             "valueExpression": "ResourceAttributes['rum.sessionId']",
-            "alias": "Sessions"
+            "alias": "Sessions",
+            "aggCondition": "ResourceAttributes.rum.sessionId:* AND SpanAttributes.http.user_agent:*",
+            "aggConditionLanguage": "lucene"
           },
           {
             "aggFn": "count",
             "valueExpression": "",
-            "alias": "Page Loads"
+            "alias": "Page Loads",
+            "aggCondition": "ResourceAttributes.rum.sessionId:* AND SpanAttributes.http.user_agent:*",
+            "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "ResourceAttributes.rum.sessionId:* AND SpanAttributes.http.user_agent:*",
+        "where": "",
         "whereLanguage": "lucene",
         "groupBy": [
           {
@@ -484,7 +518,9 @@
           }
         ],
         "orderBy": "Sessions DESC",
-        "limit": { "limit": 10 }
+        "limit": {
+          "limit": 10
+        }
       }
     },
     {
@@ -504,15 +540,19 @@
           {
             "aggFn": "count_distinct",
             "valueExpression": "ResourceAttributes['rum.sessionId']",
-            "alias": "Sessions"
+            "alias": "Sessions",
+            "aggCondition": "ResourceAttributes.rum.sessionId:*",
+            "aggConditionLanguage": "lucene"
           },
           {
             "aggFn": "count",
             "valueExpression": "",
-            "alias": "Views"
+            "alias": "Views",
+            "aggCondition": "ResourceAttributes.rum.sessionId:*",
+            "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "ResourceAttributes.rum.sessionId:*",
+        "where": "",
         "whereLanguage": "lucene",
         "groupBy": [
           {
@@ -521,7 +561,9 @@
           }
         ],
         "orderBy": "Sessions DESC",
-        "limit": { "limit": 10 }
+        "limit": {
+          "limit": 10
+        }
       }
     },
     {
@@ -541,15 +583,19 @@
           {
             "aggFn": "count_distinct",
             "valueExpression": "ResourceAttributes['rum.sessionId']",
-            "alias": "Sessions"
+            "alias": "Sessions",
+            "aggCondition": "SpanName:\"documentLoad\" AND SpanAttributes.screen.xy:*",
+            "aggConditionLanguage": "lucene"
           },
           {
             "aggFn": "count",
             "valueExpression": "",
-            "alias": "Views"
+            "alias": "Views",
+            "aggCondition": "SpanName:\"documentLoad\" AND SpanAttributes.screen.xy:*",
+            "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "SpanName:\"documentLoad\" AND SpanAttributes.screen.xy:*",
+        "where": "",
         "whereLanguage": "lucene",
         "groupBy": [
           {
@@ -558,7 +604,9 @@
           }
         ],
         "orderBy": "Sessions DESC",
-        "limit": { "limit": 10 }
+        "limit": {
+          "limit": 10
+        }
       }
     },
     {
@@ -579,17 +627,19 @@
             "aggFn": "quantile",
             "level": 0.75,
             "valueExpression": "Duration / 1000000",
-            "aggCondition": "",
+            "aggCondition": "SpanName:\"documentLoad\"",
             "aggConditionLanguage": "lucene",
             "alias": "Page Load p75 (ms)"
           },
           {
             "aggFn": "count",
             "valueExpression": "",
-            "alias": "Views"
+            "alias": "Views",
+            "aggCondition": "SpanName:\"documentLoad\"",
+            "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "SpanName:\"documentLoad\"",
+        "where": "",
         "whereLanguage": "lucene",
         "groupBy": [
           {
@@ -598,7 +648,9 @@
           }
         ],
         "orderBy": "`Page Load p75 (ms)` DESC",
-        "limit": { "limit": 20 }
+        "limit": {
+          "limit": 20
+        }
       }
     },
     {
@@ -649,7 +701,9 @@
         "having": "Errors > 0",
         "havingLanguage": "sql",
         "orderBy": "Errors DESC",
-        "limit": { "limit": 20 }
+        "limit": {
+          "limit": 20
+        }
       }
     },
     {
@@ -666,8 +720,15 @@
         "displayType": "number",
         "granularity": "auto",
         "alignDateRangeToGranularity": true,
-        "select": [{ "aggFn": "count", "valueExpression": "" }],
-        "where": "ResourceAttributes.rum.sessionId:* AND StatusCode:error AND NOT (SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\")",
+        "select": [
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "aggCondition": "ResourceAttributes.rum.sessionId:* AND StatusCode:error AND NOT (SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\")",
+            "aggConditionLanguage": "lucene"
+          }
+        ],
+        "where": "",
         "whereLanguage": "lucene",
         "numberFormat": {
           "output": "number",
@@ -690,8 +751,15 @@
         "displayType": "number",
         "granularity": "auto",
         "alignDateRangeToGranularity": true,
-        "select": [{ "aggFn": "count", "valueExpression": "" }],
-        "where": "(SpanAttributes['component'] = 'fetch' OR SpanAttributes['component'] = 'xml-http-request') AND (toUInt16OrZero(SpanAttributes['http.status_code']) >= 400 OR StatusCode = 'STATUS_CODE_ERROR')",
+        "select": [
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "aggCondition": "(SpanAttributes['component'] = 'fetch' OR SpanAttributes['component'] = 'xml-http-request') AND (toUInt16OrZero(SpanAttributes['http.status_code']) >= 400 OR StatusCode = 'STATUS_CODE_ERROR')",
+            "aggConditionLanguage": "sql"
+          }
+        ],
+        "where": "",
         "whereLanguage": "sql",
         "numberFormat": {
           "output": "number",
@@ -757,15 +825,19 @@
           {
             "aggFn": "count",
             "valueExpression": "",
-            "alias": "Occurrences"
+            "alias": "Occurrences",
+            "aggCondition": "ResourceAttributes.rum.sessionId:* AND StatusCode:error AND NOT (SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\")",
+            "aggConditionLanguage": "lucene"
           },
           {
             "aggFn": "count_distinct",
             "valueExpression": "ResourceAttributes['rum.sessionId']",
-            "alias": "Sessions"
+            "alias": "Sessions",
+            "aggCondition": "ResourceAttributes.rum.sessionId:* AND StatusCode:error AND NOT (SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\")",
+            "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "ResourceAttributes.rum.sessionId:* AND StatusCode:error AND NOT (SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\")",
+        "where": "",
         "whereLanguage": "lucene",
         "groupBy": [
           {
@@ -774,7 +846,9 @@
           }
         ],
         "orderBy": "Occurrences DESC",
-        "limit": { "limit": 20 }
+        "limit": {
+          "limit": 20
+        }
       }
     },
     {
@@ -795,15 +869,19 @@
           {
             "aggFn": "count",
             "valueExpression": "",
-            "alias": "Errors"
+            "alias": "Errors",
+            "aggCondition": "ResourceAttributes.rum.sessionId:* AND StatusCode:error AND NOT (SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\")",
+            "aggConditionLanguage": "lucene"
           },
           {
             "aggFn": "count_distinct",
             "valueExpression": "ResourceAttributes['rum.sessionId']",
-            "alias": "Sessions"
+            "alias": "Sessions",
+            "aggCondition": "ResourceAttributes.rum.sessionId:* AND StatusCode:error AND NOT (SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\")",
+            "aggConditionLanguage": "lucene"
           }
         ],
-        "where": "ResourceAttributes.rum.sessionId:* AND StatusCode:error AND NOT (SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\")",
+        "where": "",
         "whereLanguage": "lucene",
         "groupBy": [
           {
@@ -812,7 +890,9 @@
           }
         ],
         "orderBy": "Errors DESC",
-        "limit": { "limit": 20 }
+        "limit": {
+          "limit": 20
+        }
       }
     },
     {
@@ -833,15 +913,19 @@
           {
             "aggFn": "count",
             "valueExpression": "",
-            "alias": "Failures"
+            "alias": "Failures",
+            "aggCondition": "(SpanAttributes['component'] = 'fetch' OR SpanAttributes['component'] = 'xml-http-request') AND (toUInt16OrZero(SpanAttributes['http.status_code']) >= 400 OR StatusCode = 'STATUS_CODE_ERROR')",
+            "aggConditionLanguage": "sql"
           },
           {
             "aggFn": "count_distinct",
             "valueExpression": "ResourceAttributes['rum.sessionId']",
-            "alias": "Sessions"
+            "alias": "Sessions",
+            "aggCondition": "(SpanAttributes['component'] = 'fetch' OR SpanAttributes['component'] = 'xml-http-request') AND (toUInt16OrZero(SpanAttributes['http.status_code']) >= 400 OR StatusCode = 'STATUS_CODE_ERROR')",
+            "aggConditionLanguage": "sql"
           }
         ],
-        "where": "(SpanAttributes['component'] = 'fetch' OR SpanAttributes['component'] = 'xml-http-request') AND (toUInt16OrZero(SpanAttributes['http.status_code']) >= 400 OR StatusCode = 'STATUS_CODE_ERROR')",
+        "where": "",
         "whereLanguage": "sql",
         "groupBy": [
           {
@@ -850,7 +934,9 @@
           }
         ],
         "orderBy": "Failures DESC",
-        "limit": { "limit": 20 }
+        "limit": {
+          "limit": 20
+        }
       }
     }
   ]
