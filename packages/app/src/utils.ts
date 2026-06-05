@@ -618,7 +618,7 @@ function semanticTokenFallback(
  *
  * Numeric operators (`gt`, `gte`, `lt`, `lte`, `between`) return false when
  * `typeof value !== 'number'`. Equality operators (`eq`, `neq`) use strict
- * comparison — cross-type mismatches (`"5"` vs `5`) return false. String
+ * comparison; cross-type mismatches (`"5"` vs `5`) return false. String
  * operators (`contains`, `startsWith`, `endsWith`, `regex`) return false when
  * `typeof value !== 'string'`. Bad regex patterns are silently treated as
  * no-match (schema `.refine` is best-effort; this is the runtime safety net).

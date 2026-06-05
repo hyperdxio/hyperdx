@@ -442,7 +442,7 @@ describe('DBNumberChart', () => {
         ],
       };
       renderWithMantine(<DBNumberChart config={config} />);
-      // String "1000" coerced to 1000 — matches both rules, last (error) wins
+      // String "1000" coerced to 1000 matches both rules; last (error) wins
       expect(mockGetColorFromCSSToken).toHaveBeenCalledWith('chart-error');
     });
   });
