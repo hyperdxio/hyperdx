@@ -31,7 +31,7 @@ export function FilterLinkToggle({
     >
       <ActionIcon
         variant={linked ? 'filled' : 'subtle'}
-        color={linked ? 'green' : 'gray'}
+        color={linked ? 'blue' : 'gray'}
         onClick={() => onChange(!linked)}
         aria-label="Link filters"
         aria-pressed={linked}
