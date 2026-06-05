@@ -30,6 +30,8 @@ jest.mock('@tanstack/react-query', () => ({
 }));
 jest.mock('@/utils', () => ({ hashCode: jest.fn(() => 0) }));
 
+import { LEGACY_CHART_PALETTE_TOKEN_MAP } from '@hyperdx/common-utils/dist/types';
+
 import { hdxServer } from '../api';
 import {
   fetchDashboards,
@@ -39,6 +41,8 @@ import {
 } from '../dashboard';
 
 const hdxServerMock = hdxServer as jest.Mock;
+
+const LEGACY_TO_HUE_CASES = Object.entries(LEGACY_CHART_PALETTE_TOKEN_MAP);
 
 const remoteDashboardWithTileColor = (color: unknown) => [
   {
@@ -67,25 +71,17 @@ describe('fetchDashboards (remote path)', () => {
   // downstream consumers see the canonical hue tokens that
   // `ChartPaletteTokenSchema` accepts. Symmetric coverage with the
   // local-path suite in `dashboard.test.ts`.
-  it.each([
-    ['chart-1', 'chart-green'],
-    ['chart-2', 'chart-blue'],
-    ['chart-3', 'chart-orange'],
-    ['chart-4', 'chart-red'],
-    ['chart-5', 'chart-cyan'],
-    ['chart-6', 'chart-pink'],
-    ['chart-7', 'chart-purple'],
-    ['chart-8', 'chart-light-blue'],
-    ['chart-9', 'chart-brown'],
-    ['chart-10', 'chart-gray'],
-  ])('migrates legacy %s → %s from a remote payload', async (legacy, hue) => {
-    setRemotePayload(remoteDashboardWithTileColor(legacy));
+  it.each(LEGACY_TO_HUE_CASES)(
+    'migrates legacy %s → %s from a remote payload',
+    async (legacy, hue) => {
+      setRemotePayload(remoteDashboardWithTileColor(legacy));
 
-    const result = await fetchDashboards();
+      const result = await fetchDashboards();
 
-    expect(hdxServerMock).toHaveBeenCalledWith('dashboards');
-    expect(result[0].tiles[0].config).toMatchObject({ color: hue });
-  });
+      expect(hdxServerMock).toHaveBeenCalledWith('dashboards');
+      expect(result[0].tiles[0].config).toMatchObject({ color: hue });
+    },
+  );
 
   it('passes through hue-named tokens unchanged', async () => {
     setRemotePayload(remoteDashboardWithTileColor('chart-orange'));

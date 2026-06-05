@@ -14,9 +14,13 @@ jest.mock('@tanstack/react-query', () => ({
 }));
 jest.mock('@/utils', () => ({ hashCode: jest.fn(() => 0) }));
 
+import { LEGACY_CHART_PALETTE_TOKEN_MAP } from '@hyperdx/common-utils/dist/types';
+
 import { fetchLocalDashboards, getLocalDashboardTags } from '../dashboard';
 
 const STORAGE_KEY = 'hdx-local-dashboards';
+
+const LEGACY_TO_HUE_CASES = Object.entries(LEGACY_CHART_PALETTE_TOKEN_MAP);
 
 beforeEach(() => {
   localStorage.clear();
@@ -64,23 +68,10 @@ describe('fetchLocalDashboards', () => {
       );
     };
 
-    // Locked-in slot-to-hue mapping. Parameterized across all 10 slots
-    // so a future tweak to `LEGACY_CHART_PALETTE_TOKEN_MAP` is caught
-    // here instead of by a stored dashboard silently recoloring on the
-    // user's next reload. Order matches the HyperDX `_tokens.scss`
-    // categorical palette.
-    it.each([
-      ['chart-1', 'chart-green'],
-      ['chart-2', 'chart-blue'],
-      ['chart-3', 'chart-orange'],
-      ['chart-4', 'chart-red'],
-      ['chart-5', 'chart-cyan'],
-      ['chart-6', 'chart-pink'],
-      ['chart-7', 'chart-purple'],
-      ['chart-8', 'chart-light-blue'],
-      ['chart-9', 'chart-brown'],
-      ['chart-10', 'chart-gray'],
-    ])('migrates legacy %s → %s', (legacy, hue) => {
+    // Drives every slot off the canonical `LEGACY_CHART_PALETTE_TOKEN_MAP`
+    // so a future tweak to the mapping is caught here instead of by a
+    // stored dashboard silently recoloring on the user's next reload.
+    it.each(LEGACY_TO_HUE_CASES)('migrates legacy %s → %s', (legacy, hue) => {
       storeDashboardWithTileColor(legacy);
       expect(fetchLocalDashboards()[0].tiles[0].config).toMatchObject({
         color: hue,

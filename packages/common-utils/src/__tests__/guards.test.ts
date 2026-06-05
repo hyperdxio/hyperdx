@@ -4,6 +4,7 @@ import {
   isRawSqlSavedChartConfig,
 } from '@/guards';
 import {
+  CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteTokenSchema,
   DisplayType,
   isChartPaletteToken,
@@ -177,19 +178,7 @@ describe('displayTypeRequiresSource', () => {
 
 describe('isChartPaletteToken', () => {
   it('returns true for every hue-named categorical token', () => {
-    const hues = [
-      'chart-blue',
-      'chart-orange',
-      'chart-red',
-      'chart-cyan',
-      'chart-green',
-      'chart-pink',
-      'chart-purple',
-      'chart-light-blue',
-      'chart-brown',
-      'chart-gray',
-    ];
-    for (const token of hues) {
+    for (const token of CATEGORICAL_PALETTE_TOKENS) {
       expect(isChartPaletteToken(token)).toBe(true);
     }
   });
