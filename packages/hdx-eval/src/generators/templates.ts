@@ -45,7 +45,7 @@ const SEVERITY_NUMBER_BY_TEXT: Record<string, number> = {
   FATAL: 21,
 };
 
-export function pickSeverity(rng: SeededRng): {
+function pickSeverity(rng: SeededRng): {
   text: string;
   number: number;
 } {
@@ -138,7 +138,7 @@ const NODES = [
 ];
 const SERVICE_VERSIONS = ['1.42.3', '1.42.4', '1.43.0', '1.43.1', '2.0.0-rc1'];
 
-export function buildResourceAttrs(args: {
+function buildResourceAttrs(args: {
   rng: SeededRng;
   serviceName: string;
   region?: string;
