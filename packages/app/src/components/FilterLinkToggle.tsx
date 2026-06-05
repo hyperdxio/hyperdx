@@ -30,8 +30,9 @@ export function FilterLinkToggle({
       }
     >
       <ActionIcon
-        variant={linked ? 'filled' : 'subtle'}
-        color={linked ? 'blue' : 'gray'}
+        // Theme-defined variants only (no raw color): the "secondary" variant's
+        // surface + border reads as the pressed/active state, "subtle" as off.
+        variant={linked ? 'secondary' : 'subtle'}
         onClick={() => onChange(!linked)}
         aria-label="Link filters"
         aria-pressed={linked}
