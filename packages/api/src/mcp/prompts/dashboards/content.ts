@@ -67,6 +67,9 @@ Use BUILDER tiles (with sourceId) for most cases:
 Use RAW SQL tiles (with connectionId) only for queries the builder cannot express:
   Requires configType: "sql" plus a displayType (line, stacked_bar, table, number, pie).
   Use when you need JOINs, sub-queries, CTEs, or expressions the builder does not generate.
+  ALWAYS set sourceId on a raw SQL tile (in addition to connectionId) UNLESS the query reads
+  from multiple tables (e.g. JOINs across sources). sourceId enables the $__filters and 
+  $__sourceTable macros. When you can set sourceId, include "AND $__filters" in the WHERE clause.
 
 == COLUMN NAMING ==
 
@@ -677,7 +680,7 @@ copy the right ID and discover which filters are available.
   examples['infrastructure_sql'] = `
 == INFRASTRUCTURE (Raw SQL) ==
 
-When to use: the user wants metric-like infrastructure visibility (request rate, ingestion volume, table sizes) but the builder tile types do not express the exact aggregation. Raw SQL tiles take connectionId (not sourceId) and a sqlTemplate with HyperDX macros.
+When to use: the user wants metric-like infrastructure visibility (request rate, ingestion volume, table sizes) but the builder tile types do not express the exact aggregation. Raw SQL tiles take connectionId, a sqlTemplate with HyperDX macros, and (when the query reads a single table) a sourceId. Set sourceId and add "AND $__filters" so dashboard filters apply.
 
 {
   name: "Infrastructure (SQL)",
@@ -689,7 +692,8 @@ When to use: the user wants metric-like infrastructure visibility (request rate,
         configType: "sql",
         displayType: "line",
         connectionId: "${connectionId}",
-        sqlTemplate: "SELECT $__timeInterval(Timestamp) AS ts, count() AS logs_per_interval FROM otel_logs WHERE $__timeFilter(Timestamp) GROUP BY ts ORDER BY ts"
+        sourceId: "${logSourceId}",
+        sqlTemplate: "SELECT $__timeInterval(Timestamp) AS ts, count() AS logs_per_interval FROM otel_logs WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY ts ORDER BY ts"
       }
     },
     {
@@ -699,7 +703,8 @@ When to use: the user wants metric-like infrastructure visibility (request rate,
         configType: "sql",
         displayType: "table",
         connectionId: "${connectionId}",
-        sqlTemplate: "SELECT ServiceName, count() AS span_count, avg(Duration) AS avg_duration FROM otel_traces WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ServiceName ORDER BY span_count DESC LIMIT 20"
+        sourceId: "${traceSourceId}",
+        sqlTemplate: "SELECT ServiceName, count() AS span_count, avg(Duration) AS avg_duration FROM otel_traces WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) AND $__filters GROUP BY ServiceName ORDER BY span_count DESC LIMIT 20"
       }
     },
     {
@@ -709,7 +714,8 @@ When to use: the user wants metric-like infrastructure visibility (request rate,
         configType: "sql",
         displayType: "line",
         connectionId: "${connectionId}",
-        sqlTemplate: "SELECT $__timeInterval(Timestamp) AS ts, ServiceName, countIf(StatusCode = 'STATUS_CODE_ERROR') / count() AS error_rate FROM otel_traces WHERE $__timeFilter(Timestamp) GROUP BY ServiceName, ts ORDER BY ts"
+        sourceId: "${traceSourceId}",
+        sqlTemplate: "SELECT $__timeInterval(Timestamp) AS ts, ServiceName, countIf(StatusCode = 'STATUS_CODE_ERROR') / count() AS error_rate FROM otel_traces WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY ServiceName, ts ORDER BY ts"
       }
     }
   ]
@@ -725,7 +731,10 @@ SQL TEMPLATE REFERENCE:
     $__fromTime / $__toTime    start/end as DateTime values
     $__fromTime_ms / $__toTime_ms  start/end as DateTime64 values
     $__interval_s              raw interval in seconds
-    $__filters                 dashboard filter conditions (resolves to 1=1 when none)
+    $__filters                 dashboard filter conditions (resolves to 1=1 when none).
+                               REQUIRES sourceId on the tile. Without it, filters never apply.
+    $__sourceTable             the source's \`database\`.\`table\`.
+                               REQUIRES sourceId on the tile. Without it, the query fails to run.
 
   Query parameters:
     {startDateMilliseconds:Int64}  start of date range in milliseconds
@@ -901,7 +910,11 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
     $__fromTime / $__toTime    start/end as DateTime values
     $__fromTime_ms / $__toTime_ms  start/end as DateTime64 values
     $__interval_s              raw interval in seconds (for arithmetic)
-    $__filters                 dashboard filter conditions (1=1 when none)
+    $__filters                 dashboard filter conditions (1=1 when none).
+                               REQUIRES sourceId on the tile. Set sourceId (unless the
+                               query reads multiple tables) so dashboard filters apply.
+    $__sourceTable             the source's \`database\`.\`table\`.
+                               REQUIRES sourceId on the tile. Without it, the query fails to run.
 
   QUERY PARAMETERS (ClickHouse parameterized syntax):
     {startDateMilliseconds:Int64}
@@ -1097,6 +1110,7 @@ Workaround: when you need a row-click drill-down from a map-attribute groupBy, a
 
   Raw SQL, alias the column:
     configType: "sql", displayType: "table",
+    sourceId: "<trace-source-id>",
     sqlTemplate: "SELECT SpanAttributes['http.route'] AS Route, count() AS Requests FROM otel_traces WHERE $__timeFilter(TimestampTime) AND $__filters GROUP BY Route ORDER BY Requests DESC LIMIT 100"
     onClick: { type: "search", target: { mode: "id", id: "<trace-source-id>" },
                whereLanguage: "sql",
@@ -1232,9 +1246,11 @@ Example: find top patterns for production services over the last 4 hours:
 8. Forgetting to validate tiles after saving
    Always call clickstack_query_tile on EVERY tile after clickstack_save_dashboard, not just one. Save validates input shape but not query semantics. Several known gaps (Lucene comparison/wildcard on map attributes, builder tiles on metric sources, malformed having) pass save and fail at render time. A dashboard with one bad tile renders the whole page in a degraded state; the user sees "Error loading chart" with no way to know which tile broke unless you validated. If query_tile returns an error, fix the where / SQL and re-save before declaring the dashboard ready.
 
-9. Using sourceId with SQL tiles or connectionId with builder tiles
-   Builder tiles (line, table, etc.) use sourceId.
-   SQL tiles (configType: "sql") use connectionId.
+9. Using connectionId with builder tiles, or omitting connectionId or sourceId on a single-table SQL tile
+   Builder tiles (line, table, etc.) use sourceId (no connectionId).
+   SQL tiles (configType: "sql") REQUIRE connectionId, and should ALSO set sourceId
+   whenever the query reads a single table. SourceId is what makes $__filters work.
+   Only omit sourceId on a SQL tile when the query spans multiple tables (e.g. JOINs).
 
 10. Assuming StatusCode or SeverityText values
     Values like STATUS_CODE_ERROR, Ok, error, fatal vary by deployment.
@@ -1313,6 +1329,6 @@ External docs for the syntax and macros referenced in this guide:
   ClickHouse SQL functions (the "where" field with whereLanguage: "sql", and any sqlTemplate body):
     https://clickhouse.com/docs/sql-reference
 
-  Dashboard time / filter macros used in raw-SQL tile sqlTemplate ($__timeFilter, $__timeFilter_ms, $__timeInterval, $__timeInterval_ms, $__filters):
+  Dashboard time / filter macros used in raw-SQL tile sqlTemplate ($__timeFilter, $__timeFilter_ms, $__timeInterval, $__timeInterval_ms, $__filters, $__sourceTable):
     https://clickhouse.com/docs/use-cases/observability/clickstack/dashboards/sql-visualizations`;
 }
