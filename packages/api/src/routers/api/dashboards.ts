@@ -3,6 +3,8 @@ import {
   DashboardWithoutIdSchema,
   PresetDashboard,
   PresetDashboardFilterSchema,
+  resolveChartPaletteToken,
+  walkRawDashboardTileColors,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import _ from 'lodash';
@@ -29,6 +31,32 @@ import { objectIdSchema } from '@/utils/zod';
 // create routes that will get and update dashboards
 const router = express.Router();
 
+/**
+ * Heal legacy `chart-1`..`chart-10` tile colors from #2265 on the request
+ * body *before* `validateRequest` runs `ChartPaletteTokenSchema`. Keeps the
+ * schema strict (so `z.input` == `z.output` and `req.body` infers cleanly)
+ * while still accepting payloads from any non-React HTTP client whose
+ * stored values haven't yet been healed by the app-side normalizer
+ * (`normalizeDashboardTileColors` in `packages/app/src/dashboard.ts`).
+ *
+ * This is a one-release deprecation shim — once stored data has converged
+ * on the hue-named tokens, it can be removed in favor of straight-strict
+ * validation. The actual walk delegates to `walkRawDashboardTileColors`
+ * in common-utils so this middleware, the app-side normalizer, the JSON
+ * import path, and the provisioner all share the same per-tile traversal.
+ */
+const migrateLegacyDashboardTileColors: express.RequestHandler = (
+  req,
+  _res,
+  next,
+) => {
+  req.body = walkRawDashboardTileColors(req.body, current => {
+    const resolved = resolveChartPaletteToken(current);
+    return resolved ?? current;
+  });
+  next();
+};
+
 router.get('/', async (req, res, next) => {
   try {
     const { teamId } = getNonNullUserWithTeam(req);
@@ -43,6 +71,7 @@ router.get('/', async (req, res, next) => {
 
 router.post(
   '/',
+  migrateLegacyDashboardTileColors,
   validateRequest({
     body: DashboardWithoutIdSchema,
   }),
@@ -63,6 +92,7 @@ router.post(
 
 router.patch(
   '/:id',
+  migrateLegacyDashboardTileColors,
   validateRequest({
     params: z.object({
       id: objectIdSchema,

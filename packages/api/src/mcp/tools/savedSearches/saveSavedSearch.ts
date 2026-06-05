@@ -1,5 +1,4 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import mongoose from 'mongoose';
 
 import * as config from '@/config';
 import {
@@ -9,6 +8,7 @@ import {
 } from '@/controllers/savedSearch';
 import { getSource } from '@/controllers/sources';
 
+import { mcpError, validateObjectId } from '../../utils/errors';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 import { mcpSaveSavedSearchSchema } from './schemas';
@@ -34,26 +34,15 @@ export function registerSaveSavedSearch(
       const isUpdate = !!input.id;
 
       // ── Validate ID for updates ──
-      if (isUpdate && !mongoose.Types.ObjectId.isValid(input.id!)) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Invalid saved search ID' }],
-        };
+      if (isUpdate) {
+        const idError = validateObjectId(input.id!, 'saved search ID');
+        if (idError) return idError;
       }
 
-      // ── Validate sourceId ──
-      if (!mongoose.Types.ObjectId.isValid(input.sourceId)) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Invalid sourceId' }],
-        };
-      }
+      // ── Validate sourceId (format validated by Zod schema, check existence) ──
       const source = await getSource(teamId, input.sourceId);
       if (!source) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Source not found' }],
-        };
+        return mcpError('Source not found');
       }
 
       // Build the saved search data matching what the controller expects.

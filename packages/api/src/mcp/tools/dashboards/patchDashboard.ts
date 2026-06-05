@@ -1,6 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { uniq } from 'lodash';
-import mongoose from 'mongoose';
 
 import * as config from '@/config';
 import Dashboard from '@/models/dashboard';
@@ -13,9 +12,11 @@ import {
 } from '@/routers/external-api/v2/utils/dashboards';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
+import { mcpError } from '../../utils/errors';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 import { mcpPatchDashboardSchema } from './schemas';
+import { getRawSqlMissingSourceError } from './validation';
 
 export function registerPatchDashboard(
   server: McpServer,
@@ -67,13 +68,6 @@ export function registerPatchDashboard(
                 text: 'tileId and tile must both be provided or both omitted.',
               },
             ],
-          };
-        }
-
-        if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
-          return {
-            isError: true,
-            content: [{ type: 'text' as const, text: 'Invalid dashboard ID' }],
           };
         }
 
@@ -170,6 +164,15 @@ export function registerPatchDashboard(
             // The config comes from the incoming tile (validated by Zod).
             config: incoming.config,
           } as ExternalDashboardTileWithId;
+
+          // Error on raw SQL tiles that have no source defined but which use
+          // macros which require a source to be set
+          const sqlFilterSourceError = getRawSqlMissingSourceError([
+            mergedTile,
+          ]);
+          if (sqlFilterSourceError) {
+            return mcpError(sqlFilterSourceError);
+          }
 
           // Validate the patched tile using the shared validation helper.
           const validationError = await validateDashboardTiles({

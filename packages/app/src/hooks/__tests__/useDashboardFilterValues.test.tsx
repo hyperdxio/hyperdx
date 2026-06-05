@@ -881,14 +881,59 @@ describe('useDashboardFilterValues', () => {
       isLoading: false,
     });
 
-    // filter2 (service.name) should not be in the map because the query failed
-    expect(result.current.data?.has('filter2')).toBe(false);
+    // filter2 (service.name) is still present with empty values (so the UI can
+    // keep the control interactive) and is flagged as errored so callers can
+    // surface a warning.
+    expect(result.current.data?.get('filter2')).toEqual({
+      values: [],
+      isLoading: false,
+    });
+    expect(result.current.erroredFilterIds.has('filter1')).toBe(false);
+    expect(result.current.erroredFilterIds.has('filter2')).toBe(true);
 
     // Overall error state should be true
     expect(result.current.isError).toBe(true);
 
     // Should have called getKeyValues twice
     expect(mockMetadata.getKeyValues).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a filter that returned no values present and interactive', async () => {
+    // Arrange
+    jest.spyOn(sourceModule, 'useSources').mockReturnValue({
+      data: mockSources,
+      isLoading: false,
+    } as any);
+
+    jest
+      .mocked(optimizeGetKeyValuesCalls)
+      .mockImplementationOnce(async ({ chartConfig, keys }) => [
+        { chartConfig, keys },
+      ]);
+
+    // Query succeeds but returns no rows for the requested key.
+    mockMetadata.getKeyValues.mockResolvedValueOnce([]);
+
+    // Act
+    const { result } = renderHook(
+      () =>
+        useDashboardFilterValues({
+          filters: [mockFilters[0]],
+          dateRange: mockDateRange,
+        }),
+      { wrapper },
+    );
+
+    // Assert
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    // Entry exists with empty values and is not loading → control stays usable.
+    expect(result.current.data?.get('filter1')).toEqual({
+      values: [],
+      isLoading: false,
+    });
+    expect(result.current.erroredFilterIds.has('filter1')).toBe(false);
+    expect(result.current.isError).toBe(false);
   });
 
   it('should keep previous data while fetching new data (placeholderData behavior)', async () => {

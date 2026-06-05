@@ -1,9 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
+import { objectIdSchema } from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import { parseTimeRange, runConfigTile } from '../query/helpers';
@@ -25,7 +25,7 @@ export function registerQueryTile(
         'without rebuilding the query from scratch. ' +
         'Use clickstack_get_dashboard with an ID to find tile IDs.',
       inputSchema: z.object({
-        dashboardId: z.string().describe('Dashboard ID.'),
+        dashboardId: objectIdSchema.describe('Dashboard ID.'),
         tileId: z
           .string()
           .describe(
@@ -57,13 +57,6 @@ export function registerQueryTile(
           };
         }
         const { startDate, endDate } = timeRange;
-
-        if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
-          return {
-            isError: true,
-            content: [{ type: 'text' as const, text: 'Invalid dashboard ID' }],
-          };
-        }
 
         const dashboard = await Dashboard.findOne({
           _id: dashboardId,

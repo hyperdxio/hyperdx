@@ -98,7 +98,15 @@ const mcpTileSelectItemSchema = z
       .default('')
       .describe('Filter in Lucene syntax. Example: "level:error"'),
     whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
-    alias: z.string().optional().describe('Display label for this series'),
+    alias: z
+      .string()
+      .optional()
+      .describe(
+        'Display label for this series — used in chart legends, table column headers, CSV exports, and onClick templates. ' +
+          'Always set a short, human-readable alias (e.g. "Requests", "P95 Latency", "Error Rate"). ' +
+          'Without an alias the UI shows the raw ClickHouse expression (e.g. count(), quantile(0.95)(Duration)) which is hard to read. ' +
+          'Heatmap select items are the only exception (no alias needed).',
+      ),
     level: externalQuantileLevelSchema
       .optional()
       .describe('Percentile level for aggFn="quantile"'),
@@ -581,6 +589,16 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
       .describe(
         'Connection ID (not sourceId) – call clickstack_list_sources to find available connections',
       ),
+    sourceId: z
+      .string()
+      .optional()
+      .describe(
+        'Source ID for the table this query reads from (call clickstack_list_sources). ' +
+          'ALWAYS set this for raw SQL tiles UNLESS the query reads from multiple tables ' +
+          '(e.g. JOINs or sub-queries spanning several sources), in which case omit it. ' +
+          'sourceId is REQUIRED by two macros: $__filters and $__sourceTable. ' +
+          'The sourceId must belong to the same connection as connectionId.',
+      ),
     sqlTemplate: z
       .string()
       .describe(
@@ -589,7 +607,9 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
           '{intervalSeconds:Int64}, {intervalMilliseconds:Int64}.\n' +
           'Or use macros: $__timeFilter(col), $__timeFilter_ms(col), $__dateFilter(col), ' +
           '$__fromTime, $__toTime, $__fromTime_ms, $__toTime_ms, ' +
-          '$__timeInterval(col), $__timeInterval_ms(col), $__interval_s, $__filters.\n' +
+          '$__timeInterval(col), $__timeInterval_ms(col), $__interval_s, $__filters, $__sourceTable.\n' +
+          'IMPORTANT: $__filters and $__sourceTable both require sourceId to be set on this tile. ' +
+          'Prefer including "AND $__filters" in the WHERE clause so dashboard filters apply.\n' +
           'Example: "SELECT $__timeInterval(TimestampTime) AS ts, ServiceName, count() ' +
           'FROM otel_logs WHERE $__timeFilter(TimestampTime) AND $__filters ' +
           'GROUP BY ServiceName, ts ORDER BY ts"',
@@ -659,15 +679,15 @@ export const mcpTilesParam = z
       'The config block varies by displayType – use clickstack_list_sources for sourceId and connectionId values.\n\n' +
       'Example tiles:\n' +
       '1. Line chart: { "name": "Error Rate", "config": { "displayType": "line", "sourceId": "<from list_sources>", ' +
-      '"groupBy": "ResourceAttributes[\'service.name\']", "select": [{ "aggFn": "count", "where": "StatusCode:STATUS_CODE_ERROR" }] } }\n' +
+      '"groupBy": "ResourceAttributes[\'service.name\']", "select": [{ "aggFn": "count", "where": "StatusCode:STATUS_CODE_ERROR", "alias": "Errors" }] } }\n' +
       '2. Table: { "name": "Top Endpoints", "config": { "displayType": "table", "sourceId": "<from list_sources>", ' +
-      '"groupBy": "SpanAttributes[\'http.route\']", "select": [{ "aggFn": "count" }, ' +
-      '{ "aggFn": "avg", "valueExpression": "Duration", "numberFormat": { "output": "duration", "factor": 0.000000001 } }] } }\n' +
+      '"groupBy": "SpanAttributes[\'http.route\']", "select": [{ "aggFn": "count", "alias": "Requests" }, ' +
+      '{ "aggFn": "avg", "valueExpression": "Duration", "alias": "Avg Duration", "numberFormat": { "output": "duration", "factor": 0.000000001 } }] } }\n' +
       '   (per-series numberFormat lets one column render as a duration while a sibling count column stays a plain number)\n' +
       '3. Number: { "name": "Total Requests", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
-      '"select": [{ "aggFn": "count" }], "numberFormat": { "output": "number", "average": true } } }\n' +
+      '"select": [{ "aggFn": "count", "alias": "Requests" }], "numberFormat": { "output": "number", "average": true } } }\n' +
       '4. Number (duration): { "name": "P95 Latency", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
-      '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration" }], ' +
+      '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration", "alias": "P95 Latency" }], ' +
       '"numberFormat": { "output": "duration", "factor": 0.000000001 } } }\n' +
       '5. Heatmap: { "name": "Latency Heatmap", "config": { "displayType": "heatmap", "sourceId": "<from list_sources, must be a Trace source>", ' +
       '"select": [{ "valueExpression": "Duration" }], ' +
@@ -776,7 +796,7 @@ export const mcpFiltersParam = z
   );
 
 export const mcpPatchDashboardSchema = z.object({
-  dashboardId: z.string().describe('Dashboard ID.'),
+  dashboardId: objectIdSchema.describe('Dashboard ID.'),
   name: z
     .string()
     .min(1)

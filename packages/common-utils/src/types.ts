@@ -795,8 +795,13 @@ export function isOnClickDashboardById(
  *
  * Tokens map to CSS variables in
  * `packages/app/src/theme/themes/<theme>/_tokens.scss`:
- *   chart-1 .. chart-10        -> --color-chart-1 .. --color-chart-10
- *   chart-success/warning/error -> --color-chart-{success|warning|error}
+ *   chart-{hue}                 -> --color-chart-{hue}                    (10 hues, unified across themes)
+ *   chart-success/warning/error -> --color-chart-{success|warning|error}  (semantic; unified across brands)
+ *
+ * `chart-info` is a render-time CSS variable (defined in the shared
+ * `chart-semantic-tokens` SCSS mixin) but is intentionally *not* in the
+ * picker enum — it's consumed only by code paths that always want
+ * brand-primary (e.g. info-level log series, `getChartColorInfo()`).
  *
  * Storing tokens (not hex) lets user choices reflow correctly across
  * themes and color modes; see notes/repo-conventions/hyperdx/tile-styling.md.
@@ -806,34 +811,87 @@ export function isOnClickDashboardById(
  * stays in `packages/app/src/utils.ts` because it depends on
  * `getComputedStyle(document.documentElement)`.
  */
-export const CHART_PALETTE_TOKENS = [
-  'chart-1',
-  'chart-2',
-  'chart-3',
-  'chart-4',
-  'chart-5',
-  'chart-6',
-  'chart-7',
-  'chart-8',
-  'chart-9',
-  'chart-10',
+/** Categorical tokens (10 hues). Tuple literal so the element type
+ * stays narrow (`'chart-blue' | 'chart-orange' | ...`) rather than
+ * widening to `ChartPaletteToken`; downstream consumers like
+ * `CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts` rely on
+ * the narrow element type to enforce 1:1 coverage at compile time. */
+export const CATEGORICAL_PALETTE_TOKENS = [
+  'chart-blue',
+  'chart-orange',
+  'chart-red',
+  'chart-cyan',
+  'chart-green',
+  'chart-pink',
+  'chart-purple',
+  'chart-light-blue',
+  'chart-brown',
+  'chart-gray',
+] as const;
+
+/** Semantic tokens (success / warning / error). Tuple literal for the
+ * same narrow-element-type reason as the categorical list above. */
+export const SEMANTIC_PALETTE_TOKENS = [
   'chart-success',
   'chart-warning',
   'chart-error',
 ] as const;
 
+export const CHART_PALETTE_TOKENS = [
+  ...CATEGORICAL_PALETTE_TOKENS,
+  ...SEMANTIC_PALETTE_TOKENS,
+] as const;
+
 export type ChartPaletteToken = (typeof CHART_PALETTE_TOKENS)[number];
 
-/** Categorical tokens (chart-1 .. chart-10). */
-export const CATEGORICAL_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
-  0,
-  10,
-) as readonly ChartPaletteToken[];
+/** Numeric tokens (`chart-1` .. `chart-10`) shipped in #2265. */
+type LegacyChartPaletteTokenKey =
+  | 'chart-1'
+  | 'chart-2'
+  | 'chart-3'
+  | 'chart-4'
+  | 'chart-5'
+  | 'chart-6'
+  | 'chart-7'
+  | 'chart-8'
+  | 'chart-9'
+  | 'chart-10';
 
-/** Semantic tokens (success / warning / error). */
-export const SEMANTIC_PALETTE_TOKENS = CHART_PALETTE_TOKENS.slice(
-  10,
-) as readonly ChartPaletteToken[];
+/**
+ * Legacy numeric tokens (`chart-1` .. `chart-10`) shipped in the initial
+ * release of the number-tile color picker (#2265). Renamed to hue-named
+ * tokens here to make stored configs and the external API schema
+ * self-documenting; mapped at parse time so saved tiles keep working.
+ *
+ * Mapping preserves the HyperDX slot ordering from #2265 (slot 1 was
+ * brand green, slot 2 was blue, and so on through the Observable 10
+ * palette).
+ *
+ * ⚠️ ClickStack caveat: pre-rename ClickStack resolved `--color-chart-1`
+ * to brand blue, not brand green, so a ClickStack tile saved with the
+ * old "Color 1" will visually shift after migration. The trade-off
+ * (and why we don't theme-branch this map) is documented in
+ * `agent_docs/data_viz_colors.md` and the changeset for #2362.
+ *
+ * Keyed by the narrow `LegacyChartPaletteTokenKey` union (rather than
+ * `string`) so a typo in a legacy slot at edit time becomes a compile
+ * error.
+ */
+export const LEGACY_CHART_PALETTE_TOKEN_MAP = {
+  'chart-1': 'chart-green',
+  'chart-2': 'chart-blue',
+  'chart-3': 'chart-orange',
+  'chart-4': 'chart-red',
+  'chart-5': 'chart-cyan',
+  'chart-6': 'chart-pink',
+  'chart-7': 'chart-purple',
+  'chart-8': 'chart-light-blue',
+  'chart-9': 'chart-brown',
+  'chart-10': 'chart-gray',
+} as const satisfies Record<LegacyChartPaletteTokenKey, ChartPaletteToken>;
+
+export type LegacyChartPaletteToken =
+  keyof typeof LEGACY_CHART_PALETTE_TOKEN_MAP;
 
 /** Type guard for runtime validation of an unknown token string. */
 export function isChartPaletteToken(
@@ -845,7 +903,114 @@ export function isChartPaletteToken(
   );
 }
 
-/** Zod schema that accepts only the curated palette tokens above. */
+function isLegacyChartPaletteToken(
+  value: unknown,
+): value is LegacyChartPaletteToken {
+  return (
+    typeof value === 'string' &&
+    Object.prototype.hasOwnProperty.call(LEGACY_CHART_PALETTE_TOKEN_MAP, value)
+  );
+}
+
+/**
+ * Resolve any string to a canonical `ChartPaletteToken`, accepting both
+ * current hue-named tokens and legacy numeric tokens (`chart-1` ..
+ * `chart-10`) from #2265. Returns `undefined` for anything else.
+ *
+ * Use this at every render-time consumption point (dashboard tile
+ * renderers like `DBNumberChart`, the color picker's `safeValue` guard
+ * in `ColorSwatchInput`, etc.). The app's normalizer
+ * (`normalizeDashboardTileColors` in `packages/app/src/dashboard.ts`)
+ * heals dashboards both on fetch (`useDashboards` /
+ * `fetchLocalDashboards`) and on write (`useUpdateDashboard` /
+ * `useCreateDashboard`), so the DB-side data converges on next save
+ * and JSON imports / preset constructions don't trip the strict
+ * `ChartPaletteTokenSchema`. Render-time consumers still call this
+ * helper as defense in depth for tiles built in memory between fetch
+ * and save (`ChartEditor` form state, unit-test fixtures).
+ */
+export function resolveChartPaletteToken(
+  value: unknown,
+): ChartPaletteToken | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (isLegacyChartPaletteToken(value)) {
+    return LEGACY_CHART_PALETTE_TOKEN_MAP[value];
+  }
+  return isChartPaletteToken(value) ? value : undefined;
+}
+
+/**
+ * Walk a parsed-but-not-yet-typed dashboard payload and yield each
+ * `tiles[i].config.color` that holds a string, asking `onColor` what
+ * the new value should be. The walker is the single shared
+ * implementation behind:
+ *   - the React app's fetch- / write-time normalizer
+ *     (`normalizeDashboardTileColors` in `packages/app/src/dashboard.ts`)
+ *   - the JSON-import pre-validation pass
+ *     (`normalizeRawDashboardTileColors`, same file)
+ *   - the API dashboards route middleware
+ *     (`migrateLegacyDashboardTileColors` in
+ *     `packages/api/src/routers/api/dashboards.ts`)
+ *   - the dashboard-provisioner task
+ *     (`packages/api/src/tasks/provisionDashboards/index.ts`)
+ *
+ * `onColor` receives the current string and returns one of:
+ *   - `undefined` → strip the `color` field from that tile's config.
+ *   - a string identical to `current` → leave the tile untouched
+ *     (preserves referential identity so React reconciliation stays
+ *     cheap).
+ *   - a different string → rewrite `config.color` to the new value.
+ *
+ * Returns the (possibly new) `input` reference. When nothing changed,
+ * the same `input` is returned so `===` callers can short-circuit.
+ * Inputs that aren't an object, or whose `tiles` isn't an array, are
+ * returned unchanged.
+ */
+export function walkRawDashboardTileColors(
+  input: unknown,
+  onColor: (current: string) => string | undefined,
+): unknown {
+  if (!input || typeof input !== 'object') return input;
+  const root = input as { tiles?: unknown };
+  const tiles = root.tiles;
+  if (!Array.isArray(tiles)) return input;
+  let changed = false;
+  const nextTiles = (tiles as unknown[]).map(tile => {
+    if (!tile || typeof tile !== 'object') return tile;
+    const t = tile as { config?: unknown };
+    const config = t.config;
+    if (!config || typeof config !== 'object') return tile;
+    const c = config as { color?: unknown };
+    const current = c.color;
+    if (typeof current !== 'string') return tile;
+    const next = onColor(current);
+    if (next === current) return tile;
+    changed = true;
+    if (next === undefined) {
+      const { color: _drop, ...rest } = c;
+      return { ...t, config: rest };
+    }
+    return { ...t, config: { ...c, color: next } };
+  });
+  return changed ? { ...root, tiles: nextTiles } : input;
+}
+
+/**
+ * Strict Zod schema for the curated palette tokens. Intentionally
+ * does NOT accept legacy numeric tokens (`chart-1` .. `chart-10`)
+ * from #2265 — wrapping the enum in `z.preprocess` would force the
+ * schema's input type to `unknown`, which breaks downstream `z.infer`
+ * consumers (e.g. `validateRequest` in the API handlers infers
+ * `req.body` as `unknown` for any field reached through this schema).
+ *
+ * Legacy data is healed at load time instead: see
+ * `normalizeDashboardTileColors` in `packages/app/src/dashboard.ts`,
+ * which walks `tiles[i].config.color` and replaces any legacy token
+ * with its hue-named equivalent via `resolveChartPaletteToken`.
+ * Render-time consumers also call `resolveChartPaletteToken` as
+ * belt-and-suspenders against any data path that bypasses the
+ * fetch-time normalizer.
+ */
 export const ChartPaletteTokenSchema = z.enum(CHART_PALETTE_TOKENS);
 
 // When making changes here, consider if they need to be made to the external API
@@ -861,6 +1026,7 @@ const SharedChartSettingsSchema = z.object({
   compareToPreviousPeriod: z.boolean().optional(),
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   alignDateRangeToGranularity: z.boolean().optional(),
+  fitYAxisToData: z.boolean().optional(),
   onClick: OnClickSchema.optional(),
   // Palette-token color override. Applied by the renderer for number
   // tiles only (gated in `ChartDisplaySettingsDrawer`); other display

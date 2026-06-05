@@ -21,10 +21,13 @@ import type {
   ExternalDashboardFilterWithId,
   ExternalDashboardTileWithId,
 } from '@/utils/zod';
+import { objectIdSchema } from '@/utils/zod';
 
+import { mcpError } from '../../utils/errors';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
+import { getRawSqlMissingSourceError } from './validation';
 
 export function registerSaveDashboard(
   server: McpServer,
@@ -45,8 +48,7 @@ export function registerSaveDashboard(
         'due to incorrect filter syntax, missing attributes, or wrong column names. ' +
         'TIP: To update a single tile without resubmitting all tiles, use clickstack_patch_dashboard instead.',
       inputSchema: z.object({
-        id: z
-          .string()
+        id: objectIdSchema
           .optional()
           .describe(
             'Dashboard ID. Omit to create a new dashboard, provide to update an existing one.',
@@ -174,6 +176,11 @@ async function createDashboard({
   const { tiles, filters, containers: parsedContainers } = parsed.data;
   const tilesWithId = tiles as ExternalDashboardTileWithId[];
 
+  const sqlFilterSourceError = getRawSqlMissingSourceError(tilesWithId);
+  if (sqlFilterSourceError) {
+    return mcpError(sqlFilterSourceError);
+  }
+
   const validationError = await validateDashboardTiles({
     teamId,
     tiles: tilesWithId,
@@ -249,13 +256,6 @@ async function updateDashboard({
     | (ExternalDashboardFilter | ExternalDashboardFilterWithId)[]
     | undefined;
 }) {
-  if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
-    return {
-      isError: true,
-      content: [{ type: 'text' as const, text: 'Invalid dashboard ID' }],
-    };
-  }
-
   const parsed = updateDashboardBodySchema.safeParse({
     name,
     tiles: inputTiles,
@@ -277,6 +277,11 @@ async function updateDashboard({
 
   const { tiles, filters, containers: parsedContainers } = parsed.data;
   const tilesWithId = tiles as ExternalDashboardTileWithId[];
+
+  const sqlFilterSourceError = getRawSqlMissingSourceError(tilesWithId);
+  if (sqlFilterSourceError) {
+    return mcpError(sqlFilterSourceError);
+  }
 
   const existingDashboard = await Dashboard.findOne(
     { _id: dashboardId, team: teamId },
