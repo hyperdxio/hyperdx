@@ -477,6 +477,15 @@
         "orderBy": "Views DESC",
         "limit": {
           "limit": 20
+        },
+        "onClick": {
+          "type": "search",
+          "target": {
+            "mode": "id",
+            "id": "Traces"
+          },
+          "whereTemplate": "(SpanAttributes.http.url:\"{{URL}}\" OR SpanAttributes.page.url:\"{{URL}}\" OR SpanAttributes.location.href:\"{{URL}}\")",
+          "whereLanguage": "lucene"
         }
       }
     },
@@ -650,6 +659,15 @@
         "orderBy": "`Page Load p75 (ms)` DESC",
         "limit": {
           "limit": 20
+        },
+        "onClick": {
+          "type": "search",
+          "target": {
+            "mode": "id",
+            "id": "Traces"
+          },
+          "whereTemplate": "SpanName:\"documentLoad\" AND (SpanAttributes.http.url:\"{{URL}}\" OR SpanAttributes.page.url:\"{{URL}}\" OR SpanAttributes.location.href:\"{{URL}}\")",
+          "whereLanguage": "lucene"
         }
       }
     },
@@ -703,6 +721,15 @@
         "orderBy": "Errors DESC",
         "limit": {
           "limit": 20
+        },
+        "onClick": {
+          "type": "search",
+          "target": {
+            "mode": "id",
+            "id": "Traces"
+          },
+          "whereTemplate": "ResourceAttributes.rum.sessionId:\"{{Session}}\"",
+          "whereLanguage": "lucene"
         }
       }
     },
@@ -848,6 +875,15 @@
         "orderBy": "Occurrences DESC",
         "limit": {
           "limit": 20
+        },
+        "onClick": {
+          "type": "search",
+          "target": {
+            "mode": "id",
+            "id": "Traces"
+          },
+          "whereTemplate": "StatusCode:error AND SpanAttributes.exception.message:\"{{Error}}\"",
+          "whereLanguage": "lucene"
         }
       }
     },
@@ -892,6 +928,15 @@
         "orderBy": "Errors DESC",
         "limit": {
           "limit": 20
+        },
+        "onClick": {
+          "type": "search",
+          "target": {
+            "mode": "id",
+            "id": "Traces"
+          },
+          "whereTemplate": "StatusCode:error AND (SpanAttributes.http.url:\"{{URL}}\" OR SpanAttributes.page.url:\"{{URL}}\" OR SpanAttributes.location.href:\"{{URL}}\")",
+          "whereLanguage": "lucene"
         }
       }
     },
