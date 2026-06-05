@@ -80,6 +80,81 @@ describe('dashboard router', () => {
     );
   });
 
+  // Server-side migration shim for legacy `chart-1`..`chart-10` tokens
+  // shipped by #2265. Stale-bundle React clients during a rolling deploy
+  // and non-React HTTP callers (CI scripts, MCP, future external API
+  // writes) can still send the numeric tokens; the route normalizes
+  // them to hue-named equivalents *before* the strict
+  // `ChartPaletteTokenSchema` runs, otherwise the request would 400.
+  it('migrates legacy chart-N tile colors on POST', async () => {
+    const tileWithLegacyColor = makeTile();
+    tileWithLegacyColor.config = {
+      ...tileWithLegacyColor.config,
+      color: 'chart-1' as any,
+    };
+
+    const created = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Legacy Color Dashboard',
+        tiles: [tileWithLegacyColor],
+        tags: [],
+      })
+      .expect(200);
+
+    expect(created.body.tiles[0].config.color).toBe('chart-green');
+  });
+
+  it('migrates legacy chart-N tile colors on PATCH', async () => {
+    const created = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+
+    const patchedTile = {
+      ...created.body.tiles[0],
+      config: { ...created.body.tiles[0].config, color: 'chart-10' },
+    };
+
+    const updated = await agent
+      .patch(`/dashboards/${created.body.id}`)
+      .send({ tiles: [patchedTile, ...created.body.tiles.slice(1)] })
+      .expect(200);
+
+    expect(updated.body.tiles[0].config.color).toBe('chart-gray');
+  });
+
+  // Wire-format guarantee: GET emits canonical hue-named tokens even for
+  // dashboards that pre-date the rename and still hold `chart-1`..`chart-10`
+  // in Mongo. Without this, a non-React client (or a stale React bundle
+  // that bypasses `normalizeDashboardTileColors`) could GET a legacy
+  // color and round-trip it back through PATCH where the strict schema
+  // would 400. Bypasses the API to seed the legacy value directly into
+  // Mongo because the POST/PATCH middleware would otherwise rewrite it
+  // before it ever reached the DB.
+  //
+  // The dashboards router currently only exposes a list GET (no
+  // `/:id` single GET handler — single-dashboard reads on the React
+  // side go through `useDashboards` and filter client-side). The
+  // controller's `getDashboard` healer is still exercised in the same
+  // process: `updateDashboard` calls `getDashboard` internally before
+  // PATCH, so a follow-up no-op PATCH would surface a regression.
+  it('returns hue-named tokens on GET (list) for a Mongo-seeded legacy chart-N tile', async () => {
+    const tileWithLegacy = makeTile();
+    (tileWithLegacy.config as any).color = 'chart-1';
+    const seeded = await Dashboard.create({
+      name: 'Pre-rename Dashboard',
+      team: team._id,
+      tiles: [tileWithLegacy],
+      tags: [],
+    });
+
+    const list = await agent.get('/dashboards').expect(200);
+    const fromList = list.body.find(d => d._id === seeded._id.toString());
+    expect(fromList).toBeDefined();
+    expect(fromList.tiles[0].config.color).toBe('chart-green');
+  });
+
   it('sets createdBy and updatedBy on create and populates them in GET', async () => {
     const created = await agent
       .post('/dashboards')

@@ -1,4 +1,8 @@
-import { NumericUnit, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartPaletteTokenSchema,
+  NumericUnit,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 import { act, renderHook } from '@testing-library/react';
 
@@ -1210,13 +1214,19 @@ describe('getColorFromCSSToken', () => {
     jest.restoreAllMocks();
   });
 
-  it('returns the CSS variable value when getComputedStyle provides one', () => {
-    jest.spyOn(global, 'getComputedStyle').mockReturnValue({
-      getPropertyValue: (name: string) =>
-        name === '--color-chart-1' ? '#custom-green' : '',
-    } as unknown as CSSStyleDeclaration);
+  it('returns the categorical hex directly from CATEGORICAL_HEX_BY_TOKEN without reading CSS', () => {
+    // Categorical tokens are unified across themes, so the resolver
+    // intentionally skips getComputedStyle to avoid a per-series
+    // layout read. A CSS-var override has no effect on the returned
+    // value (and shouldn't be relied upon by JS callers).
+    const getComputedStyleSpy = jest
+      .spyOn(global, 'getComputedStyle')
+      .mockReturnValue({
+        getPropertyValue: () => '#should-be-ignored',
+      } as unknown as CSSStyleDeclaration);
 
-    expect(getColorFromCSSToken('chart-1')).toBe('#custom-green');
+    expect(getColorFromCSSToken('chart-blue')).toBe(COLORS[0]);
+    expect(getComputedStyleSpy).not.toHaveBeenCalled();
   });
 
   it('returns the CSS variable value for semantic tokens when provided', () => {
@@ -1228,40 +1238,33 @@ describe('getColorFromCSSToken', () => {
     expect(getColorFromCSSToken('chart-success')).toBe('#theme-green');
   });
 
-  it('falls back to COLORS[0] for chart-1 when the CSS variable is empty', () => {
-    jest.spyOn(global, 'getComputedStyle').mockReturnValue({
-      getPropertyValue: () => '',
-    } as unknown as CSSStyleDeclaration);
-
-    expect(getColorFromCSSToken('chart-1')).toBe(COLORS[0]);
-  });
-
-  it('falls back to the SSR palette when getComputedStyle throws', () => {
+  it('falls back to SEMANTIC_CHART_PALETTE when getComputedStyle throws for semantic tokens', () => {
     jest.spyOn(global, 'getComputedStyle').mockImplementation(() => {
       throw new Error('getComputedStyle unavailable');
     });
 
-    // Semantic tokens fall back to their designated palette colors.
-    // These hex values are the CHART_PALETTE constants used in paletteTokenSSRFallback.
-    expect(getColorFromCSSToken('chart-success')).toBe('#00c28a');
+    // Defaults to HyperDX in jsdom because the document has no
+    // theme-clickstack class.
+    expect(getColorFromCSSToken('chart-success')).toBe('#3ca951');
     expect(getColorFromCSSToken('chart-warning')).toBe('#efb118');
     expect(getColorFromCSSToken('chart-error')).toBe('#ff725c');
-    // Categorical token falls back to the COLORS array by index.
-    expect(getColorFromCSSToken('chart-1')).toBe(COLORS[0]);
-    expect(getColorFromCSSToken('chart-10')).toBe(COLORS[9]);
   });
 
-  it('falls back to the SSR palette for all categorical indices (chart-1 through chart-10)', () => {
-    // Verify every categorical token resolves to its expected COLORS entry.
-    // The throw-branch exercises the same paletteTokenSSRFallback code as the
-    // SSR branch (window === undefined), which jsdom prevents from being
-    // simulated via Object.defineProperty.
-    jest.spyOn(global, 'getComputedStyle').mockImplementation(() => {
-      throw new Error('not available');
+  it('returns the canonical hex for every categorical token in CATEGORICAL_PALETTE_TOKENS', () => {
+    utils.CATEGORICAL_PALETTE_TOKENS.forEach((token, i) => {
+      expect(getColorFromCSSToken(token)).toBe(COLORS[i]);
     });
+  });
 
-    for (let i = 1; i <= 10; i++) {
-      expect(getColorFromCSSToken(`chart-${i}` as any)).toBe(COLORS[i - 1]);
-    }
+  it('schema rejects legacy chart-1..10; render-time consumers rely on resolveChartPaletteToken instead', () => {
+    // The schema is deliberately strict (no `z.preprocess`) so that
+    // its `z.input` type matches its `z.output` type — otherwise
+    // `validateRequest` in the API would infer `req.body.tiles[i]
+    // .config.color` as `unknown`. Legacy migration for stored
+    // configs from #2265 happens at fetch time via
+    // `normalizeDashboardTileColors` and at render time via
+    // `resolveChartPaletteToken`.
+    expect(() => ChartPaletteTokenSchema.parse('chart-1')).toThrow();
+    expect(() => ChartPaletteTokenSchema.parse('chart-10')).toThrow();
   });
 });

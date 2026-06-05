@@ -348,6 +348,26 @@ describe('DBNumberChart', () => {
       expect(mockGetColorFromCSSToken).not.toHaveBeenCalled();
       expect(screen.getByText('1234')).toBeInTheDocument();
     });
+
+    it('migrates legacy chart-1..10 tokens to their hue-named equivalent at render time', () => {
+      // Defense in depth: in practice `normalizeDashboardTileColors` in
+      // `packages/app/src/dashboard.ts` heals legacy tokens at fetch
+      // time, so renderers should always see hue-named values. But any
+      // tile constructed in memory (e.g. from a preset or a unit test)
+      // can still carry a legacy `chart-1`, so the renderer also
+      // resolves through `resolveChartPaletteToken` before the
+      // CSS-token lookup.
+      const config = {
+        ...baseTestConfig,
+        color: 'chart-1' as any,
+      };
+
+      renderWithMantine(<DBNumberChart config={config} />);
+
+      expect(mockGetColorFromCSSToken).toHaveBeenCalledWith('chart-green');
+      const textEl = screen.getByText('1234');
+      expect(textEl).toHaveStyle({ color: 'rgb(0, 255, 0)' });
+    });
   });
 
   describe('auto-sized font', () => {

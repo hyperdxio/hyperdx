@@ -1352,12 +1352,12 @@ describe('color round-trip (sql/promql Number tile)', () => {
       displayType: DisplayType.Number,
       sqlTemplate: 'SELECT count() FROM logs',
       connection: 'conn-1',
-      color: 'chart-2',
+      color: 'chart-orange',
       series: [],
     };
     const result = convertFormStateToChartConfig(form, dateRange, undefined);
     expect(result).toBeDefined();
-    expect((result as any).color).toBe('chart-2');
+    expect((result as any).color).toBe('chart-orange');
   });
 
   it('preserves color through convertFormStateToSavedChartConfig for promql Number tile', () => {
