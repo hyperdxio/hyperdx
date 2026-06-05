@@ -107,6 +107,27 @@ async function removeTtlIfPresent(
   }
 }
 
+/**
+ * Return `true` when the scenario's traces table exists and has at least one
+ * row. A quick, cheap check to decide whether an auto-seed is needed before
+ * a `run`.
+ */
+export async function scenarioIsSeeded(
+  client: ClickHouseClient,
+  scenario: string,
+): Promise<boolean> {
+  const tables = scenarioTables(scenario);
+  if (!(await tableExists(client, EVAL_DATABASE, tables.traces))) {
+    return false;
+  }
+  const rs = await client.query({
+    query: `SELECT 1 FROM ${EVAL_DATABASE}.${tables.traces} LIMIT 1`,
+    format: 'JSONEachRow',
+  });
+  const rows = await rs.json<unknown>();
+  return rows.length > 0;
+}
+
 export async function truncateScenarioTables(
   client: ClickHouseClient,
   scenario: string,

@@ -4,7 +4,11 @@ import fs from 'fs';
 import { resolve } from 'path';
 
 import { createEvalClient, defaultClickHouseUrl } from './clickhouse/client';
-import { dropScenarioTables, scenarioTables } from './clickhouse/schema';
+import {
+  dropScenarioTables,
+  scenarioIsSeeded,
+  scenarioTables,
+} from './clickhouse/schema';
 import { buildBlindingEntries } from './grading/blind';
 import {
   gradeBatch,
@@ -471,10 +475,24 @@ program
       }
 
       // ── Re-seed ───────────────────────────────────────────────────
-      // Default: skip reseed (data is assumed to exist from a prior seed).
-      // --reseed: explicitly re-seed before running.
+      // Default: skip reseed IF data already exists. Auto-seeds on first
+      // run when scenario tables are empty or missing.
+      // --reseed: force re-seed even if data exists.
       // --live: always reseed (data must match wall-clock now).
-      const shouldReseed = cmdOpts.reseed === true || cmdOpts.live === true;
+      const forceReseed = cmdOpts.reseed === true || cmdOpts.live === true;
+      let shouldReseed = forceReseed;
+      if (!forceReseed) {
+        const checkClient = buildClientFromConfig(config, opts);
+        try {
+          const seeded = await scenarioIsSeeded(checkClient, scenario.name);
+          if (!seeded) {
+            console.log(`No data found for ${scenario.name} — auto-seeding...`);
+            shouldReseed = true;
+          }
+        } finally {
+          await checkClient.close();
+        }
+      }
       if (shouldReseed) {
         console.log(
           `Seeding ${scenario.name} (seed=${seedNum}, now=${new Date(anchorMs).toISOString()})...`,

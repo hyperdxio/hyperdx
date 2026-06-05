@@ -337,19 +337,19 @@ the agent's system prompt. It is persisted in `eval.config.json` under
 `anchorTime` so that subsequent runs automatically reuse the same value.
 
 - **First run**: if `anchorTime` is not set in the config, the current
-  wall-clock time is saved and used.
-- **Subsequent runs**: the saved `anchorTime` is read from config. No
-  re-seed is needed — the data already matches.
+  wall-clock time is saved and used. If the scenario tables are empty or
+  missing, data is auto-seeded — no separate `seed` step required.
+- **Subsequent runs**: the saved `anchorTime` is read from config. Data
+  is verified to exist before running; if it's missing (e.g. after a
+  `drop`), it's auto-seeded again.
 - **`--anchor-time <iso>`**: override the saved value with a specific
   timestamp. The new value is saved to config for future runs. Pair with
   `--reseed` if the data needs to be regenerated to match.
 - **`--live`**: ignore the saved anchor and use wall-clock time. The agent
   does NOT receive a `FIXED CURRENT TIME` system prompt block. Implies
   `--reseed` since the data must match the current time.
-
-By default, `run` skips re-seeding (equivalent to the old `--no-reseed`).
-Pass `--reseed` explicitly when you need to regenerate data (e.g. after
-changing the seed or anchor time).
+- **`--reseed`**: force re-seed even when data already exists (e.g. after
+  changing the seed value or anchor time).
 
 ## Tests
 
