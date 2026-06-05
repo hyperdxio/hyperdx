@@ -596,7 +596,7 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
         'Source ID for the table this query reads from (call clickstack_list_sources). ' +
           'ALWAYS set this for raw SQL tiles UNLESS the query reads from multiple tables ' +
           '(e.g. JOINs or sub-queries spanning several sources), in which case omit it. ' +
-          'sourceId is REQUIRED by two macros: $__filters and $__sourceTable.' +
+          'sourceId is REQUIRED by two macros: $__filters and $__sourceTable. ' +
           'The sourceId must belong to the same connection as connectionId.',
       ),
     sqlTemplate: z
