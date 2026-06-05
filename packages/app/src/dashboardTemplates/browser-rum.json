@@ -529,6 +529,15 @@
         "orderBy": "Sessions DESC",
         "limit": {
           "limit": 10
+        },
+        "onClick": {
+          "type": "search",
+          "target": {
+            "mode": "id",
+            "id": "Traces"
+          },
+          "whereTemplate": "positionCaseInsensitive(SpanAttributes['http.user_agent'], '{{Browser}}') > 0",
+          "whereLanguage": "sql"
         }
       }
     },
@@ -572,6 +581,15 @@
         "orderBy": "Sessions DESC",
         "limit": {
           "limit": 10
+        },
+        "onClick": {
+          "type": "search",
+          "target": {
+            "mode": "id",
+            "id": "Traces"
+          },
+          "whereTemplate": "ResourceAttributes.geo.country.name:\"{{Country}}\"",
+          "whereLanguage": "lucene"
         }
       }
     },
@@ -608,13 +626,22 @@
         "whereLanguage": "lucene",
         "groupBy": [
           {
-            "valueExpression": "multiIf(toUInt32OrZero(splitByChar('x', SpanAttributes['screen.xy'])[1]) < 600, 'Mobile (<600px)', toUInt32OrZero(splitByChar('x', SpanAttributes['screen.xy'])[1]) < 1024, 'Tablet (600–1024px)', toUInt32OrZero(splitByChar('x', SpanAttributes['screen.xy'])[1]) < 1440, 'Laptop (1024–1440px)', 'Desktop (≥1440px)')",
+            "valueExpression": "SpanAttributes['screen.xy']",
             "alias": "Device"
           }
         ],
         "orderBy": "Sessions DESC",
         "limit": {
           "limit": 10
+        },
+        "onClick": {
+          "type": "search",
+          "target": {
+            "mode": "id",
+            "id": "Traces"
+          },
+          "whereTemplate": "SpanName:\"documentLoad\" AND SpanAttributes.screen.xy:\"{{Device}}\"",
+          "whereLanguage": "lucene"
         }
       }
     },
@@ -882,7 +909,7 @@
             "mode": "id",
             "id": "Traces"
           },
-          "whereTemplate": "StatusCode:error AND SpanAttributes.exception.message:\"{{Error}}\"",
+          "whereTemplate": "StatusCode:error AND (SpanAttributes.exception.message:\"{{Error}}\" OR SpanAttributes.message:\"{{Error}}\" OR SpanName:\"{{Error}}\")",
           "whereLanguage": "lucene"
         }
       }
@@ -974,13 +1001,22 @@
         "whereLanguage": "sql",
         "groupBy": [
           {
-            "valueExpression": "concat(coalesce(nullif(SpanAttributes['http.method'], ''), 'GET'), ' ', coalesce(nullif(SpanAttributes['http.url'], ''), ''), ' → ', coalesce(nullif(SpanAttributes['http.status_code'], ''), 'error'))",
+            "valueExpression": "coalesce(nullif(SpanAttributes['http.url'], ''), '')",
             "alias": "Endpoint"
           }
         ],
         "orderBy": "Failures DESC",
         "limit": {
           "limit": 20
+        },
+        "onClick": {
+          "type": "search",
+          "target": {
+            "mode": "id",
+            "id": "Traces"
+          },
+          "whereTemplate": "(SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\") AND SpanAttributes.http.url:\"{{Endpoint}}\"",
+          "whereLanguage": "lucene"
         }
       }
     }
