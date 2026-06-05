@@ -225,6 +225,7 @@ export default function EditTimeChartForm({
     numberFormat,
     groupByColumnsOnLeft,
     color,
+    colorRules,
   ] = useWatch({
     control,
     name: [
@@ -235,6 +236,7 @@ export default function EditTimeChartForm({
       'numberFormat',
       'groupByColumnsOnLeft',
       'color',
+      'colorRules',
     ],
   });
 
@@ -256,6 +258,7 @@ export default function EditTimeChartForm({
       numberFormat,
       groupByColumnsOnLeft,
       color,
+      colorRules,
     }),
     [
       alignDateRangeToGranularity,
@@ -265,6 +268,7 @@ export default function EditTimeChartForm({
       numberFormat,
       groupByColumnsOnLeft,
       color,
+      colorRules,
     ],
   );
 
@@ -546,6 +550,7 @@ export default function EditTimeChartForm({
       fitYAxisToData,
       groupByColumnsOnLeft,
       color,
+      colorRules,
     }: ChartConfigDisplaySettings) => {
       setValue('numberFormat', numberFormat);
       setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
@@ -554,6 +559,7 @@ export default function EditTimeChartForm({
       setValue('fitYAxisToData', fitYAxisToData);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
       setValue('color', color);
+      setValue('colorRules', colorRules);
       onSubmit();
     },
     [setValue, onSubmit],
