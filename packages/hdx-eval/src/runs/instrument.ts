@@ -138,7 +138,10 @@ async function fetchQueryLog(
   const endStr = new Date(endMs).toISOString().slice(0, 19).replace('T', ' ');
   // Match queries that touch any of the given table patterns.
   const orClauses = tablePatterns
-    .map(p => `query LIKE '%${p.replace(/'/g, "''")}%'`)
+    .map(
+      p =>
+        `query LIKE '%${p.replace(/'/g, "''").replace(/_/g, '\\_').replace(/%/g, '\\%')}%' ESCAPE '\\'`,
+    )
     .join(' OR ');
   // Restrict to SELECT-shaped queries — agents don't issue INSERTs, but the
   // re-seed step right before the run does, and we don't want those in the

@@ -104,10 +104,8 @@ async function callJudgeWithRetry(args: {
       args.userPrompt +
       '\n\nReturn STRICT JSON only — no Markdown fences, no prose.',
   });
-  if (retry.error) {
-    // Surface the second error but accumulate tokens from both attempts.
-    retry.tokens = sumTokens(first.tokens, retry.tokens);
-  }
+  // Always accumulate tokens from both attempts so cost tracking is accurate.
+  retry.tokens = sumTokens(first.tokens, retry.tokens);
   return retry;
 }
 
