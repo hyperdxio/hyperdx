@@ -2280,6 +2280,214 @@ describe('renderChartConfig', () => {
     });
   });
 
+  describe('SELECT alias references in other Lucene call sites', () => {
+    // The main WHERE clause is covered above; these exercise the remaining
+    // Lucene-capable call sites in renderChartConfig (filters array,
+    // per-aggregate conditions, and HAVING), all of which must resolve SELECT
+    // aliases identically to the main WHERE.
+
+    it('resolves a Lucene filter reference to a SELECT alias', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [{ valueExpression: 'Body', alias: 'Content' }],
+        where: '',
+        filters: [{ type: 'lucene', condition: 'Content:"swagger"' }],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain("Content = 'swagger'");
+    });
+
+    it('renders an unknown, non-alias field in a Lucene filter as the no-match predicate', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [{ valueExpression: 'Body', alias: 'Content' }],
+        where: '',
+        filters: [{ type: 'lucene', condition: 'NotAColumn:"swagger"' }],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('(1 = 0)');
+      expect(actual).not.toContain('NotAColumn');
+    });
+
+    // A per-aggregate Lucene condition is pushed into the WHERE clause (when
+    // every select has one) and also rendered as the aggregate's `...If(...)`
+    // predicate. Both paths must resolve the alias. The alias here is an
+    // expression-form WITH clause to avoid a select referencing its own alias.
+    it('resolves a Lucene per-aggregate condition to a SELECT alias', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        with: [
+          {
+            name: 'Content',
+            sql: chSql`toString(Body)`,
+            isSubquery: false,
+          },
+        ],
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: 'Content:"swagger"',
+            aggConditionLanguage: 'lucene',
+          },
+        ],
+        where: '',
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain("Content = 'swagger'");
+      expect(actual).not.toContain('(1 = 0)');
+    });
+
+    it('renders an unknown per-aggregate Lucene field as the no-match predicate', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: '',
+            aggCondition: 'NotAColumn:"swagger"',
+            aggConditionLanguage: 'lucene',
+          },
+        ],
+        where: '',
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('(1 = 0)');
+      expect(actual).not.toContain('NotAColumn');
+    });
+
+    // A Lucene value expression (aggFn omitted, valueExpressionLanguage: lucene)
+    // is rendered as a SELECT column expression and must resolve aliases too.
+    it('resolves a Lucene value expression reference to a SELECT alias', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        with: [
+          {
+            name: 'Content',
+            sql: chSql`toString(Body)`,
+            isSubquery: false,
+          },
+        ],
+        select: [
+          {
+            valueExpression: 'Content:"swagger"',
+            valueExpressionLanguage: 'lucene',
+            alias: 'matched',
+          },
+        ],
+        where: '',
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain("Content = 'swagger'");
+      expect(actual).not.toContain('(1 = 0)');
+    });
+
+    // ClickHouse resolves SELECT aliases in HAVING, so a Lucene HAVING that
+    // references an alias must resolve it rather than render the no-match
+    // predicate.
+    it('resolves a Lucene HAVING reference to a SELECT alias', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [{ valueExpression: 'Body', alias: 'Content' }],
+        where: '',
+        having: 'Content:"swagger"',
+        havingLanguage: 'lucene',
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain("Content = 'swagger'");
+    });
+
+    it('renders an unknown, non-alias field in a Lucene HAVING as the no-match predicate', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Table,
+        connection: 'test-connection',
+        from: {
+          databaseName: 'default',
+          tableName: 'logs',
+        },
+        select: [{ valueExpression: 'Body', alias: 'Content' }],
+        where: '',
+        having: 'NotAColumn:"swagger"',
+        havingLanguage: 'lucene',
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+      expect(actual).toContain('(1 = 0)');
+      expect(actual).not.toContain('NotAColumn');
+    });
+  });
+
   describe('SETTINGS clause', () => {
     const config: ChartConfigWithOptDateRangeEx = {
       displayType: DisplayType.Table,

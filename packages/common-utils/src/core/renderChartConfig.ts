@@ -690,6 +690,11 @@ async function renderSelectList(
 
   const isRatio = isRatioChartConfig(selectList, chartConfig);
 
+  const selectAliases = extractSelectAliases({
+    selectLists: [chartConfig.select, chartConfig.groupBy],
+    withClauses: chartConfig.with,
+  });
+
   const selectsSQL = await Promise.all(
     selectList.map(async select => {
       const whereClause = await renderWhereExpression({
@@ -703,6 +708,7 @@ async function renderSelectList(
         metadata,
         connectionId: chartConfig.connection,
         with: chartConfig.with,
+        selectAliases,
       });
 
       let expr: ChSql;
@@ -720,6 +726,7 @@ async function renderSelectList(
                 metadata,
                 connectionId: chartConfig.connection,
                 with: chartConfig.with,
+                selectAliases,
               })
             : chSql`${{ UNSAFE_RAW_SQL: select.valueExpression }}`;
       } else if (
@@ -1120,6 +1127,11 @@ async function renderWhere(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql> {
+  const selectAliases = extractSelectAliases({
+    selectLists: [chartConfig.select, chartConfig.groupBy],
+    withClauses: chartConfig.with,
+  });
+
   let whereSearchCondition: ChSql | [] = [];
   if (isNonEmptyWhereExpr(chartConfig.where)) {
     whereSearchCondition = wrapChSqlIfNotEmpty(
@@ -1134,10 +1146,7 @@ async function renderWhere(
         metadata,
         connectionId: chartConfig.connection,
         with: chartConfig.with,
-        selectAliases: extractSelectAliases({
-          selectLists: [chartConfig.select, chartConfig.groupBy],
-          withClauses: chartConfig.with,
-        }),
+        selectAliases,
       }),
       '(',
       ')',
@@ -1166,6 +1175,7 @@ async function renderWhere(
               metadata,
               connectionId: chartConfig.connection,
               with: chartConfig.with,
+              selectAliases,
             });
           }
           return null;
@@ -1214,6 +1224,7 @@ async function renderWhere(
             metadata,
             connectionId: chartConfig.connection,
             with: chartConfig.with,
+            selectAliases,
           }),
           '(',
           ')',
@@ -1294,6 +1305,10 @@ async function renderHaving(
     metadata,
     connectionId: chartConfig.connection,
     with: chartConfig.with,
+    selectAliases: extractSelectAliases({
+      selectLists: [chartConfig.select, chartConfig.groupBy],
+      withClauses: chartConfig.with,
+    }),
   });
 }
 
