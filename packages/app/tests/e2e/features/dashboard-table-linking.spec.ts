@@ -752,14 +752,15 @@ test.describe(
       });
     });
 
-    test('Tooltip hint appears on hover and disappears on mouse-leave — no stranded tooltip (HDX-4405)', async ({
+    test('Trailing arrow hint appears on row hover and navigates to the action URL (HDX-4405)', async ({
       page,
     }) => {
-      // Regression test for HDX-4405: Tooltip.Floating instances mounted
-      // per virtual row were getting stranded in their Portal when the row
-      // unmounted before onMouseLeave fired (rapid mouse movement). The fix
-      // moves a single shared Tooltip.Floating to <tbody> so its state is
-      // never tied to a virtual row's lifecycle.
+      // Pivot of the original HDX-4405 regression test: the row-click hint
+      // is now an anchored Mantine Tooltip wrapping a trailing arrow-up-right
+      // icon in the last cell, rather than a Tooltip.Floating that tracks the
+      // cursor. The arrow is hidden until the row is hovered and the
+      // tooltip is tied to the icon's lifecycle, so no stranded popup is
+      // possible by construction.
       const ts = Date.now();
 
       await test.step('Create a table tile with a Search row-click action', async () => {
@@ -779,21 +780,39 @@ test.describe(
 
       await dashboardPage.waitForTableTileRows(0);
 
-      await test.step('Hover over first row — tooltip hint must appear', async () => {
-        await dashboardPage.hoverFirstTableRowAndGetTooltip(0);
-        // hoverFirstTableRowAndGetTooltip already asserts visibility before
-        // returning; reaching here means the tooltip appeared successfully.
+      await test.step('Trailing arrow is hidden until the row is hovered', async () => {
+        const hint = dashboardPage.getRowActionHint(0);
+        // The icon is in the DOM but its visibility is gated by the
+        // .tableRow:hover .rowActionHint CSS opacity transition.
+        await expect(hint).toHaveCSS('opacity', '0');
       });
 
-      await test.step('Move mouse away from the table — tooltip must disappear', async () => {
-        // Move to a neutral area well outside the table. The <tbody>
-        // onMouseLeave safety net clears hoveredVirtualIndex, which makes
-        // hoveredRowDescription derive to null, disabling the shared
-        // Tooltip.Floating (display:none in the Portal).
+      await test.step('Hovering the row reveals the arrow and the tooltip describes the action', async () => {
+        const tooltip = await dashboardPage.hoverFirstTableRowAndGetTooltip(0);
+        await expect(tooltip).toContainText(/Search|Open/);
+      });
+
+      await test.step('Moving the cursor away closes the tooltip', async () => {
+        // Move to a neutral area; Mantine Tooltip closes on mouseleave
+        // (closeDelay=100ms in the component). Narrow the role match to
+        // the row-action tooltip text so the assertion does not flake on
+        // unrelated header / resize-handle tooltips that may also live in
+        // the portal at the moment of the check.
         await page.mouse.move(10, 10);
-        await expect(page.getByTestId('row-action-hint')).toBeHidden({
-          timeout: 3000,
-        });
+        await expect(
+          page.getByRole('tooltip', { name: /Search|Open/ }),
+        ).toBeHidden({ timeout: 3000 });
+      });
+
+      await test.step('Clicking the trailing arrow navigates to the same destination as the row body', async () => {
+        // Re-hover the row, then click the arrow. The Link inside the
+        // tooltip-wrapped arrow points to the same href as the per-cell
+        // links, so click navigates exactly as a row click would.
+        const row = dashboardPage.getFirstTableRow(0);
+        await row.hover();
+        const hint = dashboardPage.getRowActionHint(0);
+        await hint.click();
+        await expect(page).toHaveURL(/\/search\?/, { timeout: 10000 });
       });
     });
   },
