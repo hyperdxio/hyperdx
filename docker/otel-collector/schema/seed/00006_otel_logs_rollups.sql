@@ -46,30 +46,6 @@ GROUP BY ColumnIdentifier, Key, Timestamp;
 CREATE MATERIALIZED VIEW IF NOT EXISTS ${DATABASE}.otel_logs_attr_kv_rollup_15m_mv TO ${DATABASE}.otel_logs_kv_rollup_15m
 AS WITH elements AS (
     SELECT
-        'ResourceAttributes' AS ColumnIdentifier,
-        toStartOfFifteenMinutes(Timestamp) AS Timestamp,
-        replaceRegexpAll(entry.1, '\\[\\d+\\]', '[*]') AS Key,
-        CAST(entry.2 AS String) AS Value
-    FROM ${DATABASE}.otel_logs
-    ARRAY JOIN ResourceAttributes AS entry
-    UNION ALL
-    SELECT
-        'LogAttributes' AS ColumnIdentifier,
-        toStartOfFifteenMinutes(Timestamp) AS Timestamp,
-        replaceRegexpAll(entry.1, '\\[\\d+\\]', '[*]') AS Key,
-        CAST(entry.2 AS String) AS Value
-    FROM ${DATABASE}.otel_logs
-    ARRAY JOIN LogAttributes AS entry
-    UNION ALL
-    SELECT
-        'ScopeAttributes' AS ColumnIdentifier,
-        toStartOfFifteenMinutes(Timestamp) AS Timestamp,
-        replaceRegexpAll(entry.1, '\\[\\d+\\]', '[*]') AS Key,
-        CAST(entry.2 AS String) AS Value
-    FROM ${DATABASE}.otel_logs
-    ARRAY JOIN ScopeAttributes AS entry
-    UNION ALL
-    SELECT
         'NativeColumn' AS ColumnIdentifier,
         toStartOfFifteenMinutes(Timestamp) AS Timestamp,
         'SeverityText' as Key,
