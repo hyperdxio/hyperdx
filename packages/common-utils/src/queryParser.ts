@@ -22,6 +22,8 @@ import {
 } from '@/core/utils';
 import { UseTextIndex } from '@/types';
 
+import { isMapColumn } from './guards';
+
 /** Max number of tokens to pass to hasAllTokens(), which supports up to 64 tokens as of ClickHouse v25.12. */
 const HAS_ALL_TOKENS_CHUNK_SIZE = 50;
 
@@ -48,9 +50,9 @@ export function parse(query: string): lucene.AST {
 }
 
 function buildMapContains(mapField: string) {
-  const path = parseKeyPath(mapField);
-  if (path.length < 2) return undefined;
-  return SqlString.format('mapContains(??, ?)', [path[0], path[1]]);
+  const col = parseKeyPath(mapField);
+  if (!isMapColumn(col)) return undefined;
+  return SqlString.format('mapContains(??, ?)', [col.column, col.key]);
 }
 
 /** Strip whitespace and backtick-quoting from a ClickHouse expression for comparison */

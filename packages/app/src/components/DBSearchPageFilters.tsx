@@ -1343,7 +1343,7 @@ const DBSearchPageFiltersComponent = ({
         // Coerce dot-form Map sub-keys (LogAttributes.foo) into bracket form
         // (LogAttributes['foo']) before handing them to ClickHouse. Bracket
         // form is the canonical SQL key produced by mergePath; dot form ends
-        // up in filterState after setFilterValue's parseKeyPath().join('.')
+        // up in filterState after setFilterValue's columnKeyToDotPath()
         // normalization or after a Lucene URL round-trip, and ClickHouse
         // cannot resolve it as map access.
         const sqlKey = toClickHouseKeyExpression(key);

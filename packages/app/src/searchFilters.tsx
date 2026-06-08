@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import produce from 'immer';
-import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  columnKeyToDotPath,
+  parseKeyPath,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   coerceBooleanValue,
   type FilterState,
@@ -444,7 +447,7 @@ export const useSearchPageFilterState = ({
     ) => {
       // Normalize bracket notation to dot notation so the key matches
       // what parseQuery returns after a Lucene round-trip.
-      const key = parseKeyPath(property).join('.');
+      const key = columnKeyToDotPath(parseKeyPath(property));
       // Normalize "true"/"false" strings to booleans so the value matches
       // what parseLuceneFilter returns after a Lucene round-trip.
       const normalizedValue = coerceBooleanValue(value);
@@ -491,7 +494,7 @@ export const useSearchPageFilterState = ({
 
   const setFilterRange = useCallback(
     (property: string, range: { min: number; max: number }) => {
-      const key = parseKeyPath(property).join('.');
+      const key = columnKeyToDotPath(parseKeyPath(property));
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
           if (!draft[key]) {
@@ -508,7 +511,7 @@ export const useSearchPageFilterState = ({
 
   const clearFilter = useCallback(
     (property: string) => {
-      const key = parseKeyPath(property).join('.');
+      const key = columnKeyToDotPath(parseKeyPath(property));
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
           delete draft[key];

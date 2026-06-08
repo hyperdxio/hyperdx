@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQueryState } from 'nuqs';
-import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  columnKeyToDotPath,
+  parseKeyPath,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   FilterState,
   filtersToQuery,
@@ -24,7 +27,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
         const { filters: filterValues } = parseQuery(prev ?? []);
         // Normalize the expression to dot notation so it matches the keys
         // returned by parseQuery (which converts bracket notation to dots).
-        const key = parseKeyPath(expression).join('.');
+        const key = columnKeyToDotPath(parseKeyPath(expression));
         if (values.length === 0) {
           delete filterValues[key];
         } else {
@@ -53,7 +56,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     // Build a normalized lookup so bracket-notation expressions
     // (e.g. SpanAttributes['k8s.pod.name']) match the dot-notation keys
     // returned by parseLuceneFilter (e.g. SpanAttributes.k8s.pod.name).
-    const normalizeKey = (k: string) => parseKeyPath(k).join('.');
+    const normalizeKey = (k: string) => columnKeyToDotPath(parseKeyPath(k));
     const normalizedParsed = new Map(
       Object.entries(parsedFilters).map(([k, v]) => [normalizeKey(k), v]),
     );

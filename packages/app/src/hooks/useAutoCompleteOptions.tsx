@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import {
+  columnKeyToDotPath,
   Field,
   parseKeyPath,
   TableConnection,
@@ -256,7 +257,7 @@ export function useAutoCompleteOptions(
     if (!keyValues || keyValues.length === 0) return [];
 
     return keyValues.flatMap(kv => {
-      const fieldName = parseKeyPath(kv.key).join('.');
+      const fieldName = columnKeyToDotPath(parseKeyPath(kv.key));
       return kv.value.flatMap((v: string | Record<string, string>) => {
         if (typeof v === 'object' && v !== null) {
           // Map columns can return objects like { 'service.name': 'frontend' }

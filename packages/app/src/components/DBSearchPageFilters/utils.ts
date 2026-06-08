@@ -2,6 +2,7 @@
 
 import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import type { FilterState } from '@hyperdx/common-utils/dist/filters';
+import { isMapColumn } from '@hyperdx/common-utils/dist/guards';
 
 import { mergePath } from '@/utils';
 
@@ -22,12 +23,12 @@ export function parseMapFieldName(
   key: string,
 ): { baseName: string; propertyPath: string } | null {
   const cleanKey = cleanClickHouseExpression(key);
-  const path = parseKeyPath(cleanKey);
+  const col = parseKeyPath(cleanKey);
 
-  if (path.length >= 2) {
+  if (isMapColumn(col)) {
     return {
-      baseName: path[0],
-      propertyPath: path.slice(1).join('.'),
+      baseName: col.column,
+      propertyPath: col.key,
     };
   }
 
@@ -48,7 +49,7 @@ export function parseMapFieldName(
 // Bracket-form keys (e.g. LogAttributes['time']) are the canonical SQL form
 // produced by mergePath for Map columns, while dot-form keys
 // (e.g. LogAttributes.time) are what setFilterValue stores after its
-// parseKeyPath().join('.') normalization and what parseLuceneFilter returns
+// columnKeyToDotPath() normalization and what parseLuceneFilter returns
 // on URL load. Same logical field, different raw string.
 function isBracketFormMapKey(key: string): boolean {
   return key.includes("['") || key.includes('["');
@@ -123,7 +124,7 @@ export function groupFacetsByBaseName(
 
 // Look up a filterState entry by either bracket-form or dot-form map sub-key.
 // Bracket form is the canonical SQL key used in facet results; dot form is
-// what setFilterValue stores after its parseKeyPath().join('.') normalization
+// what setFilterValue stores after its columnKeyToDotPath() normalization
 // and what parseLuceneFilter restores from a Lucene URL round-trip. Reads
 // need to tolerate either so the user's selection still resolves regardless
 // of which form `child.key` carries after groupFacetsByBaseName's merge.

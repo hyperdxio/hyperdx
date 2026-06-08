@@ -16,6 +16,7 @@ import { renderChartConfig, timeFilterExpr } from '@/core/renderChartConfig';
 import type {
   BuilderChartConfig,
   BuilderChartConfigWithDateRange,
+  ColumnKey,
   MetadataMaterializedViews,
   TSource,
 } from '@/types';
@@ -1350,14 +1351,14 @@ export class Metadata {
 
     // Parse all keys into (rollupColumn, rollupKey) pairs
     const parsed = keyExpressions.map(keyExpr => {
-      const path = parseKeyPath(keyExpr);
-      const isMapKey = path.length >= 2;
+      const col = parseKeyPath(keyExpr);
+      const isNative = col.column === NATIVE_COLUMN;
       return {
         keyExpression: keyExpr,
-        rollupColumn: isMapKey ? path[0] : NATIVE_COLUMN,
-        rollupKey: isMapKey ? path[1] : path[0],
-        column: path[0],
-        mapKey: isMapKey ? path[1] : undefined,
+        rollupColumn: col.column,
+        rollupKey: col.key,
+        column: isNative ? col.key : col.column,
+        mapKey: isNative ? undefined : col.key,
       };
     });
 
@@ -1768,20 +1769,40 @@ export type Field = {
 };
 
 /**
- * Parses a bracket-notation key string into a path array.
- * e.g. `ResourceAttributes['service.name']` → `['ResourceAttributes', 'service.name']`
- *      `ServiceName` → `['ServiceName']`
+ * Parses a bracket-notation key string into a {@link ColumnKey}.
+ * e.g. `ResourceAttributes['service.name']` → `{ column: 'ResourceAttributes', key: 'service.name' }`
+ *      `ServiceName` → `{ column: NATIVE_COLUMN, key: 'ServiceName' }`
  */
-export function parseKeyPath(key: string): string[] {
+export function parseKeyPath(key: string): ColumnKey {
   const singleIdx = key.indexOf("['");
   if (singleIdx !== -1 && key.endsWith("']")) {
-    return [key.slice(0, singleIdx), key.slice(singleIdx + 2, -2)];
+    return {
+      column: key.slice(0, singleIdx),
+      key: key.slice(singleIdx + 2, -2),
+    };
   }
   const doubleIdx = key.indexOf('["');
   if (doubleIdx !== -1 && key.endsWith('"]')) {
-    return [key.slice(0, doubleIdx), key.slice(doubleIdx + 2, -2)];
+    return {
+      column: key.slice(0, doubleIdx),
+      key: key.slice(doubleIdx + 2, -2),
+    };
   }
-  return [key];
+  return {
+    column: NATIVE_COLUMN,
+    key,
+  };
+}
+
+/**
+ * Renders a {@link ColumnKey} as a dotted path string. Inverse of
+ * `parseKeyPath` for the dot-form normalization used to match keys across
+ * Lucene round-trips and filter-state lookups.
+ * e.g. `{ column: 'ResourceAttributes', key: 'service.name' }` → `ResourceAttributes.service.name`
+ *      `{ column: NATIVE_COLUMN, key: 'ServiceName' }` → `ServiceName`
+ */
+export function columnKeyToDotPath(col: ColumnKey): string {
+  return col.column === NATIVE_COLUMN ? col.key : `${col.column}.${col.key}`;
 }
 
 // Describes a table and potentially related views

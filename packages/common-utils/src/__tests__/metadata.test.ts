@@ -3,7 +3,12 @@ import { Metadata, MetadataCache, parseKeyPath } from '../core/metadata';
 import * as renderChartConfigModule from '../core/renderChartConfig';
 import { timeFilterExpr } from '../core/renderChartConfig';
 import { isBuilderChartConfig } from '../guards';
-import { BuilderChartConfigWithDateRange, SourceKind, TSource } from '../types';
+import {
+  BuilderChartConfigWithDateRange,
+  NATIVE_COLUMN,
+  SourceKind,
+  TSource,
+} from '../types';
 
 // Mock ClickhouseClient
 const mockClickhouseClient = {
@@ -1438,37 +1443,41 @@ describe('Metadata', () => {
 
 describe('parseKeyPath', () => {
   it('parses single-quoted bracket notation', () => {
-    expect(parseKeyPath("ResourceAttributes['service.name']")).toEqual([
-      'ResourceAttributes',
-      'service.name',
-    ]);
+    expect(parseKeyPath("ResourceAttributes['service.name']")).toEqual({
+      column: 'ResourceAttributes',
+      key: 'service.name',
+    });
   });
 
   it('parses double-quoted bracket notation', () => {
-    expect(parseKeyPath('ResourceAttributes["service.name"]')).toEqual([
-      'ResourceAttributes',
-      'service.name',
-    ]);
+    expect(parseKeyPath('ResourceAttributes["service.name"]')).toEqual({
+      column: 'ResourceAttributes',
+      key: 'service.name',
+    });
   });
 
-  it('returns single-element path for native columns', () => {
-    expect(parseKeyPath('ServiceName')).toEqual(['ServiceName']);
+  it('returns native column for top-level columns', () => {
+    expect(parseKeyPath('ServiceName')).toEqual({
+      column: NATIVE_COLUMN,
+      key: 'ServiceName',
+    });
   });
 
   it('handles keys with dots in the map key', () => {
-    expect(parseKeyPath("SpanAttributes['http.request.method']")).toEqual([
-      'SpanAttributes',
-      'http.request.method',
-    ]);
+    expect(parseKeyPath("SpanAttributes['http.request.method']")).toEqual({
+      column: 'SpanAttributes',
+      key: 'http.request.method',
+    });
   });
 
-  it('returns single-element path for empty string', () => {
-    expect(parseKeyPath('')).toEqual(['']);
+  it('returns native column for empty string', () => {
+    expect(parseKeyPath('')).toEqual({ column: NATIVE_COLUMN, key: '' });
   });
 
   it('does not parse incomplete bracket notation', () => {
-    expect(parseKeyPath("ResourceAttributes['service.name")).toEqual([
-      "ResourceAttributes['service.name",
-    ]);
+    expect(parseKeyPath("ResourceAttributes['service.name")).toEqual({
+      column: NATIVE_COLUMN,
+      key: "ResourceAttributes['service.name",
+    });
   });
 });

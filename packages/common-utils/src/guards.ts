@@ -3,7 +3,10 @@ import {
   BuilderSavedChartConfig,
   ChartConfig,
   ChartConfigWithOptDateRange,
+  ColumnKey,
   DisplayType,
+  MapColumnKey,
+  NATIVE_COLUMN,
   PromqlChartConfig,
   PromqlSavedChartConfig,
   RawSqlChartConfig,
@@ -74,6 +77,10 @@ export function isBuilderSavedChartConfig(
     !isRawSqlSavedChartConfig(chartConfig) &&
     !isPromqlSavedChartConfig(chartConfig)
   );
+}
+
+export function isMapColumn(column: ColumnKey): column is MapColumnKey {
+  return column.column !== NATIVE_COLUMN;
 }
 
 /**
