@@ -1013,6 +1013,73 @@ export function walkRawDashboardTileColors(
  */
 export const ChartPaletteTokenSchema = z.enum(CHART_PALETTE_TOKENS);
 
+/**
+ * A single conditional color rule. Rules are evaluated in order against
+ * the tile's displayed value; the LAST matching rule's color wins
+ * (last-match-wins: higher-priority rules go last). If no rule matches,
+ * the tile's static `color` applies; if that is unset, the default text
+ * color applies.
+ *
+ * String operators (`contains`, `startsWith`, `endsWith`, `regex`) are
+ * included at the schema level so a future table-tile slice can reuse
+ * the same type without a schema change. The number-tile UI only exposes
+ * numeric / equality operators.
+ *
+ * Lives in common-utils so both the app and a future external-API parity
+ * PR can import it.
+ */
+export const ColorConditionSchema = z.discriminatedUnion('operator', [
+  // Numeric ordered operators
+  z.object({
+    operator: z.enum(['gt', 'gte', 'lt', 'lte']),
+    value: z.number().finite(),
+    color: ChartPaletteTokenSchema,
+    label: z.string().max(40).optional(),
+  }),
+  z.object({
+    operator: z.literal('between'),
+    value: z.tuple([z.number().finite(), z.number().finite()]),
+    color: ChartPaletteTokenSchema,
+    label: z.string().max(40).optional(),
+  }),
+  // Equality (number OR string)
+  z.object({
+    operator: z.enum(['eq', 'neq']),
+    value: z.union([z.number().finite(), z.string().max(200)]),
+    color: ChartPaletteTokenSchema,
+    label: z.string().max(40).optional(),
+  }),
+  // String operators (allowed at schema level for future table-tile reuse)
+  z.object({
+    operator: z.enum(['contains', 'startsWith', 'endsWith']),
+    value: z.string().min(1).max(200),
+    color: ChartPaletteTokenSchema,
+    label: z.string().max(40).optional(),
+  }),
+  z.object({
+    operator: z.literal('regex'),
+    value: z
+      .string()
+      .min(1)
+      .max(500)
+      .refine(
+        v => {
+          try {
+            new RegExp(v);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { message: 'Invalid regex pattern' },
+      ),
+    color: ChartPaletteTokenSchema,
+    label: z.string().max(40).optional(),
+  }),
+]);
+
+export type ColorCondition = z.infer<typeof ColorConditionSchema>;
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
 /**
@@ -1036,6 +1103,11 @@ const SharedChartSettingsSchema = z.object({
   // also a Number-tile-only field stored at shared level and gated in
   // the UI.
   color: ChartPaletteTokenSchema.optional(),
+  // Ordered conditional color rules for number tiles. Last matching rule
+  // wins (higher-priority rules go last). Kept at shared level so a future
+  // table-tile slice can attach per-column rules without a schema change.
+  // The UI gates the section on `displayType === DisplayType.Number`.
+  colorRules: z.array(ColorConditionSchema).max(10).optional(),
 });
 
 export const _ChartConfigSchema = SharedChartSettingsSchema.extend({

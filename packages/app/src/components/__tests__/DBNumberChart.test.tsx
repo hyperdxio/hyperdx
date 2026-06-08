@@ -42,6 +42,9 @@ jest.mock('@/utils', () => ({
   // Return a valid CSS hex so Mantine applies it as an inline color style,
   // letting us assert that the resolved value reaches the DOM element.
   getColorFromCSSToken: jest.fn(() => '#00ff00'),
+  // Use the real resolver so integration tests verify the actual logic.
+  resolveConditionalColor:
+    jest.requireActual('@/utils').resolveConditionalColor,
 }));
 
 jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
@@ -307,6 +310,141 @@ describe('DBNumberChart', () => {
 
     // Verify DateRangeIndicator was not called
     expect(jest.mocked(DateRangeIndicator)).not.toHaveBeenCalled();
+  });
+
+  describe('colorRules (conditional colors)', () => {
+    const mockGetColorFromCSSToken = getColorFromCSSToken as jest.Mock;
+
+    beforeEach(() => {
+      // Each test controls the data value independently
+      mockGetColorFromCSSToken.mockImplementation(() => '#00ff00');
+    });
+
+    function setDataValue(v: number) {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [{ value: v }] },
+        isLoading: false,
+        isError: false,
+      });
+    }
+
+    it('uses static color when no rule matches (value 50, threshold ≥ 100)', () => {
+      setDataValue(50);
+      // formatNumber is mocked; make it return the raw value so we can query by text
+      mockFormatNumber.mockReturnValue('50');
+      const config = {
+        ...baseTestConfig,
+        color: 'chart-success' as const,
+        colorRules: [
+          {
+            operator: 'gte' as const,
+            value: 100,
+            color: 'chart-warning' as const,
+          },
+          {
+            operator: 'gte' as const,
+            value: 500,
+            color: 'chart-error' as const,
+          },
+        ],
+      };
+      renderWithMantine(<DBNumberChart config={config} />);
+      // resolveConditionalColor returns 'chart-success' (fallback); getColorFromCSSToken called with it
+      expect(mockGetColorFromCSSToken).toHaveBeenCalledWith('chart-success');
+    });
+
+    it('applies warning color when value is 200 (≥ 100 but < 500)', () => {
+      setDataValue(200);
+      mockFormatNumber.mockReturnValue('200');
+      const config = {
+        ...baseTestConfig,
+        color: 'chart-success' as const,
+        colorRules: [
+          {
+            operator: 'gte' as const,
+            value: 100,
+            color: 'chart-warning' as const,
+          },
+          {
+            operator: 'gte' as const,
+            value: 500,
+            color: 'chart-error' as const,
+          },
+        ],
+      };
+      renderWithMantine(<DBNumberChart config={config} />);
+      expect(mockGetColorFromCSSToken).toHaveBeenCalledWith('chart-warning');
+    });
+
+    it('applies error color when value is 1000 (both rules match, last wins)', () => {
+      setDataValue(1000);
+      mockFormatNumber.mockReturnValue('1000');
+      const config = {
+        ...baseTestConfig,
+        color: 'chart-success' as const,
+        colorRules: [
+          {
+            operator: 'gte' as const,
+            value: 100,
+            color: 'chart-warning' as const,
+          },
+          {
+            operator: 'gte' as const,
+            value: 500,
+            color: 'chart-error' as const,
+          },
+        ],
+      };
+      renderWithMantine(<DBNumberChart config={config} />);
+      expect(mockGetColorFromCSSToken).toHaveBeenCalledWith('chart-error');
+    });
+
+    it('falls back to undefined (default text color) when no static color and no rule matches', () => {
+      setDataValue(10);
+      mockFormatNumber.mockReturnValue('10');
+      const config = {
+        ...baseTestConfig,
+        // No static color set
+        colorRules: [
+          {
+            operator: 'gte' as const,
+            value: 100,
+            color: 'chart-warning' as const,
+          },
+        ],
+      };
+      renderWithMantine(<DBNumberChart config={config} />);
+      expect(mockGetColorFromCSSToken).not.toHaveBeenCalled();
+    });
+
+    it('coerces string data values (ClickHouse UInt64) to numbers for rule evaluation', () => {
+      // ClickHouse returns UInt64 as a JSON string when quote_64bit_integers is set
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [{ value: '1000' }] },
+        isLoading: false,
+        isError: false,
+      });
+      mockFormatNumber.mockReturnValue('1000');
+      const config = {
+        ...baseTestConfig,
+        color: 'chart-success' as const,
+        colorRules: [
+          {
+            operator: 'gte' as const,
+            value: 100,
+            color: 'chart-warning' as const,
+          },
+          {
+            operator: 'gte' as const,
+            value: 500,
+            color: 'chart-error' as const,
+          },
+        ],
+      };
+      renderWithMantine(<DBNumberChart config={config} />);
+      // String "1000" coerced to 1000 matches both rules; last (error) wins
+      expect(mockGetColorFromCSSToken).toHaveBeenCalledWith('chart-error');
+    });
   });
 
   describe('color', () => {

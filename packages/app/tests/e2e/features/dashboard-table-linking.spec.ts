@@ -751,5 +751,50 @@ test.describe(
         await expect(dashboardPage.ignoredUrlFiltersBanner).toBeHidden();
       });
     });
+
+    test('Tooltip hint appears on hover and disappears on mouse-leave — no stranded tooltip (HDX-4405)', async ({
+      page,
+    }) => {
+      // Regression test for HDX-4405: Tooltip.Floating instances mounted
+      // per virtual row were getting stranded in their Portal when the row
+      // unmounted before onMouseLeave fired (rapid mouse movement). The fix
+      // moves a single shared Tooltip.Floating to <tbody> so its state is
+      // never tied to a virtual row's lifecycle.
+      const ts = Date.now();
+
+      await test.step('Create a table tile with a Search row-click action', async () => {
+        await addTableTile(`E2E Tooltip ${ts}`);
+        await dashboardPage.chartEditor.openRowClickDrawer();
+        await dashboardPage.chartEditor.setRowClickMode('Search');
+        await dashboardPage.chartEditor.fillRowClickTemplate(
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+        await dashboardPage.chartEditor.applyRowClickDrawer();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Set time range to Last 6 hours so rows render', async () => {
+        await dashboardPage.timePicker.selectRelativeTime('Last 6 hours');
+      });
+
+      await dashboardPage.waitForTableTileRows(0);
+
+      await test.step('Hover over first row — tooltip hint must appear', async () => {
+        await dashboardPage.hoverFirstTableRowAndGetTooltip(0);
+        // hoverFirstTableRowAndGetTooltip already asserts visibility before
+        // returning; reaching here means the tooltip appeared successfully.
+      });
+
+      await test.step('Move mouse away from the table — tooltip must disappear', async () => {
+        // Move to a neutral area well outside the table. The <tbody>
+        // onMouseLeave safety net clears hoveredVirtualIndex, which makes
+        // hoveredRowDescription derive to null, disabling the shared
+        // Tooltip.Floating (display:none in the Portal).
+        await page.mouse.move(10, 10);
+        await expect(page.getByTestId('row-action-hint')).toBeHidden({
+          timeout: 3000,
+        });
+      });
+    });
   },
 );
