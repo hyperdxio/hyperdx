@@ -18,7 +18,7 @@ import {
   CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteToken,
   getColorFromCSSToken,
-  isChartPaletteToken,
+  resolveChartPaletteToken,
   SEMANTIC_PALETTE_TOKENS,
 } from '@/utils';
 
@@ -27,16 +27,16 @@ import classes from './ColorSwatchInput.module.scss';
 const Z_INDEX = 9999;
 
 const TOKEN_LABELS: Record<ChartPaletteToken, string> = {
-  'chart-1': 'Color 1',
-  'chart-2': 'Color 2',
-  'chart-3': 'Color 3',
-  'chart-4': 'Color 4',
-  'chart-5': 'Color 5',
-  'chart-6': 'Color 6',
-  'chart-7': 'Color 7',
-  'chart-8': 'Color 8',
-  'chart-9': 'Color 9',
-  'chart-10': 'Color 10',
+  'chart-blue': 'Blue',
+  'chart-orange': 'Orange',
+  'chart-red': 'Red',
+  'chart-cyan': 'Cyan',
+  'chart-green': 'Green',
+  'chart-pink': 'Pink',
+  'chart-purple': 'Purple',
+  'chart-light-blue': 'Light Blue',
+  'chart-brown': 'Brown',
+  'chart-gray': 'Gray',
   'chart-success': 'Success',
   'chart-warning': 'Warning',
   'chart-error': 'Error',
@@ -73,8 +73,12 @@ export const ColorSwatchInput = ({
 }: ColorSwatchInputProps) => {
   const [opened, setOpened] = React.useState(false);
 
-  // Guard against legacy values that are not in the current palette.
-  const safeValue = value && isChartPaletteToken(value) ? value : undefined;
+  // Accept both current hue-named tokens and legacy `chart-1`..`chart-10`
+  // values from #2265. The fetch normalizer in `dashboard.ts` usually
+  // heals stored data before it reaches us, but in-memory tiles or
+  // preset configs can still arrive with legacy values. Truly unknown
+  // values fall through to "no selection".
+  const safeValue = resolveChartPaletteToken(value);
 
   const handleChange = (next?: ChartPaletteToken) => {
     onChange?.(next);

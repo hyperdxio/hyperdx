@@ -307,6 +307,33 @@ export const Table = ({
   );
   const [wrapLinesEnabled, setWrapLinesEnabled] = useState(false);
 
+  // Store the virtual index of the hovered row (not its description string)
+  // so the label re-derives on every render. If the virtualiser replaces the
+  // row at that index (scroll re-virtualisation, auto-refetch) the label
+  // reflects the new row immediately rather than showing stale text. Storing
+  // the index also makes the safety-net `onMouseLeave` on <tbody> correct:
+  // it sets null rather than the prior row's description. See HDX-4405.
+  const [hoveredVirtualIndex, setHoveredVirtualIndex] = useState<number | null>(
+    null,
+  );
+
+  // Derive the label from whichever row currently occupies hoveredVirtualIndex.
+  // Returns null when no row is hovered, the index is out of range, or the
+  // row's action has no URL (error-toast rows show no hint).
+  const hoveredRowDescription = useMemo(() => {
+    if (hoveredVirtualIndex == null) return null;
+    const virtualRow = items.find(v => v.index === hoveredVirtualIndex);
+    if (!virtualRow) return null;
+    const row = rows[virtualRow.index] as TableRow<any> | undefined;
+    if (!row) return null;
+    const rowAction = getRowAction ? getRowAction(row.original) : null;
+    return rowAction?.url != null && rowAction.description
+      ? rowAction.description
+      : null;
+  }, [hoveredVirtualIndex, items, rows, getRowAction]);
+
+  const clearHovered = useCallback(() => setHoveredVirtualIndex(null), []);
+
   const { csvData } = useCsvExport(
     truncatedData,
     columns.map(col => ({
@@ -371,65 +398,62 @@ export const Table = ({
             </tr>
           ))}
         </thead>
-        <tbody>
-          {paddingTop > 0 && (
-            <tr>
-              <td colSpan={99999} style={{ height: `${paddingTop}px` }} />
-            </tr>
-          )}
-          {items.map(virtualRow => {
-            const row = rows[virtualRow.index] as TableRow<any>;
-            // Compute the action once per row so the row-level HoverCard
-            // sees the same description and per-cell renders share the
-            // memoized result from useOnClickLinkBuilder.
-            const rowAction = getRowAction ? getRowAction(row.original) : null;
-            const tr = (
-              <tr
-                key={virtualRow.key}
-                className="bg-muted-hover"
-                data-index={virtualRow.index}
-                ref={rowVirtualizer.measureElement}
-              >
-                {row.getVisibleCells().map(cell => {
-                  return (
-                    <td key={cell.id} title={`${cell.getValue()}`}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </td>
-                  );
-                })}
+        {/* Single Tooltip.Floating wrapping the whole <tbody> so the hint
+            follows the cursor without being tied to the lifecycle of any
+            individual virtual row. Per-row Tooltip.Floating instances get
+            stranded in the Portal when a row unmounts before onMouseLeave
+            fires (rapid mouse movement in a virtualised list). With this
+            approach the tooltip state lives on <tbody>, which never unmounts,
+            and the label is re-derived from hoveredVirtualIndex each render so
+            scroll re-virtualisation never shows stale text. See HDX-4405. */}
+        <Tooltip.Floating
+          label={
+            <span data-testid="row-action-hint">{hoveredRowDescription}</span>
+          }
+          withinPortal
+          disabled={!hoveredRowDescription}
+        >
+          {/* onMouseLeave on <tbody> is a safety net: if a virtual row
+              unmounts before its own onMouseLeave fires (rapid cursor
+              movement or re-virtualisation), leaving the table body still
+              clears the hovered index. */}
+          <tbody onMouseLeave={clearHovered}>
+            {paddingTop > 0 && (
+              <tr>
+                <td colSpan={99999} style={{ height: `${paddingTop}px` }} />
               </tr>
-            );
-            // Row-level Tooltip.Floating so the hint follows the cursor
-            // and anchors near the cell the user is over, not at the row's
-            // center-top. Tooltip.Floating tracks the cursor via floating-ui
-            // and stays within the row's bounding box; one tooltip per row
-            // means no flicker as the cursor moves between cells.
-            //
-            // The hint is suppressed when rowAction.url === null because
-            // the click only fires an error toast on those rows, so showing
-            // "Open in search" would mislead the user.
-            if (rowAction && rowAction.url) {
+            )}
+            {items.map(virtualRow => {
+              const row = rows[virtualRow.index] as TableRow<any>;
               return (
-                <Tooltip.Floating
+                <tr
                   key={virtualRow.key}
-                  label={rowAction.description}
-                  withinPortal
+                  className="bg-muted-hover"
+                  data-index={virtualRow.index}
+                  ref={rowVirtualizer.measureElement}
+                  onMouseEnter={() => setHoveredVirtualIndex(virtualRow.index)}
+                  onMouseLeave={clearHovered}
                 >
-                  {tr}
-                </Tooltip.Floating>
+                  {row.getVisibleCells().map(cell => {
+                    return (
+                      <td key={cell.id} title={`${cell.getValue()}`}>
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
               );
-            }
-            return tr;
-          })}
-          {paddingBottom > 0 && (
-            <tr>
-              <td colSpan={99999} style={{ height: `${paddingBottom}px` }} />
-            </tr>
-          )}
-        </tbody>
+            })}
+            {paddingBottom > 0 && (
+              <tr>
+                <td colSpan={99999} style={{ height: `${paddingBottom}px` }} />
+              </tr>
+            )}
+          </tbody>
+        </Tooltip.Floating>
       </table>
       {isTruncated && (
         <div className="p-2 text-center">

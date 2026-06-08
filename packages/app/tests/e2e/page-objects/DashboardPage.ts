@@ -86,6 +86,7 @@ export class DashboardPage {
   private readonly dashboardMenuButton: Locator;
   private readonly saveDefaultQueryAndFiltersMenuItem: Locator;
   private readonly removeDefaultQueryAndFiltersMenuItem: Locator;
+  private readonly exportDashboardMenuItem: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -136,6 +137,9 @@ export class DashboardPage {
     );
     this.removeDefaultQueryAndFiltersMenuItem = page.getByTestId(
       'remove-default-query-filters-menu-item',
+    );
+    this.exportDashboardMenuItem = page.getByTestId(
+      'export-dashboard-menu-item',
     );
   }
 
@@ -537,6 +541,22 @@ export class DashboardPage {
   }
 
   /**
+   * Add a tile bound to an explicit source. Unlike addTileWithConfig (which
+   * relies on the editor's default source), this selects a known source so the
+   * exported tile carries a deterministic source name that auto-maps on import.
+   */
+  async addTileWithSource(chartName: string, sourceName: string) {
+    await this.addTile();
+    await expect(this.chartEditor.nameInput).toBeVisible();
+    await this.chartEditor.waitForDataToLoad();
+    await this.chartEditor.setChartName(chartName);
+    await this.chartEditor.selectSource(sourceName);
+    await this.chartEditor.runQuery(false);
+    await this.chartEditor.save();
+    await expect(this.getTiles()).toHaveCount(1, { timeout: 10000 });
+  }
+
+  /**
    * Get all dashboard tiles
    */
   getTiles() {
@@ -614,6 +634,25 @@ export class DashboardPage {
   async removeSavedQueryAndFiltersDefaults() {
     await this.dashboardMenuButton.click();
     await this.removeDefaultQueryAndFiltersMenuItem.click();
+  }
+
+  /**
+   * Export the current dashboard via the dashboard menu and return the parsed
+   * JSON that was downloaded. The export triggers a client-side anchor download
+   * (see `downloadObjectAsJson` in DBDashboardPage), so we capture the
+   * Playwright download event and read its stream.
+   */
+  async exportDashboard(): Promise<Record<string, any>> {
+    await this.dashboardMenuButton.click();
+    const downloadPromise = this.page.waitForEvent('download');
+    await this.exportDashboardMenuItem.click();
+    const download = await downloadPromise;
+    const stream = await download.createReadStream();
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(Buffer.from(chunk));
+    }
+    return JSON.parse(Buffer.concat(chunks).toString('utf-8'));
   }
 
   /**
@@ -968,6 +1007,45 @@ export class DashboardPage {
       .locator('[data-testid="dashboard-table-row-action"]')
       .first()
       .click();
+  }
+
+  /**
+   * Return the first data row (<tr data-index>) of the table in the
+   * given tile. Used for hover-based interactions (e.g. tooltip tests).
+   */
+  getFirstTableRow(tileIndex = 0): Locator {
+    return this.getTile(tileIndex)
+      .locator('table tbody tr[data-index]')
+      .first();
+  }
+
+  /**
+   * Hover over the first data row of a table tile and wait for the
+   * floating tooltip to appear. Returns the tooltip locator so callers
+   * can make further assertions.
+   *
+   * Tooltip.Floating renders its content inside a Portal at the document
+   * body level. Mantine uses CSS modules (hashed classes) so we locate the
+   * floating popup by text content that matches the known hint patterns used
+   * by describeOnClick (e.g. "Open in search", "Search <SourceName>",
+   * "Open dashboard"). The tooltip is shown via `display: block` on the
+   * Portal div, so Playwright's `toBeVisible` checks that correctly.
+   */
+  async hoverFirstTableRowAndGetTooltip(tileIndex = 0): Promise<Locator> {
+    const row = this.getFirstTableRow(tileIndex);
+    await row.hover();
+    // Trigger a mousemove inside the row so Tooltip.Floating's internal
+    // mousemove handler has a coordinate to position against.
+    const box = await row.boundingBox();
+    if (box) {
+      await this.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    }
+    // The Tooltip.Floating label is a <span data-testid="row-action-hint">.
+    // The portal div uses display:none when disabled, so Playwright's
+    // toBeVisible() correctly reflects the open/closed state.
+    const tooltip = this.page.getByTestId('row-action-hint');
+    await tooltip.waitFor({ state: 'visible', timeout: 5000 });
+    return tooltip;
   }
 
   /**

@@ -10,7 +10,7 @@ import {
 } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
-  isChartPaletteToken,
+  resolveChartPaletteToken,
 } from '@hyperdx/common-utils/dist/types';
 import { Flex, Text } from '@mantine/core';
 
@@ -21,7 +21,11 @@ import {
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
-import { formatNumber, getColorFromCSSToken } from '@/utils';
+import {
+  formatNumber,
+  getColorFromCSSToken,
+  resolveConditionalColor,
+} from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
@@ -258,13 +262,47 @@ export default function DBNumberChart({
     id: config.source,
   });
 
-  // Tile-level color override resolved at render time so token choices
-  // reflow correctly across light / dark / IDE themes. Unknown tokens
-  // (legacy strings, schema gaps) fall back to the default text color.
-  const tileColor =
-    config.color && isChartPaletteToken(config.color)
-      ? getColorFromCSSToken(config.color)
-      : undefined;
+  // Resolve the display color in three layers:
+  //   1. Conditional color rules evaluated against the raw value
+  //      (last-match-wins, Grafana threshold semantics). Falls through
+  //      when no rule matches.
+  //   2. Static tile color from `config.color`, run through
+  //      `resolveChartPaletteToken` so legacy `chart-1`..`chart-10`
+  //      stored values from pre-#2362 saves still resolve to the right
+  //      hue. The fetch-path `normalizeDashboardTileColors` already
+  //      heals stored data, but this guards in-memory tile configs that
+  //      bypass the fetch normalizer.
+  //   3. Default text color when nothing else resolves.
+  //
+  // The raw value (pre-format) is used so rules match on the actual data
+  // value, not the formatted string. ClickHouse returns UInt64 counts as
+  // strings over JSON (output_format_json_quote_64bit_integers=1), so
+  // coerce string values to numbers when possible so numeric operators
+  // match correctly.
+  // Re-use the already-computed `value`; the `?? Number.NaN` fallback there
+  // is for `formatNumber`'s sake, the coercion IIFE below treats undefined
+  // and NaN as "no value" so the rules short-circuit to the fallback color.
+  const rawValueRaw =
+    typeof value === 'number' && Number.isNaN(value)
+      ? undefined
+      : (value as number | string | undefined);
+
+  const rawValue: number | string | null | undefined = (() => {
+    if (rawValueRaw == null) return rawValueRaw;
+    if (typeof rawValueRaw === 'number') return rawValueRaw;
+    const n = Number(rawValueRaw);
+    return Number.isFinite(n) ? n : rawValueRaw;
+  })();
+
+  const resolvedToken = resolveConditionalColor(
+    rawValue ?? null,
+    config.colorRules,
+    resolveChartPaletteToken(config.color),
+  );
+
+  const tileColor = resolvedToken
+    ? getColorFromCSSToken(resolvedToken)
+    : undefined;
 
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
