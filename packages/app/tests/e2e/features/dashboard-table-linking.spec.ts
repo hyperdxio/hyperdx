@@ -205,10 +205,10 @@ test.describe(
         const url = new URL(page.url());
         expect(url.searchParams.get('source')).toBe(logsSourceId);
         expect(url.searchParams.get('isLive')).toBe('false');
-        // Default row click encodes the group-by filter as a Lucene condition
-        // in the JSON-encoded `filters` param.
+        // Default row click encodes the group-by filter as a SQL IN clause in
+        // the JSON-encoded `filters` param.
         const filters = url.searchParams.get('filters') ?? '[]';
-        expect(filters).toContain(`ServiceName:\\"${serviceName}\\"`);
+        expect(filters).toContain(`ServiceName IN ('${serviceName}')`);
         const from = Number(url.searchParams.get('from'));
         const to = Number(url.searchParams.get('to'));
         expect(from).toBeGreaterThan(0);
@@ -563,8 +563,8 @@ test.describe(
         const filters = JSON.parse(decodeURIComponent(filtersRaw!));
         expect(filters).toEqual([
           {
-            type: 'lucene',
-            condition: `ServiceName:"${serviceName}"`,
+            type: 'sql',
+            condition: `ServiceName IN ('${serviceName}')`,
           },
         ]);
       });
@@ -649,8 +649,8 @@ test.describe(
         const filters = JSON.parse(decodeURIComponent(filtersRaw!));
         expect(filters).toEqual([
           {
-            type: 'lucene',
-            condition: `ServiceName:"${serviceName}"`,
+            type: 'sql',
+            condition: `ServiceName IN ('${serviceName}')`,
           },
         ]);
       });
@@ -794,9 +794,14 @@ test.describe(
 
       await test.step('Moving the cursor away closes the tooltip', async () => {
         // Move to a neutral area; Mantine Tooltip closes on mouseleave
-        // (closeDelay=100ms in the component).
+        // (closeDelay=100ms in the component). Narrow the role match to
+        // the row-action tooltip text so the assertion does not flake on
+        // unrelated header / resize-handle tooltips that may also live in
+        // the portal at the moment of the check.
         await page.mouse.move(10, 10);
-        await expect(page.getByRole('tooltip')).toBeHidden({ timeout: 3000 });
+        await expect(
+          page.getByRole('tooltip', { name: /Search|Open/ }),
+        ).toBeHidden({ timeout: 3000 });
       });
 
       await test.step('Clicking the trailing arrow navigates to the same destination as the row body', async () => {

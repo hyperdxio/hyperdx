@@ -386,9 +386,18 @@ export const Table = ({
             const row = rows[virtualRow.index] as TableRow<any>;
             // Compute the action once per row so the trailing-icon hint
             // shares the memoized result from useOnClickLinkBuilder with
-            // the per-cell renders.
+            // the per-cell renders. The hook keys its cache off the row
+            // reference via WeakMap (see useOnClickLinkBuilder), so this
+            // extra call is an O(1) lookup when the per-cell renders
+            // populate the entry first, and one extra compute per row
+            // only when the WeakMap entry is cold (e.g. fresh data).
             const rowAction = getRowAction ? getRowAction(row.original) : null;
-            const isActionable = Boolean(rowAction && rowAction.url);
+            // Narrow `rowAction.url` to a non-null `string` once per row so
+            // the trailing-icon guard below (and the `<Link href={...}>`
+            // sink inside it) doesn't need an `as string` cast and stays
+            // type-safe under future changes to the `RowAction` shape.
+            const actionUrl = rowAction?.url ?? null;
+            const isActionable = actionUrl !== null;
             const visibleCells = row.getVisibleCells();
             const lastCellIndex = visibleCells.length - 1;
             return (
@@ -433,7 +442,7 @@ export const Table = ({
                           elsewhere" without colliding with the
                           chevron-right used by sidebar group collapse
                           / expand affordances. See HDX-4405. */}
-                      {isLastCell && isActionable && rowAction && (
+                      {isLastCell && actionUrl !== null && rowAction && (
                         <Tooltip
                           label={rowAction.description}
                           position="left"
@@ -443,7 +452,7 @@ export const Table = ({
                           fz="xs"
                         >
                           <Link
-                            href={rowAction.url as string}
+                            href={actionUrl}
                             prefetch={false}
                             tabIndex={-1}
                             aria-hidden="true"

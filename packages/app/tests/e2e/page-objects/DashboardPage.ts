@@ -1041,8 +1041,12 @@ export class DashboardPage {
    * (`opacity: 0`) until the row is hovered. Hovering the row reveals
    * the icon via the `.tableRow:hover .rowActionHint` CSS rule. The
    * Mantine Tooltip wrapping the icon then opens when the cursor moves
-   * to the icon itself, rendering its label in a portal at the body
-   * level (resolved via `getByRole('tooltip')`).
+   * to the icon itself, rendering its label in a portal at the body.
+   *
+   * The returned locator narrows the role match by name so the assertion
+   * does not collide with header-cell or resize-handle tooltips that
+   * may also live in the portal at the moment of the check
+   * (Search-suggestion onClick wording, dashboard-open wording, etc.).
    */
   async hoverFirstTableRowAndGetTooltip(tileIndex = 0): Promise<Locator> {
     const row = this.getFirstTableRow(tileIndex);
@@ -1051,7 +1055,7 @@ export class DashboardPage {
     // Hover the icon directly so the anchored Tooltip's mouseEnter
     // listener fires; row-hover alone only fades the icon in.
     await hint.hover();
-    const tooltip = this.page.getByRole('tooltip');
+    const tooltip = this.page.getByRole('tooltip', { name: /Search|Open/ });
     await tooltip.waitFor({ state: 'visible', timeout: 5000 });
     return tooltip;
   }
