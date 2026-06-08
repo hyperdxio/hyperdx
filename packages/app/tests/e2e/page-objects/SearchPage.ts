@@ -73,12 +73,24 @@ export class SearchPage {
     this.sourceSelector = page.getByTestId('source-selector');
   }
 
-  get createNewSourceItem() {
-    return this.page.getByRole('option', { name: 'Create New Source' });
+  get sourceActionsMenu() {
+    return this.page.getByTestId('source-actions-menu');
   }
 
-  get editSourcesItem() {
-    return this.page.getByRole('option', { name: 'Edit Sources' });
+  get createNewSourceItem() {
+    return this.page.getByRole('menuitem', { name: 'Create new source' });
+  }
+
+  get editSourceItem() {
+    return this.page.getByRole('menuitem', { name: 'Edit source' });
+  }
+
+  get manageSourcesItem() {
+    return this.page.getByRole('menuitem', { name: 'Manage sources' });
+  }
+
+  get viewSchemaItem() {
+    return this.page.getByRole('menuitem', { name: 'View schema' });
   }
 
   /**
@@ -98,8 +110,8 @@ export class SearchPage {
   }
 
   async openEditSourceModal() {
-    await this.sourceSelector.click();
-    await this.editSourcesItem.click();
+    await this.sourceActionsMenu.click();
+    await this.editSourceItem.click();
   }
 
   async sourceModalShowOptionalFields() {

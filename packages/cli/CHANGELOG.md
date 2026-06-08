@@ -1,5 +1,24 @@
 # @hyperdx/cli
 
+## 0.5.0
+
+### Minor Changes
+
+- 3123db53: feat: experimental promql support
+
+### Patch Changes
+
+- b20275c9: fix(cli): exit with non-zero code when `upload-sourcemaps` fails
+
+  The `upload-sourcemaps` command now exits with code 1 when uploads fail
+  (missing source maps, pre-signed URL request failure, authentication failure,
+  or any per-file upload failure after retries). Previously these failures were
+  logged to stderr but the process exited cleanly with code 0, causing CI
+  pipelines to treat failed uploads as successes.
+
+- 19cd7c91: fix: only use pk and row uniqueness to look up a row
+- 8810ff0f: feat: Add option for force-enabling/disabling text index support
+
 ## 0.4.1
 
 ### Patch Changes

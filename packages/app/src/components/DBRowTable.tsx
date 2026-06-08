@@ -38,7 +38,6 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
-  Code,
   Flex,
   Group,
   Modal,
@@ -93,13 +92,16 @@ import {
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import {
-  COLORS,
+  getChartColorInfo,
   getLogLevelClass,
   logLevelColor,
   useLocalStorage,
   usePrevious,
 } from '@/utils';
 
+import ChartErrorState, {
+  ChartErrorStateVariant,
+} from './charts/ChartErrorState';
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import TableHeader from './DBTable/TableHeader';
@@ -269,16 +271,19 @@ const PatternTrendChart = ({
               isAnimationActive={false}
               dataKey="count"
               stackId="a"
-              fill={color || COLORS[0]}
+              // `getChartColorInfo()` resolves a CSS var via
+              // `getComputedStyle(document.documentElement)` and is
+              // invoked once per row render. Kept inline (instead of
+              // hoisted into a memo) because memoizing would either
+              // require a stable theme-class subscription this
+              // component doesn't already have, or risk a stale
+              // value on theme toggle. The per-row cost is acceptable:
+              // pattern rows render in a virtualized list and the
+              // `getComputedStyle` read is sub-microsecond. Revisit
+              // if this surfaces in a profile.
+              fill={color || getChartColorInfo()}
               maxBarSize={24}
             />
-            {/* <Line
-              key={'count'}
-              type="monotone"
-              dataKey={'count'}
-              stroke={COLORS[0]}
-              dot={false}
-            /> */}
             <Tooltip content={<PatternTrendChartTooltip />} />
           </BarChart>
         </ResponsiveContainer>
@@ -342,6 +347,7 @@ export const RawLogTable = memo(
     dedupRows,
     isError,
     error,
+    errorVariant = 'inline',
     columnTypeMap,
     dateRange,
     loadingDate,
@@ -378,6 +384,7 @@ export const RawLogTable = memo(
 
     isError?: boolean;
     error?: ClickHouseQueryError | Error;
+    errorVariant?: ChartErrorStateVariant;
     dateRange?: [Date, Date];
     loadingDate?: Date;
     config?: BuilderChartConfigWithDateRange;
@@ -1226,7 +1233,16 @@ export const RawLogTable = memo(
                 })}
                 <tr>
                   <td colSpan={800}>
-                    <div className="rounded fs-7 bg-muted text-center d-flex align-items-center justify-content-center mt-3">
+                    <div
+                      className={cx(
+                        'rounded fs-7 d-flex align-items-center justify-content-center mt-3',
+                        // Errors render the shared ChartErrorState, which carries
+                        // its own styling/alignment; drop the muted background and
+                        // centered text so it matches the error state of other
+                        // chart types.
+                        { 'bg-muted text-center': !isError },
+                      )}
+                    >
                       {isLoading ? (
                         <div className="my-3">
                           <div className="d-inline-block">
@@ -1265,40 +1281,8 @@ export const RawLogTable = memo(
                         isLoading == false &&
                         dedupedRows.length > 0 ? (
                         <div className="my-3">End of Results</div>
-                      ) : isError ? (
-                        <div className="my-3">
-                          <Text ta="center" size="sm">
-                            Error loading results, please check your query or
-                            try again.
-                          </Text>
-                          <Box p="sm">
-                            <Box mt="sm">
-                              <Code
-                                block
-                                style={{
-                                  whiteSpace: 'pre-wrap',
-                                }}
-                              >
-                                {error?.message}
-                              </Code>
-                            </Box>
-                            {error instanceof ClickHouseQueryError && (
-                              <>
-                                <Text my="sm" size="sm" ta="center">
-                                  Sent Query:
-                                </Text>
-                                <Flex
-                                  w="100%"
-                                  ta="initial"
-                                  align="center"
-                                  justify="center"
-                                >
-                                  <SQLPreview data={error?.query} />
-                                </Flex>
-                              </>
-                            )}
-                          </Box>
-                        </div>
+                      ) : isError && error ? (
+                        <ChartErrorState error={error} variant={errorVariant} />
                       ) : hasNextPage == false &&
                         isLoading == false &&
                         dedupedRows.length === 0 ? (
@@ -1531,6 +1515,7 @@ function DBSqlRowTableComponent({
   variant = 'default',
   enableSmallFirstWindow,
   tableId,
+  errorVariant,
 }: {
   config: BuilderChartConfigWithDateRange;
   sourceId?: string;
@@ -1556,6 +1541,7 @@ function DBSqlRowTableComponent({
   variant?: DBRowTableVariant;
   enableSmallFirstWindow?: boolean;
   tableId?: string;
+  errorVariant?: ChartErrorStateVariant;
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
@@ -1850,6 +1836,7 @@ function DBSqlRowTableComponent({
         generateRowId={getRowWhere}
         isError={isError}
         error={error ?? undefined}
+        errorVariant={errorVariant}
         columnTypeMap={columnMap}
         dateRange={config.dateRange}
         loadingDate={loadingDate}

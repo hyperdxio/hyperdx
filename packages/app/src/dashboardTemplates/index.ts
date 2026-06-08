@@ -3,6 +3,7 @@ import {
   DashboardTemplateSchema,
 } from '@hyperdx/common-utils/dist/types';
 
+import browserRum from './browser-rum.json';
 import dotnetRuntime from './dotnet-runtime.json';
 import goRuntime from './go-runtime.json';
 import jvmRuntimeMetrics from './jvm-runtime-metrics.json';
@@ -23,6 +24,7 @@ function parseTemplate(
 }
 
 const templates: Record<string, unknown> = {
+  'browser-rum': browserRum,
   'dotnet-runtime': dotnetRuntime,
   'go-runtime': goRuntime,
   'jvm-runtime-metrics': jvmRuntimeMetrics,

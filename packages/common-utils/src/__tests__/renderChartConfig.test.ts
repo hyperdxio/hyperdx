@@ -984,6 +984,154 @@ describe('renderChartConfig', () => {
     });
   });
 
+  describe('SQL filter KV items direct_read optimization', () => {
+    const stubKvItemsMetadata = () => {
+      mockMetadata.getColumns = jest.fn().mockResolvedValue([
+        {
+          name: 'LogAttributes',
+          type: 'Map(String, String)',
+          default_type: '',
+          default_expression: '',
+        },
+        {
+          name: 'LogAttributeItems',
+          type: 'Array(String)',
+          default_type: 'MATERIALIZED',
+          default_expression:
+            "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
+        },
+      ]);
+      mockMetadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_log_attr_items',
+          type: 'text',
+          typeFull: 'text(tokenizer=array)',
+          expression: 'LogAttributeItems',
+          granularity: 10000000,
+        },
+      ]);
+      mockMetadata.getServerVersion = jest
+        .fn()
+        .mockResolvedValue([26, 5, 0, 0]);
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(new Map());
+    };
+
+    const buildConfig = (condition: string): ChartConfigWithOptDateRange => ({
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [{ aggFn: 'count', valueExpression: '' }],
+      where: '',
+      whereLanguage: 'sql',
+      filters: [{ type: 'sql', condition }],
+      timestampValueExpression: 'Timestamp',
+      dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+      granularity: '1 minute',
+    });
+
+    it('rewrites `Map[key] = value` to has() when a KV items column exists', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig("LogAttributes['service.name'] = 'api'"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+      );
+      expect(sql).not.toContain("LogAttributes['service.name'] = 'api'");
+    });
+
+    it('rewrites `Map[key] IN (one)` to has()', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig("LogAttributes['service.name'] IN ('api')"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+      );
+    });
+
+    it('rewrites `Map[key] IN (many)` to hasAny(... array(...))', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig("LogAttributes['k'] IN ('a', 'b', 'c')"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        "hasAny(`LogAttributeItems`, array(concat('k', '=', 'a'), concat('k', '=', 'b'), concat('k', '=', 'c')))",
+      );
+    });
+
+    it('leaves the condition unchanged when no KV items column exists', async () => {
+      mockMetadata.getColumns = jest.fn().mockResolvedValue([
+        {
+          name: 'LogAttributes',
+          type: 'Map(String, String)',
+          default_type: '',
+          default_expression: '',
+        },
+      ]);
+      mockMetadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+      mockMetadata.getServerVersion = jest
+        .fn()
+        .mockResolvedValue([26, 5, 0, 0]);
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(new Map());
+
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig("LogAttributes['k'] = 'v'"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain("LogAttributes['k'] = 'v'");
+      expect(sql).not.toContain('has(');
+    });
+
+    it('does not rewrite when value is empty (Map[k]= preserves missing-key semantics)', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig("LogAttributes['k'] = ''"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain("LogAttributes['k'] = ''");
+      expect(sql).not.toContain('has(');
+    });
+
+    it('rewrites only the matching Map subscript in a compound AND condition', async () => {
+      stubKvItemsMetadata();
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig(
+            "LogAttributes['service.name'] = 'api' AND SeverityText = 'error'",
+          ),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+      );
+      expect(sql).toContain("SeverityText = 'error'");
+    });
+  });
+
   describe('k8s semantic convention migrations', () => {
     it('should generate SQL with metricNameSql for k8s.pod.cpu.utilization gauge metric', async () => {
       const config: ChartConfigWithOptDateRange = {
@@ -2390,6 +2538,74 @@ describe('renderChartConfig', () => {
     });
   });
 
+  it('bare-text Lucene where uses bodyExpression when implicitColumnExpression is unset', async () => {
+    // A ChartConfig with only bodyExpression (no implicitColumnExpression) must
+    // route bare-text Lucene search through the body column end-to-end.
+    mockMetadata.getMaterializedColumnsLookupTable = jest
+      .fn()
+      .mockResolvedValue(new Map());
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Table,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [{ aggFn: 'count', valueExpression: '', aggCondition: '' }],
+      where: 'Prometheus',
+      whereLanguage: 'lucene',
+      timestampValueExpression: 'Timestamp',
+      bodyExpression: 'Body',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+    };
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      undefined,
+    );
+    const sql = parameterizedQueryToSql(generatedSql);
+    // The bare-text term should filter against the body column, not throw.
+    expect(sql).toMatch(/lower\(Body\)/);
+  });
+
+  it('bare-text Lucene in aggCondition and filters uses bodyExpression when implicitColumnExpression is unset', async () => {
+    // bodyExpression is threaded through renderChartConfig into
+    // aggCondition serialization and the filters list, not only `where`.
+    // Pins the threading contract for those two paths beyond the
+    // top-level where (covered by the test above).
+    mockMetadata.getMaterializedColumnsLookupTable = jest
+      .fn()
+      .mockResolvedValue(new Map());
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Table,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [
+        {
+          aggFn: 'count',
+          valueExpression: '',
+          aggCondition: 'errored',
+          aggConditionLanguage: 'lucene',
+        },
+      ],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'Timestamp',
+      bodyExpression: 'Body',
+      filters: [{ type: 'lucene', condition: 'denied' }],
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+    };
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      undefined,
+    );
+    const sql = parameterizedQueryToSql(generatedSql);
+    // Both the aggCondition term ('errored') and the filters term
+    // ('denied') should filter against the body column. The mockMetadata
+    // here has no bloom filter / text indices, so bare tokens render
+    // via hasToken(lower(<col>), lower(<term>)) instead of LIKE.
+    expect(sql).toContain("hasToken(lower(Body), lower('errored'))");
+    expect(sql).toContain("hasToken(lower(Body), lower('denied'))");
+  });
+
   describe('sample-weighted aggregations', () => {
     const baseSampledConfig: ChartConfigWithOptDateRange = {
       displayType: DisplayType.Table,
@@ -2923,6 +3139,213 @@ describe('renderChartConfig', () => {
       );
       const sql = parameterizedQueryToSql(generated);
       expect(sql).toContain('toStartOfInterval(toDateTime(EventTime),');
+    });
+  });
+
+  describe('JSON schema (BETA_CH_OTEL_JSON_SCHEMA_ENABLED)', () => {
+    // When the ClickHouse exporter uses json: true, attribute columns are JSON
+    // type instead of Map(String, String). mapConcat() fails on JSON columns, so
+    // cityHash64 receives the JSON columns directly as variadic arguments.
+
+    let jsonSchemaMockMetadata: jest.Mocked<Metadata>;
+
+    beforeEach(() => {
+      const jsonSchemaColumns = [
+        { name: 'TimeUnix', type: 'DateTime64(9)' },
+        { name: 'MetricName', type: 'LowCardinality(String)' },
+        { name: 'Attributes', type: 'JSON' },
+        { name: 'ScopeAttributes', type: 'JSON' },
+        { name: 'ResourceAttributes', type: 'JSON' },
+        { name: 'Value', type: 'Float64' },
+        { name: 'AggregationTemporality', type: 'Int32' },
+      ];
+      jsonSchemaMockMetadata = {
+        getColumns: jest.fn().mockResolvedValue(jsonSchemaColumns),
+        getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(null),
+        getColumn: jest
+          .fn()
+          .mockImplementation(async ({ column }: { column: string }) =>
+            jsonSchemaColumns.find(col => col.name === column),
+          ),
+        getTableMetadata: jest
+          .fn()
+          .mockResolvedValue({ primary_key: 'TimeUnix' }),
+        getSkipIndices: jest.fn().mockResolvedValue([]),
+        getSetting: jest.fn().mockResolvedValue(undefined),
+      } as unknown as jest.Mocked<Metadata>;
+    });
+
+    const baseMetricConfig = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+      from: {
+        databaseName: 'default',
+        tableName: '',
+      },
+      where: '',
+      whereLanguage: 'sql' as const,
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')] as [
+        Date,
+        Date,
+      ],
+      granularity: '1 minute' as const,
+      limit: { limit: 10 },
+    };
+
+    it('should use direct cityHash64 for gauge metric when Attributes column is JSON type', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseMetricConfig,
+        select: [
+          {
+            aggFn: 'avg',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: 'Value',
+            metricName: 'system.cpu.utilization',
+            metricType: MetricsDataType.Gauge,
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        jsonSchemaMockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain(
+        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
+      );
+      expect(actual).not.toContain('toJSONString');
+      expect(actual).not.toContain('mapConcat');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should use direct cityHash64 for sum metric when Attributes column is JSON type', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseMetricConfig,
+        granularity: '5 minute',
+        select: [
+          {
+            aggFn: 'avg',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: 'Value',
+            metricName: 'db.client.connections.usage',
+            metricType: MetricsDataType.Sum,
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        jsonSchemaMockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain(
+        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
+      );
+      expect(actual).not.toContain('toJSONString');
+      expect(actual).not.toContain('mapConcat');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should use direct cityHash64 for histogram (quantile) metric when Attributes column is JSON type', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseMetricConfig,
+        granularity: '2 minute',
+        select: [
+          {
+            aggFn: 'quantile',
+            level: 0.95,
+            valueExpression: 'Value',
+            metricName: 'http.server.duration',
+            metricType: MetricsDataType.Histogram,
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        jsonSchemaMockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain(
+        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
+      );
+      expect(actual).not.toContain('toJSONString');
+      expect(actual).not.toContain('mapConcat');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should use direct cityHash64 for histogram (count) metric when Attributes column is JSON type', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseMetricConfig,
+        granularity: '2 minute',
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: 'Value',
+            metricName: 'http.server.request.count',
+            metricType: MetricsDataType.Histogram,
+          },
+        ],
+      };
+
+      const generatedSql = await renderChartConfig(
+        config,
+        jsonSchemaMockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain(
+        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
+      );
+      expect(actual).not.toContain('toJSONString');
+      expect(actual).not.toContain('mapConcat');
+      expect(actual).toMatchSnapshot();
+    });
+
+    it('should still use mapConcat when Attributes column is Map type (non-JSON schema)', async () => {
+      // Verify existing Map-schema behaviour is unchanged
+      const config: ChartConfigWithOptDateRange = {
+        ...baseMetricConfig,
+        select: [
+          {
+            aggFn: 'avg',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression: 'Value',
+            metricName: 'system.cpu.utilization',
+            metricType: MetricsDataType.Gauge,
+          },
+        ],
+      };
+
+      // mockMetadata returns Map-typed columns (default setup from beforeEach)
+      const generatedSql = await renderChartConfig(
+        config,
+        mockMetadata,
+        querySettings,
+      );
+      const actual = parameterizedQueryToSql(generatedSql);
+
+      expect(actual).toContain('mapConcat');
+      expect(actual).not.toContain('toJSONString');
     });
   });
 });

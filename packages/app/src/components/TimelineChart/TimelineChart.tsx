@@ -274,7 +274,6 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
               maxVal={maxVal}
               heightRef={timelineHeightRef}
               labelWidth={labelWidth}
-              scaleRef={scaleRef}
             />
 
             <div

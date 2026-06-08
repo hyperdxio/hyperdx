@@ -81,6 +81,37 @@ describe('provisionDashboards', () => {
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('Test');
     });
+
+    // Pins the inlined `migrateLegacyDashboardTileColorsRaw` walker
+    // (which delegates to `walkRawDashboardTileColors` in common-utils).
+    // Without the migration the strict `DashboardWithoutIdSchema`
+    // rejects the legacy enum and `readDashboardFiles` skips the file
+    // outright, so a provisioned dashboard authored against #2265
+    // wouldn't ship at all.
+    it('migrates legacy chart-N tile colors before schema validation', () => {
+      const tile = makeTile();
+      (tile.config as any).color = 'chart-1';
+      fs.writeFileSync(
+        path.join(tmpDir, 'legacy.json'),
+        JSON.stringify({ name: 'Legacy', tiles: [tile], tags: [] }),
+      );
+      const result = readDashboardFiles(tmpDir);
+      expect(result).toHaveLength(1);
+      expect((result[0].tiles[0].config as any).color).toBe('chart-green');
+    });
+
+    // Early-return for files whose `tiles` is non-array (or missing).
+    // The walker leaves the payload untouched, so the file behaves
+    // exactly like any other schema-invalid input: skipped, not
+    // crashed.
+    it('does not crash on a file whose tiles is not an array', () => {
+      fs.writeFileSync(
+        path.join(tmpDir, 'tiles-string.json'),
+        JSON.stringify({ name: 'Bad Tiles', tiles: 'not-an-array', tags: [] }),
+      );
+      expect(() => readDashboardFiles(tmpDir)).not.toThrow();
+      expect(readDashboardFiles(tmpDir)).toEqual([]);
+    });
   });
 
   describe('syncDashboards', () => {

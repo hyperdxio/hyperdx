@@ -2193,6 +2193,7 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'line',
           asRatio: true,
           fillNulls: true,
+          fitYAxisToData: true,
           sourceId: traceSource._id.toString(),
           numberFormat: {
             output: 'time',
@@ -2573,6 +2574,66 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
+    it('persists where as empty string when omitted from heatmap tile', async () => {
+      const heatmapNoWhere = {
+        name: 'Heatmap Without Where',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'heatmap',
+          sourceId: traceSource._id.toString(),
+          select: [{ valueExpression: 'Duration' }],
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard Heatmap No Where',
+          tiles: [heatmapNoWhere],
+          tags: [],
+        })
+        .expect(200);
+
+      const dashboardInDb = await Dashboard.findById(
+        response.body.data.id,
+      ).lean();
+
+      expect((dashboardInDb!.tiles[0].config as any).where).toBe('');
+    });
+
+    it('persists select-item where as empty string when omitted', async () => {
+      const lineChartNoWhere = {
+        name: 'Line Chart Without Where',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'line',
+          sourceId: traceSource._id.toString(),
+          select: [{ aggFn: 'count' }],
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard Line No Where',
+          tiles: [lineChartNoWhere],
+          tags: [],
+        })
+        .expect(200);
+
+      const dashboardInDb = await Dashboard.findById(
+        response.body.data.id,
+      ).lean();
+
+      expect(
+        (dashboardInDb!.tiles[0].config as any).select[0].aggCondition,
+      ).toBe('');
+    });
+
     it('does not silently downgrade a corrupted heatmap to line on GET', async () => {
       // Seed a Dashboard directly via Mongo with a heatmap tile whose
       // select[0] lacks a non-empty valueExpression. The current API
@@ -2643,6 +2704,7 @@ describe('External API v2 Dashboards - new format', () => {
           compareToPreviousPeriod: true,
           fillNulls: true,
           alignDateRangeToGranularity: true,
+          fitYAxisToData: true,
           numberFormat: { output: 'number', mantissa: 2 },
         },
       };
@@ -2734,6 +2796,78 @@ describe('External API v2 Dashboards - new format', () => {
       expect(omit(response.body.data.tiles[2], ['id'])).toEqual(tableRawSql);
       expect(omit(response.body.data.tiles[3], ['id'])).toEqual(numberRawSql);
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(pieRawSql);
+    });
+
+    it('persists fitYAxisToData on line tiles only and reads it back on GET', async () => {
+      const sourceId = traceSource._id.toString();
+
+      // A line tile that opts into fitYAxisToData; a bar tile that attempts to
+      // set it (it is line-only, so it must be dropped); and a line tile that
+      // omits the field entirely to confirm it stays absent (optional, no
+      // default).
+      const fitLine: ExternalDashboardTile = {
+        name: 'Fit Line',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'line',
+          sourceId,
+          fitYAxisToData: true,
+          select: [{ aggFn: 'count', where: '', whereLanguage: 'sql' }],
+        },
+      };
+
+      const bar: ExternalDashboardTile = {
+        name: 'Bar',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'stacked_bar',
+          sourceId,
+          // fitYAxisToData only applies to line charts; setting it on a bar
+          // tile should be ignored rather than persisted.
+          fitYAxisToData: false,
+          select: [{ aggFn: 'count', where: '', whereLanguage: 'sql' }],
+        } as ExternalDashboardTile['config'],
+      };
+
+      const unsetLine: ExternalDashboardTile = {
+        name: 'Unset Line',
+        x: 12,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'line',
+          sourceId,
+          select: [{ aggFn: 'count', where: '', whereLanguage: 'sql' }],
+        },
+      };
+
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'fitYAxisToData dashboard',
+          tiles: [fitLine, bar, unsetLine],
+          tags: [],
+        })
+        .expect(200);
+
+      const { id } = createResponse.body.data;
+
+      const getResponse = await authRequest('get', `${BASE_URL}/${id}`).expect(
+        200,
+      );
+      const tiles = getResponse.body.data.tiles;
+
+      expect(tiles[0].config.fitYAxisToData).toBe(true);
+      // Bar charts never carry fitYAxisToData — it is dropped on write.
+      expect(tiles[1].config).not.toHaveProperty('fitYAxisToData');
+      // Omitted on input → absent on read-back (optional, no default).
+      expect(tiles[2].config).not.toHaveProperty('fitYAxisToData');
     });
 
     it('should return 400 when source IDs do not exist', async () => {
@@ -3568,6 +3702,7 @@ describe('External API v2 Dashboards - new format', () => {
           displayType: 'line',
           asRatio: true,
           fillNulls: true,
+          fitYAxisToData: true,
           sourceId: traceSource._id.toString(),
           numberFormat: {
             output: 'time',
@@ -3829,6 +3964,7 @@ describe('External API v2 Dashboards - new format', () => {
           compareToPreviousPeriod: true,
           fillNulls: true,
           alignDateRangeToGranularity: true,
+          fitYAxisToData: true,
           numberFormat: { output: 'number', mantissa: 2 },
         },
       };

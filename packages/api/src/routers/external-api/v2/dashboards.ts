@@ -4,28 +4,18 @@ import { z } from 'zod';
 
 import { deleteDashboard } from '@/controllers/dashboard';
 import Dashboard, { IDashboard } from '@/models/dashboard';
-import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
+import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
 
 import {
   cleanupDashboardAlerts,
-  collectTileContainerRefIssues,
   convertExternalFiltersToInternal,
   convertExternalTilesToInternal,
   convertToExternalDashboard,
   createDashboardBodySchema,
-  fetchSourcesForValidation,
-  filterChangedHeatmapTiles,
-  getHeatmapTilesWithIncompatibleSources,
-  getInvalidOnClickSearchSources,
-  getMissingConnections,
-  getMissingOnClickDashboards,
-  getMissingSources,
-  isConfigTile,
-  isRawSqlExternalTileConfig,
   resolveSavedQueryLanguage,
-  SourceForValidation,
   updateDashboardBodySchema,
+  validateDashboardTiles,
 } from './utils/dashboards';
 
 /**
@@ -44,29 +34,6 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
   savedFilterValues: 1,
   containers: 1,
 } as const;
-
-function getSourceConnectionMismatches(
-  sources: SourceForValidation[],
-  tiles: ExternalDashboardTileWithId[],
-): string[] {
-  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
-
-  const sourcesWithInvalidConnections: string[] = [];
-  for (const tile of tiles) {
-    if (
-      isConfigTile(tile) &&
-      isRawSqlExternalTileConfig(tile.config) &&
-      tile.config.sourceId
-    ) {
-      const source = sourceById.get(tile.config.sourceId);
-      if (source && source.connection.toString() !== tile.config.connectionId) {
-        sourcesWithInvalidConnections.push(tile.config.sourceId);
-      }
-    }
-  }
-
-  return sourcesWithInvalidConnections;
-}
 
 /**
  * @openapi
@@ -512,6 +479,13 @@ function getSourceConnectionMismatches(
  *           type: boolean
  *           description: Fill missing time buckets with zero instead of leaving gaps.
  *           default: true
+ *         fitYAxisToData:
+ *           type: boolean
+ *           description: >
+ *             Set the y-axis lower bound to the minimum of the displayed data
+ *             instead of zero, making small fluctuations between series easier
+ *             to see.
+ *           default: false
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
@@ -868,6 +842,13 @@ function getSourceConnectionMismatches(
  *               type: boolean
  *               description: Expand date range boundaries to the query granularity interval.
  *               default: true
+ *             fitYAxisToData:
+ *               type: boolean
+ *               description: >
+ *                 Set the y-axis lower bound to the minimum of the displayed
+ *                 data instead of zero, making small fluctuations between
+ *                 series easier to see.
+ *               default: false
  *
  *     BarRawSqlChartConfig:
  *       description: Raw SQL configuration for a stacked-bar time-series chart.
@@ -1922,90 +1903,14 @@ router.post(
         containers,
       } = req.body;
 
-      // Tile-level container/tab ref resolution: container structure
-      // (duplicate ids, tab uniqueness) was checked by the body schema;
-      // tile-resolution runs here against the request body's containers
-      // (POST has no existing dashboard to fall back to).
-      const tileRefIssues = collectTileContainerRefIssues(
-        containers ?? [],
+      const validationError = await validateDashboardTiles({
+        teamId: teamId.toString(),
         tiles,
-      );
-      if (tileRefIssues.length > 0) {
-        return res.status(400).json({
-          message: tileRefIssues.join('; '),
-        });
-      }
-
-      // Hoist the source fetch so the source-derived validators
-      // (missing sources, source/connection mismatch, heatmap source
-      // kind) reuse one query result instead of each re-running
-      // `getSources(team)`. onClick helpers stay separate because
-      // they own their own dashboard lookup as well as a sources
-      // lookup; firing them inside the same Promise.all keeps the
-      // request latency unchanged.
-      const [
-        sources,
-        missingConnections,
-        missingOnClickDashboards,
-        invalidOnClickSearchSources,
-      ] = await Promise.all([
-        fetchSourcesForValidation(teamId),
-        getMissingConnections(teamId, tiles),
-        getMissingOnClickDashboards(teamId, tiles),
-        getInvalidOnClickSearchSources(teamId, tiles),
-      ]);
-
-      const missingSources = getMissingSources(sources, tiles, filters);
-      const sourceConnectionMismatches = getSourceConnectionMismatches(
-        sources,
-        tiles,
-      );
-      const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
-        sources,
-        tiles,
-      );
-
-      if (missingSources.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following source IDs: ${missingSources.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (missingConnections.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following connection IDs: ${missingConnections.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (sourceConnectionMismatches.length > 0) {
-        return res.status(400).json({
-          message: `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (heatmapNonTraceSources.length > 0) {
-        return res.status(400).json({
-          message: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (missingOnClickDashboards.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (invalidOnClickSearchSources.length > 0) {
-        return res.status(400).json({
-          message: `The following onClick search source IDs are not log or trace sources: ${invalidOnClickSearchSources.join(
-            ', ',
-          )}`,
-        });
+        filters,
+        containers: containers ?? [],
+      });
+      if (validationError) {
+        return res.status(400).json({ message: validationError });
       }
 
       const internalTiles = convertExternalTilesToInternal(tiles);
@@ -2212,121 +2117,34 @@ router.put(
         containers,
       } = req.body ?? {};
 
-      // Hoist the source fetch and the existing-dashboard read so the
-      // source-derived validators reuse one query result and the
-      // heatmap source-kind check can scope itself to tiles whose
-      // sourceId/displayType actually changed in this request (a
-      // source whose `kind` was changed after the dashboard was
-      // originally accepted shouldn't wedge unrelated edits). onClick
-      // helpers stay separate because they own their own dashboard
-      // lookup as well as a sources lookup; firing them inside the
-      // same Promise.all keeps the request latency unchanged.
-      const [
-        sources,
-        missingConnections,
-        missingOnClickDashboards,
-        invalidOnClickSearchSources,
-        existingDashboard,
-      ] = await Promise.all([
-        fetchSourcesForValidation(teamId),
-        getMissingConnections(teamId, tiles),
-        getMissingOnClickDashboards(teamId, tiles),
-        getInvalidOnClickSearchSources(teamId, tiles),
-        Dashboard.findOne(
-          { _id: dashboardId, team: teamId },
-          { tiles: 1, filters: 1, containers: 1 },
-        ).lean(),
-      ]);
+      const existingDashboard = await Dashboard.findOne(
+        { _id: dashboardId, team: teamId },
+        { tiles: 1, filters: 1, containers: 1 },
+      ).lean();
 
-      const missingSources = getMissingSources(sources, tiles, filters);
-      const sourceConnectionMismatches = getSourceConnectionMismatches(
-        sources,
+      if (existingDashboard == null) {
+        return res.sendStatus(404);
+      }
+
+      const effectiveContainers =
+        containers ?? existingDashboard.containers ?? [];
+      const validationError = await validateDashboardTiles({
+        teamId: teamId.toString(),
         tiles,
-      );
-      const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
-        sources,
-        filterChangedHeatmapTiles(tiles, existingDashboard?.tiles ?? []),
-      );
-
-      if (missingSources.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following source IDs: ${missingSources.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (missingConnections.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following connection IDs: ${missingConnections.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (sourceConnectionMismatches.length > 0) {
-        return res.status(400).json({
-          message: `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (heatmapNonTraceSources.length > 0) {
-        return res.status(400).json({
-          message: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (missingOnClickDashboards.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (invalidOnClickSearchSources.length > 0) {
-        return res.status(400).json({
-          message: `The following onClick search source IDs are not log or trace sources: ${invalidOnClickSearchSources.join(
-            ', ',
-          )}`,
-        });
+        filters,
+        existingTiles: existingDashboard.tiles ?? [],
+        containers: effectiveContainers,
+      });
+      if (validationError) {
+        return res.status(400).json({ message: validationError });
       }
 
-      // PUT performs a read-modify-write on the dashboard doc with no
-      // optimistic-concurrency check (no `If-Match` / `updatedAt`
-      // guard). Concurrent PUTs may silently overwrite each other,
-      // which can leave orphan tile->container refs on layout-shape
-      // edits. The endpoint contract is at-most-one-writer; the
-      // OpenAPI description above documents this. Adding ETag-style
-      // concurrency would be a breaking change to the request shape
-      // and is tracked separately. `existingDashboard` is fetched in
-      // the hoisted Promise.all above and reused here for tile-ref
-      // resolution against the effective container set.
       const existingTileIds = new Set(
-        (existingDashboard?.tiles ?? []).map((t: { id: string }) => t.id),
+        (existingDashboard.tiles ?? []).map((t: { id: string }) => t.id),
       );
       const existingFilterIds = new Set(
-        (existingDashboard?.filters ?? []).map((f: { id: string }) => f.id),
+        (existingDashboard.filters ?? []).map((f: { id: string }) => f.id),
       );
-
-      // Tile-level container/tab ref resolution: container structure
-      // was checked by the body schema; tile-resolution runs here
-      // against the effective container set so an omitted `containers`
-      // body field (which preserves the existing array on write) is
-      // resolved against the doc's existing containers rather than an
-      // empty fallback. Without this, a PUT that updates only `tiles`
-      // and leaves a tile pointing at a real preserved container
-      // would be rejected with "Tile references unknown containerId".
-      const effectiveContainers =
-        containers ?? existingDashboard?.containers ?? [];
-      const tileRefIssues = collectTileContainerRefIssues(
-        effectiveContainers,
-        tiles,
-      );
-      if (tileRefIssues.length > 0) {
-        return res.status(400).json({
-          message: tileRefIssues.join('; '),
-        });
-      }
 
       const internalTiles = convertExternalTilesToInternal(
         tiles,

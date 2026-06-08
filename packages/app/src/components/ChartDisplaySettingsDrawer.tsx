@@ -20,6 +20,12 @@ import {
 import { shouldFillNullsWithZero } from '@/ChartUtils';
 import { FormatTime } from '@/useFormatTime';
 
+import {
+  attachLocalIds,
+  ColorRulesEditor,
+  ColorRuleWithId,
+  stripLocalIds,
+} from './ColorRulesEditor';
 import { ColorSwatchInput } from './ColorSwatchInput';
 import { CheckBoxControlled } from './InputControlled';
 import { DEFAULT_NUMBER_FORMAT, NumberFormatForm } from './NumberFormat';
@@ -30,9 +36,19 @@ export type ChartConfigDisplaySettings = Pick<
   | 'alignDateRangeToGranularity'
   | 'fillNulls'
   | 'compareToPreviousPeriod'
+  | 'fitYAxisToData'
   | 'color'
+  | 'colorRules'
 > & {
   groupByColumnsOnLeft?: boolean;
+};
+
+/**
+ * Internal form shape: `colorRules` is stored with `localId`s for dnd-kit
+ * stability; they are stripped before the settings are passed to `onChange`.
+ */
+type DrawerFormValues = Omit<ChartConfigDisplaySettings, 'colorRules'> & {
+  colorRules?: ColorRuleWithId[];
 };
 
 interface ChartDisplaySettingsDrawerProps {
@@ -53,7 +69,7 @@ interface ChartDisplaySettingsDrawerProps {
 function applyDefaultSettings(
   settings: ChartConfigDisplaySettings,
   fallbackNumberFormat?: NumberFormat,
-): ChartConfigDisplaySettings {
+): DrawerFormValues {
   return {
     numberFormat:
       settings.numberFormat ?? fallbackNumberFormat ?? DEFAULT_NUMBER_FORMAT,
@@ -63,8 +79,12 @@ function applyDefaultSettings(
         : settings.alignDateRangeToGranularity,
     fillNulls: settings.fillNulls ?? 0,
     compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
+    fitYAxisToData: settings.fitYAxisToData ?? false,
     groupByColumnsOnLeft: settings.groupByColumnsOnLeft ?? false,
     color: settings.color,
+    colorRules: settings.colorRules
+      ? attachLocalIds(settings.colorRules)
+      : undefined,
   };
 }
 
@@ -84,10 +104,9 @@ export default function ChartDisplaySettingsDrawer({
     [settings, defaultNumberFormat],
   );
 
-  const { control, handleSubmit, reset, setValue } =
-    useForm<ChartConfigDisplaySettings>({
-      defaultValues: appliedDefaults,
-    });
+  const { control, handleSubmit, reset, setValue } = useForm<DrawerFormValues>({
+    defaultValues: appliedDefaults,
+  });
 
   useEffect(() => {
     reset(appliedDefaults);
@@ -102,12 +121,24 @@ export default function ChartDisplaySettingsDrawer({
   }, [onClose, reset, appliedDefaults]);
 
   const applyChanges = useCallback(() => {
-    handleSubmit(onChange)();
+    handleSubmit(formValues => {
+      // Strip client-side localIds before passing rules to the config.
+      const { colorRules, ...rest } = formValues;
+      onChange({
+        ...rest,
+        colorRules: colorRules ? stripLocalIds(colorRules) : undefined,
+      });
+    })();
     onClose();
   }, [onChange, handleSubmit, onClose]);
 
   const resetToDefaults = useCallback(() => {
-    reset(applyDefaultSettings({}, defaultNumberFormat));
+    reset(
+      applyDefaultSettings(
+        {} as ChartConfigDisplaySettings,
+        defaultNumberFormat,
+      ),
+    );
   }, [reset, defaultNumberFormat]);
 
   const isTimeChart =
@@ -165,6 +196,13 @@ export default function ChartDisplaySettingsDrawer({
                 )
               }
             />
+            <CheckBoxControlled
+              control={control}
+              name="fitYAxisToData"
+              size="xs"
+              label="Fit Y-Axis to Data"
+              description="Start the y-axis at the minimum of the displayed data instead of zero. Only applicable to line charts."
+            />
             <Divider />
           </>
         )}
@@ -196,6 +234,15 @@ export default function ChartDisplaySettingsDrawer({
                     onChange={onChange}
                     ariaLabel="Number tile color"
                   />
+                )}
+              />
+            </Box>
+            <Box>
+              <Controller
+                control={control}
+                name="colorRules"
+                render={({ field: { onChange, value } }) => (
+                  <ColorRulesEditor value={value ?? []} onChange={onChange} />
                 )}
               />
             </Box>

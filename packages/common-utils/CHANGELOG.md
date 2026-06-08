@@ -1,5 +1,131 @@
 # @hyperdx/common-utils
 
+## 0.20.0
+
+### Minor Changes
+
+- feat: apply direct_read KV items optimization to SQL filters
+
+  SQL `type: 'sql'` filters on Map columns (e.g.
+  `LogAttributes['key'] IN ('a', 'b')`) now get the same `has()` /
+  `hasAny()` rewrite that Lucene filters already use. When a KV items
+  column with a `text(tokenizer=array)` skip index exists for the Map,
+  the condition is rewritten at the filter site before rendering:
+
+  - `Map['k'] = 'v'` → `has(Items, concat('k', '=', 'v'))`
+  - `Map['k'] IN ('a', 'b')` → `hasAny(Items, array(concat('k', '=', 'a'), concat('k', '=', 'b')))`
+
+  Empty-string values are left unrewritten to preserve ClickHouse's
+  missing-key semantics (`Map(String, String)['absent'] = ''`).
+
+  Also extracts `buildKvItemsLookup` from `CustomSchemaSQLSerializerV2`
+  into a shared top-level export so both the Lucene serializer and the
+  SQL filter rewriter can use the same lookup logic.
+
+- 3123db53: feat: experimental promql support
+- dcab1cb6: feat: default the direct_read map column optimization on supported ClickHouse versions
+
+  The full-text-search logs schema (`00002_otel_logs.sql`) now ships with
+  `ResourceAttributeItems`, `ScopeAttributeItems`, and `LogAttributeItems`
+  ALIAS columns plus their `text(tokenizer='array')` skip indexes. The
+  traces schema (`00005_otel_traces.sql`) similarly gains
+  `ResourceAttributeItems` and `SpanAttributeItems` ALIAS columns with
+  matching items indexes. New installs and freshly migrated tables get
+  the optimization automatically — no manual `ALTER TABLE` required.
+
+  Note: the traces table previously used only `bloom_filter` skip indexes
+  and worked on any ClickHouse version. The added `text(tokenizer='array')`
+  items indexes raise the minimum ClickHouse version required to **create**
+  the traces table to **>= 26.2**. Existing tables on older clusters are
+  unaffected (`CREATE TABLE IF NOT EXISTS` is a no-op).
+
+  At query time, the app gates the `Map['key'] = 'value'` →
+  `has(<MapItems>, concat('key', '=', 'value'))` rewrite on the connected
+  ClickHouse server version (`SELECT version()`, cached per connection).
+  The gate only applies to **ALIAS** items columns, which are computed at
+  query time and therefore depend on the server being able to perform a
+  direct_read against the underlying Map's tuple storage. The direct_read
+  feature was backported into multiple stable 26.x release lines, so the
+  gate uses a per-branch minimum:
+
+  - 26.2 line: >= 26.2.19.43
+  - 26.3 line: >= 26.3.12.3
+  - 26.4 line: >= 26.4.3.37
+  - 26.5+ : always supported
+
+  ALIAS items columns on servers below their branch's threshold continue
+  to compile filters into the original Map-subscript form.
+
+  **MATERIALIZED items columns are always used when available**, regardless
+  of ClickHouse version. MATERIALIZED columns are physically stored on
+  disk, so `has(items, ...)` reads them directly and works on any
+  ClickHouse version that supports the text index itself. Operators who
+  want the optimization on servers below the backport cutoffs can
+  `ALTER TABLE` to materialize the items columns.
+
+- 1df7583d: feat: emit Lucene conditions from sidebar/dashboard filters to enable KV items direct_read optimization on Map columns
+
+  Legacy `type: 'sql'` filters in URLs are automatically migrated to Lucene
+  on page load. The persisted `DashboardFilter.expression` in MongoDB is unchanged.
+
+### Patch Changes
+
+- a945fa07: feat(mcp): add hyperdx_event_deltas tool
+
+  Add `hyperdx_event_deltas` MCP tool that compares two row groups (target
+  vs baseline) and ranks properties by how much their value distributions
+  differ. Same algorithm as the in-app Event Deltas view.
+
+  Extract shared event-deltas algorithm from the UI into
+  `@hyperdx/common-utils/src/core/eventDeltas.ts` so it can be used by
+  both the frontend and the MCP server.
+
+- 6a5ac3e3: fix(charts): histogram bucket picks the highest-precision DateTime column when
+  Timestamp Column lists multiple columns
+
+  When a source's `Timestamp Column` listed multiple columns (e.g.
+  `"EventDate, EventTime"` for partition-pruning), the histogram bucket was
+  built from only the first token. If that token was a `Date` column, every
+  row in a day collapsed into a single bar at midnight UTC of that day.
+
+  The bucket resolver now walks the comma-split list, queries each column's
+  type via metadata, and returns the highest-precision DateTime / DateTime64
+  token. Date columns are skipped. If no DateTime-typed token is found, the
+  original first-token behavior is preserved with a `console.warn`.
+
+  The WHERE clause continues to use the multi-column form, so partition
+  pruning via the `Date` column keeps working. The same resolved column is
+  also used for the `argMin` / `argMax` / `min` / `max` time math in delta
+  expressions.
+
+  Fixes HDX-4371.
+
+- e1c4381b: fix: bare-text Lucene search now falls back from Implicit Column Expression to
+  Body Expression on log sources
+
+  Previously, a log source configured with `bodyExpression` set but
+  `implicitColumnExpression` unset threw `Can not search bare text without an
+implicit column set.` on every bare-token search, even though the row panel
+  rendered correctly using the body column.
+
+  Search now reuses the same one-way fallback that `getEventBody` already
+  implements: when no Implicit Column Expression is set, bare-text search runs
+  against the configured Body Expression. Trace sources are unchanged
+  (`spanNameExpression` is not a body equivalent for trace search).
+
+- b30dfe0a: fix: support text index on lower(Body) with no preprocessor
+- dcb85826: fix: escape colons in Lucene field names so filters on Map sub-keys containing
+  `:` (e.g. `LogAttributes['foo:bar']`) parse correctly
+
+  `filtersToQuery` now backslash-escapes `:` and `\` in the emitted Lucene field
+  name, and `parseLuceneFilter` + the SQL serializer decode those placeholders
+  when consuming the AST so the original key is restored end-to-end.
+
+- b5148c85: Dashboard table tiles configured with a row-click action now show a hover hint describing where the click will go (for example, `Search HyperDX Logs` or `Open dashboard "API Latency Drilldown"`). The cell wrapper is now a real link, so cmd-click and middle-click open the destination in a new tab, right-click shows the browser context menu with "Open in New Tab" and "Copy Link Address", and the destination URL appears in the browser status bar on hover. Keyboard users can Tab to a cell and press Enter to navigate, with a visible focus ring.
+- 04a5a925: feat: Add source scoping to dashboard filters
+- 8810ff0f: feat: Add option for force-enabling/disabling text index support
+- a8eb27dc: feat: filters reflect all values, not search aware; filters use metadata MVs if available
+
 ## 0.19.1
 
 ### Patch Changes

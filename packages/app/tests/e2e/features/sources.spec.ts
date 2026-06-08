@@ -102,13 +102,20 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
     await searchPage.goto();
   });
 
-  test('should show source actions in dropdown', async () => {
-    // Open source selector dropdown
-    await searchPage.sourceDropdown.click();
+  test('should show source actions in kebab menu', async () => {
+    // Open the source-actions kebab menu next to the source picker.
+    await searchPage.sourceActionsMenu.click();
 
-    // Verify action items are visible in the dropdown
+    // Per-source and create actions are always wired.
+    await expect(searchPage.editSourceItem).toBeVisible();
     await expect(searchPage.createNewSourceItem).toBeVisible();
-    await expect(searchPage.editSourcesItem).toBeVisible();
+
+    // `Manage sources` is wired only in non-local (full-stack) mode.
+    if (process.env.E2E_FULLSTACK === 'true') {
+      await expect(searchPage.manageSourcesItem).toBeVisible();
+    } else {
+      await expect(searchPage.manageSourcesItem).toHaveCount(0);
+    }
   });
 
   test(
@@ -142,7 +149,7 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
   );
 
   test('should show proper fields when creating a new source', async () => {
-    await searchPage.sourceDropdown.click();
+    await searchPage.sourceActionsMenu.click();
     await searchPage.createNewSourceItem.click();
     // for each source type (log, trace, session, metric), verify the correct fields are shown
     for (const sourceData of allSourcesData) {

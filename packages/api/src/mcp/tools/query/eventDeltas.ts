@@ -47,7 +47,7 @@ const deltasSchema = z.object({
     .string()
     .describe(
       'Source ID. Works for trace and log sources. ' +
-        'Call hyperdx_list_sources for available sources.',
+        'Call clickstack_list_sources for available sources.',
     ),
   target: groupSchema.describe(
     'Target ("outlier") group — the rows you suspect are different (e.g. the ' +
@@ -140,7 +140,7 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
   const { teamId } = context;
 
   server.registerTool(
-    'hyperdx_event_deltas',
+    'clickstack_event_deltas',
     {
       title: 'Compare Events: Target vs Baseline',
       description:
@@ -177,9 +177,9 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
         '  Any pair of row sets over the same source works — the tool just ' +
         '  asks "what is statistically different about target vs baseline".\n\n' +
         'WHEN NOT TO USE: when the question is already known to be about a ' +
-        'specific attribute (use hyperdx_table groupBy), when you want raw ' +
-        'rows (use hyperdx_search), or when you need a time-series shape ' +
-        '(use hyperdx_timeseries).\n\n' +
+        'specific attribute (use clickstack_table groupBy), when you want raw ' +
+        'rows (use clickstack_search), or when you need a time-series shape ' +
+        '(use clickstack_timeseries).\n\n' +
         'OUTPUT SHAPE: an array of properties, each with rank, key, score, ' +
         'semanticBoost (true for well-known OTel attrs like service.name / ' +
         'http.method / error.type / status), targetCount and baselineCount ' +
@@ -197,7 +197,7 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
       inputSchema: deltasSchema,
     },
     withToolTracing(
-      'hyperdx_event_deltas',
+      'clickstack_event_deltas',
       context,
       async (input: DeltasInput) => {
         const targetRange = parseTimeRange(
@@ -272,7 +272,7 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
             content: [
               {
                 type: 'text' as const,
-                text: `Source not found: ${input.sourceId}. Call hyperdx_list_sources to find available source IDs.`,
+                text: `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
               },
             ],
           };
@@ -286,7 +286,7 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
             content: [
               {
                 type: 'text' as const,
-                text: `Source ${input.sourceId} is kind="${source.kind}". hyperdx_event_deltas requires a trace or log source.`,
+                text: `Source ${input.sourceId} is kind="${source.kind}". clickstack_event_deltas requires a trace or log source.`,
               },
             ],
           };
@@ -511,7 +511,7 @@ export function registerEventDeltas(server: McpServer, context: McpContext) {
               ? {
                   warning:
                     'One or both groups returned 0 rows — verify the time ' +
-                    'window and where filter via hyperdx_search.',
+                    'window and where filter via clickstack_search.',
                 }
               : {}),
           },

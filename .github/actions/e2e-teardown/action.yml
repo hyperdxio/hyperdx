@@ -1,0 +1,35 @@
+name: E2E Teardown
+description: |
+  Upload Playwright artifacts and stop the E2E Docker Compose stack.
+  Always runs (even on failure) so containers are cleaned up and reports
+  are available for failed runs.
+inputs:
+  artifact-suffix:
+    description: >
+      Suffix appended to artifact names, e.g. "1" → playwright-report-1.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Upload Playwright report
+      uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: playwright-report-${{ inputs.artifact-suffix }}
+        path: packages/app/playwright-report/
+        retention-days: 30
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: test-results-${{ inputs.artifact-suffix }}
+        path: packages/app/test-results/
+        retention-days: 30
+
+    - name: Stop E2E containers
+      if: always()
+      shell: bash
+      run:
+        docker compose -p e2e-0 -f packages/app/tests/e2e/docker-compose.yml
+        down -v
