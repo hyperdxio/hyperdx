@@ -640,6 +640,7 @@ export class Metadata {
     connectionId,
     dateRange,
     timestampValueExpression,
+    signal,
   }: {
     databaseName: string;
     tableName: string;
@@ -649,6 +650,7 @@ export class Metadata {
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
     connectionId: string;
+    signal?: AbortSignal;
   }) {
     const dateRangeCacheSuffix =
       dateRange && timestampValueExpression
@@ -719,6 +721,7 @@ export class Metadata {
             read_overflow_mode: 'break',
             ...this.getClickHouseSettings(),
           },
+          abort_signal: signal,
         })
         .then(res => res.json<{ value: string }>())
         .then(d => d.data.map(row => row.value));
@@ -1464,6 +1467,7 @@ export class Metadata {
             connectionId,
             dateRange,
             timestampValueExpression,
+            signal,
           });
           return { key: p.keyExpression, value: fallback };
         }),
@@ -1482,6 +1486,7 @@ export class Metadata {
           connectionId,
           dateRange,
           timestampValueExpression,
+          signal,
         });
         return { key: p.keyExpression, value };
       }),
