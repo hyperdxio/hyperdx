@@ -654,5 +654,40 @@ describe('MCP Query Tools', () => {
         ).rejects.toThrow(/TIMEOUT_EXCEEDED|timeout/i);
       });
     });
+
+    describe('settings propagation via clickstack_sql', () => {
+      it('should propagate max_execution_time=30 to ClickHouse', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: "SELECT getSetting('max_execution_time') AS value",
+        });
+
+        expect(result.isError).toBeFalsy();
+        const parsed = JSON.parse(getFirstText(result));
+        expect(parsed.result?.data?.[0]?.value).toBe(30);
+      });
+
+      it('should propagate max_result_rows=100000 to ClickHouse', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: "SELECT getSetting('max_result_rows') AS value",
+        });
+
+        expect(result.isError).toBeFalsy();
+        const parsed = JSON.parse(getFirstText(result));
+        expect(parsed.result?.data?.[0]?.value).toBe(100000);
+      });
+
+      it('should propagate readonly=1 to ClickHouse', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: "SELECT getSetting('readonly') AS value",
+        });
+
+        expect(result.isError).toBeFalsy();
+        const parsed = JSON.parse(getFirstText(result));
+        expect(parsed.result?.data?.[0]?.value).toBe(1);
+      });
+    });
   });
 });

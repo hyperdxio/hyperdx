@@ -439,5 +439,11 @@ export function errorHint(msg: string): string | null {
       'The result row count is too large to serialize back to the agent.'
     );
   }
+  if (/TOO_MANY_ROWS_OR_BYTES|RESULT_IS_TOO_LARGE/i.test(msg)) {
+    return (
+      'The query returned more than 100,000 rows. ' +
+      'Add a LIMIT, narrow the time range, or add filters to reduce the result set.'
+    );
+  }
   return null;
 }
