@@ -1,5 +1,6 @@
 import React from 'react';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { Table } from '@/HDXMultiSeriesTableChart';
 
@@ -76,7 +77,36 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       });
     });
 
-    it('reveals the hint at the cursor when hovering a success row', async () => {
+    it('marks actionable rows with the actionableRow class so they hover to --color-bg-highlighted', () => {
+      // Rows with a resolved click destination get a stronger hover
+      // background than non-actionable rows. The differentiation is
+      // applied via the `actionableRow` CSS module class on the <tr>;
+      // non-actionable rows fall through to the global
+      // `bg-muted-hover` utility (a lighter muted hover).
+      const getRowAction = jest.fn().mockReturnValue({
+        url: '/search?source=src_1&where=',
+        description: 'Search HyperDX Logs',
+      });
+
+      const { container } = renderWithMantine(
+        <Table
+          data={baseData}
+          columns={baseColumns}
+          getRowAction={getRowAction}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+      const rows = container.querySelectorAll('tbody tr[data-index]');
+      expect(rows.length).toBeGreaterThan(0);
+      rows.forEach(row => {
+        expect(row.className).toContain('actionableRow');
+        expect(row.className).not.toContain('bg-muted-hover');
+      });
+    });
+
+    it('renders a trailing arrow hint in the last cell of a success row', () => {
       const getRowAction = jest.fn().mockReturnValue({
         url: '/search?source=src_1&where=',
         description: 'Search HyperDX Logs',
@@ -92,42 +122,22 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
         />,
       );
 
-      const row = screen.getByText('web').closest('tr')!;
-      fireEvent.mouseEnter(row);
-
-      await waitFor(
-        () => {
-          expect(screen.getByText('Search HyperDX Logs')).toBeInTheDocument();
-        },
-        { timeout: 1000 },
-      );
+      const hint = screen.getByTestId('row-action-hint');
+      expect(hint.tagName).toBe('A');
+      expect(hint.getAttribute('href')).toContain('/search?source=src_1');
+      expect(hint.getAttribute('aria-hidden')).toBe('true');
     });
 
-    it('hides the hint when the hovered virtual index maps to a no-URL row (HDX-4405)', async () => {
-      // Regression for the virtualiser race: the hovered <tr> can unmount
-      // before its onMouseLeave fires (rapid movement / data refresh). The
-      // old per-row Tooltip.Floating was stranded in the Portal; the fix
-      // stores a virtual index and re-derives the label via useMemo each
-      // render. When the row at that index no longer has a URL, the tooltip
-      // hides without a leave event from the (now-gone) element.
-      //
-      // We verify the key invariant structurally: hovering index 0 (URL row)
-      // shows the hint; hovering index 1 (no-URL row) hides it — no
-      // mouseLeave fires between the two enterevents, simulating the
-      // cursor jumping over the table faster than leave events dispatch.
-      const multiRowData = [
-        { ServiceName: 'web', Count: 10 },
-        { ServiceName: 'api', Count: 5 },
-      ];
-      const getRowAction = jest.fn((row: { ServiceName: string }) =>
-        row.ServiceName === 'web'
-          ? { url: '/search?source=src_1&where=', description: 'Search Logs' }
-          : { url: null, description: '', onClickError: jest.fn() },
-      );
+    it('shows the description in an anchored tooltip when the arrow is hovered', async () => {
+      const user = userEvent.setup();
+      const getRowAction = jest.fn().mockReturnValue({
+        url: '/search?source=src_1&where=',
+        description: 'Search HyperDX Logs',
+      });
 
       renderWithMantine(
         <Table
-          data={multiRowData}
+          data={baseData}
           columns={baseColumns}
           getRowAction={getRowAction}
           sorting={[]}
@@ -135,32 +145,57 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
         />,
       );
 
-      const webRow = screen.getByText('web').closest('tr')!;
-      const apiRow = screen.getByText('api').closest('tr')!;
+      const hint = screen.getByTestId('row-action-hint');
+      await user.hover(hint);
 
-      // Hover the URL row — tooltip must appear
-      fireEvent.mouseEnter(webRow);
-      await waitFor(() => {
-        const hint = screen.getByTestId('row-action-hint');
-        const tooltipBox = hint.closest<HTMLElement>('[style*="display"]');
-        expect(tooltipBox?.style.display).toBe('block');
+      // Mantine renders the Tooltip label as an element with role="tooltip"
+      // (with the label text as its accessible name) once opened.
+      await waitFor(
+        () => {
+          expect(
+            screen.getByRole('tooltip', { name: 'Search HyperDX Logs' }),
+          ).toBeInTheDocument();
+        },
+        { timeout: 2000 },
+      );
+    });
+
+    it('renders the dashboard variant description in the tooltip', async () => {
+      const user = userEvent.setup();
+      const getRowAction = jest.fn().mockReturnValue({
+        url: '/dashboards/dash_1?where=',
+        description: 'Open dashboard "API Latency"',
       });
 
-      // Hover the no-URL row WITHOUT firing mouseLeave on the first row.
-      // This simulates the cursor jumping faster than leave events dispatch.
-      fireEvent.mouseEnter(apiRow);
+      renderWithMantine(
+        <Table
+          data={baseData}
+          columns={baseColumns}
+          getRowAction={getRowAction}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
 
-      // The label must derive to null (apiRow has url:null) so tooltip hides.
-      await waitFor(() => {
-        const hint = screen.getByTestId('row-action-hint');
-        const tooltipBox = hint.closest<HTMLElement>('[style*="display"]');
-        expect(tooltipBox?.style.display).toBe('none');
-      });
+      const hint = screen.getByTestId('row-action-hint');
+      await user.hover(hint);
+
+      await waitFor(
+        () => {
+          expect(
+            screen.getByRole('tooltip', {
+              name: 'Open dashboard "API Latency"',
+            }),
+          ).toBeInTheDocument();
+        },
+        { timeout: 2000 },
+      );
     });
   });
 
   describe('getRowAction failure path', () => {
-    it('renders the cell as a <button> when the row resolution failed and wires onClickError', () => {
+    it('renders the cell as a <button> when the row resolution failed and wires onClickError', async () => {
+      const user = userEvent.setup();
       const onClickError = jest.fn();
       const getRowAction = jest.fn().mockReturnValue({
         url: null,
@@ -188,11 +223,39 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
         expect(btn.hasAttribute('href')).toBe(false);
       });
 
-      fireEvent.click(buttons[0]);
+      await user.click(buttons[0]);
       expect(onClickError).toHaveBeenCalledTimes(1);
     });
 
-    it('does not reveal a hint when the row action has no url', async () => {
+    it('leaves non-actionable rows on bg-muted-hover (no actionableRow class)', () => {
+      // Mirror of the success-path actionableRow test: rows whose
+      // action returns `url: null` keep the default muted hover
+      // utility and never gain the stronger `actionableRow` class.
+      const getRowAction = jest.fn().mockReturnValue({
+        url: null,
+        description: 'Search HyperDX Logs',
+        onClickError: jest.fn(),
+      });
+
+      const { container } = renderWithMantine(
+        <Table
+          data={baseData}
+          columns={baseColumns}
+          getRowAction={getRowAction}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+      const rows = container.querySelectorAll('tbody tr[data-index]');
+      expect(rows.length).toBeGreaterThan(0);
+      rows.forEach(row => {
+        expect(row.className).not.toContain('actionableRow');
+        expect(row.className).toContain('bg-muted-hover');
+      });
+    });
+
+    it('does not render a trailing arrow hint when rowAction.url is null', () => {
       const getRowAction = jest.fn().mockReturnValue({
         url: null,
         description: 'Search HyperDX Logs',
@@ -209,17 +272,15 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
         />,
       );
 
-      const row = screen.getByText('web').closest('tr')!;
-      fireEvent.mouseEnter(row);
-
-      // Give the tooltip a chance to mount; assert it never does.
-      await new Promise(resolve => setTimeout(resolve, 250));
-      expect(screen.queryByText('Search HyperDX Logs')).not.toBeInTheDocument();
+      // The icon must not be in the DOM at all on failure rows: showing
+      // an arrow would promise a destination the click can't deliver,
+      // because the click only fires an error toast.
+      expect(screen.queryByTestId('row-action-hint')).toBeNull();
     });
   });
 
   describe('legacy getRowSearchLink fallback', () => {
-    it('renders the cell as a Link without a HoverCard when only getRowSearchLink is provided', () => {
+    it('renders the cell as a Link without a trailing arrow hint when only getRowSearchLink is provided', () => {
       const getRowSearchLink = jest
         .fn()
         .mockReturnValue('/search?source=legacy&where=');
@@ -240,11 +301,15 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
         expect(link.getAttribute('data-shape')).toBe('link');
         expect(link.getAttribute('href')).toContain('/search?source=legacy');
       });
+
+      // No trailing arrow on the legacy path; it's an additive surface
+      // tied to the new getRowAction prop only.
+      expect(screen.queryByTestId('row-action-hint')).toBeNull();
     });
   });
 
   describe('no action configured', () => {
-    it('renders plain cells with no Link, button, or HoverCard', () => {
+    it('renders plain cells with no Link, button, or trailing arrow', () => {
       renderWithMantine(
         <Table
           data={baseData}
@@ -257,6 +322,7 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       expect(
         screen.queryAllByTestId('dashboard-table-row-action'),
       ).toHaveLength(0);
+      expect(screen.queryByTestId('row-action-hint')).toBeNull();
     });
   });
 });
