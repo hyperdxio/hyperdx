@@ -27,6 +27,22 @@ import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
+// ─── Safety limits ───────────────────────────────────────────────────────────
+
+/** ClickHouse settings applied to all MCP query-tool executions. */
+const MCP_CLICKHOUSE_SETTINGS = {
+  max_execution_time: 30,
+  max_result_rows: '100000',
+  readonly: 1,
+} as const;
+
+/**
+ * HTTP request timeout for MCP query-tool ClickHouse clients.
+ * Set slightly above max_execution_time so ClickHouse can return a clean
+ * timeout error before the HTTP connection is aborted.
+ */
+const MCP_REQUEST_TIMEOUT = 32_000; // 30s query limit + 2s buffer
+
 // ─── Where merging ───────────────────────────────────────────────────────────
 
 export interface MergeWhereResult<T> {
@@ -243,6 +259,7 @@ export async function runConfigTile(
       host: connection.host,
       username: connection.username,
       password: connection.password,
+      requestTimeout: MCP_REQUEST_TIMEOUT,
     });
 
     const isSearch = builderConfig.displayType === DisplayType.Search;
@@ -295,6 +312,7 @@ export async function runConfigTile(
         config: chartConfig,
         metadata,
         querySettings: source.querySettings,
+        opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
       });
       return formatQueryResult(result);
     } catch (e) {
@@ -349,6 +367,7 @@ export async function runConfigTile(
     host: connection.host,
     username: connection.username,
     password: connection.password,
+    requestTimeout: MCP_REQUEST_TIMEOUT,
   });
 
   const chartConfig = {
@@ -363,6 +382,7 @@ export async function runConfigTile(
       config: chartConfig,
       metadata,
       querySettings: undefined,
+      opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
     });
     return formatQueryResult(result);
   } catch (e) {

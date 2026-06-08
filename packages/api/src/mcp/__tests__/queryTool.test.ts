@@ -1,3 +1,4 @@
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
@@ -581,6 +582,77 @@ describe('MCP Query Tools', () => {
 
       expect(result.isError).toBe(true);
       expect(getFirstText(result)).toContain('Invalid');
+    });
+  });
+
+  // ─── Safety settings (readonly + max_execution_time) ─────────────────────────
+
+  describe('ClickHouse safety settings', () => {
+    describe('readonly enforcement via clickstack_sql', () => {
+      it('should reject CREATE TABLE (DDL)', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: 'CREATE TABLE __mcp_test_ddl (id UInt64) ENGINE = Memory',
+        });
+
+        expect(result.isError).toBe(true);
+        const text = getFirstText(result);
+        expect(text).toMatch(/readonly/i);
+      });
+
+      it('should reject INSERT (DML)', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: `INSERT INTO ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE} (Body) VALUES ('injected')`,
+        });
+
+        expect(result.isError).toBe(true);
+        const text = getFirstText(result);
+        expect(text).toMatch(/readonly/i);
+      });
+
+      it('should reject DROP TABLE (DDL)', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: `DROP TABLE IF EXISTS ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`,
+        });
+
+        expect(result.isError).toBe(true);
+        const text = getFirstText(result);
+        expect(text).toMatch(/readonly/i);
+      });
+
+      it('should allow SELECT (read-only query)', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: 'SELECT 1 AS value',
+        });
+
+        expect(result.isError).toBeFalsy();
+      });
+    });
+
+    describe('max_execution_time enforcement', () => {
+      it('should kill a query that exceeds max_execution_time', async () => {
+        // Test directly with ClickhouseClient to use a short timeout (1s)
+        // instead of waiting for the full 30s MCP default.
+        const clickhouseClient = new ClickhouseClient({
+          host: config.CLICKHOUSE_HOST,
+          username: config.CLICKHOUSE_USER,
+          password: config.CLICKHOUSE_PASSWORD,
+          requestTimeout: 5_000,
+        });
+
+        await expect(
+          clickhouseClient.query({
+            query: 'SELECT sleep(3)',
+            format: 'JSON',
+            clickhouse_settings: {
+              max_execution_time: 1,
+            },
+          }),
+        ).rejects.toThrow(/TIMEOUT_EXCEEDED|timeout/i);
+      });
     });
   });
 });
