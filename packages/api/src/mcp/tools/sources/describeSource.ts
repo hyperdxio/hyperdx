@@ -185,6 +185,7 @@ async function describeSourceSchema(
             connectionId,
             metadataMVs,
             dateRange,
+            signal,
           });
           mapKeysResults[col.name] = keys;
         } catch (e) {

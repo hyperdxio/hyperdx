@@ -351,6 +351,7 @@ export class Metadata {
     metadataMVs,
     dateRange,
     timestampValueExpression,
+    signal,
   }: {
     databaseName: string;
     tableName: string;
@@ -361,6 +362,7 @@ export class Metadata {
     metadataMVs?: MetadataMaterializedViews;
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
+    signal?: AbortSignal;
   }) {
     // Align date range to rollup granularity for consistent cache keys
     const alignedDateRange =
@@ -419,6 +421,7 @@ export class Metadata {
                   max_execution_time: 15,
                   max_rows_to_read: '0',
                 },
+                abort_signal: signal,
               })
               .then(res => res.json<{ Key: string }>())
               .then(d => d.data.map(row => row.Key).filter(k => k));
@@ -524,6 +527,7 @@ export class Metadata {
             // Set the value to 0 (unlimited) so that the LIMIT is used instead
             max_rows_to_read: '0',
           },
+          abort_signal: signal,
         })
         .then(res => res.json<{ keysArr?: string[]; key?: string }>())
         .then(d => {
