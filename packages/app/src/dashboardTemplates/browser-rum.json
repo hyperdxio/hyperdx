@@ -120,7 +120,7 @@
       "w": 6,
       "h": 4,
       "config": {
-        "name": "Median Page Load (ms)",
+        "name": "Median Page Load",
         "source": "Traces",
         "displayType": "number",
         "granularity": "auto",
@@ -129,18 +129,13 @@
           {
             "aggFn": "quantile",
             "level": 0.5,
-            "valueExpression": "Duration / 1000000",
+            "valueExpression": "Duration",
             "aggCondition": "SpanName:\"documentLoad\"",
             "aggConditionLanguage": "lucene"
           }
         ],
         "where": "",
-        "whereLanguage": "lucene",
-        "numberFormat": {
-          "output": "number",
-          "mantissa": 0,
-          "thousandSeparated": true
-        }
+        "whereLanguage": "lucene"
       }
     },
     {
@@ -151,7 +146,7 @@
       "w": 6,
       "h": 4,
       "config": {
-        "name": "p90 Page Load (ms)",
+        "name": "p90 Page Load",
         "source": "Traces",
         "displayType": "number",
         "granularity": "auto",
@@ -160,18 +155,13 @@
           {
             "aggFn": "quantile",
             "level": 0.9,
-            "valueExpression": "Duration / 1000000",
+            "valueExpression": "Duration",
             "aggCondition": "SpanName:\"documentLoad\"",
             "aggConditionLanguage": "lucene"
           }
         ],
         "where": "",
-        "whereLanguage": "lucene",
-        "numberFormat": {
-          "output": "number",
-          "mantissa": 0,
-          "thousandSeparated": true
-        }
+        "whereLanguage": "lucene"
       }
     },
     {
@@ -189,9 +179,8 @@
         "alignDateRangeToGranularity": true,
         "select": [
           {
-            "aggFn": "quantile",
-            "level": 0.75,
-            "valueExpression": "toFloat64OrZero(SpanAttributes['lcp'])",
+            "aggFn": "none",
+            "valueExpression": "quantile(0.75)(toFloat64OrZero(SpanAttributes['lcp']))",
             "aggCondition": "SpanName:\"webvitals\" AND SpanAttributes.lcp:*",
             "aggConditionLanguage": "lucene"
           }
@@ -220,9 +209,8 @@
         "alignDateRangeToGranularity": true,
         "select": [
           {
-            "aggFn": "quantile",
-            "level": 0.75,
-            "valueExpression": "toFloat64OrZero(SpanAttributes['inp'])",
+            "aggFn": "none",
+            "valueExpression": "quantile(0.75)(toFloat64OrZero(SpanAttributes['inp']))",
             "aggCondition": "SpanName:\"webvitals\" AND SpanAttributes.inp:*",
             "aggConditionLanguage": "lucene"
           }
@@ -251,9 +239,8 @@
         "alignDateRangeToGranularity": true,
         "select": [
           {
-            "aggFn": "quantile",
-            "level": 0.75,
-            "valueExpression": "toFloat64OrZero(SpanAttributes['cls'])",
+            "aggFn": "none",
+            "valueExpression": "quantile(0.75)(toFloat64OrZero(SpanAttributes['cls']))",
             "aggCondition": "SpanName:\"webvitals\" AND SpanAttributes.cls:*",
             "aggConditionLanguage": "lucene"
           }
@@ -335,7 +322,7 @@
       "w": 24,
       "h": 7,
       "config": {
-        "name": "Page Load — median, p75 and p90 (ms)",
+        "name": "Page Load — median, p90, p99",
         "source": "Traces",
         "displayType": "line",
         "granularity": "auto",
@@ -344,35 +331,30 @@
           {
             "aggFn": "quantile",
             "level": 0.5,
-            "valueExpression": "Duration / 1000000",
+            "valueExpression": "Duration",
             "aggCondition": "SpanName:\"documentLoad\"",
             "aggConditionLanguage": "lucene",
             "alias": "median"
           },
           {
             "aggFn": "quantile",
-            "level": 0.75,
-            "valueExpression": "Duration / 1000000",
-            "aggCondition": "SpanName:\"documentLoad\"",
-            "aggConditionLanguage": "lucene",
-            "alias": "p75"
-          },
-          {
-            "aggFn": "quantile",
             "level": 0.9,
-            "valueExpression": "Duration / 1000000",
+            "valueExpression": "Duration",
             "aggCondition": "SpanName:\"documentLoad\"",
             "aggConditionLanguage": "lucene",
             "alias": "p90"
+          },
+          {
+            "aggFn": "quantile",
+            "level": 0.99,
+            "valueExpression": "Duration",
+            "aggCondition": "SpanName:\"documentLoad\"",
+            "aggConditionLanguage": "lucene",
+            "alias": "p99"
           }
         ],
         "where": "",
-        "whereLanguage": "lucene",
-        "numberFormat": {
-          "output": "number",
-          "mantissa": 0,
-          "thousandSeparated": true
-        }
+        "whereLanguage": "lucene"
       }
     },
     {
@@ -468,12 +450,7 @@
         ],
         "where": "",
         "whereLanguage": "lucene",
-        "groupBy": [
-          {
-            "valueExpression": "coalesce(nullif(SpanAttributes['http.url'], ''), nullif(SpanAttributes['page.url'], ''), nullif(SpanAttributes['location.href'], ''))",
-            "alias": "URL"
-          }
-        ],
+        "groupBy": "coalesce(nullif(SpanAttributes['http.url'], ''), nullif(SpanAttributes['page.url'], ''), nullif(SpanAttributes['location.href'], '')) AS \"URL\"",
         "orderBy": "Views DESC",
         "limit": {
           "limit": 20
@@ -486,7 +463,8 @@
           },
           "whereTemplate": "(SpanAttributes.http.url:\"{{URL}}\" OR SpanAttributes.page.url:\"{{URL}}\" OR SpanAttributes.location.href:\"{{URL}}\")",
           "whereLanguage": "lucene"
-        }
+        },
+        "groupByColumnsOnLeft": true
       }
     },
     {
@@ -520,12 +498,7 @@
         ],
         "where": "",
         "whereLanguage": "lucene",
-        "groupBy": [
-          {
-            "valueExpression": "multiIf(positionCaseInsensitive(SpanAttributes['http.user_agent'], 'Edg/') > 0, 'Edge', positionCaseInsensitive(SpanAttributes['http.user_agent'], 'OPR/') > 0, 'Opera', positionCaseInsensitive(SpanAttributes['http.user_agent'], 'Firefox/') > 0, 'Firefox', positionCaseInsensitive(SpanAttributes['http.user_agent'], 'Chrome/') > 0, 'Chrome', positionCaseInsensitive(SpanAttributes['http.user_agent'], 'Safari/') > 0, 'Safari', 'Other')",
-            "alias": "Browser"
-          }
-        ],
+        "groupBy": "multiIf(positionCaseInsensitive(SpanAttributes['http.user_agent'], 'Edg/') > 0, 'Edge', positionCaseInsensitive(SpanAttributes['http.user_agent'], 'OPR/') > 0, 'Opera', positionCaseInsensitive(SpanAttributes['http.user_agent'], 'Firefox/') > 0, 'Firefox', positionCaseInsensitive(SpanAttributes['http.user_agent'], 'Chrome/') > 0, 'Chrome', positionCaseInsensitive(SpanAttributes['http.user_agent'], 'Safari/') > 0, 'Safari', 'Other') AS \"Browser\"",
         "orderBy": "Sessions DESC",
         "limit": {
           "limit": 10
@@ -538,7 +511,8 @@
           },
           "whereTemplate": "positionCaseInsensitive(SpanAttributes['http.user_agent'], '{{Browser}}') > 0",
           "whereLanguage": "sql"
-        }
+        },
+        "groupByColumnsOnLeft": true
       }
     },
     {
@@ -572,12 +546,7 @@
         ],
         "where": "",
         "whereLanguage": "lucene",
-        "groupBy": [
-          {
-            "valueExpression": "coalesce(nullif(ResourceAttributes['geo.country.name'], ''), nullif(SpanAttributes['geo.country.name'], ''), nullif(ResourceAttributes['geo.country.iso_code'], ''), nullif(SpanAttributes['geo.country.iso_code'], ''))",
-            "alias": "Country"
-          }
-        ],
+        "groupBy": "coalesce(nullif(ResourceAttributes['geo.country.name'], ''), nullif(SpanAttributes['geo.country.name'], ''), nullif(ResourceAttributes['geo.country.iso_code'], ''), nullif(SpanAttributes['geo.country.iso_code'], '')) AS \"Country\"",
         "orderBy": "Sessions DESC",
         "limit": {
           "limit": 10
@@ -590,7 +559,8 @@
           },
           "whereTemplate": "ResourceAttributes.geo.country.name:\"{{Country}}\"",
           "whereLanguage": "lucene"
-        }
+        },
+        "groupByColumnsOnLeft": true
       }
     },
     {
@@ -624,12 +594,7 @@
         ],
         "where": "",
         "whereLanguage": "lucene",
-        "groupBy": [
-          {
-            "valueExpression": "SpanAttributes['screen.xy']",
-            "alias": "Device"
-          }
-        ],
+        "groupBy": "SpanAttributes['screen.xy'] AS \"Device\"",
         "orderBy": "Sessions DESC",
         "limit": {
           "limit": 10
@@ -642,7 +607,8 @@
           },
           "whereTemplate": "SpanName:\"documentLoad\" AND SpanAttributes.screen.xy:\"{{Device}}\"",
           "whereLanguage": "lucene"
-        }
+        },
+        "groupByColumnsOnLeft": true
       }
     },
     {
@@ -653,7 +619,7 @@
       "w": 12,
       "h": 8,
       "config": {
-        "name": "Slowest Pages (p75 page load)",
+        "name": "Slowest Pages (p90 page load)",
         "source": "Traces",
         "displayType": "table",
         "granularity": "auto",
@@ -661,11 +627,11 @@
         "select": [
           {
             "aggFn": "quantile",
-            "level": 0.75,
-            "valueExpression": "Duration / 1000000",
+            "level": 0.9,
+            "valueExpression": "Duration",
             "aggCondition": "SpanName:\"documentLoad\"",
             "aggConditionLanguage": "lucene",
-            "alias": "Page Load p75 (ms)"
+            "alias": "Page Load p90"
           },
           {
             "aggFn": "count",
@@ -677,13 +643,8 @@
         ],
         "where": "",
         "whereLanguage": "lucene",
-        "groupBy": [
-          {
-            "valueExpression": "coalesce(nullif(SpanAttributes['http.url'], ''), nullif(SpanAttributes['page.url'], ''), nullif(SpanAttributes['location.href'], ''))",
-            "alias": "URL"
-          }
-        ],
-        "orderBy": "`Page Load p75 (ms)` DESC",
+        "groupBy": "coalesce(nullif(SpanAttributes['http.url'], ''), nullif(SpanAttributes['page.url'], ''), nullif(SpanAttributes['location.href'], '')) AS \"URL\"",
+        "orderBy": "`Page Load p90` DESC",
         "limit": {
           "limit": 20
         },
@@ -695,7 +656,8 @@
           },
           "whereTemplate": "SpanName:\"documentLoad\" AND (SpanAttributes.http.url:\"{{URL}}\" OR SpanAttributes.page.url:\"{{URL}}\" OR SpanAttributes.location.href:\"{{URL}}\")",
           "whereLanguage": "lucene"
-        }
+        },
+        "groupByColumnsOnLeft": true
       }
     },
     {
@@ -737,12 +699,7 @@
         ],
         "where": "ResourceAttributes.rum.sessionId:*",
         "whereLanguage": "lucene",
-        "groupBy": [
-          {
-            "valueExpression": "ResourceAttributes['rum.sessionId']",
-            "alias": "Session"
-          }
-        ],
+        "groupBy": "ResourceAttributes['rum.sessionId'] AS \"Session\"",
         "having": "Errors > 0",
         "havingLanguage": "sql",
         "orderBy": "Errors DESC",
@@ -757,7 +714,8 @@
           },
           "whereTemplate": "ResourceAttributes.rum.sessionId:\"{{Session}}\"",
           "whereLanguage": "lucene"
-        }
+        },
+        "groupByColumnsOnLeft": true
       }
     },
     {
@@ -893,12 +851,7 @@
         ],
         "where": "",
         "whereLanguage": "lucene",
-        "groupBy": [
-          {
-            "valueExpression": "coalesce(nullif(SpanAttributes['exception.message'], ''), nullif(SpanAttributes['message'], ''), SpanName)",
-            "alias": "Error"
-          }
-        ],
+        "groupBy": "coalesce(nullif(SpanAttributes['exception.message'], ''), nullif(SpanAttributes['message'], ''), SpanName) AS \"Error\"",
         "orderBy": "Occurrences DESC",
         "limit": {
           "limit": 20
@@ -911,7 +864,8 @@
           },
           "whereTemplate": "StatusCode:error AND (SpanAttributes.exception.message:\"{{Error}}\" OR SpanAttributes.message:\"{{Error}}\" OR SpanName:\"{{Error}}\")",
           "whereLanguage": "lucene"
-        }
+        },
+        "groupByColumnsOnLeft": true
       }
     },
     {
@@ -946,12 +900,7 @@
         ],
         "where": "",
         "whereLanguage": "lucene",
-        "groupBy": [
-          {
-            "valueExpression": "coalesce(nullif(SpanAttributes['http.url'], ''), nullif(SpanAttributes['page.url'], ''), nullif(SpanAttributes['location.href'], ''))",
-            "alias": "URL"
-          }
-        ],
+        "groupBy": "coalesce(nullif(SpanAttributes['http.url'], ''), nullif(SpanAttributes['page.url'], ''), nullif(SpanAttributes['location.href'], '')) AS \"URL\"",
         "orderBy": "Errors DESC",
         "limit": {
           "limit": 20
@@ -964,7 +913,8 @@
           },
           "whereTemplate": "StatusCode:error AND (SpanAttributes.http.url:\"{{URL}}\" OR SpanAttributes.page.url:\"{{URL}}\" OR SpanAttributes.location.href:\"{{URL}}\")",
           "whereLanguage": "lucene"
-        }
+        },
+        "groupByColumnsOnLeft": true
       }
     },
     {
@@ -999,12 +949,7 @@
         ],
         "where": "",
         "whereLanguage": "sql",
-        "groupBy": [
-          {
-            "valueExpression": "coalesce(nullif(SpanAttributes['http.url'], ''), '')",
-            "alias": "Endpoint"
-          }
-        ],
+        "groupBy": "coalesce(nullif(SpanAttributes['http.url'], ''), '') AS \"Endpoint\"",
         "orderBy": "Failures DESC",
         "limit": {
           "limit": 20
@@ -1017,7 +962,8 @@
           },
           "whereTemplate": "(SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\") AND SpanAttributes.http.url:\"{{Endpoint}}\"",
           "whereLanguage": "lucene"
-        }
+        },
+        "groupByColumnsOnLeft": true
       }
     }
   ]
