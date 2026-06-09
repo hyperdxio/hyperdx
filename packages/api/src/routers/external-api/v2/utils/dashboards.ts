@@ -15,6 +15,8 @@ import {
 import {
   AggregateFunctionSchema,
   BuilderSavedChartConfig,
+  ChartPaletteToken,
+  ColorCondition,
   DASHBOARD_MAX_CONTAINERS,
   DashboardContainer,
   DashboardContainerSchema,
@@ -24,6 +26,7 @@ import {
   isOnClickSearchById,
   isTraceSource,
   RawSqlSavedChartConfig,
+  resolveChartPaletteToken,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
@@ -148,6 +151,24 @@ const convertToExternalSelectItem = (
   };
 };
 
+// Normalize the per-rule palette colors of a number tile's `colorRules`
+// for the API response. `colorRules` shipped after the hue rename so
+// stored rules already hold hue-named tokens; running each through
+// `resolveChartPaletteToken` is defense-in-depth that keeps the static
+// `color` (which can hold a legacy `chart-1`..`chart-10` token from before
+// the rename) and the rule colors on a single normalization path. A rule
+// whose color cannot be resolved keeps its stored value so a rule is never
+// dropped or left without a color.
+const toExternalColorRules = (
+  colorRules: ColorCondition[] | undefined,
+): ColorCondition[] | undefined =>
+  colorRules?.map(
+    (rule): ColorCondition => ({
+      ...rule,
+      color: resolveChartPaletteToken(rule.color) ?? rule.color,
+    }),
+  );
+
 const convertToExternalTileChartConfig = (
   config: SavedChartConfig,
 ): ExternalDashboardTileConfig | undefined => {
@@ -195,6 +216,10 @@ const convertToExternalTileChartConfig = (
           sqlTemplate: config.sqlTemplate,
           sourceId: config.source,
           numberFormat: config.numberFormat,
+          // Raw SQL number tiles carry the static tile color too (no
+          // colorRules; see the schema). Normalize a legacy token saved
+          // before the hue rename to its hue name on output.
+          color: resolveChartPaletteToken(config.color),
         };
       case DisplayType.Pie:
         return {
@@ -276,6 +301,16 @@ const convertToExternalTileChartConfig = (
           ? [convertToExternalSelectItem(config.select[0])]
           : [DEFAULT_SELECT_ITEM],
         numberFormat: config.numberFormat,
+        // Normalize stored palette tokens on the way out. A static `color`
+        // saved before the hue rename holds a legacy `chart-1`..`chart-10`
+        // token in Mongo (the `tiles` field is `Mixed`), so map it to the
+        // hue name via `resolveChartPaletteToken`, matching the app's
+        // fetch-time `normalizeDashboardTileColors`. `colorRules` colors go
+        // through the same path (see `toExternalColorRules`). An absent or
+        // unrecognized token resolves to undefined and is omitted from the
+        // response, keeping it within the palette-token enum.
+        color: resolveChartPaletteToken(config.color),
+        colorRules: toExternalColorRules(config.colorRules),
       };
     case DisplayType.Pie:
       return {
@@ -576,6 +611,12 @@ export function convertToInternalTileConfig(
             externalConfig.displayType === 'table'
               ? externalConfig.onClick
               : undefined,
+          // Only the raw SQL number variant carries `color`; table and pie
+          // do not expose it. `_.omitBy(_.isNil)` below drops it when absent.
+          color:
+            externalConfig.displayType === 'number'
+              ? externalConfig.color
+              : undefined,
         } satisfies RawSqlSavedChartConfig;
         break;
       default:
@@ -635,6 +676,11 @@ export function convertToInternalTileConfig(
           source: externalConfig.sourceId,
           where: '',
           numberFormat: externalConfig.numberFormat,
+          // The input schema validates these as hue-only palette tokens,
+          // so pass them through directly; `_.omitBy(_.isNil)` below drops
+          // them when absent.
+          color: externalConfig.color,
+          colorRules: externalConfig.colorRules,
           name,
         } satisfies BuilderSavedChartConfig;
         break;
