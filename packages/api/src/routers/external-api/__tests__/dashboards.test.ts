@@ -4755,6 +4755,37 @@ describe('External API v2 Dashboards - new format', () => {
       expect(get.body.data.tiles[0].config.color).toBe('chart-green');
     });
 
+    it('normalizes legacy colorRule colors and drops unresolvable ones on read', async () => {
+      const create = await postTile({
+        colorRules: [{ operator: 'gt', value: 1, color: 'chart-green' }],
+      }).expect(200);
+      const dashboardId = create.body.data.id;
+
+      // Direct Mongo write: a legacy numeric token (normalized to its hue
+      // name on read) and an unrecognized token (dropped on read so the
+      // response stays within the palette-token enum). Neither is reachable
+      // through the validated create path.
+      await Dashboard.updateOne(
+        { _id: dashboardId },
+        {
+          $set: {
+            'tiles.0.config.colorRules': [
+              { operator: 'gt', value: 1, color: 'chart-1' },
+              { operator: 'gt', value: 2, color: 'not-a-token' },
+            ],
+          },
+        },
+      );
+
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+      // chart-1 maps to chart-green; the unresolvable rule is dropped.
+      expect(get.body.data.tiles[0].config.colorRules).toEqual([
+        { operator: 'gt', value: 1, color: 'chart-green' },
+      ]);
+    });
+
     it('normalizes a legacy numeric token on a raw SQL number tile to its hue name on read', async () => {
       const create = await authRequest('post', BASE_URL)
         .send({

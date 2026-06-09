@@ -154,20 +154,20 @@ const convertToExternalSelectItem = (
 // Normalize the per-rule palette colors of a number tile's `colorRules`
 // for the API response. `colorRules` shipped after the hue rename so
 // stored rules already hold hue-named tokens; running each through
-// `resolveChartPaletteToken` is defense-in-depth that keeps the static
-// `color` (which can hold a legacy `chart-1`..`chart-10` token from before
-// the rename) and the rule colors on a single normalization path. A rule
-// whose color cannot be resolved keeps its stored value so a rule is never
-// dropped or left without a color.
+// `resolveChartPaletteToken` keeps the static `color` (which can hold a
+// legacy `chart-1`..`chart-10` token from before the rename) and the rule
+// colors on a single normalization path. A rule whose color cannot be
+// resolved (reachable only via a direct DB write, since the input schema
+// validates rule colors) is dropped, mirroring how the static `color`
+// field omits an unresolvable token, so the response always stays within
+// the palette-token enum instead of leaking an unknown string.
 const toExternalColorRules = (
   colorRules: ColorCondition[] | undefined,
 ): ColorCondition[] | undefined =>
-  colorRules?.map(
-    (rule): ColorCondition => ({
-      ...rule,
-      color: resolveChartPaletteToken(rule.color) ?? rule.color,
-    }),
-  );
+  colorRules?.flatMap((rule): ColorCondition[] => {
+    const color = resolveChartPaletteToken(rule.color);
+    return color ? [{ ...rule, color }] : [];
+  });
 
 const convertToExternalTileChartConfig = (
   config: SavedChartConfig,
