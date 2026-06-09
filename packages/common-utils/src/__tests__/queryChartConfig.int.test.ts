@@ -249,8 +249,9 @@ describe('queryChartConfig Integration Tests', () => {
   });
 
   // Regression: a comma-separated *string* group-by (including a Map access with
-  // a comma inside the brackets) must split into per-column NULL/empty checks
-  // rather than emitting an invalid two-argument toString().
+  // a comma inside the brackets) must split into per-column NULL checks rather
+  // than emitting an invalid two-argument toString(). Also verifies that an
+  // empty-string group (a missing Map key) is kept and competes for a top-N slot.
   it('handles a multi-column string group-by (with Map access) under seriesLimit', async () => {
     const TABLE = 'logs_string_gb_int_test';
     await client.command({
@@ -274,8 +275,8 @@ describe('queryChartConfig Integration Tests', () => {
         LogAttributes: { 'agentToServer.capabilities': 'capB' },
         ServiceName: 'svc2',
       })),
-      // Missing capability key (Map access -> '') for svc3 — largest by count,
-      // but must be excluded by the per-column empty filter.
+      // Missing capability key (Map access -> '') for svc3 — largest by count.
+      // Empty-string groups are kept, so this ranks #1 and survives the cap.
       ...Array.from({ length: 10 }, () => ({
         Timestamp: ts,
         LogAttributes: {},
@@ -304,7 +305,9 @@ describe('queryChartConfig Integration Tests', () => {
           new Date('2025-04-15T01:00:00Z'),
         ],
         granularity: '5 minute',
-        seriesLimit: 5,
+        // Cap to 2 so the ranking is observable: by count svc3 (10) > svc1 (5)
+        // > svc2 (3), so the top 2 are svc3 and svc1; svc2 is dropped.
+        seriesLimit: 2,
       };
 
       // The query must execute without a ClickHouse error (the original bug).
@@ -317,9 +320,8 @@ describe('queryChartConfig Integration Tests', () => {
       const services = new Set(
         (result.data as Array<{ ServiceName: string }>).map(r => r.ServiceName),
       );
-      // svc3 only appears with an empty capability, so it is filtered out of the
-      // ranking; only the two real series remain.
-      expect([...services].sort()).toEqual(['svc1', 'svc2']);
+      // svc3 (empty capability) is kept and ranks #1; the cap drops svc2.
+      expect([...services].sort()).toEqual(['svc1', 'svc3']);
     } finally {
       await client.command({
         query: `DROP TABLE IF EXISTS ${DATABASE}.${TABLE}`,

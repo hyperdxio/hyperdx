@@ -1218,9 +1218,11 @@ async function renderGroupBy(
 // when the cap does not apply (no seriesLimit, no groupBy/granularity, a CTE or
 // metric source, or a non-structured select), leaving the query unchanged.
 //
-// NULL/empty group values are excluded from the ranking so they neither
-// dominate the chart as a single '-' series nor break the NULL-unsafe
-// `tuple() IN (...)` comparison. Mirrors the aggFn='increase' TopGroups path.
+// Groups with a NULL component are excluded from the ranking because the outer
+// `tuple() IN (...)` is NULL-unsafe (transform_null_in=0, so NULL never matches)
+// — ranking such a group would waste a top-N slot on rows the outer query can't
+// select. Empty-string groups (e.g. a missing Map key) are kept: they are real
+// data and compete for a slot like any other value.
 async function renderSeriesLimitCte(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
@@ -1284,13 +1286,15 @@ async function renderSeriesLimitCte(
     ? rankRendered[0]
     : rankRendered;
 
-  const groupByEmptyFilter = concatChSql(
+  // Exclude only NULL group components (see the note above); a no-op on
+  // non-nullable columns, which is the common case.
+  const groupByNotNullFilter = concatChSql(
     ' AND ',
-    groupByCols.map(g => chSql`(${g} IS NOT NULL AND toString(${g}) != '')`),
+    groupByCols.map(g => chSql`${g} IS NOT NULL`),
   );
   const innerWhere = where.sql
-    ? concatChSql(' AND ', where, groupByEmptyFilter)
-    : groupByEmptyFilter;
+    ? concatChSql(' AND ', where, groupByNotNullFilter)
+    : groupByNotNullFilter;
 
   // Per-(group, bucket) aggregate, then max per group, keeping the top N.
   const cte = chSql`\`__hdx_series_limit\` AS (

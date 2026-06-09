@@ -499,10 +499,10 @@ describe('renderChartConfig', () => {
       expect(sql).toMatch(
         /tuple\(ServiceName\)\s+IN\s*\(\s*SELECT\s+`group`\s+FROM\s+`__hdx_series_limit`\)/,
       );
-      // NULL/empty groups are excluded from the ranking.
-      expect(sql).toMatch(
-        /ServiceName\s+IS\s+NOT\s+NULL\s+AND\s+toString\(ServiceName\)\s*!=\s*''/,
-      );
+      // Groups with a NULL component are excluded; empty-string groups are kept
+      // (no `!= ''` check).
+      expect(sql).toMatch(/ServiceName\s+IS\s+NOT\s+NULL/);
+      expect(sql).not.toMatch(/toString\(ServiceName\)\s*!=\s*''/);
     });
 
     it('does not emit a series-limit CTE when seriesLimit is unset (e.g. alert evaluation)', async () => {
@@ -566,14 +566,15 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain('__hdx_series_limit');
-      // Each column gets its own NULL/empty check (split on the top-level comma,
-      // not the comma inside Map['...']).
+      // Each column gets its own NULL check, split on the top-level comma — not
+      // the comma inside Map['...'].
       expect(sql).toMatch(
-        /toString\(LogAttributes\[['"]agentToServer\.capabilities['"]\]\)\s*!=\s*''/,
+        /LogAttributes\[['"]agentToServer\.capabilities['"]\]\s+IS\s+NOT\s+NULL/,
       );
-      expect(sql).toMatch(/toString\(ServiceName\)\s*!=\s*''/);
-      // Regression: must NOT emit a two-argument toString of both columns.
-      expect(sql).not.toMatch(/toString\([^)]*,[^)]*ServiceName[^)]*\)/);
+      expect(sql).toMatch(/ServiceName\s+IS\s+NOT\s+NULL/);
+      // Regression: must NOT emit a two-argument toString of both columns (the
+      // original bug that prompted the split).
+      expect(sql).not.toMatch(/toString\([^)]*,/);
       // Both columns are packed into the tuple for the IN predicate.
       expect(sql).toMatch(
         /tuple\(\s*LogAttributes\[['"]agentToServer\.capabilities['"]\]\s*,\s*ServiceName\s*\)\s+IN\s*\(\s*SELECT\s+`group`\s+FROM\s+`__hdx_series_limit`\)/,
