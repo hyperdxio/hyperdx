@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 import {
+  annotateIncreaseTopNHint,
   buildTile,
   mergeWhereIntoSelectItems,
   parseTimeRange,
@@ -291,6 +292,10 @@ export function registerTable(server: McpServer, context: McpContext) {
           // leave result unmodified
         }
       }
+
+      // Surface the increase+groupBy top-N cap so the agent knows results
+      // may be truncated to 20 groups.
+      annotateIncreaseTopNHint(result, select, input.groupBy);
 
       return result;
     }),

@@ -7,7 +7,9 @@ jest.mock('@/utils/trimToolResponse', () => ({
 }));
 
 import {
+  annotateIncreaseTopNHint,
   errorHint,
+  INCREASE_TOP_N_CAP,
   mergeWhereIntoSelectItems,
   parseTimeRange,
 } from '../tools/query/helpers';
@@ -611,5 +613,90 @@ describe('validateMetricSelectItems', () => {
     expect(result).not.toBeNull();
     if (!result) return;
     expect(result.content[0].text).toContain('select[0].level');
+  });
+});
+
+// ─── annotateIncreaseTopNHint ────────────────────────────────────────────────
+
+function buildResult(data: unknown[]) {
+  return {
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify({ result: { data } }),
+      },
+    ],
+    isError: false,
+  };
+}
+
+describe('annotateIncreaseTopNHint', () => {
+  it('exposes the renderer cap as a constant', () => {
+    expect(INCREASE_TOP_N_CAP).toBe(20);
+  });
+
+  it('appends a hint when increase + groupBy is used and result is non-empty', () => {
+    const result = buildResult([{ x: 1 }, { x: 2 }]);
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hint).toContain('top 20');
+    expect(parsed.hint).toContain('aggFn:"increase"');
+  });
+
+  it('does NOT annotate when increase is used WITHOUT a groupBy', () => {
+    const result = buildResult([{ x: 1 }]);
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], undefined);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hint).toBeUndefined();
+  });
+
+  it('does NOT annotate when groupBy is an empty string', () => {
+    const result = buildResult([{ x: 1 }]);
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], '   ');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hint).toBeUndefined();
+  });
+
+  it('does NOT annotate when no select item uses increase', () => {
+    const result = buildResult([{ x: 1 }]);
+    annotateIncreaseTopNHint(
+      result,
+      [{ aggFn: 'sum' }, { aggFn: 'avg' }],
+      'ServiceName',
+    );
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hint).toBeUndefined();
+  });
+
+  it('does NOT annotate empty results (already labelled by formatQueryResult)', () => {
+    const result = buildResult([]);
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hint).toBeUndefined();
+  });
+
+  it('does NOT annotate error results', () => {
+    const result = {
+      content: [{ type: 'text', text: 'an error message' }],
+      isError: true,
+    };
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    expect(result.content[0].text).toBe('an error message');
+  });
+
+  it('leaves unparseable text content unchanged', () => {
+    const result = {
+      content: [{ type: 'text', text: 'not json' }],
+      isError: false,
+    };
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    expect(result.content[0].text).toBe('not json');
+  });
+
+  it('is a no-op when content is missing', () => {
+    const result = {} as Parameters<typeof annotateIncreaseTopNHint>[0];
+    expect(() =>
+      annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName'),
+    ).not.toThrow();
   });
 });

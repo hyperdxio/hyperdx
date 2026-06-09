@@ -78,6 +78,48 @@ const MCP_CLICKHOUSE_SETTINGS = {
  */
 const MCP_REQUEST_TIMEOUT = 32_000; // 30s query limit + 2s buffer
 
+// ─── Increase top-N cap hint ────────────────────────────────────────────────
+
+/**
+ * Group limit applied by the metric renderer when `aggFn:"increase"` is
+ * combined with `groupBy`. Mirrors `INCREASE_MAX_NUM_GROUPS` in
+ * `packages/common-utils/src/core/renderChartConfig.ts`. Surfaced to MCP
+ * callers as a hint so they can reason about why high-cardinality groupBys
+ * may be truncated.
+ */
+export const INCREASE_TOP_N_CAP = 20;
+
+/**
+ * Mutates a successful tool result envelope in place to add a neutral
+ * informational hint when the renderer's increase+groupBy top-N cap may
+ * have applied. Safe to call unconditionally — does nothing for empty
+ * results, error results, or queries that don't combine `aggFn:"increase"`
+ * with a non-empty `groupBy`.
+ */
+export function annotateIncreaseTopNHint(
+  result: { content?: { type: string; text?: string }[]; isError?: boolean },
+  selectItems: ReadonlyArray<{ aggFn?: string }>,
+  groupBy: string | undefined,
+): void {
+  if (result.isError) return;
+  const first = result.content?.[0];
+  if (first?.type !== 'text' || typeof first.text !== 'string') return;
+  if (!groupBy || groupBy.trim() === '') return;
+  if (!selectItems.some(s => s.aggFn === 'increase')) return;
+  try {
+    const parsed = JSON.parse(first.text);
+    const data = parsed?.result?.data;
+    if (!Array.isArray(data) || data.length === 0) return;
+    parsed.hint =
+      `aggFn:"increase" combined with groupBy is capped at the top ${INCREASE_TOP_N_CAP} ` +
+      `groups by max bucket sum at the renderer layer. ` +
+      `Results may not include every group present in the underlying data.`;
+    first.text = JSON.stringify(parsed, null, 2);
+  } catch {
+    // leave result unmodified on parse failure
+  }
+}
+
 // ─── Where merging ───────────────────────────────────────────────────────────
 
 export interface MergeWhereResult<T> {
@@ -298,6 +340,7 @@ export async function runConfigTile(
     });
 
     const isSearch = builderConfig.displayType === DisplayType.Search;
+    const isMetricSource = source.kind === SourceKind.Metric;
     const defaultTableSelect =
       'defaultTableSelectExpression' in source
         ? source.defaultTableSelectExpression
@@ -327,13 +370,37 @@ export async function runConfigTile(
         }
       : {};
 
+    // Metric sources need three adjustments before the renderer can
+    // translate the query:
+    //   1. `from.tableName` is blank — the renderer picks the correct
+    //      per-kind ClickHouse table from `metricTables` at render time.
+    //   2. `metricTables` must be threaded onto the chart config (mirrors
+    //      packages/api/src/routers/external-api/v2/charts.ts:261-267).
+    //   3. Each select item's `valueExpression` defaults to "Value" (the
+    //      metric value column) when missing — agents normally omit it.
+    const metricSelectOverrides =
+      isMetricSource && Array.isArray(builderConfig.select)
+        ? {
+            select: builderConfig.select.map(item =>
+              typeof item === 'string'
+                ? item
+                : {
+                    ...item,
+                    valueExpression: item.valueExpression || 'Value',
+                  },
+            ),
+          }
+        : {};
+
     const chartConfig = {
       ...builderConfig,
       ...searchOverrides,
+      ...metricSelectOverrides,
       from: {
         databaseName: source.from.databaseName,
-        tableName: source.from.tableName,
+        tableName: isMetricSource ? '' : source.from.tableName,
       },
+      ...(isMetricSource && { metricTables: source.metricTables }),
       connection: source.connection.toString(),
       timestampValueExpression: source.timestampValueExpression,
       implicitColumnExpression: implicitColumn,
