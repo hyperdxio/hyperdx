@@ -86,10 +86,17 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
   // Bash/Read/Glob into the repo to peek at ground-truth, prior eval runs,
   // or the eval config — the only state visible is the mcp-config + settings
   // files we just wrote here.
+  //
+  // detached: true gives claude its own process group so we can kill the
+  // entire tree (claude + MCP servers it spawns) on SIGKILL escalation.
+  // SIGTERM is still sent to claude only — it handles graceful shutdown of
+  // its children. The SIGKILL escalation uses process.kill(-pid) to reap
+  // any orphaned MCP server processes that survived SIGTERM.
   const proc = spawn('claude', argv, {
     env: { ...process.env, ANTHROPIC_API_KEY: opts.apiKey },
     cwd: tempdir,
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
   });
 
   const events: ParsedEvent[] = [];
@@ -131,9 +138,11 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
     }
     escalationTimer = setTimeout(() => {
       try {
-        proc.kill('SIGKILL');
+        // Kill the entire process group (-pid) to reap any orphaned MCP
+        // server children that didn't exit after SIGTERM.
+        if (proc.pid) process.kill(-proc.pid, 'SIGKILL');
       } catch {
-        // Process already exited — ignore.
+        // Process group already exited — ignore.
       }
     }, 5_000);
     escalationTimer.unref();
