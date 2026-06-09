@@ -360,8 +360,18 @@ export class Metadata {
     return this.cache.getOrFetch(
       `${connectionId}.${databaseName}.${tableName}.mapColumnTextIndexes`,
       async () => {
+        // Use queryTableMetadata (raw system.tables row) rather than the public
+        // getTableMetadata, which resolves Distributed engines to the underlying
+        // local table's engine and would make the Distributed guard below dead
+        // code. mergeTreeTextIndex() below only works on local MergeTree-family
+        // tables, so we must bail out when the caller's table is Distributed.
         const [tableMeta, version] = await Promise.all([
-          this.getTableMetadata({ databaseName, tableName, connectionId }),
+          this.queryTableMetadata({
+            cache: this.cache,
+            database: databaseName,
+            table: tableName,
+            connectionId,
+          }),
           this.getServerVersion({ connectionId }),
         ]);
         if (!supportsMergeTreeTextIndex(version)) return new Map();
@@ -509,7 +519,7 @@ export class Metadata {
     }
     if (indexes?.itemsIndex) {
       const sql = chSql`
-        SELECT splitByChar(${{ String: indexes.itemsIndex.separator }}, token)[1] AS key
+        SELECT splitByString(${{ String: indexes.itemsIndex.separator }}, token)[1] AS key
         FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: indexes.itemsIndex.indexName }})
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''

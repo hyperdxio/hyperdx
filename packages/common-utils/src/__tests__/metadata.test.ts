@@ -1548,8 +1548,9 @@ describe('Metadata', () => {
       expect(keys).toEqual(['service.name', 'http.method']);
       const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
       expect(call.query).toContain('mergeTreeTextIndex');
-      // keys-only path selects `token AS key` directly, no splitByChar.
+      // keys-only path selects `token AS key` directly, no string splitting.
       expect(call.query).not.toContain('splitByChar');
+      expect(call.query).not.toContain('splitByString');
       expect(Object.values(call.query_params)).toContain('idx_log_attrs_key');
     });
 
@@ -1573,7 +1574,7 @@ describe('Metadata', () => {
       expect(keys).toEqual(['service.name']);
       const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
       expect(call.query).toContain('mergeTreeTextIndex');
-      expect(call.query).toContain('splitByChar');
+      expect(call.query).toContain('splitByString');
       expect(Object.values(call.query_params)).toContain('idx_log_attrs_items');
     });
 
@@ -2267,7 +2268,7 @@ describe('Metadata', () => {
       globalStub.mockRestore();
       try {
         jest
-          .spyOn(md, 'getTableMetadata')
+          .spyOn(md as any, 'queryTableMetadata')
           .mockResolvedValue({ engine: 'MergeTree' } as never);
         jest
           .spyOn(md, 'getServerVersion')
@@ -2292,13 +2293,46 @@ describe('Metadata', () => {
       }
     });
 
+    it('getMapColumnTextIndexes returns empty Map for Distributed tables so we never query mergeTreeTextIndex with Distributed coordinates', async () => {
+      const md = buildMetadata();
+      const globalStub = Metadata.prototype
+        .getMapColumnTextIndexes as jest.Mock;
+      globalStub.mockRestore();
+      try {
+        jest
+          .spyOn(md as any, 'queryTableMetadata')
+          .mockResolvedValue({ engine: 'Distributed' } as never);
+        jest
+          .spyOn(md, 'getServerVersion')
+          .mockResolvedValue([26, 3, 0, 0] as const);
+        const getColumnsSpy = jest.spyOn(md, 'getColumns');
+        const getSkipIndicesSpy = jest.spyOn(md, 'getSkipIndices');
+
+        const result = await md.getMapColumnTextIndexes({
+          databaseName: 'otel',
+          tableName: 'generic_logs_dist',
+          connectionId: 'conn-1',
+        });
+
+        expect(result.size).toBe(0);
+        expect(getColumnsSpy).not.toHaveBeenCalled();
+        expect(getSkipIndicesSpy).not.toHaveBeenCalled();
+      } finally {
+        jest
+          .spyOn(Metadata.prototype, 'getMapColumnTextIndexes')
+          .mockResolvedValue(new Map());
+      }
+    });
+
     it('getMapColumnTextIndexes returns empty Map when base table does not exist', async () => {
       const md = buildMetadata();
       const globalStub = Metadata.prototype
         .getMapColumnTextIndexes as jest.Mock;
       globalStub.mockRestore();
       try {
-        jest.spyOn(md, 'getTableMetadata').mockResolvedValue(undefined);
+        jest
+          .spyOn(md as any, 'queryTableMetadata')
+          .mockResolvedValue(undefined);
         jest
           .spyOn(md, 'getServerVersion')
           .mockResolvedValue([26, 3, 0, 0] as const);
@@ -2336,7 +2370,7 @@ describe('Metadata', () => {
         globalStub.mockRestore();
         try {
           jest
-            .spyOn(md, 'getTableMetadata')
+            .spyOn(md as any, 'queryTableMetadata')
             .mockResolvedValue({ engine: 'MergeTree' } as never);
           jest
             .spyOn(md, 'getServerVersion')
