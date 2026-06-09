@@ -1,10 +1,13 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 import * as config from '@/config';
 import {
   bulkInsertLogs,
+  bulkInsertMetricsGauge,
+  bulkInsertMetricsHistogram,
+  bulkInsertMetricsSum,
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
   DEFAULT_TRACES_TABLE,
@@ -800,6 +803,229 @@ describe('MCP Query Tools', () => {
         expect(row?.readonly_mode).toBe(2);
         expect(row?.max_exec_time).toBe(30);
       });
+    });
+  });
+
+  // ── Metric source query coverage ─────────────────────────────────────────
+
+  describe('Metric sources (timeseries + table)', () => {
+    const createMetricSource = () =>
+      Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+          [MetricsDataType.Sum.toLowerCase()]: 'otel_metrics_sum',
+          [MetricsDataType.Histogram.toLowerCase()]: 'otel_metrics_histogram',
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection._id,
+        name: 'Metrics',
+      });
+
+    const seedGauge = async (now: Date) => {
+      await bulkInsertMetricsGauge([
+        {
+          MetricName: 'system.cpu.utilization',
+          ResourceAttributes: { 'service.name': 'svc-a' },
+          ServiceName: 'svc-a',
+          TimeUnix: now,
+          Value: 0.42,
+        },
+        {
+          MetricName: 'system.cpu.utilization',
+          ResourceAttributes: { 'service.name': 'svc-a' },
+          ServiceName: 'svc-a',
+          TimeUnix: new Date(now.getTime() + 1000),
+          Value: 0.61,
+        },
+      ]);
+    };
+
+    const seedSum = async (now: Date) => {
+      await bulkInsertMetricsSum([
+        {
+          MetricName: 'http.server.request.count',
+          AggregationTemporality: 1, // DELTA
+          IsMonotonic: true,
+          ResourceAttributes: { 'service.name': 'svc-a' },
+          ServiceName: 'svc-a',
+          TimeUnix: now,
+          Value: 100,
+        },
+        {
+          MetricName: 'http.server.request.count',
+          AggregationTemporality: 1,
+          IsMonotonic: true,
+          ResourceAttributes: { 'service.name': 'svc-a' },
+          ServiceName: 'svc-a',
+          TimeUnix: new Date(now.getTime() + 1000),
+          Value: 25,
+        },
+      ]);
+    };
+
+    const seedHistogram = async (now: Date) => {
+      await bulkInsertMetricsHistogram([
+        {
+          MetricName: 'http.server.request.duration',
+          ResourceAttributes: { 'service.name': 'svc-a' },
+          TimeUnix: now,
+          BucketCounts: [1, 2, 3, 4],
+          ExplicitBounds: [10, 100, 1000],
+          AggregationTemporality: 1,
+        },
+      ]);
+    };
+
+    it('runs clickstack_timeseries against a gauge metric source', async () => {
+      const metricSource = await createMetricSource();
+      const now = new Date();
+      await seedGauge(now);
+
+      const result = await callTool(client, 'clickstack_timeseries', {
+        sourceId: metricSource._id.toString(),
+        select: [
+          {
+            aggFn: 'avg',
+            metricType: 'gauge',
+            metricName: 'system.cpu.utilization',
+            alias: 'cpu',
+          },
+        ],
+        startTime: new Date(now.getTime() - 60_000).toISOString(),
+        endTime: new Date(now.getTime() + 60_000).toISOString(),
+        granularity: '1 minute',
+      });
+
+      expect(result.isError).toBeFalsy();
+      // No "Both table name and UUID are empty" error from the renderer.
+      expect(getFirstText(result)).not.toMatch(/UUID are empty/);
+    });
+
+    it('runs clickstack_table aggFn:"increase" against a sum metric source', async () => {
+      const metricSource = await createMetricSource();
+      const now = new Date();
+      await seedSum(now);
+
+      const result = await callTool(client, 'clickstack_table', {
+        sourceId: metricSource._id.toString(),
+        select: [
+          {
+            aggFn: 'increase',
+            metricType: 'sum',
+            metricName: 'http.server.request.count',
+            alias: 'requests',
+          },
+        ],
+        startTime: new Date(now.getTime() - 60_000).toISOString(),
+        endTime: new Date(now.getTime() + 60_000).toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getFirstText(result)).not.toMatch(/UUID are empty/);
+    });
+
+    it('runs clickstack_timeseries quantile against a histogram metric source', async () => {
+      const metricSource = await createMetricSource();
+      const now = new Date();
+      await seedHistogram(now);
+
+      const result = await callTool(client, 'clickstack_timeseries', {
+        sourceId: metricSource._id.toString(),
+        select: [
+          {
+            aggFn: 'quantile',
+            level: 0.95,
+            metricType: 'histogram',
+            metricName: 'http.server.request.duration',
+            alias: 'p95',
+          },
+        ],
+        startTime: new Date(now.getTime() - 60_000).toISOString(),
+        endTime: new Date(now.getTime() + 60_000).toISOString(),
+        granularity: '1 minute',
+      });
+
+      expect(result.isError).toBeFalsy();
+    });
+
+    it('rejects aggFn:"increase" on a gauge select item with a friendly schema error', async () => {
+      const metricSource = await createMetricSource();
+      const result = await callTool(client, 'clickstack_timeseries', {
+        sourceId: metricSource._id.toString(),
+        select: [
+          {
+            aggFn: 'increase',
+            metricType: 'gauge',
+            metricName: 'system.cpu.utilization',
+          },
+        ],
+      });
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toMatch(/"increase" is only valid for sum/);
+    });
+
+    it('rejects aggFn:"quantile" on a histogram without level', async () => {
+      const metricSource = await createMetricSource();
+      const result = await callTool(client, 'clickstack_timeseries', {
+        sourceId: metricSource._id.toString(),
+        select: [
+          {
+            aggFn: 'quantile',
+            metricType: 'histogram',
+            metricName: 'http.server.request.duration',
+          },
+        ],
+      });
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toMatch(/level is required/);
+    });
+
+    it('rejects aggFn:"avg" on a histogram select item', async () => {
+      const metricSource = await createMetricSource();
+      const result = await callTool(client, 'clickstack_timeseries', {
+        sourceId: metricSource._id.toString(),
+        select: [
+          {
+            aggFn: 'avg',
+            metricType: 'histogram',
+            metricName: 'http.server.request.duration',
+          },
+        ],
+      });
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toMatch(
+        /Histogram metrics only support aggFn/,
+      );
+    });
+
+    it('rejects metricType without metricName', async () => {
+      const metricSource = await createMetricSource();
+      const result = await callTool(client, 'clickstack_timeseries', {
+        sourceId: metricSource._id.toString(),
+        select: [{ aggFn: 'avg', metricType: 'gauge' }],
+      });
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toMatch(/metricName is required/);
+    });
+
+    it('rejects isDelta on a non-gauge metric', async () => {
+      const metricSource = await createMetricSource();
+      const result = await callTool(client, 'clickstack_timeseries', {
+        sourceId: metricSource._id.toString(),
+        select: [
+          {
+            aggFn: 'increase',
+            metricType: 'sum',
+            metricName: 'http.server.request.count',
+            isDelta: true,
+          },
+        ],
+      });
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toMatch(/isDelta is only valid for gauge/);
     });
   });
 });

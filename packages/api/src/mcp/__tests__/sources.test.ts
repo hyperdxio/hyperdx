@@ -3,6 +3,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 import * as config from '@/config';
 import {
+  bulkInsertMetricsGauge,
+  bulkInsertMetricsHistogram,
+  bulkInsertMetricsSum,
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
   DEFAULT_TRACES_TABLE,
@@ -351,6 +354,369 @@ describe('MCP Source Tools', () => {
 
       expect(result.isError).toBe(true);
       expect(getFirstText(result)).toContain('not found');
+    });
+  });
+
+  // ── clickstack_list_metrics ──────────────────────────────────────────────
+
+  describe('clickstack_list_metrics', () => {
+    const createMetricSource = () =>
+      Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+          [MetricsDataType.Sum.toLowerCase()]: 'otel_metrics_sum',
+          [MetricsDataType.Histogram.toLowerCase()]: 'otel_metrics_histogram',
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection._id,
+        name: 'Metrics',
+      });
+
+    const seedMetricNames = async () => {
+      const now = new Date();
+      await bulkInsertMetricsGauge([
+        {
+          MetricName: 'system.cpu.utilization',
+          ResourceAttributes: { 'service.name': 'svc-a' },
+          ServiceName: 'svc-a',
+          TimeUnix: now,
+          Value: 0.42,
+        },
+        {
+          MetricName: 'system.memory.usage',
+          ResourceAttributes: { 'service.name': 'svc-a' },
+          ServiceName: 'svc-a',
+          TimeUnix: now,
+          Value: 12345,
+        },
+      ]);
+      await bulkInsertMetricsSum([
+        {
+          MetricName: 'http.server.request.count',
+          AggregationTemporality: 1,
+          IsMonotonic: true,
+          ResourceAttributes: { 'service.name': 'svc-a' },
+          ServiceName: 'svc-a',
+          TimeUnix: now,
+          Value: 100,
+        },
+      ]);
+      await bulkInsertMetricsHistogram([
+        {
+          MetricName: 'http.server.request.duration',
+          ResourceAttributes: { 'service.name': 'svc-a' },
+          TimeUnix: now,
+          BucketCounts: [1, 2, 3],
+          ExplicitBounds: [10, 100, 1000],
+          AggregationTemporality: 1,
+        },
+      ]);
+    };
+
+    it('rejects non-metric sources with a friendly error', async () => {
+      const result = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: traceSource._id.toString(),
+      });
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('not a metric source');
+    });
+
+    it('returns 404 for unknown source IDs', async () => {
+      const result = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: '000000000000000000000000',
+      });
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('not found');
+    });
+
+    it('returns metrics across all populated kinds when kind is omitted', async () => {
+      const metricSource = await createMetricSource();
+      await seedMetricNames();
+
+      const result = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: metricSource._id.toString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      const namesByKind: Record<string, string[]> = {};
+      for (const entry of output.metrics ?? []) {
+        if (!namesByKind[entry.kind]) namesByKind[entry.kind] = [];
+        namesByKind[entry.kind].push(entry.name);
+      }
+      expect(namesByKind.gauge ?? []).toEqual(
+        expect.arrayContaining([
+          'system.cpu.utilization',
+          'system.memory.usage',
+        ]),
+      );
+      expect(namesByKind.sum ?? []).toEqual(
+        expect.arrayContaining(['http.server.request.count']),
+      );
+      expect(namesByKind.histogram ?? []).toEqual(
+        expect.arrayContaining(['http.server.request.duration']),
+      );
+    });
+
+    it('restricts results to a single kind when kind is set', async () => {
+      const metricSource = await createMetricSource();
+      await seedMetricNames();
+
+      const result = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: metricSource._id.toString(),
+        kind: 'gauge',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      for (const entry of output.metrics ?? []) {
+        expect(entry.kind).toBe('gauge');
+      }
+    });
+
+    it('applies namePattern as a server-side ILIKE filter', async () => {
+      const metricSource = await createMetricSource();
+      await seedMetricNames();
+
+      const result = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: metricSource._id.toString(),
+        namePattern: 'system.cpu.%',
+      });
+      const output = JSON.parse(getFirstText(result));
+      for (const entry of output.metrics ?? []) {
+        expect(entry.name).toMatch(/^system\.cpu\./);
+      }
+    });
+
+    it('paginates via opaque nextCursor and resumes cleanly', async () => {
+      const metricSource = await createMetricSource();
+      await seedMetricNames();
+
+      // First page: only ask for one entry so the cap is forced even with
+      // a small seed; sanity-check the cursor round-trip.
+      const first = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: metricSource._id.toString(),
+        kind: 'gauge',
+        limit: 1,
+      });
+      const firstOutput = JSON.parse(getFirstText(first));
+      expect(firstOutput.metrics.length).toBe(1);
+      expect(typeof firstOutput.nextCursor).toBe('string');
+
+      const second = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: metricSource._id.toString(),
+        kind: 'gauge',
+        limit: 5,
+        cursor: firstOutput.nextCursor,
+      });
+      expect(second.isError).toBeFalsy();
+      const secondOutput = JSON.parse(getFirstText(second));
+      // The second page must not repeat the first page's last name.
+      const firstNames = new Set(
+        (firstOutput.metrics as { name: string }[]).map(m => m.name),
+      );
+      for (const entry of secondOutput.metrics as { name: string }[]) {
+        expect(firstNames.has(entry.name)).toBe(false);
+      }
+    });
+
+    it('rejects a malformed cursor with an actionable error', async () => {
+      const metricSource = await createMetricSource();
+      const result = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: metricSource._id.toString(),
+        cursor: 'not-base64!',
+      });
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toMatch(/Invalid cursor/);
+    });
+
+    it('returns an empty-result hint when nothing matches', async () => {
+      const metricSource = await createMetricSource();
+      const result = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: metricSource._id.toString(),
+        namePattern: 'this.name.does.not.exist.%',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.metrics).toEqual([]);
+      expect(output.hint).toMatch(/widening|removing|omitting/);
+    });
+  });
+
+  // ── clickstack_describe_metric ───────────────────────────────────────────
+
+  describe('clickstack_describe_metric', () => {
+    const createMetricSource = () =>
+      Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+          [MetricsDataType.Sum.toLowerCase()]: 'otel_metrics_sum',
+          [MetricsDataType.Histogram.toLowerCase()]: 'otel_metrics_histogram',
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection._id,
+        name: 'Metrics',
+      });
+
+    it('rejects non-metric sources', async () => {
+      const result = await callTool(client, 'clickstack_describe_metric', {
+        sourceId: traceSource._id.toString(),
+        metricName: 'system.cpu.utilization',
+      });
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('not a metric source');
+    });
+
+    it('returns an actionable empty payload when the metric is unknown', async () => {
+      const metricSource = await createMetricSource();
+      const result = await callTool(client, 'clickstack_describe_metric', {
+        sourceId: metricSource._id.toString(),
+        metricName: 'definitely.not.a.metric',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.kinds).toEqual([]);
+      expect(output.hint).toMatch(/No data found/);
+    });
+
+    it('auto-detects the kind and returns attribute keys for a gauge metric', async () => {
+      const metricSource = await createMetricSource();
+      const now = new Date();
+      await bulkInsertMetricsGauge([
+        {
+          MetricName: 'system.cpu.utilization',
+          ResourceAttributes: { 'service.name': 'auto-detect-svc' },
+          ServiceName: 'auto-detect-svc',
+          TimeUnix: now,
+          Value: 0.5,
+        },
+      ]);
+
+      const result = await callTool(client, 'clickstack_describe_metric', {
+        sourceId: metricSource._id.toString(),
+        metricName: 'system.cpu.utilization',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.metricName).toBe('system.cpu.utilization');
+      expect(output.kinds.length).toBe(1);
+      const detail = output.kinds[0];
+      expect(detail.kind).toBe('gauge');
+      expect(detail.usage).toContain('aggFn');
+      expect(detail.attributeKeys).toBeDefined();
+      // ResourceAttributes['service.name'] should land in the keys map
+      // under ResourceAttributes.
+      expect(detail.attributeKeys.ResourceAttributes ?? []).toEqual(
+        expect.arrayContaining(['service.name']),
+      );
+      // Attribute values should be sampled by default.
+      expect(detail.attributeValues).toBeDefined();
+      // nextSteps.query carries a worked example matching the detected kind.
+      expect(output.nextSteps.query).toContain('metricType: "gauge"');
+    });
+
+    it('skips value sampling when sampleValues is false', async () => {
+      const metricSource = await createMetricSource();
+      const now = new Date();
+      await bulkInsertMetricsGauge([
+        {
+          MetricName: 'system.cpu.utilization',
+          ResourceAttributes: { 'service.name': 'no-sample-svc' },
+          ServiceName: 'no-sample-svc',
+          TimeUnix: now,
+          Value: 0.5,
+        },
+      ]);
+
+      const result = await callTool(client, 'clickstack_describe_metric', {
+        sourceId: metricSource._id.toString(),
+        metricName: 'system.cpu.utilization',
+        sampleValues: false,
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.kinds[0].attributeValues).toBeUndefined();
+    });
+
+    it('returns the correct usage example for a sum metric', async () => {
+      const metricSource = await createMetricSource();
+      const now = new Date();
+      await bulkInsertMetricsSum([
+        {
+          MetricName: 'http.server.request.count',
+          AggregationTemporality: 1,
+          IsMonotonic: true,
+          ResourceAttributes: { 'service.name': 'sum-svc' },
+          ServiceName: 'sum-svc',
+          TimeUnix: now,
+          Value: 42,
+        },
+      ]);
+
+      const result = await callTool(client, 'clickstack_describe_metric', {
+        sourceId: metricSource._id.toString(),
+        metricName: 'http.server.request.count',
+        kind: 'sum',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.kinds[0].kind).toBe('sum');
+      expect(output.kinds[0].usage).toContain('increase');
+      expect(output.nextSteps.query).toContain('"increase"');
+    });
+
+    it('returns the quantile + level example for a histogram metric', async () => {
+      const metricSource = await createMetricSource();
+      const now = new Date();
+      await bulkInsertMetricsHistogram([
+        {
+          MetricName: 'http.server.request.duration',
+          ResourceAttributes: { 'service.name': 'hist-svc' },
+          TimeUnix: now,
+          BucketCounts: [1, 2, 3],
+          ExplicitBounds: [10, 100, 1000],
+          AggregationTemporality: 1,
+        },
+      ]);
+
+      const result = await callTool(client, 'clickstack_describe_metric', {
+        sourceId: metricSource._id.toString(),
+        metricName: 'http.server.request.duration',
+        kind: 'histogram',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.kinds[0].kind).toBe('histogram');
+      expect(output.kinds[0].usage).toContain('quantile');
+      expect(output.nextSteps.query).toContain('"quantile"');
+      expect(output.nextSteps.query).toContain('level: 0.95');
+    });
+
+    it('rejects explicit kind when the source has no table for that kind', async () => {
+      // Source with only gauge populated.
+      const gaugeOnly = await Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection._id,
+        name: 'GaugeOnly',
+      });
+      const result = await callTool(client, 'clickstack_describe_metric', {
+        sourceId: gaugeOnly._id.toString(),
+        metricName: 'whatever',
+        kind: 'sum',
+      });
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toMatch(/no "sum" metric table/);
     });
   });
 });
