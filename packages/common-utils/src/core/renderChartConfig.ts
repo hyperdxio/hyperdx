@@ -1261,8 +1261,11 @@ async function renderSeriesLimitCte(
       col => chSql`${{ UNSAFE_RAW_SQL: col }}`,
     );
   } else {
+    // Strip any alias: these columns go inside tuple(...) and `IS NOT NULL`,
+    // where an `AS "alias"` suffix would be a syntax error (unlike the outer
+    // GROUP BY, where renderSelectList's alias output is valid).
     const rendered = await renderSelectList(
-      chartConfig.groupBy,
+      chartConfig.groupBy.map(col => ({ ...col, alias: undefined })),
       chartConfig,
       metadata,
     );

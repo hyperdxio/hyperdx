@@ -553,6 +553,34 @@ describe('renderChartConfig', () => {
       expect(sql).toMatch(/tuple\(\s*ServiceName\s*,\s*TraceId\s*\)/);
     });
 
+    it('strips group-by aliases inside the series-limit CTE tuple and null filter', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...baseLogsConfig,
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: 'ServiceName',
+                alias: 'svc',
+              },
+            ],
+            seriesLimit: 60,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain('__hdx_series_limit');
+      // tuple() and `IS NOT NULL` must use the bare expression, not `ServiceName
+      // AS "svc"` (which would be invalid SQL there).
+      expect(sql).toMatch(
+        /tuple\(ServiceName\)\s+IN\s*\(\s*SELECT\s+`group`\s+FROM\s+`__hdx_series_limit`\)/,
+      );
+      expect(sql).not.toContain('tuple(ServiceName AS');
+      expect(sql).not.toMatch(/ServiceName\s+AS\s+"svc"\s+IS\s+NOT\s+NULL/);
+    });
+
     it('splits a comma-separated string group-by into per-column null checks', async () => {
       const sql = parameterizedQueryToSql(
         await renderChartConfig(
