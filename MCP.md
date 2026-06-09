@@ -109,9 +109,11 @@ with:
 | Tool                          | Description                                                                                  |
 | ----------------------------- | -------------------------------------------------------------------------------------------- |
 | `clickstack_list_sources`        | List all data sources and connections as a lightweight catalog (IDs, names, kinds)            |
-| `clickstack_describe_source`     | Full column schema, attribute keys, and sampled low-cardinality values for a single source    |
-| `clickstack_timeseries`          | Plot metrics over time as a line or stacked bar chart                                        |
-| `clickstack_table`               | Compute aggregated metrics as a table, single number, or pie chart                           |
+| `clickstack_describe_source`     | Full column schema, attribute keys, and sampled low-cardinality values for a single source; for metric sources also returns a per-kind metric-name sample |
+| `clickstack_list_metrics`        | Paginated catalog of metric names on a metric source with optional kind / namePattern / time-window filters |
+| `clickstack_describe_metric`     | Per-metric drill-down: kind(s), unit, description, attribute keys per map column, and sampled values |
+| `clickstack_timeseries`          | Plot metrics over time as a line or stacked bar chart (works on log, trace, and metric sources)        |
+| `clickstack_table`               | Compute aggregated metrics as a table, single number, or pie chart (works on log, trace, and metric sources) |
 | `clickstack_search`              | Browse individual log, event, or trace rows                                                  |
 | `clickstack_event_patterns`      | Discover the most common log messages and event patterns using Drain clustering               |
 | `clickstack_event_deltas`        | Compare two row groups and rank properties by how their value distributions differ            |
@@ -127,3 +129,43 @@ with:
 | `clickstack_trace_waterfall`     | Fetch all spans in a single trace as a parent/child waterfall tree with optional correlated logs |
 | `clickstack_trace_top_time_consuming_operations` | Aggregate breakdown of child operations by cumulative time across matching parent traces |
 | `clickstack_get_webhook`         | List available webhook destinations for use as alert notification channels                    |
+
+### Metric Sources
+
+`clickstack_timeseries`, `clickstack_table`, and the dashboard builder tile
+tools accept metric sources transparently. Each `select` item on a metric
+query must set `metricType` (`"gauge"`, `"sum"`, or `"histogram"`) and
+`metricName` (the OTel metric name, e.g. `system.cpu.utilization`).
+`valueExpression` defaults to `"Value"` when omitted, so a typical metric
+series looks like:
+
+```jsonc
+{ "aggFn": "avg", "metricType": "gauge", "metricName": "system.cpu.utilization" }
+```
+
+Per-kind aggregation guidance:
+
+- **Gauge**: `avg`, `last_value`, `min`, or `max`. Set `"isDelta": true` for
+  Prometheus-style delta over each bucket.
+- **Sum (counter)**: `"increase"` returns the per-bucket counter increase
+  (reset-aware), or `sum` / `avg` on the computed rate. `increase` combined
+  with `groupBy` is capped at the top 20 groups by the renderer; the tool
+  emits a neutral hint when the cap may apply.
+- **Histogram**: `"quantile"` with `level` ∈ {0.5, 0.9, 0.95, 0.99} for
+  percentiles, or `"count"` for the total bucket count.
+
+`summary` and `"exponential histogram"` metric kinds are not yet supported
+by the query renderer.
+
+Discovery workflow for metrics:
+
+1. `clickstack_list_sources` to find the metric source ID and its
+   `metricTables` map.
+2. `clickstack_describe_source` to see columns, attribute keys, and a
+   per-kind metric-name sample.
+3. `clickstack_list_metrics` for paginated catalog access with optional
+   kind / namePattern / time-window filters; pass `nextCursor` unchanged
+   for the next page.
+4. `clickstack_describe_metric` to drill into a specific metric and
+   discover its attribute keys + sampled values before authoring queries.
+5. `clickstack_timeseries` / `clickstack_table` to chart the metric.
