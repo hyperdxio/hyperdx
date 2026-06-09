@@ -608,6 +608,23 @@ describe('renderChartConfig', () => {
         /tuple\(\s*LogAttributes\[['"]agentToServer\.capabilities['"]\]\s*,\s*ServiceName\s*\)\s+IN\s*\(\s*SELECT\s+`group`\s+FROM\s+`__hdx_series_limit`\)/,
       );
     });
+
+    it('does not emit a series-limit CTE for a metric source', async () => {
+      // Metric configs are rewritten to query a Bucketed CTE (no real source
+      // table to re-scan), so the cap is gated off even with seriesLimit set.
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...gaugeConfiguration,
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            seriesLimit: 60,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).not.toContain('__hdx_series_limit');
+    });
   });
 
   it('should throw when aggFn=increase is used on a non-Sum metric', async () => {

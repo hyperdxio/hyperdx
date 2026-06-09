@@ -328,4 +328,142 @@ describe('queryChartConfig Integration Tests', () => {
       });
     }
   });
+
+  // The series cap filters NULL group components out of the ranking. Otherwise
+  // a NULL-keyed group could take a top-N slot it can never fill, because the
+  // outer `tuple(...) IN (...)` is NULL-unsafe (NULL never matches).
+  it('excludes NULL group components from the series cap', async () => {
+    const TABLE = 'logs_nullable_gb_int_test';
+    await client.command({
+      query: `CREATE OR REPLACE TABLE ${DATABASE}.${TABLE} (
+        Timestamp DateTime CODEC(ZSTD(1)),
+        Region Nullable(String) CODEC(ZSTD(1))
+      ) ENGINE = MergeTree ORDER BY (Timestamp)`,
+    });
+
+    const ts = '2025-04-15 00:10:00';
+    const rows = [
+      // 'us' has 5 rows; the NULL-region group has 10 (the largest by count).
+      ...Array.from({ length: 5 }, () => ({ Timestamp: ts, Region: 'us' })),
+      ...Array.from({ length: 10 }, () => ({ Timestamp: ts, Region: null })),
+    ];
+    await client.insert({
+      table: `${DATABASE}.${TABLE}`,
+      values: rows,
+      format: 'JSONEachRow',
+    });
+
+    try {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        from: { databaseName: DATABASE, tableName: TABLE },
+        select: [{ aggFn: 'count', aggCondition: '', valueExpression: '' }],
+        groupBy: [{ aggCondition: '', valueExpression: 'Region' }],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [
+          new Date('2025-04-15T00:00:00Z'),
+          new Date('2025-04-15T01:00:00Z'),
+        ],
+        granularity: '5 minute',
+        // Only one slot: without the NULL filter the (larger) NULL group would
+        // claim it and then match nothing, yielding an empty chart.
+        seriesLimit: 1,
+      };
+
+      const result = await hdxClient.queryChartConfig({
+        config,
+        metadata,
+        querySettings: undefined,
+      });
+
+      const regions = (result.data as Array<{ Region: string | null }>).map(
+        r => r.Region,
+      );
+      // 'us' (top non-null) takes the slot; the NULL group is excluded.
+      expect(new Set(regions)).toEqual(new Set(['us']));
+      expect(regions).not.toContain(null);
+    } finally {
+      await client.command({
+        query: `DROP TABLE IF EXISTS ${DATABASE}.${TABLE}`,
+      });
+    }
+  });
+
+  // Multi-column *array* group-by where one column carries an alias. Proves the
+  // 2-column tuple()/IN executes and that the alias is stripped inside the CTE
+  // (a leaked `Region AS "reg"` inside tuple()/IS NOT NULL is a CH syntax error)
+  // while still being preserved as the output column name.
+  it('handles a multi-column array group-by with an alias under seriesLimit', async () => {
+    const TABLE = 'logs_array_alias_gb_int_test';
+    await client.command({
+      query: `CREATE OR REPLACE TABLE ${DATABASE}.${TABLE} (
+        Timestamp DateTime CODEC(ZSTD(1)),
+        Region String CODEC(ZSTD(1)),
+        ServiceName String CODEC(ZSTD(1)),
+        Value Float64 CODEC(ZSTD(1))
+      ) ENGINE = MergeTree ORDER BY (Timestamp)`,
+    });
+
+    const ts = '2025-04-15 00:10:00';
+    const rows = [
+      { Timestamp: ts, Region: 'us', ServiceName: 'svc1', Value: 10 },
+      { Timestamp: ts, Region: 'eu', ServiceName: 'svc2', Value: 5 },
+      { Timestamp: ts, Region: 'ap', ServiceName: 'svc3', Value: 1 },
+    ];
+    await client.insert({
+      table: `${DATABASE}.${TABLE}`,
+      values: rows,
+      format: 'JSONEachRow',
+    });
+
+    try {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        from: { databaseName: DATABASE, tableName: TABLE },
+        select: [
+          {
+            aggFn: 'max',
+            aggCondition: '',
+            aggConditionLanguage: 'sql',
+            valueExpression: 'Value',
+          },
+        ],
+        groupBy: [
+          { aggCondition: '', valueExpression: 'Region', alias: 'reg' },
+          { aggCondition: '', valueExpression: 'ServiceName' },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [
+          new Date('2025-04-15T00:00:00Z'),
+          new Date('2025-04-15T01:00:00Z'),
+        ],
+        granularity: '5 minute',
+        // Top 2 by max(Value): (us,svc1)=10 and (eu,svc2)=5; (ap,svc3)=1 dropped.
+        seriesLimit: 2,
+      };
+
+      const result = await hdxClient.queryChartConfig({
+        config,
+        metadata,
+        querySettings: undefined,
+      });
+
+      const services = new Set(
+        (result.data as Array<{ ServiceName: string }>).map(r => r.ServiceName),
+      );
+      expect(services).toEqual(new Set(['svc1', 'svc2']));
+      // The alias survives in the output even though it is stripped in the CTE.
+      expect(result.meta?.some(m => m.name === 'reg')).toBe(true);
+    } finally {
+      await client.command({
+        query: `DROP TABLE IF EXISTS ${DATABASE}.${TABLE}`,
+      });
+    }
+  });
 });
