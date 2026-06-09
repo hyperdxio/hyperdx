@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 import {
+  annotateIncreaseTopNHint,
   buildTile,
   mergeWhereIntoSelectItems,
   parseTimeRange,
@@ -150,6 +151,10 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
           // leave result unmodified
         }
       }
+
+      // Surface the increase+groupBy top-N cap so the agent knows results
+      // may be truncated to 20 groups.
+      annotateIncreaseTopNHint(result, select, input.groupBy);
 
       // Detect single-bucket collapse: when a timeseries query returns only
       // 1 row, the data likely collapsed into a single time bucket. Add a
