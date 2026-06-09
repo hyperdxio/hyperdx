@@ -37,6 +37,7 @@ import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
+import { DEFAULT_SERIES_LIMIT } from './defaults';
 import { getMetricNameSql } from './otelSemanticConventions';
 import { AggFn, TableChartSeries, TimeChartSeries } from './types';
 import { NumberFormat } from './types';
@@ -103,16 +104,23 @@ function getTimeChartDateRange(
     : getAlignedDateRange(dateRange, granularity);
 }
 
-// Max number of series on a time chart. Used as both the render-time line cap
-// (re-exported as `HARD_LINES_LIMIT`) and the query-time `seriesLimit` set in
-// `convertToTimeChartConfig` below. Keep them equal so we never fetch series
-// that can't be drawn — high-cardinality group-bys would otherwise return
-// hundreds of thousands of series and OOM the tab.
-export const MAX_TIME_CHART_SERIES = 60;
+// Default max number of series on a time chart. Used as both the render-time
+// line cap (re-exported as `HARD_LINES_LIMIT`) and the default query-time
+// `seriesLimit` set in `convertToTimeChartConfig` below. Keep them equal so we
+// never fetch series that can't be drawn — high-cardinality group-bys would
+// otherwise return hundreds of thousands of series and OOM the tab. Teams can
+// override the query-time cap via the `seriesLimit` team setting.
+export const MAX_TIME_CHART_SERIES = DEFAULT_SERIES_LIMIT;
 
 export function convertToTimeChartConfig(
   config: ChartConfigWithDateRange,
+  // Optional per-team override for the query-time series cap. Falls back to the
+  // default when unset; floored at 1 so a stray non-positive value can't emit
+  // LIMIT 0. No upper bound — teams may intentionally render many series.
+  teamSeriesLimit?: number,
 ): ChartConfigWithDateRange {
+  const seriesLimit = Math.max(1, teamSeriesLimit ?? MAX_TIME_CHART_SERIES);
+
   const granularity = getTimeChartGranularity(
     config.granularity,
     config.dateRange,
@@ -144,7 +152,7 @@ export function convertToTimeChartConfig(
         // tile can't pull (and zero-fill) hundreds of thousands of series into
         // memory. Only applies to group-by + granularity queries; ignored
         // otherwise. See renderSeriesLimitCte in common-utils.
-        seriesLimit: MAX_TIME_CHART_SERIES,
+        seriesLimit,
       }
     : {
         ...config,

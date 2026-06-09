@@ -24,6 +24,7 @@ import {
   DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS,
   DEFAULT_QUERY_TIMEOUT,
   DEFAULT_SEARCH_ROW_LIMIT,
+  DEFAULT_SERIES_LIMIT,
 } from '@/defaults';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
@@ -342,6 +343,16 @@ export default function TeamQueryConfigSection() {
             tooltip={`${brandName} sends windowed queries to ClickHouse in series. This setting parallelizes those queries when it makes sense to. This may cause increased peak load on ClickHouse`}
             type="boolean"
             displayValue={value => (value ? 'Enabled' : 'Disabled')}
+          />
+          <ClickhouseSettingForm
+            settingKey="seriesLimit"
+            label="Time Chart Series Limit"
+            tooltip="Maximum number of series fetched per time chart. Caps memory usage on high-cardinality group-bys; the top-N series (by max value in any bucket) are returned. Only the top 60 render at once; the rest are available in the series selector."
+            type="number"
+            defaultValue={DEFAULT_SERIES_LIMIT}
+            placeholder={`default = ${DEFAULT_SERIES_LIMIT}`}
+            min={1}
+            displayValue={displayValueWithUnit('series')}
           />
         </Stack>
       </Card>
