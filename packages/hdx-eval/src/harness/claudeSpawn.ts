@@ -139,35 +139,38 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
     escalationTimer.unref();
   }, opts.timeoutMs);
 
-  const exitInfo = await new Promise<{
-    code: number | null;
-    signal: NodeJS.Signals | null;
-  }>((resolve, reject) => {
-    proc.on('error', err => {
-      clearTimeout(timeout);
-      if (escalationTimer) clearTimeout(escalationTimer);
-      reject(err);
-    });
-    proc.on('exit', (code, signal) => resolve({ code, signal }));
-  });
-  clearTimeout(timeout);
-  if (escalationTimer) clearTimeout(escalationTimer);
-  await stdoutDone;
-
-  // Clean up the temp directory to avoid leaking MCP configs with API keys.
   try {
-    rmSync(tempdir, { recursive: true, force: true });
-  } catch {
-    // Best effort — don't fail the run if cleanup fails.
-  }
+    const exitInfo = await new Promise<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+    }>((resolve, reject) => {
+      proc.on('error', err => {
+        clearTimeout(timeout);
+        if (escalationTimer) clearTimeout(escalationTimer);
+        reject(err);
+      });
+      proc.on('exit', (code, signal) => resolve({ code, signal }));
+    });
+    clearTimeout(timeout);
+    if (escalationTimer) clearTimeout(escalationTimer);
+    await stdoutDone;
 
-  return {
-    events,
-    stderr,
-    exitCode: exitInfo.code,
-    signal: exitInfo.signal,
-    timedOut,
-    argv,
-    tempdir,
-  };
+    return {
+      events,
+      stderr,
+      exitCode: exitInfo.code,
+      signal: exitInfo.signal,
+      timedOut,
+      argv,
+      tempdir,
+    };
+  } finally {
+    // Clean up the temp directory to avoid leaking MCP configs with API keys.
+    // This runs even if spawn() rejects (e.g. ENOENT when claude is not on PATH).
+    try {
+      rmSync(tempdir, { recursive: true, force: true });
+    } catch {
+      // Best effort — don't fail the run if cleanup fails.
+    }
+  }
 }

@@ -319,11 +319,7 @@ program
     'MCP to use as baseline in reports (default: first MCP in list)',
   )
   .option('--runs <n>', 'Number of runs per (scenario,MCP) cell', '3')
-  .option(
-    '--model <id>',
-    'Model ID to pass to Claude Code',
-    'claude-sonnet-4-6',
-  )
+  .option('--model <id>', 'Model ID to pass to Claude Code', 'claude-opus-4-6')
   // Lower than the previous 25 — tightens the budget so sloppy agents that
   // make 20+ exploratory calls can't paper over correctness with volume.
   // Override with --max-turns if a specific scenario needs more.
