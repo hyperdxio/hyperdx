@@ -1248,14 +1248,24 @@ async function renderSeriesLimitCte(
     return undefined;
   }
 
-  const groupByColsRendered = await renderSelectList(
-    chartConfig.groupBy,
-    chartConfig,
-    metadata,
-  );
-  const groupByCols = Array.isArray(groupByColsRendered)
-    ? groupByColsRendered
-    : [groupByColsRendered];
+  // Render one ChSql per group-by column. `groupBy` may be an array of columns
+  // or a single comma-separated string; the per-column NULL/empty filter below
+  // needs the columns split out (else it would emit toString(col1, col2) and a
+  // malformed NULL check). splitAndTrimWithBracket respects []/()/quotes so it
+  // won't split inside Map['a,b'] or f(a, b).
+  let groupByCols: ChSql[];
+  if (typeof chartConfig.groupBy === 'string') {
+    groupByCols = splitAndTrimWithBracket(chartConfig.groupBy).map(
+      col => chSql`${{ UNSAFE_RAW_SQL: col }}`,
+    );
+  } else {
+    const rendered = await renderSelectList(
+      chartConfig.groupBy,
+      chartConfig,
+      metadata,
+    );
+    groupByCols = Array.isArray(rendered) ? rendered : [rendered];
+  }
   const groupByTuple = concatChSql(',', groupByCols);
 
   // Rank by the chart's first aggregate. Strip its alias so we can apply our

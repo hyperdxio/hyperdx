@@ -552,6 +552,33 @@ describe('renderChartConfig', () => {
       expect(sql).toContain('__hdx_series_limit');
       expect(sql).toMatch(/tuple\(\s*ServiceName\s*,\s*TraceId\s*\)/);
     });
+
+    it('splits a comma-separated string group-by into per-column null checks', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...baseLogsConfig,
+            groupBy: "LogAttributes['agentToServer.capabilities'],ServiceName",
+            seriesLimit: 60,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain('__hdx_series_limit');
+      // Each column gets its own NULL/empty check (split on the top-level comma,
+      // not the comma inside Map['...']).
+      expect(sql).toMatch(
+        /toString\(LogAttributes\[['"]agentToServer\.capabilities['"]\]\)\s*!=\s*''/,
+      );
+      expect(sql).toMatch(/toString\(ServiceName\)\s*!=\s*''/);
+      // Regression: must NOT emit a two-argument toString of both columns.
+      expect(sql).not.toMatch(/toString\([^)]*,[^)]*ServiceName[^)]*\)/);
+      // Both columns are packed into the tuple for the IN predicate.
+      expect(sql).toMatch(
+        /tuple\(\s*LogAttributes\[['"]agentToServer\.capabilities['"]\]\s*,\s*ServiceName\s*\)\s+IN\s*\(\s*SELECT\s+`group`\s+FROM\s+`__hdx_series_limit`\)/,
+      );
+    });
   });
 
   it('should throw when aggFn=increase is used on a non-Sum metric', async () => {

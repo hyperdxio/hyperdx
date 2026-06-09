@@ -247,4 +247,83 @@ describe('queryChartConfig Integration Tests', () => {
       });
     }
   });
+
+  // Regression: a comma-separated *string* group-by (including a Map access with
+  // a comma inside the brackets) must split into per-column NULL/empty checks
+  // rather than emitting an invalid two-argument toString().
+  it('handles a multi-column string group-by (with Map access) under seriesLimit', async () => {
+    const TABLE = 'logs_string_gb_int_test';
+    await client.command({
+      query: `CREATE OR REPLACE TABLE ${DATABASE}.${TABLE} (
+        Timestamp DateTime CODEC(ZSTD(1)),
+        LogAttributes Map(String, String) CODEC(ZSTD(1)),
+        ServiceName String CODEC(ZSTD(1))
+      ) ENGINE = MergeTree ORDER BY (ServiceName, Timestamp)`,
+    });
+
+    const ts = '2025-04-15 00:10:00';
+    const rows = [
+      // capA/svc1 (5 rows), capB/svc2 (3 rows) — the two non-empty series.
+      ...Array.from({ length: 5 }, () => ({
+        Timestamp: ts,
+        LogAttributes: { 'agentToServer.capabilities': 'capA' },
+        ServiceName: 'svc1',
+      })),
+      ...Array.from({ length: 3 }, () => ({
+        Timestamp: ts,
+        LogAttributes: { 'agentToServer.capabilities': 'capB' },
+        ServiceName: 'svc2',
+      })),
+      // Missing capability key (Map access -> '') for svc3 — largest by count,
+      // but must be excluded by the per-column empty filter.
+      ...Array.from({ length: 10 }, () => ({
+        Timestamp: ts,
+        LogAttributes: {},
+        ServiceName: 'svc3',
+      })),
+    ];
+    await client.insert({
+      table: `${DATABASE}.${TABLE}`,
+      values: rows,
+      format: 'JSONEachRow',
+    });
+
+    try {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        from: { databaseName: DATABASE, tableName: TABLE },
+        select: [{ aggFn: 'count', aggCondition: '', valueExpression: '' }],
+        // Comma-separated string group-by — the shape that previously errored.
+        groupBy: "LogAttributes['agentToServer.capabilities'],ServiceName",
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [
+          new Date('2025-04-15T00:00:00Z'),
+          new Date('2025-04-15T01:00:00Z'),
+        ],
+        granularity: '5 minute',
+        seriesLimit: 5,
+      };
+
+      // The query must execute without a ClickHouse error (the original bug).
+      const result = await hdxClient.queryChartConfig({
+        config,
+        metadata,
+        querySettings: undefined,
+      });
+
+      const services = new Set(
+        (result.data as Array<{ ServiceName: string }>).map(r => r.ServiceName),
+      );
+      // svc3 only appears with an empty capability, so it is filtered out of the
+      // ranking; only the two real series remain.
+      expect([...services].sort()).toEqual(['svc1', 'svc2']);
+    } finally {
+      await client.command({
+        query: `DROP TABLE IF EXISTS ${DATABASE}.${TABLE}`,
+      });
+    }
+  });
 });
