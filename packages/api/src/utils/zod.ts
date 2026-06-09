@@ -4,12 +4,12 @@ import {
   alertNoteSchema,
   AlertThresholdType,
   ChartPaletteTokenSchema,
-  ColorConditionSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_TILES,
   DashboardFilterSchema,
   MetricsDataType,
   NumberFormatSchema,
+  NumberTileColorConditionSchema,
   OnClickDashboardSchema,
   OnClickSearchSchema,
   scheduleStartAtSchema,
@@ -328,11 +328,14 @@ const externalDashboardNumberChartConfigSchema = z.object({
   // editor gates to number tiles (`ChartDisplaySettingsDrawer`:
   // `showTileColor = displayType === DisplayType.Number`). `color` is a
   // hue-named palette token; `colorRules` are ordered conditional rules
-  // (last match wins), capped at 10 to match the editor. Both schemas are
-  // imported from common-utils so the external surface cannot drift from
-  // what the UI persists.
+  // (last match wins), capped at 10 to match the editor. `colorRules` uses
+  // `NumberTileColorConditionSchema` (numeric and equality operators only),
+  // not the full `ColorConditionSchema`, so the API cannot accept the
+  // string-match or regex rules the number-tile editor never emits. Both
+  // schemas are imported from common-utils so the external surface cannot
+  // drift from what the UI persists.
   color: ChartPaletteTokenSchema.optional(),
-  colorRules: z.array(ColorConditionSchema).max(10).optional(),
+  colorRules: z.array(NumberTileColorConditionSchema).max(10).optional(),
 });
 
 const externalDashboardPieChartConfigSchema = z.object({

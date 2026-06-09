@@ -144,7 +144,9 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           example: "gt"
  *         value:
  *           type: number
- *           description: Numeric bound the displayed value is compared against.
+ *           description: >
+ *             Numeric bound the displayed value is compared against. Only
+ *             finite numbers are accepted (Infinity and NaN are rejected).
  *           example: 100
  *         color:
  *           $ref: '#/components/schemas/ChartPaletteToken'
@@ -173,7 +175,8 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           maxItems: 2
  *           items:
  *             type: number
- *           description: Inclusive [min, max] range.
+ *           description: >
+ *             Inclusive [min, max] range. Both bounds must be finite numbers.
  *           example: [100, 500]
  *         color:
  *           $ref: '#/components/schemas/ChartPaletteToken'
@@ -201,7 +204,9 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             - type: number
  *             - type: string
  *               maxLength: 200
- *           description: Number, or string up to 200 characters, to compare for equality.
+ *           description: >
+ *             A finite number, or a string up to 200 characters, to compare
+ *             for equality.
  *           example: "OK"
  *         color:
  *           $ref: '#/components/schemas/ChartPaletteToken'
@@ -211,81 +216,27 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           maxLength: 40
  *           description: Optional label describing the rule.
  *           example: "Healthy"
- *     StringMatchColorCondition:
- *       type: object
- *       required:
- *         - operator
- *         - value
- *         - color
- *       description: >
- *         Color rule matching when the displayed value contains, starts with,
- *         or ends with a substring. Valid in the schema for a future
- *         table-tile editor; the number-tile editor does not surface these
- *         operators today.
- *       properties:
- *         operator:
- *           type: string
- *           enum: [contains, startsWith, endsWith]
- *           description: Substring comparison operator.
- *           example: "contains"
- *         value:
- *           type: string
- *           minLength: 1
- *           maxLength: 200
- *           description: Substring to match against the displayed value.
- *           example: "error"
- *         color:
- *           $ref: '#/components/schemas/ChartPaletteToken'
- *           description: Color applied when the rule matches.
- *         label:
- *           type: string
- *           maxLength: 40
- *           description: Optional label describing the rule.
- *           example: "Error"
- *     RegexColorCondition:
- *       type: object
- *       required:
- *         - operator
- *         - value
- *         - color
- *       description: >
- *         Color rule matching when the displayed value matches a regular
- *         expression. Valid in the schema for a future table-tile editor;
- *         the number-tile editor does not surface this operator today.
- *       properties:
- *         operator:
- *           type: string
- *           enum: [regex]
- *           description: Regular expression operator.
- *           example: "regex"
- *         value:
- *           type: string
- *           minLength: 1
- *           maxLength: 500
- *           description: A valid regular expression pattern.
- *           example: "^5[0-9][0-9]$"
- *         color:
- *           $ref: '#/components/schemas/ChartPaletteToken'
- *           description: Color applied when the rule matches.
- *         label:
- *           type: string
- *           maxLength: 40
- *           description: Optional label describing the rule.
- *           example: "5xx"
- *     ColorCondition:
+ *     NumberTileColorCondition:
  *       description: >
  *         A single conditional color rule for a number tile. Rules are
  *         evaluated in order and the last matching rule wins. When no rule
  *         matches, the static color applies, then the default text color.
- *         The number-tile editor surfaces the numeric and equality
- *         operators; the string operators are reserved for a future
- *         table-tile editor.
+ *         The number-tile editor surfaces numeric and equality operators
+ *         only.
  *       oneOf:
  *         - $ref: '#/components/schemas/NumericColorCondition'
  *         - $ref: '#/components/schemas/BetweenColorCondition'
  *         - $ref: '#/components/schemas/EqualityColorCondition'
- *         - $ref: '#/components/schemas/StringMatchColorCondition'
- *         - $ref: '#/components/schemas/RegexColorCondition'
+ *       discriminator:
+ *         propertyName: operator
+ *         mapping:
+ *           gt: '#/components/schemas/NumericColorCondition'
+ *           gte: '#/components/schemas/NumericColorCondition'
+ *           lt: '#/components/schemas/NumericColorCondition'
+ *           lte: '#/components/schemas/NumericColorCondition'
+ *           between: '#/components/schemas/BetweenColorCondition'
+ *           eq: '#/components/schemas/EqualityColorCondition'
+ *           neq: '#/components/schemas/EqualityColorCondition'
  *
  *     TimeChartSeries:
  *       type: object
@@ -803,7 +754,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             value (last match wins). Falls back to color, then the default
  *             text color when no rule matches.
  *           items:
- *             $ref: '#/components/schemas/ColorCondition'
+ *             $ref: '#/components/schemas/NumberTileColorCondition'
  *
  *     PieBuilderChartConfig:
  *       type: object

@@ -25,6 +25,8 @@ import {
   isOnClickDashboardById,
   isOnClickSearchById,
   isTraceSource,
+  NumberTileColorCondition,
+  NumberTileColorConditionSchema,
   RawSqlSavedChartConfig,
   resolveChartPaletteToken,
   SavedChartConfig,
@@ -160,14 +162,26 @@ const convertToExternalSelectItem = (
 // resolved (reachable only via a direct DB write, since the input schema
 // validates rule colors) is dropped, mirroring how the static `color`
 // field omits an unresolvable token, so the response always stays within
-// the palette-token enum instead of leaking an unknown string.
+// the palette-token enum instead of leaking an unknown string. When no
+// rule survives (or the stored array is empty) the field is omitted
+// entirely rather than emitted as `[]`, matching the static `color` omit.
 const toExternalColorRules = (
   colorRules: ColorCondition[] | undefined,
-): ColorCondition[] | undefined =>
-  colorRules?.flatMap((rule): ColorCondition[] => {
+): NumberTileColorCondition[] | undefined => {
+  if (!colorRules) return undefined;
+  const resolved = colorRules.flatMap((rule): NumberTileColorCondition[] => {
     const color = resolveChartPaletteToken(rule.color);
-    return color ? [{ ...rule, color }] : [];
+    if (!color) return [];
+    // Re-validate against the number-tile subset so the response stays
+    // within the documented operator set: a string-match or regex rule
+    // (reachable only via a direct DB write, since neither the editor nor
+    // the input schema produces one on a number tile) is dropped, just
+    // like an unresolvable color token.
+    const parsed = NumberTileColorConditionSchema.safeParse({ ...rule, color });
+    return parsed.success ? [parsed.data] : [];
   });
+  return resolved.length > 0 ? resolved : undefined;
+};
 
 const convertToExternalTileChartConfig = (
   config: SavedChartConfig,

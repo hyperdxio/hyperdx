@@ -1028,60 +1028,94 @@ export const ChartPaletteTokenSchema = z.enum(CHART_PALETTE_TOKENS);
  * Lives in common-utils so both the app and a future external-API parity
  * PR can import it.
  */
+// Numeric ordered operators (gt | gte | lt | lte).
+const numericOrderedColorCondition = z.object({
+  operator: z.enum(['gt', 'gte', 'lt', 'lte']),
+  value: z.number().finite(),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
+const betweenColorCondition = z.object({
+  operator: z.literal('between'),
+  value: z.tuple([z.number().finite(), z.number().finite()]),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
+// Equality against a number or a string value.
+const equalityColorCondition = z.object({
+  operator: z.enum(['eq', 'neq']),
+  value: z.union([z.number().finite(), z.string().max(200)]),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
+// String-match operators, kept at the schema level only for a future
+// table-tile slice (see the doc comment above). The number-tile editor
+// never emits these.
+const stringMatchColorCondition = z.object({
+  operator: z.enum(['contains', 'startsWith', 'endsWith']),
+  value: z.string().min(1).max(200),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
+const regexColorCondition = z.object({
+  operator: z.literal('regex'),
+  value: z
+    .string()
+    .min(1)
+    .max(500)
+    .refine(
+      v => {
+        try {
+          new RegExp(v);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { message: 'Invalid regex pattern' },
+    ),
+  color: ChartPaletteTokenSchema,
+  label: z.string().max(40).optional(),
+});
+
 export const ColorConditionSchema = z.discriminatedUnion('operator', [
-  // Numeric ordered operators
-  z.object({
-    operator: z.enum(['gt', 'gte', 'lt', 'lte']),
-    value: z.number().finite(),
-    color: ChartPaletteTokenSchema,
-    label: z.string().max(40).optional(),
-  }),
-  z.object({
-    operator: z.literal('between'),
-    value: z.tuple([z.number().finite(), z.number().finite()]),
-    color: ChartPaletteTokenSchema,
-    label: z.string().max(40).optional(),
-  }),
-  // Equality (number OR string)
-  z.object({
-    operator: z.enum(['eq', 'neq']),
-    value: z.union([z.number().finite(), z.string().max(200)]),
-    color: ChartPaletteTokenSchema,
-    label: z.string().max(40).optional(),
-  }),
-  // String operators (allowed at schema level for future table-tile reuse)
-  z.object({
-    operator: z.enum(['contains', 'startsWith', 'endsWith']),
-    value: z.string().min(1).max(200),
-    color: ChartPaletteTokenSchema,
-    label: z.string().max(40).optional(),
-  }),
-  z.object({
-    operator: z.literal('regex'),
-    value: z
-      .string()
-      .min(1)
-      .max(500)
-      .refine(
-        v => {
-          try {
-            new RegExp(v);
-            return true;
-          } catch {
-            return false;
-          }
-        },
-        { message: 'Invalid regex pattern' },
-      ),
-    color: ChartPaletteTokenSchema,
-    label: z.string().max(40).optional(),
-  }),
+  numericOrderedColorCondition,
+  betweenColorCondition,
+  equalityColorCondition,
+  stringMatchColorCondition,
+  regexColorCondition,
 ]);
 
 export type ColorCondition = z.infer<typeof ColorConditionSchema>;
 
+/**
+ * The subset of color-rule operators the number-tile editor actually
+ * emits (`ColorRulesEditor.tsx` OPERATOR_OPTIONS: gt, gte, lt, lte,
+ * between, eq, neq). The external dashboards API and the MCP dashboard
+ * tool validate number-tile `colorRules` against this schema rather than
+ * the full `ColorConditionSchema`, so the authoring surface cannot accept
+ * the string-match or regex rules the UI can never produce (a stored
+ * regex would be compiled and evaluated at render time). Keep the operator
+ * set in sync with the editor's options.
+ */
+export const NumberTileColorConditionSchema = z.discriminatedUnion('operator', [
+  numericOrderedColorCondition,
+  betweenColorCondition,
+  equalityColorCondition,
+]);
+
+export type NumberTileColorCondition = z.infer<
+  typeof NumberTileColorConditionSchema
+>;
+
 // When making changes here, consider if they need to be made to the external API
-// schema as well (packages/api/src/utils/zod.ts).
+// as well: the Zod schema (packages/api/src/utils/zod.ts) and the hand-written
+// OpenAPI JSDoc (packages/api/src/routers/external-api/v2/dashboards.ts), which
+// duplicates this shape for the generated spec.
 /**
  * Schema describing settings which are shared between Raw SQL
  * chart configs and Structured ChartBuilder chart configs
