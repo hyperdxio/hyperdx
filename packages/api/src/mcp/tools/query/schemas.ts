@@ -1,3 +1,4 @@
+import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
 // ─── Shared description fragments ────────────────────────────────────────────
@@ -48,6 +49,10 @@ export const MCP_AGG_FN_OPTIONS = [
   'quantile',
   'sum',
   'none',
+  // 'increase' is only valid for Sum (counter) metrics. The renderer
+  // computes the per-bucket counter increase with reset-handling; the
+  // bare aggFn string maps to that behavior, not a SQL function.
+  'increase',
 ] as const;
 
 const mcpAggFnSchema = z
@@ -59,8 +64,150 @@ const mcpAggFnSchema = z
       '  count_distinct – unique value count (valueExpression required)\n' +
       '  quantile – percentile; also set level (valueExpression required)\n' +
       '  last_value – most recent value of a column\n' +
-      '  none – pass a raw expression through unchanged',
+      '  none – pass a raw expression through unchanged\n' +
+      '  increase – METRIC-ONLY (Sum/counter): per-bucket counter increase, ' +
+      'reset-aware. Requires metricType:"sum" and metricName.',
   );
+
+/**
+ * Metric type values exposed to MCP tool callers. Restricted to the three
+ * kinds the renderer can translate today; summary and exponential histogram
+ * are intentionally excluded.
+ */
+export const MCP_METRIC_TYPE_OPTIONS = [
+  MetricsDataType.Gauge,
+  MetricsDataType.Sum,
+  MetricsDataType.Histogram,
+] as const;
+
+const mcpMetricTypeSchema = z
+  .enum(MCP_METRIC_TYPE_OPTIONS)
+  .describe(
+    'METRIC SOURCES ONLY. OTel metric kind. Required (along with metricName) ' +
+      'when querying a metric source — discover via clickstack_describe_source ' +
+      'or clickstack_describe_metric.\n' +
+      '  gauge – instantaneous values (CPU, memory, queue depth). Use last_value/avg/min/max; set isDelta:true for Prometheus-style delta over the bucket.\n' +
+      '  sum – cumulative or delta counters (request counts, bytes processed). Use aggFn:"increase" for counter increase, or sum/avg on the computed rate.\n' +
+      '  histogram – bucketed distributions (request duration). Use aggFn:"quantile" with level for percentiles, or aggFn:"count" for total bucket count.\n' +
+      'NOTE: summary and exponential histogram are not supported by the query renderer yet.',
+  );
+
+/**
+ * Shared cross-field validation issues for MCP select items. Returns the
+ * list of Zod issues a `.superRefine` callback should emit. Kept as a pure
+ * function so both `mcpSelectItemSchema` (query tools) and
+ * `mcpTileSelectItemSchema` (dashboard tile tools) can call it inline
+ * without widening Zod's output type inference.
+ *
+ * Constraints enforced:
+ *   - metricType + metricName must be set together
+ *   - aggFn:"increase" is Sum-only
+ *   - histogram metrics only support quantile (with level) or count
+ *   - isDelta is Gauge-only
+ *   - level still requires aggFn:"quantile"
+ *   - valueExpression is required for non-count aggFns UNLESS metricType is
+ *     set (defaults to "Value" for metric sources)
+ *
+ * Note: summary and exponential histogram metric kinds are not in the input
+ * enum so they cannot reach this function — they are rejected by the field
+ * schema itself.
+ */
+export function getMetricSelectIssues(data: {
+  aggFn?: string;
+  metricType?: string;
+  metricName?: string;
+  isDelta?: boolean;
+  level?: number;
+  valueExpression?: string;
+}): { path: (string | number)[]; message: string }[] {
+  const issues: { path: (string | number)[]; message: string }[] = [];
+
+  // metricType ↔ metricName must be set together
+  if (data.metricType && !data.metricName) {
+    issues.push({
+      path: ['metricName'],
+      message:
+        'metricName is required when metricType is set. Discover metric names ' +
+        'via clickstack_list_metrics or clickstack_describe_source.',
+    });
+  }
+  if (data.metricName && !data.metricType) {
+    issues.push({
+      path: ['metricType'],
+      message:
+        'metricType is required when metricName is set. Use one of: gauge, sum, histogram.',
+    });
+  }
+
+  // increase is Sum-only
+  if (data.aggFn === 'increase' && data.metricType !== 'sum') {
+    issues.push({
+      path: ['aggFn'],
+      message:
+        'aggFn "increase" is only valid for sum (counter) metrics. ' +
+        'Set metricType:"sum" and metricName, or pick a different aggFn.',
+    });
+  }
+
+  // Histogram supports only quantile (+ level) or count today
+  if (data.metricType === 'histogram') {
+    if (data.aggFn !== 'quantile' && data.aggFn !== 'count') {
+      issues.push({
+        path: ['aggFn'],
+        message:
+          'Histogram metrics only support aggFn "quantile" (with level) or "count" today.',
+      });
+    }
+    if (data.aggFn === 'quantile' && data.level == null) {
+      issues.push({
+        path: ['level'],
+        message:
+          'level is required when aggFn is "quantile" on a histogram metric. ' +
+          'Use 0.5, 0.9, 0.95, or 0.99.',
+      });
+    }
+  }
+
+  // isDelta is Gauge-only
+  if (data.isDelta && data.metricType !== 'gauge') {
+    issues.push({
+      path: ['isDelta'],
+      message: 'isDelta is only valid for gauge metrics (metricType:"gauge").',
+    });
+  }
+
+  // level requires aggFn:"quantile"
+  if (data.level != null && data.aggFn !== 'quantile') {
+    issues.push({
+      path: ['level'],
+      message: 'level is only valid with aggFn:"quantile".',
+    });
+  }
+
+  // valueExpression rules:
+  //   - "count" never takes a valueExpression (existing rule)
+  //   - non-count aggFns require valueExpression UNLESS metricType is set
+  //     (metric sources default valueExpression to "Value" in the helper)
+  if (data.valueExpression && data.aggFn === 'count') {
+    issues.push({
+      path: ['valueExpression'],
+      message: 'valueExpression cannot be used with aggFn:"count".',
+    });
+  } else if (
+    !data.valueExpression &&
+    data.aggFn !== 'count' &&
+    !data.metricType
+  ) {
+    issues.push({
+      path: ['valueExpression'],
+      message:
+        'valueExpression is required for non-count aggregation functions ' +
+        '(or set metricType to query a metric source, which defaults valueExpression to "Value").',
+    });
+  }
+
+  return issues;
+}
 
 export const mcpSelectItemSchema = z.object({
   aggFn: mcpAggFnSchema,
@@ -74,7 +221,10 @@ export const mcpSelectItemSchema = z.object({
         'Any ClickHouse expression is allowed — common useful forms: ' +
         '"Duration / 1e6" (ns→ms), ' +
         '"toFloat64OrZero(SpanAttributes[\'response.size_bytes\'])" (cast attribute), ' +
-        '"if(StatusCode = \'STATUS_CODE_ERROR\', 1, 0)" (boolean→numeric for ratios).',
+        '"if(StatusCode = \'STATUS_CODE_ERROR\', 1, 0)" (boolean→numeric for ratios).\n\n' +
+        'METRIC SOURCES: optional — defaults to "Value" (the metric value column) when ' +
+        'metricType/metricName are set. Set explicitly only if you want to transform the ' +
+        'metric value (e.g. "Value / 1e6").',
     ),
   where: z
     .string()
@@ -113,10 +263,87 @@ export const mcpSelectItemSchema = z.object({
     .union([z.literal(0.5), z.literal(0.9), z.literal(0.95), z.literal(0.99)])
     .optional()
     .describe(
-      'Percentile level. Only applicable when aggFn is "quantile". ' +
+      'Percentile level. Required when aggFn is "quantile" on a histogram metric, ' +
+        'optional otherwise. ' +
         'Allowed values: 0.5, 0.9, 0.95, 0.99',
     ),
+  metricType: mcpMetricTypeSchema
+    .optional()
+    .describe(
+      'METRIC SOURCES ONLY. OTel metric kind: gauge, sum, or histogram. ' +
+        'Required (with metricName) when sourceId is a metric source. ' +
+        'Discover via clickstack_describe_source (sample) or clickstack_describe_metric.',
+    ),
+  metricName: z
+    .string()
+    .optional()
+    .describe(
+      'METRIC SOURCES ONLY. OTel metric name (e.g. "system.cpu.utilization", ' +
+        '"http.server.request.duration"). Required when metricType is set. ' +
+        'Discover via clickstack_list_metrics or clickstack_describe_source.',
+    ),
+  isDelta: z
+    .boolean()
+    .optional()
+    .describe(
+      'METRIC SOURCES ONLY (gauge metrics). When true, computes the Prometheus-style ' +
+        'delta over each bucket: (argMax(Value) - argMin(Value)) * bucketSecs / timeDiff. ' +
+        'Use for cumulative gauges where you want to chart growth per bucket. Default false.',
+    ),
 });
+// NOTE: cross-field validation (metric rules + level + valueExpression) is
+// applied imperatively in the timeseries / table tool handlers via
+// `validateMetricSelectItems`. We intentionally skip `.superRefine` here
+// because Zod 3.x widens optional-field types post-refine, which breaks
+// strict-typed downstream consumers like `mergeWhereIntoSelectItems` and
+// `resolveOrderBy`. The dashboard tile schema, whose consumers don't trip
+// on the widening, keeps its own `.superRefine`.
+
+/**
+ * Concrete shape of a parsed MCP select item. Mirrors the runtime values
+ * produced by `mcpSelectItemSchema` — needed as an explicit type because
+ * Zod 3.x's structural inference of `z.object({...})` callbacks (e.g. the
+ * MCP SDK's tool-handler input) can widen optional-field types into
+ * `unknown`. Cast `input.select` to `McpSelectItem[]` at tool boundaries.
+ */
+export type McpSelectItem = {
+  aggFn: string;
+  valueExpression?: string;
+  where?: string;
+  whereLanguage?: 'lucene' | 'sql';
+  alias?: string;
+  level?: number;
+  metricType?: 'gauge' | 'sum' | 'histogram';
+  metricName?: string;
+  isDelta?: boolean;
+};
+
+/**
+ * Apply `getMetricSelectIssues` to every select item in a tool input.
+ * Returns an error-shaped tool response when any issue is detected, or
+ * `null` when all items pass. Call this from a tool handler before
+ * passing items to `runConfigTile`.
+ */
+export function validateMetricSelectItems(
+  items: ReadonlyArray<McpSelectItem>,
+): { isError: true; content: [{ type: 'text'; text: string }] } | null {
+  const errors: string[] = [];
+  items.forEach((item, idx) => {
+    for (const issue of getMetricSelectIssues(item)) {
+      errors.push(`select[${idx}].${issue.path.join('.')}: ${issue.message}`);
+    }
+  });
+  if (errors.length === 0) return null;
+  return {
+    isError: true as const,
+    content: [
+      {
+        type: 'text' as const,
+        text: errors.join('\n'),
+      },
+    ],
+  };
+}
 
 export const startTimeSchema = z
   .string()

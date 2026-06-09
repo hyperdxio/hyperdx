@@ -13,10 +13,12 @@ import {
   endTimeSchema,
   groupBySchema,
   MCP_AGG_FN_OPTIONS,
+  McpSelectItem,
   mcpSelectItemSchema,
   orderBySchema,
   sourceIdSchema,
   startTimeSchema,
+  validateMetricSelectItems,
   whereLanguageSchema,
   whereSchema,
 } from './schemas';
@@ -61,9 +63,13 @@ const tableSchema = z.object({
 // ─── orderBy resolution ──────────────────────────────────────────────────────
 
 /** Aggregation function names that ClickHouse cannot resolve as bare identifiers in ORDER BY.
- *  'none' is excluded — it passes a raw expression through unchanged and has no synthesizable form. */
+ *  Excluded:
+ *  - 'none' passes a raw expression through unchanged and has no synthesizable form.
+ *  - 'increase' is a metric-only renderer marker that compiles to a multi-CTE
+ *    sum(Rate) pipeline — there is no standalone SQL function to synthesize.
+ *    The renderer auto-aliases the resulting column; agents should orderBy by alias. */
 const AGG_FN_NAMES: ReadonlySet<string> = new Set(
-  MCP_AGG_FN_OPTIONS.filter(fn => fn !== 'none'),
+  MCP_AGG_FN_OPTIONS.filter(fn => fn !== 'none' && fn !== 'increase'),
 );
 
 /**
@@ -170,7 +176,18 @@ export function registerTable(server: McpServer, context: McpContext) {
         'Map attributes work in groupBy and valueExpression, including ' +
         "toFloat64OrZero(SpanAttributes['key']).\n\n" +
         'Shape auto-upgrade: if shape is "number" or "pie" but select has >1 item, ' +
-        'it is transparently upgraded to "table".',
+        'it is transparently upgraded to "table".\n\n' +
+        '── METRIC SOURCES ──\n' +
+        'When sourceId is a metric source, each select item MUST set ' +
+        'metricType ("gauge"|"sum"|"histogram") and metricName (the OTel metric name). ' +
+        'valueExpression defaults to "Value" — set it explicitly only to transform the value.\n' +
+        'Discovery: clickstack_describe_source returns a per-kind metric-name sample; ' +
+        'clickstack_list_metrics paginates the full catalog; clickstack_describe_metric ' +
+        'returns attribute keys + sampled values for a single metric.\n' +
+        'Per kind: gauge uses last_value/avg/min/max; sum uses aggFn:"increase" for counter increase ' +
+        '(top-N capped at 20 groups when combined with groupBy), or sum/avg on the rate; ' +
+        'histogram uses aggFn:"quantile" + level for percentiles, or aggFn:"count" for total bucket count.\n' +
+        'summary and exponential histogram kinds are not supported by the query renderer yet.',
       inputSchema: tableSchema,
     },
     withToolTracing('clickstack_table', context, async input => {
@@ -183,12 +200,23 @@ export function registerTable(server: McpServer, context: McpContext) {
       }
       const { startDate, endDate } = timeRange;
 
+      // Cast to the concrete `McpSelectItem[]` because Zod 3.x widens
+      // optional-field inference at the MCP-SDK tool boundary; the
+      // runtime parser still produces the correct shape.
+      const select = input.select as McpSelectItem[];
+
+      // Validate cross-field constraints (metric rules, level/quantile,
+      // valueExpression presence) and surface friendly errors before we
+      // touch ClickHouse.
+      const validation = validateMetricSelectItems(select);
+      if (validation) return validation;
+
       // Auto-upgrade shape when select has multiple items but shape is
       // single-value (number/pie). This is the #1 Zod error class from agents.
       let displayType: 'table' | 'number' | 'pie' = input.shape;
       if (
         (displayType === 'number' || displayType === 'pie') &&
-        input.select.length > 1
+        select.length > 1
       ) {
         displayType = 'table';
       }
@@ -197,11 +225,7 @@ export function registerTable(server: McpServer, context: McpContext) {
       // of the aggCondition for every metric. Table/line/number/pie display
       // types don't have a chart-level where — filtering is per-select-item.
       const { items: selectItems, warnings: mergeWarnings } =
-        mergeWhereIntoSelectItems(
-          input.select,
-          input.where,
-          input.whereLanguage,
-        );
+        mergeWhereIntoSelectItems(select, input.where, input.whereLanguage);
 
       const tile = buildTile('MCP Table', 12, 4, {
         displayType,

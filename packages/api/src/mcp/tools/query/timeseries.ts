@@ -12,10 +12,12 @@ import {
 import {
   endTimeSchema,
   groupBySchema,
+  McpSelectItem,
   mcpSelectItemSchema,
   orderBySchema,
   sourceIdSchema,
   startTimeSchema,
+  validateMetricSelectItems,
   whereLanguageSchema,
   whereSchema,
 } from './schemas';
@@ -79,7 +81,20 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
         'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first. ' +
         'Each select item defines one plotted series.\n\n' +
         'Column naming: top-level columns are PascalCase (Duration, StatusCode). ' +
-        "Map attributes use bracket syntax: SpanAttributes['http.method'].",
+        "Map attributes use bracket syntax: SpanAttributes['http.method'].\n\n" +
+        '── METRIC SOURCES ──\n' +
+        'When sourceId is a metric source, each select item MUST set ' +
+        'metricType ("gauge"|"sum"|"histogram") and metricName (the OTel metric name). ' +
+        'valueExpression defaults to "Value" — set it explicitly only to transform the value.\n' +
+        'Discovery: clickstack_describe_source returns a per-kind metric-name sample; ' +
+        'clickstack_list_metrics paginates the full catalog; clickstack_describe_metric ' +
+        'returns attribute keys + sampled values for a single metric.\n' +
+        'Per kind: gauge uses last_value/avg/min/max (or aggFn:any + isDelta:true for Prometheus-style delta); ' +
+        'sum uses aggFn:"increase" for the counter increase, or sum/avg on the computed rate; ' +
+        'histogram uses aggFn:"quantile" + level for percentiles, or aggFn:"count" for total bucket count.\n' +
+        'TOP-N CAP: aggFn:"increase" + groupBy is capped at 20 groups by the renderer ' +
+        '(top by max bucket sum). Narrow with where/groupBy to see other groups.\n' +
+        'summary and exponential histogram kinds are not supported by the query renderer yet.',
       inputSchema: timeseriesSchema,
     },
     withToolTracing('clickstack_timeseries', context, async input => {
@@ -92,14 +107,21 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
       }
       const { startDate, endDate } = timeRange;
 
+      // Cast to the concrete `McpSelectItem[]` because Zod 3.x widens
+      // optional-field inference at the MCP-SDK tool boundary; the
+      // runtime parser still produces the correct shape.
+      const select = input.select as McpSelectItem[];
+
+      // Validate cross-field constraints (metric rules, level/quantile,
+      // valueExpression presence) and surface friendly errors before we
+      // touch ClickHouse.
+      const validation = validateMetricSelectItems(select);
+      if (validation) return validation;
+
       // Inject top-level where into each select item (timeseries uses
       // per-select-item aggCondition, not chart-level where)
       const { items: selectItems, warnings: mergeWarnings } =
-        mergeWhereIntoSelectItems(
-          input.select,
-          input.where,
-          input.whereLanguage,
-        );
+        mergeWhereIntoSelectItems(select, input.where, input.whereLanguage);
 
       const tile = buildTile('MCP Timeseries', 12, 4, {
         displayType: input.shape,

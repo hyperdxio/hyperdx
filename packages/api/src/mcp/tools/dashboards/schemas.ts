@@ -15,6 +15,20 @@ import { z } from 'zod';
 
 import { externalQuantileLevelSchema, objectIdSchema } from '@/utils/zod';
 
+import { getMetricSelectIssues } from '../query/schemas';
+
+/**
+ * Metric type values exposed on dashboard tile select items. Restricted to
+ * the three kinds the query renderer can translate today; summary and
+ * exponential histogram are intentionally excluded. Mirrors
+ * MCP_METRIC_TYPE_OPTIONS in `tools/query/schemas.ts`.
+ */
+const mcpTileMetricTypeSchema = z.enum([
+  MetricsDataType.Gauge,
+  MetricsDataType.Sum,
+  MetricsDataType.Histogram,
+]);
+
 // ─── Shared tile schemas for MCP dashboard tools ─────────────────────────────
 
 const seriesLevelNumberFormatDescription =
@@ -87,7 +101,10 @@ const mcpNumberFormatSchema = z.object({
 const mcpTileSelectItemSchema = z
   .object({
     aggFn: AggregateFunctionSchema.describe(
-      'Aggregation function. "count" requires no valueExpression; all others do.',
+      'Aggregation function. "count" requires no valueExpression; all others do. ' +
+        'METRIC SOURCES: "increase" computes the per-bucket counter increase for Sum metrics ' +
+        '(reset-aware). For Gauges use last_value/avg/min/max. For Histograms use "quantile" ' +
+        'with level or "count".',
     ),
     valueExpression: z
       .string()
@@ -96,7 +113,9 @@ const mcpTileSelectItemSchema = z
         'Column or expression to aggregate. Required for all aggFn except "count". ' +
           'Use PascalCase for top-level columns (e.g. "Duration", "StatusCode"). ' +
           "For span attributes use: SpanAttributes['key'] (e.g. SpanAttributes['http.method']). " +
-          "For resource attributes use: ResourceAttributes['key'] (e.g. ResourceAttributes['service.name']).",
+          "For resource attributes use: ResourceAttributes['key'] (e.g. ResourceAttributes['service.name']).\n\n" +
+          'METRIC SOURCES: optional — defaults to "Value" (the metric value column) when ' +
+          'metricType/metricName are set.',
       ),
     where: z
       .string()
@@ -115,29 +134,53 @@ const mcpTileSelectItemSchema = z
       ),
     level: externalQuantileLevelSchema
       .optional()
-      .describe('Percentile level for aggFn="quantile"'),
+      .describe(
+        'Percentile level for aggFn="quantile". REQUIRED for histogram metrics with aggFn:"quantile".',
+      ),
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(seriesLevelNumberFormatDescription),
+    metricType: mcpTileMetricTypeSchema
+      .optional()
+      .describe(
+        'METRIC SOURCES ONLY. OTel metric kind: gauge, sum, or histogram. ' +
+          'Required (with metricName) when the tile sourceId is a metric source. ' +
+          'summary and exponential histogram are not supported by the renderer yet.',
+      ),
+    metricName: z
+      .string()
+      .optional()
+      .describe(
+        'METRIC SOURCES ONLY. OTel metric name (e.g. "system.cpu.utilization"). ' +
+          'Required when metricType is set.',
+      ),
+    isDelta: z
+      .boolean()
+      .optional()
+      .describe(
+        'METRIC SOURCES ONLY (gauge metrics). When true, computes the Prometheus-style ' +
+          'delta over each bucket. Default false.',
+      ),
   })
   .superRefine((data, ctx) => {
-    if (data.level && data.aggFn !== 'quantile') {
+    const narrow = {
+      aggFn: typeof data.aggFn === 'string' ? data.aggFn : undefined,
+      metricType:
+        typeof data.metricType === 'string' ? data.metricType : undefined,
+      metricName:
+        typeof data.metricName === 'string' ? data.metricName : undefined,
+      isDelta: typeof data.isDelta === 'boolean' ? data.isDelta : undefined,
+      level: typeof data.level === 'number' ? data.level : undefined,
+      valueExpression:
+        typeof data.valueExpression === 'string'
+          ? data.valueExpression
+          : undefined,
+    };
+    for (const issue of getMetricSelectIssues(narrow)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Level can only be used with quantile aggregation function',
-      });
-    }
-    if (data.valueExpression && data.aggFn === 'count') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          'Value expression cannot be used with count aggregation function',
-      });
-    } else if (!data.valueExpression && data.aggFn !== 'count') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          'Value expression is required for non-count aggregation functions',
+        path: issue.path,
+        message: issue.message,
       });
     }
   });
