@@ -409,31 +409,23 @@ export class Metadata {
   private async partsOverlapFilter({
     databaseName,
     tableName,
-    connectionId,
     dateRange,
     timestampValueExpression,
   }: {
     databaseName: string;
     tableName: string;
-    connectionId: string;
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
   }): Promise<ChSql> {
     if (!dateRange || !timestampValueExpression) return chSql`1`;
-    const timeFilter = await timeFilterExpr({
-      connectionId,
-      databaseName,
-      tableName,
-      dateRange,
-      dateRangeStartInclusive: true,
-      dateRangeEndInclusive: true,
-      timestampValueExpression,
-      metadata: this,
-    });
+    const startTime = chSql`fromUnixTimestamp64Milli(${{ Int64: dateRange[0].getTime() }})`;
+    const endTime = chSql`fromUnixTimestamp64Milli(${{ Int64: dateRange[1].getTime() }})`;
     return chSql`part_name IN (
-      SELECT DISTINCT _part
-      FROM ${tableExpr({ database: databaseName, table: tableName })}
-      WHERE ${timeFilter}
+      SELECT name
+      FROM system.parts
+      WHERE database = ${{ String: databaseName }} AND table = ${{ String: tableName }}
+        AND active=1
+        AND ((min_time >= ${startTime} AND min_time <= ${endTime}) OR (max_time <= ${endTime} AND max_time >= ${startTime}))
     )`;
   }
 
@@ -491,7 +483,6 @@ export class Metadata {
     const partsFilter = await this.partsOverlapFilter({
       databaseName,
       tableName,
-      connectionId,
       dateRange,
       timestampValueExpression,
     });
@@ -820,7 +811,6 @@ export class Metadata {
         const partsFilter = await this.partsOverlapFilter({
           databaseName,
           tableName,
-          connectionId,
           dateRange,
           timestampValueExpression,
         });
