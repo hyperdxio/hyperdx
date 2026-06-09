@@ -8,7 +8,7 @@ export const DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS = 100;
 // Max group-by series fetched per time chart (top-N query cap). Matches the
 // render-time line cap (HARD_LINES_LIMIT) so we never fetch series that can't
 // be drawn. Overridable per team via the `seriesLimit` setting.
-export const DEFAULT_SERIES_LIMIT = 60;
+export const DEFAULT_SERIES_LIMIT = 100;
 
 export function searchChartConfigDefaults(
   team: any | undefined | null,
