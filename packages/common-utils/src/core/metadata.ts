@@ -948,7 +948,7 @@ export class Metadata {
   }: {
     connectionId: string;
   }): Promise<boolean> {
-    return this.cache.getOrFetch(
+    const result = await this.cache.getOrFetch(
       `${connectionId}.isClickHouseCloud`,
       async () => {
         try {
@@ -965,10 +965,11 @@ export class Metadata {
           return json.data.length > 0;
         } catch (e) {
           console.warn('Error detecting ClickHouse Cloud:', e);
-          return false;
+          return undefined;
         }
       },
     );
+    return result ?? false;
   }
 
   /**
