@@ -41,13 +41,18 @@ const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
 // ─── Cursor ──────────────────────────────────────────────────────────────────
 
-type CursorPayload = { kind: QueryableKind; lastName: string };
+export type ListMetricsCursorPayload = {
+  kind: QueryableKind;
+  lastName: string;
+};
 
-function encodeCursor(payload: CursorPayload): string {
+/** @internal Exported for testing. */
+export function encodeCursor(payload: ListMetricsCursorPayload): string {
   return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
 }
 
-function decodeCursor(raw: string): CursorPayload | null {
+/** @internal Exported for testing. */
+export function decodeCursor(raw: string): ListMetricsCursorPayload | null {
   try {
     const decoded = Buffer.from(raw, 'base64').toString('utf8');
     const parsed = JSON.parse(decoded);
@@ -56,7 +61,7 @@ function decodeCursor(raw: string): CursorPayload | null {
       parsed !== null &&
       typeof parsed.kind === 'string' &&
       typeof parsed.lastName === 'string' &&
-      QUERYABLE_METRIC_KINDS.includes(parsed.kind as QueryableKind)
+      (QUERYABLE_METRIC_KINDS as readonly string[]).includes(parsed.kind)
     ) {
       return { kind: parsed.kind as QueryableKind, lastName: parsed.lastName };
     }
