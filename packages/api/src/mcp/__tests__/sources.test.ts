@@ -249,7 +249,7 @@ describe('MCP Source Tools', () => {
       expect(output.source.keyColumns).toHaveProperty('spanId');
     });
 
-    it('should return metricTables for a metric source (no column schema)', async () => {
+    it('should return metricTables AND column schema for a metric source', async () => {
       const metricSource = await Source.create({
         kind: SourceKind.Metric,
         team: team._id,
@@ -280,13 +280,28 @@ describe('MCP Source Tools', () => {
         kind: SourceKind.Metric,
       });
 
-      // Metric sources have metricTables but no column schema or value samples
+      // Metric sources surface metricTables AND run column / map-key
+      // discovery against the representative metric table (gauge picked
+      // first by pickRepresentativeMetricTable).
       expect(output.source.metricTables).toBeDefined();
       expect(output.source.metricTables).toHaveProperty('gauge');
-      expect(output.source.columns).toBeUndefined();
-      expect(output.source.lowCardinalityValues).toBeUndefined();
-      expect(output.source.mapAttributeKeys).toBeUndefined();
-      expect(output.source.mapAttributeValues).toBeUndefined();
+      expect(output.source.discoveryMetricKind).toBe('gauge');
+      expect(output.source.columns).toBeDefined();
+      expect(Array.isArray(output.source.columns)).toBe(true);
+      // The OTel Collector gauge schema includes MetricName + Value
+      // as native columns.
+      const columnNames = output.source.columns.map(
+        (c: { name: string }) => c.name,
+      );
+      expect(columnNames).toContain('MetricName');
+      expect(columnNames).toContain('Value');
+
+      // nextSteps points at the new metric discovery tools.
+      expect(output.nextSteps.query).toContain('metricType');
+      expect(output.nextSteps.discovery).toContain('clickstack_list_metrics');
+      expect(output.nextSteps.discovery).toContain(
+        'clickstack_describe_metric',
+      );
     });
 
     it('should include usage guidance and nextSteps', async () => {
