@@ -469,6 +469,91 @@ describe('renderChartConfig', () => {
     expect(actual).not.toContain('TopGroups');
   });
 
+  describe('seriesLimit (group-by series cap)', () => {
+    const baseLogsConfig: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'logs' },
+      select: [{ aggFn: 'count', aggCondition: '', valueExpression: '' }],
+      groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-13')],
+      granularity: '5 minute',
+    };
+
+    it('restricts to the top N group-by series via a CTE when seriesLimit is set', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...baseLogsConfig, seriesLimit: 60 },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      // A ranking CTE keeps the top N groups by max value in any bucket.
+      expect(sql).toContain('__hdx_series_limit');
+      expect(sql).toMatch(/ORDER\s+BY\s+max\(`__hdx_series_rank`\)\s+DESC/);
+      expect(sql).toContain('LIMIT 60');
+      // The outer query is restricted to those groups via an IN subquery.
+      expect(sql).toMatch(
+        /tuple\(ServiceName\)\s+IN\s*\(\s*SELECT\s+`group`\s+FROM\s+`__hdx_series_limit`\)/,
+      );
+      // NULL/empty groups are excluded from the ranking.
+      expect(sql).toMatch(
+        /ServiceName\s+IS\s+NOT\s+NULL\s+AND\s+toString\(ServiceName\)\s*!=\s*''/,
+      );
+    });
+
+    it('does not emit a series-limit CTE when seriesLimit is unset (e.g. alert evaluation)', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(baseLogsConfig, mockMetadata, querySettings),
+      );
+      expect(sql).not.toContain('__hdx_series_limit');
+    });
+
+    it('does not emit a series-limit CTE without a group-by', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...baseLogsConfig, groupBy: undefined, seriesLimit: 60 },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).not.toContain('__hdx_series_limit');
+    });
+
+    it('does not emit a series-limit CTE without granularity', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...baseLogsConfig, granularity: undefined, seriesLimit: 60 },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).not.toContain('__hdx_series_limit');
+    });
+
+    it('packs a multi-column group-by into a tuple for the series-limit CTE', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...baseLogsConfig,
+            groupBy: [
+              { aggCondition: '', valueExpression: 'ServiceName' },
+              { aggCondition: '', valueExpression: 'TraceId' },
+            ],
+            seriesLimit: 60,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain('__hdx_series_limit');
+      expect(sql).toMatch(/tuple\(\s*ServiceName\s*,\s*TraceId\s*\)/);
+    });
+  });
+
   it('should throw when aggFn=increase is used on a non-Sum metric', async () => {
     const config: ChartConfigWithOptDateRange = {
       displayType: DisplayType.Line,

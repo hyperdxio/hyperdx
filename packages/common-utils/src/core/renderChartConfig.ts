@@ -1210,6 +1210,97 @@ async function renderGroupBy(
   );
 }
 
+// Cap the number of distinct group-by series for time-series charts. When
+// `chartConfig.seriesLimit` is set, build a CTE that ranks groups by the
+// chart's first aggregate (max over buckets, so a series that spikes in any
+// single bucket still qualifies) and keeps only the top N, then return a
+// predicate restricting the outer query to those groups. Returns undefined
+// when the cap does not apply (no seriesLimit, no groupBy/granularity, a CTE or
+// metric source, or a non-structured select), leaving the query unchanged.
+//
+// NULL/empty group values are excluded from the ranking so they neither
+// dominate the chart as a single '-' series nor break the NULL-unsafe
+// `tuple() IN (...)` comparison. Mirrors the aggFn='increase' TopGroups path.
+async function renderSeriesLimitCte(
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
+  metadata: Metadata,
+  {
+    from,
+    where,
+    groupBy,
+  }: { from: ChSql; where: ChSql; groupBy: ChSql | undefined },
+): Promise<{ cte: ChSql; predicate: ChSql } | undefined> {
+  const { seriesLimit } = chartConfig;
+  if (
+    seriesLimit == null ||
+    !isUsingGroupBy(chartConfig) ||
+    !isUsingGranularity(chartConfig) ||
+    chartConfig.selectGroupBy === false ||
+    // Only a real source table can be re-scanned for ranking; skip CTE/metric
+    // sources, whose `from` is a CTE name with no databaseName.
+    !chartConfig.from?.databaseName ||
+    !chartConfig.from?.tableName ||
+    // Ranking needs a structured aggregate to rank by.
+    !Array.isArray(chartConfig.select) ||
+    chartConfig.select.length === 0 ||
+    groupBy == null
+  ) {
+    return undefined;
+  }
+
+  const groupByColsRendered = await renderSelectList(
+    chartConfig.groupBy,
+    chartConfig,
+    metadata,
+  );
+  const groupByCols = Array.isArray(groupByColsRendered)
+    ? groupByColsRendered
+    : [groupByColsRendered];
+  const groupByTuple = concatChSql(',', groupByCols);
+
+  // Rank by the chart's first aggregate. Strip its alias so we can apply our
+  // own internal rank alias instead.
+  const firstSelect = chartConfig.select[0];
+  const rankSelectList =
+    typeof firstSelect === 'string'
+      ? firstSelect
+      : [{ ...firstSelect, alias: undefined }];
+  const rankRendered = await renderSelectList(
+    rankSelectList,
+    chartConfig,
+    metadata,
+  );
+  const rankValue = Array.isArray(rankRendered)
+    ? rankRendered[0]
+    : rankRendered;
+
+  const groupByEmptyFilter = concatChSql(
+    ' AND ',
+    groupByCols.map(g => chSql`(${g} IS NOT NULL AND toString(${g}) != '')`),
+  );
+  const innerWhere = where.sql
+    ? concatChSql(' AND ', where, groupByEmptyFilter)
+    : groupByEmptyFilter;
+
+  // Per-(group, bucket) aggregate, then max per group, keeping the top N.
+  const cte = chSql`\`__hdx_series_limit\` AS (
+    SELECT \`group\`
+    FROM (
+      SELECT tuple(${groupByTuple}) AS \`group\`, ${rankValue} AS \`__hdx_series_rank\`
+      FROM ${from}
+      WHERE ${innerWhere}
+      GROUP BY ${groupBy}
+    )
+    GROUP BY \`group\`
+    ORDER BY max(\`__hdx_series_rank\`) DESC, \`group\`
+    LIMIT ${{ Int32: seriesLimit }}
+  )`;
+
+  const predicate = chSql`tuple(${groupByTuple}) IN (SELECT \`group\` FROM \`__hdx_series_limit\`)`;
+
+  return { cte, predicate };
+}
+
 async function renderHaving(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
@@ -2065,7 +2156,11 @@ export async function renderChartConfig(
         : undefined),
   };
 
-  const withClauses = await renderWith(chartConfig, metadata, querySettings);
+  const baseWithClauses = await renderWith(
+    chartConfig,
+    metadata,
+    querySettings,
+  );
   const select = await renderSelect(chartConfig, metadata);
   const from = renderFrom(chartConfig);
   const where = await renderWhere(chartConfig, metadata);
@@ -2076,11 +2171,31 @@ export async function renderChartConfig(
   const limit = renderLimit(chartConfig);
   const settings = renderSettings(chartConfig, querySettings);
 
+  // Opt-in: cap group-by series to the top N for time-series charts. The
+  // ranking CTE is merged into the rendered `withClauses` (not
+  // `chartConfig.with`) so the main SELECT keeps its materialized-column
+  // optimization, and the predicate is AND-ed into the outer WHERE.
+  const seriesLimit = await renderSeriesLimitCte(chartConfig, metadata, {
+    from,
+    where,
+    groupBy,
+  });
+  const withClauses = seriesLimit
+    ? baseWithClauses
+      ? concatChSql(',', baseWithClauses, seriesLimit.cte)
+      : seriesLimit.cte
+    : baseWithClauses;
+  const finalWhere = seriesLimit
+    ? where.sql
+      ? concatChSql(' AND ', where, seriesLimit.predicate)
+      : seriesLimit.predicate
+    : where;
+
   return concatChSql(' ', [
     chSql`${withClauses?.sql ? chSql`WITH ${withClauses}` : ''}`,
     chSql`SELECT ${select}`,
     chSql`FROM ${from}`,
-    chSql`${where.sql ? chSql`WHERE ${where}` : ''}`,
+    chSql`${finalWhere.sql ? chSql`WHERE ${finalWhere}` : ''}`,
     chSql`${groupBy?.sql ? chSql`GROUP BY ${groupBy}` : ''}`,
     chSql`${having?.sql ? chSql`HAVING ${having}` : ''}`,
     chSql`${orderBy?.sql ? chSql`ORDER BY ${orderBy}` : ''}`,

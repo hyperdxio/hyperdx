@@ -103,6 +103,13 @@ function getTimeChartDateRange(
     : getAlignedDateRange(dateRange, granularity);
 }
 
+// Max number of series on a time chart. Used as both the render-time line cap
+// (re-exported as `HARD_LINES_LIMIT`) and the query-time `seriesLimit` set in
+// `convertToTimeChartConfig` below. Keep them equal so we never fetch series
+// that can't be drawn — high-cardinality group-bys would otherwise return
+// hundreds of thousands of series and OOM the tab.
+export const MAX_TIME_CHART_SERIES = 60;
+
 export function convertToTimeChartConfig(
   config: ChartConfigWithDateRange,
 ): ChartConfigWithDateRange {
@@ -133,6 +140,11 @@ export function convertToTimeChartConfig(
         dateRangeEndInclusive,
         granularity,
         limit: { limit: 100000 },
+        // Cap high-cardinality group-by series at the query level so a single
+        // tile can't pull (and zero-fill) hundreds of thousands of series into
+        // memory. Only applies to group-by + granularity queries; ignored
+        // otherwise. See renderSeriesLimitCte in common-utils.
+        seriesLimit: MAX_TIME_CHART_SERIES,
       }
     : {
         ...config,

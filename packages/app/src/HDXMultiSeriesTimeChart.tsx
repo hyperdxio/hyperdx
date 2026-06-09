@@ -29,7 +29,11 @@ import {
   ChartTooltipContainer,
   ChartTooltipItem,
 } from './components/charts/ChartTooltip';
-import { LineData, toStartOfInterval } from './ChartUtils';
+import {
+  LineData,
+  MAX_TIME_CHART_SERIES,
+  toStartOfInterval,
+} from './ChartUtils';
 import { FormatTime, useFormatTime } from './useFormatTime';
 
 import styles from '../styles/HDXLineChart.module.scss';
@@ -317,7 +321,9 @@ const LegendRenderer = memo<{
   );
 });
 
-export const HARD_LINES_LIMIT = 60;
+// Render-time cap on drawn series. Kept equal to the query-time series cap
+// (see MAX_TIME_CHART_SERIES) so we never fetch series that can't be drawn.
+export const HARD_LINES_LIMIT = MAX_TIME_CHART_SERIES;
 
 const StackedBarWithOverlap = (props: BarProps) => {
   const { x, y, width, height, fill } = props;

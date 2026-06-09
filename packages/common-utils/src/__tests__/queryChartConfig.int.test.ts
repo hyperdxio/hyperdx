@@ -172,4 +172,79 @@ describe('queryChartConfig Integration Tests', () => {
     expect(metaNames).toContain('__hdx_time_bucket');
     expect(metaNames.indexOf('__hdx_time_bucket')).toBeGreaterThanOrEqual(3);
   });
+
+  // Validates the seriesLimit cap end-to-end against real ClickHouse: the
+  // generated TopGroups CTE must be valid SQL and must restrict a
+  // high-cardinality group-by to the top N series by max value in any bucket.
+  it('caps high-cardinality group-by series to the top N via seriesLimit', async () => {
+    const SERIES_TABLE = 'logs_series_limit_int_test';
+    await client.command({
+      query: `CREATE OR REPLACE TABLE ${DATABASE}.${SERIES_TABLE} (
+        Timestamp DateTime CODEC(ZSTD(1)),
+        ServiceName String CODEC(ZSTD(1)),
+        Value Float64 CODEC(ZSTD(1))
+      ) ENGINE = MergeTree ORDER BY (ServiceName, Timestamp)`,
+    });
+
+    // 50 distinct series; Value == index so the top 5 by value are svc-45..49.
+    const rows = Array.from({ length: 50 }, (_, i) => ({
+      Timestamp: '2025-04-15 00:10:00',
+      ServiceName: `svc-${String(i).padStart(2, '0')}`,
+      Value: i,
+    }));
+    await client.insert({
+      table: `${DATABASE}.${SERIES_TABLE}`,
+      values: rows,
+      format: 'JSONEachRow',
+    });
+
+    try {
+      const config: ChartConfigWithOptDateRange = {
+        displayType: DisplayType.Line,
+        connection: 'test-connection',
+        from: { databaseName: DATABASE, tableName: SERIES_TABLE },
+        select: [
+          {
+            aggFn: 'max',
+            aggCondition: '',
+            aggConditionLanguage: 'sql',
+            valueExpression: 'Value',
+          },
+        ],
+        groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+        where: '',
+        whereLanguage: 'sql',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [
+          new Date('2025-04-15T00:00:00Z'),
+          new Date('2025-04-15T01:00:00Z'),
+        ],
+        granularity: '5 minute',
+        seriesLimit: 5,
+      };
+
+      const result = await hdxClient.queryChartConfig({
+        config,
+        metadata,
+        querySettings: undefined,
+      });
+
+      // Without the cap this would be 50 distinct services.
+      const services = new Set(
+        (result.data as Array<{ ServiceName: string }>).map(r => r.ServiceName),
+      );
+      expect(services.size).toBeLessThanOrEqual(5);
+      expect([...services].sort()).toEqual([
+        'svc-45',
+        'svc-46',
+        'svc-47',
+        'svc-48',
+        'svc-49',
+      ]);
+    } finally {
+      await client.command({
+        query: `DROP TABLE IF EXISTS ${DATABASE}.${SERIES_TABLE}`,
+      });
+    }
+  });
 });
