@@ -357,6 +357,110 @@ describe('MCP Query Tools', () => {
       expect(result.isError).toBe(true);
       expect(getFirstText(result)).toMatch(/sourceId/i);
     });
+
+    it('should expose denoise property in schema', async () => {
+      const { tools } = await client.listTools();
+      const tool = tools.find(t => t.name === 'clickstack_search');
+      expect(tool).toBeDefined();
+      const props = Object.keys(tool!.inputSchema.properties ?? {});
+      expect(props).toContain('denoise');
+    });
+
+    it('should emit denoised block when denoise=true on empty results', async () => {
+      const result = await callTool(client, 'clickstack_search', {
+        sourceId: logSource._id.toString(),
+        denoise: true,
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      // With no data, the denoised block should not appear because the
+      // search result itself has no rows to process (early return path).
+      const output = JSON.parse(getFirstText(result));
+      expect(output).toHaveProperty('result');
+    });
+
+    describe('denoise with seeded data', () => {
+      const now = new Date();
+      const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+      beforeEach(async () => {
+        const logs: Parameters<typeof bulkInsertLogs>[0] = [];
+
+        // Noisy pattern: "Health check OK from <ip>" — 80 rows (>10% threshold)
+        for (let i = 0; i < 80; i++) {
+          logs.push({
+            Body: `Health check OK from 10.0.${Math.floor(i / 256)}.${i % 256}`,
+            ServiceName: 'loadbalancer',
+            SeverityText: 'INFO',
+            Timestamp: new Date(fiveMinAgo.getTime() + i * 100),
+          });
+        }
+
+        // Unique/rare events — 5 rows (well below 10% threshold)
+        for (let i = 0; i < 5; i++) {
+          logs.push({
+            Body: `Rare event type ${String.fromCharCode(65 + i)} occurred in subsystem`,
+            ServiceName: 'worker',
+            SeverityText: 'WARN',
+            Timestamp: new Date(fiveMinAgo.getTime() + (80 + i) * 1000),
+          });
+        }
+
+        await bulkInsertLogs(logs);
+      });
+
+      it('should filter noisy patterns and emit denoised metadata', async () => {
+        const result = await callTool(client, 'clickstack_search', {
+          sourceId: logSource._id.toString(),
+          denoise: true,
+          maxResults: 200,
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+
+        // Must have a denoised block
+        expect(output).toHaveProperty('denoised');
+        expect(output.denoised).toHaveProperty('removedPatterns');
+        expect(output.denoised).toHaveProperty('returnedRowCountBeforeDenoise');
+        expect(output.denoised).toHaveProperty('filteredRowCount');
+
+        // Should not have a skipped reason
+        expect(output.denoised.skipped).toBeUndefined();
+
+        // The noisy health check pattern should be in removedPatterns
+        expect(output.denoised.removedPatterns.length).toBeGreaterThanOrEqual(
+          1,
+        );
+        const healthPattern = output.denoised.removedPatterns.find(
+          (p: { pattern: string }) => p.pattern.includes('Health check'),
+        );
+        expect(healthPattern).toBeDefined();
+
+        // Filtered count should be less than original
+        expect(output.denoised.filteredRowCount).toBeLessThan(
+          output.denoised.returnedRowCountBeforeDenoise,
+        );
+      });
+
+      it('should return results without denoised block when denoise=false', async () => {
+        const result = await callTool(client, 'clickstack_search', {
+          sourceId: logSource._id.toString(),
+          denoise: false,
+          maxResults: 200,
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output).not.toHaveProperty('denoised');
+      });
+    });
   });
 
   // ─── clickstack_event_patterns ─────────────────────────────────────────────────
