@@ -1883,6 +1883,62 @@ describe('Metadata', () => {
       expect(Object.values(mvCall.query_params)).toContain('NativeColumn');
     });
 
+    it('getAllKeyValues forwards metadataMVs to getMapValues so a text-indexed column falls back to the kv rollup when the index query returns empty', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map([['LogAttributes', itemsOnlyEntry]]));
+
+      (mockClickhouseClient.query as jest.Mock)
+        // text-index query inside getMapValues — empty (e.g. index added
+        // after ingestion, or no active parts overlap the date range)
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [] }),
+        })
+        // kv-rollup fallback inside getMapValues — has data. Reaching this
+        // call proves metadataMVs was forwarded; without it, getMapValues
+        // would fall through to a main-table scan that ignores the rollup.
+        .mockResolvedValueOnce({
+          json: () =>
+            Promise.resolve({
+              data: [{ key: 'service.name', value: 'api' }],
+            }),
+        });
+
+      const result = await md.getAllKeyValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        keyExpressions: ["LogAttributes['service.name']"],
+        connectionId: 'conn-1',
+        metadataMVs: {
+          keyRollupTable: 'logs_key_rollup_15m',
+          kvRollupTable: 'logs_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+
+      expect(result).toEqual([
+        { key: "LogAttributes['service.name']", value: ['api'] },
+      ]);
+
+      // Exactly two queries fire — text-index, then kv-rollup. No third
+      // main-table scan, no batched-rollup query (textIndexResults satisfied
+      // the only requested key so the `remaining` branch is skipped).
+      expect((mockClickhouseClient.query as jest.Mock).mock.calls.length).toBe(
+        2,
+      );
+      const fallbackCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[1][0];
+      expect(Object.values(fallbackCall.query_params)).toContain(
+        'logs_kv_rollup_15m',
+      );
+      expect(fallbackCall.query).toContain('ColumnIdentifier');
+    });
+
     it('getAllFieldsAndValues excludes text-indexed columns from the MV query', async () => {
       const md = buildMetadata();
       jest

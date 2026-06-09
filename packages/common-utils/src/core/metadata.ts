@@ -1635,6 +1635,7 @@ export class Metadata {
           keys: mapKeys,
           maxValues: maxValuesPerKey,
           connectionId,
+          metadataMVs,
           dateRange,
           timestampValueExpression,
           signal,
@@ -1678,6 +1679,7 @@ export class Metadata {
           keys: [p.mapKey],
           maxValues: maxValuesPerKey,
           connectionId,
+          metadataMVs,
           dateRange,
           timestampValueExpression,
         });
