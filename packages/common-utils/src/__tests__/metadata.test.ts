@@ -309,6 +309,40 @@ describe('Metadata', () => {
     });
   });
 
+  describe('isClickHouseCloud', () => {
+    beforeEach(() => {
+      mockCache.getOrFetch.mockImplementation((key, queryFn) => queryFn());
+    });
+
+    it('returns true when SharedMergeTree is registered in system.table_engines', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [{ '1': 1 }],
+        }),
+      });
+
+      const result = await metadata.isClickHouseCloud({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toBe(true);
+    });
+
+    it('returns false when SharedMergeTree is absent from system.table_engines', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [],
+        }),
+      });
+
+      const result = await metadata.isClickHouseCloud({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toBe(false);
+    });
+  });
+
   describe('getSkipIndices', () => {
     beforeEach(() => {
       mockCache.getOrFetch.mockImplementation((key, queryFn) => queryFn());
