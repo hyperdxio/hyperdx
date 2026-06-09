@@ -3,7 +3,7 @@ import type { ClickHouseClient } from '@clickhouse/client';
 import type { LogRow, TraceRow } from '../generators/types';
 import { EVAL_DATABASE } from './schema';
 
-const BATCH_SIZE = 5_000;
+const BATCH_SIZE = 100_000;
 
 function msToDateTime64(ms: number): string {
   const date = new Date(ms);
