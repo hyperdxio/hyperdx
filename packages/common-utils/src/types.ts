@@ -275,13 +275,6 @@ export const SelectSQLStatementSchema = z.object({
   havingLanguage: SearchConditionLanguageSchema.optional(),
   orderBy: SortSpecificationListSchema.optional(),
   limit: LimitSchema.optional(),
-  // Opt-in cap on the number of distinct group-by series returned for
-  // time-series (granularity) charts. When set, only the top-N series (ranked
-  // by max value in any bucket) are returned, via a TopGroups CTE in
-  // renderChartConfig. Only the chart-display path sets this; alerts and other
-  // consumers leave it unset so every series is evaluated. Prevents unbounded
-  // memory from high-cardinality group-bys (e.g. hundreds of thousands of
-  // series in one tile).
   seriesLimit: z.number().int().positive().optional(),
 });
 
@@ -1530,10 +1523,6 @@ export const TeamClickHouseSettingsSchema = z.object({
   metadataMaxRowsToRead: z.number().optional(),
   parallelizeWhenPossible: z.boolean().optional(),
   filterKeysFetchLimit: z.number().optional(),
-  // Max number of distinct group-by series fetched per time chart. Caps memory
-  // on high-cardinality group-bys (applied as a top-N query cap in
-  // renderChartConfig via the chart config's `seriesLimit`). Unset falls back to
-  // the client default.
   seriesLimit: z.number().int().positive().optional(),
 });
 

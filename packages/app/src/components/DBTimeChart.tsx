@@ -287,8 +287,6 @@ function DBTimeChartComponent({
     fillNulls,
   } = useTimeChartSettings(config);
 
-  // Read team settings before building the queried config so the per-team
-  // series cap can be threaded into convertToTimeChartConfig.
   const { data: me, isLoading: isLoadingMe } = api.useMe();
 
   const queriedConfig = useMemo(

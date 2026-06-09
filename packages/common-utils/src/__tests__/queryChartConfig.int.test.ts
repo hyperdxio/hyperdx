@@ -173,9 +173,8 @@ describe('queryChartConfig Integration Tests', () => {
     expect(metaNames.indexOf('__hdx_time_bucket')).toBeGreaterThanOrEqual(3);
   });
 
-  // Validates the seriesLimit cap end-to-end against real ClickHouse: the
-  // generated TopGroups CTE must be valid SQL and must restrict a
-  // high-cardinality group-by to the top N series by max value in any bucket.
+  // End-to-end: the cap CTE is valid SQL and restricts a high-cardinality
+  // group-by to the top N by max value in any bucket.
   it('caps high-cardinality group-by series to the top N via seriesLimit', async () => {
     const SERIES_TABLE = 'logs_series_limit_int_test';
     await client.command({
@@ -248,10 +247,8 @@ describe('queryChartConfig Integration Tests', () => {
     }
   });
 
-  // Regression: a comma-separated *string* group-by (including a Map access with
-  // a comma inside the brackets) must split into per-column NULL checks rather
-  // than emitting an invalid two-argument toString(). Also verifies that an
-  // empty-string group (a missing Map key) is kept and competes for a top-N slot.
+  // Regression: a comma-separated string group-by (with a Map access) must split
+  // per-column (not emit toString(col1, col2)); empty-string groups are kept.
   it('handles a multi-column string group-by (with Map access) under seriesLimit', async () => {
     const TABLE = 'logs_string_gb_int_test';
     await client.command({
@@ -329,9 +326,8 @@ describe('queryChartConfig Integration Tests', () => {
     }
   });
 
-  // The series cap filters NULL group components out of the ranking. Otherwise
-  // a NULL-keyed group could take a top-N slot it can never fill, because the
-  // outer `tuple(...) IN (...)` is NULL-unsafe (NULL never matches).
+  // NULL group components are dropped from the ranking; otherwise a NULL group
+  // could take a slot the NULL-unsafe outer `tuple() IN (...)` can never fill.
   it('excludes NULL group components from the series cap', async () => {
     const TABLE = 'logs_nullable_gb_int_test';
     await client.command({
@@ -392,10 +388,9 @@ describe('queryChartConfig Integration Tests', () => {
     }
   });
 
-  // Multi-column *array* group-by where one column carries an alias. Proves the
-  // 2-column tuple()/IN executes and that the alias is stripped inside the CTE
-  // (a leaked `Region AS "reg"` inside tuple()/IS NOT NULL is a CH syntax error)
-  // while still being preserved as the output column name.
+  // Multi-column array group-by with an alias: the 2-column tuple()/IN executes
+  // (alias stripped in the CTE — a leaked `AS "reg"` there is a syntax error)
+  // and the alias is preserved as the output column.
   it('handles a multi-column array group-by with an alias under seriesLimit', async () => {
     const TABLE = 'logs_array_alias_gb_int_test';
     await client.command({

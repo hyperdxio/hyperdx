@@ -347,7 +347,7 @@ export default function TeamQueryConfigSection() {
           <ClickhouseSettingForm
             settingKey="seriesLimit"
             label="Time Chart Series Limit"
-            tooltip="Maximum number of series fetched per time chart. Caps memory usage on high-cardinality group-bys; the top-N series (by max value in any bucket) are returned. Only the top 60 render at once; the rest are available in the series selector."
+            tooltip="Maximum number of series fetched per time chart."
             type="number"
             defaultValue={DEFAULT_SERIES_LIMIT}
             placeholder={`default = ${DEFAULT_SERIES_LIMIT}`}

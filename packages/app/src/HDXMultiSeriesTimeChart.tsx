@@ -321,8 +321,6 @@ const LegendRenderer = memo<{
   );
 });
 
-// Render-time cap on drawn series. Kept equal to the query-time series cap
-// (see MAX_TIME_CHART_SERIES) so we never fetch series that can't be drawn.
 export const HARD_LINES_LIMIT = MAX_TIME_CHART_SERIES;
 
 const StackedBarWithOverlap = (props: BarProps) => {
