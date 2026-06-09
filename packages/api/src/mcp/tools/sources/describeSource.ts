@@ -143,6 +143,19 @@ async function describeSourceSchema(
   // Track which sampling stages were skipped due to timeout
   const skippedStages: string[] = [];
 
+  // Shared by stages 2–4 so map-key discovery can use rollup tables
+  // instead of falling back to expensive main-table scans.
+  const metadataMVs =
+    'metadataMaterializedViews' in source
+      ? source.metadataMaterializedViews
+      : undefined;
+
+  const now = new Date();
+  const dateRange: [Date, Date] = [
+    new Date(now.getTime() - VALUE_SAMPLE_LOOKBACK_MS),
+    now,
+  ];
+
   // ── 1. Column schema ──────────────────────────────────────────────────
   const columns = await metadata.getColumns({
     databaseName,
@@ -170,6 +183,9 @@ async function describeSourceSchema(
             column: col.name,
             maxKeys: 50,
             connectionId,
+            metadataMVs,
+            dateRange,
+            signal,
           });
           mapKeysResults[col.name] = keys;
         } catch (e) {
@@ -199,17 +215,6 @@ async function describeSourceSchema(
   });
 
   const lowCardinalityValues: Record<string, string[]> = {};
-
-  const metadataMVs =
-    'metadataMaterializedViews' in source
-      ? source.metadataMaterializedViews
-      : undefined;
-
-  const now = new Date();
-  const dateRange: [Date, Date] = [
-    new Date(now.getTime() - VALUE_SAMPLE_LOOKBACK_MS),
-    now,
-  ];
 
   if (lcColumns.length > 0 && !signal.aborted) {
     try {

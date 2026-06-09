@@ -104,7 +104,11 @@ export const mcpSelectItemSchema = z.object({
   alias: z
     .string()
     .optional()
-    .describe('Display label for this series. Example: "Error rate"'),
+    .describe(
+      'Display label for this series — used in chart legends, table column headers, CSV exports, and onClick templates. ' +
+        'Always set a short, human-readable alias (e.g. "Requests", "P95 Latency", "Error Rate"). ' +
+        'Without an alias the UI shows the raw ClickHouse expression (e.g. count(), quantile(0.95)(Duration)) which is hard to read.',
+    ),
   level: z
     .union([z.literal(0.5), z.literal(0.9), z.literal(0.95), z.literal(0.99)])
     .optional()

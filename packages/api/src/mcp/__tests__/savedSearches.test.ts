@@ -299,7 +299,9 @@ describe('MCP Saved Search Tools', () => {
         });
 
         expect(result.isError).toBe(true);
-        expect(getFirstText(result)).toContain('Invalid sourceId');
+        const text = getFirstText(result);
+        expect(text).toContain('Invalid ObjectId');
+        expect(text).toContain('sourceId');
       });
 
       it('should include url in response when FRONTEND_URL is set', async () => {

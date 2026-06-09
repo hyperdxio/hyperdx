@@ -294,6 +294,101 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     expect(getFirstText(result)).toContain('source');
   });
 
+  it('should reject patching a tile to raw SQL with $__filters but no sourceId', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    const connectionId = ctx.connection._id.toString();
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'SQL Macro Patch Test',
+        tiles: [
+          {
+            name: 'Valid Tile',
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
+          },
+        ],
+      },
+    );
+    const created = JSON.parse(getFirstText(createResult));
+    const tileId = created.tiles[0].id;
+
+    const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
+      dashboardId: created.id,
+      tileId,
+      tile: {
+        name: 'Filtered SQL',
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId,
+          sqlTemplate:
+            'SELECT ServiceName, count() AS c FROM otel_traces WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY ServiceName LIMIT 10',
+        },
+      },
+    });
+
+    expect(result.isError).toBe(true);
+    const text = getFirstText(result);
+    expect(text).toContain('sourceId');
+    expect(text).toContain('$__filters');
+    expect(text).toContain('Filtered SQL');
+
+    // The original tile must be untouched in the database.
+    const dashboard = await Dashboard.findById(created.id);
+    const persistedTile = dashboard?.tiles?.find(
+      (t: { id: string }) => t.id === tileId,
+    );
+    expect(persistedTile?.config?.name).toBe('Valid Tile');
+  });
+
+  it('should allow patching a tile to raw SQL with $__filters when a sourceId is set', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    const connectionId = ctx.connection._id.toString();
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'SQL Macro Patch Test (valid)',
+        tiles: [
+          {
+            name: 'Valid Tile',
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
+          },
+        ],
+      },
+    );
+    const created = JSON.parse(getFirstText(createResult));
+
+    const result = await callTool(ctx.client!, 'clickstack_patch_dashboard', {
+      dashboardId: created.id,
+      tileId: created.tiles[0].id,
+      tile: {
+        name: 'Filtered SQL',
+        config: {
+          configType: 'sql',
+          displayType: 'table',
+          connectionId,
+          sourceId,
+          sqlTemplate:
+            'SELECT ServiceName, count() AS c FROM otel_traces WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY ServiceName LIMIT 10',
+        },
+      },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const output = JSON.parse(getFirstText(result));
+    expect(output.patchedTile.config.sourceId).toBe(sourceId);
+  });
+
   it('should not modify other tiles in the database (positional update)', async () => {
     const sourceId = ctx.traceSource._id.toString();
     const createResult = await callTool(
