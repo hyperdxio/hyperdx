@@ -11,6 +11,10 @@ import {
   mergeWhereIntoSelectItems,
   parseTimeRange,
 } from '../tools/query/helpers';
+import {
+  getMetricSelectIssues,
+  validateMetricSelectItems,
+} from '../tools/query/schemas';
 import { resolveOrderBy } from '../tools/query/table';
 
 describe('parseTimeRange', () => {
@@ -411,5 +415,201 @@ describe('resolveOrderBy', () => {
         { aggFn: 'quantile', valueExpression: 'Duration' },
       ]),
     ).toBe('quantile');
+  });
+
+  it('should NOT synthesize for "increase" aggFn (metric-only marker)', () => {
+    // increase compiles to a multi-CTE sum(Rate) pipeline in the renderer,
+    // not a standalone SQL function. resolveOrderBy must leave bare
+    // "increase" alone so the renderer-assigned alias can take over.
+    expect(
+      resolveOrderBy('increase', [
+        { aggFn: 'increase', valueExpression: 'Value' },
+      ]),
+    ).toBe('increase');
+  });
+});
+
+// ─── getMetricSelectIssues ───────────────────────────────────────────────────
+
+describe('getMetricSelectIssues', () => {
+  it('returns no issues for a plain non-metric count', () => {
+    expect(getMetricSelectIssues({ aggFn: 'count' })).toEqual([]);
+  });
+
+  it('returns no issues for a plain non-metric avg with valueExpression', () => {
+    expect(
+      getMetricSelectIssues({ aggFn: 'avg', valueExpression: 'Duration' }),
+    ).toEqual([]);
+  });
+
+  it('requires valueExpression for non-count non-metric aggregations', () => {
+    const issues = getMetricSelectIssues({ aggFn: 'avg' });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['valueExpression']);
+    expect(issues[0].message).toContain('required for non-count');
+  });
+
+  it('does NOT require valueExpression when metricType is set', () => {
+    // valueExpression defaults to "Value" for metric sources
+    expect(
+      getMetricSelectIssues({
+        aggFn: 'avg',
+        metricType: 'gauge',
+        metricName: 'system.cpu.utilization',
+      }),
+    ).toEqual([]);
+  });
+
+  it('rejects valueExpression on aggFn:"count"', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'count',
+      valueExpression: 'Duration',
+    });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['valueExpression']);
+  });
+
+  it('rejects metricType without metricName', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'avg',
+      metricType: 'gauge',
+    });
+    expect(issues.find(i => i.path[0] === 'metricName')).toBeDefined();
+  });
+
+  it('rejects metricName without metricType', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'avg',
+      metricName: 'system.cpu.utilization',
+    });
+    expect(issues.find(i => i.path[0] === 'metricType')).toBeDefined();
+  });
+
+  it('rejects aggFn:"increase" on a gauge metric', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'increase',
+      metricType: 'gauge',
+      metricName: 'system.cpu.utilization',
+    });
+    expect(issues.find(i => i.path[0] === 'aggFn')).toBeDefined();
+  });
+
+  it('accepts aggFn:"increase" on a sum metric', () => {
+    expect(
+      getMetricSelectIssues({
+        aggFn: 'increase',
+        metricType: 'sum',
+        metricName: 'http.server.request.count',
+      }),
+    ).toEqual([]);
+  });
+
+  it('rejects aggFn:"avg" on a histogram metric', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'avg',
+      metricType: 'histogram',
+      metricName: 'http.server.request.duration',
+    });
+    expect(issues.find(i => i.path[0] === 'aggFn')).toBeDefined();
+  });
+
+  it('accepts aggFn:"count" on a histogram metric (no level required)', () => {
+    expect(
+      getMetricSelectIssues({
+        aggFn: 'count',
+        metricType: 'histogram',
+        metricName: 'http.server.request.duration',
+      }),
+    ).toEqual([]);
+  });
+
+  it('requires level for aggFn:"quantile" on a histogram metric', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'quantile',
+      metricType: 'histogram',
+      metricName: 'http.server.request.duration',
+    });
+    expect(issues.find(i => i.path[0] === 'level')).toBeDefined();
+  });
+
+  it('accepts aggFn:"quantile" with level on a histogram metric', () => {
+    expect(
+      getMetricSelectIssues({
+        aggFn: 'quantile',
+        level: 0.95,
+        metricType: 'histogram',
+        metricName: 'http.server.request.duration',
+      }),
+    ).toEqual([]);
+  });
+
+  it('rejects isDelta on a non-gauge metric', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'sum',
+      metricType: 'sum',
+      metricName: 'http.request.count',
+      isDelta: true,
+    });
+    expect(issues.find(i => i.path[0] === 'isDelta')).toBeDefined();
+  });
+
+  it('accepts isDelta on a gauge metric', () => {
+    expect(
+      getMetricSelectIssues({
+        aggFn: 'avg',
+        metricType: 'gauge',
+        metricName: 'system.cpu.utilization',
+        isDelta: true,
+      }),
+    ).toEqual([]);
+  });
+
+  it('rejects level when aggFn is not quantile', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'avg',
+      valueExpression: 'Duration',
+      level: 0.95,
+    });
+    expect(issues.find(i => i.path[0] === 'level')).toBeDefined();
+  });
+});
+
+// ─── validateMetricSelectItems ───────────────────────────────────────────────
+
+describe('validateMetricSelectItems', () => {
+  it('returns null for a valid items array', () => {
+    expect(
+      validateMetricSelectItems([
+        { aggFn: 'count' },
+        { aggFn: 'avg', valueExpression: 'Duration' },
+      ]),
+    ).toBeNull();
+  });
+
+  it('returns an error envelope and labels each item by index', () => {
+    const result = validateMetricSelectItems([
+      { aggFn: 'avg' }, // missing valueExpression
+      { aggFn: 'increase', metricType: 'gauge', metricName: 'x' }, // increase requires sum
+    ]);
+    expect(result).not.toBeNull();
+    if (!result) return;
+    expect(result.isError).toBe(true);
+    expect(result.content[0].type).toBe('text');
+    const text = result.content[0].text;
+    expect(text).toContain('select[0].valueExpression');
+    expect(text).toContain('select[1].aggFn');
+  });
+
+  it('returns an error envelope for a single bad item', () => {
+    const result = validateMetricSelectItems([
+      {
+        aggFn: 'quantile',
+        metricType: 'histogram',
+        metricName: 'http.server.request.duration',
+      }, // missing level
+    ]);
+    expect(result).not.toBeNull();
+    if (!result) return;
+    expect(result.content[0].text).toContain('select[0].level');
   });
 });
