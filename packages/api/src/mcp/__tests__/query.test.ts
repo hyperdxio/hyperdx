@@ -225,6 +225,19 @@ describe('errorHint', () => {
     expect(hint).toContain('LIMIT');
   });
 
+  it('should match RESULT_IS_TOO_LARGE errors', () => {
+    const hint = errorHint('Code: 396. DB::Exception: RESULT_IS_TOO_LARGE');
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('100,000 rows');
+    expect(hint).toContain('LIMIT');
+  });
+
+  it('should match TOO_MANY_ROWS_OR_BYTES errors', () => {
+    const hint = errorHint('Code: 396. DB::Exception: TOO_MANY_ROWS_OR_BYTES');
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('100,000 rows');
+  });
+
   it('should return null for unrecognized errors', () => {
     const hint = errorHint('Connection refused');
     expect(hint).toBeNull();
