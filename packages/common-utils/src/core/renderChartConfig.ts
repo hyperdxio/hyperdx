@@ -2156,14 +2156,10 @@ export async function renderChartConfig(
         : undefined),
   };
 
-  const baseWithClauses = await renderWith(
-    chartConfig,
-    metadata,
-    querySettings,
-  );
+  let withClauses = await renderWith(chartConfig, metadata, querySettings);
   const select = await renderSelect(chartConfig, metadata);
   const from = renderFrom(chartConfig);
-  const where = await renderWhere(chartConfig, metadata);
+  let where = await renderWhere(chartConfig, metadata);
   const groupBy = await renderGroupBy(chartConfig, metadata);
   const having = await renderHaving(chartConfig, metadata);
   const orderBy = renderOrderBy(chartConfig);
@@ -2171,31 +2167,30 @@ export async function renderChartConfig(
   const limit = renderLimit(chartConfig);
   const settings = renderSettings(chartConfig, querySettings);
 
-  // Opt-in: cap group-by series to the top N for time-series charts. The
-  // ranking CTE is merged into the rendered `withClauses` (not
-  // `chartConfig.with`) so the main SELECT keeps its materialized-column
-  // optimization, and the predicate is AND-ed into the outer WHERE.
-  const seriesLimit = await renderSeriesLimitCte(chartConfig, metadata, {
+  // Opt-in: cap group-by series to the top N for time-series charts. Fold the
+  // ranking CTE into the already-rendered `withClauses` (not `chartConfig.with`,
+  // which would disable the main SELECT's materialized-column optimization) and
+  // AND its predicate into the outer WHERE. renderSeriesLimitCte uses the
+  // pre-predicate `where` for its inner ranking query, so compute it first.
+  const seriesCap = await renderSeriesLimitCte(chartConfig, metadata, {
     from,
     where,
     groupBy,
   });
-  const withClauses = seriesLimit
-    ? baseWithClauses
-      ? concatChSql(',', baseWithClauses, seriesLimit.cte)
-      : seriesLimit.cte
-    : baseWithClauses;
-  const finalWhere = seriesLimit
-    ? where.sql
-      ? concatChSql(' AND ', where, seriesLimit.predicate)
-      : seriesLimit.predicate
-    : where;
+  if (seriesCap) {
+    withClauses = withClauses
+      ? concatChSql(',', withClauses, seriesCap.cte)
+      : seriesCap.cte;
+    where = where.sql
+      ? concatChSql(' AND ', where, seriesCap.predicate)
+      : seriesCap.predicate;
+  }
 
   return concatChSql(' ', [
     chSql`${withClauses?.sql ? chSql`WITH ${withClauses}` : ''}`,
     chSql`SELECT ${select}`,
     chSql`FROM ${from}`,
-    chSql`${finalWhere.sql ? chSql`WHERE ${finalWhere}` : ''}`,
+    chSql`${where.sql ? chSql`WHERE ${where}` : ''}`,
     chSql`${groupBy?.sql ? chSql`GROUP BY ${groupBy}` : ''}`,
     chSql`${having?.sql ? chSql`HAVING ${having}` : ''}`,
     chSql`${orderBy?.sql ? chSql`ORDER BY ${orderBy}` : ''}`,
