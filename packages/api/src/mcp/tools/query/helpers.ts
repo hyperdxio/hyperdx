@@ -63,11 +63,13 @@ export const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
 
 // ─── Safety limits ───────────────────────────────────────────────────────────
 
-/** ClickHouse settings applied to all MCP query-tool executions. */
+/** ClickHouse settings applied to all MCP query-tool executions.
+ *  readonly=2 so max_execution_time and max_result_rows can be set
+ *  (readonly=1 rejects all setting changes). */
 const MCP_CLICKHOUSE_SETTINGS = {
   max_execution_time: 30,
   max_result_rows: '100000',
-  readonly: 1,
+  readonly: 2,
 } as const;
 
 /**
@@ -451,10 +453,10 @@ export function errorHint(msg: string): string | null {
     /Cannot (convert|parse) string .* (to|as) (type )?DateTime64/i.test(msg)
   ) {
     return (
-      "Wrap ISO timestamps with `toDateTime64('YYYY-MM-DD HH:MM:SS', 9)` " +
-      'or use the supplied macros: `$__timeFilter(Timestamp)` (the easiest), ' +
-      '`{startDateMilliseconds:Int64}`, `{endDateMilliseconds:Int64}`. ' +
-      'Bare ISO 8601 strings will NOT auto-cast to DateTime64.'
+      "Wrap ISO timestamps with `parseDateTime64BestEffort('YYYY-MM-DDTHH:MM:SSZ')` — " +
+      'this works for both DateTime and DateTime64 columns. For the sql tool, prefer ' +
+      '`$__timeFilter(Timestamp)` which handles casting automatically. ' +
+      'Bare ISO 8601 strings will NOT auto-cast to DateTime/DateTime64.'
     );
   }
   if (/Syntax error.*\bAS\b/.test(msg)) {
@@ -477,6 +479,16 @@ export function errorHint(msg: string): string | null {
     return (
       'The query returned more than 100,000 rows. ' +
       'Add a LIMIT, narrow the time range, or add filters to reduce the result set.'
+    );
+  }
+  if (
+    /Unknown (expression|identifier)|UNKNOWN_IDENTIFIER|Missing columns/i.test(
+      msg,
+    )
+  ) {
+    return (
+      'Call clickstack_describe_source to discover available columns and ' +
+      'map attribute keys before retrying.'
     );
   }
   return null;
