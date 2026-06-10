@@ -935,6 +935,44 @@ export class Metadata {
   }
 
   /**
+   * Returns true when the connected server is ClickHouse Cloud, detected by
+   * checking whether `SharedMergeTree` is registered in `system.table_engines`.
+   * The SharedMergeTree engine is compiled into Cloud builds only, so its
+   * presence in the engine registry is a reliable Cloud signal that does not
+   * depend on any user table existing.
+   *
+   * Result is cached per connection — Cloud-ness is a server property.
+   */
+  async isClickHouseCloud({
+    connectionId,
+  }: {
+    connectionId: string;
+  }): Promise<boolean> {
+    const result = await this.cache.getOrFetch(
+      `${connectionId}.isClickHouseCloud`,
+      async () => {
+        try {
+          const query =
+            "SELECT count() > 0 AS is_cloud FROM system.table_engines WHERE name = 'SharedMergeTree'";
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query,
+              clickhouse_settings: this.getClickHouseSettings(),
+              shouldSkipApplySettings: true,
+            })
+            .then(res => res.json<{ is_cloud: boolean }>());
+          return json.data.length > 0 && json.data[0].is_cloud;
+        } catch (e) {
+          console.warn('Error detecting ClickHouse Cloud:', e);
+          return undefined;
+        }
+      },
+    );
+    return result ?? false;
+  }
+
+  /**
    * Returns the parsed ClickHouse server version (from `SELECT version()`).
    * Returns undefined when the query fails or the value cannot be parsed; the
    * result is cached per connection and callers should treat undefined as

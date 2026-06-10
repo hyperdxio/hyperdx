@@ -48,6 +48,7 @@ describe('renderChartConfig', () => {
         .mockResolvedValue({ primary_key: 'timestamp' }),
       getSkipIndices: jest.fn().mockResolvedValue([]),
       getSetting: jest.fn().mockResolvedValue(undefined),
+      isClickHouseCloud: jest.fn().mockResolvedValue(false),
     } as unknown as jest.Mocked<Metadata>;
   });
 
