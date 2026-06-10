@@ -2,7 +2,11 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import { Tooltip, UnstyledButton } from '@mantine/core';
-import { IconDownload, IconTextWrap } from '@tabler/icons-react';
+import {
+  IconArrowUpRight,
+  IconDownload,
+  IconTextWrap,
+} from '@tabler/icons-react';
 import {
   flexRender,
   getCoreRowModel,
@@ -28,6 +32,7 @@ import type { NumberFormat } from './types';
 import { formatNumber } from './utils';
 
 import focusStyles from '../styles/focus.module.scss';
+import styles from './HDXMultiSeriesTableChart.module.scss';
 
 export type TableVariant = 'default' | 'muted';
 
@@ -379,50 +384,90 @@ export const Table = ({
           )}
           {items.map(virtualRow => {
             const row = rows[virtualRow.index] as TableRow<any>;
-            // Compute the action once per row so the row-level HoverCard
-            // sees the same description and per-cell renders share the
-            // memoized result from useOnClickLinkBuilder.
+            // Compute the action once per row so the trailing-icon hint
+            // shares the memoized result from useOnClickLinkBuilder with
+            // the per-cell renders. The hook keys its cache off the row
+            // reference via WeakMap (see useOnClickLinkBuilder), so this
+            // extra call is an O(1) lookup when the per-cell renders
+            // populate the entry first, and one extra compute per row
+            // only when the WeakMap entry is cold (e.g. fresh data).
             const rowAction = getRowAction ? getRowAction(row.original) : null;
-            const tr = (
+            // Narrow `rowAction.url` to a non-null `string` once per row so
+            // the trailing-icon guard below (and the `<Link href={...}>`
+            // sink inside it) doesn't need an `as string` cast and stays
+            // type-safe under future changes to the `RowAction` shape.
+            const actionUrl = rowAction?.url ?? null;
+            const isActionable = actionUrl !== null;
+            const visibleCells = row.getVisibleCells();
+            const lastCellIndex = visibleCells.length - 1;
+            return (
               <tr
                 key={virtualRow.key}
-                className="bg-muted-hover"
+                className={cx(styles.tableRow, {
+                  // Actionable rows get the stronger `--color-bg-highlighted`
+                  // hover via `.actionableRow`; everything else falls back
+                  // to the global `bg-muted-hover` utility.
+                  [styles.actionableRow]: isActionable,
+                  'bg-muted-hover': !isActionable,
+                })}
                 data-index={virtualRow.index}
                 ref={rowVirtualizer.measureElement}
               >
-                {row.getVisibleCells().map(cell => {
+                {visibleCells.map((cell, cellIndex) => {
+                  const isLastCell = cellIndex === lastCellIndex;
                   return (
-                    <td key={cell.id} title={`${cell.getValue()}`}>
+                    <td
+                      key={cell.id}
+                      title={`${cell.getValue()}`}
+                      className={cx({
+                        [styles.lastCell]: isLastCell,
+                      })}
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext(),
+                      )}
+                      {/* Trailing arrow hint: anchored Mantine Tooltip
+                          wrapping a Next.js Link in the last cell of
+                          rows that resolve to a URL. The icon is hidden
+                          (opacity: 0) by default and revealed on row
+                          hover via the .tableRow:hover .rowActionHint
+                          rule. The Link inherits the same native
+                          cmd-click / middle-click / right-click
+                          semantics as the per-cell Link in the row body.
+                          Suppressed when the row's templates failed
+                          (rowAction.url === null) so the icon never
+                          promises a destination the click won't open.
+                          The arrow-up-right shape signals "navigate
+                          elsewhere" without colliding with the
+                          chevron-right used by sidebar group collapse
+                          / expand affordances. See HDX-4405. */}
+                      {isLastCell && actionUrl !== null && rowAction && (
+                        <Tooltip
+                          label={rowAction.description}
+                          position="left"
+                          withArrow
+                          openDelay={300}
+                          closeDelay={100}
+                          fz="xs"
+                        >
+                          <Link
+                            href={actionUrl}
+                            prefetch={false}
+                            tabIndex={-1}
+                            aria-hidden="true"
+                            className={styles.rowActionHint}
+                            data-testid="row-action-hint"
+                          >
+                            <IconArrowUpRight size={14} />
+                          </Link>
+                        </Tooltip>
                       )}
                     </td>
                   );
                 })}
               </tr>
             );
-            // Row-level Tooltip.Floating so the hint follows the cursor
-            // and anchors near the cell the user is over, not at the row's
-            // center-top. Tooltip.Floating tracks the cursor via floating-ui
-            // and stays within the row's bounding box; one tooltip per row
-            // means no flicker as the cursor moves between cells.
-            //
-            // The hint is suppressed when rowAction.url === null because
-            // the click only fires an error toast on those rows, so showing
-            // "Open in search" would mislead the user.
-            if (rowAction && rowAction.url) {
-              return (
-                <Tooltip.Floating
-                  key={virtualRow.key}
-                  label={rowAction.description}
-                  withinPortal
-                >
-                  {tr}
-                </Tooltip.Floating>
-              );
-            }
-            return tr;
           })}
           {paddingBottom > 0 && (
             <tr>

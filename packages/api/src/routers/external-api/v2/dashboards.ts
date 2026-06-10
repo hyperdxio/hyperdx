@@ -479,6 +479,13 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           type: boolean
  *           description: Fill missing time buckets with zero instead of leaving gaps.
  *           default: true
+ *         fitYAxisToData:
+ *           type: boolean
+ *           description: >
+ *             Set the y-axis lower bound to the minimum of the displayed data
+ *             instead of zero, making small fluctuations between series easier
+ *             to see.
+ *           default: false
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
@@ -835,6 +842,13 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               type: boolean
  *               description: Expand date range boundaries to the query granularity interval.
  *               default: true
+ *             fitYAxisToData:
+ *               type: boolean
+ *               description: >
+ *                 Set the y-axis lower bound to the minimum of the displayed
+ *                 data instead of zero, making small fluctuations between
+ *                 series easier to see.
+ *               default: false
  *
  *     BarRawSqlChartConfig:
  *       description: Raw SQL configuration for a stacked-bar time-series chart.

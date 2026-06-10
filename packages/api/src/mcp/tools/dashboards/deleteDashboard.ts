@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { deleteDashboard } from '@/controllers/dashboard';
 import Dashboard from '@/models/dashboard';
+import { objectIdSchema } from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
@@ -22,20 +23,13 @@ export function registerDeleteDashboard(
         'Permanently delete a dashboard by ID. Also removes any alerts attached to its tiles. ' +
         'Use clickstack_get_dashboard (without an ID) to list available dashboard IDs.',
       inputSchema: z.object({
-        id: z.string().describe('Dashboard ID to delete.'),
+        id: objectIdSchema.describe('Dashboard ID to delete.'),
       }),
     },
     withToolTracing(
       'clickstack_delete_dashboard',
       context,
       async ({ id: dashboardId }) => {
-        if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
-          return {
-            isError: true,
-            content: [{ type: 'text' as const, text: 'Invalid dashboard ID' }],
-          };
-        }
-
         const existing = await Dashboard.findOne({
           _id: dashboardId,
           team: teamId,

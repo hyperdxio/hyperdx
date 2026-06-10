@@ -672,6 +672,15 @@ export function convertToDashboardTemplate(
     output.containers = structuredClone(input.containers);
   }
 
+  if (input.savedQuery != null) {
+    output.savedQuery = input.savedQuery;
+    output.savedQueryLanguage = input.savedQueryLanguage ?? null;
+  }
+
+  if (input.savedFilterValues && input.savedFilterValues.length > 0) {
+    output.savedFilterValues = structuredClone(input.savedFilterValues);
+  }
+
   return output;
 }
 
@@ -709,6 +718,15 @@ export function convertToDashboardDocument(
 
   if (input.containers) {
     output.containers = structuredClone(input.containers);
+  }
+
+  if (input.savedQuery != null) {
+    output.savedQuery = input.savedQuery;
+    output.savedQueryLanguage = input.savedQueryLanguage ?? null;
+  }
+
+  if (input.savedFilterValues && input.savedFilterValues.length > 0) {
+    output.savedFilterValues = structuredClone(input.savedFilterValues);
   }
 
   return output;

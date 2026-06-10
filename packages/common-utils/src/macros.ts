@@ -161,6 +161,22 @@ export const MACRO_SUGGESTIONS = [
   })),
 ];
 
+/**
+ * Macro tokens (in `$__name` form) whose expansion depends on the chart's
+ * source being configured. With no source:
+ *  - `$__filters` cannot resolve dashboard filters against the source's
+ *    columns and falls back to `(1=1)`, so the filters are silently dropped.
+ *  - `$__sourceTable` throws at render time ("requires a source to be
+ *    selected"), so the query fails outright.
+ *
+ * Every other macro only needs the dashboard time range / interval and takes
+ * its column as an argument, so it does not require a source.
+ */
+export const SOURCE_DEPENDENT_MACROS = [
+  '$__filters',
+  '$__sourceTable',
+] as const;
+
 type MacroMatch = {
   full: string;
   args: string[];

@@ -31,6 +31,10 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  DENOISE_NOISE_THRESHOLD,
+  DENOISE_SAMPLE_SIZE,
+} from '@hyperdx/common-utils/dist/drain';
+import {
   BuilderChartConfigWithDateRange,
   SelectList,
   SourceKind,
@@ -92,7 +96,7 @@ import {
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import {
-  COLORS,
+  getChartColorInfo,
   getLogLevelClass,
   logLevelColor,
   useLocalStorage,
@@ -271,16 +275,19 @@ const PatternTrendChart = ({
               isAnimationActive={false}
               dataKey="count"
               stackId="a"
-              fill={color || COLORS[0]}
+              // `getChartColorInfo()` resolves a CSS var via
+              // `getComputedStyle(document.documentElement)` and is
+              // invoked once per row render. Kept inline (instead of
+              // hoisted into a memo) because memoizing would either
+              // require a stable theme-class subscription this
+              // component doesn't already have, or risk a stale
+              // value on theme toggle. The per-row cost is acceptable:
+              // pattern rows render in a virtualized list and the
+              // `getComputedStyle` read is sub-microsecond. Revisit
+              // if this surfaces in a profile.
+              fill={color || getChartColorInfo()}
               maxBarSize={24}
             />
-            {/* <Line
-              key={'count'}
-              type="monotone"
-              dataKey={'count'}
-              stroke={COLORS[0]}
-              dot={false}
-            /> */}
             <Tooltip content={<PatternTrendChartTooltip />} />
           </BarChart>
         </ResponsiveContainer>
@@ -1713,7 +1720,7 @@ function DBSqlRowTableComponent({
   const patternColumn = columns[columns.length - 1];
   const groupedPatterns = useGroupedPatterns({
     config,
-    samples: 10_000,
+    samples: DENOISE_SAMPLE_SIZE,
     bodyValueExpression: patternColumn ?? '',
     severityTextExpression:
       (source?.kind === SourceKind.Log
@@ -1726,7 +1733,9 @@ function DBSqlRowTableComponent({
     queryKey: ['noisy-patterns', config],
     queryFn: async () => {
       return Object.values(groupedPatterns.data).filter(
-        p => p.count / (groupedPatterns.sampledRowCount ?? 1) > 0.1,
+        p =>
+          p.count / (groupedPatterns.sampledRowCount ?? 1) >
+          DENOISE_NOISE_THRESHOLD,
       );
     },
     enabled:

@@ -14,9 +14,13 @@ jest.mock('@tanstack/react-query', () => ({
 }));
 jest.mock('@/utils', () => ({ hashCode: jest.fn(() => 0) }));
 
+import { LEGACY_CHART_PALETTE_TOKEN_MAP } from '@hyperdx/common-utils/dist/types';
+
 import { fetchLocalDashboards, getLocalDashboardTags } from '../dashboard';
 
 const STORAGE_KEY = 'hdx-local-dashboards';
+
+const LEGACY_TO_HUE_CASES = Object.entries(LEGACY_CHART_PALETTE_TOKEN_MAP);
 
 beforeEach(() => {
   localStorage.clear();
@@ -34,6 +38,83 @@ describe('fetchLocalDashboards', () => {
     ];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(dashboards));
     expect(fetchLocalDashboards()).toHaveLength(2);
+  });
+
+  describe('legacy tile color migration (fetch-time normalizer)', () => {
+    // Stored configs from #2265 (the initial number-tile color picker)
+    // contain `color: 'chart-1'..'chart-10'`. The rename refactor swapped
+    // those numeric tokens for hue-named ones and kept `ChartPaletteToken
+    // Schema` strict, so legacy values must be healed at load time.
+    const storeDashboardWithTileColor = (color: unknown) => {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify([
+          {
+            id: 'a',
+            name: 'A',
+            tiles: [
+              {
+                id: 't1',
+                x: 0,
+                y: 0,
+                w: 4,
+                h: 4,
+                config: { color },
+              },
+            ],
+            tags: [],
+          },
+        ]),
+      );
+    };
+
+    // Drives every slot off the canonical `LEGACY_CHART_PALETTE_TOKEN_MAP`
+    // so a future tweak to the mapping is caught here instead of by a
+    // stored dashboard silently recoloring on the user's next reload.
+    it.each(LEGACY_TO_HUE_CASES)('migrates legacy %s → %s', (legacy, hue) => {
+      storeDashboardWithTileColor(legacy);
+      expect(fetchLocalDashboards()[0].tiles[0].config).toMatchObject({
+        color: hue,
+      });
+    });
+
+    it('passes through hue-named tokens unchanged', () => {
+      storeDashboardWithTileColor('chart-orange');
+      expect(fetchLocalDashboards()[0].tiles[0].config).toMatchObject({
+        color: 'chart-orange',
+      });
+    });
+
+    it('leaves unresolvable color strings intact (no silent data loss)', () => {
+      // A stale hex / hand-edited / future-rollback value is preserved
+      // so the user's choice survives a render pass — the strict
+      // server-side `ChartPaletteTokenSchema` surfaces a clear error on
+      // next save instead of the normalizer quietly dropping the field
+      // and irreversibly overwriting the user's pick.
+      storeDashboardWithTileColor('chart-future-magenta');
+      expect(fetchLocalDashboards()[0].tiles[0].config).toMatchObject({
+        color: 'chart-future-magenta',
+      });
+    });
+
+    it('does not touch tiles whose config has no color field', () => {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify([
+          {
+            id: 'a',
+            name: 'A',
+            tiles: [
+              { id: 't1', x: 0, y: 0, w: 4, h: 4, config: { displayType: 1 } },
+            ],
+            tags: [],
+          },
+        ]),
+      );
+      expect(fetchLocalDashboards()[0].tiles[0].config).toEqual({
+        displayType: 1,
+      });
+    });
   });
 });
 

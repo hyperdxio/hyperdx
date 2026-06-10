@@ -86,6 +86,7 @@ export class DashboardPage {
   private readonly dashboardMenuButton: Locator;
   private readonly saveDefaultQueryAndFiltersMenuItem: Locator;
   private readonly removeDefaultQueryAndFiltersMenuItem: Locator;
+  private readonly exportDashboardMenuItem: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -136,6 +137,9 @@ export class DashboardPage {
     );
     this.removeDefaultQueryAndFiltersMenuItem = page.getByTestId(
       'remove-default-query-filters-menu-item',
+    );
+    this.exportDashboardMenuItem = page.getByTestId(
+      'export-dashboard-menu-item',
     );
   }
 
@@ -537,6 +541,22 @@ export class DashboardPage {
   }
 
   /**
+   * Add a tile bound to an explicit source. Unlike addTileWithConfig (which
+   * relies on the editor's default source), this selects a known source so the
+   * exported tile carries a deterministic source name that auto-maps on import.
+   */
+  async addTileWithSource(chartName: string, sourceName: string) {
+    await this.addTile();
+    await expect(this.chartEditor.nameInput).toBeVisible();
+    await this.chartEditor.waitForDataToLoad();
+    await this.chartEditor.setChartName(chartName);
+    await this.chartEditor.selectSource(sourceName);
+    await this.chartEditor.runQuery(false);
+    await this.chartEditor.save();
+    await expect(this.getTiles()).toHaveCount(1, { timeout: 10000 });
+  }
+
+  /**
    * Get all dashboard tiles
    */
   getTiles() {
@@ -614,6 +634,25 @@ export class DashboardPage {
   async removeSavedQueryAndFiltersDefaults() {
     await this.dashboardMenuButton.click();
     await this.removeDefaultQueryAndFiltersMenuItem.click();
+  }
+
+  /**
+   * Export the current dashboard via the dashboard menu and return the parsed
+   * JSON that was downloaded. The export triggers a client-side anchor download
+   * (see `downloadObjectAsJson` in DBDashboardPage), so we capture the
+   * Playwright download event and read its stream.
+   */
+  async exportDashboard(): Promise<Record<string, any>> {
+    await this.dashboardMenuButton.click();
+    const downloadPromise = this.page.waitForEvent('download');
+    await this.exportDashboardMenuItem.click();
+    const download = await downloadPromise;
+    const stream = await download.createReadStream();
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(Buffer.from(chunk));
+    }
+    return JSON.parse(Buffer.concat(chunks).toString('utf-8'));
   }
 
   /**
@@ -968,6 +1007,57 @@ export class DashboardPage {
       .locator('[data-testid="dashboard-table-row-action"]')
       .first()
       .click();
+  }
+
+  /**
+   * Return the first data row (<tr data-index>) of the table in the
+   * given tile. Used for hover-based interactions (e.g. tooltip tests).
+   */
+  getFirstTableRow(tileIndex = 0): Locator {
+    return this.getTile(tileIndex)
+      .locator('table tbody tr[data-index]')
+      .first();
+  }
+
+  /**
+   * Locator for the trailing arrow hint element rendered in the last
+   * cell of clickable rows. The icon (arrow-up-right) carries
+   * `data-testid="row-action-hint"` and is the trigger element for the
+   * anchored Mantine Tooltip describing the row's onClick destination.
+   */
+  getRowActionHint(tileIndex = 0): Locator {
+    return this.getTile(tileIndex)
+      .locator('table tbody tr[data-index]')
+      .first()
+      .getByTestId('row-action-hint');
+  }
+
+  /**
+   * Hover the first data row of a table tile, then hover its trailing
+   * arrow hint so the anchored Mantine Tooltip opens. Returns the
+   * tooltip locator so callers can assert on the description text.
+   *
+   * The arrow icon (`data-testid="row-action-hint"`) is hidden
+   * (`opacity: 0`) until the row is hovered. Hovering the row reveals
+   * the icon via the `.tableRow:hover .rowActionHint` CSS rule. The
+   * Mantine Tooltip wrapping the icon then opens when the cursor moves
+   * to the icon itself, rendering its label in a portal at the body.
+   *
+   * The returned locator narrows the role match by name so the assertion
+   * does not collide with header-cell or resize-handle tooltips that
+   * may also live in the portal at the moment of the check
+   * (Search-suggestion onClick wording, dashboard-open wording, etc.).
+   */
+  async hoverFirstTableRowAndGetTooltip(tileIndex = 0): Promise<Locator> {
+    const row = this.getFirstTableRow(tileIndex);
+    await row.hover();
+    const hint = this.getRowActionHint(tileIndex);
+    // Hover the icon directly so the anchored Tooltip's mouseEnter
+    // listener fires; row-hover alone only fades the icon in.
+    await hint.hover();
+    const tooltip = this.page.getByRole('tooltip', { name: /Search|Open/ });
+    await tooltip.waitFor({ state: 'visible', timeout: 5000 });
+    return tooltip;
   }
 
   /**
