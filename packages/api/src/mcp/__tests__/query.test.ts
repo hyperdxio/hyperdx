@@ -559,40 +559,54 @@ describe('validateMetricSelectItems', () => {
 
 // ─── applyMetricSelectDefaults ───────────────────────────────────────────────
 
+// Typed as McpSelectItem so the inferred generic preserves the
+// optional valueExpression field. Otherwise structural inference
+// narrows away `valueExpression` and the assertions below stop
+// type-checking.
+type SelectItem = {
+  aggFn: string;
+  metricType?: 'gauge' | 'sum' | 'histogram';
+  metricName?: string;
+  valueExpression?: string;
+};
+
 describe('applyMetricSelectDefaults', () => {
   it('defaults valueExpression to "Value" when metricType is set', () => {
-    const out = applyMetricSelectDefaults([
+    const input: SelectItem[] = [
       {
         aggFn: 'avg',
         metricType: 'gauge',
         metricName: 'system.cpu.utilization',
       },
-    ]);
+    ];
+    const out = applyMetricSelectDefaults(input);
     expect(out[0].valueExpression).toBe('Value');
   });
 
   it('preserves an explicit valueExpression on metric items', () => {
-    const out = applyMetricSelectDefaults([
+    const input: SelectItem[] = [
       {
         aggFn: 'avg',
         metricType: 'gauge',
         metricName: 'x',
         valueExpression: 'Value * 100',
       },
-    ]);
+    ];
+    const out = applyMetricSelectDefaults(input);
     expect(out[0].valueExpression).toBe('Value * 100');
   });
 
   it('leaves non-metric items untouched', () => {
-    const out = applyMetricSelectDefaults([{ aggFn: 'count' }]);
+    const input: SelectItem[] = [{ aggFn: 'count' }];
+    const out = applyMetricSelectDefaults(input);
     expect(out[0]).toEqual({ aggFn: 'count' });
     expect(out[0].valueExpression).toBeUndefined();
   });
 
   it('returns new objects only for the items it mutates', () => {
-    const input = [
-      { aggFn: 'count' as const },
-      { aggFn: 'avg', metricType: 'gauge' as const, metricName: 'x' },
+    const input: SelectItem[] = [
+      { aggFn: 'count' },
+      { aggFn: 'avg', metricType: 'gauge', metricName: 'x' },
     ];
     const out = applyMetricSelectDefaults(input);
     expect(out[0]).toBe(input[0]); // unchanged item is the same reference
