@@ -278,7 +278,6 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           maxLength: 256
  *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
- *           nullable: true
  *           example: Billing
  *         kind:
  *           type: string
@@ -431,7 +430,6 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           maxLength: 256
  *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
- *           nullable: true
  *           example: Billing
  *         kind:
  *           type: string
@@ -605,7 +603,6 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           maxLength: 256
  *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
- *           nullable: true
  *           example: Billing
  *         kind:
  *           type: string
@@ -663,7 +660,6 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           maxLength: 256
  *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
- *           nullable: true
  *           example: Billing
  *         kind:
  *           type: string
