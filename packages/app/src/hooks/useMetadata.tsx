@@ -126,6 +126,35 @@ export function useJsonColumns(
   });
 }
 
+// Mirrors `useJsonColumns` for Map-typed columns. Used by `mergePath`
+// callers (notably `DBSearchPageFilters`) so numeric-looking sub-keys on a
+// Map render as `Map['key']` instead of the illegal array `Map[N+1]`.
+// HDX-4369.
+export function useMapColumns(
+  tableConnection: TableConnection | undefined,
+  options?: Partial<UseQueryOptions<string[]>>,
+) {
+  const metadata = useMetadataWithSettings();
+  return useQuery<string[]>({
+    queryKey: ['useMetadata.useMapColumns', tableConnection],
+    queryFn: async () => {
+      if (!tableConnection) return [];
+      const columns = await metadata.getColumns(tableConnection);
+      return (
+        filterColumnMetaByType(columns, [JSDataType.Map])?.map(
+          column => column.name,
+        ) ?? []
+      );
+    },
+    enabled:
+      tableConnection &&
+      !!tableConnection.databaseName &&
+      !!tableConnection.tableName &&
+      !!tableConnection.connectionId,
+    ...options,
+  });
+}
+
 export function useMultipleAllFields(
   tableConnections: TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>> & {
