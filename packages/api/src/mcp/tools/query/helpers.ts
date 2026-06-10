@@ -64,11 +64,10 @@ export const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
 // ─── Safety limits ───────────────────────────────────────────────────────────
 
 /** ClickHouse settings applied to all MCP query-tool executions.
- *  readonly=2 so max_execution_time and max_result_rows can be set
+ *  readonly=2 so max_execution_time can be set
  *  (readonly=1 rejects all setting changes). */
 const MCP_CLICKHOUSE_SETTINGS = {
   max_execution_time: 30,
-  max_result_rows: '100000',
   readonly: 2,
 } as const;
 
@@ -477,7 +476,7 @@ export function errorHint(msg: string): string | null {
   }
   if (/TOO_MANY_ROWS_OR_BYTES|RESULT_IS_TOO_LARGE/i.test(msg)) {
     return (
-      'The query returned more than 100,000 rows. ' +
+      'The query returned too many rows. ' +
       'Add a LIMIT, narrow the time range, or add filters to reduce the result set.'
     );
   }
