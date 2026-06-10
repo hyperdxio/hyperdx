@@ -317,7 +317,7 @@ describe('Metadata', () => {
     it('returns true when SharedMergeTree is registered in system.table_engines', async () => {
       (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
         json: jest.fn().mockResolvedValue({
-          data: [{ '1': 1 }],
+          data: [{ is_cloud: true }],
         }),
       });
 
@@ -349,7 +349,7 @@ describe('Metadata', () => {
       (mockClickhouseClient.query as jest.Mock)
         .mockRejectedValueOnce(new Error('connection refused'))
         .mockResolvedValueOnce({
-          json: jest.fn().mockResolvedValue({ data: [{ '1': 1 }] }),
+          json: jest.fn().mockResolvedValue({ data: [{ is_cloud: true }] }),
         });
 
       const first = await realMetadata.isClickHouseCloud({

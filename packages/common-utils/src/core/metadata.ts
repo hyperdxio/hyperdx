@@ -952,17 +952,17 @@ export class Metadata {
       `${connectionId}.isClickHouseCloud`,
       async () => {
         try {
-          const sql = chSql`SELECT 1 FROM system.table_engines WHERE name = ${{ String: 'SharedMergeTree' }} LIMIT 1`;
+          const query =
+            "SELECT count() > 0 AS is_cloud FROM system.table_engines WHERE name = 'SharedMergeTree'";
           const json = await this.clickhouseClient
             .query<'JSON'>({
               connectionId,
-              query: sql.sql,
-              query_params: sql.params,
+              query,
               clickhouse_settings: this.getClickHouseSettings(),
               shouldSkipApplySettings: true,
             })
-            .then(res => res.json<{ '1': number }>());
-          return json.data.length > 0;
+            .then(res => res.json<{ is_cloud: boolean }>());
+          return json.data.length > 0 && json.data[0].is_cloud;
         } catch (e) {
           console.warn('Error detecting ClickHouse Cloud:', e);
           return undefined;
