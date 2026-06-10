@@ -287,9 +287,11 @@ function DBTimeChartComponent({
     fillNulls,
   } = useTimeChartSettings(config);
 
+  const { data: me, isLoading: isLoadingMe } = api.useMe();
+
   const queriedConfig = useMemo(
-    () => convertToTimeChartConfig(config),
-    [config],
+    () => convertToTimeChartConfig(config, me?.team?.seriesLimit),
+    [config, me?.team?.seriesLimit],
   );
 
   // Determine whether the config can be optimized with an MV, to determine whether
@@ -299,7 +301,6 @@ function DBTimeChartComponent({
   const { data: mvOptimizationData } =
     useMVOptimizationExplanation(builderQueriedConfig);
 
-  const { data: me, isLoading: isLoadingMe } = api.useMe();
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
     useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
