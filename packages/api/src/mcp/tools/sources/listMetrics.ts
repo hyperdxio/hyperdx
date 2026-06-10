@@ -5,9 +5,8 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import ms from 'ms';
 import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
@@ -16,24 +15,10 @@ import logger from '@/utils/logger';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
-
-// Metric kinds the query renderer can translate today. Mirrors
-// QUERYABLE_METRIC_KINDS in describeSource.ts. Declared as string
-// literals (not MetricsDataType enum members) so `z.enum(...)` can
-// narrow the inferred handler input type properly — referencing the
-// enum here pessimises Zod's inference to `unknown` at the MCP SDK
-// callback boundary.
-const QUERYABLE_METRIC_KINDS = ['gauge', 'sum', 'histogram'] as const;
-type QueryableKind = (typeof QUERYABLE_METRIC_KINDS)[number];
-
-// Compile-time guarantee that the string literals still match the
-// MetricsDataType enum (and so are valid keys on MetricTable).
-const _assertKindsMatch: readonly QueryableKind[] = [
-  MetricsDataType.Gauge,
-  MetricsDataType.Sum,
-  MetricsDataType.Histogram,
-];
-void _assertKindsMatch;
+import {
+  QUERYABLE_METRIC_KINDS,
+  type QueryableMetricKind,
+} from './metricKinds';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
@@ -42,7 +27,7 @@ const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 // ─── Cursor ──────────────────────────────────────────────────────────────────
 
 export type ListMetricsCursorPayload = {
-  kind: QueryableKind;
+  kind: QueryableMetricKind;
   lastName: string;
 };
 
@@ -63,7 +48,10 @@ export function decodeCursor(raw: string): ListMetricsCursorPayload | null {
       typeof parsed.lastName === 'string' &&
       (QUERYABLE_METRIC_KINDS as readonly string[]).includes(parsed.kind)
     ) {
-      return { kind: parsed.kind as QueryableKind, lastName: parsed.lastName };
+      return {
+        kind: parsed.kind as QueryableMetricKind,
+        lastName: parsed.lastName,
+      };
     }
   } catch {
     // fall through
@@ -127,7 +115,7 @@ const listMetricsSchema = z.object({
 
 type MetricEntry = {
   name: string;
-  kind: QueryableKind;
+  kind: QueryableMetricKind;
   unit?: string;
   description?: string;
 };
@@ -166,7 +154,7 @@ async function fetchMetricsForKind({
 }: {
   clickhouseClient: ClickhouseClient;
   metadata: ReturnType<typeof getMetadata>;
-  kind: QueryableKind;
+  kind: QueryableMetricKind;
   databaseName: string;
   tableName: string;
   connectionId: string;
@@ -321,7 +309,7 @@ export function registerListMetrics(
       // Resolve which kinds to scan, in order. When a cursor is set,
       // skip kinds before the cursor's kind (already returned) and start
       // the cursor's kind at the lastName-exclusive position.
-      const requestedKinds: QueryableKind[] = input.kind
+      const requestedKinds: QueryableMetricKind[] = input.kind
         ? [input.kind]
         : QUERYABLE_METRIC_KINDS.filter(k => Boolean(source.metricTables[k]));
       const startKindIdx = cursor ? requestedKinds.indexOf(cursor.kind) : 0;
