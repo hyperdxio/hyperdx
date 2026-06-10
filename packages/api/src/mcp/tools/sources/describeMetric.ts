@@ -1,6 +1,9 @@
 import {
   chSql,
   concatChSql,
+  convertCHDataTypeToJSType,
+  filterColumnMetaByType,
+  JSDataType,
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
@@ -244,6 +247,82 @@ async function fetchUnitAndDescription({
 }
 
 /**
+ * Discover the distinct attribute keys present for a single metric
+ * name on a single kind's table, grouped by the Map column they live on
+ * (typically ResourceAttributes / Attributes / ScopeAttributes on the
+ * OTel Collector default schema). Issues one query per Map column with
+ * `mapKeys(col) AS keys` and aggregates the distinct keys server-side.
+ *
+ * Replaces an earlier `metadata.getAllFields({ metricName })` call which
+ * silently returned empty arrays in this CI environment for
+ * metric-scoped scans. A direct query is more transparent and matches
+ * the proven pattern used by the web app's `useFetchMetricResourceAttrs`.
+ */
+async function fetchAttributeKeys({
+  clickhouseClient,
+  databaseName,
+  tableName,
+  connectionId,
+  metricName,
+  columns,
+  signal,
+}: {
+  clickhouseClient: ClickhouseClient;
+  databaseName: string;
+  tableName: string;
+  connectionId: string;
+  metricName: string;
+  columns: { name: string; type: string }[];
+  signal: AbortSignal;
+}): Promise<Record<string, string[]>> {
+  const mapColumns =
+    filterColumnMetaByType(columns, [JSDataType.Map])?.filter(
+      c => convertCHDataTypeToJSType(c.type) === JSDataType.Map,
+    ) ?? [];
+  if (mapColumns.length === 0) return {};
+
+  const projections = mapColumns.map(
+    col =>
+      chSql`arrayDistinct(arrayFlatten(groupArray(mapKeys(${{ Identifier: col.name }})))) AS ${{ Identifier: col.name }}`,
+  );
+
+  const sql = chSql`
+    SELECT ${concatChSql(', ', projections)}
+    FROM ${tableExpr({ database: databaseName, table: tableName })}
+    WHERE MetricName = ${{ String: metricName }}
+  `;
+
+  try {
+    const response = await clickhouseClient.query<'JSON'>({
+      query: sql.sql,
+      query_params: sql.params,
+      format: 'JSON',
+      connectionId,
+      abort_signal: signal,
+    });
+    const result = (await response.json()) as {
+      data: Array<Record<string, string[]>>;
+    };
+    const row = result.data[0];
+    if (!row) return {};
+    const out: Record<string, string[]> = {};
+    for (const col of mapColumns) {
+      const keys = row[col.name];
+      if (Array.isArray(keys) && keys.length > 0) {
+        out[col.name] = keys.filter(k => typeof k === 'string' && k.length > 0);
+      }
+    }
+    return out;
+  } catch (e) {
+    logger.warn(
+      { tableName, error: e instanceof Error ? e.message : String(e) },
+      'fetchAttributeKeys failed',
+    );
+    return {};
+  }
+}
+
+/**
  * Sample distinct values per attribute key. Uses one composed
  * groupArray-per-key query so all keys are fetched in a single round
  * trip.
@@ -459,7 +538,7 @@ async function describeMetricImpl(
 
     // Defensive column-presence check before referencing MetricUnit /
     // MetricDescription.
-    let columns: { name: string }[];
+    let columns: { name: string; type: string }[];
     try {
       columns = await metadata.getColumns({
         databaseName,
@@ -477,7 +556,7 @@ async function describeMetricImpl(
     const hasUnit = columnNames.has('MetricUnit');
     const hasDescription = columnNames.has('MetricDescription');
 
-    const [meta, allFields] = await Promise.all([
+    const [meta, attributeKeys] = await Promise.all([
       fetchUnitAndDescription({
         clickhouseClient,
         databaseName,
@@ -490,34 +569,16 @@ async function describeMetricImpl(
         hasDescription,
         signal,
       }),
-      metadata
-        .getAllFields({
-          databaseName,
-          tableName,
-          connectionId,
-          metricName: input.metricName,
-          dateRange: [startDate, endDate],
-        })
-        .catch(e => {
-          logger.warn(
-            { kind, error: e instanceof Error ? e.message : String(e) },
-            'describeMetric: getAllFields failed',
-          );
-          return [];
-        }),
+      fetchAttributeKeys({
+        clickhouseClient,
+        databaseName,
+        tableName,
+        connectionId,
+        metricName: input.metricName,
+        columns,
+        signal,
+      }),
     ]);
-
-    // Group fields by map column (Attributes / ResourceAttributes /
-    // ScopeAttributes). Native columns are skipped — the agent already
-    // knows the metric value column is `Value`.
-    const attributeKeys: Record<string, string[]> = {};
-    for (const field of allFields) {
-      if (field.path.length < 2) continue;
-      const mapColumn = field.path[0];
-      const keyName = field.path[1];
-      if (!attributeKeys[mapColumn]) attributeKeys[mapColumn] = [];
-      attributeKeys[mapColumn].push(keyName);
-    }
 
     const detail: KindDetail = {
       kind,
