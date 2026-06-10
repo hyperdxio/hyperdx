@@ -11,6 +11,7 @@ import {
   runConfigTile,
 } from './helpers';
 import {
+  applyMetricSelectDefaults,
   endTimeSchema,
   groupBySchema,
   MCP_AGG_FN_OPTIONS,
@@ -242,13 +243,20 @@ export function registerTable(server: McpServer, context: McpContext) {
       // Cast to the concrete `McpSelectItem[]` because Zod 3.x widens
       // optional-field inference at the MCP-SDK tool boundary; the
       // runtime parser still produces the correct shape.
-      const select = input.select as McpSelectItem[];
+      const rawSelect = input.select as McpSelectItem[];
 
       // Validate cross-field constraints (metric rules, level/quantile,
       // valueExpression presence) and surface friendly errors before we
       // touch ClickHouse.
-      const validation = validateMetricSelectItems(select);
+      const validation = validateMetricSelectItems(rawSelect);
       if (validation) return validation;
+
+      // Default valueExpression="Value" for metric items BEFORE we call
+      // buildTile, because the external dashboard tile schema's
+      // superRefine rejects non-count aggregations with empty
+      // valueExpression and agents normally omit the field on metric
+      // queries.
+      const select = applyMetricSelectDefaults(rawSelect);
 
       // Auto-upgrade shape when select has multiple items but shape is
       // single-value (number/pie). This is the #1 Zod error class from agents.

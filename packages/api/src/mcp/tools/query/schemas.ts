@@ -315,6 +315,24 @@ export type McpSelectItem = {
 };
 
 /**
+ * Default `valueExpression` to `"Value"` for every metric-tagged select
+ * item that omits it. Must be called BEFORE `buildTile`, because the
+ * external dashboard tile schema's `superRefine` rejects non-count
+ * aggregations with an empty `valueExpression`. The runtime renderer
+ * looks for `Value` on metric tables, so defaulting it here matches what
+ * `external-api/v2/charts.ts:240-250` does on the REST path.
+ */
+export function applyMetricSelectDefaults<T extends McpSelectItem>(
+  items: ReadonlyArray<T>,
+): T[] {
+  return items.map(item =>
+    item.metricType && !item.valueExpression
+      ? { ...item, valueExpression: 'Value' }
+      : item,
+  );
+}
+
+/**
  * Apply `getMetricSelectIssues` to every select item in a tool input.
  * Returns an error-shaped tool response when any issue is detected, or
  * `null` when all items pass. Call this from a tool handler before

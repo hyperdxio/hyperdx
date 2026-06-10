@@ -14,6 +14,7 @@ import {
   parseTimeRange,
 } from '../tools/query/helpers';
 import {
+  applyMetricSelectDefaults,
   getMetricSelectIssues,
   validateMetricSelectItems,
 } from '../tools/query/schemas';
@@ -613,6 +614,49 @@ describe('validateMetricSelectItems', () => {
     expect(result).not.toBeNull();
     if (!result) return;
     expect(result.content[0].text).toContain('select[0].level');
+  });
+});
+
+// ─── applyMetricSelectDefaults ───────────────────────────────────────────────
+
+describe('applyMetricSelectDefaults', () => {
+  it('defaults valueExpression to "Value" when metricType is set', () => {
+    const out = applyMetricSelectDefaults([
+      {
+        aggFn: 'avg',
+        metricType: 'gauge',
+        metricName: 'system.cpu.utilization',
+      },
+    ]);
+    expect(out[0].valueExpression).toBe('Value');
+  });
+
+  it('preserves an explicit valueExpression on metric items', () => {
+    const out = applyMetricSelectDefaults([
+      {
+        aggFn: 'avg',
+        metricType: 'gauge',
+        metricName: 'x',
+        valueExpression: 'Value * 100',
+      },
+    ]);
+    expect(out[0].valueExpression).toBe('Value * 100');
+  });
+
+  it('leaves non-metric items untouched', () => {
+    const out = applyMetricSelectDefaults([{ aggFn: 'count' }]);
+    expect(out[0]).toEqual({ aggFn: 'count' });
+    expect(out[0].valueExpression).toBeUndefined();
+  });
+
+  it('returns new objects only for the items it mutates', () => {
+    const input = [
+      { aggFn: 'count' as const },
+      { aggFn: 'avg', metricType: 'gauge' as const, metricName: 'x' },
+    ];
+    const out = applyMetricSelectDefaults(input);
+    expect(out[0]).toBe(input[0]); // unchanged item is the same reference
+    expect(out[1]).not.toBe(input[1]); // mutated item is a new object
   });
 });
 
