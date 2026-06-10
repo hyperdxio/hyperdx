@@ -221,6 +221,18 @@
 
   // ----- rendering: sidebar nav -----
 
+  /** True when the current batch has more than one distinct model across cells. */
+  function isMultiModel() {
+    const models = new Set();
+    for (const c of state.cells) if (c.model) models.add(c.model);
+    return models.size > 1;
+  }
+
+  /** Heading for a cell: matches the columnKeyFor logic in aggregate.ts. */
+  function cellHeading(c) {
+    return c.model && isMultiModel() ? `${c.mcp}/${c.model}` : c.mcp;
+  }
+
   function renderNav() {
     const root = $('#nav');
     root.innerHTML = '';
@@ -238,7 +250,7 @@
         el('div', { class: 'head' }, scenario),
       );
       for (const c of cells) {
-        const heading = c.model ? `${c.mcp}/${c.model}` : c.mcp;
+        const heading = cellHeading(c);
         const mNode = el(
           'div',
           { class: 'nav-mcp' },
@@ -1022,8 +1034,7 @@
       const maxRuns = Math.max(...scenarioCells.map((c) => c.runs.length));
       const runHeader = [el('th', {}, 'Run')];
       for (const c of scenarioCells) {
-        const heading = c.model ? `${c.mcp}/${c.model}` : c.mcp;
-        runHeader.push(el('th', {}, heading));
+        runHeader.push(el('th', {}, cellHeading(c)));
       }
       const runRows = [];
       for (let i = 0; i < maxRuns; i++) {

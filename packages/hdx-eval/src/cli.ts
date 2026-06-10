@@ -921,10 +921,14 @@ function parseMcpFlag(
 }
 
 function parseModelFlag(v: string): string[] {
-  const models = v
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
+  const models = [
+    ...new Set(
+      v
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean),
+    ),
+  ];
   if (models.length === 0) {
     throw new Error(`--model must be a comma-separated list of model IDs`);
   }

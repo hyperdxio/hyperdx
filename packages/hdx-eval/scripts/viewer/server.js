@@ -65,7 +65,12 @@ function isRunJson(f) {
 }
 
 function collectRuns(cellDir) {
-  const files = fs.readdirSync(cellDir);
+  let files;
+  try {
+    files = fs.readdirSync(cellDir);
+  } catch {
+    return []; // directory may have been removed between discovery and read
+  }
   const runIdxs = new Set();
   for (const f of files) {
     const m = /^(\d+)\.json$/.exec(f);
