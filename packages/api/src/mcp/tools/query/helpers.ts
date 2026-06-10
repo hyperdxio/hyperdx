@@ -490,5 +490,13 @@ export function errorHint(msg: string): string | null {
       'map attribute keys before retrying.'
     );
   }
+  if (/SETTING_CONSTRAINT_VIOLATION|shouldn't be greater than/i.test(msg)) {
+    return (
+      'This ClickHouse connection has a profile that restricts one or more ' +
+      'settings to a value lower than requested. This is a server-side ' +
+      'constraint — the query cannot override it. Try running the query ' +
+      'without the constrained setting, or contact the connection administrator.'
+    );
+  }
   return null;
 }

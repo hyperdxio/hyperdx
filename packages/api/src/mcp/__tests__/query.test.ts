@@ -238,6 +238,15 @@ describe('errorHint', () => {
     expect(hint).toContain('too many rows');
   });
 
+  it('should match SETTING_CONSTRAINT_VIOLATION errors', () => {
+    const hint = errorHint(
+      "Setting max_result_rows shouldn't be greater than 1000. (SETTING_CONSTRAINT_VIOLATION)",
+    );
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('profile');
+    expect(hint).toContain('constraint');
+  });
+
   it('should return null for unrecognized errors', () => {
     const hint = errorHint('Connection refused');
     expect(hint).toBeNull();
