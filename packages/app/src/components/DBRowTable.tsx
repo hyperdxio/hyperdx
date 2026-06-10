@@ -31,6 +31,10 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  DENOISE_NOISE_THRESHOLD,
+  DENOISE_SAMPLE_SIZE,
+} from '@hyperdx/common-utils/dist/drain';
+import {
   BuilderChartConfigWithDateRange,
   SelectList,
   SourceKind,
@@ -1716,7 +1720,7 @@ function DBSqlRowTableComponent({
   const patternColumn = columns[columns.length - 1];
   const groupedPatterns = useGroupedPatterns({
     config,
-    samples: 10_000,
+    samples: DENOISE_SAMPLE_SIZE,
     bodyValueExpression: patternColumn ?? '',
     severityTextExpression:
       (source?.kind === SourceKind.Log
@@ -1729,7 +1733,9 @@ function DBSqlRowTableComponent({
     queryKey: ['noisy-patterns', config],
     queryFn: async () => {
       return Object.values(groupedPatterns.data).filter(
-        p => p.count / (groupedPatterns.sampledRowCount ?? 1) > 0.1,
+        p =>
+          p.count / (groupedPatterns.sampledRowCount ?? 1) >
+          DENOISE_NOISE_THRESHOLD,
       );
     },
     enabled:

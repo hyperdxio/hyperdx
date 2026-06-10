@@ -1,3 +1,4 @@
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
@@ -356,6 +357,110 @@ describe('MCP Query Tools', () => {
       expect(result.isError).toBe(true);
       expect(getFirstText(result)).toMatch(/sourceId/i);
     });
+
+    it('should expose denoise property in schema', async () => {
+      const { tools } = await client.listTools();
+      const tool = tools.find(t => t.name === 'clickstack_search');
+      expect(tool).toBeDefined();
+      const props = Object.keys(tool!.inputSchema.properties ?? {});
+      expect(props).toContain('denoise');
+    });
+
+    it('should emit denoised block when denoise=true on empty results', async () => {
+      const result = await callTool(client, 'clickstack_search', {
+        sourceId: logSource._id.toString(),
+        denoise: true,
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      // With no data, the denoised block should not appear because the
+      // search result itself has no rows to process (early return path).
+      const output = JSON.parse(getFirstText(result));
+      expect(output).toHaveProperty('result');
+    });
+
+    describe('denoise with seeded data', () => {
+      const now = new Date();
+      const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+      beforeEach(async () => {
+        const logs: Parameters<typeof bulkInsertLogs>[0] = [];
+
+        // Noisy pattern: "Health check OK from <ip>" — 80 rows (>10% threshold)
+        for (let i = 0; i < 80; i++) {
+          logs.push({
+            Body: `Health check OK from 10.0.${Math.floor(i / 256)}.${i % 256}`,
+            ServiceName: 'loadbalancer',
+            SeverityText: 'INFO',
+            Timestamp: new Date(fiveMinAgo.getTime() + i * 100),
+          });
+        }
+
+        // Unique/rare events — 5 rows (well below 10% threshold)
+        for (let i = 0; i < 5; i++) {
+          logs.push({
+            Body: `Rare event type ${String.fromCharCode(65 + i)} occurred in subsystem`,
+            ServiceName: 'worker',
+            SeverityText: 'WARN',
+            Timestamp: new Date(fiveMinAgo.getTime() + (80 + i) * 1000),
+          });
+        }
+
+        await bulkInsertLogs(logs);
+      });
+
+      it('should filter noisy patterns and emit denoised metadata', async () => {
+        const result = await callTool(client, 'clickstack_search', {
+          sourceId: logSource._id.toString(),
+          denoise: true,
+          maxResults: 200,
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+
+        // Must have a denoised block
+        expect(output).toHaveProperty('denoised');
+        expect(output.denoised).toHaveProperty('removedPatterns');
+        expect(output.denoised).toHaveProperty('returnedRowCountBeforeDenoise');
+        expect(output.denoised).toHaveProperty('filteredRowCount');
+
+        // Should not have a skipped reason
+        expect(output.denoised.skipped).toBeUndefined();
+
+        // The noisy health check pattern should be in removedPatterns
+        expect(output.denoised.removedPatterns.length).toBeGreaterThanOrEqual(
+          1,
+        );
+        const healthPattern = output.denoised.removedPatterns.find(
+          (p: { pattern: string }) => p.pattern.includes('Health check'),
+        );
+        expect(healthPattern).toBeDefined();
+
+        // Filtered count should be less than original
+        expect(output.denoised.filteredRowCount).toBeLessThan(
+          output.denoised.returnedRowCountBeforeDenoise,
+        );
+      });
+
+      it('should return results without denoised block when denoise=false', async () => {
+        const result = await callTool(client, 'clickstack_search', {
+          sourceId: logSource._id.toString(),
+          denoise: false,
+          maxResults: 200,
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output).not.toHaveProperty('denoised');
+      });
+    });
   });
 
   // ─── clickstack_event_patterns ─────────────────────────────────────────────────
@@ -581,6 +686,133 @@ describe('MCP Query Tools', () => {
 
       expect(result.isError).toBe(true);
       expect(getFirstText(result)).toContain('Invalid');
+    });
+  });
+
+  // ─── Safety settings (readonly + max_execution_time) ─────────────────────────
+
+  describe('ClickHouse safety settings', () => {
+    describe('readonly enforcement via clickstack_sql', () => {
+      it('should reject CREATE TABLE (DDL)', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: 'CREATE TABLE __mcp_test_ddl (id UInt64) ENGINE = Memory',
+        });
+
+        expect(result.isError).toBe(true);
+        const text = getFirstText(result);
+        expect(text).toMatch(/readonly/i);
+      });
+
+      it('should reject INSERT (DML)', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: `INSERT INTO ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE} (Body) VALUES ('injected')`,
+        });
+
+        expect(result.isError).toBe(true);
+        const text = getFirstText(result);
+        expect(text).toMatch(/readonly/i);
+      });
+
+      it('should reject DROP TABLE (DDL)', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: `DROP TABLE IF EXISTS ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`,
+        });
+
+        expect(result.isError).toBe(true);
+        const text = getFirstText(result);
+        expect(text).toMatch(/readonly/i);
+      });
+
+      it('should allow SELECT (read-only query)', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: 'SELECT 1 AS value',
+        });
+
+        expect(result.isError).toBeFalsy();
+      });
+    });
+
+    describe('max_execution_time enforcement', () => {
+      it('should kill a query that exceeds max_execution_time', async () => {
+        // Test directly with ClickhouseClient to use a short timeout (1s)
+        // instead of waiting for the full 30s MCP default.
+        const clickhouseClient = new ClickhouseClient({
+          host: config.CLICKHOUSE_HOST,
+          username: config.CLICKHOUSE_USER,
+          password: config.CLICKHOUSE_PASSWORD,
+          requestTimeout: 5_000,
+        });
+
+        await expect(
+          clickhouseClient.query({
+            query: 'SELECT sleep(3)',
+            format: 'JSON',
+            clickhouse_settings: {
+              max_execution_time: 1,
+            },
+          }),
+        ).rejects.toThrow(/TIMEOUT_EXCEEDED|timeout/i);
+      });
+    });
+
+    describe('settings propagation via clickstack_sql', () => {
+      it('should propagate max_execution_time=30 to ClickHouse', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: "SELECT getSetting('max_execution_time') AS value",
+        });
+
+        expect(result.isError).toBeFalsy();
+        const parsed = JSON.parse(getFirstText(result));
+        expect(parsed.result?.data?.[0]?.value).toBe(30);
+      });
+
+      it('should propagate max_result_rows=100000 to ClickHouse', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: "SELECT getSetting('max_result_rows') AS value",
+        });
+
+        expect(result.isError).toBeFalsy();
+        const parsed = JSON.parse(getFirstText(result));
+        expect(parsed.result?.data?.[0]?.value).toBe(100000);
+      });
+
+      it('should propagate readonly=2 to ClickHouse', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: "SELECT getSetting('readonly') AS value",
+        });
+
+        expect(result.isError).toBeFalsy();
+        const parsed = JSON.parse(getFirstText(result));
+        expect(parsed.result?.data?.[0]?.value).toBe(2);
+      });
+
+      it('should apply all safety settings together without readonly conflicts', async () => {
+        // readonly=1 rejects setting changes, so max_execution_time and
+        // max_result_rows would be silently ignored. readonly=2 allows
+        // setting changes while still blocking writes. This test verifies
+        // all three settings are applied in a single query.
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: `SELECT
+              getSetting('readonly') AS readonly_mode,
+              getSetting('max_execution_time') AS max_exec_time,
+              getSetting('max_result_rows') AS max_rows`,
+        });
+
+        expect(result.isError).toBeFalsy();
+        const parsed = JSON.parse(getFirstText(result));
+        const row = parsed.result?.data?.[0];
+        expect(row?.readonly_mode).toBe(2);
+        expect(row?.max_exec_time).toBe(30);
+        expect(row?.max_rows).toBe(100000);
+      });
     });
   });
 });

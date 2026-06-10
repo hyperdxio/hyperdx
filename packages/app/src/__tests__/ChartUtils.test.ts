@@ -11,6 +11,7 @@ import {
   formatResponseForPieChart,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
+import { DEFAULT_SERIES_LIMIT } from '@/defaults';
 import { COLORS } from '@/utils';
 
 // Anchor info/error to concrete hexes rather than `getChartColorInfo()` /
@@ -805,6 +806,36 @@ describe('ChartUtils', () => {
         convertToTimeChartConfig(config).granularity;
 
       expect(granularityFromFunction).toBe('5 minute');
+    });
+
+    const seriesLimitConfig = {
+      granularity: '5 minute',
+      dateRange: [
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-27T00:00:00Z'),
+      ],
+    } as BuilderChartConfigWithDateRange;
+
+    // seriesLimit lives on the builder member of the ChartConfigWithDateRange
+    // union, so narrow the result before reading it.
+    const seriesLimitOf = (teamSeriesLimit?: number) =>
+      (
+        convertToTimeChartConfig(
+          seriesLimitConfig,
+          teamSeriesLimit,
+        ) as BuilderChartConfigWithDateRange
+      ).seriesLimit;
+
+    it('defaults seriesLimit to DEFAULT_SERIES_LIMIT when no team value is given', () => {
+      expect(seriesLimitOf()).toBe(DEFAULT_SERIES_LIMIT);
+    });
+
+    it('uses the team seriesLimit when provided', () => {
+      expect(seriesLimitOf(5)).toBe(5);
+    });
+
+    it('passes a large team seriesLimit through unbounded', () => {
+      expect(seriesLimitOf(100000)).toBe(100000);
     });
   });
 

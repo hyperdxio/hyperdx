@@ -48,6 +48,7 @@ describe('renderChartConfig', () => {
         .mockResolvedValue({ primary_key: 'timestamp' }),
       getSkipIndices: jest.fn().mockResolvedValue([]),
       getSetting: jest.fn().mockResolvedValue(undefined),
+      isClickHouseCloud: jest.fn().mockResolvedValue(false),
     } as unknown as jest.Mocked<Metadata>;
   });
 
@@ -467,6 +468,164 @@ describe('renderChartConfig', () => {
     );
     const actual = parameterizedQueryToSql(generatedSql);
     expect(actual).not.toContain('TopGroups');
+  });
+
+  describe('seriesLimit (group-by series cap)', () => {
+    const baseLogsConfig: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'logs' },
+      select: [{ aggFn: 'count', aggCondition: '', valueExpression: '' }],
+      groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-13')],
+      granularity: '5 minute',
+    };
+
+    it('restricts to the top N group-by series via a CTE when seriesLimit is set', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...baseLogsConfig, seriesLimit: 60 },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      // A ranking CTE keeps the top N groups by max value in any bucket.
+      expect(sql).toContain('__hdx_series_limit');
+      expect(sql).toMatch(/ORDER\s+BY\s+max\(`__hdx_series_rank`\)\s+DESC/);
+      expect(sql).toContain('LIMIT 60');
+      // The outer query is restricted to those groups via an IN subquery.
+      expect(sql).toMatch(
+        /tuple\(ServiceName\)\s+IN\s*\(\s*SELECT\s+`group`\s+FROM\s+`__hdx_series_limit`\)/,
+      );
+      // Groups with a NULL component are excluded; empty-string groups are kept
+      // (no `!= ''` check).
+      expect(sql).toMatch(/ServiceName\s+IS\s+NOT\s+NULL/);
+      expect(sql).not.toMatch(/toString\(ServiceName\)\s*!=\s*''/);
+    });
+
+    it('does not emit a series-limit CTE when seriesLimit is unset (e.g. alert evaluation)', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(baseLogsConfig, mockMetadata, querySettings),
+      );
+      expect(sql).not.toContain('__hdx_series_limit');
+    });
+
+    it('does not emit a series-limit CTE without a group-by', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...baseLogsConfig, groupBy: undefined, seriesLimit: 60 },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).not.toContain('__hdx_series_limit');
+    });
+
+    it('does not emit a series-limit CTE without granularity', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          { ...baseLogsConfig, granularity: undefined, seriesLimit: 60 },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).not.toContain('__hdx_series_limit');
+    });
+
+    it('packs a multi-column group-by into a tuple for the series-limit CTE', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...baseLogsConfig,
+            groupBy: [
+              { aggCondition: '', valueExpression: 'ServiceName' },
+              { aggCondition: '', valueExpression: 'TraceId' },
+            ],
+            seriesLimit: 60,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain('__hdx_series_limit');
+      expect(sql).toMatch(/tuple\(\s*ServiceName\s*,\s*TraceId\s*\)/);
+    });
+
+    it('strips group-by aliases inside the series-limit CTE tuple and null filter', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...baseLogsConfig,
+            groupBy: [
+              {
+                aggCondition: '',
+                valueExpression: 'ServiceName',
+                alias: 'svc',
+              },
+            ],
+            seriesLimit: 60,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain('__hdx_series_limit');
+      // tuple() and `IS NOT NULL` must use the bare expression, not `ServiceName
+      // AS "svc"` (which would be invalid SQL there).
+      expect(sql).toMatch(
+        /tuple\(ServiceName\)\s+IN\s*\(\s*SELECT\s+`group`\s+FROM\s+`__hdx_series_limit`\)/,
+      );
+      expect(sql).not.toContain('tuple(ServiceName AS');
+      expect(sql).not.toMatch(/ServiceName\s+AS\s+"svc"\s+IS\s+NOT\s+NULL/);
+    });
+
+    it('splits a comma-separated string group-by into per-column null checks', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...baseLogsConfig,
+            groupBy: "LogAttributes['agentToServer.capabilities'],ServiceName",
+            seriesLimit: 60,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain('__hdx_series_limit');
+      // Each column gets its own NULL check, split on the top-level comma — not
+      // the comma inside Map['...'].
+      expect(sql).toMatch(
+        /LogAttributes\[['"]agentToServer\.capabilities['"]\]\s+IS\s+NOT\s+NULL/,
+      );
+      expect(sql).toMatch(/ServiceName\s+IS\s+NOT\s+NULL/);
+      // Regression: must NOT emit a two-argument toString of both columns (the
+      // original bug that prompted the split).
+      expect(sql).not.toMatch(/toString\([^)]*,/);
+      // Both columns are packed into the tuple for the IN predicate.
+      expect(sql).toMatch(
+        /tuple\(\s*LogAttributes\[['"]agentToServer\.capabilities['"]\]\s*,\s*ServiceName\s*\)\s+IN\s*\(\s*SELECT\s+`group`\s+FROM\s+`__hdx_series_limit`\)/,
+      );
+    });
+
+    it('does not emit a series-limit CTE for a metric source', async () => {
+      // Metric configs are rewritten to query a Bucketed CTE (no real source
+      // table to re-scan), so the cap is gated off even with seriesLimit set.
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...gaugeConfiguration,
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            seriesLimit: 60,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).not.toContain('__hdx_series_limit');
+    });
   });
 
   it('should throw when aggFn=increase is used on a non-Sum metric', async () => {

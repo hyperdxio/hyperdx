@@ -6,42 +6,17 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import { minePatterns } from '@hyperdx/common-utils/dist/drain';
 import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
-import { clickHouseErrorResult } from './helpers';
-
-// ─── Source helpers ──────────────────────────────────────────────────────────
-
-interface SourceBodyFields {
-  kind: string;
-  spanNameExpression?: string;
-  bodyExpression?: string;
-  implicitColumnExpression?: string;
-}
-
-/**
- * Resolve the body column expression for pattern mining from a source.
- * Mirrors the web app's getEventBody() logic (packages/app/src/source.ts).
- */
-function resolveBodyExpression(source: SourceBodyFields): string | undefined {
-  let expression: string | undefined;
-  if (source.kind === SourceKind.Trace) {
-    expression = source.spanNameExpression;
-  } else if (source.kind === SourceKind.Log) {
-    expression = source.bodyExpression ?? source.implicitColumnExpression;
-  }
-  if (!expression) return undefined;
-  const multiExpr = splitAndTrimWithBracket(expression);
-  return multiExpr.length === 1 ? expression : multiExpr[0];
-}
-
-/** Reject bodyExpression values containing SQL-unsafe characters. */
-// eslint-disable-next-line no-useless-escape
-const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
+import {
+  clickHouseErrorResult,
+  resolveBodyExpression,
+  SAFE_BODY_EXPR_CHARS,
+} from './helpers';
 
 // ─── Event pattern mining ────────────────────────────────────────────────────
 
