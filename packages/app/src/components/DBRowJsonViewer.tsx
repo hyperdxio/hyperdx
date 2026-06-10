@@ -44,13 +44,20 @@ export function buildJSONExtractQuery(
   parsedJsonRootPath: string[],
   jsonColumns: string[] = [],
   jsonExtractFn: JSONExtractFn = 'JSONExtractString',
+  mapColumns: string[] = [],
 ): string | null {
   const nestedPath = keyPath.slice(parsedJsonRootPath.length);
   if (nestedPath.length === 0) {
     return null; // No nested path to extract
   }
 
-  const baseColumn = mergePath(parsedJsonRootPath, jsonColumns);
+  // `parsedJsonRootPath[0]` is the column the parsed-JSON view is anchored on.
+  // It can be a JSON column (auto-detected by ClickHouse JSON type) OR a Map
+  // column whose sub-value is a JSON-parseable string (HyperJson promotes those
+  // to `isInParsedJson=true`, see HyperJson.tsx:227). Thread `mapColumns` so a
+  // numeric-looking Map sub-key renders as `Map['1']` instead of the array
+  // `Map[2]`. See HDX-4369.
+  const baseColumn = mergePath(parsedJsonRootPath, jsonColumns, mapColumns);
   const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
   return `${jsonExtractFn}(${baseColumn}, ${jsonPathArgs})`;
 }
@@ -332,9 +339,14 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
 export function DBRowJsonViewer({
   data,
   jsonColumns,
+  mapColumns,
 }: {
   data: any;
   jsonColumns?: string[];
+  // Map column names from the result-set metadata. Threaded into
+  // `mergePath` so numeric-looking sub-keys on a Map render as
+  // `Map['key']` instead of the array `Map[N+1]`. HDX-4369.
+  mapColumns?: string[];
 }) {
   const {
     onPropertyAddClick,
@@ -369,7 +381,7 @@ export function DBRowJsonViewer({
   const getLineActions = useCallback<GetLineActions>(
     ({ keyPath, value, isInParsedJson, parsedJsonRootPath }) => {
       const actions: LineAction[] = [];
-      const fieldPath = mergePath(keyPath, jsonColumns);
+      const fieldPath = mergePath(keyPath, jsonColumns, mapColumns);
       const isJsonColumn =
         keyPath.length > 0 && jsonColumns?.includes(keyPath[0]);
 
@@ -395,6 +407,8 @@ export function DBRowJsonViewer({
                 keyPath,
                 parsedJsonRootPath,
                 jsonColumns,
+                'JSONExtractString',
+                mapColumns,
               );
               if (jsonQuery) {
                 filterFieldPath = jsonQuery;
@@ -443,6 +457,7 @@ export function DBRowJsonViewer({
                 parsedJsonRootPath,
                 jsonColumns,
                 jsonExtractFn,
+                mapColumns,
               );
 
               if (jsonQuery) {
@@ -486,6 +501,8 @@ export function DBRowJsonViewer({
                 keyPath,
                 parsedJsonRootPath,
                 jsonColumns,
+                'JSONExtractString',
+                mapColumns,
               );
               if (jsonQuery) {
                 chartFieldPath = jsonQuery;
@@ -513,6 +530,8 @@ export function DBRowJsonViewer({
             keyPath,
             parsedJsonRootPath,
             jsonColumns,
+            'JSONExtractString',
+            mapColumns,
           );
           if (jsonQuery) {
             columnFieldPath = jsonQuery;
@@ -609,6 +628,7 @@ export function DBRowJsonViewer({
       rowData,
       toggleColumn,
       jsonColumns,
+      mapColumns,
     ],
   );
 

@@ -1144,28 +1144,63 @@ export const formatUptime = (seconds: number) => {
 
 // FIXME: eventually we want to separate metric name into two fields
 // Date formatting
-export const mergePath = (path: string[], jsonColumns: string[] = []) => {
+//
+// `mergePath` rebuilds a column-access expression for a nested path that the
+// row table flattened during display. It has three column-type modes:
+//
+//   - JSON column: dotted backtick-quoted accessor, e.g. `Body.\`key\``
+//   - Map column: bracketed string-key subscript, e.g. `LogAttributes['1']`
+//   - Array column (default): numeric segments get 1-based array subscripts
+//     (`Array[N+1]`); string segments get bracketed string-key subscripts.
+//
+// Without the Map-column branch, a Map(String, String) like `LogAttributes`
+// with a numeric-looking key (`"1"`) collapses into the array branch and
+// ClickHouse rejects the resulting `LogAttributes[2]` with
+// `Illegal types of arguments: Map(String, String), UInt8 for function
+// arrayElement`. HDX-4369.
+// Escape backslash and single-quote inside a key before interpolating it
+// into a single-quoted SQL string. Keys can contain user-controlled
+// characters (Map sub-keys, JSON field names from the row data) and an
+// unescaped quote produces malformed SQL.
+const escapeSqlSingleQuoted = (v: string): string =>
+  v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+export const mergePath = (
+  path: string[],
+  jsonColumns: string[] = [],
+  mapColumns: string[] = [],
+) => {
   const [key, ...rest] = path;
   if (rest.length === 0) {
     return key;
   }
-  return jsonColumns.includes(key)
-    ? `${key}.${rest
-        .map(v =>
-          v
-            .split('.')
-            .map(v => (v.startsWith('`') && v.endsWith('`') ? v : `\`${v}\``))
-            .join('.'),
-        )
-        .join('.')}`
-    : `${key}${rest
-        .map(v => {
-          const asNumber = Number(v);
-          const isArrayIndex = Number.isInteger(asNumber) && asNumber >= 0;
-          // ClickHouse arrays are 1-based, but flattened data uses 0-based indices
-          return isArrayIndex ? `[${asNumber + 1}]` : `['${v}']`;
-        })
-        .join('')}`;
+  if (jsonColumns.includes(key)) {
+    return `${key}.${rest
+      .map(v =>
+        v
+          .split('.')
+          .map(v => (v.startsWith('`') && v.endsWith('`') ? v : `\`${v}\``))
+          .join('.'),
+      )
+      .join('.')}`;
+  }
+  if (mapColumns.includes(key)) {
+    // Map columns always take string-key subscripts; ClickHouse's Map index
+    // operator is keyed by the Map's key type, not by integer position. A
+    // numeric-looking sub-key like `"1"` on a Map(String, ...) must still
+    // render as `Map['1']`.
+    return `${key}${rest.map(v => `['${escapeSqlSingleQuoted(v)}']`).join('')}`;
+  }
+  return `${key}${rest
+    .map(v => {
+      const asNumber = Number(v);
+      const isArrayIndex = Number.isInteger(asNumber) && asNumber >= 0;
+      // ClickHouse arrays are 1-based, but flattened data uses 0-based indices
+      return isArrayIndex
+        ? `[${asNumber + 1}]`
+        : `['${escapeSqlSingleQuoted(v)}']`;
+    })
+    .join('')}`;
 };
 
 const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {

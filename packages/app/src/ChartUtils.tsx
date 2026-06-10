@@ -37,6 +37,7 @@ import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
+import { DEFAULT_SERIES_LIMIT } from './defaults';
 import { getMetricNameSql } from './otelSemanticConventions';
 import { AggFn, TableChartSeries, TimeChartSeries } from './types';
 import { NumberFormat } from './types';
@@ -103,9 +104,14 @@ function getTimeChartDateRange(
     : getAlignedDateRange(dateRange, granularity);
 }
 
+export const MAX_TIME_CHART_SERIES = DEFAULT_SERIES_LIMIT;
+
 export function convertToTimeChartConfig(
   config: ChartConfigWithDateRange,
+  teamSeriesLimit?: number,
 ): ChartConfigWithDateRange {
+  const seriesLimit = Math.max(1, teamSeriesLimit ?? MAX_TIME_CHART_SERIES);
+
   const granularity = getTimeChartGranularity(
     config.granularity,
     config.dateRange,
@@ -133,6 +139,7 @@ export function convertToTimeChartConfig(
         dateRangeEndInclusive,
         granularity,
         limit: { limit: 100000 },
+        seriesLimit,
       }
     : {
         ...config,

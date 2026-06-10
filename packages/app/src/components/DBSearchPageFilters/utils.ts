@@ -150,6 +150,12 @@ export function getFilterStateEntry(
 // caller (e.g. "Load more" via metadata.getKeyValues), since `setFilterValue`
 // normalizes Map sub-keys to dot form which ClickHouse cannot resolve as map
 // access.
+//
+// `parseMapFieldName` already guarantees `parsed.baseName` is a Map (its only
+// callers are the dot-form facet keys that originate from Map columns), so
+// `mergePath` must treat it as one. Without the third argument, a numeric-
+// looking sub-key like `LogAttributes.1` collapses into the Array branch and
+// emits the illegal `LogAttributes[2]`. HDX-4369.
 export function toClickHouseKeyExpression(key: string): string {
   if (
     key.includes("['") ||
@@ -161,5 +167,9 @@ export function toClickHouseKeyExpression(key: string): string {
   }
   const parsed = parseMapFieldName(key);
   if (!parsed) return key;
-  return mergePath([parsed.baseName, parsed.propertyPath]);
+  return mergePath(
+    [parsed.baseName, parsed.propertyPath],
+    [],
+    [parsed.baseName],
+  );
 }
