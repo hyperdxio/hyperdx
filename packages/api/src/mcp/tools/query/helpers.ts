@@ -1,6 +1,9 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  getFirstTimestampValueExpression,
+  splitAndTrimWithBracket,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -26,6 +29,55 @@ import {
 import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
+
+// ─── Source body expression helpers ──────────────────────────────────────────
+
+export interface SourceBodyFields {
+  kind: string;
+  spanNameExpression?: string;
+  bodyExpression?: string;
+  implicitColumnExpression?: string;
+}
+
+/**
+ * Resolve the body column expression for pattern mining from a source.
+ * Mirrors the web app's getEventBody() logic (packages/app/src/source.ts).
+ */
+export function resolveBodyExpression(
+  source: SourceBodyFields,
+): string | undefined {
+  let expression: string | undefined;
+  if (source.kind === SourceKind.Trace) {
+    expression = source.spanNameExpression;
+  } else if (source.kind === SourceKind.Log) {
+    expression = source.bodyExpression ?? source.implicitColumnExpression;
+  }
+  if (!expression) return undefined;
+  const multiExpr = splitAndTrimWithBracket(expression);
+  return multiExpr.length === 1 ? expression : multiExpr[0];
+}
+
+/** Reject bodyExpression values containing SQL-unsafe characters. */
+// eslint-disable-next-line no-useless-escape
+export const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
+
+// ─── Safety limits ───────────────────────────────────────────────────────────
+
+/** ClickHouse settings applied to all MCP query-tool executions.
+ *  readonly=2 so max_execution_time and max_result_rows can be set
+ *  (readonly=1 rejects all setting changes). */
+const MCP_CLICKHOUSE_SETTINGS = {
+  max_execution_time: 30,
+  max_result_rows: '100000',
+  readonly: 2,
+} as const;
+
+/**
+ * HTTP request timeout for MCP query-tool ClickHouse clients.
+ * Set slightly above max_execution_time so ClickHouse can return a clean
+ * timeout error before the HTTP connection is aborted.
+ */
+const MCP_REQUEST_TIMEOUT = 32_000; // 30s query limit + 2s buffer
 
 // ─── Where merging ───────────────────────────────────────────────────────────
 
@@ -243,6 +295,7 @@ export async function runConfigTile(
       host: connection.host,
       username: connection.username,
       password: connection.password,
+      requestTimeout: MCP_REQUEST_TIMEOUT,
     });
 
     const isSearch = builderConfig.displayType === DisplayType.Search;
@@ -295,6 +348,7 @@ export async function runConfigTile(
         config: chartConfig,
         metadata,
         querySettings: source.querySettings,
+        opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
       });
       return formatQueryResult(result);
     } catch (e) {
@@ -349,6 +403,7 @@ export async function runConfigTile(
     host: connection.host,
     username: connection.username,
     password: connection.password,
+    requestTimeout: MCP_REQUEST_TIMEOUT,
   });
 
   const chartConfig = {
@@ -363,6 +418,7 @@ export async function runConfigTile(
       config: chartConfig,
       metadata,
       querySettings: undefined,
+      opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
     });
     return formatQueryResult(result);
   } catch (e) {
@@ -397,10 +453,10 @@ export function errorHint(msg: string): string | null {
     /Cannot (convert|parse) string .* (to|as) (type )?DateTime64/i.test(msg)
   ) {
     return (
-      "Wrap ISO timestamps with `toDateTime64('YYYY-MM-DD HH:MM:SS', 9)` " +
-      'or use the supplied macros: `$__timeFilter(Timestamp)` (the easiest), ' +
-      '`{startDateMilliseconds:Int64}`, `{endDateMilliseconds:Int64}`. ' +
-      'Bare ISO 8601 strings will NOT auto-cast to DateTime64.'
+      "Wrap ISO timestamps with `parseDateTime64BestEffort('YYYY-MM-DDTHH:MM:SSZ')` — " +
+      'this works for both DateTime and DateTime64 columns. For the sql tool, prefer ' +
+      '`$__timeFilter(Timestamp)` which handles casting automatically. ' +
+      'Bare ISO 8601 strings will NOT auto-cast to DateTime/DateTime64.'
     );
   }
   if (/Syntax error.*\bAS\b/.test(msg)) {
@@ -417,6 +473,22 @@ export function errorHint(msg: string): string | null {
     return (
       'Add a LIMIT, narrow the time range, or use a smaller granularity. ' +
       'The result row count is too large to serialize back to the agent.'
+    );
+  }
+  if (/TOO_MANY_ROWS_OR_BYTES|RESULT_IS_TOO_LARGE/i.test(msg)) {
+    return (
+      'The query returned more than 100,000 rows. ' +
+      'Add a LIMIT, narrow the time range, or add filters to reduce the result set.'
+    );
+  }
+  if (
+    /Unknown (expression|identifier)|UNKNOWN_IDENTIFIER|Missing columns/i.test(
+      msg,
+    )
+  ) {
+    return (
+      'Call clickstack_describe_source to discover available columns and ' +
+      'map attribute keys before retrying.'
     );
   }
   return null;

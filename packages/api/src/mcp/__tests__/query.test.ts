@@ -188,7 +188,7 @@ describe('errorHint', () => {
       "Cannot convert string '2025-01-01T00:00:00Z' to type DateTime64(9)",
     );
     expect(hint).not.toBeNull();
-    expect(hint).toContain('toDateTime64');
+    expect(hint).toContain('parseDateTime64BestEffort');
   });
 
   it('should match DateTime64 parse errors', () => {
@@ -196,7 +196,7 @@ describe('errorHint', () => {
       "Cannot parse string '2025-01-01' as type DateTime64",
     );
     expect(hint).not.toBeNull();
-    expect(hint).toContain('toDateTime64');
+    expect(hint).toContain('parseDateTime64BestEffort');
   });
 
   it('should match AS alias syntax errors with word boundary', () => {
@@ -223,6 +223,19 @@ describe('errorHint', () => {
     );
     expect(hint).not.toBeNull();
     expect(hint).toContain('LIMIT');
+  });
+
+  it('should match RESULT_IS_TOO_LARGE errors', () => {
+    const hint = errorHint('Code: 396. DB::Exception: RESULT_IS_TOO_LARGE');
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('100,000 rows');
+    expect(hint).toContain('LIMIT');
+  });
+
+  it('should match TOO_MANY_ROWS_OR_BYTES errors', () => {
+    const hint = errorHint('Code: 396. DB::Exception: TOO_MANY_ROWS_OR_BYTES');
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('100,000 rows');
   });
 
   it('should return null for unrecognized errors', () => {
