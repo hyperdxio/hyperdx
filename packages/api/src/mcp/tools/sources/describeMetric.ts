@@ -5,7 +5,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
@@ -16,24 +16,10 @@ import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
-
-// Metric kinds the query renderer can translate today. Mirrors
-// QUERYABLE_METRIC_KINDS in describeSource.ts / listMetrics.ts.
-// Declared as string literals (not MetricsDataType enum members) so
-// `z.enum(...)` can narrow the inferred handler input type properly —
-// referencing the enum here pessimises Zod's inference to `unknown` at
-// the MCP SDK callback boundary.
-const QUERYABLE_METRIC_KINDS = ['gauge', 'sum', 'histogram'] as const;
-type QueryableKind = (typeof QUERYABLE_METRIC_KINDS)[number];
-
-// Compile-time guarantee that the string literals still match the
-// MetricsDataType enum (and so are valid keys on MetricTable).
-const _assertKindsMatch: readonly QueryableKind[] = [
-  MetricsDataType.Gauge,
-  MetricsDataType.Sum,
-  MetricsDataType.Histogram,
-];
-void _assertKindsMatch;
+import {
+  QUERYABLE_METRIC_KINDS,
+  type QueryableMetricKind,
+} from './metricKinds';
 
 const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const DESCRIBE_TIMEOUT_MS = 10_000;
@@ -47,7 +33,7 @@ const MAX_ATTR_KEYS_TO_SAMPLE = 12;
 // Per-kind aggregation guidance baked into the response so the agent can
 // build a valid clickstack_timeseries / clickstack_table call without
 // re-reading the schemas.
-const KIND_USAGE: Record<QueryableKind, string> = {
+const KIND_USAGE: Record<QueryableMetricKind, string> = {
   gauge:
     'Gauge: use aggFn:"last_value"|"avg"|"min"|"max" on Value. Set isDelta:true for Prometheus-style delta over each bucket.',
   sum: 'Sum (counter): use aggFn:"increase" for the per-bucket counter increase (reset-aware), or aggFn:"sum"/"avg" on the computed rate. increase+groupBy is capped at the top 20 groups.',
@@ -101,7 +87,7 @@ const describeMetricSchema = z.object({
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 type KindDetail = {
-  kind: QueryableKind;
+  kind: QueryableMetricKind;
   tableName: string;
   unit?: string;
   description?: string;
@@ -151,7 +137,7 @@ async function detectKindsForMetric({
   startDate: Date;
   endDate: Date;
   signal: AbortSignal;
-}): Promise<QueryableKind[]> {
+}): Promise<QueryableMetricKind[]> {
   const probes = await Promise.all(
     QUERYABLE_METRIC_KINDS.map(async kind => {
       const tableName = metricTables[kind];
@@ -183,7 +169,7 @@ async function detectKindsForMetric({
       }
     }),
   );
-  return probes.filter((k): k is QueryableKind => k !== null);
+  return probes.filter((k): k is QueryableMetricKind => k !== null);
 }
 
 /**
@@ -412,7 +398,7 @@ async function describeMetricImpl(
   // Resolve which kinds to describe. With an explicit `kind`, restrict to
   // that one. Without, probe each populated kind so the agent gets one
   // entry per match (rare but possible for shared metric names).
-  let candidateKinds: QueryableKind[];
+  let candidateKinds: QueryableMetricKind[];
   if (input.kind) {
     if (!source.metricTables[input.kind]) {
       return {
@@ -628,8 +614,13 @@ export function registerDescribeMetric(
       // the typed shape we need for downstream calls.
       const input = describeMetricSchema.parse(rawInput);
       const controller = new AbortController();
+      // Hoist the timer handle so the finally block can cancel it on the
+      // success path — otherwise a stale controller.abort() fires
+      // DESCRIBE_TIMEOUT_MS after every successful call and the
+      // setTimeout closure stays pinned for the same duration.
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           controller.abort();
           reject(new Error('DESCRIBE_METRIC_TIMEOUT'));
         }, DESCRIBE_TIMEOUT_MS);
@@ -658,6 +649,8 @@ export function registerDescribeMetric(
           };
         }
         throw e;
+      } finally {
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
       }
     }),
   );

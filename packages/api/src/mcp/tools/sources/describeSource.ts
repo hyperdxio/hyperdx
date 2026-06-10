@@ -8,11 +8,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  MetricsDataType,
-  type MetricTable,
-  SourceKind,
-} from '@hyperdx/common-utils/dist/types';
+import { type MetricTable, SourceKind } from '@hyperdx/common-utils/dist/types';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
@@ -23,6 +19,10 @@ import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
+import {
+  QUERYABLE_METRIC_KINDS,
+  type QueryableMetricKind,
+} from './metricKinds';
 
 // How far back to look when querying the rollup tables for value samples.
 const VALUE_SAMPLE_LOOKBACK_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -39,15 +39,6 @@ const MAX_MAP_KEYS_TO_SAMPLE = 10;
 // clickstack_list_metrics provides paginated discovery beyond this cap.
 const MAX_METRIC_NAMES_PER_KIND = 20;
 
-// Metric kinds the query renderer can translate today. Summary and
-// ExponentialHistogram are intentionally omitted — they have schema but
-// no SQL translator in the renderer yet.
-const QUERYABLE_METRIC_KINDS = [
-  MetricsDataType.Gauge,
-  MetricsDataType.Sum,
-  MetricsDataType.Histogram,
-] as const;
-
 /**
  * Pick the representative metric table to use as the starting point for
  * schema/attribute discovery on a metric source. Prefers gauge → sum →
@@ -57,9 +48,7 @@ const QUERYABLE_METRIC_KINDS = [
  */
 function pickRepresentativeMetricTable(
   metricTables: MetricTable,
-):
-  | { kind: (typeof QUERYABLE_METRIC_KINDS)[number]; tableName: string }
-  | undefined {
+): { kind: QueryableMetricKind; tableName: string } | undefined {
   for (const kind of QUERYABLE_METRIC_KINDS) {
     const tableName = metricTables[kind];
     if (tableName) {
@@ -279,7 +268,7 @@ async function describeSourceSchema(
 
   // Key columns by source kind
   let representativeMetric:
-    | { kind: (typeof QUERYABLE_METRIC_KINDS)[number]; tableName: string }
+    | { kind: QueryableMetricKind; tableName: string }
     | undefined;
   if (source.kind === SourceKind.Trace) {
     meta.keyColumns = {
@@ -656,9 +645,14 @@ export function registerDescribeSource(
         const controller = new AbortController();
 
         // Promise.race enforces wall-clock timeout regardless of whether
-        // internal ClickHouse calls honour the AbortSignal.
+        // internal ClickHouse calls honour the AbortSignal. Hoist the
+        // timer handle so the finally block can cancel it on the success
+        // path — otherwise a stale controller.abort() fires
+        // DESCRIBE_TIMEOUT_MS after every successful call and the
+        // setTimeout closure stays pinned for the same duration.
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
         const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => {
+          timeoutId = setTimeout(() => {
             controller.abort();
             reject(new Error('DESCRIBE_TIMEOUT'));
           }, DESCRIBE_TIMEOUT_MS);
@@ -696,6 +690,8 @@ export function registerDescribeSource(
             'Failed to describe source schema',
           );
           throw e;
+        } finally {
+          if (timeoutId !== undefined) clearTimeout(timeoutId);
         }
       },
     ),

@@ -18,18 +18,15 @@ import { z } from 'zod';
 import { externalQuantileLevelSchema, objectIdSchema } from '@/utils/zod';
 
 import { getMetricSelectIssues } from '../query/schemas';
+import { QUERYABLE_METRIC_KINDS } from '../sources/metricKinds';
 
 /**
  * Metric type values exposed on dashboard tile select items. Restricted to
  * the three kinds the query renderer can translate today; summary and
- * exponential histogram are intentionally excluded. Mirrors
- * MCP_METRIC_TYPE_OPTIONS in `tools/query/schemas.ts`.
+ * exponential histogram are intentionally excluded. Imports the shared
+ * `QUERYABLE_METRIC_KINDS` source-of-truth tuple from `../sources/metricKinds`.
  */
-const mcpTileMetricTypeSchema = z.enum([
-  MetricsDataType.Gauge,
-  MetricsDataType.Sum,
-  MetricsDataType.Histogram,
-]);
+const mcpTileMetricTypeSchema = z.enum(QUERYABLE_METRIC_KINDS);
 
 // ─── Shared tile schemas for MCP dashboard tools ─────────────────────────────
 

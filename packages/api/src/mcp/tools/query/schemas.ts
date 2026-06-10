@@ -1,5 +1,6 @@
-import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
+
+import { QUERYABLE_METRIC_KINDS } from '../sources/metricKinds';
 
 // ─── Shared description fragments ────────────────────────────────────────────
 
@@ -72,16 +73,11 @@ const mcpAggFnSchema = z
 /**
  * Metric type values exposed to MCP tool callers. Restricted to the three
  * kinds the renderer can translate today; summary and exponential histogram
- * are intentionally excluded.
+ * are intentionally excluded. See `../sources/metricKinds` for the shared
+ * source-of-truth constant used by every metric-aware tool.
  */
-export const MCP_METRIC_TYPE_OPTIONS = [
-  MetricsDataType.Gauge,
-  MetricsDataType.Sum,
-  MetricsDataType.Histogram,
-] as const;
-
 const mcpMetricTypeSchema = z
-  .enum(MCP_METRIC_TYPE_OPTIONS)
+  .enum(QUERYABLE_METRIC_KINDS)
   .describe(
     'METRIC SOURCES ONLY. OTel metric kind. Required (along with metricName) ' +
       'when querying a metric source — discover via clickstack_describe_source ' +

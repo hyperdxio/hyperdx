@@ -386,7 +386,7 @@ export async function runConfigTile(
                 ? item
                 : {
                     ...item,
-                    valueExpression: item.valueExpression || 'Value',
+                    valueExpression: item.valueExpression ?? 'Value',
                   },
             ),
           }
