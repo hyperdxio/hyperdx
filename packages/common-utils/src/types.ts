@@ -1582,11 +1582,6 @@ const RequiredTimestampColumnSchema = z
 export const BaseSourceSchema = z.object({
   id: z.string(),
   name: z.string().min(1, 'Name is required'),
-  // Optional, free-text grouping label for a source. Persisted and exposed
-  // through the read API; the source selector will group and search by it in
-  // a later change. The cap lives on the shared schema so every writer (form,
-  // internal API, future migrations) inherits it; sources without a section
-  // keep today's behavior.
   section: z.string().max(256).optional(),
   kind: z.nativeEnum(SourceKind),
   connection: z.string().min(1, 'Server Connection is required'),
