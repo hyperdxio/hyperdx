@@ -23,6 +23,7 @@ export function useFavorites() {
   return useQuery({
     queryKey: ['favorites'],
     queryFn: fetchFavorites,
+    staleTime: 5_000,
   });
 }
 
@@ -30,6 +31,8 @@ function useAddFavorite() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    // shared key with useRemoveFavorite to coordinate refetching and optimistic updates
+    mutationKey: ['favorites'],
     mutationFn: (data: {
       resourceType: Favorite['resourceType'];
       resourceId: string;
@@ -42,8 +45,32 @@ function useAddFavorite() {
         json: data,
       }).json<Favorite>();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['favorites'] });
+    onMutate: async data => {
+      // Cancel any outgoing favorites refetches (so they don't overwrite our optimistic update)
+      await queryClient.cancelQueries({ queryKey: ['favorites'] });
+
+      // Get the previous value so that we can roll back if the mutation fails
+      const previous = queryClient.getQueryData<Favorite[]>(['favorites']);
+
+      // Optimistically update to the new value
+      queryClient.setQueryData<Favorite[]>(['favorites'], old => [
+        ...(old ?? []),
+        { id: `optimistic-${Math.random().toString(36).slice(2)}`, ...data },
+      ]);
+      return { previous };
+    },
+    onError: (_err, _data, context) => {
+      if (context !== undefined) {
+        queryClient.setQueryData(['favorites'], context.previous);
+      }
+    },
+    onSettled: () => {
+      // Only refetch once the last in-flight favorites mutation settles, so a
+      // refetch with partially-committed server state can't clobber the
+      // still-pending optimistic updates from other mutations.
+      if (queryClient.isMutating({ mutationKey: ['favorites'] }) === 1) {
+        queryClient.invalidateQueries({ queryKey: ['favorites'] });
+      }
     },
   });
 }
@@ -52,6 +79,8 @@ function useRemoveFavorite() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    // shared key with useRemoveFavorite to coordinate refetching and optimistic updates
+    mutationKey: ['favorites'],
     mutationFn: (data: {
       resourceType: Favorite['resourceType'];
       resourceId: string;
@@ -72,8 +101,37 @@ function useRemoveFavorite() {
         method: 'DELETE',
       }).json<void>();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['favorites'] });
+    onMutate: async data => {
+      // Cancel any outgoing favorites refetches (so they don't overwrite our optimistic update)
+      await queryClient.cancelQueries({ queryKey: ['favorites'] });
+
+      // Get the previous value so that we can roll back if the mutation fails
+      const previous = queryClient.getQueryData<Favorite[]>(['favorites']);
+
+      // Optimistically update to the new value
+      queryClient.setQueryData<Favorite[]>(['favorites'], old =>
+        (old ?? []).filter(
+          f =>
+            !(
+              f.resourceType === data.resourceType &&
+              f.resourceId === data.resourceId
+            ),
+        ),
+      );
+      return { previous };
+    },
+    onError: (_err, _data, context) => {
+      if (context !== undefined) {
+        queryClient.setQueryData(['favorites'], context.previous);
+      }
+    },
+    onSettled: () => {
+      // Only refetch once the last in-flight favorites mutation settles, so a
+      // refetch with partially-committed server state can't clobber the
+      // still-pending optimistic updates from other mutations.
+      if (queryClient.isMutating({ mutationKey: ['favorites'] }) === 1) {
+        queryClient.invalidateQueries({ queryKey: ['favorites'] });
+      }
     },
   });
 }
