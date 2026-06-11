@@ -351,6 +351,7 @@ export class Metadata {
     metadataMVs,
     dateRange,
     timestampValueExpression,
+    signal,
   }: {
     databaseName: string;
     tableName: string;
@@ -361,6 +362,7 @@ export class Metadata {
     metadataMVs?: MetadataMaterializedViews;
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
+    signal?: AbortSignal;
   }) {
     // Align date range to rollup granularity for consistent cache keys
     const alignedDateRange =
@@ -419,6 +421,7 @@ export class Metadata {
                   max_execution_time: 15,
                   max_rows_to_read: '0',
                 },
+                abort_signal: signal,
               })
               .then(res => res.json<{ Key: string }>())
               .then(d => d.data.map(row => row.Key).filter(k => k));
@@ -524,6 +527,7 @@ export class Metadata {
             // Set the value to 0 (unlimited) so that the LIMIT is used instead
             max_rows_to_read: '0',
           },
+          abort_signal: signal,
         })
         .then(res => res.json<{ keysArr?: string[]; key?: string }>())
         .then(d => {
@@ -640,6 +644,7 @@ export class Metadata {
     connectionId,
     dateRange,
     timestampValueExpression,
+    signal,
   }: {
     databaseName: string;
     tableName: string;
@@ -649,6 +654,7 @@ export class Metadata {
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
     connectionId: string;
+    signal?: AbortSignal;
   }) {
     const dateRangeCacheSuffix =
       dateRange && timestampValueExpression
@@ -719,6 +725,7 @@ export class Metadata {
             read_overflow_mode: 'break',
             ...this.getClickHouseSettings(),
           },
+          abort_signal: signal,
         })
         .then(res => res.json<{ value: string }>())
         .then(d => d.data.map(row => row.value));
@@ -925,6 +932,44 @@ export class Metadata {
         throw e;
       }
     });
+  }
+
+  /**
+   * Returns true when the connected server is ClickHouse Cloud, detected by
+   * checking whether `SharedMergeTree` is registered in `system.table_engines`.
+   * The SharedMergeTree engine is compiled into Cloud builds only, so its
+   * presence in the engine registry is a reliable Cloud signal that does not
+   * depend on any user table existing.
+   *
+   * Result is cached per connection — Cloud-ness is a server property.
+   */
+  async isClickHouseCloud({
+    connectionId,
+  }: {
+    connectionId: string;
+  }): Promise<boolean> {
+    const result = await this.cache.getOrFetch(
+      `${connectionId}.isClickHouseCloud`,
+      async () => {
+        try {
+          const query =
+            "SELECT count() > 0 AS is_cloud FROM system.table_engines WHERE name = 'SharedMergeTree'";
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query,
+              clickhouse_settings: this.getClickHouseSettings(),
+              shouldSkipApplySettings: true,
+            })
+            .then(res => res.json<{ is_cloud: boolean }>());
+          return json.data.length > 0 && json.data[0].is_cloud;
+        } catch (e) {
+          console.warn('Error detecting ClickHouse Cloud:', e);
+          return undefined;
+        }
+      },
+    );
+    return result ?? false;
   }
 
   /**
@@ -1464,6 +1509,7 @@ export class Metadata {
             connectionId,
             dateRange,
             timestampValueExpression,
+            signal,
           });
           return { key: p.keyExpression, value: fallback };
         }),
@@ -1482,6 +1528,7 @@ export class Metadata {
           connectionId,
           dateRange,
           timestampValueExpression,
+          signal,
         });
         return { key: p.keyExpression, value };
       }),

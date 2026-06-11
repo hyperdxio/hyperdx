@@ -1,0 +1,164 @@
+{
+  "scenario": "service-health-check",
+  "agentPrompt": "Routine status check on `api-server` over the last hour. Summarize key SLIs (traffic, error rate, latency) and call out anything novel or worth a closer look. Don't escalate routine variance. Be concise.",
+  "expected": {
+    "service": "api-server",
+    "reportWindowMinutes": 60,
+    "baselineWindowMinutes": 180,
+    "sliBaselines": {
+      "trafficPerMinute": 50000,
+      "errorRate": 0.005,
+      "latencyP50Ms": 80,
+      "latencyP99StartMs": 340,
+      "latencyP99EndMs": 380,
+      "latencySloMs": 500
+    },
+    "noveltiesToReport": [
+      {
+        "kind": "new log template",
+        "approxVolumeShare": 0.001,
+        "bodyPattern": "feature_flag.new_recommendation_engine: shadow eval succeeded …",
+        "framing": "new pattern observed, looks like a feature-flag shadow-eval rollout — informational"
+      },
+      {
+        "kind": "traffic shift",
+        "endpoint": "GET /api/v2/products",
+        "approxEndOfWindowShare": 0.04,
+        "framing": "v2 rollout in progress, ramps to ~4% of products traffic"
+      },
+      {
+        "kind": "latency drift within SLO",
+        "fromP99Ms": 340,
+        "toP99Ms": 380,
+        "sloMs": 500,
+        "framing": "p99 trending up modestly across the hour, still well under SLO"
+      },
+      {
+        "kind": "brief error blip",
+        "offsetIntoReportWindowMinutes": 3,
+        "durationSeconds": 60,
+        "approxErrorCount": 250,
+        "errorMessage": "upstream connect timeout",
+        "framing": "brief 1-minute spike of upstream timeouts, recovered immediately — transient, not a pattern"
+      }
+    ],
+    "distractorsToNotEscalate": [
+      {
+        "kind": "recurring batch-sync spike",
+        "endpoint": "POST /api/internal/batch-sync",
+        "periodMinutes": 15,
+        "durationSeconds": 30,
+        "whyNotEscalate": "Visible throughout the 3-hour baseline; recurring batch job, not novel."
+      },
+      {
+        "kind": "baseline 0.5% error rate",
+        "whyNotEscalate": "Constant across the full 4-hour dataset, uniformly distributed. Background noise, not a regression."
+      }
+    ]
+  },
+  "rubric": {
+    "programmatic": [
+      ["names_service", 1, "api-server"],
+      [
+        "reports_traffic_rate",
+        1,
+        "(requests?/min|requests/s|req/min|traffic|throughput|call volume|qps|rps)"
+      ],
+      [
+        "reports_error_rate",
+        1,
+        "(error rate|errors?/min|0\\.5\\s?%?|~?0\\.5|baseline.{0,15}error)"
+      ],
+      [
+        "reports_latency_metrics",
+        1,
+        "(p50|p95|p99|latency)[\\s\\S]{0,200}?\\d+(\\.\\d+)?\\s?(ms|millisecond)"
+      ],
+      [
+        "notes_new_log_pattern",
+        2,
+        "(shadow.?eval|new[_\\s]+recommendation|recommendation.engine|feature.?flag)"
+      ],
+      [
+        "notes_v2_endpoint",
+        2,
+        "(/api/v2/products|/v2/|v2\\s+(endpoint|rollout|rolling))"
+      ],
+      [
+        "notes_latency_drift",
+        1,
+        "(p50|p95|p99|latency)[\\s\\S]{0,60}?\\b(trend|drift|trending|creep|creeping|rising|rising|climb|increasing|monotonic)"
+      ],
+      [
+        "notes_brief_blip",
+        1,
+        "(brief|transient|1.?(min(ute)?|second)|60.?second|short.lived).{0,80}(spike|blip|errors?|timeouts?)"
+      ],
+      [
+        "frames_as_healthy",
+        1,
+        "(healthy|stable|within SLO|no concerns|operating normally|nominal|steady)"
+      ],
+      [
+        "false_alarm_incident",
+        2,
+        "\\b(incident|outage|service.degradation|degraded|critical|severe|emergency)\\b",
+        true
+      ],
+      [
+        "false_alarm_paging",
+        2,
+        "\\b(page (the|on-call)|on-call|escalat(e|ion)|wake.{0,5}up|urgent(ly)?)\\b",
+        true
+      ],
+      [
+        "false_alarm_blip_as_pattern",
+        2,
+        "\\b(sustained|ongoing|persistent|recurring|continuing)\\b[^.\\n]{0,60}(error|timeout)",
+        true
+      ],
+      [
+        "false_alarm_baseline_errors",
+        2,
+        "error rate[^.\\n]{0,60}\\b(elevated|high|concerning|problem(atic)?|investigate)\\b",
+        true
+      ],
+      [
+        "false_alarm_slo_breach",
+        2,
+        "(SLO[^.\\n]{0,20}(breach|violation|exceed)|latency[^.\\n]{0,30}(critical|breach|violation))",
+        true
+      ],
+      [
+        "false_flag_batch_job",
+        1,
+        "batch.?sync[^.\\n]{0,80}\\b(novel|unusual|new|anomal(y|ous)|concern|investigate)\\b",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Did the answer identify ALL FOUR planted signals? (a) new log template (feature-flag shadow eval rollout), (b) GET /api/v2/products traffic rollout, (c) p99 latency drift within SLO (~340 → ~380ms), (d) brief 60-second upstream-timeout error blip. Each missing item is a correctness hit. False positives (claiming a signal that isn't there — e.g. saying the batch-sync recurrence is new, or that the 0.5% baseline error rate is elevated) are also correctness hits."
+        },
+        {
+          "id": "completeness",
+          "weight": 2,
+          "description": "Does the answer cover all four SLI dimensions of a routine status check: traffic rate, error rate, latency (p50/p99), and a section on novel observations? Missing a dimension is a completeness hit."
+        },
+        {
+          "id": "calibration",
+          "weight": 3,
+          "description": "Are magnitudes and framing appropriate for a healthy service? Specifically: the p99 latency drift must be described as a small trend within SLO (NOT as a breach, problem, or risk); the brief 60-second blip must be described as transient (NOT as a pattern or ongoing); the 0.5% baseline error rate must be described as baseline / background / nominal (NOT as elevated or concerning); the recurring batch-sync spikes must be acknowledged as recurring/expected (NOT as novel). BONUS for explicitly comparing the report window against the 3-hour baseline to verify novelty vs recurrence."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Is the answer a structured status report rather than an exhaustive dump? It should fit on a screen, lead with the headline (service is healthy), then SLI numbers, then 'noted observations' for the four novelties — without long stack-by-stack drill-downs."
+        }
+      ]
+    }
+  }
+}

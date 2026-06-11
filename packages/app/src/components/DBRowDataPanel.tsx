@@ -228,6 +228,21 @@ export function getJSONColumnNames(meta: ResponseJSON['meta'] | undefined) {
   );
 }
 
+// Returns the names of Map-typed columns in the result metadata. Used by
+// `mergePath` to keep numeric-looking sub-keys on a Map(String, ...) from
+// collapsing into ClickHouse array-index syntax (`Map[2]`), which the
+// server rejects with
+// `Illegal types of arguments: Map(String, ...), UInt8 for function
+// arrayElement`. HDX-4369.
+export function getMapColumnNames(meta: ResponseJSON['meta'] | undefined) {
+  return (
+    meta
+      // Match both `Map(K, V)` and the bare `Map` (rare; defensive).
+      ?.filter(m => m.type === 'Map' || m.type.startsWith('Map('))
+      .map(m => m.name) ?? []
+  );
+}
+
 export function RowDataPanel({
   source,
   rowId,
@@ -250,11 +265,16 @@ export function RowDataPanel({
   }, [data]);
 
   const jsonColumns = getJSONColumnNames(data?.meta);
+  const mapColumns = getMapColumnNames(data?.meta);
 
   return (
     <div className="flex-grow-1 overflow-auto" data-testid={dataTestId}>
       <Box mx="md" my="sm">
-        <DBRowJsonViewer data={firstRow} jsonColumns={jsonColumns} />
+        <DBRowJsonViewer
+          data={firstRow}
+          jsonColumns={jsonColumns}
+          mapColumns={mapColumns}
+        />
       </Box>
     </div>
   );
