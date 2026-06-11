@@ -2022,7 +2022,7 @@ export async function genEnglishExplanation({
     const { tableName, databaseName, connectionId } = tableConnection;
     const parsedQ = parse(query);
 
-    if (parsedQ) {
+    if (parsedQ && tableName && databaseName && connectionId) {
       const serializer = new EnglishSerializer({
         metadata,
         tableName,
