@@ -573,24 +573,41 @@ describe('MCP Source Tools', () => {
       const result = await callTool(client, 'clickstack_describe_metric', {
         sourceId: traceSource._id.toString(),
         metricName: 'system.cpu.utilization',
+        kind: 'gauge',
       });
       expect(result.isError).toBe(true);
       expect(getFirstText(result)).toContain('not a metric source');
     });
 
-    it('returns an actionable empty payload when the metric is unknown', async () => {
+    it('rejects calls that omit kind', async () => {
+      // `kind` is required. Calling without it returns an MCP error
+      // surfaced from the schema parser rather than reaching ClickHouse.
+      const metricSource = await createMetricSource();
+      const result = await callTool(client, 'clickstack_describe_metric', {
+        sourceId: metricSource._id.toString(),
+        metricName: 'system.cpu.utilization',
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it('returns an actionable hint when the metric has no data in the kind table', async () => {
       const metricSource = await createMetricSource();
       const result = await callTool(client, 'clickstack_describe_metric', {
         sourceId: metricSource._id.toString(),
         metricName: 'definitely.not.a.metric',
+        kind: 'gauge',
       });
       expect(result.isError).toBeFalsy();
       const output = JSON.parse(getFirstText(result));
-      expect(output.kinds).toEqual([]);
+      // We always return a single kindDetail for the requested kind —
+      // attribute keys are empty when the metric has no data.
+      expect(output.kinds).toHaveLength(1);
+      expect(output.kinds[0].kind).toBe('gauge');
+      expect(output.kinds[0].attributeKeys).toEqual({});
       expect(output.hint).toMatch(/No data found/);
     });
 
-    it('auto-detects the kind and returns attribute keys for a gauge metric', async () => {
+    it('returns attribute keys for a gauge metric when kind is specified', async () => {
       const metricSource = await createMetricSource();
       const now = new Date();
       await bulkInsertMetricsGauge([
@@ -606,6 +623,7 @@ describe('MCP Source Tools', () => {
       const result = await callTool(client, 'clickstack_describe_metric', {
         sourceId: metricSource._id.toString(),
         metricName: 'system.cpu.utilization',
+        kind: 'gauge',
       });
       expect(result.isError).toBeFalsy();
       const output = JSON.parse(getFirstText(result));
@@ -622,7 +640,7 @@ describe('MCP Source Tools', () => {
       );
       // Attribute values should be sampled by default.
       expect(detail.attributeValues).toBeDefined();
-      // nextSteps.query carries a worked example matching the detected kind.
+      // nextSteps.query carries a worked example matching the requested kind.
       expect(output.nextSteps.query).toContain('metricType: "gauge"');
     });
 
@@ -642,6 +660,7 @@ describe('MCP Source Tools', () => {
       const result = await callTool(client, 'clickstack_describe_metric', {
         sourceId: metricSource._id.toString(),
         metricName: 'system.cpu.utilization',
+        kind: 'gauge',
         sampleValues: false,
       });
       expect(result.isError).toBeFalsy();

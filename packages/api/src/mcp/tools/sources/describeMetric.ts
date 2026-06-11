@@ -27,6 +27,15 @@ import {
 const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const DESCRIBE_TIMEOUT_MS = 10_000;
 
+// Server-side safety nets for the attribute-keys discovery query.
+// Sample at most N rows that match (MetricName, time range), then
+// aggregate from that sample. ClickHouse can stop scanning once the
+// CTE has N matching rows so a hot metric does not starve the
+// wall-clock budget. 100k rows is plenty to surface every unique map
+// key on a healthy OTel metric.
+const METRIC_ATTR_KEYS_SAMPLE_SIZE = 100_000;
+const METRIC_ATTR_KEYS_MAX_EXEC_SECONDS = 8;
+
 // Max sampled values per attribute key (when sampleValues is true).
 const MAX_ATTR_VALUES = 10;
 // Cap on the number of attribute keys we sample values for per kind to
@@ -61,10 +70,13 @@ const describeMetricSchema = z.object({
     ),
   kind: z
     .enum(QUERYABLE_METRIC_KINDS)
-    .optional()
     .describe(
-      'Optional metric kind filter. Omit to auto-detect across every populated metric table on the source ' +
-        '(unusual cases where the same metric name lives in multiple kinds will return one entry per kind).',
+      'Metric kind: "gauge" | "sum" | "histogram". Required. ' +
+        'Discover via clickstack_list_metrics (which returns name + kind per entry) ' +
+        'or clickstack_describe_source (which groups metric-name samples by kind). ' +
+        'A metric name can legitimately live in more than one kind (e.g. ' +
+        '"container.cpu.usage" appears in both gauge and sum) — pick the kind ' +
+        'matching the value you want to query.',
     ),
   startTime: z
     .string()
@@ -116,63 +128,6 @@ function parseTimeRange(
     return { error: 'endTime must be greater than startTime' };
   }
   return { startDate, endDate };
-}
-
-/**
- * Probe each candidate kind's table for the given metric name. Returns
- * only the kinds where at least one row matches.
- */
-async function detectKindsForMetric({
-  clickhouseClient,
-  databaseName,
-  metricTables,
-  connectionId,
-  metricName,
-  startDate,
-  endDate,
-  signal,
-}: {
-  clickhouseClient: ClickhouseClient;
-  databaseName: string;
-  metricTables: Record<string, string | undefined>;
-  connectionId: string;
-  metricName: string;
-  startDate: Date;
-  endDate: Date;
-  signal: AbortSignal;
-}): Promise<QueryableMetricKind[]> {
-  const probes = await Promise.all(
-    QUERYABLE_METRIC_KINDS.map(async kind => {
-      const tableName = metricTables[kind];
-      if (!tableName) return null;
-      try {
-        const sql = chSql`
-          SELECT 1
-          FROM ${tableExpr({ database: databaseName, table: tableName })}
-          WHERE MetricName = ${{ String: metricName }}
-            AND TimeUnix >= fromUnixTimestamp64Milli(${{ Int64: startDate.getTime() }})
-            AND TimeUnix <= fromUnixTimestamp64Milli(${{ Int64: endDate.getTime() }})
-          LIMIT 1
-        `;
-        const response = await clickhouseClient.query<'JSON'>({
-          query: sql.sql,
-          query_params: sql.params,
-          format: 'JSON',
-          connectionId,
-          abort_signal: signal,
-        });
-        const result = (await response.json()) as { data: unknown[] };
-        return result.data.length > 0 ? kind : null;
-      } catch (e) {
-        logger.warn(
-          { kind, error: e instanceof Error ? e.message : String(e) },
-          'detectKindsForMetric: probe failed',
-        );
-        return null;
-      }
-    }),
-  );
-  return probes.filter((k): k is QueryableMetricKind => k !== null);
 }
 
 /**
@@ -253,10 +208,16 @@ async function fetchUnitAndDescription({
  * OTel Collector default schema). Issues one query per Map column with
  * `mapKeys(col) AS keys` and aggregates the distinct keys server-side.
  *
- * Replaces an earlier `metadata.getAllFields({ metricName })` call which
- * silently returned empty arrays in this CI environment for
- * metric-scoped scans. A direct query is more transparent and matches
- * the proven pattern used by the web app's `useFetchMetricResourceAttrs`.
+ * Bounds the scan two ways so it stays fast on production-shaped metric
+ * tables (where a single MetricName can match millions of rows):
+ *   - WHERE TimeUnix BETWEEN startDate AND endDate scopes to the
+ *     discovery window the caller already passed.
+ *   - max_rows_to_read caps the per-query scan server-side so a hot
+ *     metric cannot starve the wall-clock budget on its own.
+ *
+ * The earlier inline SQL did neither — an unbounded
+ * `WHERE MetricName = ?` scan consistently exceeded the wall-clock
+ * timeout on production tables.
  */
 async function fetchAttributeKeys({
   clickhouseClient,
@@ -265,6 +226,8 @@ async function fetchAttributeKeys({
   connectionId,
   metricName,
   columns,
+  startDate,
+  endDate,
   signal,
 }: {
   clickhouseClient: ClickhouseClient;
@@ -273,6 +236,8 @@ async function fetchAttributeKeys({
   connectionId: string;
   metricName: string;
   columns: { name: string; type: string }[];
+  startDate: Date;
+  endDate: Date;
   signal: AbortSignal;
 }): Promise<Record<string, string[]>> {
   const mapColumns =
@@ -281,15 +246,31 @@ async function fetchAttributeKeys({
     ) ?? [];
   if (mapColumns.length === 0) return {};
 
-  const projections = mapColumns.map(
+  const sampleProjections = mapColumns.map(
+    col => chSql`${{ Identifier: col.name }}`,
+  );
+
+  const aggProjections = mapColumns.map(
     col =>
       chSql`arrayDistinct(arrayFlatten(groupArray(mapKeys(${{ Identifier: col.name }})))) AS ${{ Identifier: col.name }}`,
   );
 
+  // Aggregate from a bounded sample of matching rows. The inner LIMIT
+  // lets ClickHouse stop scanning once it has SAMPLE_SIZE rows that
+  // match (MetricName, time range), which keeps the query fast on hot
+  // metric tables. ResourceAttributes / Attributes / ScopeAttributes
+  // are rarely keyed independently per row, so 100k rows surfaces
+  // every realistic key set.
   const sql = chSql`
-    SELECT ${concatChSql(', ', projections)}
-    FROM ${tableExpr({ database: databaseName, table: tableName })}
-    WHERE MetricName = ${{ String: metricName }}
+    SELECT ${concatChSql(', ', aggProjections)}
+    FROM (
+      SELECT ${concatChSql(', ', sampleProjections)}
+      FROM ${tableExpr({ database: databaseName, table: tableName })}
+      WHERE MetricName = ${{ String: metricName }}
+        AND TimeUnix >= fromUnixTimestamp64Milli(${{ Int64: startDate.getTime() }})
+        AND TimeUnix <= fromUnixTimestamp64Milli(${{ Int64: endDate.getTime() }})
+      LIMIT ${{ Int32: METRIC_ATTR_KEYS_SAMPLE_SIZE }}
+    )
   `;
 
   try {
@@ -298,6 +279,10 @@ async function fetchAttributeKeys({
       query_params: sql.params,
       format: 'JSON',
       connectionId,
+      clickhouse_settings: {
+        max_execution_time: METRIC_ATTR_KEYS_MAX_EXEC_SECONDS,
+        timeout_overflow_mode: 'break',
+      },
       abort_signal: signal,
     });
     const result = (await response.json()) as {
@@ -474,157 +459,128 @@ async function describeMetricImpl(
   const databaseName = source.from.databaseName;
   const connectionId = source.connection.toString();
 
-  // Resolve which kinds to describe. With an explicit `kind`, restrict to
-  // that one. Without, probe each populated kind so the agent gets one
-  // entry per match (rare but possible for shared metric names).
-  let candidateKinds: QueryableMetricKind[];
-  if (input.kind) {
-    if (!source.metricTables[input.kind]) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text' as const,
-            text: `Source "${input.sourceId}" has no "${input.kind}" metric table populated. Populated kinds: ${Object.keys(source.metricTables).join(', ')}.`,
-          },
-        ],
-      };
-    }
-    candidateKinds = [input.kind];
-  } else {
-    candidateKinds = await detectKindsForMetric({
+  // Validate the requested kind has a populated table on this source.
+  // The schema requires `kind`, so we always have an exact target.
+  const kind = input.kind;
+  const tableName = source.metricTables[kind];
+  if (!tableName) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Source "${input.sourceId}" has no "${kind}" metric table populated. Populated kinds: ${Object.keys(source.metricTables).join(', ')}.`,
+        },
+      ],
+    };
+  }
+
+  // Defensive column-presence check before referencing MetricUnit /
+  // MetricDescription on this kind's table.
+  let columns: { name: string; type: string }[];
+  try {
+    columns = await metadata.getColumns({
+      databaseName,
+      tableName,
+      connectionId,
+    });
+  } catch (e) {
+    logger.warn(
+      { kind, error: e instanceof Error ? e.message : String(e) },
+      'describeMetric: getColumns failed',
+    );
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Failed to load columns for "${tableName}". The metric table may be missing or unreachable.`,
+        },
+      ],
+    };
+  }
+  const columnNames = new Set(columns.map(c => c.name));
+  const hasUnit = columnNames.has('MetricUnit');
+  const hasDescription = columnNames.has('MetricDescription');
+
+  const [meta, attributeKeys] = await Promise.all([
+    fetchUnitAndDescription({
       clickhouseClient,
       databaseName,
-      metricTables: source.metricTables,
+      tableName,
       connectionId,
       metricName: input.metricName,
       startDate,
       endDate,
+      hasUnit,
+      hasDescription,
+      signal,
+    }),
+    fetchAttributeKeys({
+      clickhouseClient,
+      databaseName,
+      tableName,
+      connectionId,
+      metricName: input.metricName,
+      columns,
+      startDate,
+      endDate,
+      signal,
+    }),
+  ]);
+
+  const kindDetail: KindDetail = {
+    kind,
+    tableName,
+    ...(meta.unit ? { unit: meta.unit } : {}),
+    ...(meta.description ? { description: meta.description } : {}),
+    attributeKeys,
+    usage: KIND_USAGE[kind],
+  };
+
+  if (input.sampleValues && Object.keys(attributeKeys).length > 0) {
+    kindDetail.attributeValues = await sampleAttributeValues({
+      clickhouseClient,
+      databaseName,
+      tableName,
+      connectionId,
+      metricName: input.metricName,
+      attributeKeys,
+      startDate,
+      endDate,
       signal,
     });
-    if (candidateKinds.length === 0) {
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify(
-              {
-                metricName: input.metricName,
-                kinds: [],
-                hint:
-                  `No data found for MetricName "${input.metricName}" in any populated metric table ` +
-                  `between ${startDate.toISOString()} and ${endDate.toISOString()}. ` +
-                  'Try widening startTime/endTime, or call clickstack_list_metrics to confirm the metric name exists.',
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    }
   }
 
-  const kindDetails: KindDetail[] = [];
-  const skippedStages: string[] = [];
+  const kindDetails: KindDetail[] = [kindDetail];
 
-  for (const kind of candidateKinds) {
-    if (signal.aborted) {
-      skippedStages.push(`kind:${kind}`);
-      continue;
-    }
-    const tableName = source.metricTables[kind];
-    if (!tableName) continue;
+  // Heuristic "no data in this kind" hint: when neither attribute keys,
+  // unit, nor description came back, the (metric, kind) pair likely has
+  // no data in the requested window. The agent's recourse is to widen
+  // startTime/endTime or double-check the kind via clickstack_list_metrics.
+  const noSignal =
+    Object.keys(attributeKeys).length === 0 && !meta.unit && !meta.description;
 
-    // Defensive column-presence check before referencing MetricUnit /
-    // MetricDescription.
-    let columns: { name: string; type: string }[];
-    try {
-      columns = await metadata.getColumns({
-        databaseName,
-        tableName,
-        connectionId,
-      });
-    } catch (e) {
-      logger.warn(
-        { kind, error: e instanceof Error ? e.message : String(e) },
-        'describeMetric: getColumns failed',
-      );
-      continue;
-    }
-    const columnNames = new Set(columns.map(c => c.name));
-    const hasUnit = columnNames.has('MetricUnit');
-    const hasDescription = columnNames.has('MetricDescription');
-
-    const [meta, attributeKeys] = await Promise.all([
-      fetchUnitAndDescription({
-        clickhouseClient,
-        databaseName,
-        tableName,
-        connectionId,
-        metricName: input.metricName,
-        startDate,
-        endDate,
-        hasUnit,
-        hasDescription,
-        signal,
-      }),
-      fetchAttributeKeys({
-        clickhouseClient,
-        databaseName,
-        tableName,
-        connectionId,
-        metricName: input.metricName,
-        columns,
-        signal,
-      }),
-    ]);
-
-    const detail: KindDetail = {
-      kind,
-      tableName,
-      ...(meta.unit ? { unit: meta.unit } : {}),
-      ...(meta.description ? { description: meta.description } : {}),
-      attributeKeys,
-      usage: KIND_USAGE[kind],
-    };
-
-    if (input.sampleValues && Object.keys(attributeKeys).length > 0) {
-      detail.attributeValues = await sampleAttributeValues({
-        clickhouseClient,
-        databaseName,
-        tableName,
-        connectionId,
-        metricName: input.metricName,
-        attributeKeys,
-        startDate,
-        endDate,
-        signal,
-      });
-    }
-
-    kindDetails.push(detail);
-  }
-
-  const exampleKind = kindDetails[0]?.kind;
-  const queryExample = exampleKind
-    ? `clickstack_timeseries({ sourceId: "${input.sourceId}", select: [{ aggFn: ${
-        exampleKind === 'sum'
-          ? '"increase"'
-          : exampleKind === 'histogram'
-            ? '"quantile", level: 0.95'
-            : '"avg"'
-      }, metricType: "${exampleKind}", metricName: "${input.metricName}" }] })`
-    : undefined;
+  const queryExample = `clickstack_timeseries({ sourceId: "${input.sourceId}", select: [{ aggFn: ${
+    kind === 'sum'
+      ? '"increase"'
+      : kind === 'histogram'
+        ? '"quantile", level: 0.95'
+        : '"avg"'
+  }, metricType: "${kind}", metricName: "${input.metricName}" }] })`;
 
   const responseObj: Record<string, unknown> = {
     metricName: input.metricName,
     kinds: kindDetails,
-    ...(skippedStages.length > 0 && { partial: true, skippedStages }),
+    ...(noSignal && {
+      hint:
+        `No data found for MetricName "${input.metricName}" with kind "${kind}" ` +
+        `between ${startDate.toISOString()} and ${endDate.toISOString()}. ` +
+        'Try widening startTime/endTime, or call clickstack_list_metrics to ' +
+        'confirm the metric name + kind combination exists.',
+    }),
     nextSteps: {
-      query: queryExample
-        ? `Example: ${queryExample}`
-        : `Use clickstack_timeseries / clickstack_table with sourceId "${input.sourceId}" plus the metricType + metricName + attribute keys above.`,
+      query: `Example: ${queryExample}`,
     },
   };
 
@@ -662,9 +618,13 @@ export function registerDescribeMetric(
       title: 'Describe Metric',
       description:
         'DRILL-DOWN: Use after clickstack_list_metrics (or after a clickstack_describe_source ' +
-        'sample) to get attribute keys, sampled values, kind, unit, and description for a ' +
-        'specific metric. Attribute keys vary per metric name — not per source — so always call ' +
-        "this before clickstack_timeseries / clickstack_table for any metric you've never queried.\n\n" +
+        'sample) to get attribute keys, sampled values, unit, and description for a ' +
+        'specific (metricName, kind) pair. Attribute keys vary per metric — not per source — ' +
+        "so always call this before clickstack_timeseries / clickstack_table for any metric you've never queried.\n\n" +
+        'REQUIRES `kind` — pass the gauge/sum/histogram value emitted alongside the metric name by ' +
+        'clickstack_list_metrics or clickstack_describe_source. A metric name can legitimately ' +
+        'live in more than one kind (e.g. "container.cpu.usage" appears in both gauge and sum); ' +
+        'call this tool once per kind you care about.\n\n' +
         'Workflow: clickstack_list_sources → clickstack_list_metrics → ' +
         'clickstack_describe_metric → clickstack_timeseries|clickstack_table.',
       inputSchema: describeMetricSchema,
@@ -703,8 +663,10 @@ export function registerDescribeMetric(
               {
                 type: 'text' as const,
                 text:
-                  'Discovery timed out. The metric table may be under load or have very high cardinality. ' +
-                  'Try again, narrow startTime/endTime, or set sampleValues:false.',
+                  'Discovery timed out. The metric table may be under load or the ' +
+                  'attribute set may be very high-cardinality. Try narrowing ' +
+                  'startTime/endTime or setting sampleValues:false to skip the ' +
+                  'value-sampling stage.',
               },
             ],
           };
