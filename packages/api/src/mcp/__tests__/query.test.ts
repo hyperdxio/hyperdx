@@ -298,9 +298,69 @@ describe('resolveOrderBy', () => {
   });
 
   it('should prefer alias over synthesized expression', () => {
+    expect(resolveOrderBy('count', [{ aggFn: 'count', alias: 'Total' }])).toBe(
+      'Total',
+    );
+  });
+
+  it('should quote a multi-word alias resolved from an aggFn match', () => {
     expect(
       resolveOrderBy('count', [{ aggFn: 'count', alias: 'Total Rows' }]),
-    ).toBe('Total Rows');
+    ).toBe('"Total Rows"');
+  });
+
+  it('should quote a multi-word alias matched directly', () => {
+    expect(
+      resolveOrderBy('P95 Latency', [
+        {
+          aggFn: 'quantile',
+          valueExpression: 'Duration',
+          alias: 'P95 Latency',
+        },
+      ]),
+    ).toBe('"P95 Latency"');
+  });
+
+  it('should quote a multi-word alias and preserve direction', () => {
+    expect(
+      resolveOrderBy('p95 latency DESC', [
+        {
+          aggFn: 'quantile',
+          valueExpression: 'Duration',
+          alias: 'P95 Latency',
+        },
+      ]),
+    ).toBe('"P95 Latency" DESC');
+  });
+
+  it('should accept an already-quoted multi-word alias without double-quoting', () => {
+    expect(
+      resolveOrderBy('"P95 Latency" DESC', [
+        {
+          aggFn: 'quantile',
+          valueExpression: 'Duration',
+          alias: 'P95 Latency',
+        },
+      ]),
+    ).toBe('"P95 Latency" DESC');
+  });
+
+  it('should normalize a backtick-quoted alias to double quotes', () => {
+    expect(
+      resolveOrderBy('`P95 Latency`', [
+        {
+          aggFn: 'quantile',
+          valueExpression: 'Duration',
+          alias: 'P95 Latency',
+        },
+      ]),
+    ).toBe('"P95 Latency"');
+  });
+
+  it('should leave a bare single-word alias unquoted', () => {
+    expect(resolveOrderBy('Total', [{ aggFn: 'count', alias: 'Total' }])).toBe(
+      'Total',
+    );
   });
 
   it('should be case-insensitive for aggFn matching', () => {
