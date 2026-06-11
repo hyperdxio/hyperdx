@@ -78,6 +78,7 @@ async function sampleMetricNamesForKind({
   tableName,
   connectionId,
   dateRange,
+  timestampValueExpression,
   signal,
   cachedColumns,
 }: {
@@ -87,6 +88,7 @@ async function sampleMetricNamesForKind({
   tableName: string;
   connectionId: string;
   dateRange: [Date, Date];
+  timestampValueExpression: string;
   signal: AbortSignal;
   cachedColumns?: { name: string }[];
 }): Promise<MetricNameSample[]> {
@@ -100,6 +102,9 @@ async function sampleMetricNamesForKind({
 
   // First fetch the distinct metric names; this is the only step that
   // strictly needs to succeed for the kind to appear in the response.
+  // Pass timestampValueExpression so the no-rollup fallback path scopes
+  // its scan to dateRange instead of going unbounded against the raw
+  // metric table on cold cache.
   const nameResults = await metadata.getAllKeyValues({
     databaseName,
     tableName,
@@ -107,6 +112,7 @@ async function sampleMetricNamesForKind({
     maxValuesPerKey: MAX_METRIC_NAMES_PER_KIND,
     connectionId,
     dateRange,
+    timestampValueExpression,
     signal,
   });
   const names = nameResults[0]?.value ?? [];
@@ -388,6 +394,12 @@ async function describeSourceSchema(
   }));
 
   // ── 2. Map attribute keys ─────────────────────────────────────────────
+  // timestampValueExpression is threaded into getMapKeys / getAllKeyValues /
+  // sampleMetricNamesForKind below so the no-rollup fallback path (i.e.
+  // metric sources, which don't have metadataMaterializedViews configured)
+  // can scope its scan to dateRange instead of going unbounded against
+  // the raw metric table on cold cache.
+  const timestampValueExpression = source.timestampValueExpression;
   const mapColumns = filterColumnMetaByType(columns, [JSDataType.Map]);
   const mapKeysResults: Record<string, string[]> = {};
 
@@ -403,6 +415,7 @@ async function describeSourceSchema(
             connectionId,
             metadataMVs,
             dateRange,
+            timestampValueExpression,
             signal,
           });
           mapKeysResults[col.name] = keys;
@@ -444,6 +457,7 @@ async function describeSourceSchema(
         connectionId,
         metadataMVs,
         dateRange,
+        timestampValueExpression,
         signal,
       });
       for (const { key, value } of results) {
@@ -483,6 +497,7 @@ async function describeSourceSchema(
         connectionId,
         metadataMVs,
         dateRange,
+        timestampValueExpression,
         signal,
       });
       for (const { key, value } of results) {
@@ -526,6 +541,7 @@ async function describeSourceSchema(
             tableName: kindTableName,
             connectionId,
             dateRange,
+            timestampValueExpression,
             signal,
             // Reuse representative columns when the kind matches the
             // representative table to avoid a second getColumns round-trip.
