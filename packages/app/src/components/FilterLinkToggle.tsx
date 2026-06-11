@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { ActionIcon, Tooltip } from '@mantine/core';
 import { IconArrowsLeftRight } from '@tabler/icons-react';
 
@@ -30,9 +31,19 @@ export function FilterLinkToggle({
       }
     >
       <ActionIcon
-        // Theme-defined variants only (no raw color): the "secondary" variant's
-        // surface + border reads as the pressed/active state, "subtle" as off.
-        variant={linked ? 'secondary' : 'subtle'}
+        variant="subtle"
+        // Active state: a high-contrast inverted "pill" via theme tokens (never
+        // green, on any theme) so linked mode is clearly visible; off is the
+        // plain subtle icon. Overrides Mantine's ActionIcon CSS vars inline.
+        style={
+          linked
+            ? ({
+                '--ai-bg': 'var(--color-bg-inverted)',
+                '--ai-hover': 'var(--color-bg-inverted)',
+                '--ai-color': 'var(--color-text-inverted)',
+              } as CSSProperties)
+            : undefined
+        }
         onClick={() => onChange(!linked)}
         aria-label="Link filters"
         aria-pressed={linked}
