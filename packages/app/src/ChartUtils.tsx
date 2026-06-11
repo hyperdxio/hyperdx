@@ -110,7 +110,10 @@ export function convertToTimeChartConfig(
   config: ChartConfigWithDateRange,
   teamSeriesLimit?: number,
 ): ChartConfigWithDateRange {
-  const seriesLimit = Math.max(1, teamSeriesLimit ?? MAX_TIME_CHART_SERIES);
+  // Series capping is opt-in via the team setting; when unset, no
+  // __hdx_series_limit CTE is emitted and charts fetch every series.
+  const seriesLimit =
+    teamSeriesLimit != null ? Math.max(1, teamSeriesLimit) : undefined;
 
   const granularity = getTimeChartGranularity(
     config.granularity,
@@ -139,7 +142,7 @@ export function convertToTimeChartConfig(
         dateRangeEndInclusive,
         granularity,
         limit: { limit: 100000 },
-        seriesLimit,
+        ...(seriesLimit != null ? { seriesLimit } : {}),
       }
     : {
         ...config,

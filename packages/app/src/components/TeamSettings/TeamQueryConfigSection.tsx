@@ -41,6 +41,11 @@ interface ClickhouseSettingFormProps {
   max?: number;
   displayValue?: (value: any, defaultValue?: any) => string;
   description?: string;
+  // For settings with no server-side default: lets the user clear the value
+  // back to undefined (which disables the feature) instead of resetting to
+  // a defaultValue.
+  allowUnset?: boolean;
+  resetLabel?: string;
 }
 
 function getFieldErrorMessage(error: unknown): string | undefined {
@@ -63,6 +68,8 @@ function ClickhouseSettingForm({
   max,
   displayValue,
   description,
+  allowUnset = false,
+  resetLabel = 'Reset to default',
 }: ClickhouseSettingFormProps) {
   const { data: me, refetch: refetchMe } = api.useMe();
   const updateClickhouseSettings = api.useUpdateClickhouseSettings();
@@ -124,7 +131,7 @@ function ClickhouseSettingForm({
   );
 
   const handleReset = useCallback(() => {
-    if (defaultValue == null) return;
+    if (defaultValue == null && !allowUnset) return;
     updateClickhouseSettings.mutate(
       { [settingKey]: null },
       {
@@ -137,9 +144,12 @@ function ClickhouseSettingForm({
         onSuccess: () => {
           notifications.show({
             color: 'green',
-            message: `Reset ${label} to default`,
+            message:
+              defaultValue != null
+                ? `Reset ${label} to default`
+                : `Updated ${label}`,
           });
-          form.reset({ value: defaultValue });
+          form.reset({ value: defaultValue ?? '' });
           refetchMe();
           setIsEditing(false);
         },
@@ -151,6 +161,7 @@ function ClickhouseSettingForm({
     settingKey,
     label,
     defaultValue,
+    allowUnset,
     form,
   ]);
 
@@ -255,16 +266,18 @@ function ClickhouseSettingForm({
               Change
             </Button>
           )}
-          {hasAdminAccess && isCustomValue && defaultValue != null && (
-            <Button
-              size="xs"
-              variant="subtle"
-              loading={updateClickhouseSettings.isPending}
-              onClick={handleReset}
-            >
-              Reset to default
-            </Button>
-          )}
+          {hasAdminAccess &&
+            isCustomValue &&
+            (defaultValue != null || allowUnset) && (
+              <Button
+                size="xs"
+                variant="subtle"
+                loading={updateClickhouseSettings.isPending}
+                onClick={handleReset}
+              >
+                {resetLabel}
+              </Button>
+            )}
         </Group>
       )}
     </Stack>
@@ -347,12 +360,17 @@ export default function TeamQueryConfigSection() {
           <ClickhouseSettingForm
             settingKey="seriesLimit"
             label="Time Chart Series Limit"
-            tooltip="Maximum number of series fetched per time chart."
+            tooltip="Maximum number of series fetched per group-by time chart. Disabled by default — charts fetch every series."
             type="number"
-            defaultValue={DEFAULT_SERIES_LIMIT}
-            placeholder={`default = ${DEFAULT_SERIES_LIMIT}`}
+            placeholder={`e.g. ${DEFAULT_SERIES_LIMIT}`}
             min={1}
-            displayValue={displayValueWithUnit('series')}
+            displayValue={value =>
+              value == null
+                ? 'Disabled'
+                : `${Number(value).toLocaleString()} series`
+            }
+            allowUnset
+            resetLabel="Disable"
           />
         </Stack>
       </Card>

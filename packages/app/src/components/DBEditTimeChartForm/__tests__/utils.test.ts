@@ -6,7 +6,6 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 
-import { MAX_TIME_CHART_SERIES } from '@/ChartUtils';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 
 import {
@@ -428,7 +427,7 @@ describe('buildChartConfigForExplanations', () => {
     expect(result!.seriesLimit).toBe(3);
   });
 
-  it('falls back to the default series limit when no team limit is set', () => {
+  it('omits seriesLimit (capping disabled) when no team limit is set', () => {
     const result = buildChartConfigForExplanations({
       ...baseParams,
       queriedConfig: builderConfig,
@@ -440,7 +439,7 @@ describe('buildChartConfigForExplanations', () => {
 
     expect(result).toBeDefined();
     // @ts-expect-error union types..
-    expect(result!.seriesLimit).toBe(MAX_TIME_CHART_SERIES);
+    expect(result!.seriesLimit).toBeUndefined();
   });
 
   it.each(['table', 'number', 'pie'] as const)(

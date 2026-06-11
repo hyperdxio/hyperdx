@@ -11,7 +11,6 @@ import {
   formatResponseForPieChart,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
-import { DEFAULT_SERIES_LIMIT } from '@/defaults';
 import { COLORS } from '@/utils';
 
 // Anchor info/error to concrete hexes rather than `getChartColorInfo()` /
@@ -826,8 +825,8 @@ describe('ChartUtils', () => {
         ) as BuilderChartConfigWithDateRange
       ).seriesLimit;
 
-    it('defaults seriesLimit to DEFAULT_SERIES_LIMIT when no team value is given', () => {
-      expect(seriesLimitOf()).toBe(DEFAULT_SERIES_LIMIT);
+    it('omits seriesLimit (capping disabled) when no team value is given', () => {
+      expect(seriesLimitOf()).toBeUndefined();
     });
 
     it('uses the team seriesLimit when provided', () => {
