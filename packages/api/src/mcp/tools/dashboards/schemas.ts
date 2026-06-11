@@ -456,7 +456,14 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
           'from a groupBy: "StatusMessage" table. Mirrors the same field on the REST ' +
           'table chart config in `externalDashboardTableChartConfigSchema`.',
       ),
-    orderBy: z.string().optional().describe('Sort results by this column'),
+    orderBy: z
+      .string()
+      .optional()
+      .describe(
+        'Sort results by this column. ' +
+          'When ordering by an alias that contains spaces or special characters, ' +
+          `wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+      ),
     asRatio: z.boolean().optional(),
     groupByColumnsOnLeft: z
       .boolean()
