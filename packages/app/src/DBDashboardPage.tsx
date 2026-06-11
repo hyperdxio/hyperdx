@@ -2415,7 +2415,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             onClick={() =>
               deleteDashboard.mutate(dashboard?.id ?? '', {
                 onSuccess: () => {
-                  router.push('/dashboards');
+                  router.push('/dashboards/list');
                 },
               })
             }
