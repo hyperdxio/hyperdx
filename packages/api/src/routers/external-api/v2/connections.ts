@@ -49,13 +49,16 @@ function formatExternalConnection(connection: ConnectionDocument) {
     return parseResult.data;
   }
 
-  // If parsing fails, log the error and return undefined
+  // If parsing fails, log and throw so handlers return an explicit 500
+  // instead of silently responding with `{}` or a partial list.
   logger.error(
     { connectionId: connection._id, error: parseResult.error },
     'Failed to parse connection using externalConnectionSchema:',
   );
 
-  return undefined;
+  throw new Error(
+    `Failed to serialize connection ${connection._id} for external API`,
+  );
 }
 
 /**
@@ -231,9 +234,7 @@ router.get('/', async (req, res, next) => {
     const connections = await getConnectionsByTeam(teamId.toString());
 
     res.json({
-      data: connections
-        .map(formatExternalConnection)
-        .filter(c => c !== undefined),
+      data: connections.map(formatExternalConnection),
     });
   } catch (e) {
     next(e);
