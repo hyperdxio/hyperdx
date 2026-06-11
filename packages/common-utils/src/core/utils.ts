@@ -345,6 +345,130 @@ export function replaceJsonExpressions(sql: string) {
 }
 
 /**
+ * Replaces ClickHouse parametric aggregate function calls — the double-paren
+ * `func(params)(args)` form (eg. `groupUniqArray(20)(col)`, `quantile(0.9)(col)`)
+ * — with placeholders like `__hdx_paramagg_replacement_0`.
+ */
+export function replaceParametricAggregates(sql: string) {
+  const replacements = new Map<string, string>();
+
+  // Returns the index just past the matching ')' for an opening '(' at
+  // `openIndex`, or null if the parens are unbalanced. Quoted regions are
+  // skipped so parens inside literals/identifiers don't affect the depth.
+  const matchBalancedParens = (openIndex: number): number | null => {
+    let depth = 0;
+    let isInSingleQuote = false;
+    let isInDoubleQuote = false;
+    let isInBacktick = false;
+    for (let i = openIndex; i < sql.length; i++) {
+      const c = sql.charAt(i);
+      if (c === "'" && !isInDoubleQuote && !isInBacktick) {
+        isInSingleQuote = !isInSingleQuote;
+      } else if (c === '"' && !isInSingleQuote && !isInBacktick) {
+        isInDoubleQuote = !isInDoubleQuote;
+      } else if (c === '`' && !isInSingleQuote && !isInDoubleQuote) {
+        isInBacktick = !isInBacktick;
+      } else if (!isInSingleQuote && !isInDoubleQuote && !isInBacktick) {
+        if (c === '(') {
+          depth++;
+        } else if (c === ')') {
+          depth--;
+          if (depth === 0) {
+            return i + 1;
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  const skipWhitespace = (index: number): number => {
+    let i = index;
+    while (i < sql.length && /\s/.test(sql.charAt(i))) {
+      i++;
+    }
+    return i;
+  };
+
+  // Identifier classes mirror node-sql-parser's grammar: [A-Za-z_一-龥].
+  const isIdentifierStart = (c: string) => /[A-Za-z_一-龥]/.test(c);
+  const isIdentifierChar = (c: string) => /[A-Za-z0-9_一-龥]/.test(c);
+
+  let result = '';
+  let counter = 0;
+  let i = 0;
+  let isInSingleQuote = false;
+  let isInDoubleQuote = false;
+  let isInBacktick = false;
+
+  while (i < sql.length) {
+    const c = sql.charAt(i);
+
+    // Copy quoted regions through verbatim.
+    if (c === "'" && !isInDoubleQuote && !isInBacktick) {
+      isInSingleQuote = !isInSingleQuote;
+      result += c;
+      i++;
+      continue;
+    }
+    if (c === '"' && !isInSingleQuote && !isInBacktick) {
+      isInDoubleQuote = !isInDoubleQuote;
+      result += c;
+      i++;
+      continue;
+    }
+    if (c === '`' && !isInSingleQuote && !isInDoubleQuote) {
+      isInBacktick = !isInBacktick;
+      result += c;
+      i++;
+      continue;
+    }
+    if (isInSingleQuote || isInDoubleQuote || isInBacktick) {
+      result += c;
+      i++;
+      continue;
+    }
+
+    if (isIdentifierStart(c)) {
+      // Consume the identifier.
+      let idEnd = i + 1;
+      while (idEnd < sql.length && isIdentifierChar(sql.charAt(idEnd))) {
+        idEnd++;
+      }
+
+      const afterId = skipWhitespace(idEnd);
+      if (sql.charAt(afterId) === '(') {
+        const group1End = matchBalancedParens(afterId);
+        if (group1End != null) {
+          const afterGroup1 = skipWhitespace(group1End);
+          if (sql.charAt(afterGroup1) === '(') {
+            const group2End = matchBalancedParens(afterGroup1);
+            if (group2End != null) {
+              const span = sql.slice(i, group2End);
+              const replacement = `__hdx_paramagg_replacement_${counter++}`;
+              replacements.set(replacement, span);
+              result += replacement;
+              i = group2End;
+              continue;
+            }
+          }
+        }
+      }
+
+      // Not a parametric aggregate: copy the identifier as-is.
+      result += sql.slice(i, idEnd);
+      i = idEnd;
+      continue;
+    }
+
+    result += c;
+    i++;
+  }
+
+  return { sqlWithReplacements: result, replacements };
+}
+
+/**
  * To best support Pre-aggregation in Materialized Views, any new
  * granularities should be multiples of all smaller granularities.
  * */

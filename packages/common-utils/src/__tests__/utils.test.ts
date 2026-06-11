@@ -31,6 +31,7 @@ import {
   parseToStartOfFunction,
   pickBucketTimestampColumn,
   replaceJsonExpressions,
+  replaceParametricAggregates,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
 } from '../core/utils';
@@ -1882,6 +1883,95 @@ describe('utils', () => {
           "SELECT __hdx_json_replacement_0, ResourceAttributes['key.key2'], 'a.b.c' FROM table",
       };
       expect(actual).toEqual(expected);
+    });
+  });
+
+  describe('replaceParametricAggregates', () => {
+    it('should leave input without parametric aggregates unchanged', () => {
+      const sql = 'SELECT a, count() AS c, sum(if(x, 1, 0)) AS s FROM table';
+      const actual = replaceParametricAggregates(sql);
+      expect(actual).toEqual({
+        replacements: new Map(),
+        sqlWithReplacements: sql,
+      });
+    });
+
+    it('should replace a single parametric aggregate', () => {
+      const sql = 'SELECT groupUniqArray(20)(col) AS param0 FROM t';
+      const actual = replaceParametricAggregates(sql);
+      expect(actual).toEqual({
+        replacements: new Map([
+          ['__hdx_paramagg_replacement_0', 'groupUniqArray(20)(col)'],
+        ]),
+        sqlWithReplacements:
+          'SELECT __hdx_paramagg_replacement_0 AS param0 FROM t',
+      });
+    });
+
+    it('should replace multiple parametric aggregates', () => {
+      const sql =
+        'SELECT groupUniqArray(20)(a) AS p0, quantile(0.9)(b) AS p1 FROM t';
+      const actual = replaceParametricAggregates(sql);
+      expect(actual).toEqual({
+        replacements: new Map([
+          ['__hdx_paramagg_replacement_0', 'groupUniqArray(20)(a)'],
+          ['__hdx_paramagg_replacement_1', 'quantile(0.9)(b)'],
+        ]),
+        sqlWithReplacements:
+          'SELECT __hdx_paramagg_replacement_0 AS p0, __hdx_paramagg_replacement_1 AS p1 FROM t',
+      });
+    });
+
+    it('should balance nested parens within the argument groups', () => {
+      const sql = 'SELECT quantiles(0.5, 0.9)(toFloat64(Duration)) AS q FROM t';
+      const actual = replaceParametricAggregates(sql);
+      expect(actual).toEqual({
+        replacements: new Map([
+          [
+            '__hdx_paramagg_replacement_0',
+            'quantiles(0.5, 0.9)(toFloat64(Duration))',
+          ],
+        ]),
+        sqlWithReplacements: 'SELECT __hdx_paramagg_replacement_0 AS q FROM t',
+      });
+    });
+
+    it('should not count parens inside quoted strings', () => {
+      const sql = "SELECT col, ')(' AS literal FROM t";
+      const actual = replaceParametricAggregates(sql);
+      expect(actual).toEqual({
+        replacements: new Map(),
+        sqlWithReplacements: sql,
+      });
+    });
+
+    it('should tolerate whitespace between the identifier and groups', () => {
+      const sql = 'SELECT groupUniqArray (20) (col) AS p0 FROM t';
+      const actual = replaceParametricAggregates(sql);
+      expect(actual).toEqual({
+        replacements: new Map([
+          ['__hdx_paramagg_replacement_0', 'groupUniqArray (20) (col)'],
+        ]),
+        sqlWithReplacements: 'SELECT __hdx_paramagg_replacement_0 AS p0 FROM t',
+      });
+    });
+
+    it('should not match an unbalanced double-paren form', () => {
+      const sql = 'SELECT f(a)(b FROM t';
+      const actual = replaceParametricAggregates(sql);
+      expect(actual).toEqual({
+        replacements: new Map(),
+        sqlWithReplacements: sql,
+      });
+    });
+
+    it('should not match a single-paren call', () => {
+      const sql = 'SELECT count() AS c, max(value) AS m FROM t';
+      const actual = replaceParametricAggregates(sql);
+      expect(actual).toEqual({
+        replacements: new Map(),
+        sqlWithReplacements: sql,
+      });
     });
   });
 

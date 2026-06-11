@@ -21,6 +21,7 @@ import {
   extractSettingsClauseFromEnd,
   hashCode,
   replaceJsonExpressions,
+  replaceParametricAggregates,
   splitAndTrimWithBracket,
 } from '@/core/utils';
 import { isBuilderChartConfig } from '@/guards';
@@ -833,9 +834,18 @@ export function chSqlToAliasMap(
     // Remove the SETTINGS clause because `SQLParser` doesn't understand it.
     const [sqlWithoutSettingsClause] = extractSettingsClauseFromEnd(sql);
 
+    // Replace ClickHouse parametric aggregates (eg. groupUniqArray(20)(col)) with
+    // tokens first: node-sql-parser can't parse the double-paren form, and doing
+    // this before replaceJsonExpressions keeps any dotted/JSON args inside the
+    // saved span intact (the dotless token is inert to JSON detection).
+    const {
+      sqlWithReplacements: sqlWithoutParametricAggregates,
+      replacements: parametricAggregateReplacements,
+    } = replaceParametricAggregates(sqlWithoutSettingsClause);
+
     // Replace JSON expressions with replacement tokens so that node-sql-parser can parse the SQL
     const { sqlWithReplacements, replacements: jsonReplacementsToExpressions } =
-      replaceJsonExpressions(sqlWithoutSettingsClause);
+      replaceJsonExpressions(sqlWithoutParametricAggregates);
     const parser = new SQLParser.Parser();
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type
@@ -866,11 +876,17 @@ export function chSqlToAliasMap(
       });
     }
 
-    // Replace the JSON replacement tokens with the original JSON expressions
-    for (const [alias, aliasExpression] of Object.entries(aliasMap)) {
-      for (const [replacement, original] of jsonReplacementsToExpressions) {
-        if (aliasExpression.includes(replacement)) {
-          aliasMap[alias] = aliasExpression.replaceAll(replacement, original);
+    // Restore the JSON and parametric-aggregate replacement tokens to their
+    // original expressions. Re-read aliasMap[alias] each pass so multiple tokens
+    // in one value compound correctly.
+    const allReplacements = new Map([
+      ...jsonReplacementsToExpressions,
+      ...parametricAggregateReplacements,
+    ]);
+    for (const alias of Object.keys(aliasMap)) {
+      for (const [replacement, original] of allReplacements) {
+        if (aliasMap[alias].includes(replacement)) {
+          aliasMap[alias] = aliasMap[alias].replaceAll(replacement, original);
         }
       }
     }
