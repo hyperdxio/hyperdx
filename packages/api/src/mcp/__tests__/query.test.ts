@@ -228,14 +228,23 @@ describe('errorHint', () => {
   it('should match RESULT_IS_TOO_LARGE errors', () => {
     const hint = errorHint('Code: 396. DB::Exception: RESULT_IS_TOO_LARGE');
     expect(hint).not.toBeNull();
-    expect(hint).toContain('100,000 rows');
+    expect(hint).toContain('too many rows');
     expect(hint).toContain('LIMIT');
   });
 
   it('should match TOO_MANY_ROWS_OR_BYTES errors', () => {
     const hint = errorHint('Code: 396. DB::Exception: TOO_MANY_ROWS_OR_BYTES');
     expect(hint).not.toBeNull();
-    expect(hint).toContain('100,000 rows');
+    expect(hint).toContain('too many rows');
+  });
+
+  it('should match SETTING_CONSTRAINT_VIOLATION errors', () => {
+    const hint = errorHint(
+      "Setting max_result_rows shouldn't be greater than 1000. (SETTING_CONSTRAINT_VIOLATION)",
+    );
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('profile');
+    expect(hint).toContain('constraint');
   });
 
   it('should return null for unrecognized errors', () => {
