@@ -188,7 +188,7 @@ describe('errorHint', () => {
       "Cannot convert string '2025-01-01T00:00:00Z' to type DateTime64(9)",
     );
     expect(hint).not.toBeNull();
-    expect(hint).toContain('toDateTime64');
+    expect(hint).toContain('parseDateTime64BestEffort');
   });
 
   it('should match DateTime64 parse errors', () => {
@@ -196,7 +196,7 @@ describe('errorHint', () => {
       "Cannot parse string '2025-01-01' as type DateTime64",
     );
     expect(hint).not.toBeNull();
-    expect(hint).toContain('toDateTime64');
+    expect(hint).toContain('parseDateTime64BestEffort');
   });
 
   it('should match AS alias syntax errors with word boundary', () => {

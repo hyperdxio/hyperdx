@@ -2352,6 +2352,26 @@ describe('External API v2 Dashboards - new format', () => {
             thousandSeparated: true,
             average: true,
           },
+          color: 'chart-green',
+          colorRules: [
+            {
+              operator: 'gt',
+              value: 1000,
+              color: 'chart-warning',
+              label: 'Slow',
+            },
+            {
+              operator: 'between',
+              value: [200, 1000],
+              color: 'chart-blue',
+            },
+            {
+              operator: 'gte',
+              value: 5000,
+              color: 'chart-error',
+              label: 'Critical',
+            },
+          ],
         },
       };
 
@@ -2765,6 +2785,8 @@ describe('External API v2 Dashboards - new format', () => {
           sqlTemplate,
           sourceId,
           numberFormat: { output: 'currency', currencySymbol: '$' },
+          // Raw SQL number tiles carry the static tile color (no colorRules).
+          color: 'chart-purple',
         },
       };
 
@@ -3857,6 +3879,26 @@ describe('External API v2 Dashboards - new format', () => {
             thousandSeparated: true,
             average: true,
           },
+          color: 'chart-green',
+          colorRules: [
+            {
+              operator: 'gt',
+              value: 1000,
+              color: 'chart-warning',
+              label: 'Slow',
+            },
+            {
+              operator: 'between',
+              value: [200, 1000],
+              color: 'chart-blue',
+            },
+            {
+              operator: 'gte',
+              value: 5000,
+              color: 'chart-error',
+              label: 'Critical',
+            },
+          ],
         },
       };
 
@@ -4027,6 +4069,8 @@ describe('External API v2 Dashboards - new format', () => {
           sqlTemplate,
           sourceId,
           numberFormat: { output: 'currency', currencySymbol: '$' },
+          // Raw SQL number tiles carry the static tile color (no colorRules).
+          color: 'chart-purple',
         },
       };
 
@@ -4532,6 +4576,338 @@ describe('External API v2 Dashboards - new format', () => {
           tags: [],
         })
         .expect(200);
+    });
+  });
+
+  describe('Number tile color (HDX-1360)', () => {
+    // Minimal builder number tile; callers supply color / colorRules. The
+    // payload is sent through `.send()` (untyped) so negative tests can post
+    // intentionally invalid values without tripping the compile-time schema.
+    const numberTile = (config: Record<string, unknown>) => ({
+      name: 'Number',
+      x: 0,
+      y: 0,
+      w: 3,
+      h: 3,
+      config: {
+        displayType: 'number',
+        sourceId: traceSource._id.toString(),
+        select: [{ aggFn: 'count', where: '' }],
+        ...config,
+      },
+    });
+
+    const postTile = (config: Record<string, unknown>) =>
+      authRequest('post', BASE_URL).send({
+        name: 'Number color dashboard',
+        tiles: [numberTile(config)],
+        tags: [],
+      });
+
+    const rawSqlNumberTile = (config: Record<string, unknown>) => ({
+      name: 'Number Raw SQL',
+      x: 0,
+      y: 0,
+      w: 3,
+      h: 3,
+      config: {
+        configType: 'sql',
+        displayType: 'number',
+        connectionId: connection._id.toString(),
+        sqlTemplate: 'SELECT count() FROM otel_logs WHERE {timeFilter}',
+        sourceId: traceSource._id.toString(),
+        ...config,
+      },
+    });
+
+    // ── Positive: one per UI input ──────────────────────────────────────
+
+    it('round-trips a builder number tile with a static color', async () => {
+      const create = await postTile({ color: 'chart-red' }).expect(200);
+      expect(create.body.data.tiles[0].config.color).toBe('chart-red');
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.color).toBe('chart-red');
+    });
+
+    it('round-trips colorRules covering each operator family', async () => {
+      const colorRules = [
+        { operator: 'gt', value: 1000, color: 'chart-warning', label: 'Slow' },
+        {
+          operator: 'gte',
+          value: 5000,
+          color: 'chart-error',
+          label: 'Critical',
+        },
+        { operator: 'lt', value: 0, color: 'chart-gray' },
+        { operator: 'lte', value: 10, color: 'chart-purple' },
+        { operator: 'between', value: [200, 1000], color: 'chart-blue' },
+        { operator: 'eq', value: 0, color: 'chart-cyan' },
+        { operator: 'neq', value: 'OK', color: 'chart-success' },
+      ];
+      const create = await postTile({ colorRules }).expect(200);
+      expect(create.body.data.tiles[0].config.colorRules).toEqual(colorRules);
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.colorRules).toEqual(colorRules);
+    });
+
+    it('round-trips a raw SQL number tile with a static color', async () => {
+      const create = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Raw SQL number color',
+          tiles: [rawSqlNumberTile({ color: 'chart-blue' })],
+          tags: [],
+        })
+        .expect(200);
+      expect(create.body.data.tiles[0].config.color).toBe('chart-blue');
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.color).toBe('chart-blue');
+    });
+
+    it('round-trips color and colorRules through an update (PUT)', async () => {
+      const created = await postTile({}).expect(200);
+      const dashboardId = created.body.data.id;
+      const tile = created.body.data.tiles[0];
+
+      const colorRules = [
+        {
+          operator: 'gte',
+          value: 5000,
+          color: 'chart-error',
+          label: 'Critical',
+        },
+        { operator: 'between', value: [200, 1000], color: 'chart-blue' },
+      ];
+      const update = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Number color dashboard',
+          tiles: [
+            {
+              ...tile,
+              config: { ...tile.config, color: 'chart-red', colorRules },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+      expect(update.body.data.tiles[0].config).toMatchObject({
+        color: 'chart-red',
+        colorRules,
+      });
+
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+      expect(get.body.data.tiles[0].config).toMatchObject({
+        color: 'chart-red',
+        colorRules,
+      });
+    });
+
+    it('strips colorRules from a raw SQL number tile, keeping color', async () => {
+      const create = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Raw SQL colorRules',
+          tiles: [
+            rawSqlNumberTile({
+              color: 'chart-blue',
+              colorRules: [{ operator: 'gt', value: 1, color: 'chart-red' }],
+            }),
+          ],
+          tags: [],
+        })
+        .expect(200);
+      expect(create.body.data.tiles[0].config.color).toBe('chart-blue');
+      expect(create.body.data.tiles[0].config.colorRules).toBeUndefined();
+    });
+
+    // ── Negative: one per schema rejection rule ─────────────────────────
+
+    it('rejects a static color that is not a palette token', async () => {
+      const res = await postTile({ color: 'red' }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.color');
+      await postTile({ color: 'chart-99' }).expect(400);
+      await postTile({ color: '#ff0000' }).expect(400);
+    });
+
+    it('rejects a legacy numeric palette token on input', async () => {
+      // chart-1..chart-10 were renamed to hue names; the input enum is
+      // strict hue-only, so a legacy token in a hand-written payload is
+      // rejected. Legacy tokens are normalized on read, never accepted on
+      // write.
+      await postTile({ color: 'chart-1' }).expect(400);
+    });
+
+    it('rejects more than 10 colorRules', async () => {
+      const colorRules = Array.from({ length: 11 }, (_, i) => ({
+        operator: 'gt',
+        value: i,
+        color: 'chart-blue',
+      }));
+      const res = await postTile({ colorRules }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.colorRules');
+    });
+
+    it('rejects a between rule whose value is not a two-number tuple', async () => {
+      await postTile({
+        colorRules: [{ operator: 'between', value: 100, color: 'chart-blue' }],
+      }).expect(400);
+    });
+
+    it('rejects a numeric operator rule with a string value', async () => {
+      await postTile({
+        colorRules: [{ operator: 'gt', value: 'high', color: 'chart-blue' }],
+      }).expect(400);
+    });
+
+    it('rejects operators the number-tile editor never emits', async () => {
+      for (const operator of ['contains', 'startsWith', 'endsWith', 'regex']) {
+        const res = await postTile({
+          colorRules: [{ operator, value: 'error', color: 'chart-blue' }],
+        }).expect(400);
+        expect(res.body.message).toContain('tiles.0.config.colorRules');
+      }
+    });
+
+    it('rejects a per-rule color that is not a palette token', async () => {
+      const res = await postTile({
+        colorRules: [{ operator: 'gt', value: 1, color: 'red' }],
+      }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.colorRules');
+      // Legacy numeric tokens are normalized on read, never accepted on write.
+      await postTile({
+        colorRules: [{ operator: 'gt', value: 1, color: 'chart-1' }],
+      }).expect(400);
+    });
+
+    it('rejects a rule label longer than 40 characters', async () => {
+      await postTile({
+        colorRules: [
+          {
+            operator: 'gt',
+            value: 1,
+            color: 'chart-blue',
+            label: 'x'.repeat(41),
+          },
+        ],
+      }).expect(400);
+    });
+
+    // ── Backward compatibility: existing dashboards keep working ────────
+
+    it('round-trips a number tile with neither color nor colorRules', async () => {
+      const create = await postTile({}).expect(200);
+      expect(create.body.data.tiles[0].config.color).toBeUndefined();
+      expect(create.body.data.tiles[0].config.colorRules).toBeUndefined();
+    });
+
+    it('normalizes a legacy numeric token on a builder number tile to its hue name on read', async () => {
+      const create = await postTile({ color: 'chart-green' }).expect(200);
+      const dashboardId = create.body.data.id;
+
+      // Simulate a tile saved during the #2265 window by writing a legacy
+      // numeric token directly to Mongo (the `tiles` field is `Mixed`, so
+      // this bypasses the create-path enum).
+      await Dashboard.updateOne(
+        { _id: dashboardId },
+        { $set: { 'tiles.0.config.color': 'chart-1' } },
+      );
+
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+      // chart-1 maps to chart-green (LEGACY_CHART_PALETTE_TOKEN_MAP).
+      expect(get.body.data.tiles[0].config.color).toBe('chart-green');
+    });
+
+    it('normalizes legacy colorRule colors and drops unresolvable ones on read', async () => {
+      const create = await postTile({
+        colorRules: [{ operator: 'gt', value: 1, color: 'chart-green' }],
+      }).expect(200);
+      const dashboardId = create.body.data.id;
+
+      // Direct Mongo write: a legacy numeric token (normalized to its hue
+      // name on read) and an unrecognized token (dropped on read so the
+      // response stays within the palette-token enum). Neither is reachable
+      // through the validated create path.
+      await Dashboard.updateOne(
+        { _id: dashboardId },
+        {
+          $set: {
+            'tiles.0.config.colorRules': [
+              { operator: 'gt', value: 1, color: 'chart-1' },
+              { operator: 'gt', value: 2, color: 'not-a-token' },
+            ],
+          },
+        },
+      );
+
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+      // chart-1 maps to chart-green; the unresolvable rule is dropped.
+      expect(get.body.data.tiles[0].config.colorRules).toEqual([
+        { operator: 'gt', value: 1, color: 'chart-green' },
+      ]);
+    });
+
+    it('omits colorRules when every stored rule color is unresolvable on read', async () => {
+      const create = await postTile({
+        colorRules: [{ operator: 'gt', value: 1, color: 'chart-green' }],
+      }).expect(200);
+      const dashboardId = create.body.data.id;
+
+      // Direct Mongo write of an unresolvable token (not reachable via the
+      // validated create path); the only rule drops, so the field is omitted
+      // rather than returned as an empty array.
+      await Dashboard.updateOne(
+        { _id: dashboardId },
+        {
+          $set: {
+            'tiles.0.config.colorRules': [
+              { operator: 'gt', value: 1, color: 'not-a-token' },
+            ],
+          },
+        },
+      );
+
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+      expect(get.body.data.tiles[0].config.colorRules).toBeUndefined();
+    });
+
+    it('normalizes a legacy numeric token on a raw SQL number tile to its hue name on read', async () => {
+      const create = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Raw SQL legacy color',
+          tiles: [rawSqlNumberTile({ color: 'chart-blue' })],
+          tags: [],
+        })
+        .expect(200);
+      const dashboardId = create.body.data.id;
+
+      await Dashboard.updateOne(
+        { _id: dashboardId },
+        { $set: { 'tiles.0.config.color': 'chart-4' } },
+      );
+
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+      // chart-4 maps to chart-red.
+      expect(get.body.data.tiles[0].config.color).toBe('chart-red');
     });
   });
 

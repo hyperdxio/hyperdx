@@ -294,5 +294,57 @@ describe('DBRowJsonViewer', () => {
         ),
       ).toBe("JSONExtractString(LogAttributes.`config`, 'host')");
     });
+
+    // HDX-4369. HyperJson promotes a Map sub-value that is itself a
+    // JSON-parseable string to `isInParsedJson=true` with
+    // parsedJsonRootPath=[MapCol, key] (see HyperJson.tsx:227-234). When that
+    // key is numeric, the inner `mergePath` used to emit `MapCol[N+1]` array
+    // syntax, which ClickHouse rejects with "Illegal types of arguments:
+    // Map(String, String), UInt8 for function arrayElement". Threading
+    // `mapColumns` keeps the Map[\'1\'] subscript.
+    it("emits Map['1'] for Map column with numeric sub-key holding parsed JSON", () => {
+      expect(
+        buildJSONExtractQuery(
+          ['LogAttributes', '1', 'foo'],
+          ['LogAttributes', '1'],
+          [], // jsonColumns
+          'JSONExtractString',
+          ['LogAttributes'], // mapColumns
+        ),
+      ).toBe("JSONExtractString(LogAttributes['1'], 'foo')");
+    });
+
+    it("emits Map['42'] for deeply nested Map column with numeric sub-key holding parsed JSON", () => {
+      expect(
+        buildJSONExtractQuery(
+          ['LogAttributes', '42', 'bar', 'baz'],
+          ['LogAttributes', '42'],
+          [],
+          'JSONExtractString',
+          ['LogAttributes'],
+        ),
+      ).toBe("JSONExtractString(LogAttributes['42'], 'bar', 'baz')");
+    });
+
+    it('keeps non-numeric Map sub-key unchanged when mapColumns is threaded', () => {
+      expect(
+        buildJSONExtractQuery(
+          ['LogAttributes', 'config', 'host'],
+          ['LogAttributes', 'config'],
+          [],
+          'JSONExtractString',
+          ['LogAttributes'],
+        ),
+      ).toBe("JSONExtractString(LogAttributes['config'], 'host')");
+    });
+
+    it('falls back to array index when mapColumns is empty (unchanged behavior)', () => {
+      // Without mapColumns, a numeric segment still gets the array-index
+      // treatment. This pins the pre-HDX-4369 default for the non-Map case
+      // (e.g. an Array(JSON) column whose element holds a parsed JSON value).
+      expect(
+        buildJSONExtractQuery(['SomeArray', '0', 'id'], ['SomeArray', '0']),
+      ).toBe("JSONExtractString(SomeArray[1], 'id')");
+    });
   });
 });

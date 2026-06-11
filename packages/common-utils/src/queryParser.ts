@@ -1103,15 +1103,16 @@ export async function buildKvItemsLookup({
 }): Promise<KvItemsLookup> {
   const lookup: KvItemsLookup = new Map();
   try {
-    const [serverVersion, columns, skipIndices] = await Promise.all([
+    const [serverVersion, columns, skipIndices, isCloud] = await Promise.all([
       metadata.getServerVersion({ connectionId }),
       metadata.getColumns({ databaseName, tableName, connectionId }),
       metadata
         .getSkipIndices({ databaseName, tableName, connectionId })
         .catch(() => [] as SkipIndexMetadata[]),
+      metadata.isClickHouseCloud({ connectionId }).catch(() => false),
     ]);
 
-    const directReadSupported = supportsDirectReadMap(serverVersion);
+    const directReadSupported = supportsDirectReadMap(serverVersion, isCloud);
 
     const kvItemsCandidates = columns.filter(
       c =>
