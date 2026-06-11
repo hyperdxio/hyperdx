@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import cx from 'classnames';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { Button, Code, Group, Modal, Stack, Text } from '@mantine/core';
+import { Box, Button, Code, Group, Modal, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconArrowsDiagonal } from '@tabler/icons-react';
 
@@ -20,7 +20,7 @@ export default function ChartErrorState({
 
   const details = useMemo(() => {
     return (
-      <Stack align="start">
+      <Stack align="start" w="100%">
         <Text size="sm" mt={10}>
           Error Message:
         </Text>
@@ -34,12 +34,12 @@ export default function ChartErrorState({
           {error.message}
         </Code>
         {error instanceof ClickHouseQueryError && (
-          <>
-            <Text size="sm" ta="center">
+          <Box w="100%">
+            <Text size="sm" mb="xs">
               Sent Query:
             </Text>
             <SQLPreview data={error?.query} enableCopy enableLineWrapping />
-          </>
+          </Box>
         )}
       </Stack>
     );

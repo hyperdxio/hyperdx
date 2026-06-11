@@ -2361,18 +2361,12 @@ export function DBSearchPage() {
                             <Text my="sm" size="sm">
                               Original Query:
                             </Text>
-                            <Code
-                              block
-                              style={{
-                                whiteSpace: 'pre-wrap',
-                              }}
-                            >
-                              <SQLPreview
-                                data={queryError.query}
-                                formatData
-                                enableLineWrapping
-                              />
-                            </Code>
+                            <SQLPreview
+                              data={queryError.query}
+                              formatData
+                              enableCopy
+                              enableLineWrapping
+                            />
                           </Box>
                         )}
                       </div>
