@@ -6,6 +6,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 
+import { MAX_TIME_CHART_SERIES } from '@/ChartUtils';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 
 import {
@@ -409,6 +410,37 @@ describe('buildChartConfigForExplanations', () => {
     });
 
     expect(result).toBeDefined();
+  });
+
+  it('applies the team series limit so the SQL preview matches the chart query', () => {
+    const result = buildChartConfigForExplanations({
+      ...baseParams,
+      queriedConfig: builderConfig,
+      queriedSourceId: logSource.id,
+      tableSource: logSource,
+      activeTab: 'time',
+      dbTimeChartConfig: builderConfig,
+      teamSeriesLimit: 3,
+    });
+
+    expect(result).toBeDefined();
+    // @ts-expect-error union types..
+    expect(result!.seriesLimit).toBe(3);
+  });
+
+  it('falls back to the default series limit when no team limit is set', () => {
+    const result = buildChartConfigForExplanations({
+      ...baseParams,
+      queriedConfig: builderConfig,
+      queriedSourceId: logSource.id,
+      tableSource: logSource,
+      activeTab: 'time',
+      dbTimeChartConfig: builderConfig,
+    });
+
+    expect(result).toBeDefined();
+    // @ts-expect-error union types..
+    expect(result!.seriesLimit).toBe(MAX_TIME_CHART_SERIES);
   });
 
   it.each(['table', 'number', 'pie'] as const)(

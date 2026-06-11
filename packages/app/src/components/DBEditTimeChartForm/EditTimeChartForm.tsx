@@ -41,6 +41,7 @@ import {
   IconTable,
 } from '@tabler/icons-react';
 
+import api from '@/api';
 import { getPreviousDateRange } from '@/ChartUtils';
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
@@ -514,6 +515,8 @@ export default function EditTimeChartForm({
     });
   }, [dateRange]);
 
+  const { data: me } = api.useMe();
+
   const chartConfigForExplanations = useMemo(
     () =>
       buildChartConfigForExplanations({
@@ -524,6 +527,7 @@ export default function EditTimeChartForm({
         dateRange,
         activeTab,
         dbTimeChartConfig,
+        teamSeriesLimit: me?.team?.seriesLimit,
       }),
     [
       queriedConfig,
@@ -533,6 +537,7 @@ export default function EditTimeChartForm({
       dateRange,
       activeTab,
       dbTimeChartConfig,
+      me?.team?.seriesLimit,
     ],
   );
 
