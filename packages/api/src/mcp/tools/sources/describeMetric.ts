@@ -357,12 +357,31 @@ async function sampleAttributeValues({
     `,
   );
 
+  // Distinct set of map columns we need from each sampled row, so the
+  // inner subquery only projects what's required for the outer
+  // groupUniqArray aggregates.
+  const sampledMapColumns = Array.from(
+    new Set(flatKeyExprs.map(e => e.mapColumn)),
+  );
+  const sampleProjections = sampledMapColumns.map(
+    col => chSql`${{ Identifier: col }}`,
+  );
+
+  // Aggregate from a bounded sample of matching rows. Mirrors
+  // fetchAttributeKeys: the inner LIMIT lets ClickHouse stop scanning
+  // once it has SAMPLE_SIZE rows that match (MetricName, time range),
+  // and the matching clickhouse_settings cap server-side execution so a
+  // hot metric cannot starve the wall-clock budget.
   const sql = chSql`
     SELECT ${concatChSql(', ', projections)}
-    FROM ${tableExpr({ database: databaseName, table: tableName })}
-    WHERE MetricName = ${{ String: metricName }}
-      AND TimeUnix >= fromUnixTimestamp64Milli(${{ Int64: startDate.getTime() }})
-      AND TimeUnix <= fromUnixTimestamp64Milli(${{ Int64: endDate.getTime() }})
+    FROM (
+      SELECT ${concatChSql(', ', sampleProjections)}
+      FROM ${tableExpr({ database: databaseName, table: tableName })}
+      WHERE MetricName = ${{ String: metricName }}
+        AND TimeUnix >= fromUnixTimestamp64Milli(${{ Int64: startDate.getTime() }})
+        AND TimeUnix <= fromUnixTimestamp64Milli(${{ Int64: endDate.getTime() }})
+      LIMIT ${{ Int32: METRIC_ATTR_KEYS_SAMPLE_SIZE }}
+    )
   `;
 
   try {
@@ -371,6 +390,10 @@ async function sampleAttributeValues({
       query_params: sql.params,
       format: 'JSON',
       connectionId,
+      clickhouse_settings: {
+        max_execution_time: METRIC_ATTR_KEYS_MAX_EXEC_SECONDS,
+        timeout_overflow_mode: 'break',
+      },
       abort_signal: signal,
     });
     const result = (await response.json()) as {
