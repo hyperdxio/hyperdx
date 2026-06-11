@@ -1,3 +1,5 @@
+import { ObjectId } from 'mongodb';
+
 import * as config from '@/config';
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Connection from '@/models/connection';
@@ -15,6 +17,30 @@ describe('connections router', () => {
 
   afterAll(async () => {
     await server.stop();
+  });
+
+  it('only returns connections belonging to the current team through GET /connections', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    await Connection.create({
+      team: team._id,
+      name: 'My Team Connection',
+      host: config.CLICKHOUSE_HOST,
+      username: 'default',
+      password: '',
+    });
+    await Connection.create({
+      team: new ObjectId(),
+      name: 'Other Team Connection',
+      host: config.CLICKHOUSE_HOST,
+      username: 'default',
+      password: '',
+    });
+
+    const res = await agent.get('/connections').expect(200);
+
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].name).toBe('My Team Connection');
   });
 
   it('persists prometheusEndpoint through POST /connections', async () => {

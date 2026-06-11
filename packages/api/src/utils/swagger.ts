@@ -33,6 +33,10 @@ export const swaggerOptions = {
         description: 'Endpoints for querying chart data',
       },
       {
+        name: 'Connections',
+        description: 'Endpoints for managing ClickHouse connections',
+      },
+      {
         name: 'Sources',
         description: 'Endpoints for managing data sources',
       },
