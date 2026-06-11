@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { Group, Stack, Text, Tooltip } from '@mantine/core';
@@ -15,8 +15,6 @@ interface DashboardFilterSelectProps {
   values?: string[];
   isLoading?: boolean;
   isError?: boolean;
-  onDropdownOpen?: () => void;
-  onDropdownClose?: () => void;
 }
 
 const getAppliesToTooltip = (filter: DashboardFilter) => {
@@ -32,8 +30,6 @@ const DashboardFilterSelect = ({
   values,
   isLoading,
   isError,
-  onDropdownOpen,
-  onDropdownClose,
 }: DashboardFilterSelectProps) => {
   const sortedValues = values?.toSorted() || [];
   const tooltipText = getAppliesToTooltip(filter);
@@ -69,14 +65,11 @@ const DashboardFilterSelect = ({
           placeholder={value.length === 0 ? filter.name : undefined}
           values={value}
           data={sortedValues}
-          // Surface loading as a dropdown hint rather than disabling the control:
-          // it must stay openable so lazy (link-mode) fetches can trigger on open,
-          // and a completed/empty/failed query must stay interactive so the user
-          // can still clear or adjust the selection.
+          // Surface loading as a dropdown hint rather than disabling the control,
+          // so a completed/empty/failed query stays interactive and the user can
+          // still clear or adjust the selection.
           loading={isLoading}
           onChange={onChange}
-          onDropdownOpen={onDropdownOpen}
-          onDropdownClose={onDropdownClose}
           data-testid={`dashboard-filter-select-${filter.name}`}
         />
       </div>
@@ -99,25 +92,9 @@ const DashboardFilters = ({
 }: DashboardFilterProps) => {
   // "Link" mode (opt-in, off by default): each dropdown's values are narrowed by
   // the others' selections. Off by default because contingent value lookups
-  // can't use the cheap per-key rollups and are far more expensive at scale.
+  // can't use the cheap per-key rollups and are more expensive at scale. When
+  // on, all of a source's facets are computed in a single groupUniqArrayIf scan.
   const [linked, setLinked] = useState(false);
-  // In link mode, only fetch a filter's (constrained) values once its dropdown
-  // is open — bounds the extra scans to what the user actually looks at.
-  const [openFilterIds, setOpenFilterIds] = useState<Set<string>>(
-    () => new Set(),
-  );
-  const setFilterOpen = useCallback((id: string, open: boolean) => {
-    setOpenFilterIds(prev => {
-      if (open === prev.has(id)) return prev;
-      const next = new Set(prev);
-      if (open) {
-        next.add(id);
-      } else {
-        next.delete(id);
-      }
-      return next;
-    });
-  }, []);
 
   const {
     data: filterValuesById,
@@ -128,8 +105,6 @@ const DashboardFilters = ({
     dateRange,
     // Only narrow by sibling selections when linked.
     filterValues: linked ? filterValues : {},
-    // Lazy fetch (open dropdowns only) when linked; eager (all) when not.
-    activeFilterIds: linked ? openFilterIds : undefined,
   });
 
   return (
@@ -140,13 +115,12 @@ const DashboardFilters = ({
         const selectedValues = included
           ? Array.from(included).map(v => v.toString())
           : [];
-        // In link mode a closed (never-opened) dropdown isn't fetched, so it
-        // must read as "not loading" to stay openable; otherwise fall back to
-        // the hook-level fetching state until this filter has produced an entry.
-        const isInactive = linked && !openFilterIds.has(filter.id);
+        // Fall back to the hook-level fetching state only until this filter's
+        // query has produced an entry; once it has (even with empty values),
+        // honor its own loading flag.
         const isLoadingValues = queriedFilterValues
           ? queriedFilterValues.isLoading
-          : !isInactive && isFetching;
+          : isFetching;
         return (
           <DashboardFilterSelect
             key={filter.id}
@@ -156,12 +130,6 @@ const DashboardFilters = ({
             onChange={values => onSetFilterValue(filter.expression, values)}
             values={queriedFilterValues?.values}
             value={selectedValues}
-            onDropdownOpen={
-              linked ? () => setFilterOpen(filter.id, true) : undefined
-            }
-            onDropdownClose={
-              linked ? () => setFilterOpen(filter.id, false) : undefined
-            }
           />
         );
       })}

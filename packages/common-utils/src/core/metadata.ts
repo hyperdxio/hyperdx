@@ -1579,6 +1579,7 @@ export class Metadata {
   async getKeyValues({
     chartConfig,
     keys,
+    keyConditions,
     limit = 20,
     disableRowLimit = false,
     signal,
@@ -1586,6 +1587,14 @@ export class Metadata {
   }: {
     chartConfig: BuilderChartConfigWithDateRange;
     keys: string[];
+    /**
+     * Optional per-key SQL predicate, aligned with `keys`. When provided for a
+     * key, its values are gathered with `groupUniqArrayIf(key, condition)` so
+     * several "faceted" value lists (each constrained by a different condition)
+     * can be computed in a single table scan. Only applied when
+     * `disableRowLimit` is true (the path used by filter dropdowns).
+     */
+    keyConditions?: (string | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
     signal?: AbortSignal;
@@ -1603,6 +1612,7 @@ export class Metadata {
         'filters',
       ]),
       keys,
+      keyConditions,
       disableRowLimit,
     };
     return this.cache.getOrFetch(
@@ -1616,7 +1626,15 @@ export class Metadata {
           ? {
               ...chartConfig,
               select: keys
-                .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
+                .map((k, i) => {
+                  const condition = keyConditions?.[i];
+                  // `groupUniqArrayIf` lets each key be constrained by its own
+                  // predicate, so multiple faceted value lists are computed in a
+                  // single scan instead of one query per key.
+                  return condition
+                    ? `groupUniqArrayIf(${limit})(${k}, ${condition}) AS param${i}`
+                    : `groupUniqArray(${limit})(${k}) AS param${i}`;
+                })
                 .join(', '),
             }
           : await (async () => {
@@ -1698,6 +1716,7 @@ export class Metadata {
   async getKeyValuesWithMVs({
     chartConfig,
     keys,
+    keyConditions,
     source,
     limit = 20,
     disableRowLimit,
@@ -1705,6 +1724,8 @@ export class Metadata {
   }: {
     chartConfig: BuilderChartConfigWithDateRange;
     keys: string[];
+    /** Per-key SQL predicates for faceted value lookups; see getKeyValues. */
+    keyConditions?: (string | undefined)[];
     source: TSource | undefined;
     limit?: number;
     disableRowLimit?: boolean;
@@ -1720,12 +1741,27 @@ export class Metadata {
         'filters',
       ]),
       keys,
+      keyConditions,
       disableRowLimit,
     };
     return this.cache.getOrFetch(
       `${objectHash(cacheKeyConfig)}.getKeyValuesWithMVs`,
       async () => {
         if (keys.length === 0) return [];
+
+        // Faceted lookups apply a different predicate per key, so they can't be
+        // split across single-key materialized views — run one direct scan.
+        if (keyConditions?.some(c => c != null)) {
+          return this.getKeyValues({
+            chartConfig,
+            keys,
+            keyConditions,
+            limit,
+            disableRowLimit,
+            signal,
+            source,
+          });
+        }
 
         const defaultKeyValueCall = { chartConfig, keys };
         const canHaveMVs =

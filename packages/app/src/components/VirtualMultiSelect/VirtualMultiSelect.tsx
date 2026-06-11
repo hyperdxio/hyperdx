@@ -26,8 +26,6 @@ type VirtualMultiSelectProps = {
   placeholder?: string;
   values: string[];
   onChange: (values: string[]) => void;
-  onDropdownOpen?: () => void;
-  onDropdownClose?: () => void;
   'data-testid'?: string;
 };
 
@@ -38,8 +36,6 @@ export function VirtualMultiSelect({
   placeholder,
   values,
   onChange,
-  onDropdownOpen,
-  onDropdownClose,
   'data-testid': dataTestId,
 }: VirtualMultiSelectProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -59,14 +55,10 @@ export function VirtualMultiSelect({
   });
 
   const combobox = useCombobox({
-    onDropdownClose: () => {
-      combobox.resetSelectedOption();
-      onDropdownClose?.();
-    },
+    onDropdownClose: () => combobox.resetSelectedOption(),
     onDropdownOpen: () => {
       combobox.updateSelectedOptionIndex('active');
       virtualizer.measure();
-      onDropdownOpen?.();
     },
   });
 
