@@ -802,6 +802,65 @@ describe('useChartConfig', () => {
       expect(result.current.isPending).toBe(false);
     });
 
+    it('pins the series-limit ranking to the full date range on each chunk', async () => {
+      const fullRange: [Date, Date] = [
+        new Date('2025-10-01 00:00:00Z'),
+        new Date('2025-10-02 00:00:00Z'),
+      ];
+      const config = createMockChartConfig({
+        dateRange: fullRange,
+        granularity: '3 hour',
+        seriesLimit: 3,
+      });
+
+      mockClickhouseClient.queryChartConfig.mockResolvedValue(
+        createMockQueryResponse([]),
+      );
+
+      const { result } = renderHook(
+        () => useQueriedChartConfig(config, { enableQueryChunking: true }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      // Each chunk queries its own window but must rank top-N series over
+      // the full chart range, or the union across chunks exceeds the limit.
+      const calls = mockClickhouseClient.queryChartConfig.mock.calls;
+      expect(calls).toHaveLength(3);
+      for (const [{ config: windowed }] of calls) {
+        expect(windowed.seriesLimitDateRange).toEqual(fullRange);
+        expect(windowed.dateRange).not.toEqual(fullRange);
+      }
+    });
+
+    it('does not set seriesLimitDateRange when the query is not chunked', async () => {
+      const config = createMockChartConfig({
+        dateRange: [
+          new Date('2025-10-01 00:00:00Z'),
+          new Date('2025-10-02 00:00:00Z'),
+        ],
+        granularity: '3 hour',
+        seriesLimit: 3,
+      });
+
+      mockClickhouseClient.queryChartConfig.mockResolvedValue(
+        createMockQueryResponse([]),
+      );
+
+      const { result } = renderHook(() => useQueriedChartConfig(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      const calls = mockClickhouseClient.queryChartConfig.mock.calls;
+      expect(calls).toHaveLength(1);
+      expect('seriesLimitDateRange' in calls[0][0].config).toBe(false);
+    });
+
     it('remains in a fetching state, with partial data until all data is loaded', async () => {
       const config = createMockChartConfig({
         dateRange: [
@@ -1325,6 +1384,33 @@ describe('useChartConfig', () => {
         rows: 5,
         isComplete: true,
       });
+    });
+
+    it('pins the series-limit ranking to the full date range with parallel queries', async () => {
+      const { config } = setupParallelQueries();
+      const configWithLimit = { ...config, seriesLimit: 3 };
+
+      mockClickhouseClient.queryChartConfig.mockResolvedValue(
+        createMockQueryResponse([]),
+      );
+
+      const { result } = renderHook(
+        () =>
+          useQueriedChartConfig(configWithLimit, {
+            enableQueryChunking: true,
+            enableParallelQueries: true,
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      const calls = mockClickhouseClient.queryChartConfig.mock.calls;
+      expect(calls).toHaveLength(3);
+      for (const [{ config: windowed }] of calls) {
+        expect(windowed.seriesLimitDateRange).toEqual(config.dateRange);
+      }
     });
 
     it('should not execute query while useMVOptimizationExplanation is in loading state', async () => {

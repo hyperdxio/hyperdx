@@ -153,6 +153,21 @@ async function* fetchDataInChunks({
       ? getGranularityAlignedTimeWindows(config)
       : [undefined];
 
+  // Narrowing dateRange to a window must not change which top-N series the
+  // __hdx_series_limit CTE keeps, or the union across chunks would exceed
+  // seriesLimit — pin the ranking to the full chart range.
+  const fullDateRange = config.dateRange;
+  const seriesLimit = isBuilderChartConfig(config)
+    ? config.seriesLimit
+    : undefined;
+  const windowedConfigFor = (w: (typeof windows)[number]) => ({
+    ...config,
+    ...(w ?? {}),
+    ...(w != null && seriesLimit != null && fullDateRange != null
+      ? { seriesLimitDateRange: fullDateRange }
+      : {}),
+  });
+
   if (IS_MTVIEWS_ENABLED && isBuilderChartConfig(config)) {
     const { dataTableDDL, mtViewDDL, renderMTViewConfig } =
       await buildMTViewSelectQuery(config, metadata, querySettings);
@@ -172,10 +187,7 @@ async function* fetchDataInChunks({
   if (enableParallelQueries) {
     // fetch in parallel
     const promises = windows.map(async (w, index) => {
-      const windowedConfig = {
-        ...config,
-        ...(w ?? {}),
-      };
+      const windowedConfig = windowedConfigFor(w);
       return {
         index,
         queryResult: await clickhouseClient.queryChartConfig({
@@ -214,12 +226,7 @@ async function* fetchDataInChunks({
 
   // fetch in series
   for (let i = 0; i < windows.length; i++) {
-    const window = windows[i];
-
-    const windowedConfig = {
-      ...config,
-      ...(window ?? {}),
-    };
+    const windowedConfig = windowedConfigFor(windows[i]);
 
     const result = await clickhouseClient.queryChartConfig({
       config: windowedConfig,
