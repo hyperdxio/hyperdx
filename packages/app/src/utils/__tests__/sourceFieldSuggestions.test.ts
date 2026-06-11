@@ -27,6 +27,34 @@ describe('inferSourceFieldCandidates', () => {
     ).toEqual({ canonical: 'traceid', alternates: [] });
   });
 
+  it('keeps columns that differ only by case rather than dropping one', () => {
+    const columns = [col('Body', 'String'), col('BODY', 'String')];
+    expect(
+      inferSourceFieldCandidates(columns, 'bodyExpression', SourceKind.Log),
+    ).toEqual({ canonical: 'Body', alternates: ['BODY'] });
+  });
+
+  it('picks the first column in table order as canonical on a case collision', () => {
+    const columns = [col('BODY', 'String'), col('Body', 'String')];
+    expect(
+      inferSourceFieldCandidates(columns, 'bodyExpression', SourceKind.Log),
+    ).toEqual({ canonical: 'BODY', alternates: ['Body'] });
+  });
+
+  it('surfaces every case-colliding Map column as an alternate', () => {
+    const columns = [
+      col('Attributes', 'Map(String, String)'),
+      col('ATTRIBUTES', 'Map(String, String)'),
+    ];
+    expect(
+      inferSourceFieldCandidates(
+        columns,
+        'eventAttributesExpression',
+        SourceKind.Log,
+      ),
+    ).toEqual({ canonical: 'Attributes', alternates: ['ATTRIBUTES'] });
+  });
+
   it('lists other name-matched columns as alternates (not every string column)', () => {
     const columns = [
       col('Body', 'String'),

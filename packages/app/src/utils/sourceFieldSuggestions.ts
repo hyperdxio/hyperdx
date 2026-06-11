@@ -160,15 +160,24 @@ export function inferSourceFieldCandidates(
   // 1. type-compatible columns only
   const compatible = columns.filter(c => rule.typeMatches(c.type));
 
-  // 2. case-insensitive name match, ranked by `canonicalNames` order
-  const byLowerName = new Map(
-    compatible.map(c => [c.name.toLowerCase(), c.name]),
-  );
+  // 2. case-insensitive name match, ranked by `canonicalNames` order.
+  const byLowerName = new Map<string, string[]>();
+
+  for (const c of compatible) {
+    const key = c.name.toLowerCase();
+
+    const existing = byLowerName.get(key);
+
+    if (existing) {
+      existing.push(c.name);
+    } else {
+      byLowerName.set(key, [c.name]);
+    }
+  }
+
   const rankedNameMatches = [
     ...new Set(
-      canonicalNames
-        .map(n => byLowerName.get(n.toLowerCase()))
-        .filter((x): x is string => !!x),
+      canonicalNames.flatMap(n => byLowerName.get(n.toLowerCase()) ?? []),
     ),
   ];
 
@@ -179,8 +188,7 @@ export function inferSourceFieldCandidates(
 
     return {
       canonical,
-      // surface all type-compatible columns so ambiguous multi-Map schemas
-      // present every option
+      // surface all type-compatible columns so ambiguous multi-Map schemas present every option
       alternates: compatible.map(c => c.name).filter(n => n !== canonical),
     };
   }
