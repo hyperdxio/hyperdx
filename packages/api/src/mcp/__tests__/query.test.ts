@@ -8,6 +8,7 @@ jest.mock('@/utils/trimToolResponse', () => ({
 
 import {
   annotateIncreaseTopNHint,
+  assertSourceKindMatchesSelect,
   errorHint,
   INCREASE_TOP_N_CAP,
   mergeWhereIntoSelectItems,
@@ -756,5 +757,75 @@ describe('annotateIncreaseTopNHint', () => {
     expect(() =>
       annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName'),
     ).not.toThrow();
+  });
+});
+
+describe('assertSourceKindMatchesSelect', () => {
+  it('returns null when metric select runs against a metric source', () => {
+    const source = { kind: 'metric' };
+    const select = [
+      {
+        aggFn: 'avg',
+        metricType: 'gauge',
+        metricName: 'system.cpu.utilization',
+      },
+    ];
+    expect(assertSourceKindMatchesSelect(source, select)).toBeNull();
+  });
+
+  it('returns null when non-metric select runs against a trace source', () => {
+    const source = { kind: 'trace' };
+    const select = [{ aggFn: 'count' }];
+    expect(assertSourceKindMatchesSelect(source, select)).toBeNull();
+  });
+
+  it('errors when metric params target a non-metric source', () => {
+    const source = { kind: 'trace' };
+    const select = [
+      {
+        aggFn: 'avg',
+        metricType: 'gauge',
+        metricName: 'system.cpu.utilization',
+      },
+    ];
+    const result = assertSourceKindMatchesSelect(source, select);
+    expect(result?.isError).toBe(true);
+    expect(result?.content[0].text).toMatch(/not metric/);
+    expect(result?.content[0].text).toMatch(/clickstack_list_sources/);
+  });
+
+  it('errors when a metric source receives select items without metricType', () => {
+    const source = { kind: 'metric' };
+    const select = [{ aggFn: 'avg', valueExpression: 'Value' }];
+    const result = assertSourceKindMatchesSelect(source, select);
+    expect(result?.isError).toBe(true);
+    expect(result?.content[0].text).toMatch(/metricType \+ metricName/);
+    expect(result?.content[0].text).toMatch(/clickstack_describe_source/);
+  });
+
+  it('counts only items whose metricType is a non-empty string', () => {
+    const source = { kind: 'trace' };
+    // Items with empty/missing metricType should not trip the check
+    expect(
+      assertSourceKindMatchesSelect(source, [
+        { aggFn: 'count' },
+        { aggFn: 'avg', valueExpression: 'Duration', metricType: '' },
+      ]),
+    ).toBeNull();
+  });
+
+  it('returns null for a raw string select', () => {
+    // Raw-string selects bypass the metric-annotation check; the
+    // renderer handles them directly.
+    expect(
+      assertSourceKindMatchesSelect({ kind: 'metric' }, 'count()'),
+    ).toBeNull();
+  });
+
+  it('returns null when select is not an array', () => {
+    expect(
+      assertSourceKindMatchesSelect({ kind: 'trace' }, undefined),
+    ).toBeNull();
+    expect(assertSourceKindMatchesSelect({ kind: 'trace' }, null)).toBeNull();
   });
 });

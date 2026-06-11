@@ -264,6 +264,80 @@ function formatQueryResult(result: unknown) {
   };
 }
 
+// ─── Source-kind / select-shape guardrail ────────────────────────────────────
+
+type SelectItemForKindCheck = { metricType?: unknown };
+
+/**
+ * Reject builder-config queries where the select items' metric annotations
+ * don't match the source kind:
+ *   - Non-metric source with any select item carrying `metricType` would
+ *     fall through to SQL generation that references the metric `Value`
+ *     column and fail with a cryptic ClickHouse error.
+ *   - Metric source with no select item carrying `metricType` would also
+ *     reach the renderer in a broken state.
+ *
+ * Catching both up-front gives the agent a clear next action that mirrors
+ * the wording on `clickstack_list_metrics` / `clickstack_describe_metric`.
+ *
+ * Returns an error envelope on mismatch, or `null` when the select shape
+ * is consistent with the source kind (or the select is a raw string that
+ * the caller already parsed by hand).
+ */
+export function assertSourceKindMatchesSelect(
+  source: { kind: string },
+  select: unknown,
+): { isError: true; content: [{ type: 'text'; text: string }] } | null {
+  // Raw-string select (rare on the builder path) — the renderer handles
+  // it; no metric annotations to inspect.
+  if (typeof select === 'string') return null;
+  if (!Array.isArray(select)) return null;
+
+  const metricItemCount = (select as SelectItemForKindCheck[]).filter(
+    item =>
+      typeof item === 'object' &&
+      item !== null &&
+      typeof item.metricType === 'string' &&
+      item.metricType.length > 0,
+  ).length;
+
+  const isMetricSource = source.kind === SourceKind.Metric;
+
+  if (isMetricSource && metricItemCount === 0) {
+    return {
+      isError: true as const,
+      content: [
+        {
+          type: 'text' as const,
+          text:
+            'Source kind is "metric", but no select item specifies metricType + metricName. ' +
+            'Each select item on a metric source must set metricType ("gauge" | "sum" | "histogram") ' +
+            'and metricName (e.g. metricName:"system.cpu.utilization"). Call ' +
+            'clickstack_describe_source or clickstack_list_metrics to discover available metric names.',
+        },
+      ],
+    };
+  }
+
+  if (!isMetricSource && metricItemCount > 0) {
+    return {
+      isError: true as const,
+      content: [
+        {
+          type: 'text' as const,
+          text:
+            `Source kind is "${source.kind}", not metric — but ${metricItemCount} select item(s) ` +
+            'set metricType. metricType + metricName only work on metric sources. ' +
+            'Drop the metric fields to query this source, or call clickstack_list_sources to find a ' +
+            'source whose kind is "metric".',
+        },
+      ],
+    };
+  }
+
+  return null;
+}
+
 // ─── Tile execution ──────────────────────────────────────────────────────────
 
 export async function runConfigTile(
@@ -314,6 +388,14 @@ export async function runConfigTile(
         ],
       };
     }
+
+    // Reject metric-style select against a non-metric source (and vice
+    // versa) before the renderer composes SQL against the wrong table.
+    const kindMismatch = assertSourceKindMatchesSelect(
+      source,
+      builderConfig.select,
+    );
+    if (kindMismatch) return kindMismatch;
 
     const connection = await getConnectionById(
       teamId,
