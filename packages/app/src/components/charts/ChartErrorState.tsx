@@ -38,7 +38,7 @@ export default function ChartErrorState({
             <Text size="sm" ta="center">
               Sent Query:
             </Text>
-            <SQLPreview data={error?.query} enableLineWrapping />
+            <SQLPreview data={error?.query} enableCopy enableLineWrapping />
           </>
         )}
       </Stack>
