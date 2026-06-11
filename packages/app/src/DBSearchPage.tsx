@@ -2361,13 +2361,23 @@ export function DBSearchPage() {
                             <Text my="sm" size="sm">
                               Original Query:
                             </Text>
-                            <SQLPreview
-                              data={queryError.query}
-                              formatData
-                              enableCopy
-                              copyButtonSize="xs"
-                              enableLineWrapping
-                            />
+                            <Box
+                              p="xs"
+                              style={{
+                                borderRadius: 'var(--mantine-radius-sm)',
+                                backgroundColor:
+                                  'light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5))',
+                                overflow: 'hidden',
+                              }}
+                            >
+                              <SQLPreview
+                                data={queryError.query}
+                                formatData
+                                enableCopy
+                                copyButtonSize="xs"
+                                enableLineWrapping
+                              />
+                            </Box>
                           </Box>
                         )}
                       </div>
