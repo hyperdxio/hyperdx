@@ -463,8 +463,9 @@ describe('queryChartConfig Integration Tests', () => {
   });
 
   // Chunked fetches narrow dateRange per window; seriesLimitDateRange pins the
-  // top-N ranking to the full chart range so every chunk keeps the SAME group
-  // set — otherwise the union of per-window top-N sets exceeds the limit.
+  // top-N ranking to one shared range (the newest window) so every chunk keeps
+  // the SAME group set — otherwise the union of per-window top-N sets exceeds
+  // the limit.
   it('keeps a consistent top-N group set across chunked windows via seriesLimitDateRange', async () => {
     const TABLE = 'logs_chunked_series_limit_int_test';
     await client.command({
@@ -474,8 +475,9 @@ describe('queryChartConfig Integration Tests', () => {
       ) ENGINE = MergeTree ORDER BY (ServiceName, Timestamp)`,
     });
 
-    // Window 1 (00:00-00:30): svcA dominates. Window 2 (00:30-01:00): svcB
-    // dominates locally, but svcA's window-1 peak wins globally.
+    // Older window (00:00-00:30): svcA dominates. Newest window (00:30-01:00):
+    // svcB dominates — the ranking is pinned to the newest window, so svcB
+    // must win in BOTH chunks even though svcA's older peak is larger.
     const rows = [
       ...Array.from({ length: 100 }, () => ({
         Timestamp: '2025-04-15 00:10:00',
@@ -495,8 +497,8 @@ describe('queryChartConfig Integration Tests', () => {
     });
 
     try {
-      const fullRange: [Date, Date] = [
-        new Date('2025-04-15T00:00:00Z'),
+      const newestWindow: [Date, Date] = [
+        new Date('2025-04-15T00:30:00Z'),
         new Date('2025-04-15T01:00:00Z'),
       ];
       const windows: Array<{
@@ -504,11 +506,11 @@ describe('queryChartConfig Integration Tests', () => {
         dateRangeEndInclusive: boolean;
       }> = [
         {
-          dateRange: [new Date('2025-04-15T00:30:00Z'), fullRange[1]],
+          dateRange: newestWindow,
           dateRangeEndInclusive: true,
         },
         {
-          dateRange: [fullRange[0], new Date('2025-04-15T00:30:00Z')],
+          dateRange: [new Date('2025-04-15T00:00:00Z'), newestWindow[0]],
           dateRangeEndInclusive: false,
         },
       ];
@@ -527,7 +529,7 @@ describe('queryChartConfig Integration Tests', () => {
             granularity: '5 minute',
             seriesLimit: 1,
             ...window,
-            seriesLimitDateRange: fullRange,
+            seriesLimitDateRange: newestWindow,
           };
           const result = await hdxClient.queryChartConfig({
             config,
@@ -542,10 +544,11 @@ describe('queryChartConfig Integration Tests', () => {
         }),
       );
 
-      // Both windows keep the global winner only — without the pinned range,
-      // window 2 would keep svcB (its local top-1) and the union would be 2.
-      expect(groupsPerWindow[0]).toEqual(new Set(['svcA']));
-      expect(groupsPerWindow[1]).toEqual(new Set(['svcA']));
+      // Both windows keep the newest-window winner only — without the pinned
+      // range, the older window would keep svcA (its local top-1) and the
+      // union would be 2.
+      expect(groupsPerWindow[0]).toEqual(new Set(['svcB']));
+      expect(groupsPerWindow[1]).toEqual(new Set(['svcB']));
     } finally {
       await client.command({
         query: `DROP TABLE IF EXISTS ${DATABASE}.${TABLE}`,

@@ -1230,8 +1230,9 @@ export type DateRange = {
   dateRangeStartInclusive?: boolean; // default true
   dateRangeEndInclusive?: boolean; // default true
   // Runtime-only, set by query chunking when dateRange is narrowed to a
-  // window: the full chart range used by the `__hdx_series_limit` CTE so
-  // every chunk ranks (and keeps) the same top-N series. Never persisted.
+  // window: a fixed ranking range (the newest chunk window) used by the
+  // `__hdx_series_limit` CTE so every chunk ranks (and keeps) the same
+  // top-N series. Never persisted.
   seriesLimitDateRange?: [Date, Date];
 };
 

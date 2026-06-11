@@ -153,18 +153,21 @@ async function* fetchDataInChunks({
       ? getGranularityAlignedTimeWindows(config)
       : [undefined];
 
-  // Narrowing dateRange to a window must not change which top-N series the
-  // __hdx_series_limit CTE keeps, or the union across chunks would exceed
-  // seriesLimit — pin the ranking to the full chart range.
-  const fullDateRange = config.dateRange;
+  // Every chunk must rank the __hdx_series_limit CTE over the same fixed
+  // range, or each window keeps its own top-N and the union across chunks
+  // exceeds seriesLimit. The newest window is used (rather than the full
+  // chart range) to bound the ranking scan; the trade-off is that series
+  // are picked by recent activity, so groups with no events in the newest
+  // window are dropped from the chart.
+  const rankingDateRange = windows[0]?.dateRange;
   const seriesLimit = isBuilderChartConfig(config)
     ? config.seriesLimit
     : undefined;
   const windowedConfigFor = (w: (typeof windows)[number]) => ({
     ...config,
     ...(w ?? {}),
-    ...(w != null && seriesLimit != null && fullDateRange != null
-      ? { seriesLimitDateRange: fullDateRange }
+    ...(w != null && seriesLimit != null && rankingDateRange != null
+      ? { seriesLimitDateRange: rankingDateRange }
       : {}),
   });
 

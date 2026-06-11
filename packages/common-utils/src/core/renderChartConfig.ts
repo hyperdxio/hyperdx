@@ -1235,11 +1235,11 @@ async function renderSeriesLimitCte(
     return undefined;
   }
 
-  // When the query was chunked into time windows, rank over the full chart
-  // range instead of the window — otherwise each chunk keeps its own top-N
-  // and the union across chunks exceeds N. Inclusivity is normalized so all
-  // chunks emit an identical CTE (non-first windows set
-  // dateRangeEndInclusive=false).
+  // When the query was chunked into time windows, rank over the shared
+  // range the caller pinned (the newest window) instead of each chunk's own
+  // window — otherwise each chunk keeps its own top-N and the union across
+  // chunks exceeds N. Inclusivity is normalized so all chunks emit an
+  // identical CTE (non-first windows set dateRangeEndInclusive=false).
   const cteConfig = chartConfig.seriesLimitDateRange
     ? {
         ...chartConfig,

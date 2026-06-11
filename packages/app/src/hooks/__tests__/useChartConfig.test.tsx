@@ -802,13 +802,12 @@ describe('useChartConfig', () => {
       expect(result.current.isPending).toBe(false);
     });
 
-    it('pins the series-limit ranking to the full date range on each chunk', async () => {
-      const fullRange: [Date, Date] = [
-        new Date('2025-10-01 00:00:00Z'),
-        new Date('2025-10-02 00:00:00Z'),
-      ];
+    it('pins the series-limit ranking to the newest window on each chunk', async () => {
       const config = createMockChartConfig({
-        dateRange: fullRange,
+        dateRange: [
+          new Date('2025-10-01 00:00:00Z'),
+          new Date('2025-10-02 00:00:00Z'),
+        ],
         granularity: '3 hour',
         seriesLimit: 3,
       });
@@ -826,12 +825,16 @@ describe('useChartConfig', () => {
       await waitFor(() => expect(result.current.isFetching).toBe(false));
 
       // Each chunk queries its own window but must rank top-N series over
-      // the full chart range, or the union across chunks exceeds the limit.
+      // the same fixed range, or the union across chunks exceeds the limit.
+      // The newest window (first 6h mock window) bounds the ranking scan.
+      const newestWindow: [Date, Date] = [
+        new Date('2025-10-01T18:00:00.000Z'),
+        new Date('2025-10-02T00:00:00.000Z'),
+      ];
       const calls = mockClickhouseClient.queryChartConfig.mock.calls;
       expect(calls).toHaveLength(3);
       for (const [{ config: windowed }] of calls) {
-        expect(windowed.seriesLimitDateRange).toEqual(fullRange);
-        expect(windowed.dateRange).not.toEqual(fullRange);
+        expect(windowed.seriesLimitDateRange).toEqual(newestWindow);
       }
     });
 
@@ -1386,7 +1389,7 @@ describe('useChartConfig', () => {
       });
     });
 
-    it('pins the series-limit ranking to the full date range with parallel queries', async () => {
+    it('pins the series-limit ranking to the newest window with parallel queries', async () => {
       const { config } = setupParallelQueries();
       const configWithLimit = { ...config, seriesLimit: 3 };
 
@@ -1406,10 +1409,14 @@ describe('useChartConfig', () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       await waitFor(() => expect(result.current.isFetching).toBe(false));
 
+      const newestWindow: [Date, Date] = [
+        new Date('2025-10-01T18:00:00.000Z'),
+        new Date('2025-10-02T00:00:00.000Z'),
+      ];
       const calls = mockClickhouseClient.queryChartConfig.mock.calls;
       expect(calls).toHaveLength(3);
       for (const [{ config: windowed }] of calls) {
-        expect(windowed.seriesLimitDateRange).toEqual(config.dateRange);
+        expect(windowed.seriesLimitDateRange).toEqual(newestWindow);
       }
     });
 
