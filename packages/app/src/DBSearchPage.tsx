@@ -2365,6 +2365,7 @@ export function DBSearchPage() {
                               data={queryError.query}
                               formatData
                               enableCopy
+                              copyButtonSize="xs"
                               enableLineWrapping
                             />
                           </Box>
