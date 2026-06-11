@@ -853,6 +853,11 @@ export function DBSearchPage() {
     ]).withDefault('results'),
   );
 
+  const [patternColumn, setPatternColumn] = useQueryState(
+    'patternColumn',
+    parseAsString,
+  );
+
   const [isLive, setIsLive] = useQueryState(
     'isLive',
     parseAsBoolean.withDefault(true),
@@ -2181,6 +2186,8 @@ export function DBSearchPage() {
                             ? (getEventBody(searchedSource) ?? '')
                             : (chartConfig.implicitColumnExpression ?? '')
                         }
+                        patternColumn={patternColumn}
+                        onPatternColumnChange={setPatternColumn}
                         totalCountConfig={histogramTimeChartConfig}
                         totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
                       />

@@ -12,6 +12,10 @@ import { RawLogTable } from '@/components/DBRowTable';
 import { useSearchTotalCount } from '@/components/SearchTotalCountChart';
 import { Pattern, useGroupedPatterns } from '@/hooks/usePatterns';
 
+import {
+  PatternColumnSelector,
+  usePatternColumnExpression,
+} from './Patterns/PatternColumnSelector';
 import PatternSidePanel from './PatternSidePanel';
 
 const emptyMap = new Map();
@@ -21,17 +25,27 @@ export default function PatternTable({
   totalCountConfig,
   totalCountQueryKeyPrefix,
   bodyValueExpression,
+  patternColumn,
+  onPatternColumnChange,
   source,
 }: {
   config: BuilderChartConfigWithDateRange;
   totalCountConfig: BuilderChartConfigWithDateRange;
   bodyValueExpression: string;
+  patternColumn?: string | null;
+  onPatternColumnChange?: (column: string | null) => void;
   totalCountQueryKeyPrefix: string;
   source?: TSource;
 }) {
   const SAMPLES = 10_000;
 
   const [selectedPattern, setSelectedPattern] = useState<Pattern | null>(null);
+
+  const effectiveBodyValueExpression = usePatternColumnExpression({
+    sourceId: source?.id,
+    patternColumn,
+    fallback: bodyValueExpression,
+  });
 
   const {
     error: totalCountError,
@@ -48,7 +62,7 @@ export default function PatternTable({
   } = useGroupedPatterns({
     config,
     samples: SAMPLES,
-    bodyValueExpression,
+    bodyValueExpression: effectiveBodyValueExpression,
     severityTextExpression:
       (source?.kind === SourceKind.Log && source.severityTextExpression) || '',
     statusCodeExpression:
@@ -69,6 +83,11 @@ export default function PatternTable({
 
   return error ? (
     <Container style={{ overflow: 'auto' }}>
+      <PatternColumnSelector
+        sourceId={source?.id}
+        patternColumn={patternColumn}
+        onChange={onPatternColumnChange}
+      />
       <Box mt="lg">
         <Text my="sm" size="sm">
           Error Message:
@@ -100,6 +119,11 @@ export default function PatternTable({
     </Container>
   ) : (
     <>
+      <PatternColumnSelector
+        sourceId={source?.id}
+        patternColumn={patternColumn}
+        onChange={onPatternColumnChange}
+      />
       <RawLogTable
         isLive={false}
         wrapLines={true}
@@ -131,7 +155,7 @@ export default function PatternTable({
           isOpen
           source={source}
           pattern={selectedPattern}
-          bodyValueExpression={bodyValueExpression}
+          bodyValueExpression={effectiveBodyValueExpression}
           onClose={() => setSelectedPattern(null)}
         />
       )}
