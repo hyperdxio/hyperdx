@@ -95,7 +95,9 @@ function useOptimizedKeyValuesCalls({
       }
       const predicates = filtersToQuery(prunedState, {
         stringifyKeys: false,
-      }).map(f => f.condition);
+        // filtersToQuery only emits `sql` filters (which carry `condition`); the
+        // `in` guard narrows away the `sql_ast` member of the Filter union.
+      }).flatMap(f => ('condition' in f ? [f.condition] : []));
       byId.set(
         filter.id,
         predicates.length

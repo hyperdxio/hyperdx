@@ -223,9 +223,11 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
           };
         }
       }
-      const predicates = filtersToQuery(others, { stringifyKeys: false }).map(
-        f => f.condition,
-      );
+      // filtersToQuery only emits `sql` filters (which carry `condition`); the
+      // `in` guard narrows away the `sql_ast` member of the Filter union.
+      const predicates = filtersToQuery(others, {
+        stringifyKeys: false,
+      }).flatMap(f => ('condition' in f ? [f.condition] : []));
       return predicates.length
         ? predicates.map(c => `(${c})`).join(' AND ')
         : undefined;
