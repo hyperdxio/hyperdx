@@ -1487,4 +1487,34 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
     },
   );
+
+  test(
+    'should navigate to the dashboard listing page after deleting a dashboard',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const uniqueName = `E2E Delete Nav Dashboard ${ts}`;
+
+      await test.step('Create a new saved dashboard', async () => {
+        await dashboardsListPage.goto();
+        await dashboardsListPage.createNewDashboard();
+        await dashboardPage.editDashboardName(uniqueName);
+      });
+
+      await test.step('Delete the dashboard via the dashboard menu', async () => {
+        await dashboardPage.deleteDashboard();
+      });
+
+      await test.step('Verify navigation to the dashboards listing page', async () => {
+        await expect(page).toHaveURL(/\/dashboards\/list/);
+        await expect(dashboardsListPage.pageContainer).toBeVisible();
+      });
+
+      await test.step('Verify the deleted dashboard is not listed', async () => {
+        await expect(
+          dashboardsListPage.getDashboardCard(uniqueName),
+        ).toBeHidden();
+      });
+    },
+  );
 });
