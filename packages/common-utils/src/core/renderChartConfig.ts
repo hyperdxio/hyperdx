@@ -1248,12 +1248,14 @@ async function renderSeriesLimitCte(
         dateRangeEndInclusive: true,
       }
     : undefined;
-  const cteWhere = cteConfig ? await renderWhere(cteConfig, metadata) : where;
-  // Re-rendered because timeBucketExpr derives the bucket size from dateRange
-  // when granularity is 'auto'.
-  const cteGroupBy =
-    (cteConfig ? await renderGroupBy(cteConfig, metadata) : undefined) ??
-    groupBy;
+  // groupBy is re-rendered (not reused) because timeBucketExpr derives the
+  // bucket size from dateRange when granularity is 'auto'.
+  const [cteWhere = where, cteGroupBy = groupBy] = cteConfig
+    ? await Promise.all([
+        renderWhere(cteConfig, metadata),
+        renderGroupBy(cteConfig, metadata),
+      ])
+    : [];
 
   // One ChSql per group-by column (groupBy may be an array or a comma-separated
   // string). splitAndTrimWithBracket respects []/()/quotes so it won't split
