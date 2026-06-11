@@ -20,6 +20,7 @@ import EventTag from './EventTag';
 import { ExceptionSubpanel } from './ExceptionSubpanel';
 import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 import { SpanEventsSubpanel } from './SpanEventsSubpanel';
+import { SpanLinksSubpanel } from './SpanLinksSubpanel';
 
 const EMPTY_OBJ = {};
 export function RowOverviewPanel({
@@ -183,6 +184,13 @@ export function RowOverviewPanel({
     );
   }, [firstRow?.__hdx_span_events]);
 
+  const hasSpanLinks = useMemo(() => {
+    return (
+      Array.isArray(firstRow?.__hdx_span_links) &&
+      firstRow?.__hdx_span_links.length > 0
+    );
+  }, [firstRow?.__hdx_span_links]);
+
   const mainContentColumn = getEventBody(source);
   const mainContent = isString(firstRow?.['__hdx_body'])
     ? firstRow['__hdx_body']
@@ -214,6 +222,7 @@ export function RowOverviewPanel({
         defaultValue={[
           'exception',
           'spanEvents',
+          'spanLinks',
           'network',
           'resourceAttributes',
           'eventAttributes',
@@ -270,6 +279,21 @@ export function RowOverviewPanel({
             <Accordion.Panel>
               <Box px="md">
                 <SpanEventsSubpanel spanEvents={firstRow?.__hdx_span_events} />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {hasSpanLinks && (
+          <Accordion.Item value="spanLinks">
+            <Accordion.Control>
+              <Text size="sm" ps="md">
+                Span Links
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px="md">
+                <SpanLinksSubpanel spanLinks={firstRow?.__hdx_span_links} />
               </Box>
             </Accordion.Panel>
           </Accordion.Item>

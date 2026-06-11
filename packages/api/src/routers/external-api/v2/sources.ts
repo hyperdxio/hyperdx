@@ -523,6 +523,10 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Expression to extract span events. Used to capture events associated with spans. Expected to be Nested ( Timestamp DateTime64(9), Name LowCardinality(String), Attributes Map(LowCardinality(String), String)
  *           nullable: true
  *           example: Events
+ *         spanLinksValueExpression:
+ *           type: string
+ *           description: Expression to extract span links. Used to surface links to related spans in the trace view. Expected to be Nested ( TraceId String, SpanId String, TraceState String, Attributes Map(LowCardinality(String), String)
+ *           example: Links
  *         implicitColumnExpression:
  *           type: string
  *           description: Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log.
