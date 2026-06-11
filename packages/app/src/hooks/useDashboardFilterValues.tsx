@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { pick } from 'lodash';
 import {
   GetKeyValueCall,
+  optimizeFacetedKeyValuesConfig,
   optimizeGetKeyValuesCalls,
 } from '@hyperdx/common-utils/dist/core/materializedViews';
 import {
@@ -192,12 +193,22 @@ function useOptimizedKeyValuesCalls({
           staleTime: 1000 * 60 * 5, // Cache every 5 min
           queryFn: async ({ signal }): Promise<EnrichedCall[]> => {
             // Constrained: resolve every key in one faceted scan
-            // (groupUniqArrayIf), since a per-key condition can't be split
-            // across single-key materialized views.
+            // (groupUniqArrayIf). A per-key condition can't be split across
+            // single-key MVs, but it can run against one MV whose dimensions
+            // cover every filter column (else the raw table).
             if (isFaceted) {
+              const facetedConfig = await optimizeFacetedKeyValuesConfig({
+                chartConfig,
+                keys: keyExpressions,
+                keyConditions,
+                source,
+                clickhouseClient,
+                metadata,
+                signal,
+              });
               return [
                 {
-                  chartConfig,
+                  chartConfig: facetedConfig,
                   keys: keyExpressions,
                   keyConditions,
                   filterIds: filterIdsForKeys(keyExpressions),

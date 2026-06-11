@@ -1,6 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import React from 'react';
-import { optimizeGetKeyValuesCalls } from '@hyperdx/common-utils/dist/core/materializedViews';
+import {
+  optimizeFacetedKeyValuesConfig,
+  optimizeGetKeyValuesCalls,
+} from '@hyperdx/common-utils/dist/core/materializedViews';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
@@ -26,6 +29,10 @@ jest.mock('@hyperdx/common-utils/dist/core/materializedViews', () => ({
     .mockImplementation(async ({ keys, chartConfig }) => [
       { keys, chartConfig },
     ]),
+  // Default: no covering MV → faceted query runs against the raw config.
+  optimizeFacetedKeyValuesConfig: jest
+    .fn()
+    .mockImplementation(async ({ chartConfig }) => chartConfig),
 }));
 
 describe('useDashboardFilterValues', () => {
@@ -1097,6 +1104,10 @@ describe('useDashboardFilterValues', () => {
         .mockImplementation(async ({ keys, chartConfig }) => [
           { keys, chartConfig },
         ]);
+      // Default: faceted queries run against the raw config (no covering MV).
+      jest
+        .mocked(optimizeFacetedKeyValuesConfig)
+        .mockImplementation(async ({ chartConfig }) => chartConfig);
     });
 
     it('resolves every key in one faceted scan, constraining each by the others (exclude-self)', async () => {
@@ -1256,6 +1267,46 @@ describe('useDashboardFilterValues', () => {
       await waitFor(() => expect(result.current.isFetching).toBe(false));
 
       expect(callForKeys(['environment', 'status'])?.keyConditions).toEqual([
+        undefined,
+        "(environment IN ('production'))",
+      ]);
+    });
+
+    it('runs the faceted scan against a covering materialized view when one is found', async () => {
+      // Simulate a covering MV: the resolver points the faceted query at the
+      // rollup table.
+      jest
+        .mocked(optimizeFacetedKeyValuesConfig)
+        .mockImplementation(async ({ chartConfig }) => ({
+          ...chartConfig,
+          from: { databaseName: 'telemetry', tableName: 'logs_rollup_1m' },
+        }));
+
+      const { result } = renderHook(
+        () =>
+          useDashboardFilterValues({
+            filters: envAndStatus,
+            dateRange: mockDateRange,
+            filterValues: {
+              environment: {
+                included: new Set<string>(['production']),
+                excluded: new Set<string>(),
+              },
+            },
+          }),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+      const call = callForKeys(['environment', 'status']);
+      // The single faceted scan targets the rollup, still carrying the per-key
+      // conditions.
+      expect(call?.chartConfig?.from).toEqual({
+        databaseName: 'telemetry',
+        tableName: 'logs_rollup_1m',
+      });
+      expect(call?.keyConditions).toEqual([
         undefined,
         "(environment IN ('production'))",
       ]);

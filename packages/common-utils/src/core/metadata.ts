@@ -23,6 +23,7 @@ import { isLogSource, isTraceSource, SourceKind } from '@/types';
 
 import { ClickHouseVersion, parseClickHouseVersion } from './clickhouseVersion';
 import {
+  optimizeFacetedKeyValuesConfig,
   optimizeGetKeyValuesCalls,
   renderStartOfBucketExpr,
 } from './materializedViews';
@@ -1750,10 +1751,21 @@ export class Metadata {
         if (keys.length === 0) return [];
 
         // Faceted lookups apply a different predicate per key, so they can't be
-        // split across single-key materialized views — run one direct scan.
-        if (keyConditions?.some(c => c != null)) {
-          return this.getKeyValues({
+        // split across single-key materialized views — but they can run as one
+        // scan against a materialized view whose dimensions cover every filter
+        // column (else fall back to the raw table).
+        if (keyConditions && keyConditions.some(c => c != null)) {
+          const facetedConfig = await optimizeFacetedKeyValuesConfig({
             chartConfig,
+            keys,
+            keyConditions,
+            source,
+            clickhouseClient: this.clickhouseClient,
+            metadata: this,
+            signal,
+          });
+          return this.getKeyValues({
+            chartConfig: facetedConfig,
             keys,
             keyConditions,
             limit,
