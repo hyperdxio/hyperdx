@@ -32,3 +32,44 @@ const _assertKindsMatchEnum: readonly QueryableMetricKind[] = [
   MetricsDataType.Histogram,
 ];
 void _assertKindsMatchEnum;
+
+/**
+ * Allowed kind keys on the `metricTables` map when serialising a metric
+ * source into an MCP response. Includes the non-queryable kinds
+ * (`summary`, `exponential histogram`) because the model schema declares
+ * tables for them even though the query renderer cannot yet translate
+ * them.
+ */
+const ALLOWED_METRIC_TABLE_KINDS: readonly string[] =
+  Object.values(MetricsDataType);
+
+/**
+ * Filter source.metricTables to the known kind keys before emitting it
+ * in a clickstack_list_sources / clickstack_describe_source response.
+ *
+ * Belt-and-braces defense: even after the model schema declares
+ * `_id: false` on the metricTables subdoc, existing documents persisted
+ * before the schema fix may still carry a stray `_id` value that
+ * Mongoose serialises alongside the legitimate kind keys. Filtering at
+ * the response boundary keeps the agent-facing payload free of
+ * implementation-detail keys.
+ *
+ * Accepts both plain objects and Mongoose subdocuments — we look up
+ * each allowed kind via property access rather than enumerating keys,
+ * because Mongoose subdoc instances expose field values through getters
+ * (not as own enumerable properties).
+ */
+export function sanitizeMetricTables(
+  metricTables: Record<string, unknown> | undefined | null,
+): Record<string, string> | undefined {
+  if (!metricTables) return undefined;
+  const source = metricTables as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const kind of ALLOWED_METRIC_TABLE_KINDS) {
+    const value = source[kind];
+    if (typeof value === 'string' && value.length > 0) {
+      out[kind] = value;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}

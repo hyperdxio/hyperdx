@@ -288,6 +288,12 @@ describe('MCP Source Tools', () => {
       // first by pickRepresentativeMetricTable).
       expect(output.source.metricTables).toBeDefined();
       expect(output.source.metricTables).toHaveProperty('gauge');
+      // metricTables should only contain valid kind keys — not a stray
+      // Mongoose `_id` from the embedded subdoc.
+      expect(output.source.metricTables).not.toHaveProperty('_id');
+      expect(Object.keys(output.source.metricTables).sort()).toEqual(
+        ['gauge', 'histogram', 'sum'].sort(),
+      );
       expect(output.source.discoveryMetricKind).toBe('gauge');
       expect(output.source.columns).toBeDefined();
       expect(Array.isArray(output.source.columns)).toBe(true);

@@ -22,6 +22,7 @@ import type { McpContext } from '../types';
 import {
   QUERYABLE_METRIC_KINDS,
   type QueryableMetricKind,
+  sanitizeMetricTables,
 } from './metricKinds';
 
 // How far back to look when querying the rollup tables for value samples.
@@ -288,7 +289,13 @@ async function describeSourceSchema(
       traceId: source.traceIdExpression,
     };
   } else if (source.kind === SourceKind.Metric) {
-    meta.metricTables = source.metricTables;
+    // Filter out implementation-detail keys (e.g. a stray Mongoose `_id`
+    // on the metricTables subdoc) so the agent only sees valid metric
+    // kinds.
+    const tables = sanitizeMetricTables(
+      source.metricTables as Record<string, unknown> | undefined,
+    );
+    if (tables) meta.metricTables = tables;
     representativeMetric = pickRepresentativeMetricTable(source.metricTables);
     if (representativeMetric) {
       meta.discoveryMetricKind = representativeMetric.kind;
