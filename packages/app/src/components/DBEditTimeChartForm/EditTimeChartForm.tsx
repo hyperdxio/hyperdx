@@ -151,6 +151,7 @@ export default function EditTimeChartForm({
   const {
     control,
     setValue,
+    getValues,
     handleSubmit,
     register,
     setError,
@@ -165,12 +166,23 @@ export default function EditTimeChartForm({
   const {
     fields,
     append,
+    insert: insertSeries,
     remove: removeSeries,
     swap: swapSeries,
   } = useFieldArray({
     control,
     name: 'series',
   });
+
+  // Insert a copy of an existing series directly below it so a near-identical
+  // variant (e.g. avg + p95 of the same column) does not have to be re-entered.
+  // structuredClone keeps the copy independent of the source row.
+  const duplicateSeries = useCallback(
+    (index: number) => {
+      insertSeries(index + 1, structuredClone(getValues(`series.${index}`)));
+    },
+    [insertSeries, getValues],
+  );
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -745,6 +757,7 @@ export default function EditTimeChartForm({
             append={append}
             removeSeries={removeSeries}
             swapSeries={swapSeries}
+            duplicateSeries={duplicateSeries}
             tableSource={tableSource}
             tableConnection={tableConnection}
             databaseName={databaseName}
