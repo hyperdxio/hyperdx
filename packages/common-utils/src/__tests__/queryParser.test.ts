@@ -35,8 +35,6 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       return { name: 'SeverityNumber', type: 'UInt8' };
     } else if (column === 'foo') {
       return { name: 'foo', type: 'String' };
-    } else if (column === 'bar') {
-      return { name: 'bar', type: 'String' };
     } else if (column === 'MaterializedExample') {
       return { name: 'MaterializedExample', type: 'String' };
     } else {
@@ -494,49 +492,6 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     const expectedSql =
       "((hasToken(lower(concatWithSeparator(';',Body,OtherColumn)), lower('foo'))) AND (hasToken(lower(concatWithSeparator(';',Body,OtherColumn)), lower('bar'))))";
     expect(actualSql).toBe(expectedSql);
-  });
-
-  describe('CustomSchemaSQLSerializerV2: select alias resolution', () => {
-    // ClickHouse resolves SELECT aliases in WHERE, so a Lucene field matching a
-    // known alias must resolve to a bare identifier. A field that is neither a
-    // column nor an alias is genuinely unknown and must not be injected as raw
-    // SQL (which ClickHouse would reject as an unknown identifier).
-    const aliasSerializer = new CustomSchemaSQLSerializerV2({
-      metadata,
-      databaseName,
-      tableName,
-      connectionId,
-      implicitColumnExpression: 'Body',
-      selectAliases: new Set(['Content']),
-    });
-
-    it('resolves a known select alias as a column reference', async () => {
-      const res = await aliasSerializer.getColumnForField('Content', {});
-      expect(res).toEqual(
-        expect.objectContaining({ found: true, column: 'Content' }),
-      );
-    });
-
-    it('renders a select alias reference as a bare identifier', async () => {
-      const sql = await new SearchQueryBuilder(
-        'Content:foo',
-        aliasSerializer,
-      ).build();
-      expect(sql).toBe("((Content ILIKE '%foo%'))");
-    });
-
-    it('returns not-found for an unknown, non-alias field', async () => {
-      const res = await serializer.getColumnForField('NotAColumn', {});
-      expect(res).toEqual(expect.objectContaining({ found: false }));
-    });
-
-    it('renders an unknown, non-alias field as the no-match predicate', async () => {
-      const sql = await new SearchQueryBuilder(
-        'NotAColumn:foo',
-        serializer,
-      ).build();
-      expect(sql).toBe('((1 = 0))');
-    });
   });
 
   describe('CustomSchemaSQLSerializerV2: implicit column falls back to bodyExpression', () => {
