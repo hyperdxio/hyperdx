@@ -20,7 +20,7 @@
     batch: null,
     cells: [],
     summary: null,
-    selectedRun: null, // { scenario, mcp, idx }
+    selectedRun: null, // { scenario, mcp, model, idx }
     runData: null, // { trajectory, grade }
     activeTab: 'trajectory',
     view: 'summary', // 'summary' | 'run'
@@ -177,9 +177,12 @@
     showView('summary');
   }
 
-  async function loadRun(scenario, mcp, idx) {
-    state.selectedRun = { scenario, mcp, idx };
-    const u = `/api/batches/${encodeURIComponent(state.batch)}/runs/${encodeURIComponent(scenario)}/${encodeURIComponent(mcp)}/${idx}`;
+  async function loadRun(scenario, mcp, model, idx) {
+    state.selectedRun = { scenario, mcp, model, idx };
+    const base = `/api/batches/${encodeURIComponent(state.batch)}/runs/${encodeURIComponent(scenario)}/${encodeURIComponent(mcp)}`;
+    const u = model
+      ? `${base}/${encodeURIComponent(model)}/${idx}`
+      : `${base}/${idx}`;
     state.runData = await fetchJson(u);
     renderNav();
     showView('run');
@@ -218,6 +221,18 @@
 
   // ----- rendering: sidebar nav -----
 
+  /** True when the current batch has more than one distinct model across cells. */
+  function isMultiModel() {
+    const models = new Set();
+    for (const c of state.cells) if (c.model) models.add(c.model);
+    return models.size > 1;
+  }
+
+  /** Heading for a cell: matches the columnKeyFor logic in aggregate.ts. */
+  function cellHeading(c) {
+    return c.model && isMultiModel() ? `${c.mcp}/${c.model}` : c.mcp;
+  }
+
   function renderNav() {
     const root = $('#nav');
     root.innerHTML = '';
@@ -235,16 +250,18 @@
         el('div', { class: 'head' }, scenario),
       );
       for (const c of cells) {
+        const heading = cellHeading(c);
         const mNode = el(
           'div',
           { class: 'nav-mcp' },
-          el('div', { class: 'head' }, c.mcp),
+          el('div', { class: 'head' }, heading),
         );
         for (const r of c.runs) {
           const active =
             state.selectedRun &&
             state.selectedRun.scenario === scenario &&
             state.selectedRun.mcp === c.mcp &&
+            state.selectedRun.model === c.model &&
             state.selectedRun.idx === r.idx;
           const chip = el(
             'span',
@@ -263,7 +280,7 @@
             'div',
             {
               class: `nav-run ${active ? 'active' : ''}`,
-              onclick: () => loadRun(scenario, c.mcp, r.idx),
+              onclick: () => loadRun(scenario, c.mcp, c.model, r.idx),
             },
             el(
               'span',
@@ -735,7 +752,7 @@
     }
     root.className = 'summary-dashboard';
 
-    const mcpOrder = s.mcpOrder || Object.keys(s.scenarios[0]?.cells || {}).sort();
+    const mcpOrder = s.columnOrder || s.mcpOrder || Object.keys(s.scenarios[0]?.cells || {}).sort();
     const baseline = s.baseline || mcpOrder[0];
     const challengers = mcpOrder.filter((m) => m !== baseline);
 
@@ -1017,7 +1034,7 @@
       const maxRuns = Math.max(...scenarioCells.map((c) => c.runs.length));
       const runHeader = [el('th', {}, 'Run')];
       for (const c of scenarioCells) {
-        runHeader.push(el('th', {}, c.mcp));
+        runHeader.push(el('th', {}, cellHeading(c)));
       }
       const runRows = [];
       for (let i = 0; i < maxRuns; i++) {
@@ -1046,7 +1063,7 @@
               'td',
               {
                 class: 'run-cell clickable',
-                onclick: () => loadRun(scenario.scenario, c.mcp, r.idx),
+                onclick: () => loadRun(scenario.scenario, c.mcp, c.model, r.idx),
               },
               chip,
               ' ',

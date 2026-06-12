@@ -60,6 +60,38 @@ function listBatches() {
     .reverse();
 }
 
+function isRunJson(f) {
+  return /^\d+\.json$/.test(f);
+}
+
+function collectRuns(cellDir) {
+  let files;
+  try {
+    files = fs.readdirSync(cellDir);
+  } catch {
+    return []; // directory may have been removed between discovery and read
+  }
+  const runIdxs = new Set();
+  for (const f of files) {
+    const m = /^(\d+)\.json$/.exec(f);
+    if (m) runIdxs.add(Number(m[1]));
+  }
+  return [...runIdxs].sort((a, b) => a - b).map((i) => {
+    const grade = readJsonSafe(path.join(cellDir, `${i}.grade.json`));
+    const traj = readJsonSafe(path.join(cellDir, `${i}.json`));
+    return {
+      idx: i,
+      combinedScore: grade?.combinedScore ?? null,
+      programmaticScore: grade?.programmatic?.score ?? null,
+      judgeScore: grade?.judge?.weightedScore ?? null,
+      termination: traj?.termination ?? null,
+      durationMs: traj?.durationMs ?? null,
+      toolCalls: traj?.toolCalls?.length ?? null,
+      toolErrors: grade?.toolErrors?.errors ?? null,
+    };
+  });
+}
+
 function listCells(batch) {
   const batchDir = safeJoin(RUNS_DIR, batch);
   if (!fs.existsSync(batchDir)) return null;
@@ -75,28 +107,23 @@ function listCells(batch) {
       .filter((d) => d.isDirectory())
       .map((d) => d.name);
     for (const mcp of mcps) {
-      const cellDir = path.join(scenarioDir, mcp);
-      const files = fs.readdirSync(cellDir);
-      const runIdxs = new Set();
-      for (const f of files) {
-        const m = /^(\d+)\.json$/.exec(f);
-        if (m) runIdxs.add(Number(m[1]));
+      const mcpDir = path.join(scenarioDir, mcp);
+      const entries = fs.readdirSync(mcpDir, { withFileTypes: true });
+
+      // Legacy layout: <scenario>/<mcp>/<index>.json
+      const hasRunFiles = entries.some((e) => !e.isDirectory() && isRunJson(e.name));
+      if (hasRunFiles) {
+        const runs = collectRuns(mcpDir);
+        if (runs.length > 0) out.push({ scenario, mcp, model: null, runs });
       }
-      const runs = [...runIdxs].sort((a, b) => a - b).map((i) => {
-        const grade = readJsonSafe(path.join(cellDir, `${i}.grade.json`));
-        const traj = readJsonSafe(path.join(cellDir, `${i}.json`));
-        return {
-          idx: i,
-          combinedScore: grade?.combinedScore ?? null,
-          programmaticScore: grade?.programmatic?.score ?? null,
-          judgeScore: grade?.judge?.weightedScore ?? null,
-          termination: traj?.termination ?? null,
-          durationMs: traj?.durationMs ?? null,
-          toolCalls: traj?.toolCalls?.length ?? null,
-          toolErrors: grade?.toolErrors?.errors ?? null,
-        };
-      });
-      out.push({ scenario, mcp, runs });
+
+      // New layout: <scenario>/<mcp>/<model>/<index>.json
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const modelDir = path.join(mcpDir, entry.name);
+        const runs = collectRuns(modelDir);
+        if (runs.length > 0) out.push({ scenario, mcp, model: entry.name, runs });
+      }
     }
   }
   return out;
@@ -127,6 +154,21 @@ const ROUTES = [
       sendJson(res, 200, { batch, summary, cells });
     },
   ],
+  // New layout: /runs/:scenario/:mcp/:model/:idx
+  [
+    /^\/api\/batches\/([^/]+)\/runs\/([^/]+)\/([^/]+)\/([^/]+)\/(\d+)$/,
+    (m, _q, res) => {
+      const [, batch, scenario, mcp, model, idx] = m.map((x, i) =>
+        i === 0 ? x : decodeURIComponent(x),
+      );
+      const base = safeJoin(RUNS_DIR, batch, scenario, mcp, model);
+      const trajectory = readJsonSafe(path.join(base, `${idx}.json`));
+      const grade = readJsonSafe(path.join(base, `${idx}.grade.json`));
+      if (!trajectory) return sendJson(res, 404, { error: 'run not found' });
+      sendJson(res, 200, { trajectory, grade });
+    },
+  ],
+  // Legacy layout: /runs/:scenario/:mcp/:idx (no model segment)
   [
     /^\/api\/batches\/([^/]+)\/runs\/([^/]+)\/([^/]+)\/(\d+)$/,
     (m, _q, res) => {
