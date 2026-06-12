@@ -575,6 +575,28 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           timeout: 15000,
         });
       });
+
+      await test.step('Source filter indicator icon appears on logs tile with tooltip', async () => {
+        const logsTile = dashboardPage.getTile(0);
+        const indicator = logsTile.locator(
+          '[data-testid^="tile-source-filter-indicator-"]',
+        );
+        await expect(indicator).toBeVisible();
+
+        await indicator.hover();
+        await expect(
+          dashboardPage.page.getByText(
+            'Some dashboard filters are not applied to this tile because they are scoped to other sources',
+          ),
+        ).toBeVisible();
+
+        // The traces tile (which receives the filter) should NOT show the indicator.
+        const tracesTile = dashboardPage.getTile(1);
+        const tracesIndicator = tracesTile.locator(
+          '[data-testid^="tile-source-filter-indicator-"]',
+        );
+        await expect(tracesIndicator).toBeHidden();
+      });
     },
   );
 

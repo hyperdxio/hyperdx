@@ -83,6 +83,7 @@ import {
   IconDeviceFloppy,
   IconDotsVertical,
   IconDownload,
+  IconFilter,
   IconFilterEdit,
   IconLayoutSidebarRightCollapse,
   IconLayoutSidebarRightExpand,
@@ -356,6 +357,7 @@ const Tile = forwardRef(
       granularity,
       onTimeRangeSelect,
       filters,
+      hasExcludedSourceFilters,
 
       // Properties forwarded by grid layout
       className,
@@ -381,6 +383,7 @@ const Tile = forwardRef(
       granularity: SQLInterval | undefined;
       onTimeRangeSelect: (start: Date, end: Date) => void;
       filters?: Filter[];
+      hasExcludedSourceFilters?: boolean;
 
       // Properties forwarded by grid layout
       className?: string;
@@ -649,6 +652,24 @@ const Tile = forwardRef(
       );
     }, [filters, queriedConfig, source]);
 
+    const sourceFilterIndicator = useMemo(() => {
+      if (!hasExcludedSourceFilters) return null;
+      return (
+        <Tooltip
+          multiline
+          maw={300}
+          label="Some dashboard filters are not applied to this tile because they are scoped to other sources"
+          key="source-filter-indicator"
+        >
+          <IconFilter
+            data-testid={`tile-source-filter-indicator-${chart.id}`}
+            size={16}
+            color="var(--mantine-color-dimmed)"
+          />
+        </Tooltip>
+      );
+    }, [hasExcludedSourceFilters, chart.id]);
+
     const hoverToolbar = useMemo(() => {
       const isRawSql = isRawSqlSavedChartConfig(chart.config);
       const displayTypeSupportsAlerts = isRawSql
@@ -823,8 +844,8 @@ const Tile = forwardRef(
     const renderChartContent = useCallback(
       (hideToolbar: boolean = false, isFullscreenView: boolean = false) => {
         const toolbar = hideToolbar
-          ? [filterWarning]
-          : [hoverToolbar, filterWarning];
+          ? [sourceFilterIndicator, filterWarning]
+          : [hoverToolbar, sourceFilterIndicator, filterWarning];
         const keyPrefix = isFullscreenView ? 'fullscreen' : 'tile';
 
         // The fullscreen view is always visible, so it should always load.
@@ -1028,6 +1049,7 @@ const Tile = forwardRef(
         fullscreenDateRange,
         fullscreenGranularity,
         filterWarning,
+        sourceFilterIndicator,
         isSourceMissing,
         isSourceUnset,
         hasBeenVisible,
@@ -1421,6 +1443,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setFilterQueries,
     ignoredFilterExpressions,
     getFilterQueriesForSource,
+    hasExcludedFiltersForSource,
   } = useDashboardFilters(filters);
 
   const dashboardReady =
@@ -1861,6 +1884,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             },
             ...getFilterQueriesForSource(tileSourceId),
           ]}
+          hasExcludedSourceFilters={hasExcludedFiltersForSource(tileSourceId)}
           onTimeRangeSelect={onTimeRangeSelect}
           isHighlighted={highlightedTileId === chart.id}
           onUpdateChart={newChart => {
@@ -1952,6 +1976,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       whereLanguage,
       onTimeRangeSelect,
       getFilterQueriesForSource,
+      hasExcludedFiltersForSource,
       moveTargetContainers,
       handleMoveTileToGroup,
       selectedTileIds,

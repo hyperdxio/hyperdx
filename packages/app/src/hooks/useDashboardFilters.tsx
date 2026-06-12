@@ -115,6 +115,29 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     [valuesForExistingFilters, filtersByExpression],
   );
 
+  // Returns true when there are active filter values that are NOT being applied
+  // to a tile with the given sourceId due to `appliesToSourceIds` scoping.
+  const hasExcludedFiltersForSource = useCallback(
+    (sourceId: string | undefined): boolean => {
+      for (const [expression, state] of Object.entries(
+        valuesForExistingFilters,
+      )) {
+        if (!state.included || state.included.size === 0) continue;
+        const definitions = filtersByExpression.get(expression) ?? [];
+        const applies = definitions.some(def => {
+          const appliesTo = def.appliesToSourceIds;
+          if (!appliesTo || appliesTo.length === 0) return true;
+          return !!sourceId && appliesTo.includes(sourceId);
+        });
+        if (!applies) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [valuesForExistingFilters, filtersByExpression],
+  );
+
   return {
     filterValues: valuesForExistingFilters,
     filterQueries: queriesForExistingFilters,
@@ -133,6 +156,13 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
      * whose source ID is in the list.
      */
     getFilterQueriesForSource,
+    /**
+     * Returns true when there are active filter values that are NOT being
+     * applied to a tile with the given `sourceId` because of
+     * `appliesToSourceIds` scoping. Used to show a visual indicator on tiles
+     * where some dashboard filters are intentionally excluded.
+     */
+    hasExcludedFiltersForSource,
   };
 };
 
