@@ -5,6 +5,7 @@ import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 import {
   annotateIncreaseTopNHint,
+  appendHint,
   buildTile,
   mergeWhereIntoSelectItems,
   parseTimeRange,
@@ -175,12 +176,14 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
           const parsed = JSON.parse(result.content[0].text);
           const data = parsed?.result?.data;
           if (Array.isArray(data) && data.length === 1 && input.granularity) {
-            parsed.hint =
+            appendHint(
+              parsed,
               `Timeseries returned only 1 time bucket. ` +
-              `All data may have collapsed into a single "${input.granularity}" bucket. ` +
-              `The queried range was ${startDate.toISOString()} to ${endDate.toISOString()}. ` +
-              `If this looks wrong, adjust startTime/endTime to match the actual data range, ` +
-              `or try a coarser granularity.`;
+                `All data may have collapsed into a single "${input.granularity}" bucket. ` +
+                `The queried range was ${startDate.toISOString()} to ${endDate.toISOString()}. ` +
+                `If this looks wrong, adjust startTime/endTime to match the actual data range, ` +
+                `or try a coarser granularity.`,
+            );
             result.content[0].text = JSON.stringify(parsed, null, 2);
           }
         } catch {

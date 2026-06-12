@@ -689,49 +689,120 @@ function buildResult(data: unknown[]) {
   };
 }
 
+/** Rows with `count` distinct ServiceName group values. */
+function buildGroupedRows(count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    ServiceName: `svc-${i}`,
+    Series: i,
+  }));
+}
+
 describe('annotateIncreaseTopNHint', () => {
   it('exposes the renderer cap as a constant', () => {
     expect(INCREASE_TOP_N_CAP).toBe(20);
   });
 
-  it('appends a hint when increase + groupBy is used and result is non-empty', () => {
+  it('appends a hint when the distinct group count reaches the cap', () => {
+    const result = buildResult(buildGroupedRows(INCREASE_TOP_N_CAP));
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toHaveLength(1);
+    expect(parsed.hints[0]).toContain('top 20');
+    expect(parsed.hints[0]).toContain('aggFn:"increase"');
+  });
+
+  it('does NOT annotate when the distinct group count is below the cap', () => {
+    const result = buildResult(buildGroupedRows(INCREASE_TOP_N_CAP - 1));
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toBeUndefined();
+  });
+
+  it('counts distinct groups across repeated time buckets, not raw rows', () => {
+    // 3 groups × 10 buckets = 30 rows but only 3 distinct groups.
+    const rows = Array.from({ length: 30 }, (_, i) => ({
+      ServiceName: `svc-${i % 3}`,
+      bucket: i,
+    }));
+    const result = buildResult(rows);
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toBeUndefined();
+  });
+
+  it('does NOT annotate when the groupBy column cannot be resolved from rows', () => {
     const result = buildResult([{ x: 1 }, { x: 2 }]);
     annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.hint).toContain('top 20');
-    expect(parsed.hint).toContain('aggFn:"increase"');
+    expect(parsed.hints).toBeUndefined();
+  });
+
+  it('supports multi-column groupBy by counting distinct combinations', () => {
+    // 4 ServiceName values × 5 SpanName values = 20 distinct combos.
+    const rows = Array.from({ length: 20 }, (_, i) => ({
+      ServiceName: `svc-${i % 4}`,
+      SpanName: `op-${Math.floor(i / 4)}`,
+    }));
+    const result = buildResult(rows);
+    annotateIncreaseTopNHint(
+      result,
+      [{ aggFn: 'increase' }],
+      'ServiceName, SpanName',
+    );
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toHaveLength(1);
+  });
+
+  it('appends alongside an existing hint instead of overwriting', () => {
+    const result = {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            result: { data: buildGroupedRows(INCREASE_TOP_N_CAP) },
+            hints: ['previous hint from another writer'],
+          }),
+        },
+      ],
+      isError: false,
+    };
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toHaveLength(2);
+    expect(parsed.hints[0]).toBe('previous hint from another writer');
+    expect(parsed.hints[1]).toContain('top 20');
   });
 
   it('does NOT annotate when increase is used WITHOUT a groupBy', () => {
-    const result = buildResult([{ x: 1 }]);
+    const result = buildResult(buildGroupedRows(INCREASE_TOP_N_CAP));
     annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], undefined);
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.hint).toBeUndefined();
+    expect(parsed.hints).toBeUndefined();
   });
 
   it('does NOT annotate when groupBy is an empty string', () => {
-    const result = buildResult([{ x: 1 }]);
+    const result = buildResult(buildGroupedRows(INCREASE_TOP_N_CAP));
     annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], '   ');
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.hint).toBeUndefined();
+    expect(parsed.hints).toBeUndefined();
   });
 
   it('does NOT annotate when no select item uses increase', () => {
-    const result = buildResult([{ x: 1 }]);
+    const result = buildResult(buildGroupedRows(INCREASE_TOP_N_CAP));
     annotateIncreaseTopNHint(
       result,
       [{ aggFn: 'sum' }, { aggFn: 'avg' }],
       'ServiceName',
     );
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.hint).toBeUndefined();
+    expect(parsed.hints).toBeUndefined();
   });
 
   it('does NOT annotate empty results (already labelled by formatQueryResult)', () => {
     const result = buildResult([]);
     annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.hint).toBeUndefined();
+    expect(parsed.hints).toBeUndefined();
   });
 
   it('does NOT annotate error results', () => {

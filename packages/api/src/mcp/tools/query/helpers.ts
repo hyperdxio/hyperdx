@@ -90,11 +90,46 @@ const MCP_REQUEST_TIMEOUT = 32_000; // 30s query limit + 2s buffer
 export const INCREASE_TOP_N_CAP = 20;
 
 /**
+ * Append a hint message onto a parsed tool response body. All hint
+ * writers share `hints: string[]` so multiple advisories can coexist
+ * (e.g. the increase top-N cap and the single-bucket collapse hint can
+ * legitimately both apply to the same result).
+ */
+export function appendHint(parsed: Record<string, unknown>, hint: string) {
+  const existing = Array.isArray(parsed.hints) ? parsed.hints : [];
+  parsed.hints = [...existing, hint];
+}
+
+/**
+ * Count the distinct groupBy combinations present in a result set.
+ * Resolves each comma-separated groupBy segment against the row keys
+ * (the renderer aliases group columns by their literal expression).
+ * Returns null when no segment matches any row key — the caller should
+ * treat that as "count unknown".
+ */
+function countDistinctGroups(
+  data: Array<Record<string, unknown>>,
+  groupBy: string,
+): number | null {
+  const segments = splitAndTrimWithBracket(groupBy);
+  const sample = data[0];
+  if (!sample || typeof sample !== 'object') return null;
+  const resolvable = segments.filter(seg => seg in sample);
+  if (resolvable.length === 0) return null;
+  const seen = new Set<string>();
+  for (const row of data) {
+    seen.add(JSON.stringify(resolvable.map(seg => row[seg])));
+  }
+  return seen.size;
+}
+
+/**
  * Mutates a successful tool result envelope in place to add a neutral
- * informational hint when the renderer's increase+groupBy top-N cap may
- * have applied. Safe to call unconditionally — does nothing for empty
- * results, error results, or queries that don't combine `aggFn:"increase"`
- * with a non-empty `groupBy`.
+ * informational hint when the renderer's increase+groupBy top-N cap
+ * likely applied. Safe to call unconditionally — does nothing for empty
+ * results, error results, queries that don't combine `aggFn:"increase"`
+ * with a non-empty `groupBy`, or results whose distinct group count is
+ * below the cap (no truncation possible).
  */
 export function annotateIncreaseTopNHint(
   result: { content?: { type: string; text?: string }[]; isError?: boolean },
@@ -110,10 +145,17 @@ export function annotateIncreaseTopNHint(
     const parsed = JSON.parse(first.text);
     const data = parsed?.result?.data;
     if (!Array.isArray(data) || data.length === 0) return;
-    parsed.hint =
+    // Only warn when the result actually carries enough distinct groups
+    // to have hit the renderer cap. When the group column cannot be
+    // resolved from the rows, skip the hint rather than crying wolf.
+    const distinctGroups = countDistinctGroups(data, groupBy);
+    if (distinctGroups === null || distinctGroups < INCREASE_TOP_N_CAP) return;
+    appendHint(
+      parsed,
       `aggFn:"increase" combined with groupBy is capped at the top ${INCREASE_TOP_N_CAP} ` +
-      `groups by max bucket sum at the renderer layer. ` +
-      `Results may not include every group present in the underlying data.`;
+        `groups by max bucket sum at the renderer layer. ` +
+        `Results may not include every group present in the underlying data.`,
+    );
     first.text = JSON.stringify(parsed, null, 2);
   } catch {
     // leave result unmodified on parse failure
@@ -252,7 +294,9 @@ function formatQueryResult(result: unknown) {
               : {}),
             ...(empty
               ? {
-                  hint: 'No data found in the queried time range. Try setting startTime to a wider window (e.g. 24 hours ago) or check that filters match existing data.',
+                  hints: [
+                    'No data found in the queried time range. Try setting startTime to a wider window (e.g. 24 hours ago) or check that filters match existing data.',
+                  ],
                 }
               : {}),
           },
