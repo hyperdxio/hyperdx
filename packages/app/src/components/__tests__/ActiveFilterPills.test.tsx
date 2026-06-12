@@ -441,6 +441,34 @@ describe('ActiveFilterPills', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('fetches picker values with the active query and filters stripped', () => {
+    // A picker scoped to the current query would only list values already
+    // matching it, so an included pill could never switch to another value.
+    const scopedConfig = {
+      ...CHART_CONFIG,
+      where: "status = '200'",
+      filters: [{ type: 'sql', condition: "status = '200'" }],
+    } as BuilderChartConfigWithDateRange;
+    const searchFilters = makeSearchFilters({
+      status: {
+        included: new Set<string | boolean>(['200']),
+        excluded: new Set<string | boolean>(),
+      },
+    });
+    renderWithMantine(
+      <ActiveFilterPills
+        searchFilters={searchFilters}
+        chartConfig={scopedConfig}
+      />,
+    );
+
+    expect(mockedUseGetKeyValues).toHaveBeenCalled();
+    const { chartConfig: passedConfig } =
+      mockedUseGetKeyValues.mock.calls[0][0];
+    expect(passedConfig.where).toBe('');
+    expect(passedConfig.filters).toEqual([]);
+  });
+
   it('shows a value picker populated from useGetKeyValues', async () => {
     jest.useRealTimers();
     mockedUseGetKeyValues.mockReturnValue({

@@ -114,10 +114,25 @@ function FilterPill({
     return () => clearTimeout(copyTimerRef.current);
   }, []);
 
+  // The picker lists values to switch this pill to, so it must not be scoped
+  // by the active query or by the pill's own filter. Reusing chartConfig
+  // verbatim only ever returns values already matching the current filters, so
+  // an included pill would list just its own value. Clear where + filters to
+  // list all of the field's values in range, like the sidebar facet list's
+  // default "Show All Values" behavior.
+  const valueChartConfig = useMemo(
+    () => ({ ...chartConfig, where: '', filters: [] }),
+    [chartConfig],
+  );
+
   // Fetch the field's values for the in-pill value picker, only while the
   // menu is open (and never for range / not-applied pills).
   const { data: keyValues, isFetching: isFetchingValues } = useGetKeyValues(
-    { chartConfig, keys: [pill.field], limit: VALUE_EDIT_LIMIT },
+    {
+      chartConfig: valueChartConfig,
+      keys: [pill.field],
+      limit: VALUE_EDIT_LIMIT,
+    },
     { enabled: opened && isEditable },
   );
   const valueOptions = useMemo(
