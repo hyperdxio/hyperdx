@@ -140,12 +140,17 @@ const HDXLineChartTooltip = withErrorBoundary(
       const pointerY: number | undefined = props.coordinate?.y;
       // eslint-disable-next-line react-hooks/refs
       const activePointYByKey = activePointYByKeyRef?.current ?? undefined;
-      const nearestSeriesKey = findNearestSeriesKey(
-        activePointYByKey,
-        typedPayload.map(p => p.dataKey),
-        pointerY,
-        NEAREST_SERIES_MAX_DISTANCE_PX,
-      );
+      // Only disambiguate when there is more than one series; a single-series
+      // tooltip has nothing to map back to a line.
+      const nearestSeriesKey =
+        typedPayload.length > 1
+          ? findNearestSeriesKey(
+              activePointYByKey,
+              typedPayload.map(p => p.dataKey),
+              pointerY,
+              NEAREST_SERIES_MAX_DISTANCE_PX,
+            )
+          : undefined;
 
       return (
         <ChartTooltipContainer header={header}>
