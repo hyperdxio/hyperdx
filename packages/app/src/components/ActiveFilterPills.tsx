@@ -1,8 +1,26 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActionIcon, Flex, FlexProps, Text, Tooltip } from '@mantine/core';
-import { IconX } from '@tabler/icons-react';
+import {
+  ActionIcon,
+  Flex,
+  FlexProps,
+  Popover,
+  Text,
+  Tooltip,
+} from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import {
+  IconCheck,
+  IconCopy,
+  IconFilter,
+  IconFilterX,
+  IconX,
+} from '@tabler/icons-react';
 
 import type { FilterStateHook } from '@/searchFilters';
+import {
+  CLIPBOARD_ERROR_MESSAGE,
+  copyTextToClipboard,
+} from '@/utils/clipboard';
 
 const MAX_VISIBLE_PILLS = 8;
 
@@ -62,14 +80,30 @@ function FilterPill({
   isInvalid,
   invalidReason,
   onRemove,
+  onTogglePolarity,
 }: {
   pill: PillItem;
   isInvalid?: boolean;
   invalidReason?: string;
   onRemove: () => void;
+  onTogglePolarity: () => void;
 }) {
   const isExcluded = pill.type === 'excluded';
   const operator = isExcluded ? ' != ' : pill.type === 'range' ? ': ' : ' = ';
+
+  // A range pill has no single value to copy or flip, and an unapplied filter
+  // (column missing on the active source) can only be removed. Both keep the
+  // plain remove-only pill; only included/excluded pills open the action menu.
+  const isEditable = pill.type !== 'range' && !isInvalid;
+  const polarityLabel = isExcluded ? 'Include' : 'Exclude';
+
+  const [opened, setOpened] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    return () => clearTimeout(copyTimerRef.current);
+  }, []);
 
   const tooltipLabel = isInvalid
     ? (invalidReason ??
@@ -78,13 +112,26 @@ function FilterPill({
 
   const showDangerAccent = isExcluded && !isInvalid;
 
-  return (
+  const handleCopy = async () => {
+    const ok = await copyTextToClipboard(pill.value);
+    if (!ok) {
+      notifications.show({ color: 'red', message: CLIPBOARD_ERROR_MESSAGE });
+      return;
+    }
+    setCopied(true);
+    clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
+  };
+
+  const pillWithTooltip = (
     <Tooltip label={tooltipLabel} openDelay={300} multiline maw={280}>
       <span
         data-testid={`active-filter-pill-${pill.field}`}
         data-invalid={isInvalid ? 'true' : undefined}
+        onClick={isEditable ? () => setOpened(o => !o) : undefined}
         style={{
           ...pillStyle,
+          cursor: isEditable ? 'pointer' : 'default',
           backgroundColor: isInvalid
             ? 'transparent'
             : isExcluded
@@ -134,7 +181,11 @@ function FilterPill({
           size={14}
           variant="transparent"
           color="gray"
-          onClick={onRemove}
+          onClick={e => {
+            // Keep the one-click remove without also toggling the action menu.
+            e.stopPropagation();
+            onRemove();
+          }}
           style={{
             flexShrink: 0,
             marginLeft: 2,
@@ -146,6 +197,56 @@ function FilterPill({
         </ActionIcon>
       </span>
     </Tooltip>
+  );
+
+  if (!isEditable) {
+    return pillWithTooltip;
+  }
+
+  return (
+    <Popover
+      position="bottom-start"
+      withArrow
+      shadow="md"
+      radius="sm"
+      opened={opened}
+      onChange={setOpened}
+    >
+      <Popover.Target>{pillWithTooltip}</Popover.Target>
+      <Popover.Dropdown p={4}>
+        <Flex gap={4} align="center">
+          <Tooltip label={copied ? 'Copied' : 'Copy value'}>
+            <ActionIcon
+              size="sm"
+              variant="subtle"
+              color="gray"
+              onClick={handleCopy}
+              aria-label="Copy value"
+            >
+              {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label={polarityLabel}>
+            <ActionIcon
+              size="sm"
+              variant="subtle"
+              color="gray"
+              onClick={() => {
+                onTogglePolarity();
+                setOpened(false);
+              }}
+              aria-label={polarityLabel}
+            >
+              {isExcluded ? (
+                <IconFilter size={14} />
+              ) : (
+                <IconFilterX size={14} />
+              )}
+            </ActionIcon>
+          </Tooltip>
+        </Flex>
+      </Popover.Dropdown>
+    </Popover>
   );
 }
 
@@ -196,6 +297,23 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
     [setFilterValue, clearFilter],
   );
 
+  // Flip a value between included and excluded in place. setFilterValue's
+  // 'include'/'exclude' actions already move the value across the two sets, so
+  // an excluded pill goes to included and vice versa without a remove + re-add.
+  const handleTogglePolarity = useCallback(
+    (pill: PillItem) => {
+      if (pill.rawValue == null) {
+        return;
+      }
+      setFilterValue(
+        pill.field,
+        pill.rawValue,
+        pill.type === 'excluded' ? 'include' : 'exclude',
+      );
+    },
+    [setFilterValue],
+  );
+
   const handleClearAll = useCallback(() => {
     if (!confirmClear) {
       setConfirmClear(true);
@@ -228,6 +346,7 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
               isInvalid ? invalidFieldReason?.(pill.field) : undefined
             }
             onRemove={() => handleRemove(pill)}
+            onTogglePolarity={() => handleTogglePolarity(pill)}
           />
         );
       })}

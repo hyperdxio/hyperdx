@@ -1,8 +1,16 @@
 import { act, fireEvent, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import type { FilterStateHook } from '@/searchFilters';
+import { copyTextToClipboard } from '@/utils/clipboard';
 
 import { ActiveFilterPills } from '../ActiveFilterPills';
+
+jest.mock('@/utils/clipboard', () => ({
+  __esModule: true,
+  CLIPBOARD_ERROR_MESSAGE: 'clipboard error',
+  copyTextToClipboard: jest.fn().mockResolvedValue(true),
+}));
 
 function makeSearchFilters(
   filters: FilterStateHook['filters'],
@@ -274,5 +282,126 @@ describe('ActiveFilterPills', () => {
     expect(screen.getByText('200')).toBeInTheDocument();
     expect(screen.getByText('500')).toBeInTheDocument();
     expect(screen.getByText('10 – 200')).toBeInTheDocument();
+  });
+
+  // The popover dropdown mounts via floating-ui on a frame and Mantine guards
+  // the opening click through a real pointer sequence, so these tests run on
+  // real timers with userEvent, unlike the synchronous suite above.
+  it('opens the action menu when an editable pill is clicked', async () => {
+    jest.useRealTimers();
+    const user = userEvent.setup();
+    const searchFilters = makeSearchFilters({
+      status: {
+        included: new Set<string | boolean>(['200']),
+        excluded: new Set<string | boolean>(),
+      },
+    });
+    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+
+    await user.click(screen.getByTestId('active-filter-pill-status'));
+
+    const [copyButton, excludeButton] = await Promise.all([
+      screen.findByRole('button', { name: 'Copy value' }),
+      screen.findByRole('button', { name: 'Exclude' }),
+    ]);
+    expect(copyButton).toBeInTheDocument();
+    expect(excludeButton).toBeInTheDocument();
+  });
+
+  it('excludes an included value from the menu', async () => {
+    jest.useRealTimers();
+    const user = userEvent.setup();
+    const searchFilters = makeSearchFilters({
+      status: {
+        included: new Set<string | boolean>(['200']),
+        excluded: new Set<string | boolean>(),
+      },
+    });
+    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+
+    await user.click(screen.getByTestId('active-filter-pill-status'));
+    await user.click(await screen.findByRole('button', { name: 'Exclude' }));
+
+    expect(searchFilters.setFilterValue).toHaveBeenCalledWith(
+      'status',
+      '200',
+      'exclude',
+    );
+  });
+
+  it('includes an excluded value from the menu', async () => {
+    jest.useRealTimers();
+    const user = userEvent.setup();
+    const searchFilters = makeSearchFilters({
+      status: {
+        included: new Set<string | boolean>(),
+        excluded: new Set<string | boolean>(['500']),
+      },
+    });
+    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+
+    await user.click(screen.getByTestId('active-filter-pill-status'));
+    await user.click(await screen.findByRole('button', { name: 'Include' }));
+
+    expect(searchFilters.setFilterValue).toHaveBeenCalledWith(
+      'status',
+      '500',
+      'include',
+    );
+  });
+
+  it('copies the value from the menu', async () => {
+    jest.useRealTimers();
+    const user = userEvent.setup();
+    const searchFilters = makeSearchFilters({
+      status: {
+        included: new Set<string | boolean>(['200']),
+        excluded: new Set<string | boolean>(),
+      },
+    });
+    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+
+    await user.click(screen.getByTestId('active-filter-pill-status'));
+    await user.click(await screen.findByRole('button', { name: 'Copy value' }));
+
+    expect(copyTextToClipboard).toHaveBeenCalledWith('200');
+  });
+
+  it('removes via the x without opening the menu', () => {
+    const searchFilters = makeSearchFilters({
+      status: {
+        included: new Set<string | boolean>(['200']),
+        excluded: new Set<string | boolean>(),
+      },
+    });
+    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove filter' }));
+
+    expect(searchFilters.setFilterValue).toHaveBeenCalledWith(
+      'status',
+      '200',
+      undefined,
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Exclude' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not open the menu for range pills', () => {
+    const searchFilters = makeSearchFilters({
+      duration: {
+        included: new Set<string | boolean>(),
+        excluded: new Set<string | boolean>(),
+        range: { min: 100, max: 500 },
+      },
+    });
+    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+
+    fireEvent.click(screen.getByTestId('active-filter-pill-duration'));
+
+    expect(
+      screen.queryByRole('button', { name: 'Copy value' }),
+    ).not.toBeInTheDocument();
   });
 });
