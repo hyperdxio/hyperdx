@@ -43,9 +43,6 @@ function isInfraError(text: string): boolean {
 function computeToolErrorStats(record: RunRecord): ToolErrorStats {
   const total = record.toolCalls.length;
   const errored = record.toolCalls.filter(c => c.isError);
-  // Separate agent-attributable errors from infrastructure failures (rate
-  // limits, server-side bugs, transient 5xx). Only agent errors feed the
-  // penalty — the agent has no control over server hiccups.
   const agentErrored = errored.filter(c => {
     const text =
       typeof c.output === 'string' ? c.output : JSON.stringify(c.output ?? '');
@@ -53,11 +50,6 @@ function computeToolErrorStats(record: RunRecord): ToolErrorStats {
   });
   const errors = agentErrored.length;
   const rate = total > 0 ? errors / total : 0;
-  // Linear penalty up to MAX_ERROR_PENALTY when ALL tool calls fail.
-  // Mathematically: penalty = min(rate, MAX_ERROR_PENALTY).
-  // We intentionally use rate (not errors/maxTurns) so a run that calls
-  // 1 tool which fails (rate=1.0) is penalized as harshly as a run that
-  // fails 20 of 20 tool calls — both are equally broken sessions.
   const penalty = Math.min(rate, MAX_ERROR_PENALTY);
   const samples = agentErrored.slice(0, 3).map(c => {
     const text =
@@ -108,8 +100,6 @@ export async function gradeBatch(
   }
   const runFiles = listRunFiles(resolved);
 
-  // Decide whether we'll actually need the judge: skipJudge wins, otherwise
-  // we need it if any run is missing a cached judge OR rerun was requested.
   const needsJudge =
     !opts.skipJudge &&
     runFiles.some(p => {
@@ -338,11 +328,9 @@ function gradeFilePath(runPath: string): string {
 }
 
 export function resolveBatchDir(input: string): string {
-  // Accept absolute path, relative path, or just a batch basename.
   if (existsSync(input)) return input;
   const root = runsRoot();
   const candidate = join(root, input);
   if (existsSync(candidate)) return candidate;
-  // Allow user to drop the bare basename even if not yet present.
   return dirname(input) === '.' ? candidate : input;
 }
