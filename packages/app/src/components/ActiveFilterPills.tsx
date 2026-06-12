@@ -53,7 +53,7 @@ function flattenFilters(filters: FilterStateHook['filters']): PillItem[] {
     if (state.range != null) {
       pills.push({
         field,
-        value: `${state.range.min} – ${state.range.max}`,
+        value: `${state.range.min} - ${state.range.max}`,
         type: 'range',
       });
     }

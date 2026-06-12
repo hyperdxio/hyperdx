@@ -76,7 +76,7 @@ describe('ActiveFilterPills', () => {
     });
     renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
     expect(screen.getByText('duration')).toBeInTheDocument();
-    expect(screen.getByText('100 – 500')).toBeInTheDocument();
+    expect(screen.getByText('100 - 500')).toBeInTheDocument();
   });
 
   it('calls setFilterValue when removing an included pill', () => {
@@ -281,7 +281,7 @@ describe('ActiveFilterPills', () => {
 
     expect(screen.getByText('200')).toBeInTheDocument();
     expect(screen.getByText('500')).toBeInTheDocument();
-    expect(screen.getByText('10 – 200')).toBeInTheDocument();
+    expect(screen.getByText('10 - 200')).toBeInTheDocument();
   });
 
   // The popover dropdown mounts via floating-ui on a frame and Mantine guards
