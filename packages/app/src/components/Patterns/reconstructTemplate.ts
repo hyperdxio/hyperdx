@@ -6,11 +6,11 @@ export function reconstructTemplate(
   const tokens = templateMined.split(' ').filter(t => t.length > 0);
   if (tokens.length === 0) return normalized;
 
+  const tokenOrSeparator = /([A-Za-z0-9]+)|([^A-Za-z0-9]+)/g;
   let result = '';
   let tokenIdx = 0;
-  TOKEN_OR_SEPARATOR.lastIndex = 0;
   let match: RegExpExecArray | null;
-  while ((match = TOKEN_OR_SEPARATOR.exec(normalized)) !== null) {
+  while ((match = tokenOrSeparator.exec(normalized)) !== null) {
     if (match[1] !== undefined) {
       result += tokens[tokenIdx] ?? match[1];
       tokenIdx++;
