@@ -1,6 +1,5 @@
 import { sanitizeUrl } from '@braintree/sanitize-url';
 import express, { RequestHandler, Response } from 'express';
-import { createProxyMiddleware } from 'http-proxy-middleware';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
@@ -164,9 +163,16 @@ const getConnection: RequestHandler =
     }
   };
 
-const proxyMiddleware: RequestHandler =
-  // prettier-ignore-next-line
-  createProxyMiddleware({
+// http-proxy-middleware v4 is ESM-only, so we use a dynamic import with a
+// lazy-init wrapper to keep this CJS module compatible.
+let _proxyMiddleware: RequestHandler | undefined;
+
+async function getProxyMiddleware(): Promise<RequestHandler> {
+  if (_proxyMiddleware) return _proxyMiddleware;
+
+  const { createProxyMiddleware } = await import('http-proxy-middleware');
+
+  _proxyMiddleware = createProxyMiddleware({
     target: '', // doesn't matter. it should be overridden by the router
     changeOrigin: true,
     pathFilter: (path, _req) => {
@@ -231,7 +237,6 @@ const proxyMiddleware: RequestHandler =
         }
 
         try {
-          // TODO: Use fixRequestBody after this issue is resolved: https://github.com/chimurai/http-proxy-middleware/issues/1102
           proxyReq.write(body);
         } catch (e) {
           console.error(
@@ -274,6 +279,18 @@ const proxyMiddleware: RequestHandler =
     //   logger: console,
     // }),
   });
+
+  return _proxyMiddleware;
+}
+
+const proxyMiddleware: RequestHandler = async (req, res, next) => {
+  try {
+    const middleware = await getProxyMiddleware();
+    middleware(req, res, next);
+  } catch (e) {
+    next(e);
+  }
+};
 
 router.get('/*', hasConnectionId, getConnection, proxyMiddleware);
 router.post('/*', hasConnectionId, getConnection, proxyMiddleware);

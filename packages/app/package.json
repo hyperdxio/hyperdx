@@ -63,7 +63,7 @@
     "dayjs": "^1.11.19",
     "flat": "^5.0.2",
     "fuse.js": "^6.6.2",
-    "http-proxy-middleware": "^3.0.5",
+    "http-proxy-middleware": "^4.0.0",
     "immer": "^9.0.21",
     "jotai": "^2.5.1",
     "ky": "^0.30.0",
