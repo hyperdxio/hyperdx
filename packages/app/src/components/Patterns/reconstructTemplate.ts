@@ -1,5 +1,3 @@
-const TOKEN_OR_SEPARATOR = /([A-Za-z0-9]+)|([^A-Za-z0-9]+)/g;
-
 export function reconstructTemplate(
   originalLog: string,
   templateMined: string,
