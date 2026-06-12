@@ -30,6 +30,7 @@ import {
   ChartTooltipItem,
 } from './components/charts/ChartTooltip';
 import {
+  findNearestSeriesKey,
   LineData,
   MAX_TIME_CHART_SERIES,
   toStartOfInterval,
@@ -39,6 +40,11 @@ import { FormatTime, useFormatTime } from './useFormatTime';
 import styles from '../styles/HDXLineChart.module.scss';
 
 const MAX_LEGEND_ITEMS = 4;
+
+// Vertical pixel distance within which a series' line counts as "near" the
+// cursor for tooltip highlighting. Beyond this, no row is emphasized so the
+// tooltip is not misleading when the pointer is in empty space.
+const NEAREST_SERIES_MAX_DISTANCE_PX = 30;
 
 const Y_AXIS_WIDTH = 40;
 const SINGLE_POINT_BAR_RIGHT_PADDING = 10;
@@ -60,10 +66,12 @@ export const TooltipItem = memo(
     p,
     previous,
     numberFormat,
+    highlighted,
   }: {
     p: TooltipPayload;
     previous?: TooltipPayload;
     numberFormat?: NumberFormat;
+    highlighted?: boolean;
   }) => {
     return (
       <ChartTooltipItem
@@ -75,6 +83,7 @@ export const TooltipItem = memo(
         strokeDasharray={p.strokeDasharray}
         opacity={p.opacity}
         previous={previous?.value}
+        highlighted={highlighted}
       />
     );
   },
@@ -85,6 +94,8 @@ type HDXLineChartTooltipProps = {
   previousPeriodOffsetSeconds?: number;
   numberFormat?: NumberFormat;
   numberFormatByKey: Map<string, NumberFormat>;
+  /** Per-series active-point pixel Y, captured by the Area active dots. */
+  activePointYByKeyRef: React.MutableRefObject<Map<string, number>>;
 } & Record<string, any>;
 
 const HDXLineChartTooltip = withErrorBoundary(
@@ -97,6 +108,7 @@ const HDXLineChartTooltip = withErrorBoundary(
       numberFormatByKey,
       lineDataMap,
       previousPeriodOffsetSeconds,
+      activePointYByKeyRef,
     } = props;
     const typedPayload = payload as TooltipPayload[];
 
@@ -120,6 +132,21 @@ const HDXLineChartTooltip = withErrorBoundary(
           )}
         </>
       );
+
+      // `coordinate.y` is the cursor's pixel Y; compare it to each series'
+      // active-dot pixel Y to bold the nearest line. The active dots wrote
+      // their positions earlier in this same render (Recharts renders
+      // graphical items before the tooltip), so the capture is current.
+      const pointerY: number | undefined = props.coordinate?.y;
+      // eslint-disable-next-line react-hooks/refs
+      const activePointYByKey = activePointYByKeyRef?.current ?? undefined;
+      const nearestSeriesKey = findNearestSeriesKey(
+        activePointYByKey,
+        typedPayload.map(p => p.dataKey),
+        pointerY,
+        NEAREST_SERIES_MAX_DISTANCE_PX,
+      );
+
       return (
         <ChartTooltipContainer header={header}>
           {payload
@@ -142,6 +169,7 @@ const HDXLineChartTooltip = withErrorBoundary(
                   p={p}
                   numberFormat={numberFormatForKey}
                   previous={previousPayload}
+                  highlighted={p.dataKey === nearestSeriesKey}
                 />
               );
             })}
@@ -337,6 +365,58 @@ const StackedBarWithOverlap = (props: BarProps) => {
   );
 };
 
+type CaptureActiveDotProps = {
+  /** Shared ref the tooltip reads to find the series nearest the cursor. */
+  captureRef: React.MutableRefObject<Map<string, number>>;
+  cx?: number;
+  cy?: number;
+  dataKey?: string | number;
+  r?: number;
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+};
+
+/**
+ * Active dot for an Area series. Records the active point's pixel Y (`cy`)
+ * into `captureRef`, keyed by dataKey, then draws the same dot Recharts
+ * renders by default. Recharts clones this element with the active-point
+ * props (cx, cy, dataKey, r, fill, stroke, strokeWidth) during the render
+ * that precedes the tooltip, so the ref is current when the tooltip reads
+ * it to find the series nearest the cursor.
+ */
+function CaptureActiveDot({
+  captureRef,
+  cx,
+  cy,
+  dataKey,
+  r,
+  fill,
+  stroke,
+  strokeWidth,
+}: CaptureActiveDotProps) {
+  if (dataKey != null && typeof cy === 'number' && Number.isFinite(cy)) {
+    // Written synchronously during render so the tooltip, which Recharts
+    // renders after the graphical items in the same commit, reads the
+    // current frame's positions rather than the previous frame's.
+    // eslint-disable-next-line react-hooks/refs
+    captureRef.current.set(String(dataKey), cy);
+  }
+  if (typeof cx !== 'number' || typeof cy !== 'number') {
+    return null;
+  }
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={r}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+    />
+  );
+}
+
 /**
  * Compute the unique set of hexes referenced by `<linearGradient>` defs
  * inside MemoChart. Exported so a unit test can pin the dedup-and-union
@@ -417,6 +497,11 @@ export const MemoChart = memo(function MemoChart({
 
   const [isHovered, setIsHovered] = useState(false);
 
+  // Filled by each Area's active dot with the series' active-point pixel Y,
+  // keyed by dataKey, so the tooltip can bold the series nearest the cursor.
+  // Read during the same render that draws the active dots.
+  const activePointYByKeyRef = useRef<Map<string, number>>(new Map());
+
   const ChartComponent = useMemo(
     () => (displayType === DisplayType.StackedBar ? BarChart : AreaChart), // LineChart;
     [displayType],
@@ -460,6 +545,7 @@ export const MemoChart = memo(function MemoChart({
           type="monotone"
           stroke={color}
           fillOpacity={1}
+          activeDot={<CaptureActiveDot captureRef={activePointYByKeyRef} />}
           {...(isHovered
             ? { fill: 'none', strokeDasharray }
             : {
@@ -785,6 +871,7 @@ export const MemoChart = memo(function MemoChart({
                 numberFormatByKey={tooltipNumberFormatsByKey}
                 lineDataMap={lineDataMap}
                 previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+                activePointYByKeyRef={activePointYByKeyRef}
               />
             }
             wrapperStyle={{

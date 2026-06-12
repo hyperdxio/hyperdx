@@ -8,6 +8,7 @@ import {
   convertToNumberChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
+  findNearestSeriesKey,
   formatResponseForPieChart,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
@@ -1059,6 +1060,62 @@ describe('ChartUtils', () => {
       expect(result).toEqual([
         { label: 'svc', value: 5, color: 'color-0-svc' },
       ]);
+    });
+  });
+
+  describe('findNearestSeriesKey', () => {
+    it('returns the series whose captured Y is nearest the pointer', () => {
+      const seriesY = new Map([
+        ['a', 100],
+        ['b', 50],
+        ['c', 10],
+      ]);
+      expect(findNearestSeriesKey(seriesY, ['a', 'b', 'c'], 48, 30)).toBe('b');
+    });
+
+    it('returns undefined when no series is within maxDistancePx', () => {
+      const seriesY = new Map([
+        ['a', 100],
+        ['b', 50],
+      ]);
+      expect(
+        findNearestSeriesKey(seriesY, ['a', 'b'], 200, 30),
+      ).toBeUndefined();
+    });
+
+    it('includes a series exactly at maxDistancePx', () => {
+      const seriesY = new Map([['a', 100]]);
+      expect(findNearestSeriesKey(seriesY, ['a'], 70, 30)).toBe('a');
+    });
+
+    it('returns undefined when pointerY is undefined', () => {
+      const seriesY = new Map([['a', 100]]);
+      expect(
+        findNearestSeriesKey(seriesY, ['a'], undefined, 30),
+      ).toBeUndefined();
+    });
+
+    it('returns undefined when the captured map is undefined', () => {
+      expect(findNearestSeriesKey(undefined, ['a'], 100, 30)).toBeUndefined();
+    });
+
+    it('returns undefined when there are no candidate keys', () => {
+      const seriesY = new Map([['a', 100]]);
+      expect(findNearestSeriesKey(seriesY, [], 100, 30)).toBeUndefined();
+    });
+
+    it('skips candidates absent from the captured map', () => {
+      const seriesY = new Map([['b', 105]]);
+      expect(findNearestSeriesKey(seriesY, ['a', 'b'], 100, 30)).toBe('b');
+    });
+
+    it('resolves ties to the first candidate', () => {
+      const seriesY = new Map([
+        ['a', 90],
+        ['b', 110],
+      ]);
+      // pointer 100 is 10px from both 'a' (90) and 'b' (110)
+      expect(findNearestSeriesKey(seriesY, ['a', 'b'], 100, 30)).toBe('a');
     });
   });
 });

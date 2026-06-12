@@ -50,6 +50,7 @@ export const ChartTooltipItem = memo(
     strokeDasharray,
     opacity,
     previous,
+    highlighted,
   }: {
     color: string;
     name: string;
@@ -59,9 +60,13 @@ export const ChartTooltipItem = memo(
     strokeDasharray?: string;
     opacity?: number;
     previous?: number;
+    highlighted?: boolean;
   }) => {
     return (
-      <div className="d-flex gap-2 items-center justify-center">
+      <div
+        className="d-flex gap-2 items-center justify-center"
+        style={highlighted ? { fontWeight: 600 } : undefined}
+      >
         <div>
           {indicator === 'square' ? (
             <svg width="12" height="12">

@@ -466,6 +466,48 @@ export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {
   ];
 }
 
+/**
+ * Find the series whose active-point pixel Y is closest to the cursor.
+ *
+ * `seriesYByKey` maps each series' dataKey to the pixel Y of its
+ * active point (captured from the chart's active dots), and `pointerY`
+ * is the cursor's pixel Y. Both live in the same chart pixel space, so
+ * the nearest series is the one with the smallest vertical distance.
+ * Returns that series' dataKey, or `undefined` when the pointer is
+ * farther than `maxDistancePx` from every line (so nothing is
+ * highlighted in empty space). Candidates not present in the map are
+ * skipped, and ties resolve to the first candidate in `candidateKeys`.
+ */
+export function findNearestSeriesKey(
+  seriesYByKey: Map<string, number> | undefined,
+  candidateKeys: string[],
+  pointerY: number | undefined,
+  maxDistancePx: number,
+): string | undefined {
+  if (seriesYByKey == null || pointerY == null) {
+    return undefined;
+  }
+
+  let nearestKey: string | undefined;
+  let nearestDistance = Infinity;
+  for (const key of candidateKeys) {
+    const seriesY = seriesYByKey.get(key);
+    if (seriesY == null) {
+      continue;
+    }
+    const distance = Math.abs(seriesY - pointerY);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestKey = key;
+    }
+  }
+
+  if (nearestKey == null || nearestDistance > maxDistancePx) {
+    return undefined;
+  }
+  return nearestKey;
+}
+
 export interface LineData {
   dataKey: string;
   currentPeriodKey: string;
