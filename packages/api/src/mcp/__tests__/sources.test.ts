@@ -549,6 +549,35 @@ describe('MCP Source Tools', () => {
       expect(output.metrics).toEqual([]);
       expect(output.hint).toMatch(/widening|removing|omitting/);
     });
+
+    it('surfaces partialFailure instead of the empty hint when a kind fetch fails', async () => {
+      // Point the gauge kind at the logs table: it exists (so source
+      // resolution succeeds) but has no MetricName/TimeUnix columns, so
+      // the per-kind listing query throws.
+      const brokenSource = await Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: DEFAULT_LOGS_TABLE,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection._id,
+        name: 'BrokenMetrics',
+      });
+      const result = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: brokenSource._id.toString(),
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.metrics).toEqual([]);
+      expect(output.partialFailure).toHaveLength(1);
+      expect(output.partialFailure[0].kind).toBe('gauge');
+      expect(output.partialFailure[0].error).toBeTruthy();
+      // The misleading "No metrics matched … widen the window" hint must
+      // NOT appear — the agent should retry, not widen.
+      expect(output.hint).not.toMatch(/No metrics matched/);
+    });
   });
 
   // ── clickstack_describe_metric ───────────────────────────────────────────
@@ -605,6 +634,38 @@ describe('MCP Source Tools', () => {
       expect(output.kinds[0].kind).toBe('gauge');
       expect(output.kinds[0].attributeKeys).toEqual({});
       expect(output.hint).toMatch(/No data found/);
+      expect(output.partialFailure).toBeUndefined();
+    });
+
+    it('surfaces partialFailure instead of the no-data hint when discovery fails', async () => {
+      // Point the gauge kind at the logs table: it exists (so getColumns
+      // succeeds) but lacks MetricName/TimeUnix columns, so the
+      // attribute-keys discovery query throws.
+      const brokenSource = await Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: DEFAULT_LOGS_TABLE,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection._id,
+        name: 'BrokenMetrics',
+      });
+      const result = await callTool(client, 'clickstack_describe_metric', {
+        sourceId: brokenSource._id.toString(),
+        metricName: 'whatever',
+        kind: 'gauge',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.partialFailure).toBeDefined();
+      expect(
+        output.partialFailure.map((f: { stage: string }) => f.stage),
+      ).toContain('attributeKeys');
+      // The misleading "No data found … widen startTime/endTime" hint
+      // must NOT appear — the fetch failed; widening would not help.
+      expect(output.hint).not.toMatch(/No data found/);
     });
 
     it('returns attribute keys for a gauge metric when kind is specified', async () => {

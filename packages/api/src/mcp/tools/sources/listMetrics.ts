@@ -355,6 +355,10 @@ export function registerListMetrics(
       const databaseName = source.from.databaseName;
 
       const metrics: MetricEntry[] = [];
+      // Per-kind fetch failures, surfaced on the response so the agent
+      // can distinguish "kind genuinely has no metrics" from "the fetch
+      // for that kind failed" — the two need different recovery steps.
+      const partialFailure: { kind: string; error: string }[] = [];
       let nextCursor: string | undefined;
       for (let i = startKindIdx; i < requestedKinds.length; i++) {
         const kind = requestedKinds[i];
@@ -383,14 +387,15 @@ export function registerListMetrics(
             limit: remaining + 1,
           });
         } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
           logger.warn(
-            {
-              sourceId: input.sourceId,
-              kind,
-              error: e instanceof Error ? e.message : String(e),
-            },
+            { sourceId: input.sourceId, kind, error: message },
             'Failed to list metrics for kind',
           );
+          partialFailure.push({
+            kind,
+            error: message.replace(/\s+/g, ' ').trim().slice(0, 200),
+          });
           continue;
         }
         if (kindMetrics.length > remaining) {
@@ -410,11 +415,18 @@ export function registerListMetrics(
       const responseObj: Record<string, unknown> = {
         metrics,
         ...(nextCursor && { nextCursor }),
-        ...(metrics.length === 0 && {
+        ...(partialFailure.length > 0 && {
+          partialFailure,
           hint:
-            'No metrics matched. Try widening the time window (startTime/endTime), ' +
-            'removing the namePattern filter, or omitting `kind` to scan every populated metric table.',
+            'Listing failed for some metric kinds — results may be incomplete. ' +
+            'Retry the call; if the failure persists, narrow startTime/endTime or pin a single `kind`.',
         }),
+        ...(metrics.length === 0 &&
+          partialFailure.length === 0 && {
+            hint:
+              'No metrics matched. Try widening the time window (startTime/endTime), ' +
+              'removing the namePattern filter, or omitting `kind` to scan every populated metric table.',
+          }),
         usage:
           'Pass `metricType` + `metricName` from each entry to clickstack_timeseries / clickstack_table. ' +
           'For per-metric attribute keys and sampled values, call clickstack_describe_metric.',

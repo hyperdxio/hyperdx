@@ -111,6 +111,22 @@ type KindDetail = {
   usage: string;
 };
 
+/**
+ * Discriminated result for the discovery sub-queries so the caller can
+ * distinguish "fetch failed" from "genuinely empty" — the two cases
+ * need different agent guidance (retry/report vs. widen the window).
+ */
+type FetchResult<T> = { ok: true; data: T } | { ok: false; error: string };
+
+/**
+ * Compact an error for inclusion in a tool response: single line,
+ * capped length, no stack frames.
+ */
+function sanitizeFetchError(e: unknown): string {
+  const message = e instanceof Error ? e.message : String(e);
+  return message.replace(/\s+/g, ' ').trim().slice(0, 200);
+}
+
 function parseTimeRange(
   startTime?: string,
   endTime?: string,
@@ -239,12 +255,12 @@ async function fetchAttributeKeys({
   startDate: Date;
   endDate: Date;
   signal: AbortSignal;
-}): Promise<Record<string, string[]>> {
+}): Promise<FetchResult<Record<string, string[]>>> {
   const mapColumns =
     filterColumnMetaByType(columns, [JSDataType.Map])?.filter(
       c => convertCHDataTypeToJSType(c.type) === JSDataType.Map,
     ) ?? [];
-  if (mapColumns.length === 0) return {};
+  if (mapColumns.length === 0) return { ok: true, data: {} };
 
   const sampleProjections = mapColumns.map(
     col => chSql`${{ Identifier: col.name }}`,
@@ -289,7 +305,7 @@ async function fetchAttributeKeys({
       data: Array<Record<string, string[]>>;
     };
     const row = result.data[0];
-    if (!row) return {};
+    if (!row) return { ok: true, data: {} };
     const out: Record<string, string[]> = {};
     for (const col of mapColumns) {
       const keys = row[col.name];
@@ -297,13 +313,13 @@ async function fetchAttributeKeys({
         out[col.name] = keys.filter(k => typeof k === 'string' && k.length > 0);
       }
     }
-    return out;
+    return { ok: true, data: out };
   } catch (e) {
     logger.warn(
       { tableName, error: e instanceof Error ? e.message : String(e) },
       'fetchAttributeKeys failed',
     );
-    return {};
+    return { ok: false, error: sanitizeFetchError(e) };
   }
 }
 
@@ -333,7 +349,7 @@ async function sampleAttributeValues({
   startDate: Date;
   endDate: Date;
   signal: AbortSignal;
-}): Promise<Record<string, string[]>> {
+}): Promise<FetchResult<Record<string, string[]>>> {
   const flatKeyExprs: { display: string; mapColumn: string; key: string }[] =
     [];
   for (const [mapColumn, keys] of Object.entries(attributeKeys)) {
@@ -347,7 +363,7 @@ async function sampleAttributeValues({
     }
     if (flatKeyExprs.length >= MAX_ATTR_KEYS_TO_SAMPLE) break;
   }
-  if (flatKeyExprs.length === 0) return {};
+  if (flatKeyExprs.length === 0) return { ok: true, data: {} };
 
   const projections = flatKeyExprs.map(
     ({ mapColumn, key }, idx) => chSql`
@@ -400,7 +416,7 @@ async function sampleAttributeValues({
       data: Array<Record<string, string[]>>;
     };
     const row = result.data[0];
-    if (!row) return {};
+    if (!row) return { ok: true, data: {} };
     const values: Record<string, string[]> = {};
     flatKeyExprs.forEach((meta, idx) => {
       const sample = (row[`param${idx}`] ?? []).filter(v => v !== '');
@@ -408,13 +424,13 @@ async function sampleAttributeValues({
         values[meta.display] = sample;
       }
     });
-    return values;
+    return { ok: true, data: values };
   } catch (e) {
     logger.warn(
       { tableName, error: e instanceof Error ? e.message : String(e) },
       'sampleAttributeValues failed',
     );
-    return {};
+    return { ok: false, error: sanitizeFetchError(e) };
   }
 }
 
@@ -526,7 +542,7 @@ async function describeMetricImpl(
   const hasUnit = columnNames.has('MetricUnit');
   const hasDescription = columnNames.has('MetricDescription');
 
-  const [meta, attributeKeys] = await Promise.all([
+  const [meta, attributeKeysResult] = await Promise.all([
     fetchUnitAndDescription({
       clickhouseClient,
       databaseName,
@@ -552,6 +568,19 @@ async function describeMetricImpl(
     }),
   ]);
 
+  // Track discovery sub-queries that failed so the agent can distinguish
+  // "fetch failed" (retry / report) from "genuinely empty" (widen the
+  // window). Without this, transient ClickHouse errors surfaced as the
+  // misleading "No data found" hint.
+  const partialFailure: { stage: string; error: string }[] = [];
+  const attributeKeys = attributeKeysResult.ok ? attributeKeysResult.data : {};
+  if (!attributeKeysResult.ok) {
+    partialFailure.push({
+      stage: 'attributeKeys',
+      error: attributeKeysResult.error,
+    });
+  }
+
   const kindDetail: KindDetail = {
     kind,
     tableName,
@@ -562,7 +591,7 @@ async function describeMetricImpl(
   };
 
   if (input.sampleValues && Object.keys(attributeKeys).length > 0) {
-    kindDetail.attributeValues = await sampleAttributeValues({
+    const valuesResult = await sampleAttributeValues({
       clickhouseClient,
       databaseName,
       tableName,
@@ -573,6 +602,14 @@ async function describeMetricImpl(
       endDate,
       signal,
     });
+    if (valuesResult.ok) {
+      kindDetail.attributeValues = valuesResult.data;
+    } else {
+      partialFailure.push({
+        stage: 'attributeValues',
+        error: valuesResult.error,
+      });
+    }
   }
 
   const kindDetails: KindDetail[] = [kindDetail];
@@ -581,8 +618,13 @@ async function describeMetricImpl(
   // unit, nor description came back, the (metric, kind) pair likely has
   // no data in the requested window. The agent's recourse is to widen
   // startTime/endTime or double-check the kind via clickstack_list_metrics.
+  // Suppressed when any discovery stage failed — an empty attributeKeys
+  // can't be trusted as "no data" then.
   const noSignal =
-    Object.keys(attributeKeys).length === 0 && !meta.unit && !meta.description;
+    partialFailure.length === 0 &&
+    Object.keys(attributeKeys).length === 0 &&
+    !meta.unit &&
+    !meta.description;
 
   const queryExample = `clickstack_timeseries({ sourceId: "${input.sourceId}", select: [{ aggFn: ${
     kind === 'sum'
@@ -595,6 +637,12 @@ async function describeMetricImpl(
   const responseObj: Record<string, unknown> = {
     metricName: input.metricName,
     kinds: kindDetails,
+    ...(partialFailure.length > 0 && {
+      partialFailure,
+      hint:
+        'Some discovery queries failed — the fields above may be incomplete. ' +
+        'Retry the call; if the failure persists, narrow startTime/endTime or set sampleValues:false.',
+    }),
     ...(noSignal && {
       hint:
         `No data found for MetricName "${input.metricName}" with kind "${kind}" ` +
