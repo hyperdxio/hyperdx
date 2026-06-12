@@ -1,6 +1,8 @@
+import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { act, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { useGetKeyValues } from '@/hooks/useMetadata';
 import type { FilterStateHook } from '@/searchFilters';
 import { copyTextToClipboard } from '@/utils/clipboard';
 
@@ -12,6 +14,29 @@ jest.mock('@/utils/clipboard', () => ({
   copyTextToClipboard: jest.fn().mockResolvedValue(true),
 }));
 
+jest.mock('@/hooks/useMetadata', () => ({
+  __esModule: true,
+  useGetKeyValues: jest.fn(() => ({ data: [], isFetching: false })),
+}));
+
+const mockedUseGetKeyValues = useGetKeyValues as jest.Mock;
+
+// Mantine's Combobox calls scrollIntoView when its dropdown opens; jsdom lacks
+// it. jsdom also has no layout, so portaled options compute as "hidden" and
+// must be queried with { hidden: true }.
+window.HTMLElement.prototype.scrollIntoView = jest.fn();
+
+// useGetKeyValues is mocked, so this only needs to satisfy the prop type.
+const CHART_CONFIG = {
+  from: { databaseName: 'db', tableName: 'logs' },
+  connection: 'conn',
+  select: '',
+  where: '',
+  whereLanguage: 'lucene',
+  timestampValueExpression: 'Timestamp',
+  dateRange: [new Date(0), new Date()],
+} as BuilderChartConfigWithDateRange;
+
 function makeSearchFilters(
   filters: FilterStateHook['filters'],
 ): FilterStateHook {
@@ -19,6 +44,7 @@ function makeSearchFilters(
     filters,
     setFilters: jest.fn(),
     setFilterValue: jest.fn(),
+    replaceFilterValue: jest.fn(),
     setFilterRange: jest.fn(),
     clearFilter: jest.fn(),
     clearAllFilters: jest.fn(),
@@ -26,9 +52,19 @@ function makeSearchFilters(
   };
 }
 
+function renderPills(searchFilters: FilterStateHook) {
+  return renderWithMantine(
+    <ActiveFilterPills
+      searchFilters={searchFilters}
+      chartConfig={CHART_CONFIG}
+    />,
+  );
+}
+
 describe('ActiveFilterPills', () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    mockedUseGetKeyValues.mockReturnValue({ data: [], isFetching: false });
   });
   afterEach(() => {
     jest.useRealTimers();
@@ -36,7 +72,7 @@ describe('ActiveFilterPills', () => {
 
   it('renders nothing when there are no filters', () => {
     const searchFilters = makeSearchFilters({});
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
     expect(screen.queryByText('Clear all')).not.toBeInTheDocument();
     expect(screen.queryByText(' = ')).not.toBeInTheDocument();
   });
@@ -48,7 +84,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
     expect(screen.getByText('200')).toBeInTheDocument();
     expect(screen.getByText('404')).toBeInTheDocument();
     expect(screen.getAllByText('status')).toHaveLength(2);
@@ -61,7 +97,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(['500']),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
     expect(screen.getByText('500')).toBeInTheDocument();
     expect(screen.getByText('status')).toBeInTheDocument();
   });
@@ -74,7 +110,7 @@ describe('ActiveFilterPills', () => {
         range: { min: 100, max: 500 },
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
     expect(screen.getByText('duration')).toBeInTheDocument();
     expect(screen.getByText('100 - 500')).toBeInTheDocument();
   });
@@ -86,7 +122,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
     // Click the x button (the svg icon's parent ActionIcon)
     const removeButtons = screen.getAllByRole('button');
     fireEvent.click(removeButtons[0]);
@@ -104,7 +140,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(['500']),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
     const removeButtons = screen.getAllByRole('button');
     fireEvent.click(removeButtons[0]);
     expect(searchFilters.setFilterValue).toHaveBeenCalledWith(
@@ -122,7 +158,7 @@ describe('ActiveFilterPills', () => {
         range: { min: 0, max: 100 },
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
     const removeButtons = screen.getAllByRole('button');
     fireEvent.click(removeButtons[0]);
     expect(searchFilters.clearFilter).toHaveBeenCalledWith('duration');
@@ -135,7 +171,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
     expect(screen.queryByText('Clear all')).not.toBeInTheDocument();
   });
 
@@ -146,7 +182,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
     expect(screen.getByText('Clear all')).toBeInTheDocument();
   });
 
@@ -157,7 +193,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
 
     // First click shows confirmation
     fireEvent.click(screen.getByText('Clear all'));
@@ -176,7 +212,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
 
     fireEvent.click(screen.getByText('Clear all'));
     expect(screen.getByText('Confirm clear all?')).toBeInTheDocument();
@@ -196,7 +232,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
 
     fireEvent.click(screen.getByText('Clear all'));
     expect(screen.getByText('Confirm clear all?')).toBeInTheDocument();
@@ -216,7 +252,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
 
     expect(screen.getByText('+2 more')).toBeInTheDocument();
     // Only 8 value pills should be visible
@@ -234,7 +270,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
 
     fireEvent.click(screen.getByText('+2 more'));
 
@@ -256,7 +292,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
 
     fireEvent.click(screen.getByText('+2 more'));
     fireEvent.click(screen.getByText('Show less'));
@@ -277,7 +313,7 @@ describe('ActiveFilterPills', () => {
         range: { min: 10, max: 200 },
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
 
     expect(screen.getByText('200')).toBeInTheDocument();
     expect(screen.getByText('500')).toBeInTheDocument();
@@ -296,7 +332,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
 
     await user.click(screen.getByTestId('active-filter-pill-status'));
 
@@ -317,7 +353,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
 
     await user.click(screen.getByTestId('active-filter-pill-status'));
     await user.click(await screen.findByRole('button', { name: 'Exclude' }));
@@ -338,7 +374,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(['500']),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
 
     await user.click(screen.getByTestId('active-filter-pill-status'));
     await user.click(await screen.findByRole('button', { name: 'Include' }));
@@ -359,7 +395,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
 
     await user.click(screen.getByTestId('active-filter-pill-status'));
     await user.click(await screen.findByRole('button', { name: 'Copy value' }));
@@ -374,7 +410,7 @@ describe('ActiveFilterPills', () => {
         excluded: new Set<string | boolean>(),
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove filter' }));
 
@@ -396,12 +432,96 @@ describe('ActiveFilterPills', () => {
         range: { min: 100, max: 500 },
       },
     });
-    renderWithMantine(<ActiveFilterPills searchFilters={searchFilters} />);
+    renderPills(searchFilters);
 
     fireEvent.click(screen.getByTestId('active-filter-pill-duration'));
 
     expect(
       screen.queryByRole('button', { name: 'Copy value' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('shows a value picker populated from useGetKeyValues', async () => {
+    jest.useRealTimers();
+    mockedUseGetKeyValues.mockReturnValue({
+      data: [{ key: 'status', value: ['200', '404', '500'] }],
+      isFetching: false,
+    });
+    const user = userEvent.setup();
+    const searchFilters = makeSearchFilters({
+      status: {
+        included: new Set<string | boolean>(['200']),
+        excluded: new Set<string | boolean>(),
+      },
+    });
+    renderPills(searchFilters);
+
+    await user.click(screen.getByTestId('active-filter-pill-status'));
+    await user.click(await screen.findByLabelText('Change filter value'));
+
+    expect(
+      await screen.findByRole('option', { name: '404', hidden: true }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: '500', hidden: true }),
+    ).toBeInTheDocument();
+  });
+
+  it('replaces the value from the menu, preserving include polarity', async () => {
+    jest.useRealTimers();
+    mockedUseGetKeyValues.mockReturnValue({
+      data: [{ key: 'status', value: ['200', '404', '500'] }],
+      isFetching: false,
+    });
+    const user = userEvent.setup();
+    const searchFilters = makeSearchFilters({
+      status: {
+        included: new Set<string | boolean>(['200']),
+        excluded: new Set<string | boolean>(),
+      },
+    });
+    renderPills(searchFilters);
+
+    await user.click(screen.getByTestId('active-filter-pill-status'));
+    await user.click(await screen.findByLabelText('Change filter value'));
+    fireEvent.click(
+      await screen.findByRole('option', { name: '404', hidden: true }),
+    );
+
+    expect(searchFilters.replaceFilterValue).toHaveBeenCalledWith(
+      'status',
+      '200',
+      '404',
+      'include',
+    );
+  });
+
+  it('replaces the value from the menu, preserving exclude polarity', async () => {
+    jest.useRealTimers();
+    mockedUseGetKeyValues.mockReturnValue({
+      data: [{ key: 'status', value: ['500', '502', '503'] }],
+      isFetching: false,
+    });
+    const user = userEvent.setup();
+    const searchFilters = makeSearchFilters({
+      status: {
+        included: new Set<string | boolean>(),
+        excluded: new Set<string | boolean>(['500']),
+      },
+    });
+    renderPills(searchFilters);
+
+    await user.click(screen.getByTestId('active-filter-pill-status'));
+    await user.click(await screen.findByLabelText('Change filter value'));
+    fireEvent.click(
+      await screen.findByRole('option', { name: '502', hidden: true }),
+    );
+
+    expect(searchFilters.replaceFilterValue).toHaveBeenCalledWith(
+      'status',
+      '500',
+      '502',
+      'exclude',
+    );
   });
 });

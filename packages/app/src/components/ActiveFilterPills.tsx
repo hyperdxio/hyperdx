@@ -1,9 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Flex,
   FlexProps,
   Popover,
+  Select,
   Text,
   Tooltip,
 } from '@mantine/core';
@@ -16,6 +18,7 @@ import {
   IconX,
 } from '@tabler/icons-react';
 
+import { useGetKeyValues } from '@/hooks/useMetadata';
 import type { FilterStateHook } from '@/searchFilters';
 import {
   CLIPBOARD_ERROR_MESSAGE,
@@ -23,6 +26,8 @@ import {
 } from '@/utils/clipboard';
 
 const MAX_VISIBLE_PILLS = 8;
+// Cap the value list fetched for the in-pill value picker.
+const VALUE_EDIT_LIMIT = 50;
 
 type PillItem = {
   field: string;
@@ -79,14 +84,18 @@ function FilterPill({
   pill,
   isInvalid,
   invalidReason,
+  chartConfig,
   onRemove,
   onTogglePolarity,
+  onReplaceValue,
 }: {
   pill: PillItem;
   isInvalid?: boolean;
   invalidReason?: string;
+  chartConfig: BuilderChartConfigWithDateRange;
   onRemove: () => void;
   onTogglePolarity: () => void;
+  onReplaceValue: (value: string) => void;
 }) {
   const isExcluded = pill.type === 'excluded';
   const operator = isExcluded ? ' != ' : pill.type === 'range' ? ': ' : ' = ';
@@ -104,6 +113,17 @@ function FilterPill({
   useEffect(() => {
     return () => clearTimeout(copyTimerRef.current);
   }, []);
+
+  // Fetch the field's values for the in-pill value picker, only while the
+  // menu is open (and never for range / not-applied pills).
+  const { data: keyValues, isFetching: isFetchingValues } = useGetKeyValues(
+    { chartConfig, keys: [pill.field], limit: VALUE_EDIT_LIMIT },
+    { enabled: opened && isEditable },
+  );
+  const valueOptions = useMemo(
+    () => Array.from(new Set([pill.value, ...(keyValues?.[0]?.value ?? [])])),
+    [keyValues, pill.value],
+  );
 
   const tooltipLabel = isInvalid
     ? (invalidReason ??
@@ -213,7 +233,26 @@ function FilterPill({
       onChange={setOpened}
     >
       <Popover.Target>{pillWithTooltip}</Popover.Target>
-      <Popover.Dropdown p={4}>
+      <Popover.Dropdown p={6}>
+        <Select
+          size="xs"
+          w={220}
+          searchable
+          mb={6}
+          data={valueOptions}
+          value={pill.value}
+          onChange={value => {
+            if (value && value !== pill.value) {
+              onReplaceValue(value);
+              setOpened(false);
+            }
+          }}
+          comboboxProps={{ withinPortal: false }}
+          nothingFoundMessage={
+            isFetchingValues ? 'Loading values...' : 'No values'
+          }
+          aria-label="Change filter value"
+        />
         <Flex gap={4} align="center">
           <Tooltip label={copied ? 'Copied' : 'Copy value'}>
             <ActionIcon
@@ -254,6 +293,7 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
   searchFilters,
   invalidFields,
   invalidFieldReason,
+  chartConfig,
   ...flexProps
 }: {
   searchFilters: FilterStateHook;
@@ -269,9 +309,19 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
    * returns the tooltip text.
    */
   invalidFieldReason?: (field: string) => string;
+  /**
+   * Chart config for the active source. Passed to useGetKeyValues so the
+   * in-pill value picker can list the field's values.
+   */
+  chartConfig: BuilderChartConfigWithDateRange;
 } & FlexProps) {
-  const { filters, setFilterValue, clearFilter, clearAllFilters } =
-    searchFilters;
+  const {
+    filters,
+    setFilterValue,
+    replaceFilterValue,
+    clearFilter,
+    clearAllFilters,
+  } = searchFilters;
 
   const pills = useMemo(() => flattenFilters(filters), [filters]);
   const [expanded, setExpanded] = useState(false);
@@ -314,6 +364,23 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
     [setFilterValue],
   );
 
+  // Swap a pill's value for another value of the same field, preserving the
+  // pill's polarity. One atomic update (no remove + re-add double query run).
+  const handleReplaceValue = useCallback(
+    (pill: PillItem, newValue: string) => {
+      if (pill.rawValue == null) {
+        return;
+      }
+      replaceFilterValue(
+        pill.field,
+        pill.rawValue,
+        newValue,
+        pill.type === 'excluded' ? 'exclude' : 'include',
+      );
+    },
+    [replaceFilterValue],
+  );
+
   const handleClearAll = useCallback(() => {
     if (!confirmClear) {
       setConfirmClear(true);
@@ -345,8 +412,10 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
             invalidReason={
               isInvalid ? invalidFieldReason?.(pill.field) : undefined
             }
+            chartConfig={chartConfig}
             onRemove={() => handleRemove(pill)}
             onTogglePolarity={() => handleTogglePolarity(pill)}
+            onReplaceValue={value => handleReplaceValue(pill, value)}
           />
         );
       })}

@@ -464,6 +464,35 @@ export const useSearchPageFilterState = ({
     [updateFilterQuery],
   );
 
+  // Swap one value for another within the same set (included or excluded),
+  // preserving polarity, in a single state update. Two setFilterValue calls
+  // would emit onFilterChange twice (one query run each); this emits once.
+  const replaceFilterValue = useCallback(
+    (
+      property: string,
+      oldValue: string | boolean,
+      newValue: string | boolean,
+      action: 'include' | 'exclude',
+    ) => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          if (!draft[property]) {
+            draft[property] = { included: new Set(), excluded: new Set() };
+          }
+          const set =
+            action === 'exclude'
+              ? draft[property].excluded
+              : draft[property].included;
+          set.delete(oldValue);
+          set.add(newValue);
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
   const clearAllFilters = useCallback(() => {
     setFilters(() => ({}));
     updateFilterQuery({});
@@ -501,6 +530,7 @@ export const useSearchPageFilterState = ({
     filters,
     setFilters,
     setFilterValue,
+    replaceFilterValue,
     setFilterRange,
     clearFilter,
     clearAllFilters,
