@@ -262,6 +262,7 @@ export default function RawSqlChartEditor({
           placeholder={placeholderSQl}
           tableConnections={tableConnections}
           additionalCompletions={additionalCompletions}
+          onSubmit={onSubmit}
         />
         <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
       </Box>
