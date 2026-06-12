@@ -506,7 +506,7 @@ export const useSearchPageFilterState = ({
       const dropped: string[] = [];
       const kept: FilterState = {};
       for (const [key, value] of Object.entries(filters)) {
-        // Filter keys are dot-normalized — top-level columns are stored as-is,
+        // Filter keys are dot-normalized, top-level columns are stored as-is,
         // nested JSON/Map keys as `Root.nested.path`. An exact match handles
         // the rare case of a column with dots in its name.
         const dotIdx = key.indexOf('.');
@@ -608,7 +608,7 @@ function toggleValueInFilters(
 
 /**
  * Hook for personal pinned filters stored in localStorage.
- * This is the original storage mechanism — per-user, per-browser.
+ * This is the original storage mechanism, per-user, per-browser.
  */
 function usePersonalPinnedFilters(sourceId: string | null) {
   const [_pinnedFilters, _setPinnedFilters] = useLocalStorage<{
@@ -669,7 +669,7 @@ export function usePinnedFilters(sourceId: string | null) {
   const updateTeamMutation = useUpdatePinnedFilters();
 
   // Optimistic state keyed by sourceId so it is automatically ignored when
-  // the source changes — no useEffect needed to clear stale state.
+  // the source changes, no useEffect needed to clear stale state.
   const [optimisticTeam, setOptimisticTeam] = useState<{
     sourceId: string;
     fields: string[];
@@ -697,7 +697,7 @@ export function usePinnedFilters(sourceId: string | null) {
     [effectiveTeam, personal.fields, personal.filters],
   );
 
-  // Debounce for team API writes — cancelled on unmount to prevent stale writes.
+  // Debounce for team API writes, cancelled on unmount to prevent stale writes.
   const pendingTeamUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -760,7 +760,7 @@ export function usePinnedFilters(sourceId: string | null) {
     [personal],
   );
 
-  // Personal-only checks (not merged) — so team pins don't show as personal
+  // Personal-only checks (not merged), so team pins don't show as personal
   const isFilterPinned = useCallback(
     (property: string, value: string | boolean): boolean => {
       return (
@@ -791,7 +791,7 @@ export function usePinnedFilters(sourceId: string | null) {
       const fieldIndex = currentFields.indexOf(field);
 
       if (fieldIndex >= 0) {
-        // Removing field from shared — also clean up its filter values
+        // Removing field from shared, also clean up its filter values
         const newFields = currentFields.filter((_, i) => i !== fieldIndex);
         delete currentFilters[field];
         flushTeamUpdate(newFields, currentFilters);
