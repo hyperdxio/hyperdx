@@ -857,6 +857,12 @@ export function DBSearchPage() {
     'patternColumn',
     parseAsString,
   );
+  const [draftPatternColumn, setDraftPatternColumn] = useState(
+    patternColumn ?? '',
+  );
+  useEffect(() => {
+    setDraftPatternColumn(patternColumn ?? '');
+  }, [patternColumn]);
 
   const [isLive, setIsLive] = useQueryState(
     'isLive',
@@ -1056,6 +1062,7 @@ export function DBSearchPage() {
         });
       },
     )();
+    setPatternColumn(draftPatternColumn || null);
     // clear query errors
     setQueryErrors({});
   }, [
@@ -1064,6 +1071,8 @@ export function DBSearchPage() {
     displayedTimeInputValue,
     onSearch,
     setQueryErrors,
+    draftPatternColumn,
+    setPatternColumn,
   ]);
 
   const debouncedSubmit = useDebouncedCallback(onSubmit, 1000);
@@ -2187,7 +2196,9 @@ export function DBSearchPage() {
                             : (chartConfig.implicitColumnExpression ?? '')
                         }
                         patternColumn={patternColumn}
-                        onPatternColumnChange={setPatternColumn}
+                        draftPatternColumn={draftPatternColumn}
+                        onDraftPatternColumnChange={setDraftPatternColumn}
+                        onSubmit={onSubmit}
                         totalCountConfig={histogramTimeChartConfig}
                         totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
                       />

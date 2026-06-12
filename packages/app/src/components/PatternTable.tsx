@@ -13,8 +13,8 @@ import { useSearchTotalCount } from '@/components/SearchTotalCountChart';
 import { Pattern, useGroupedPatterns } from '@/hooks/usePatterns';
 
 import {
+  buildPatternColumnExpression,
   PatternColumnSelector,
-  usePatternColumnExpression,
 } from './Patterns/PatternColumnSelector';
 import PatternSidePanel from './PatternSidePanel';
 
@@ -26,14 +26,18 @@ export default function PatternTable({
   totalCountQueryKeyPrefix,
   bodyValueExpression,
   patternColumn,
-  onPatternColumnChange,
+  draftPatternColumn,
+  onDraftPatternColumnChange,
+  onSubmit,
   source,
 }: {
   config: BuilderChartConfigWithDateRange;
   totalCountConfig: BuilderChartConfigWithDateRange;
   bodyValueExpression: string;
   patternColumn?: string | null;
-  onPatternColumnChange?: (column: string | null) => void;
+  draftPatternColumn?: string;
+  onDraftPatternColumnChange?: (value: string) => void;
+  onSubmit?: () => void;
   totalCountQueryKeyPrefix: string;
   source?: TSource;
 }) {
@@ -41,8 +45,7 @@ export default function PatternTable({
 
   const [selectedPattern, setSelectedPattern] = useState<Pattern | null>(null);
 
-  const effectiveBodyValueExpression = usePatternColumnExpression({
-    sourceId: source?.id,
+  const effectiveBodyValueExpression = buildPatternColumnExpression({
     patternColumn,
     fallback: bodyValueExpression,
   });
@@ -85,8 +88,10 @@ export default function PatternTable({
     <Container style={{ overflow: 'auto' }}>
       <PatternColumnSelector
         sourceId={source?.id}
-        patternColumn={patternColumn}
-        onChange={onPatternColumnChange}
+        value={draftPatternColumn ?? ''}
+        onChange={onDraftPatternColumnChange}
+        onSubmit={onSubmit}
+        dateRange={config.dateRange}
       />
       <Box mt="lg">
         <Text my="sm" size="sm">
@@ -121,8 +126,10 @@ export default function PatternTable({
     <>
       <PatternColumnSelector
         sourceId={source?.id}
-        patternColumn={patternColumn}
-        onChange={onPatternColumnChange}
+        value={draftPatternColumn ?? ''}
+        onChange={onDraftPatternColumnChange}
+        onSubmit={onSubmit}
+        dateRange={config.dateRange}
       />
       <RawLogTable
         isLive={false}
