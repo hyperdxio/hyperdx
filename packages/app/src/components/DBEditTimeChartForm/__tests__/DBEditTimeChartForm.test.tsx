@@ -514,7 +514,9 @@ describe('DBEditTimeChartForm - Duplicate series', () => {
     const aliasInputs = screen.getAllByTestId('series-alias-input');
     expect(aliasInputs).toHaveLength(2);
     expect(aliasInputs[0]).toHaveValue('avg latency');
-    expect(aliasInputs[1]).toHaveValue('avg latency');
+    // The copy starts with a blank alias so it does not collide with the
+    // original's alias in the generated SQL.
+    expect(aliasInputs[1]).toHaveValue('');
   });
 
   it('saves both the original and the duplicated series', async () => {
@@ -528,7 +530,10 @@ describe('DBEditTimeChartForm - Duplicate series', () => {
     const saved = onSave.mock.calls[0][0];
     expect(saved.select).toHaveLength(2);
     expect(saved.select[0]).toMatchObject(sourceSeries);
-    expect(saved.select[1]).toMatchObject(sourceSeries);
+    // The copy matches the source on every field except the alias, which is
+    // cleared so the two columns get distinct names in the generated SQL.
+    expect(saved.select[1]).toMatchObject({ ...sourceSeries, alias: '' });
+    expect(saved.select[1].alias).toBe('');
   });
 
   it('keeps the duplicated series independent of the original', async () => {

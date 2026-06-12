@@ -176,10 +176,17 @@ export default function EditTimeChartForm({
 
   // Insert a copy of an existing series directly below it so a near-identical
   // variant (e.g. avg + p95 of the same column) does not have to be re-entered.
-  // structuredClone keeps the copy independent of the source row.
+  // structuredClone keeps the copy independent of the source row. The alias is
+  // cleared on the copy: a non-empty alias renders as `AS "<alias>"`, so two
+  // rows sharing one alias produce duplicate column names and ClickHouse rejects
+  // the query. An empty alias renders without `AS`, giving each row a distinct
+  // auto-generated name.
   const duplicateSeries = useCallback(
     (index: number) => {
-      insertSeries(index + 1, structuredClone(getValues(`series.${index}`)));
+      insertSeries(index + 1, {
+        ...structuredClone(getValues(`series.${index}`)),
+        alias: '',
+      });
     },
     [insertSeries, getValues],
   );
