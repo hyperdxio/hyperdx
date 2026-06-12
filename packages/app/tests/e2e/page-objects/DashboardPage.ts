@@ -84,6 +84,7 @@ export class DashboardPage {
   private readonly confirmCancelButton: Locator;
   private readonly confirmConfirmButton: Locator;
   private readonly dashboardMenuButton: Locator;
+  private readonly deleteDashboardMenuItem: Locator;
   private readonly saveDefaultQueryAndFiltersMenuItem: Locator;
   private readonly removeDefaultQueryAndFiltersMenuItem: Locator;
   private readonly exportDashboardMenuItem: Locator;
@@ -132,6 +133,9 @@ export class DashboardPage {
     this.confirmCancelButton = page.getByTestId('confirm-cancel-button');
     this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
     this.dashboardMenuButton = page.getByTestId('dashboard-menu-button');
+    this.deleteDashboardMenuItem = page.getByRole('menuitem', {
+      name: 'Delete Dashboard',
+    });
     this.saveDefaultQueryAndFiltersMenuItem = page.getByTestId(
       'save-default-query-filters-menu-item',
     );
@@ -634,6 +638,11 @@ export class DashboardPage {
   async removeSavedQueryAndFiltersDefaults() {
     await this.dashboardMenuButton.click();
     await this.removeDefaultQueryAndFiltersMenuItem.click();
+  }
+
+  async deleteDashboard() {
+    await this.dashboardMenuButton.click();
+    await this.deleteDashboardMenuItem.click();
   }
 
   /**

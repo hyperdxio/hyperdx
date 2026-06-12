@@ -185,6 +185,14 @@ efficient and accurate:
    your agent to produce tests before writing implementation code. See the
    Testing section below for the commands to use.
 
+5. **Ensure a changeset exists before pushing a PR.** Any change to a published
+   package (`@hyperdx/app`, `@hyperdx/api`, `@hyperdx/otel-collector`, etc.) that
+   is user-facing or affects behavior must include a changeset in `.changeset/`.
+   Add one with `yarn changeset` (or create the markdown file by hand following
+   the format of existing entries), choosing the appropriate semver bump, before
+   pushing the branch. Skip only for changes that don't warrant a release (docs,
+   internal tooling, tests, CI).
+
 ## GitHub Action Workflow (when invoked via @claude)
 
 When working on issues or PRs through the GitHub Action:
