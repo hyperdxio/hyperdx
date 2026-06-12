@@ -705,6 +705,72 @@ describe('MCP Source Tools', () => {
       expect(output.nextSteps.query).toContain('metricType: "gauge"');
     });
 
+    it('reports sampledKeys and truncatedKeys so unsampled keys are distinguishable', async () => {
+      // 15 attribute keys > MAX_ATTR_KEYS_TO_SAMPLE (12): the overflow
+      // must land in truncatedKeys so the agent knows those keys were
+      // never queried (vs. sampled-but-empty).
+      const metricSource = await createMetricSource();
+      const manyAttrs: Record<string, string> = {};
+      for (let i = 0; i < 15; i++) {
+        manyAttrs[`attr.key.${String(i).padStart(2, '0')}`] = `value-${i}`;
+      }
+      await bulkInsertMetricsGauge([
+        {
+          MetricName: 'many.attrs.metric',
+          ResourceAttributes: manyAttrs,
+          ServiceName: 'many-attrs-svc',
+          TimeUnix: new Date(),
+          Value: 1,
+        },
+      ]);
+
+      const result = await callTool(client, 'clickstack_describe_metric', {
+        sourceId: metricSource._id.toString(),
+        metricName: 'many.attrs.metric',
+        kind: 'gauge',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      const detail = output.kinds[0];
+      const meta = detail.attributeValuesMeta;
+      expect(meta).toBeDefined();
+      expect(meta.sampledKeys).toHaveLength(12);
+      expect(meta.truncatedKeys).toHaveLength(3);
+      // Sampled and truncated sets are disjoint and cover all 15 keys.
+      expect(new Set([...meta.sampledKeys, ...meta.truncatedKeys]).size).toBe(
+        15,
+      );
+      // Every key with values must have been sampled.
+      for (const key of Object.keys(detail.attributeValues ?? {})) {
+        expect(meta.sampledKeys).toContain(key);
+      }
+    });
+
+    it('reports empty truncatedKeys when all attribute keys fit the cap', async () => {
+      const metricSource = await createMetricSource();
+      await bulkInsertMetricsGauge([
+        {
+          MetricName: 'few.attrs.metric',
+          ResourceAttributes: { 'service.name': 'few-attrs-svc' },
+          ServiceName: 'few-attrs-svc',
+          TimeUnix: new Date(),
+          Value: 1,
+        },
+      ]);
+
+      const result = await callTool(client, 'clickstack_describe_metric', {
+        sourceId: metricSource._id.toString(),
+        metricName: 'few.attrs.metric',
+        kind: 'gauge',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      const meta = output.kinds[0].attributeValuesMeta;
+      expect(meta).toBeDefined();
+      expect(meta.truncatedKeys).toEqual([]);
+      expect(meta.sampledKeys).toContain("ResourceAttributes['service.name']");
+    });
+
     it('skips value sampling when sampleValues is false', async () => {
       const metricSource = await createMetricSource();
       const now = new Date();

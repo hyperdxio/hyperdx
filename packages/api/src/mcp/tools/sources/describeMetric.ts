@@ -101,6 +101,13 @@ const describeMetricSchema = z.object({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+type AttributeValuesMeta = {
+  /** Display names (`MapColumn['key']`) queried for value samples. */
+  sampledKeys: string[];
+  /** Display names skipped because the MAX_ATTR_KEYS_TO_SAMPLE cap fired. */
+  truncatedKeys: string[];
+};
+
 type KindDetail = {
   kind: QueryableMetricKind;
   tableName: string;
@@ -108,6 +115,7 @@ type KindDetail = {
   description?: string;
   attributeKeys: Record<string, string[]>;
   attributeValues?: Record<string, string[]>;
+  attributeValuesMeta?: AttributeValuesMeta;
   usage: string;
 };
 
@@ -323,10 +331,21 @@ async function fetchAttributeKeys({
   }
 }
 
+type SampleAttributeValuesData = {
+  /** Keys with at least one non-empty sampled value. */
+  values: Record<string, string[]>;
+  meta: AttributeValuesMeta;
+};
+
 /**
  * Sample distinct values per attribute key. Uses one composed
  * groupArray-per-key query so all keys are fetched in a single round
  * trip.
+ *
+ * The returned meta records which keys were actually queried
+ * (`sampledKeys`) vs. skipped by the MAX_ATTR_KEYS_TO_SAMPLE cap
+ * (`truncatedKeys`) so callers can distinguish "not sampled" from
+ * "sampled but empty in the window".
  */
 async function sampleAttributeValues({
   clickhouseClient,
@@ -349,21 +368,27 @@ async function sampleAttributeValues({
   startDate: Date;
   endDate: Date;
   signal: AbortSignal;
-}): Promise<FetchResult<Record<string, string[]>>> {
+}): Promise<FetchResult<SampleAttributeValuesData>> {
   const flatKeyExprs: { display: string; mapColumn: string; key: string }[] =
     [];
+  const truncatedKeys: string[] = [];
   for (const [mapColumn, keys] of Object.entries(attributeKeys)) {
     for (const key of keys) {
-      flatKeyExprs.push({
-        display: `${mapColumn}['${key}']`,
-        mapColumn,
-        key,
-      });
-      if (flatKeyExprs.length >= MAX_ATTR_KEYS_TO_SAMPLE) break;
+      const display = `${mapColumn}['${key}']`;
+      if (flatKeyExprs.length >= MAX_ATTR_KEYS_TO_SAMPLE) {
+        truncatedKeys.push(display);
+        continue;
+      }
+      flatKeyExprs.push({ display, mapColumn, key });
     }
-    if (flatKeyExprs.length >= MAX_ATTR_KEYS_TO_SAMPLE) break;
   }
-  if (flatKeyExprs.length === 0) return { ok: true, data: {} };
+  const meta: AttributeValuesMeta = {
+    sampledKeys: flatKeyExprs.map(e => e.display),
+    truncatedKeys,
+  };
+  if (flatKeyExprs.length === 0) {
+    return { ok: true, data: { values: {}, meta } };
+  }
 
   const projections = flatKeyExprs.map(
     ({ mapColumn, key }, idx) => chSql`
@@ -416,15 +441,15 @@ async function sampleAttributeValues({
       data: Array<Record<string, string[]>>;
     };
     const row = result.data[0];
-    if (!row) return { ok: true, data: {} };
+    if (!row) return { ok: true, data: { values: {}, meta } };
     const values: Record<string, string[]> = {};
-    flatKeyExprs.forEach((meta, idx) => {
+    flatKeyExprs.forEach((keyExpr, idx) => {
       const sample = (row[`param${idx}`] ?? []).filter(v => v !== '');
       if (sample.length > 0) {
-        values[meta.display] = sample;
+        values[keyExpr.display] = sample;
       }
     });
-    return { ok: true, data: values };
+    return { ok: true, data: { values, meta } };
   } catch (e) {
     logger.warn(
       { tableName, error: e instanceof Error ? e.message : String(e) },
@@ -603,7 +628,11 @@ async function describeMetricImpl(
       signal,
     });
     if (valuesResult.ok) {
-      kindDetail.attributeValues = valuesResult.data;
+      kindDetail.attributeValues = valuesResult.data.values;
+      // sampledKeys / truncatedKeys let the agent tell "key absent
+      // because we never queried it" (truncated) apart from "queried
+      // but empty in the window" (in sampledKeys, missing from values).
+      kindDetail.attributeValuesMeta = valuesResult.data.meta;
     } else {
       partialFailure.push({
         stage: 'attributeValues',
@@ -696,6 +725,9 @@ export function registerDescribeMetric(
         'clickstack_list_metrics or clickstack_describe_source. A metric name can legitimately ' +
         'live in more than one kind (e.g. "container.cpu.usage" appears in both gauge and sum); ' +
         'call this tool once per kind you care about.\n\n' +
+        'attributeValuesMeta on each kind reports sampledKeys (queried for values) and ' +
+        'truncatedKeys (skipped by the per-call sampling cap) — a key in truncatedKeys was ' +
+        'never queried, so query it directly if you need its values.\n\n' +
         'Workflow: clickstack_list_sources → clickstack_list_metrics → ' +
         'clickstack_describe_metric → clickstack_timeseries|clickstack_table.',
       inputSchema: describeMetricSchema,
