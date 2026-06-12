@@ -371,6 +371,113 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       expect(output.tiles).toHaveLength(1);
     });
 
+    it('should preserve display fields on raw SQL tiles through save, get, update, and re-get', async () => {
+      const connectionId = ctx.connection._id.toString();
+      const sqlConfig = {
+        configType: 'sql' as const,
+        displayType: 'line' as const,
+        connectionId,
+        sqlTemplate:
+          'SELECT $__timeInterval(Timestamp) AS ts, avg(Duration) AS v FROM otel_traces WHERE $__timeFilter(Timestamp) GROUP BY ts ORDER BY ts LIMIT 1000',
+        numberFormat: {
+          output: 'percent' as const,
+          mantissa: 2,
+          thousandSeparated: true,
+        },
+        compareToPreviousPeriod: true,
+        fitYAxisToData: true,
+      };
+      const sqlNumberConfig = {
+        configType: 'sql' as const,
+        displayType: 'number' as const,
+        connectionId,
+        sqlTemplate: 'SELECT 0.99 AS value LIMIT 1',
+        numberFormat: { output: 'percent' as const, mantissa: 2 },
+      };
+
+      const saveResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'SQL NumberFormat Round-Trip',
+          tiles: [
+            { name: 'CPU %', config: sqlConfig },
+            { name: 'SLO', config: sqlNumberConfig },
+            {
+              name: 'Other Tile',
+              config: {
+                configType: 'sql' as const,
+                displayType: 'table' as const,
+                connectionId,
+                sqlTemplate: 'SELECT 1 AS value LIMIT 1',
+              },
+            },
+          ],
+        },
+      );
+      expect(saveResult.isError).toBeFalsy();
+      const saved = JSON.parse(getFirstText(saveResult));
+      const savedSqlTile = saved.tiles.find(
+        (t: { name: string }) => t.name === 'CPU %',
+      );
+      expect(savedSqlTile.config).toMatchObject(sqlConfig);
+      const savedSqlNumberTile = saved.tiles.find(
+        (t: { name: string }) => t.name === 'SLO',
+      );
+      expect(savedSqlNumberTile.config).toMatchObject(sqlNumberConfig);
+
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        { id: saved.id },
+      );
+      expect(getResult.isError).toBeFalsy();
+      const fetched = JSON.parse(getFirstText(getResult));
+      const fetchedSqlTile = fetched.tiles.find(
+        (t: { name: string }) => t.name === 'CPU %',
+      );
+      expect(fetchedSqlTile.config).toMatchObject(sqlConfig);
+
+      // Update a DIFFERENT tile, passing all fetched tiles back — the
+      // formatted SQL tile must survive the round-trip untouched.
+      const updateResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          id: saved.id,
+          name: 'SQL NumberFormat Round-Trip',
+          tiles: fetched.tiles.map((t: { name: string; config: object }) =>
+            t.name === 'Other Tile'
+              ? {
+                  ...t,
+                  config: {
+                    ...t.config,
+                    sqlTemplate: 'SELECT 2 AS value LIMIT 1',
+                  },
+                }
+              : t,
+          ),
+        },
+      );
+      expect(updateResult.isError).toBeFalsy();
+
+      const getAfterUpdate = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        { id: saved.id },
+      );
+      expect(getAfterUpdate.isError).toBeFalsy();
+      const refetched = JSON.parse(getFirstText(getAfterUpdate));
+      const refetchedSqlTile = refetched.tiles.find(
+        (t: { name: string }) => t.name === 'CPU %',
+      );
+      expect(refetchedSqlTile.config).toMatchObject(sqlConfig);
+      const refetchedSqlNumberTile = refetched.tiles.find(
+        (t: { name: string }) => t.name === 'SLO',
+      );
+      expect(refetchedSqlNumberTile.config).toMatchObject(sqlNumberConfig);
+    });
+
     it('should create a dashboard with a heatmap tile on a Trace source', async () => {
       const sourceId = ctx.traceSource._id.toString();
       const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
@@ -604,6 +711,108 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       });
 
       expect(result.isError).toBe(true);
+    });
+
+    it('should preserve display fields on builder tiles through save, get, update, and re-get', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const numberFormat = {
+        output: 'percent' as const,
+        mantissa: 2,
+        thousandSeparated: true,
+      };
+      const lineConfig = {
+        displayType: 'line' as const,
+        sourceId,
+        select: [{ aggFn: 'count' as const, alias: 'Requests' }],
+        numberFormat,
+        compareToPreviousPeriod: true,
+        fitYAxisToData: true,
+      };
+      const barConfig = {
+        displayType: 'stacked_bar' as const,
+        sourceId,
+        select: [{ aggFn: 'count' as const, alias: 'Requests' }],
+        numberFormat,
+      };
+      const tableConfig = {
+        displayType: 'table' as const,
+        sourceId,
+        select: [{ aggFn: 'count' as const, alias: 'Requests' }],
+        groupBy: 'SpanName',
+        numberFormat,
+      };
+      const pieConfig = {
+        displayType: 'pie' as const,
+        sourceId,
+        select: [{ aggFn: 'count' as const, alias: 'Requests' }],
+        groupBy: 'SpanName',
+        numberFormat,
+      };
+      const numberConfig = {
+        displayType: 'number' as const,
+        sourceId,
+        select: [{ aggFn: 'count' as const, alias: 'Requests' }],
+        numberFormat,
+      };
+      const tiles = [
+        { name: 'Line', config: lineConfig },
+        { name: 'Bar', config: barConfig },
+        { name: 'Table', config: tableConfig },
+        { name: 'Pie', config: pieConfig },
+        { name: 'Number', config: numberConfig },
+      ];
+      const configByName: Record<string, object> = {
+        Line: lineConfig,
+        Bar: barConfig,
+        Table: tableConfig,
+        Pie: pieConfig,
+        Number: numberConfig,
+      };
+      const assertTiles = (output: { tiles: { name: string }[] }) => {
+        for (const [name, config] of Object.entries(configByName)) {
+          const tile = output.tiles.find(t => t.name === name);
+          expect(tile).toMatchObject({ config });
+        }
+      };
+
+      const saveResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        { name: 'Builder Display Fields', tiles },
+      );
+      expect(saveResult.isError).toBeFalsy();
+      const saved = JSON.parse(getFirstText(saveResult));
+      assertTiles(saved);
+
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        { id: saved.id },
+      );
+      expect(getResult.isError).toBeFalsy();
+      const fetched = JSON.parse(getFirstText(getResult));
+      assertTiles(fetched);
+
+      // Update passing all fetched tiles back verbatim — every display
+      // field must survive a second pass through the MCP input schema.
+      const updateResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          id: saved.id,
+          name: 'Builder Display Fields (updated)',
+          tiles: fetched.tiles,
+        },
+      );
+      expect(updateResult.isError).toBeFalsy();
+
+      const getAfterUpdate = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        { id: saved.id },
+      );
+      expect(getAfterUpdate.isError).toBeFalsy();
+      assertTiles(JSON.parse(getFirstText(getAfterUpdate)));
     });
 
     it('should reject heatmap tile on a non-Trace source', async () => {
