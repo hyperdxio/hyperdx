@@ -125,8 +125,8 @@ export function convertToTimeChartConfig(
 
   // When the range is bucket-aligned, the end is the start of the next bucket,
   // so end-exclusive is required to avoid double-counting boundary events.
-  // When alignment is off the end is the user's exact selection — fall back to
-  // the caller's setting, if there is one.
+  // When alignment is off the end is the user's exact selection, so fall back
+  // to the caller's setting, if there is one.
   const isAligned = config.alignDateRangeToGranularity !== false;
   const dateRangeEndInclusive = isAligned
     ? false

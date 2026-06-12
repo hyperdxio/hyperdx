@@ -425,7 +425,7 @@ function CaptureActiveDot({
  *
  * Includes every categorical hex up front so any positional `<Area>`
  * fill resolves, then unions in semantic hexes returned by the
- * `getChartColor{Info,Success,Warning,Error}` helpers — those land in
+ * `getChartColor{Info,Success,Warning,Error}` helpers; those land in
  * `lineData[].color` and would otherwise be missing a matching def.
  * `undefined` colors are filtered so `c.replace('#', '')` can't throw
  * on a future caller that leaves a series color unset.
