@@ -164,123 +164,129 @@ const getConnection: RequestHandler =
   };
 
 // http-proxy-middleware v4 is ESM-only, so we use a dynamic import with a
-// lazy-init wrapper to keep this CJS module compatible.
-let _proxyMiddleware: RequestHandler | undefined;
+// cached promise to keep this CJS module compatible and avoid concurrent-init races.
+let _proxyPromise: Promise<RequestHandler> | undefined;
 
-async function getProxyMiddleware(): Promise<RequestHandler> {
-  if (_proxyMiddleware) return _proxyMiddleware;
+function getProxyMiddleware(): Promise<RequestHandler> {
+  if (_proxyPromise) return _proxyPromise;
 
-  const { createProxyMiddleware } = await import('http-proxy-middleware');
-
-  _proxyMiddleware = createProxyMiddleware({
-    target: '', // doesn't matter. it should be overridden by the router
-    changeOrigin: true,
-    pathFilter: (path, _req) => {
-      return _req.method === 'GET' || _req.method === 'POST';
-    },
-    pathRewrite: function (path, req) {
-      const sanitizedPath = validateAndSanitizePath(
-        path.replace(/^\/clickhouse-proxy/, ''),
-      );
-
-      const parsedUrl = new URL(sanitizedPath, 'http://localhost');
-      const { searchParams, pathname } = parsedUrl;
-
-      // Append user email as custom ClickHouse setting for query log annotation if the prefix was set
-      const hyperdxSettingPrefix = req._hdx_connection?.hyperdxSettingPrefix;
-      if (hyperdxSettingPrefix) {
-        const userEmail = req.user?.email;
-        if (userEmail) {
-          const userSettingKey = `${hyperdxSettingPrefix}${CUSTOM_SETTING_KEY_SEP}${CUSTOM_SETTING_KEY_USER_SUFFIX}`;
-          searchParams.set(userSettingKey, userEmail);
-        } else {
-          logger.debug('hyperdxSettingPrefix set, no session user found');
-        }
-      }
-
-      return `${pathname}?${searchParams.toString()}`;
-    },
-    router: _req => {
-      if (!_req._hdx_connection?.host) {
-        throw new Error('[createProxyMiddleware] Connection not found');
-      }
-      return _req._hdx_connection.host;
-    },
-    on: {
-      proxyReq: (proxyReq, _req, res) => {
-        // set user-agent to the hyperdx version identifier
-        proxyReq.setHeader('user-agent', `hyperdx ${CODE_VERSION}`);
-
-        if (_req._hdx_connection?.username) {
-          proxyReq.setHeader(
-            'X-ClickHouse-User',
-            _req._hdx_connection.username,
+  _proxyPromise = import('http-proxy-middleware').then(
+    ({ createProxyMiddleware }) =>
+      createProxyMiddleware({
+        target: '', // doesn't matter. it should be overridden by the router
+        changeOrigin: true,
+        pathFilter: (path, _req) => {
+          return _req.method === 'GET' || _req.method === 'POST';
+        },
+        pathRewrite: function (path, req) {
+          const sanitizedPath = validateAndSanitizePath(
+            path.replace(/^\/clickhouse-proxy/, ''),
           );
-        }
-        // Passwords can be empty
-        if (_req._hdx_connection?.password) {
-          proxyReq.setHeader('X-ClickHouse-Key', _req._hdx_connection.password);
-        }
 
-        if (_req.method !== 'POST') {
-          console.error(`Unsupported method ${_req.method}`);
-          return res.sendStatus(405);
-        }
+          const parsedUrl = new URL(sanitizedPath, 'http://localhost');
+          const { searchParams, pathname } = parsedUrl;
 
-        let body = _req.body;
-        if (_req.headers['content-type'] === 'application/json') {
-          try {
-            body = JSON.stringify(body);
-          } catch (e) {
-            console.error(e);
+          // Append user email as custom ClickHouse setting for query log annotation if the prefix was set
+          const hyperdxSettingPrefix =
+            req._hdx_connection?.hyperdxSettingPrefix;
+          if (hyperdxSettingPrefix) {
+            const userEmail = req.user?.email;
+            if (userEmail) {
+              const userSettingKey = `${hyperdxSettingPrefix}${CUSTOM_SETTING_KEY_SEP}${CUSTOM_SETTING_KEY_USER_SUFFIX}`;
+              searchParams.set(userSettingKey, userEmail);
+            } else {
+              logger.debug('hyperdxSettingPrefix set, no session user found');
+            }
           }
-        }
 
-        try {
-          proxyReq.write(body);
-        } catch (e) {
-          console.error(
-            `clickhouseProxy error writing body, body is type ${typeof body}`,
-          );
-        }
-      },
-      proxyRes: (proxyRes, _req, res) => {
-        // since clickhouse v24, the cors headers * will be attached to the response by default
-        // which will cause the browser to block the response
-        if (_req.headers['access-control-request-method']) {
-          proxyRes.headers['access-control-allow-methods'] =
-            _req.headers['access-control-request-method'];
-        }
+          return `${pathname}?${searchParams.toString()}`;
+        },
+        router: _req => {
+          if (!_req._hdx_connection?.host) {
+            throw new Error('[createProxyMiddleware] Connection not found');
+          }
+          return _req._hdx_connection.host;
+        },
+        on: {
+          proxyReq: (proxyReq, _req, res) => {
+            // set user-agent to the hyperdx version identifier
+            proxyReq.setHeader('user-agent', `hyperdx ${CODE_VERSION}`);
 
-        if (_req.headers['access-control-request-headers']) {
-          proxyRes.headers['access-control-allow-headers'] =
-            _req.headers['access-control-request-headers'];
-        }
+            if (_req._hdx_connection?.username) {
+              proxyReq.setHeader(
+                'X-ClickHouse-User',
+                _req._hdx_connection.username,
+              );
+            }
+            // Passwords can be empty
+            if (_req._hdx_connection?.password) {
+              proxyReq.setHeader(
+                'X-ClickHouse-Key',
+                _req._hdx_connection.password,
+              );
+            }
 
-        if (_req.headers.origin) {
-          proxyRes.headers['access-control-allow-origin'] = _req.headers.origin;
-          proxyRes.headers['access-control-allow-credentials'] = 'true';
-        }
-      },
-      error: (err, _req, _res) => {
-        console.error('Proxy error:', err);
-        (_res as Response).writeHead(500, {
-          'Content-Type': 'application/json',
-        });
-        _res.end(
-          JSON.stringify({
-            success: false,
-            error: err.message || 'Failed to connect to ClickHouse server',
-          }),
-        );
-      },
-    },
-    // ...(config.IS_DEV && {
-    //   logger: console,
-    // }),
-  });
+            if (_req.method !== 'POST') {
+              console.error(`Unsupported method ${_req.method}`);
+              return res.sendStatus(405);
+            }
 
-  return _proxyMiddleware;
+            let body = _req.body;
+            if (_req.headers['content-type'] === 'application/json') {
+              try {
+                body = JSON.stringify(body);
+              } catch (e) {
+                console.error(e);
+              }
+            }
+
+            try {
+              proxyReq.write(body);
+            } catch (e) {
+              console.error(
+                `clickhouseProxy error writing body, body is type ${typeof body}`,
+              );
+            }
+          },
+          proxyRes: (proxyRes, _req, res) => {
+            // since clickhouse v24, the cors headers * will be attached to the response by default
+            // which will cause the browser to block the response
+            if (_req.headers['access-control-request-method']) {
+              proxyRes.headers['access-control-allow-methods'] =
+                _req.headers['access-control-request-method'];
+            }
+
+            if (_req.headers['access-control-request-headers']) {
+              proxyRes.headers['access-control-allow-headers'] =
+                _req.headers['access-control-request-headers'];
+            }
+
+            if (_req.headers.origin) {
+              proxyRes.headers['access-control-allow-origin'] =
+                _req.headers.origin;
+              proxyRes.headers['access-control-allow-credentials'] = 'true';
+            }
+          },
+          error: (err, _req, _res) => {
+            console.error('Proxy error:', err);
+            (_res as Response).writeHead(500, {
+              'Content-Type': 'application/json',
+            });
+            _res.end(
+              JSON.stringify({
+                success: false,
+                error: err.message || 'Failed to connect to ClickHouse server',
+              }),
+            );
+          },
+        },
+        // ...(config.IS_DEV && {
+        //   logger: console,
+        // }),
+      }),
+  );
+
+  return _proxyPromise;
 }
 
 const proxyMiddleware: RequestHandler = async (req, res, next) => {
