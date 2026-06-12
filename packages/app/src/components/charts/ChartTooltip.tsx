@@ -51,6 +51,7 @@ export const ChartTooltipItem = memo(
     opacity,
     previous,
     highlighted,
+    dimmed,
   }: {
     color: string;
     name: string;
@@ -61,11 +62,19 @@ export const ChartTooltipItem = memo(
     opacity?: number;
     previous?: number;
     highlighted?: boolean;
+    dimmed?: boolean;
   }) => {
     return (
       <div
         className="d-flex gap-2 items-center justify-center"
-        style={highlighted ? { fontWeight: 600 } : undefined}
+        style={
+          highlighted || dimmed
+            ? {
+                ...(highlighted ? { fontWeight: 600 } : null),
+                ...(dimmed ? { opacity: 0.5 } : null),
+              }
+            : undefined
+        }
       >
         <div>
           {indicator === 'square' ? (

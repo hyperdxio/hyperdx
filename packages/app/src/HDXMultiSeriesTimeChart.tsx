@@ -67,11 +67,13 @@ export const TooltipItem = memo(
     previous,
     numberFormat,
     highlighted,
+    dimmed,
   }: {
     p: TooltipPayload;
     previous?: TooltipPayload;
     numberFormat?: NumberFormat;
     highlighted?: boolean;
+    dimmed?: boolean;
   }) => {
     return (
       <ChartTooltipItem
@@ -84,6 +86,7 @@ export const TooltipItem = memo(
         opacity={p.opacity}
         previous={previous?.value}
         highlighted={highlighted}
+        dimmed={dimmed}
       />
     );
   },
@@ -175,6 +178,9 @@ const HDXLineChartTooltip = withErrorBoundary(
                   numberFormat={numberFormatForKey}
                   previous={previousPayload}
                   highlighted={p.dataKey === nearestSeriesKey}
+                  dimmed={
+                    nearestSeriesKey != null && p.dataKey !== nearestSeriesKey
+                  }
                 />
               );
             })}
@@ -507,6 +513,16 @@ export const MemoChart = memo(function MemoChart({
   // Read during the same render that draws the active dots.
   const activePointYByKeyRef = useRef<Map<string, number>>(new Map());
 
+  // Key of the series whose line is nearest the cursor, lifted into state so
+  // the chart can emphasize that line (thicker stroke) and fade the rest.
+  // Set from the chart's mouse-move using the pixel Y the active dots captured
+  // on the prior frame; the one-frame lag is imperceptible and settles as soon
+  // as the pointer stops. The tooltip derives the same nearest row itself,
+  // same-frame, for its own bolding and dimming.
+  const [nearestSeriesKey, setNearestSeriesKey] = useState<
+    string | undefined
+  >();
+
   const ChartComponent = useMemo(
     () => (displayType === DisplayType.StackedBar ? BarChart : AreaChart), // LineChart;
     [displayType],
@@ -524,6 +540,15 @@ export const MemoChart = memo(function MemoChart({
         // If no selection, show all series
         return !hasSelection || selectedSeriesNames.has(seriesName);
       });
+
+    // When a series is nearest the cursor (only meaningful with more than one
+    // line shown), thicken its line and fade the others so the eye lands on
+    // the same series the tooltip bolds. Mirrors the legend's selected style
+    // (thicker stroke) with a gentle fade that keeps the rest readable.
+    const hasNearest =
+      limitedGroupKeys.length > 1 &&
+      nearestSeriesKey != null &&
+      limitedGroupKeys.includes(nearestSeriesKey);
 
     return limitedGroupKeys.map(key => {
       const lineDataIndex = lineData.findIndex(ld => ld.dataKey === key);
@@ -550,6 +575,10 @@ export const MemoChart = memo(function MemoChart({
           type="monotone"
           stroke={color}
           fillOpacity={1}
+          strokeWidth={hasNearest && key === nearestSeriesKey ? 2.5 : undefined}
+          strokeOpacity={
+            hasNearest && key !== nearestSeriesKey ? 0.5 : undefined
+          }
           activeDot={<CaptureActiveDot captureRef={activePointYByKeyRef} />}
           {...(isHovered
             ? { fill: 'none', strokeDasharray }
@@ -563,7 +592,14 @@ export const MemoChart = memo(function MemoChart({
         />
       );
     });
-  }, [lineData, displayType, id, isHovered, selectedSeriesNames]);
+  }, [
+    lineData,
+    displayType,
+    id,
+    isHovered,
+    selectedSeriesNames,
+    nearestSeriesKey,
+  ]);
 
   const yAxisDomain: AxisDomain = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
@@ -729,6 +765,7 @@ export const MemoChart = memo(function MemoChart({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => {
           setIsHovered(false);
+          setNearestSeriesKey(undefined);
 
           setHighlightStart(undefined);
           setHighlightEnd(undefined);
@@ -742,6 +779,27 @@ export const MemoChart = memo(function MemoChart({
         }}
         onMouseMove={e => {
           setIsHovered(true);
+
+          // Track which series' line is nearest the cursor so the lines can
+          // emphasize it. The active dots captured their pixel Y on the prior
+          // frame; comparing the pointer's chartY picks the nearest line. Skip
+          // while a click-frozen tooltip is shown, matching the tooltip, and
+          // only set state when the key changes to keep re-renders rare.
+          const activePointYByKey = activePointYByKeyRef.current;
+          const nextNearest =
+            isClickActive == null &&
+            activePointYByKey.size > 1 &&
+            e?.chartY != null
+              ? findNearestSeriesKey(
+                  activePointYByKey,
+                  Array.from(activePointYByKey.keys()),
+                  e.chartY,
+                  NEAREST_SERIES_MAX_DISTANCE_PX,
+                )
+              : undefined;
+          setNearestSeriesKey(prev =>
+            prev === nextNearest ? prev : nextNearest,
+          );
 
           if (highlightStart != null) {
             setHighlightEnd(e.activeLabel);
@@ -813,6 +871,9 @@ export const MemoChart = memo(function MemoChart({
               yPerc: state.chartY / sizeRef.current[1],
               activePayload: state.activePayload,
             });
+            // The click-frozen tooltip hides the live tooltip, so drop any
+            // line emphasis to match.
+            setNearestSeriesKey(undefined);
           } else {
             // We clicked on the chart but outside of a line
             setIsClickActive(undefined);
