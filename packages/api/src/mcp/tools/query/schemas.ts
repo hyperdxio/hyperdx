@@ -175,5 +175,7 @@ export const orderBySchema = z
   .string()
   .optional()
   .describe(
-    'Column to sort results by (builder display types only, mainly "table").',
+    'Sort results by this column. ' +
+      'When ordering by an alias that contains spaces or special characters, ' +
+      `wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
   );
