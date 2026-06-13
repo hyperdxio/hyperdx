@@ -47,7 +47,7 @@ const InfraSubpanelGroup = ({
   title,
   where,
 }: {
-  charts: InfraChartSpec[];
+  charts: readonly InfraChartSpec[];
   fieldPrefix: string;
   metricSource: TMetricSource;
   timestamp: any;
@@ -216,6 +216,12 @@ export default ({
       )}
       {activeCorrelations.map(correlation => {
         const value = resourceAttributes?.[correlation.correlateAttribute];
+        // Truthiness guard, mirroring the previous Pod/Node render blocks
+        // (which gated on the attribute value with `&&`); the tab gate uses
+        // != null. detect and correlate are the same attribute for the
+        // built-in k8s descriptors, so this stays byte-identical. A future
+        // descriptor that splits the two decides here how an empty correlate
+        // value should render.
         if (!value) {
           return null;
         }

@@ -9,11 +9,11 @@ import { NumberFormat } from '@/types';
 // metric field is `${fieldPrefix}${field} - Gauge` (see DBInfraPanel), so
 // `field` is the metric name without the resource prefix or the type suffix.
 export type InfraChartSpec = {
-  title: string;
+  readonly title: string;
   // data-testid for the chart card; the e2e suite selects on these.
-  cardTestId: string;
-  field: string;
-  numberFormat: NumberFormat;
+  readonly cardTestId: string;
+  readonly field: string;
+  readonly numberFormat: NumberFormat;
 };
 
 // A declarative infrastructure correlation group. `detectAttribute` decides
@@ -23,21 +23,21 @@ export type InfraChartSpec = {
 // detect on one attribute and correlate on another can be added as data rather
 // than new code paths.
 export type InfraCorrelation = {
-  title: string;
-  detectAttribute: string;
-  correlateAttribute: string;
+  readonly title: string;
+  readonly detectAttribute: string;
+  readonly correlateAttribute: string;
   // Metric field prefix, e.g. "k8s.pod.".
-  fieldPrefix: string;
-  charts: InfraChartSpec[];
+  readonly fieldPrefix: string;
+  readonly charts: readonly InfraChartSpec[];
   // Optional Kubernetes event timeline (Log sources only).
-  timeline?: {
-    queryAttribute: string;
+  readonly timeline?: {
+    readonly queryAttribute: string;
   };
 };
 
 // Pod and Node render the same three charts; only the field prefix and the
 // correlate filter differ, so the specs are shared.
-const K8S_CHART_SPECS: InfraChartSpec[] = [
+const K8S_CHART_SPECS: readonly InfraChartSpec[] = [
   {
     title: 'CPU Usage (%)',
     cardTestId: 'cpu-usage-card',
@@ -60,7 +60,7 @@ const K8S_CHART_SPECS: InfraChartSpec[] = [
 
 // Built-in correlation groups. Array order is the render order in the
 // Infrastructure panel (Pod, then Node), matching the prior hardcoding.
-export const INFRA_CORRELATIONS: InfraCorrelation[] = [
+export const INFRA_CORRELATIONS: readonly InfraCorrelation[] = [
   {
     title: 'Pod',
     detectAttribute: 'k8s.pod.uid',
@@ -84,7 +84,7 @@ export const INFRA_CORRELATIONS: InfraCorrelation[] = [
 // renderer (DBInfraPanel), so the gate and the render never drift apart.
 export function getActiveInfraCorrelations(
   resourceAttributes: Record<string, unknown> | null | undefined,
-): InfraCorrelation[] {
+): readonly InfraCorrelation[] {
   if (!resourceAttributes) {
     return [];
   }
