@@ -403,6 +403,8 @@ const DBRowSidePanel = ({
             rowId={rowId}
             aliasWith={aliasWith}
             hideHeader={true}
+            breadcrumbPath={breadcrumbPath}
+            onBreadcrumbClick={handleBreadcrumbClick}
           />
         </ErrorBoundary>
       )}

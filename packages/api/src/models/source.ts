@@ -195,6 +195,7 @@ export const TraceSource = Source.discriminator<ITraceSource>(
     resourceAttributesExpression: String,
     eventAttributesExpression: String,
     spanEventsValueExpression: String,
+    spanLinksValueExpression: String,
     implicitColumnExpression: String,
     useTextIndexForImplicitColumn: {
       type: String,
