@@ -34,6 +34,7 @@ export enum ROW_DATA_ALIASES {
   SPAN_EVENTS = '__hdx_span_events',
   DURATION_MS = '__hdx_duration_ms',
   SPAN_KIND = '__hdx_span_kind',
+  SPAN_LINKS = '__hdx_span_links',
 }
 
 export function useRowData({
@@ -173,6 +174,14 @@ export function useRowData({
               {
                 valueExpression: source.spanKindExpression,
                 alias: ROW_DATA_ALIASES.SPAN_KIND,
+              },
+            ]
+          : []),
+        ...(source.kind === SourceKind.Trace && source.spanLinksValueExpression
+          ? [
+              {
+                valueExpression: source.spanLinksValueExpression,
+                alias: ROW_DATA_ALIASES.SPAN_LINKS,
               },
             ]
           : []),

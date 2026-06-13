@@ -890,6 +890,8 @@ export const DBRowSidePanelInner = ({
             rowId={activeRowId}
             aliasWith={activeAliasWith}
             hideHeader={true}
+            breadcrumbPath={breadcrumbPath}
+            onBreadcrumbClick={handleBreadcrumbClick}
           />
         </ErrorBoundary>
       )}
