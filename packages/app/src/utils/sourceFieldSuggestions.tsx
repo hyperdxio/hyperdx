@@ -1,3 +1,4 @@
+import { JSX } from 'react';
 import {
   ColumnMetaType,
   convertCHDataTypeToJSType,
@@ -209,8 +210,9 @@ export type SourceConfigPairingInput = {
 
 export type PairingWarning = {
   field: SourceFieldKind;
-  message: string;
-  suggestedFix?: { field: SourceFieldKind; value: string };
+  message: JSX.Element;
+  recommendation: string;
+  suggestedFix: { field: SourceFieldKind; value: string };
 };
 
 export function getSourceConfigPairingWarnings(
@@ -228,19 +230,27 @@ export function getSourceConfigPairingWarnings(
   if (body && !implicit) {
     warnings.push({
       field: 'implicitColumnExpression',
-      message:
-        'Body Expression is set but Implicit Column Expression is empty. ' +
-        'Bare-text Lucene search will fail on this source. ' +
-        'Use the same column as Body Expression?',
+      message: (
+        <>
+          <strong>Body Expression</strong> is set but{' '}
+          <strong>Implicit Column Expression</strong> is empty. Bare-text Lucene
+          search will fall back to <strong>Body Expression</strong>.
+        </>
+      ),
+      recommendation: 'use Body Expression value',
       suggestedFix: { field: 'implicitColumnExpression', value: body },
     });
   } else if (implicit && !body) {
     warnings.push({
       field: 'bodyExpression',
-      message:
-        'Implicit Column Expression is set but Body Expression is empty. ' +
-        'Row-panel body display will fall back to Implicit Column Expression. ' +
-        'Set Body Expression explicitly?',
+      message: (
+        <>
+          <strong>Implicit Column Expression</strong> is set but{' '}
+          <strong>Body Expression</strong> is empty. Row-panel body display will
+          fall back to <strong>Implicit Column Expression</strong>.
+        </>
+      ),
+      recommendation: 'Implicit Column Expression',
       suggestedFix: { field: 'bodyExpression', value: implicit },
     });
   }

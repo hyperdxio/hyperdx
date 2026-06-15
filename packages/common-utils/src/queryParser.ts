@@ -1708,15 +1708,11 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   }
 
   async getColumnForField(field: string, context: SerializerContext) {
-    // Two-stage fallback: implicit wins over body, and per-call context
-    // overrides win over the source defaults. The body fallback lets log
-    // sources that only set Body Expression still serve bare-text Lucene
-    // search; this is the symmetric counterpart to `getEventBody` in
-    // packages/app/src/source.ts.
+    // Fall back to bodyExpression for implicit column expression
     const implicitColumnExpression =
-      context.implicitColumnExpression ??
-      this.implicitColumnExpression ??
-      context.bodyExpression ??
+      context.implicitColumnExpression ||
+      this.implicitColumnExpression ||
+      context.bodyExpression ||
       this.bodyExpression;
     if (field === IMPLICIT_FIELD && !implicitColumnExpression) {
       throw new Error(
