@@ -15,6 +15,8 @@ import {
 import {
   AggregateFunctionSchema,
   BuilderSavedChartConfig,
+  ChartPaletteToken,
+  ColorCondition,
   DASHBOARD_MAX_CONTAINERS,
   DashboardContainer,
   DashboardContainerSchema,
@@ -23,7 +25,10 @@ import {
   isOnClickDashboardById,
   isOnClickSearchById,
   isTraceSource,
+  NumberTileColorCondition,
+  NumberTileColorConditionSchema,
   RawSqlSavedChartConfig,
+  resolveChartPaletteToken,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
@@ -148,6 +153,36 @@ const convertToExternalSelectItem = (
   };
 };
 
+// Normalize the per-rule palette colors of a number tile's `colorRules`
+// for the API response. `colorRules` shipped after the hue rename so
+// stored rules already hold hue-named tokens; running each through
+// `resolveChartPaletteToken` keeps the static `color` (which can hold a
+// legacy `chart-1`..`chart-10` token from before the rename) and the rule
+// colors on a single normalization path. A rule whose color cannot be
+// resolved (reachable only via a direct DB write, since the input schema
+// validates rule colors) is dropped, mirroring how the static `color`
+// field omits an unresolvable token, so the response always stays within
+// the palette-token enum instead of leaking an unknown string. When no
+// rule survives (or the stored array is empty) the field is omitted
+// entirely rather than emitted as `[]`, matching the static `color` omit.
+const toExternalColorRules = (
+  colorRules: ColorCondition[] | undefined,
+): NumberTileColorCondition[] | undefined => {
+  if (!colorRules) return undefined;
+  const resolved = colorRules.flatMap((rule): NumberTileColorCondition[] => {
+    const color = resolveChartPaletteToken(rule.color);
+    if (!color) return [];
+    // Re-validate against the number-tile subset so the response stays
+    // within the documented operator set: a string-match or regex rule
+    // (reachable only via a direct DB write, since neither the editor nor
+    // the input schema produces one on a number tile) is dropped, just
+    // like an unresolvable color token.
+    const parsed = NumberTileColorConditionSchema.safeParse({ ...rule, color });
+    return parsed.success ? [parsed.data] : [];
+  });
+  return resolved.length > 0 ? resolved : undefined;
+};
+
 const convertToExternalTileChartConfig = (
   config: SavedChartConfig,
 ): ExternalDashboardTileConfig | undefined => {
@@ -195,6 +230,10 @@ const convertToExternalTileChartConfig = (
           sqlTemplate: config.sqlTemplate,
           sourceId: config.source,
           numberFormat: config.numberFormat,
+          // Raw SQL number tiles carry the static tile color too (no
+          // colorRules; see the schema). Normalize a legacy token saved
+          // before the hue rename to its hue name on output.
+          color: resolveChartPaletteToken(config.color),
         };
       case DisplayType.Pie:
         return {
@@ -276,6 +315,16 @@ const convertToExternalTileChartConfig = (
           ? [convertToExternalSelectItem(config.select[0])]
           : [DEFAULT_SELECT_ITEM],
         numberFormat: config.numberFormat,
+        // Normalize stored palette tokens on the way out. A static `color`
+        // saved before the hue rename holds a legacy `chart-1`..`chart-10`
+        // token in Mongo (the `tiles` field is `Mixed`), so map it to the
+        // hue name via `resolveChartPaletteToken`, matching the app's
+        // fetch-time `normalizeDashboardTileColors`. `colorRules` colors go
+        // through the same path (see `toExternalColorRules`). An absent or
+        // unrecognized token resolves to undefined and is omitted from the
+        // response, keeping it within the palette-token enum.
+        color: resolveChartPaletteToken(config.color),
+        colorRules: toExternalColorRules(config.colorRules),
       };
     case DisplayType.Pie:
       return {
@@ -576,6 +625,12 @@ export function convertToInternalTileConfig(
             externalConfig.displayType === 'table'
               ? externalConfig.onClick
               : undefined,
+          // Only the raw SQL number variant carries `color`; table and pie
+          // do not expose it. `_.omitBy(_.isNil)` below drops it when absent.
+          color:
+            externalConfig.displayType === 'number'
+              ? externalConfig.color
+              : undefined,
         } satisfies RawSqlSavedChartConfig;
         break;
       default:
@@ -635,6 +690,11 @@ export function convertToInternalTileConfig(
           source: externalConfig.sourceId,
           where: '',
           numberFormat: externalConfig.numberFormat,
+          // The input schema validates these as hue-only palette tokens,
+          // so pass them through directly; `_.omitBy(_.isNil)` below drops
+          // them when absent.
+          color: externalConfig.color,
+          colorRules: externalConfig.colorRules,
           name,
         } satisfies BuilderSavedChartConfig;
         break;

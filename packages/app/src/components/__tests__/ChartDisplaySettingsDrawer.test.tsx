@@ -175,4 +175,92 @@ describe('ChartDisplaySettingsDrawer', () => {
       });
     });
   });
+
+  describe('series limit setting', () => {
+    const builderProps = { ...baseProps, configType: 'builder' as const };
+
+    it('shows the Series Limit input for builder line charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Line}
+        />,
+      );
+
+      expect(
+        screen.getByRole('textbox', { name: /series limit/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not show the Series Limit input for raw SQL line charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('textbox', { name: /series limit/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not show the Series Limit input for table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('textbox', { name: /series limit/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('calls onChange with the entered seriesLimit when applied', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Line}
+          onChange={onChange}
+        />,
+      );
+
+      await user.type(
+        screen.getByRole('textbox', { name: /series limit/i }),
+        '25',
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({ seriesLimit: 25 });
+    });
+
+    // Emits null (not undefined) so the cleared/disabled state survives JSON
+    // round-tripping through the URL query state; undefined would be dropped,
+    // letting RHF's `values` sync restore the stale value.
+    it('clears seriesLimit to null (disabled) when emptied', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Line}
+          settings={{ seriesLimit: 10 } as ChartConfigDisplaySettings}
+          onChange={onChange}
+        />,
+      );
+
+      await user.clear(screen.getByRole('textbox', { name: /series limit/i }));
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0].seriesLimit).toBeNull();
+    });
+  });
 });

@@ -1103,15 +1103,16 @@ export async function buildKvItemsLookup({
 }): Promise<KvItemsLookup> {
   const lookup: KvItemsLookup = new Map();
   try {
-    const [serverVersion, columns, skipIndices] = await Promise.all([
+    const [serverVersion, columns, skipIndices, isCloud] = await Promise.all([
       metadata.getServerVersion({ connectionId }),
       metadata.getColumns({ databaseName, tableName, connectionId }),
       metadata
         .getSkipIndices({ databaseName, tableName, connectionId })
         .catch(() => [] as SkipIndexMetadata[]),
+      metadata.isClickHouseCloud({ connectionId }).catch(() => false),
     ]);
 
-    const directReadSupported = supportsDirectReadMap(serverVersion);
+    const directReadSupported = supportsDirectReadMap(serverVersion, isCloud);
 
     const kvItemsCandidates = columns.filter(
       c =>
@@ -1707,15 +1708,12 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   }
 
   async getColumnForField(field: string, context: SerializerContext) {
-    // Two-stage fallback: implicit wins over body, and per-call context
-    // overrides win over the source defaults. The body fallback lets log
-    // sources that only set Body Expression still serve bare-text Lucene
-    // search; this is the symmetric counterpart to `getEventBody` in
-    // packages/app/src/source.ts.
+    // Fall back to bodyExpression for implicit column expression.
+    // values can be empty if previously configured then removed.
     const implicitColumnExpression =
-      context.implicitColumnExpression ??
-      this.implicitColumnExpression ??
-      context.bodyExpression ??
+      context.implicitColumnExpression ||
+      this.implicitColumnExpression ||
+      context.bodyExpression ||
       this.bodyExpression;
     if (field === IMPLICIT_FIELD && !implicitColumnExpression) {
       throw new Error(
@@ -1732,8 +1730,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     // applied. Mirrors the original "source's implicit column has not been
     // overridden" intent.
     const isSourceImplicit =
-      context.implicitColumnExpression === undefined &&
-      context.bodyExpression === undefined;
+      !context.implicitColumnExpression && !context.bodyExpression;
     if (field === IMPLICIT_FIELD && isSourceImplicit) {
       // Sources can specify multi-column implicit columns, eg. Body and Message, in
       // which case we search the combined string `concatWithSeparator(';', Body, Message)`.
@@ -2021,7 +2018,7 @@ export async function genEnglishExplanation({
     const { tableName, databaseName, connectionId } = tableConnection;
     const parsedQ = parse(query);
 
-    if (parsedQ) {
+    if (parsedQ && tableName && databaseName && connectionId) {
       const serializer = new EnglishSerializer({
         metadata,
         tableName,

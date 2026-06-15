@@ -141,4 +141,21 @@ describe('toClickHouseKeyExpression', () => {
   it('leaves plain column names unchanged', () => {
     expect(toClickHouseKeyExpression('Timestamp')).toBe('Timestamp');
   });
+
+  // HDX-4369: parseMapFieldName proves the base is a Map, so a numeric-
+  // looking sub-key must NOT collapse into array-index syntax. Without
+  // mergePath's third argument the result was `LogAttributes[2]`, which
+  // ClickHouse rejects with "Illegal types of arguments: Map(String,
+  // String), UInt8 for function arrayElement" on the "Load more" path.
+  it('rewrites a numeric-looking map sub-key to bracket form', () => {
+    expect(toClickHouseKeyExpression('LogAttributes.1')).toBe(
+      "LogAttributes['1']",
+    );
+  });
+
+  it('preserves a multi-segment property path that starts with a numeric segment', () => {
+    expect(toClickHouseKeyExpression('LogAttributes.42.foo')).toBe(
+      "LogAttributes['42.foo']",
+    );
+  });
 });

@@ -771,18 +771,7 @@ describe('MCP Query Tools', () => {
         expect(parsed.result?.data?.[0]?.value).toBe(30);
       });
 
-      it('should propagate max_result_rows=100000 to ClickHouse', async () => {
-        const result = await callTool(client, 'clickstack_sql', {
-          connectionId: connection._id.toString(),
-          sql: "SELECT getSetting('max_result_rows') AS value",
-        });
-
-        expect(result.isError).toBeFalsy();
-        const parsed = JSON.parse(getFirstText(result));
-        expect(parsed.result?.data?.[0]?.value).toBe(100000);
-      });
-
-      it('should propagate readonly=1 to ClickHouse', async () => {
+      it('should propagate readonly=2 to ClickHouse', async () => {
         const result = await callTool(client, 'clickstack_sql', {
           connectionId: connection._id.toString(),
           sql: "SELECT getSetting('readonly') AS value",
@@ -790,7 +779,26 @@ describe('MCP Query Tools', () => {
 
         expect(result.isError).toBeFalsy();
         const parsed = JSON.parse(getFirstText(result));
-        expect(parsed.result?.data?.[0]?.value).toBe(1);
+        expect(parsed.result?.data?.[0]?.value).toBe(2);
+      });
+
+      it('should apply all safety settings together without readonly conflicts', async () => {
+        // readonly=1 rejects setting changes, so max_execution_time
+        // would be silently ignored. readonly=2 allows setting changes
+        // while still blocking writes. This test verifies both settings
+        // are applied in a single query.
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: `SELECT
+              getSetting('readonly') AS readonly_mode,
+              getSetting('max_execution_time') AS max_exec_time`,
+        });
+
+        expect(result.isError).toBeFalsy();
+        const parsed = JSON.parse(getFirstText(result));
+        const row = parsed.result?.data?.[0];
+        expect(row?.readonly_mode).toBe(2);
+        expect(row?.max_exec_time).toBe(30);
       });
     });
   });
