@@ -411,15 +411,17 @@ describe('buildChartConfigForExplanations', () => {
     expect(result).toBeDefined();
   });
 
-  it('applies the team series limit so the SQL preview matches the chart query', () => {
+  it("applies the tile's series limit so the SQL preview matches the chart query", () => {
     const result = buildChartConfigForExplanations({
       ...baseParams,
       queriedConfig: builderConfig,
       queriedSourceId: logSource.id,
       tableSource: logSource,
       activeTab: 'time',
-      dbTimeChartConfig: builderConfig,
-      teamSeriesLimit: 3,
+      dbTimeChartConfig: {
+        ...builderConfig,
+        seriesLimit: 3,
+      } as ChartConfigWithDateRange,
     });
 
     expect(result).toBeDefined();
@@ -427,7 +429,7 @@ describe('buildChartConfigForExplanations', () => {
     expect(result!.seriesLimit).toBe(3);
   });
 
-  it('omits seriesLimit (capping disabled) when no team limit is set', () => {
+  it('omits seriesLimit (capping disabled) when the tile has no limit', () => {
     const result = buildChartConfigForExplanations({
       ...baseParams,
       queriedConfig: builderConfig,

@@ -184,10 +184,6 @@ type BuildChartConfigForExplanationsParams = {
   dateRange: [Date, Date];
   activeTab: string;
   dbTimeChartConfig?: ChartConfigWithDateRange;
-  // The team's configured series cap — must match what DBTimeChart passes to
-  // convertToTimeChartConfig or the generated SQL preview shows the wrong
-  // seriesLimit.
-  teamSeriesLimit?: number;
 };
 
 export function buildChartConfigForExplanations({
@@ -198,7 +194,6 @@ export function buildChartConfigForExplanations({
   dateRange,
   activeTab,
   dbTimeChartConfig,
-  teamSeriesLimit,
 }: BuildChartConfigForExplanationsParams):
   | ChartConfigWithOptTimestamp
   | undefined {
@@ -244,7 +239,7 @@ export function buildChartConfigForExplanations({
   const builderConfig = config as BuilderChartConfigWithDateRange;
 
   if (activeTab === 'time') {
-    return convertToTimeChartConfig(builderConfig, teamSeriesLimit);
+    return convertToTimeChartConfig(builderConfig);
   } else if (activeTab === 'number') {
     return convertToNumberChartConfig(builderConfig);
   } else if (activeTab === 'table') {

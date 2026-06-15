@@ -807,33 +807,30 @@ describe('ChartUtils', () => {
       expect(granularityFromFunction).toBe('5 minute');
     });
 
-    const seriesLimitConfig = {
-      granularity: '5 minute',
-      dateRange: [
-        new Date('2025-11-26T00:00:00Z'),
-        new Date('2025-11-27T00:00:00Z'),
-      ],
-    } as BuilderChartConfigWithDateRange;
-
     // seriesLimit lives on the builder member of the ChartConfigWithDateRange
-    // union, so narrow the result before reading it.
-    const seriesLimitOf = (teamSeriesLimit?: number) =>
+    // union, so narrow the result before reading it. The per-tile value is
+    // read from the config itself (no team override anymore).
+    const seriesLimitOf = (seriesLimit?: number) =>
       (
-        convertToTimeChartConfig(
-          seriesLimitConfig,
-          teamSeriesLimit,
-        ) as BuilderChartConfigWithDateRange
+        convertToTimeChartConfig({
+          granularity: '5 minute',
+          dateRange: [
+            new Date('2025-11-26T00:00:00Z'),
+            new Date('2025-11-27T00:00:00Z'),
+          ],
+          ...(seriesLimit != null ? { seriesLimit } : {}),
+        } as BuilderChartConfigWithDateRange) as BuilderChartConfigWithDateRange
       ).seriesLimit;
 
-    it('omits seriesLimit (capping disabled) when no team value is given', () => {
+    it('omits seriesLimit (capping disabled) when the tile has no limit', () => {
       expect(seriesLimitOf()).toBeUndefined();
     });
 
-    it('uses the team seriesLimit when provided', () => {
+    it('uses the tile seriesLimit when provided', () => {
       expect(seriesLimitOf(5)).toBe(5);
     });
 
-    it('passes a large team seriesLimit through unbounded', () => {
+    it('passes a large tile seriesLimit through unbounded', () => {
       expect(seriesLimitOf(100000)).toBe(100000);
     });
   });

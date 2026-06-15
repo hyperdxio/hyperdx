@@ -41,7 +41,6 @@ import {
   IconTable,
 } from '@tabler/icons-react';
 
-import api from '@/api';
 import { getPreviousDateRange } from '@/ChartUtils';
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
@@ -225,6 +224,7 @@ export default function EditTimeChartForm({
     fitYAxisToData,
     numberFormat,
     groupByColumnsOnLeft,
+    seriesLimit,
     color,
     colorRules,
   ] = useWatch({
@@ -236,6 +236,7 @@ export default function EditTimeChartForm({
       'fitYAxisToData',
       'numberFormat',
       'groupByColumnsOnLeft',
+      'seriesLimit',
       'color',
       'colorRules',
     ],
@@ -258,6 +259,7 @@ export default function EditTimeChartForm({
       fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      seriesLimit,
       color,
       colorRules,
     }),
@@ -268,6 +270,7 @@ export default function EditTimeChartForm({
       fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      seriesLimit,
       color,
       colorRules,
     ],
@@ -515,8 +518,6 @@ export default function EditTimeChartForm({
     });
   }, [dateRange]);
 
-  const { data: me } = api.useMe();
-
   const chartConfigForExplanations = useMemo(
     () =>
       buildChartConfigForExplanations({
@@ -527,7 +528,6 @@ export default function EditTimeChartForm({
         dateRange,
         activeTab,
         dbTimeChartConfig,
-        teamSeriesLimit: me?.team?.seriesLimit,
       }),
     [
       queriedConfig,
@@ -537,7 +537,6 @@ export default function EditTimeChartForm({
       dateRange,
       activeTab,
       dbTimeChartConfig,
-      me?.team?.seriesLimit,
     ],
   );
 
@@ -554,6 +553,7 @@ export default function EditTimeChartForm({
       compareToPreviousPeriod,
       fitYAxisToData,
       groupByColumnsOnLeft,
+      seriesLimit,
       color,
       colorRules,
     }: ChartConfigDisplaySettings) => {
@@ -563,6 +563,7 @@ export default function EditTimeChartForm({
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
       setValue('fitYAxisToData', fitYAxisToData);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
+      setValue('seriesLimit', seriesLimit);
       setValue('color', color);
       setValue('colorRules', colorRules);
       onSubmit();
