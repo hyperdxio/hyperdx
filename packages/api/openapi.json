@@ -743,6 +743,27 @@
             "items": {
               "$ref": "#/components/schemas/Connection"
             }
+          },
+          "meta": {
+            "type": "object",
+            "description": "Present only when one or more stored connections could not be serialized and were omitted from `data`.",
+            "properties": {
+              "skipped": {
+                "type": "integer",
+                "description": "Number of connections omitted from the response because they failed serialization.",
+                "example": 1
+              },
+              "skippedIds": {
+                "type": "array",
+                "description": "IDs of the connections that were omitted.",
+                "items": {
+                  "type": "string"
+                },
+                "example": [
+                  "507f1f77bcf86cd799439012"
+                ]
+              }
+            }
           }
         }
       },

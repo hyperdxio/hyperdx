@@ -190,6 +190,20 @@ function formatExternalConnection(connection: ConnectionDocument) {
  *           description: List of connection objects.
  *           items:
  *             $ref: '#/components/schemas/Connection'
+ *         meta:
+ *           type: object
+ *           description: Present only when one or more stored connections could not be serialized and were omitted from `data`.
+ *           properties:
+ *             skipped:
+ *               type: integer
+ *               description: Number of connections omitted from the response because they failed serialization.
+ *               example: 1
+ *             skippedIds:
+ *               type: array
+ *               description: IDs of the connections that were omitted.
+ *               items:
+ *                 type: string
+ *               example: ["507f1f77bcf86cd799439012"]
  */
 
 const router = express.Router();
@@ -233,8 +247,34 @@ router.get('/', async (req, res, next) => {
 
     const connections = await getConnectionsByTeam(teamId.toString());
 
+    // Format each connection individually so that a single record which fails
+    // to serialize (e.g. a legacy document that doesn't satisfy the current
+    // schema) is skipped rather than failing the entire list response for
+    // every caller in the team. Skipped records are surfaced both in the logs
+    // and to the client (see `meta.skipped`) so the failure is never silent.
+    const data: ReturnType<typeof formatExternalConnection>[] = [];
+    const skippedIds: string[] = [];
+    for (const connection of connections) {
+      try {
+        data.push(formatExternalConnection(connection));
+      } catch {
+        // formatExternalConnection already logs the per-record Zod error.
+        skippedIds.push(connection._id.toString());
+      }
+    }
+
+    if (skippedIds.length > 0) {
+      logger.warn(
+        { teamId: teamId.toString(), skippedIds },
+        `Skipped ${skippedIds.length} connection(s) that could not be serialized for external API`,
+      );
+    }
+
     res.json({
-      data: connections.map(formatExternalConnection),
+      data,
+      ...(skippedIds.length > 0 && {
+        meta: { skipped: skippedIds.length, skippedIds },
+      }),
     });
   } catch (e) {
     next(e);
