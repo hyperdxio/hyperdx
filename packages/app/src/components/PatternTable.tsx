@@ -84,45 +84,7 @@ export default function PatternTable({
     ) as Pattern[];
   }, [groupedResults]);
 
-  return error ? (
-    <Container style={{ overflow: 'auto' }}>
-      <PatternColumnSelector
-        sourceId={source?.id}
-        value={draftPatternColumn ?? ''}
-        onChange={onDraftPatternColumnChange}
-        onSubmit={onSubmit}
-        dateRange={config.dateRange}
-      />
-      <Box mt="lg">
-        <Text my="sm" size="sm">
-          Error Message:
-        </Text>
-        <Code
-          block
-          style={{
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {error.message}
-        </Code>
-      </Box>
-      {error instanceof ClickHouseQueryError && (
-        <Box mt="lg">
-          <Text my="sm" size="sm">
-            Original Query:
-          </Text>
-          <Code
-            block
-            style={{
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            <SQLPreview data={error.query} formatData />
-          </Code>
-        </Box>
-      )}
-    </Container>
-  ) : (
+  return (
     <>
       <PatternColumnSelector
         sourceId={source?.id}
@@ -130,41 +92,77 @@ export default function PatternTable({
         onChange={onDraftPatternColumnChange}
         onSubmit={onSubmit}
         dateRange={config.dateRange}
+        bodyValueExpression={bodyValueExpression}
       />
-      <RawLogTable
-        isLive={false}
-        wrapLines={true}
-        isLoading={isLoading}
-        rows={sortedGroupedResults ?? []}
-        displayedColumns={[
-          '__hdx_pattern_trend',
-          'countStr',
-          'severityText',
-          'pattern',
-        ]}
-        onRowDetailsClick={row => setSelectedPattern(row as Pattern)}
-        hasNextPage={false}
-        fetchNextPage={() => {}}
-        highlightedLineId={''}
-        columnTypeMap={emptyMap}
-        generateRowId={row => ({ where: row.id, aliasWith: [] })}
-        columnNameMap={{
-          __hdx_pattern_trend: 'Trend',
-          countStr: 'Count',
-          pattern: 'Pattern',
-          severityText: 'Level',
-        }}
-        config={patternQueryConfig}
-        showExpandButton={false}
-      />
-      {selectedPattern && source && (
-        <PatternSidePanel
-          isOpen
-          source={source}
-          pattern={selectedPattern}
-          bodyValueExpression={effectiveBodyValueExpression}
-          onClose={() => setSelectedPattern(null)}
-        />
+      {error ? (
+        <Container style={{ overflow: 'auto' }}>
+          <Box mt="lg">
+            <Text my="sm" size="sm">
+              Error Message:
+            </Text>
+            <Code
+              block
+              style={{
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {error.message}
+            </Code>
+          </Box>
+          {error instanceof ClickHouseQueryError && (
+            <Box mt="lg">
+              <Text my="sm" size="sm">
+                Original Query:
+              </Text>
+              <Code
+                block
+                style={{
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
+                <SQLPreview data={error.query} formatData />
+              </Code>
+            </Box>
+          )}
+        </Container>
+      ) : (
+        <>
+          <RawLogTable
+            isLive={false}
+            wrapLines={true}
+            isLoading={isLoading}
+            rows={sortedGroupedResults ?? []}
+            displayedColumns={[
+              '__hdx_pattern_trend',
+              'countStr',
+              'severityText',
+              'pattern',
+            ]}
+            onRowDetailsClick={row => setSelectedPattern(row as Pattern)}
+            hasNextPage={false}
+            fetchNextPage={() => {}}
+            highlightedLineId={''}
+            columnTypeMap={emptyMap}
+            generateRowId={row => ({ where: row.id, aliasWith: [] })}
+            columnNameMap={{
+              __hdx_pattern_trend: 'Trend',
+              countStr: 'Count',
+              pattern: 'Pattern',
+              severityText: 'Level',
+            }}
+            config={patternQueryConfig}
+            showExpandButton={false}
+          />
+          {selectedPattern && source && (
+            <PatternSidePanel
+              isOpen
+              source={source}
+              pattern={selectedPattern}
+              bodyValueExpression={effectiveBodyValueExpression}
+              onClose={() => setSelectedPattern(null)}
+            />
+          )}
+        </>
       )}
     </>
   );

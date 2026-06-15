@@ -21,17 +21,23 @@ export function PatternColumnSelector({
   onChange,
   onSubmit,
   dateRange,
+  bodyValueExpression,
 }: {
   sourceId: string | undefined;
   value: string;
   onChange?: (value: string) => void;
   onSubmit?: () => void;
   dateRange?: [Date, Date];
+  bodyValueExpression?: string;
 }) {
   const { data: source } = useSource({ id: sourceId });
   const tableConnection = tcFromSource(source);
 
   if (!onChange) return null;
+
+  const placeholder = bodyValueExpression
+    ? `Default (${bodyValueExpression}) — column name or expression`
+    : 'Default — column name or expression';
 
   return (
     <Box py="xs" maw={600}>
@@ -42,7 +48,7 @@ export function PatternColumnSelector({
         onSubmit={onSubmit}
         enableHotkey
         label="Pattern Expression"
-        placeholder="Default (body) — column name or expression"
+        placeholder={placeholder}
         size="xs"
         allowMultiline={false}
         sourceId={sourceId}
