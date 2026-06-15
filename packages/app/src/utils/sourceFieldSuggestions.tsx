@@ -237,7 +237,7 @@ export function getSourceConfigPairingWarnings(
           search will fall back to <strong>Body Expression</strong>.
         </>
       ),
-      recommendation: 'use Body Expression value',
+      recommendation: 'Body Expression value',
       suggestedFix: { field: 'implicitColumnExpression', value: body },
     });
   } else if (implicit && !body) {
@@ -250,7 +250,7 @@ export function getSourceConfigPairingWarnings(
           fall back to <strong>Implicit Column Expression</strong>.
         </>
       ),
-      recommendation: 'Implicit Column Expression',
+      recommendation: 'Implicit Column Expression value',
       suggestedFix: { field: 'bodyExpression', value: implicit },
     });
   }

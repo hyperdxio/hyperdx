@@ -1708,7 +1708,8 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
   }
 
   async getColumnForField(field: string, context: SerializerContext) {
-    // Fall back to bodyExpression for implicit column expression
+    // Fall back to bodyExpression for implicit column expression.
+    // values can be empty if previously configured then removed.
     const implicitColumnExpression =
       context.implicitColumnExpression ||
       this.implicitColumnExpression ||
@@ -1729,8 +1730,7 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
     // applied. Mirrors the original "source's implicit column has not been
     // overridden" intent.
     const isSourceImplicit =
-      context.implicitColumnExpression === undefined &&
-      context.bodyExpression === undefined;
+      !context.implicitColumnExpression && !context.bodyExpression;
     if (field === IMPLICIT_FIELD && isSourceImplicit) {
       // Sources can specify multi-column implicit columns, eg. Body and Message, in
       // which case we search the combined string `concatWithSeparator(';', Body, Message)`.
