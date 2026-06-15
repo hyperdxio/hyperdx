@@ -73,7 +73,11 @@ export function registerEventPatterns(server: McpServer, context: McpContext) {
         'Discover the most common log messages and event patterns. ' +
         'Samples random events, clusters them using the Drain algorithm, and returns ' +
         'patterns sorted by frequency with estimated counts and time trends.\n\n' +
-        'Use this when asked about "top patterns", "common logs", "noisy services", ' +
+        'PREFER THIS TOOL over clickstack_search or clickstack_table when the goal is to ' +
+        'understand what kinds of messages, errors, or events exist — e.g. "sample logs", ' +
+        '"what errors are happening", "show me common messages", "what does this service log". ' +
+        'It returns frequency-ranked patterns instead of raw rows, giving a much better overview.\n\n' +
+        'Also use when asked about "top patterns", "common logs", "noisy services", ' +
         '"recurring messages", or log noise analysis.\n\n' +
         'Each pattern includes a "whereSnippet" — use it as the "where" parameter in ' +
         'a follow-up clickstack_search call to browse matching raw events.\n\n' +
