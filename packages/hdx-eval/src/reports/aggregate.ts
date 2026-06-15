@@ -1,9 +1,21 @@
 import type { GradeRecord } from '../grading/types';
 import type { McpKind, RunRecord } from '../harness/types';
+import { modelDirName } from '../runs/path';
+
+/**
+ * A column key uniquely identifies a (mcp, model) combination in reports.
+ * When a batch has a single model, the column key equals the MCP name
+ * (backward-compatible). When multiple models are present, the column
+ * key is `mcp/model`.
+ */
+export type ColumnKey = string;
 
 export type CellSummary = {
   scenario: string;
   mcp: McpKind;
+  model: string;
+  /** Display key used in report columns. */
+  columnKey: ColumnKey;
   n: number;
   programmatic: { mean: number; perCheck: Record<string, number> };
   judge: {
@@ -35,22 +47,29 @@ export type DeltaSummary = {
 
 export type ScenarioSummary = {
   scenario: string;
-  /** All MCP cells keyed by MCP name. */
-  cells: Record<McpKind, CellSummary>;
-  /** Which MCP is the baseline (first MCP, or explicitly set). */
-  baseline?: McpKind;
-  /** Per-challenger deltas vs the baseline. Keyed by challenger MCP name. */
-  deltas: Record<McpKind, DeltaSummary>;
+  /** Cells keyed by column key (mcp or mcp/model). */
+  cells: Record<ColumnKey, CellSummary>;
+  /** Which column key is the baseline. */
+  baseline?: ColumnKey;
+  /** Per-challenger deltas vs the baseline. Keyed by challenger column key. */
+  deltas: Record<ColumnKey, DeltaSummary>;
 };
 
 export type BatchSummary = {
   batchDir: string;
   generatedAt: string;
-  /** The baseline MCP used for delta computation. */
-  baseline?: McpKind;
-  /** Ordered list of MCP names as they appear in the report columns. */
-  mcpOrder: McpKind[];
+  /** The baseline column key used for delta computation. */
+  baseline?: ColumnKey;
+  /** Ordered list of column keys as they appear in the report columns. */
+  columnOrder: ColumnKey[];
+  /** Whether this batch compares multiple models. */
+  multiModel: boolean;
   scenarios: ScenarioSummary[];
+  /**
+   * @deprecated Use `columnOrder`. Preserved for backward compatibility
+   * with older viewer code.
+   */
+  mcpOrder: ColumnKey[];
 };
 
 export type GradedRunPair = {
@@ -58,41 +77,65 @@ export type GradedRunPair = {
   grade: GradeRecord;
 };
 
+/**
+ * Build a column key from a (mcp, model) pair.
+ * When `multiModel` is false the column key is just the mcp name.
+ *
+ * The model component is sanitized through `modelDirName` so that the
+ * column key matches the directory name on disk (which is what the
+ * viewer reads). Without this, model IDs containing `/`, `:`, or `.`
+ * would produce different keys in the summary JSON vs the viewer.
+ */
+export function columnKeyFor(
+  mcp: McpKind,
+  model: string,
+  multiModel: boolean,
+): ColumnKey {
+  return multiModel ? `${mcp}/${modelDirName(model)}` : mcp;
+}
+
 export function buildAggregate(args: {
   batchDir: string;
   pairs: GradedRunPair[];
-  /** Explicit baseline MCP. If not set, the first MCP encountered is used. */
-  baseline?: McpKind;
+  /** Explicit baseline column key. If not set, the first column encountered
+   *  is used. When using a single model, pass just the mcp name. */
+  baseline?: ColumnKey;
 }): BatchSummary {
+  // Detect whether this batch involves multiple models.
+  const modelSet = new Set<string>();
+  for (const p of args.pairs) modelSet.add(p.run.model);
+  const multiModel = modelSet.size > 1;
+
   const byScenario = new Map<string, GradedRunPair[]>();
-  // Track all MCP names in insertion order.
-  const mcpSet = new Set<McpKind>();
+  const columnSet = new Set<ColumnKey>();
   for (const p of args.pairs) {
     if (!byScenario.has(p.run.scenario)) byScenario.set(p.run.scenario, []);
     byScenario.get(p.run.scenario)!.push(p);
-    mcpSet.add(p.run.mcp);
+    columnSet.add(columnKeyFor(p.run.mcp, p.run.model, multiModel));
   }
-  const mcpOrder = [...mcpSet].sort();
-  const baseline = args.baseline ?? mcpOrder[0];
+  const columnOrder = [...columnSet].sort();
+  const baseline = args.baseline ?? columnOrder[0];
 
   const scenarios: ScenarioSummary[] = [];
   for (const [name, ps] of byScenario.entries()) {
-    const byMcp = new Map<McpKind, GradedRunPair[]>();
+    const byCol = new Map<ColumnKey, GradedRunPair[]>();
     for (const p of ps) {
-      if (!byMcp.has(p.run.mcp)) byMcp.set(p.run.mcp, []);
-      byMcp.get(p.run.mcp)!.push(p);
+      const key = columnKeyFor(p.run.mcp, p.run.model, multiModel);
+      if (!byCol.has(key)) byCol.set(key, []);
+      byCol.get(key)!.push(p);
     }
-    const cells: Record<McpKind, CellSummary> = {};
-    for (const [mcp, list] of byMcp.entries()) {
-      cells[mcp] = buildCellSummary(name, mcp, list);
+    const cells: Record<ColumnKey, CellSummary> = {};
+    for (const [col, list] of byCol.entries()) {
+      const first = list[0].run;
+      cells[col] = buildCellSummary(name, first.mcp, first.model, col, list);
     }
 
-    // Compute deltas: each non-baseline MCP vs the baseline.
-    const deltas: Record<McpKind, DeltaSummary> = {};
+    // Compute deltas: each non-baseline column vs the baseline.
+    const deltas: Record<ColumnKey, DeltaSummary> = {};
     const baselineCell = cells[baseline];
-    for (const mcp of Object.keys(cells)) {
-      if (mcp === baseline) continue;
-      deltas[mcp] = computeDelta(cells[mcp], baselineCell);
+    for (const col of Object.keys(cells)) {
+      if (col === baseline) continue;
+      deltas[col] = computeDelta(cells[col], baselineCell);
     }
 
     scenarios.push({
@@ -108,7 +151,9 @@ export function buildAggregate(args: {
     batchDir: args.batchDir,
     generatedAt: new Date().toISOString(),
     baseline,
-    mcpOrder,
+    columnOrder,
+    multiModel,
+    mcpOrder: columnOrder,
     scenarios,
   };
 }
@@ -116,6 +161,8 @@ export function buildAggregate(args: {
 function buildCellSummary(
   scenario: string,
   mcp: McpKind,
+  model: string,
+  columnKey: ColumnKey,
   pairs: GradedRunPair[],
 ): CellSummary {
   const n = pairs.length;
@@ -179,6 +226,8 @@ function buildCellSummary(
   return {
     scenario,
     mcp,
+    model,
+    columnKey,
     n,
     programmatic: { mean: programmaticScore, perCheck },
     judge: {

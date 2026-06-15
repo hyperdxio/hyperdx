@@ -488,6 +488,14 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Click the "Duplicate" button on the series at zero-based `index` to insert
+   * a copy of it directly below.
+   */
+  async duplicateSeries(index: number) {
+    await this.page.getByTestId('series-duplicate-button').nth(index).click();
+  }
+
+  /**
    * Toggle the "As Ratio" switch. Only visible when the chart has exactly
    * two series.
    */

@@ -1,12 +1,13 @@
-import type { McpKind } from '../harness/types';
 import type {
   BatchSummary,
   CellSummary,
+  ColumnKey,
   DeltaSummary,
   ScenarioSummary,
 } from './aggregate';
 
 export function renderMarkdownReport(summary: BatchSummary): string {
+  const columns = summary.columnOrder;
   const lines: string[] = [];
   lines.push(`# Eval Batch — ${basename(summary.batchDir)}`);
   lines.push('');
@@ -14,24 +15,28 @@ export function renderMarkdownReport(summary: BatchSummary): string {
   if (summary.baseline) {
     lines.push(`Baseline: ${summary.baseline}`);
   }
-  lines.push(`MCPs: ${summary.mcpOrder.join(', ')}`);
+  if (summary.multiModel) {
+    lines.push(`Columns: ${columns.join(', ')}  _(mcp/model)_`);
+  } else {
+    lines.push(`MCPs: ${columns.join(', ')}`);
+  }
   lines.push('');
-  lines.push(renderTopVerdict(summary));
+  lines.push(renderTopVerdict(summary, columns));
   lines.push('');
 
   for (const scenario of summary.scenarios) {
     lines.push(`## ${scenario.scenario}`);
     lines.push('');
-    lines.push(renderScenarioTable(scenario, summary.mcpOrder));
+    lines.push(renderScenarioTable(scenario, columns));
     lines.push('');
-    const judgeBreakdown = renderJudgeBreakdown(scenario, summary.mcpOrder);
+    const judgeBreakdown = renderJudgeBreakdown(scenario, columns);
     if (judgeBreakdown) {
       lines.push(judgeBreakdown);
       lines.push('');
     }
     const programmaticBreakdown = renderProgrammaticBreakdown(
       scenario,
-      summary.mcpOrder,
+      columns,
     );
     if (programmaticBreakdown) {
       lines.push(programmaticBreakdown);
@@ -41,22 +46,21 @@ export function renderMarkdownReport(summary: BatchSummary): string {
   return lines.join('\n');
 }
 
-function renderTopVerdict(summary: BatchSummary): string {
-  const mcps = summary.mcpOrder;
+function renderTopVerdict(summary: BatchSummary, columns: ColumnKey[]): string {
   const baseline = summary.baseline;
-  // Header: | Scenario | MCP1 | MCP2 | ... | Δ₁ | Δ₂ | ...
-  const mcpHeaders = mcps.map(m => m).join(' | ');
-  const challengers = mcps.filter(m => m !== baseline);
+  // Header: | Scenario | Col1 | Col2 | ... | Δ₁ | Δ₂ | ...
+  const colHeaders = columns.join(' | ');
+  const challengers = columns.filter(m => m !== baseline);
   const deltaHeaders =
     challengers.length > 0
       ? ' | ' + challengers.map(m => `Δ (${m})`).join(' | ')
       : '';
-  const header = `| Scenario | ${mcpHeaders}${deltaHeaders} |`;
-  const sep = '|---' + '|---'.repeat(mcps.length + challengers.length) + '|';
+  const header = `| Scenario | ${colHeaders}${deltaHeaders} |`;
+  const sep = '|---' + '|---'.repeat(columns.length + challengers.length) + '|';
 
   const rows = [header, sep];
   for (const s of summary.scenarios) {
-    const mcpCells = mcps.map(m => {
+    const colCells = columns.map(m => {
       const c = s.cells[m];
       return c ? pct(c.combinedScore.mean) : '—';
     });
@@ -66,7 +70,7 @@ function renderTopVerdict(summary: BatchSummary): string {
         ? signedPct(d.combinedScore)
         : '—';
     });
-    const allCells = [...mcpCells, ...deltaCells];
+    const allCells = [...colCells, ...deltaCells];
     rows.push(`| ${s.scenario} | ${allCells.join(' | ')} |`);
   }
   return ['### Top-line verdict', '', ...rows].join('\n');
@@ -74,36 +78,37 @@ function renderTopVerdict(summary: BatchSummary): string {
 
 function renderScenarioTable(
   scenario: ScenarioSummary,
-  mcpOrder: McpKind[],
+  columns: ColumnKey[],
 ): string {
   const baseline = scenario.baseline;
-  const challengers = mcpOrder.filter(m => m !== baseline);
+  const challengers = columns.filter(m => m !== baseline);
   const hasDelta = challengers.length > 0;
 
-  // Build dynamic headers: | Metric | MCP1 | MCP2 | ... | Δ₁ | ...
-  const mcpHeaders = mcpOrder.map(m => m).join(' | ');
+  // Build dynamic headers: | Metric | Col1 | Col2 | ... | Δ₁ | ...
+  const colHeaders = columns.join(' | ');
   const deltaHeaders = hasDelta
     ? ' | ' + challengers.map(m => `Δ (${m})`).join(' | ')
     : '';
-  const header = `| Metric | ${mcpHeaders}${deltaHeaders} |`;
-  const sep =
-    '|---' + '|---'.repeat(mcpOrder.length + challengers.length) + '|';
+  const header = `| Metric | ${colHeaders}${deltaHeaders} |`;
+  const sep = '|---' + '|---'.repeat(columns.length + challengers.length) + '|';
 
   const rows = [header, sep];
 
-  const cellFor = (m: McpKind): CellSummary | undefined => scenario.cells[m];
-  const deltaFor = (m: McpKind): DeltaSummary | undefined => scenario.deltas[m];
+  const cellFor = (col: ColumnKey): CellSummary | undefined =>
+    scenario.cells[col];
+  const deltaFor = (col: ColumnKey): DeltaSummary | undefined =>
+    scenario.deltas[col];
 
   function addRow(
     label: string,
     valueFn: (c: CellSummary | undefined) => string,
     deltaFn?: (d: DeltaSummary | undefined) => string,
   ) {
-    const mcpCells = mcpOrder.map(m => valueFn(cellFor(m)));
+    const colCells = columns.map(m => valueFn(cellFor(m)));
     const deltaCells = hasDelta
       ? challengers.map(m => (deltaFn ? deltaFn(deltaFor(m)) : '—'))
       : [];
-    rows.push(`| ${label} | ${[...mcpCells, ...deltaCells].join(' | ')} |`);
+    rows.push(`| ${label} | ${[...colCells, ...deltaCells].join(' | ')} |`);
   }
 
   addRow(
@@ -152,7 +157,7 @@ function renderScenarioTable(
 
 function renderJudgeBreakdown(
   scenario: ScenarioSummary,
-  mcpOrder: McpKind[],
+  columns: ColumnKey[],
 ): string | null {
   const allCriteria = new Set<string>();
   for (const cell of Object.values(scenario.cells)) {
@@ -161,26 +166,26 @@ function renderJudgeBreakdown(
   }
   if (allCriteria.size === 0) return null;
 
-  const mcpHeaders = mcpOrder.join(' | ');
+  const colHeaders = columns.join(' | ');
   const rows = [
     '#### Judge per-criterion (mean 0–5)',
     '',
-    `| Criterion | ${mcpHeaders} |`,
-    '|---' + '|---'.repeat(mcpOrder.length) + '|',
+    `| Criterion | ${colHeaders} |`,
+    '|---' + '|---'.repeat(columns.length) + '|',
   ];
   for (const id of [...allCriteria].sort()) {
-    const mcpCells = mcpOrder.map(m => {
+    const colCells = columns.map(m => {
       const v = scenario.cells[m]?.judge.perCriterion[id];
       return fmtScore(v);
     });
-    rows.push(`| ${id} | ${mcpCells.join(' | ')} |`);
+    rows.push(`| ${id} | ${colCells.join(' | ')} |`);
   }
   return rows.join('\n');
 }
 
 function renderProgrammaticBreakdown(
   scenario: ScenarioSummary,
-  mcpOrder: McpKind[],
+  columns: ColumnKey[],
 ): string | null {
   const allChecks = new Set<string>();
   for (const cell of Object.values(scenario.cells)) {
@@ -189,23 +194,23 @@ function renderProgrammaticBreakdown(
   }
   if (allChecks.size === 0) return null;
 
-  const mcpHeaders = mcpOrder.join(' | ');
+  const colHeaders = columns.join(' | ');
   const rows = [
     '#### Programmatic per-check (pass rate)',
     '',
     'Pass rate = positive checks matched + negative checks not matched.',
     '',
-    `| Check | ${mcpHeaders} |`,
-    '|---' + '|---'.repeat(mcpOrder.length) + '|',
+    `| Check | ${colHeaders} |`,
+    '|---' + '|---'.repeat(columns.length) + '|',
   ];
   for (const id of [...allChecks].sort()) {
-    const mcpCells = mcpOrder.map(m => {
+    const colCells = columns.map(m => {
       const v = scenario.cells[m]?.programmatic.perCheck[id];
       return fmtRate(v);
     });
     const isNegative = id.startsWith('false_');
     const label = isNegative ? `${id} (neg)` : id;
-    rows.push(`| ${label} | ${mcpCells.join(' | ')} |`);
+    rows.push(`| ${label} | ${colCells.join(' | ')} |`);
   }
   return rows.join('\n');
 }

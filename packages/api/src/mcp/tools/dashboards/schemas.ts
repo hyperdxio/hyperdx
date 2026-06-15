@@ -16,67 +16,73 @@ import { z } from 'zod';
 import { externalQuantileLevelSchema, objectIdSchema } from '@/utils/zod';
 
 // ─── Shared tile schemas for MCP dashboard tools ─────────────────────────────
-const mcpNumberFormatSchema = z
-  .object({
-    output: z
-      .enum([
-        'currency',
-        'percent',
-        'byte',
-        'time',
-        'duration',
-        'number',
-        'data_rate',
-        'throughput',
-      ])
-      .describe(
-        'Format category. "duration" auto-formats elapsed times as e.g. "1.2s" (use factor for input unit). ' +
-          '"time" formats clock-style durations. "byte" formats as KB/MB/GB. ' +
-          '"data_rate" formats as bytes/sec. "throughput" formats as count/sec. ' +
-          '"currency" prepends a symbol. "percent" appends %.',
-      ),
-    mantissa: z
-      .number()
-      .int()
-      .optional()
-      .describe(
-        'Decimal places (0–10). Not used for "time" or "duration" output.',
-      ),
-    thousandSeparated: z
-      .boolean()
-      .optional()
-      .describe('Separate thousands (e.g. 1,234,567)'),
-    average: z
-      .boolean()
-      .optional()
-      .describe('Abbreviate large numbers (e.g. 1.2m)'),
-    decimalBytes: z
-      .boolean()
-      .optional()
-      .describe(
-        'Use decimal base for bytes (1KB = 1000). Only for "byte" output.',
-      ),
-    factor: z
-      .number()
-      .optional()
-      .describe(
-        'Input unit factor for "time" or "duration" output. ' +
-          '1 = seconds, 0.001 = milliseconds, 0.000001 = microseconds, 0.000000001 = nanoseconds.',
-      ),
-    currencySymbol: z
-      .string()
-      .optional()
-      .describe('Currency symbol (e.g. "$"). Only for "currency" output.'),
-    unit: z
-      .string()
-      .optional()
-      .describe('Suffix appended to the value (e.g. " req/s")'),
-  })
-  .describe(
-    'Controls how the number value is formatted for display. ' +
-      'Most useful: { output: "duration", factor: 0.000000001 } to auto-format nanosecond durations, ' +
-      'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.',
-  );
+
+const seriesLevelNumberFormatDescription =
+  'Per-series display formatting, applied to this series only (overrides any tile-level numberFormat). ' +
+  'Controls how the series number value(s) are formatted for display. ' +
+  'Most useful: { output: "duration", factor: 0.000000001 } to auto-format nanosecond durations, ' +
+  'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.';
+
+const tileLevelNumberFormatDescription =
+  'Controls how the number value(s) are formatted for display. Applies to series or numbers without a series-level numberFormat. ' +
+  'Most useful: { output: "duration", factor: 0.000000001 } to auto-format nanosecond durations, ' +
+  'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.';
+
+const mcpNumberFormatSchema = z.object({
+  output: z
+    .enum([
+      'currency',
+      'percent',
+      'byte',
+      'time',
+      'duration',
+      'number',
+      'data_rate',
+      'throughput',
+    ])
+    .describe(
+      'Format category. "duration" auto-formats elapsed times as e.g. "1.2s" (use factor for input unit). ' +
+        '"time" formats clock-style durations. "byte" formats as KB/MB/GB. ' +
+        '"data_rate" formats as bytes/sec. "throughput" formats as count/sec. ' +
+        '"currency" prepends a symbol. "percent" appends %, and divides the value by 100 (0.5 becomes 50%).',
+    ),
+  mantissa: z
+    .number()
+    .int()
+    .optional()
+    .describe(
+      'Decimal places (0–10). Not used for "time" or "duration" output.',
+    ),
+  thousandSeparated: z
+    .boolean()
+    .optional()
+    .describe('Separate thousands (e.g. 1,234,567)'),
+  average: z
+    .boolean()
+    .optional()
+    .describe('Abbreviate large numbers (e.g. 1.2m)'),
+  decimalBytes: z
+    .boolean()
+    .optional()
+    .describe(
+      'Use decimal base for bytes (1KB = 1000). Only for "byte" output.',
+    ),
+  factor: z
+    .number()
+    .optional()
+    .describe(
+      'Input unit factor for "time" or "duration" output. ' +
+        '1 = seconds, 0.001 = milliseconds, 0.000001 = microseconds, 0.000000001 = nanoseconds.',
+    ),
+  currencySymbol: z
+    .string()
+    .optional()
+    .describe('Currency symbol (e.g. "$"). Only for "currency" output.'),
+  unit: z
+    .string()
+    .optional()
+    .describe('Suffix appended to the value (e.g. " req/s")'),
+});
 
 const mcpTileSelectItemSchema = z
   .object({
@@ -112,11 +118,7 @@ const mcpTileSelectItemSchema = z
       .describe('Percentile level for aggFn="quantile"'),
     numberFormat: mcpNumberFormatSchema
       .optional()
-      .describe(
-        'Per-series display formatting, applied to this series only (overrides any tile-level numberFormat). ' +
-          'Example: { output: "duration", factor: 0.000000001 } to render a nanosecond Duration series as human-readable time ' +
-          'while leaving sibling count series unformatted.',
-      ),
+      .describe(seriesLevelNumberFormatDescription),
   })
   .superRefine((data, ctx) => {
     if (data.level && data.aggFn !== 'quantile') {
@@ -399,6 +401,19 @@ const mcpLineTileSchema = mcpTileLayoutSchema.extend({
       .describe(
         'Plot as ratio of two metrics (requires exactly 2 select items)',
       ),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(tileLevelNumberFormatDescription),
+    compareToPreviousPeriod: z
+      .boolean()
+      .optional()
+      .describe('Overlay the previous period as a dashed comparison series.'),
+    fitYAxisToData: z
+      .boolean()
+      .optional()
+      .describe(
+        'Scale the y-axis to the data range instead of starting at zero.',
+      ),
   }),
 });
 
@@ -413,6 +428,9 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
     fillNulls: z.boolean().optional().default(true),
     alignDateRangeToGranularity: z.boolean().optional(),
     asRatio: z.boolean().optional(),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(tileLevelNumberFormatDescription),
   }),
 });
 
@@ -438,7 +456,14 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
           'from a groupBy: "StatusMessage" table. Mirrors the same field on the REST ' +
           'table chart config in `externalDashboardTableChartConfigSchema`.',
       ),
-    orderBy: z.string().optional().describe('Sort results by this column'),
+    orderBy: z
+      .string()
+      .optional()
+      .describe(
+        'Sort results by this column. ' +
+          'When ordering by an alias that contains spaces or special characters, ' +
+          `wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+      ),
     asRatio: z.boolean().optional(),
     groupByColumnsOnLeft: z
       .boolean()
@@ -447,6 +472,9 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
         'Render Group By columns on the left side of the table, before the series columns. ' +
           'Default false (Group By columns on the right).',
       ),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(tileLevelNumberFormatDescription),
     onClick: mcpOnClickSchema.optional(),
   }),
 });
@@ -461,10 +489,7 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
       .describe('Exactly one metric to display'),
     numberFormat: mcpNumberFormatSchema
       .optional()
-      .describe(
-        'Display formatting for the number value. Example: { output: "duration", factor: 0.000000001 } ' +
-          'to auto-format nanosecond durations as human-readable time.',
-      ),
+      .describe(tileLevelNumberFormatDescription),
   }),
 });
 
@@ -480,6 +505,9 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
         'Column that defines pie slices. Use PascalCase for top-level columns. ' +
           "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
       ),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(tileLevelNumberFormatDescription),
   }),
 });
 
@@ -616,6 +644,23 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
       ),
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(tileLevelNumberFormatDescription),
+    compareToPreviousPeriod: z
+      .boolean()
+      .optional()
+      .describe(
+        'Overlay the previous period as a dashed comparison series. ' +
+          'Valid only when displayType is "line", ignored otherwise.',
+      ),
+    fitYAxisToData: z
+      .boolean()
+      .optional()
+      .describe(
+        'Scale the y-axis to the data range instead of starting at zero. ' +
+          'Valid only when displayType is "line", ignored otherwise.',
+      ),
     onClick: mcpOnClickSchema.optional(),
   }),
 });

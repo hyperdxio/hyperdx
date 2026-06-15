@@ -128,11 +128,14 @@ describe('buildAggregate', () => {
         durationMs: 50_000,
       }),
     ];
-    // Baseline defaults to first MCP alphabetically: 'clickhouse'.
+    // Baseline defaults to first column alphabetically: 'clickhouse'.
     const summary = buildAggregate({ batchDir: '/tmp/x', pairs });
     expect(summary.scenarios).toHaveLength(1);
     expect(summary.baseline).toBe('clickhouse');
+    expect(summary.columnOrder).toEqual(['clickhouse', 'hyperdx']);
+    // Deprecated alias:
     expect(summary.mcpOrder).toEqual(['clickhouse', 'hyperdx']);
+    expect(summary.multiModel).toBe(false);
     const sc = summary.scenarios[0];
     const h = sc.cells['hyperdx']!;
     const c = sc.cells['clickhouse']!;
@@ -253,6 +256,7 @@ describe('buildAggregate', () => {
       pairs,
       baseline: 'alpha',
     });
+    expect(summary.columnOrder).toEqual(['alpha', 'beta', 'gamma']);
     expect(summary.mcpOrder).toEqual(['alpha', 'beta', 'gamma']);
     const sc = summary.scenarios[0];
     // Challengers: beta and gamma
@@ -260,5 +264,46 @@ describe('buildAggregate', () => {
     expect(sc.deltas['beta']).toBeDefined();
     expect(sc.deltas['gamma']).toBeDefined();
     expect(sc.deltas['gamma'].toolCalls).toBeCloseTo(-2, 5);
+  });
+
+  it('groups by (mcp, model) when multiple models are present', () => {
+    const pairs: GradedRunPair[] = [
+      pair({
+        scenario: 'error-root-cause',
+        mcp: 'hyperdx',
+        i: 0,
+        programmaticScore: 1,
+        judgeScore: 0.9,
+        toolCalls: 13,
+        outputTokens: 4000,
+        durationMs: 60_000,
+      }),
+      pair({
+        scenario: 'error-root-cause',
+        mcp: 'hyperdx',
+        i: 1,
+        programmaticScore: 0.8,
+        judgeScore: 0.8,
+        toolCalls: 11,
+        outputTokens: 3500,
+        durationMs: 50_000,
+      }),
+    ];
+    // Change the model on the second pair to trigger multi-model grouping.
+    pairs[1].run.model = 'claude-haiku-4-5';
+    const summary = buildAggregate({ batchDir: '/tmp/x', pairs });
+    expect(summary.multiModel).toBe(true);
+    expect(summary.columnOrder).toEqual([
+      'hyperdx/claude-haiku-4-5',
+      'hyperdx/claude-sonnet-4-6',
+    ]);
+    const sc = summary.scenarios[0];
+    expect(sc.cells['hyperdx/claude-sonnet-4-6']).toBeDefined();
+    expect(sc.cells['hyperdx/claude-haiku-4-5']).toBeDefined();
+    // Each cell should have n=1
+    expect(sc.cells['hyperdx/claude-sonnet-4-6'].n).toBe(1);
+    expect(sc.cells['hyperdx/claude-haiku-4-5'].n).toBe(1);
+    // Deltas: challenger vs baseline (first alphabetically)
+    expect(sc.deltas['hyperdx/claude-sonnet-4-6']?.combinedScore).toBeDefined();
   });
 });

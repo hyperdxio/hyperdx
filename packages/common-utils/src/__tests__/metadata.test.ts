@@ -309,6 +309,83 @@ describe('Metadata', () => {
     });
   });
 
+  describe('isClickHouseCloud', () => {
+    beforeEach(() => {
+      mockCache.getOrFetch.mockImplementation((key, queryFn) => queryFn());
+    });
+
+    it('returns true when SharedMergeTree is registered in system.table_engines', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [{ is_cloud: true }],
+        }),
+      });
+
+      const result = await metadata.isClickHouseCloud({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toBe(true);
+    });
+
+    it('returns false when SharedMergeTree is absent from system.table_engines', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [],
+        }),
+      });
+
+      const result = await metadata.isClickHouseCloud({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toBe(false);
+    });
+
+    it('re-probes after a transient failure instead of caching false', async () => {
+      const realCache = new MetadataCache();
+      const realMetadata = new Metadata(mockClickhouseClient, realCache);
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockRejectedValueOnce(new Error('connection refused'))
+        .mockResolvedValueOnce({
+          json: jest.fn().mockResolvedValue({ data: [{ is_cloud: true }] }),
+        });
+
+      const first = await realMetadata.isClickHouseCloud({
+        connectionId: 'test_connection',
+      });
+      expect(first).toBe(false);
+
+      const second = await realMetadata.isClickHouseCloud({
+        connectionId: 'test_connection',
+      });
+      expect(second).toBe(true);
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2);
+    });
+
+    it('caches a successful negative result and does not re-query', async () => {
+      const realCache = new MetadataCache();
+      const realMetadata = new Metadata(mockClickhouseClient, realCache);
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({ data: [] }),
+      });
+
+      const first = await realMetadata.isClickHouseCloud({
+        connectionId: 'test_connection',
+      });
+      const second = await realMetadata.isClickHouseCloud({
+        connectionId: 'test_connection',
+      });
+
+      expect(first).toBe(false);
+      expect(second).toBe(false);
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('getSkipIndices', () => {
     beforeEach(() => {
       mockCache.getOrFetch.mockImplementation((key, queryFn) => queryFn());

@@ -1,12 +1,37 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 import type { GradeRecord } from '../grading/types';
 import type { McpKind, RunRecord } from '../harness/types';
+import { isModelSubdir, isRunJson, safeReaddir } from '../runs/path';
 import { SCENARIO_NAMES } from '../scenarios';
 import { buildAggregate, type GradedRunPair } from './aggregate';
 import { renderMarkdownReport } from './markdown';
 
+function collectRunGradePairs(dir: string, pairs: GradedRunPair[]): void {
+  for (const file of safeReaddir(dir)) {
+    if (isRunJson(file)) {
+      const runPath = join(dir, file);
+      const gradePath = runPath.replace(/\.json$/, '.grade.json');
+      if (!existsSync(gradePath)) continue;
+      try {
+        const run = JSON.parse(readFileSync(runPath, 'utf8')) as RunRecord;
+        const grade = JSON.parse(
+          readFileSync(gradePath, 'utf8'),
+        ) as GradeRecord;
+        pairs.push({ run, grade });
+      } catch {
+        // skip malformed
+      }
+    }
+  }
+}
+
+/**
+ * Load graded pairs from a batch. Supports both the new
+ * `<scenario>/<mcp>/<model>/<index>.json` layout and the legacy
+ * `<scenario>/<mcp>/<index>.json` layout.
+ */
 function loadGradedPairs(batchDir: string): GradedRunPair[] {
   const pairs: GradedRunPair[] = [];
   for (const scenario of safeReaddir(batchDir)) {
@@ -14,20 +39,12 @@ function loadGradedPairs(batchDir: string): GradedRunPair[] {
     const sceneDir = join(batchDir, scenario);
     for (const mcp of safeReaddir(sceneDir)) {
       const mcpDir = join(sceneDir, mcp);
-      for (const file of safeReaddir(mcpDir)) {
-        if (!file.endsWith('.json')) continue;
-        if (file.endsWith('.grade.json')) continue;
-        const runPath = join(mcpDir, file);
-        const gradePath = runPath.replace(/\.json$/, '.grade.json');
-        if (!existsSync(gradePath)) continue;
-        try {
-          const run = JSON.parse(readFileSync(runPath, 'utf8')) as RunRecord;
-          const grade = JSON.parse(
-            readFileSync(gradePath, 'utf8'),
-          ) as GradeRecord;
-          pairs.push({ run, grade });
-        } catch {
-          // skip malformed
+      // Collect runs directly in mcpDir (legacy layout).
+      collectRunGradePairs(mcpDir, pairs);
+      // Also check subdirectories (new model layout).
+      for (const entry of safeReaddir(mcpDir)) {
+        if (isModelSubdir(mcpDir, entry)) {
+          collectRunGradePairs(join(mcpDir, entry), pairs);
         }
       }
     }
@@ -49,12 +66,4 @@ export function writeBatchSummary(
   writeFileSync(outPath, md, 'utf8');
 
   return { jsonPath, mdPath: outPath, pairsCount: pairs.length };
-}
-
-function safeReaddir(path: string): string[] {
-  try {
-    return readdirSync(path);
-  } catch {
-    return [];
-  }
 }
