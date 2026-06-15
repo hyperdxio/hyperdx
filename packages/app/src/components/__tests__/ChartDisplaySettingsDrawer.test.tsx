@@ -240,7 +240,10 @@ describe('ChartDisplaySettingsDrawer', () => {
       expect(onChange.mock.calls[0][0]).toMatchObject({ seriesLimit: 25 });
     });
 
-    it('clears seriesLimit to undefined (disabled) when emptied', async () => {
+    // Emits null (not undefined) so the cleared/disabled state survives JSON
+    // round-tripping through the URL query state; undefined would be dropped,
+    // letting RHF's `values` sync restore the stale value.
+    it('clears seriesLimit to null (disabled) when emptied', async () => {
       const onChange = jest.fn();
       const user = userEvent.setup();
 
@@ -257,7 +260,7 @@ describe('ChartDisplaySettingsDrawer', () => {
       await user.click(screen.getByRole('button', { name: /apply/i }));
 
       expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange.mock.calls[0][0].seriesLimit).toBeUndefined();
+      expect(onChange.mock.calls[0][0].seriesLimit).toBeNull();
     });
   });
 });

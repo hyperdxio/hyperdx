@@ -563,7 +563,10 @@ export default function EditTimeChartForm({
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
       setValue('fitYAxisToData', fitYAxisToData);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
-      setValue('seriesLimit', seriesLimit);
+      // Persist `null` (not undefined) when cleared so the disabled state
+      // survives JSON round-tripping through the URL query state — otherwise
+      // the dropped key lets RHF's `values` sync restore the stale value.
+      setValue('seriesLimit', seriesLimit ?? null);
       setValue('color', color);
       setValue('colorRules', colorRules);
       onSubmit();

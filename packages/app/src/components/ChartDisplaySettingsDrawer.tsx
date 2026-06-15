@@ -44,8 +44,10 @@ export type ChartConfigDisplaySettings = Pick<
 > & {
   groupByColumnsOnLeft?: boolean;
   // Per-tile cap on the number of series fetched for a group-by time chart.
-  // Undefined = disabled (no __hdx_series_limit CTE; every series is fetched).
-  seriesLimit?: number;
+  // null/undefined = disabled (no __hdx_series_limit CTE; every series is
+  // fetched). The editor clears to `null` (not `undefined`) so the cleared
+  // state survives JSON round-tripping through the URL query state.
+  seriesLimit?: number | null;
 };
 
 /**
@@ -86,7 +88,9 @@ function applyDefaultSettings(
     compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
     fitYAxisToData: settings.fitYAxisToData ?? false,
     groupByColumnsOnLeft: settings.groupByColumnsOnLeft ?? false,
-    seriesLimit: settings.seriesLimit,
+    // Coerce to null so `reset` clears the input; undefined leaves the
+    // previously registered field value in place.
+    seriesLimit: settings.seriesLimit ?? null,
     color: settings.color,
     colorRules: settings.colorRules
       ? attachLocalIds(settings.colorRules)
@@ -228,7 +232,7 @@ export default function ChartDisplaySettingsDrawer({
                       allowDecimal={false}
                       value={value ?? ''}
                       onChange={v =>
-                        onChange(v === '' || v == null ? undefined : Number(v))
+                        onChange(v === '' || v == null ? null : Number(v))
                       }
                     />
                   )}

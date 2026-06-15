@@ -275,7 +275,10 @@ export const SelectSQLStatementSchema = z.object({
   havingLanguage: SearchConditionLanguageSchema.optional(),
   orderBy: SortSpecificationListSchema.optional(),
   limit: LimitSchema.optional(),
-  seriesLimit: z.number().int().positive().optional(),
+  // Nullish (not just optional): the chart editor clears the value to `null`
+  // so the cleared state survives JSON round-tripping (e.g. through the URL
+  // query state). `null` and `undefined` both mean "disabled" downstream.
+  seriesLimit: z.number().int().positive().nullish(),
 });
 
 export type SQLInterval = z.infer<typeof SQLIntervalSchema>;

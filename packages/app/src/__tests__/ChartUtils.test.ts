@@ -810,7 +810,7 @@ describe('ChartUtils', () => {
     // seriesLimit lives on the builder member of the ChartConfigWithDateRange
     // union, so narrow the result before reading it. The per-tile value is
     // read from the config itself (no team override anymore).
-    const seriesLimitOf = (seriesLimit?: number) =>
+    const seriesLimitOf = (seriesLimit?: number | null) =>
       (
         convertToTimeChartConfig({
           granularity: '5 minute',
@@ -818,12 +818,16 @@ describe('ChartUtils', () => {
             new Date('2025-11-26T00:00:00Z'),
             new Date('2025-11-27T00:00:00Z'),
           ],
-          ...(seriesLimit != null ? { seriesLimit } : {}),
+          ...(seriesLimit !== undefined ? { seriesLimit } : {}),
         } as BuilderChartConfigWithDateRange) as BuilderChartConfigWithDateRange
       ).seriesLimit;
 
     it('omits seriesLimit (capping disabled) when the tile has no limit', () => {
       expect(seriesLimitOf()).toBeUndefined();
+    });
+
+    it('normalizes a cleared (null) seriesLimit to undefined (disabled)', () => {
+      expect(seriesLimitOf(null)).toBeUndefined();
     });
 
     it('uses the tile seriesLimit when provided', () => {

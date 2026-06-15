@@ -144,7 +144,9 @@ export function convertToTimeChartConfig(
         dateRangeEndInclusive,
         granularity,
         limit: { limit: 100000 },
-        ...(seriesLimit != null ? { seriesLimit } : {}),
+        // Overwrite (not conditionally spread) so a cleared `null` from the
+        // source config is normalized to undefined rather than carried over.
+        seriesLimit,
       }
     : {
         ...config,
