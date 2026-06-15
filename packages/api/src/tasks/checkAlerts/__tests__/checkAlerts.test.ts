@@ -39,6 +39,7 @@ import {
   doesExceedThreshold,
   getPreviousAlertHistories,
   getScheduledWindowStart,
+  parseAlertData,
   processAlert,
 } from '@/tasks/checkAlerts';
 import {
@@ -964,6 +965,97 @@ describe('checkAlerts', () => {
           7,
         ),
       ).toThrow(/thresholdMax is required/);
+    });
+  });
+
+  describe('parseAlertData', () => {
+    const timeSeriesMeta = {
+      type: 'time_series' as const,
+      timestampColumnName: 'ts',
+      valueColumnNames: new Set(['cnt']),
+    };
+
+    it('returns the value and ordered [key, value] field pairs, excluding timestamp and value columns', () => {
+      const { value, extraFields } = parseAlertData(
+        {
+          ts: '2023-11-16T22:12:00.000Z',
+          ServiceName: 'web',
+          SeverityText: 'error',
+          cnt: 5,
+        },
+        timeSeriesMeta,
+      );
+
+      expect(value).toBe(5);
+      // Column order is preserved and the timestamp/value columns are excluded.
+      expect(extraFields).toEqual([
+        ['ServiceName', 'web'],
+        ['SeverityText', 'error'],
+      ]);
+    });
+
+    it('derives a group string byte-identical to the old "k:v, k:v" format', () => {
+      const { extraFields } = parseAlertData(
+        {
+          ts: '2023-11-16T22:12:00.000Z',
+          ServiceName: 'web',
+          SeverityText: 'error',
+          cnt: 5,
+        },
+        timeSeriesMeta,
+      );
+
+      const groupKey = extraFields.map(([k, v]) => `${k}:${v}`).join(', ');
+      expect(groupKey).toBe('ServiceName:web, SeverityText:error');
+    });
+
+    it('derives attributes via Object.fromEntries, preserving values that contain colons', () => {
+      const { extraFields } = parseAlertData(
+        {
+          ts: '2023-11-16T22:12:00.000Z',
+          'k8s.pod.name': 'otel-collector-123',
+          firstSeen: '2023-11-16T22:12:00.000Z',
+          url: 'https://example.com/path',
+          cnt: 5,
+        },
+        timeSeriesMeta,
+      );
+
+      expect(Object.fromEntries(extraFields)).toEqual({
+        'k8s.pod.name': 'otel-collector-123',
+        firstSeen: '2023-11-16T22:12:00.000Z',
+        url: 'https://example.com/path',
+      });
+    });
+
+    it('coerces numeric field values to strings', () => {
+      const { extraFields } = parseAlertData(
+        { ts: '2023-11-16T22:12:00.000Z', StatusCode: 500, cnt: 5 },
+        timeSeriesMeta,
+      );
+
+      expect(extraFields).toEqual([['StatusCode', '500']]);
+    });
+
+    it('returns no fields when there are no group-by columns', () => {
+      const { value, extraFields } = parseAlertData(
+        { ts: '2023-11-16T22:12:00.000Z', cnt: 5 },
+        timeSeriesMeta,
+      );
+
+      expect(value).toBe(5);
+      expect(extraFields).toEqual([]);
+    });
+
+    it('does not treat the timestamp column as a field for single_value results', () => {
+      const { value, extraFields } = parseAlertData(
+        { ts: '2023-11-16T22:12:00.000Z', cnt: 5 },
+        { type: 'single_value' as const, valueColumnNames: new Set(['cnt']) },
+      );
+
+      expect(value).toBe(5);
+      // single_value has no timestamp column, so `ts` is kept as a field.
+      expect(extraFields).toEqual([['ts', '2023-11-16T22:12:00.000Z']]);
     });
   });
 
