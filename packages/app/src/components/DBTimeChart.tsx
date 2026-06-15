@@ -290,8 +290,8 @@ function DBTimeChartComponent({
   const { data: me, isLoading: isLoadingMe } = api.useMe();
 
   const queriedConfig = useMemo(
-    () => convertToTimeChartConfig(config, me?.team?.seriesLimit),
-    [config, me?.team?.seriesLimit],
+    () => convertToTimeChartConfig(config),
+    [config],
   );
 
   // Determine whether the config can be optimized with an MV, to determine whether

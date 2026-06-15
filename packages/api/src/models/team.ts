@@ -42,7 +42,6 @@ export default mongoose.model<ITeam>(
       fieldMetadataDisabled: Boolean,
       parallelizeWhenPossible: Boolean,
       filterKeysFetchLimit: Number,
-      seriesLimit: Number,
     },
     {
       timestamps: true,
