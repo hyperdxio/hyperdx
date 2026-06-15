@@ -82,7 +82,6 @@ import { useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
-import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
@@ -2019,6 +2018,7 @@ export function DBSearchPage() {
             dateRange={searchedTimeRange}
             sourceId={inputSource}
             size="xs"
+            searchFilters={searchFilters}
           />
           <Flex
             gap="sm"
@@ -2063,7 +2063,6 @@ export function DBSearchPage() {
             <SearchSubmitButton isFormStateDirty={formState.isDirty} />
           </Flex>
         </Flex>
-        <ActiveFilterPills searchFilters={searchFilters} mt={6} />
       </form>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal

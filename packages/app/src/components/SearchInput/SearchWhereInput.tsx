@@ -1,9 +1,14 @@
+import { useCallback, useMemo } from 'react';
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
 import { Box, Flex, Kbd } from '@mantine/core';
 
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
+import type { FilterStateHook } from '@/searchFilters';
 
+import { flattenFilters, removePill } from '../filterPillUtils';
+
+import InlineFilterChips from './InlineFilterChips';
 import InputLanguageSwitch from './InputLanguageSwitch';
 import SearchInputV2 from './SearchInputV2';
 
@@ -116,6 +121,11 @@ export type SearchWhereInputProps = {
    * Source id used in various queries
    */
   sourceId?: string;
+  /**
+   * Filter state hook for rendering inline filter chips inside the input.
+   * When provided, chips are shown inline before the query text.
+   */
+  searchFilters?: FilterStateHook;
 } & TableConnectionChoice &
   UseControllerProps<any>;
 
@@ -163,6 +173,7 @@ export default function SearchWhereInput({
   dateRange,
   languageName = `${name}Language`,
   sourceId,
+  searchFilters,
 }: SearchWhereInputProps) {
   const { field: languageField } = useController({
     control,
@@ -180,6 +191,38 @@ export default function SearchWhereInput({
 
   const tc = tableConnection ? { tableConnection } : { tableConnections };
   const sizeClass = size === 'xs' ? styles.sizeXs : styles.sizeSm;
+
+  // Inline filter chips
+  const pills = useMemo(
+    () => flattenFilters(searchFilters?.filters),
+    [searchFilters?.filters],
+  );
+  const hasChips = pills.length > 0;
+
+  // Only render the chip slot when there are pills to show. Passing `null`
+  // when the slot is empty keeps `data-has-chips` off downstream so the
+  // single-line height cap and the collapse-fade gradient stay engaged.
+  const filterChips =
+    searchFilters && hasChips ? (
+      <InlineFilterChips
+        pills={pills}
+        setFilterValue={searchFilters.setFilterValue}
+        clearFilter={searchFilters.clearFilter}
+      />
+    ) : null;
+
+  // Returns true only when a chip was actually removed, so the input's
+  // Backspace-at-position-0 handler knows whether to consume the keystroke.
+  const onRemoveLastChip = useCallback((): boolean => {
+    if (!searchFilters || !hasChips) return false;
+    const lastPill = pills[pills.length - 1];
+    removePill(
+      lastPill,
+      searchFilters.setFilterValue,
+      searchFilters.clearFilter,
+    );
+    return true;
+  }, [searchFilters, hasChips, pills]);
 
   return (
     <Box
@@ -217,6 +260,8 @@ export default function SearchWhereInput({
             additionalSuggestions={additionalSuggestions}
             dateRange={dateRange}
             sourceId={sourceId}
+            filterChips={filterChips}
+            onRemoveLastChip={onRemoveLastChip}
           />
         ) : (
           <SearchInputV2
@@ -232,6 +277,8 @@ export default function SearchWhereInput({
             additionalSuggestions={additionalSuggestions}
             dateRange={dateRange}
             sourceId={sourceId}
+            filterChips={filterChips}
+            onRemoveLastChip={onRemoveLastChip}
           />
         )}
         {enableHotkey && (

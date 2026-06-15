@@ -23,15 +23,11 @@
     border-bottom: 2px solid var(--color-bg-brand) !important;
   }
 
-  /* When AutocompleteInput (Lucene) is expanded, round the input wrapper bottom-left corner */
+  /* When AutocompleteInput (Lucene) inputContainer is expanded (focused),
+     round the bottom-left corner */
   /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
-  :global([data-expanded='true']) :global(.mantine-InputWrapper-root) {
+  :global([data-expanded='true']) :global([data-autocomplete-container]) {
     border-bottom-left-radius: var(--mantine-radius-default);
-    border-bottom: 2px solid var(--color-bg-brand);
-
-    textarea {
-      min-height: 38px !important;
-    }
   }
 
   /* target only the SQLInlineEditor Paper (not the AutocompleteInput) */
@@ -41,15 +37,23 @@
     border-bottom-left-radius: 0;
   }
 
-  /* target only the AutocompleteInput Paper (not the SQLInlineEditor) */
+  /* target the AutocompleteInput container (Lucene mode) */
+  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
+  :global([data-autocomplete-container]) {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+
+  /* Mantine's <Textarea> in AutocompleteInput (Lucene mode) still renders
+     an `.mantine-InputWrapper-root` wrapper, so these rules are live and
+     load-bearing for Lucene-mode sizing — don't strip them as dead code. */
   /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
   :global(.mantine-InputWrapper-root) {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
 
     textarea {
-      border-radius: 0 var(--mantine-radius-default)
-        var(--mantine-radius-default) 0;
+      border-radius: 0;
 
       /* Prevent scrollbar when placeholder text wraps in narrow containers (maxRows=1 when unfocused) */
       overflow: hidden;
@@ -86,7 +90,7 @@
   }
 
   &.sizeSm {
-    height: 36px;
+    min-height: 36px;
   }
 }
 

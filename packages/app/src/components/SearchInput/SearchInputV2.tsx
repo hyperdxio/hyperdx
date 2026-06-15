@@ -46,6 +46,8 @@ export default function SearchInputV2({
   queryHistoryType,
   dateRange,
   sourceId,
+  filterChips,
+  onRemoveLastChip,
   'data-testid': dataTestId,
   ...props
 }: {
@@ -60,6 +62,9 @@ export default function SearchInputV2({
   queryHistoryType?: string;
   dateRange?: [Date, Date];
   sourceId?: string;
+  filterChips?: React.ReactNode;
+  /** Returns true if a chip was actually removed so the host can consume the keystroke. */
+  onRemoveLastChip?: () => boolean;
   'data-testid'?: string;
 } & UseControllerProps<any> &
   TableConnectionChoice) {
@@ -129,6 +134,8 @@ export default function SearchInputV2({
       onLanguageChange={onLanguageChange}
       onSubmit={onSubmit}
       queryHistoryType={queryHistoryType}
+      filterChips={filterChips}
+      onRemoveLastChip={onRemoveLastChip}
       data-testid={dataTestId}
       aboveSuggestions={
         <>
