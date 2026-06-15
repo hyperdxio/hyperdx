@@ -1,12 +1,12 @@
 import type { ClickHouseClient } from '@clickhouse/client';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 import { createEvalClient, defaultClickHouseUrl } from '../clickhouse/client';
 import { scenarioTables } from '../clickhouse/schema';
 import type { RunRecord } from '../harness/types';
 import { SCENARIO_NAMES } from '../scenarios';
-import { runsRoot } from './path';
+import { isModelSubdir, isRunJson, runsRoot, safeReaddir } from './path';
 
 const QUERY_LOG_BUFFER_MS = 5_000;
 
@@ -287,30 +287,33 @@ export async function instrumentBatch(
       const sceneDir = join(resolved, scenario);
       for (const mcp of safeReaddir(sceneDir)) {
         const mcpDir = join(sceneDir, mcp);
-        for (const file of safeReaddir(mcpDir)) {
-          if (!file.endsWith('.json')) continue;
-          if (file.endsWith('.grade.json') || file.endsWith('.timing.json')) {
-            continue;
+        for (const entry of safeReaddir(mcpDir)) {
+          if (isRunJson(entry)) {
+            // Legacy layout: <scenario>/<mcp>/<index>.json
+            const timing = await instrumentRun({
+              runPath: join(mcpDir, entry),
+              client,
+            });
+            out.push(timing);
+          } else if (isModelSubdir(mcpDir, entry)) {
+            // New layout: <scenario>/<mcp>/<model>/<index>.json
+            const modelDir = join(mcpDir, entry);
+            for (const file of safeReaddir(modelDir)) {
+              if (isRunJson(file)) {
+                const timing = await instrumentRun({
+                  runPath: join(modelDir, file),
+                  client,
+                });
+                out.push(timing);
+              }
+            }
           }
-          const timing = await instrumentRun({
-            runPath: join(mcpDir, file),
-            client,
-          });
-          out.push(timing);
         }
       }
     }
     return out;
   } finally {
     await client.close();
-  }
-}
-
-function safeReaddir(path: string): string[] {
-  try {
-    return readdirSync(path);
-  } catch {
-    return [];
   }
 }
 
