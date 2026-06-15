@@ -33,11 +33,13 @@ import {
   Box,
   Button,
   Center,
+  Code,
   Divider,
   Flex,
   Grid,
   Group,
   Modal,
+  Paper,
   Radio,
   Select,
   Slider,
@@ -182,17 +184,6 @@ const MV_AGGREGATE_FUNCTION_OPTIONS = MV_AGGREGATE_FUNCTIONS.map(fn => ({
 const OTEL_CLICKHOUSE_EXPRESSIONS = {
   timestampValueExpression: 'TimeUnix',
   resourceAttributesExpression: 'ResourceAttributes',
-};
-
-const SOURCE_FIELD_LABELS: Record<SourceFieldKind, string> = {
-  bodyExpression: 'Body Expression',
-  implicitColumnExpression: 'Implicit Column Expression',
-  serviceNameExpression: 'Service Name Expression',
-  severityTextExpression: 'Log Level Expression',
-  eventAttributesExpression: 'Event Attributes Expression',
-  resourceAttributesExpression: 'Resource Attributes Expression',
-  traceIdExpression: 'Trace Id Expression',
-  spanIdExpression: 'Span Id Expression',
 };
 
 const CORRELATION_FIELD_MAP: Record<
@@ -2330,7 +2321,7 @@ export function TableSourceForm({
 
   const applyPairingFix = useCallback(
     (warning: PairingWarning) => {
-      if (!pendingSave || !warning.suggestedFix) {
+      if (!pendingSave) {
         return;
       }
 
@@ -2670,6 +2661,7 @@ export function TableSourceForm({
         )}
       </Group>
       <Modal
+        size="lg"
         opened={!!pendingSave}
         onClose={() => setPendingSave(undefined)}
         title="Review source configuration"
@@ -2677,21 +2669,41 @@ export function TableSourceForm({
       >
         <Stack gap="md">
           {pendingSave?.warnings.map(warning => (
-            <Box key={warning.field}>
+            <Paper key={warning.field} p="sm">
               <Text size="sm">{warning.message}</Text>
-              {warning.suggestedFix && (
+              <Text mt="md" fw="bold" color="green" size="sm">
+                Recommended ({warning.recommendation}):
+              </Text>
+
+              <Group
+                mt="sm"
+                justify="space-between"
+                align="center"
+                wrap="nowrap"
+              >
+                <Code
+                  block
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    maxHeight: 200,
+                    overflowY: 'auto',
+                  }}
+                >
+                  {warning.suggestedFix.value}
+                </Code>
                 <Button
                   variant="secondary"
                   size="xs"
-                  mt="xs"
+                  style={{ flexShrink: 0 }}
                   onClick={() => applyPairingFix(warning)}
                 >
-                  {`Set ${SOURCE_FIELD_LABELS[warning.suggestedFix.field]} to "${
-                    warning.suggestedFix.value
-                  }"`}
+                  Use this value
                 </Button>
-              )}
-            </Box>
+              </Group>
+            </Paper>
           ))}
           <Group justify="flex-end" mt="sm">
             <Button
