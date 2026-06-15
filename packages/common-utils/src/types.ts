@@ -1625,6 +1625,7 @@ const RequiredTimestampColumnSchema = z
 export const BaseSourceSchema = z.object({
   id: z.string(),
   name: z.string().min(1, 'Name is required'),
+  section: z.string().max(256).optional(),
   kind: z.nativeEnum(SourceKind),
   connection: z.string().min(1, 'Server Connection is required'),
   from: z.object({
