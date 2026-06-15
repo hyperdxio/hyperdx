@@ -3874,6 +3874,115 @@ describe('checkAlerts', () => {
       expect(workerHistory!.lastValues.map(v => v.count)).toEqual([1]);
     });
 
+    it('TILE alert (raw SQL) - group-by fields are exposed as {{attributes.*}} in the notification payload', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = now.getTime() - ms('5m');
+
+      // Two errors from a single service so the group "ServiceName:web" fires.
+      await bulkInsertLogs([
+        {
+          ServiceName: 'web',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'web error 1',
+        },
+        {
+          ServiceName: 'web',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'web error 2',
+        },
+      ]);
+
+      const groupedSqlTemplate = `
+        SELECT
+          toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} second) AS ts,
+          ServiceName,
+          count() AS cnt
+        FROM default.otel_logs
+        WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
+          AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
+        GROUP BY ts, ServiceName
+        ORDER BY ts`;
+
+      const dashboard = await new Dashboard({
+        name: 'Raw SQL Grouped Attributes Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'rawsql-grouped-attrs',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              configType: 'sql',
+              displayType: 'line',
+              sqlTemplate: groupedSqlTemplate,
+              connection: connection.id,
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find(
+        (t: any) => t.id === 'rawsql-grouped-attrs',
+      );
+      if (!tile) throw new Error('tile not found');
+
+      const details = await createAlertDetails(
+        team,
+        undefined,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          dashboardId: dashboard.id,
+          tileId: 'rawsql-grouped-attrs',
+          // The title and body templates reference the per-group field directly.
+          name: 'Errors for {{attributes.ServiceName}}',
+          message: 'Affected service: {{attributes.ServiceName}}',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // The webhook payload is captured via the mocked slack sender. Its
+      // rendered title/body must resolve {{attributes.ServiceName}} to the
+      // firing group's value ("web"), not an empty string.
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      const [, payload] = (slack.postMessageToWebhook as jest.Mock).mock
+        .calls[0];
+
+      expect(payload.text).toContain('Errors for web');
+
+      const renderedBody = payload.blocks[0].text.text;
+      expect(renderedBody).toContain('Affected service: web');
+      expect(renderedBody).toContain('Group: "ServiceName:web"');
+    });
+
     it('TILE alert (raw SQL) - alert is evaluated using the last numeric column', async () => {
       const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
         await setupSavedSearchAlertTest();
