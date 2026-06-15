@@ -2121,6 +2121,66 @@ describe('CustomSchemaSQLSerializerV2 - Array and Nested Fields', () => {
   );
 });
 
+describe('genEnglishExplanation', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+  metadata.getColumn = jest.fn().mockImplementation(async () => undefined);
+  metadata.getMaterializedColumnsLookupTable = jest
+    .fn()
+    .mockImplementation(async () => new Map());
+
+  const databaseName = 'testName';
+  const tableName = 'testTable';
+  const connectionId = 'testId';
+  const query = 'bar';
+
+  it('serializes to english when table, database, and connection are present', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName, databaseName, connectionId },
+      metadata,
+    });
+    expect(actual).toBe('event has whole word bar');
+  });
+
+  it('falls back to the raw message when tableName is missing', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName: '', databaseName, connectionId },
+      metadata,
+    });
+    expect(actual).toBe(`Message containing ${query}`);
+  });
+
+  it('falls back to the raw message when databaseName is missing', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName, databaseName: '', connectionId },
+      metadata,
+    });
+    expect(actual).toBe(`Message containing ${query}`);
+  });
+
+  it('falls back to the raw message when connectionId is missing', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName, databaseName, connectionId: '' },
+      metadata,
+    });
+    expect(actual).toBe(`Message containing ${query}`);
+  });
+
+  it('falls back to the raw message when all table connection fields are missing', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName: '', databaseName: '', connectionId: '' },
+      metadata,
+    });
+    expect(actual).toBe(`Message containing ${query}`);
+  });
+});
+
 describe('parseKvItemsExpression', () => {
   it('parses standard KV items expression', () => {
     expect(
