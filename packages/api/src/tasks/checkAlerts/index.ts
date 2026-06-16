@@ -998,7 +998,7 @@ export const processAlert = async (
       }
     };
 
-    // Fire an alert when a codnition is met in M consecutive time windows
+    // Fire an alert when a condition is met in M consecutive time windows
     const shouldFireBasedOnConsecutiveWindows = async (
       groupKey: string,
     ): Promise<boolean> => {
