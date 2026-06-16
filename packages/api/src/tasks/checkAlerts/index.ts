@@ -1076,6 +1076,8 @@ export const processAlert = async (
             totalCount: value,
             startTime: alertTimestamp,
           });
+        } else {
+          history.fired = false;
         }
       }
 
@@ -1144,6 +1146,8 @@ export const processAlert = async (
               totalCount: 0,
               startTime: bucketStart,
             });
+          } else {
+            history.fired = false;
           }
         } else if (!hasGroupBy || !hasAlertsInPreviousMap) {
           // For grouped alerts, if there are alerts in the previous map,
@@ -1183,6 +1187,8 @@ export const processAlert = async (
               startTime: bucketStart,
               attributes,
             });
+          } else {
+            history.fired = false;
           }
         } else {
           // TODO: if the alert was previously alerting (different bucket), should we set state to OK (plus auto-resolve)?
