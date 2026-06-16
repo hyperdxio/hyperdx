@@ -411,6 +411,39 @@ describe('buildChartConfigForExplanations', () => {
     expect(result).toBeDefined();
   });
 
+  it("applies the tile's series limit so the SQL preview matches the chart query", () => {
+    const result = buildChartConfigForExplanations({
+      ...baseParams,
+      queriedConfig: builderConfig,
+      queriedSourceId: logSource.id,
+      tableSource: logSource,
+      activeTab: 'time',
+      dbTimeChartConfig: {
+        ...builderConfig,
+        seriesLimit: 3,
+      } as ChartConfigWithDateRange,
+    });
+
+    expect(result).toBeDefined();
+    // @ts-expect-error union types..
+    expect(result!.seriesLimit).toBe(3);
+  });
+
+  it('omits seriesLimit (capping disabled) when the tile has no limit', () => {
+    const result = buildChartConfigForExplanations({
+      ...baseParams,
+      queriedConfig: builderConfig,
+      queriedSourceId: logSource.id,
+      tableSource: logSource,
+      activeTab: 'time',
+      dbTimeChartConfig: builderConfig,
+    });
+
+    expect(result).toBeDefined();
+    // @ts-expect-error union types..
+    expect(result!.seriesLimit).toBeUndefined();
+  });
+
   it.each(['table', 'number', 'pie'] as const)(
     'uses queriedConfig for activeTab=%s and applies tab transform',
     activeTab => {

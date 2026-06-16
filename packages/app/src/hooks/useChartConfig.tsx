@@ -153,6 +153,24 @@ async function* fetchDataInChunks({
       ? getGranularityAlignedTimeWindows(config)
       : [undefined];
 
+  // Every chunk must rank the __hdx_series_limit CTE over the same fixed
+  // range, or each window keeps its own top-N and the union across chunks
+  // exceeds seriesLimit. The newest window is used (rather than the full
+  // chart range) to bound the ranking scan; the trade-off is that series
+  // are picked by recent activity, so groups with no events in the newest
+  // window are dropped from the chart.
+  const rankingDateRange = windows[0]?.dateRange;
+  const seriesLimit = isBuilderChartConfig(config)
+    ? config.seriesLimit
+    : undefined;
+  const windowedConfigFor = (w: (typeof windows)[number]) => ({
+    ...config,
+    ...(w ?? {}),
+    ...(w != null && seriesLimit != null && rankingDateRange != null
+      ? { seriesLimitDateRange: rankingDateRange }
+      : {}),
+  });
+
   if (IS_MTVIEWS_ENABLED && isBuilderChartConfig(config)) {
     const { dataTableDDL, mtViewDDL, renderMTViewConfig } =
       await buildMTViewSelectQuery(config, metadata, querySettings);
@@ -172,10 +190,7 @@ async function* fetchDataInChunks({
   if (enableParallelQueries) {
     // fetch in parallel
     const promises = windows.map(async (w, index) => {
-      const windowedConfig = {
-        ...config,
-        ...(w ?? {}),
-      };
+      const windowedConfig = windowedConfigFor(w);
       return {
         index,
         queryResult: await clickhouseClient.queryChartConfig({
@@ -214,12 +229,7 @@ async function* fetchDataInChunks({
 
   // fetch in series
   for (let i = 0; i < windows.length; i++) {
-    const window = windows[i];
-
-    const windowedConfig = {
-      ...config,
-      ...(window ?? {}),
-    };
+    const windowedConfig = windowedConfigFor(windows[i]);
 
     const result = await clickhouseClient.queryChartConfig({
       config: windowedConfig,

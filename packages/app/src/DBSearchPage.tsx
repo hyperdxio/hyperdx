@@ -2063,7 +2063,11 @@ export function DBSearchPage() {
             <SearchSubmitButton isFormStateDirty={formState.isDirty} />
           </Flex>
         </Flex>
-        <ActiveFilterPills searchFilters={searchFilters} mt={6} />
+        <ActiveFilterPills
+          searchFilters={searchFilters}
+          chartConfig={filtersChartConfig}
+          mt={6}
+        />
       </form>
       {searchedConfig != null && searchedSource != null && (
         <SaveSearchModal

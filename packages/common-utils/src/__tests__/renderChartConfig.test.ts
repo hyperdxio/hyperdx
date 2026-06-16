@@ -511,6 +511,78 @@ describe('renderChartConfig', () => {
         await renderChartConfig(baseLogsConfig, mockMetadata, querySettings),
       );
       expect(sql).not.toContain('__hdx_series_limit');
+
+      // seriesLimitDateRange alone (no seriesLimit) must not emit a CTE either.
+      const sqlWithRangeOnly = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...baseLogsConfig,
+            seriesLimitDateRange: baseLogsConfig.dateRange,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sqlWithRangeOnly).not.toContain('__hdx_series_limit');
+    });
+
+    it('pins the series-limit CTE to seriesLimitDateRange while the outer query stays windowed', async () => {
+      // The chunking caller pins all chunks to one shared ranking range
+      // (the newest window); the render layer is agnostic to which range.
+      const rankingRange: [Date, Date] = [
+        new Date('2025-02-12T00:00:00Z'),
+        new Date('2025-02-13T00:00:00Z'),
+      ];
+      const renderWindow = async (
+        dateRange: [Date, Date],
+        dateRangeEndInclusive: boolean,
+      ) =>
+        parameterizedQueryToSql(
+          await renderChartConfig(
+            {
+              ...baseLogsConfig,
+              seriesLimit: 60,
+              dateRange,
+              dateRangeEndInclusive,
+              seriesLimitDateRange: rankingRange,
+            },
+            mockMetadata,
+            querySettings,
+          ),
+        );
+
+      // Two chunked windows of the same chart (most recent window first,
+      // older windows are end-exclusive — mirrors fetchDataInChunks).
+      const recentChunk = await renderWindow(
+        [new Date('2025-02-12T18:00:00Z'), rankingRange[1]],
+        true,
+      );
+      const olderChunk = await renderWindow(
+        [rankingRange[0], new Date('2025-02-12T18:00:00Z')],
+        false,
+      );
+
+      // The CTE end is the first `) SELECT` — the outer query starts there.
+      const cteOf = (sql: string) => {
+        const start = sql.indexOf('`__hdx_series_limit` AS (');
+        const end = sql.indexOf(') SELECT ');
+        expect(start).toBeGreaterThanOrEqual(0);
+        expect(end).toBeGreaterThan(start);
+        return sql.slice(start, end);
+      };
+
+      // Both chunks rank over the identical pinned range, so they keep the
+      // same top-N set; the windowed range only applies to the outer query.
+      expect(cteOf(recentChunk)).toBe(cteOf(olderChunk));
+      expect(cteOf(recentChunk)).toContain(String(rankingRange[0].getTime()));
+      expect(cteOf(recentChunk)).toContain(String(rankingRange[1].getTime()));
+      const outerOf = (sql: string) => sql.slice(sql.indexOf(') SELECT '));
+      expect(outerOf(olderChunk)).toContain(
+        String(new Date('2025-02-12T18:00:00Z').getTime()),
+      );
+      expect(outerOf(olderChunk)).not.toContain(
+        String(rankingRange[1].getTime()),
+      );
     });
 
     it('does not emit a series-limit CTE without a group-by', async () => {
