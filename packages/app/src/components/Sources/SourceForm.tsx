@@ -2519,6 +2519,14 @@ export function TableSourceForm({
             rules={{ required: 'Name is required' }}
           />
         </FormRow>
+        <FormRow label={'Section'}>
+          <InputControlled
+            control={control}
+            name="section"
+            placeholder="Optional group, e.g. Billing or Control Plane Prod"
+            maxLength={256}
+          />
+        </FormRow>
         <FormRow label={'Source Data Type'}>
           <Controller
             control={control}
