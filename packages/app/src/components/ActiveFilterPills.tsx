@@ -2,10 +2,10 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Autocomplete,
   Flex,
   FlexProps,
   Popover,
-  Select,
   Text,
   Tooltip,
 } from '@mantine/core';
@@ -108,11 +108,28 @@ function FilterPill({
 
   const [opened, setOpened] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Draft of the value being typed in the picker. Free text is allowed (the
+  // field may not have this value in the sampled data yet), so we track what
+  // the user types and only commit it on submit/blur. It starts empty (the
+  // current value shows as a placeholder) so the full suggestion list is
+  // visible on open instead of being filtered down to just the current value.
+  const [draftValue, setDraftValue] = useState('');
   const copyTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Guards against committing the same value twice when picking an option
+  // (onOptionSubmit fires, then onBlur as the menu closes). Reset on open.
+  const committedRef = useRef(false);
 
   useEffect(() => {
     return () => clearTimeout(copyTimerRef.current);
   }, []);
+
+  // Reset the draft (and commit guard) each time the menu opens so reopening
+  // on a different pill (or after a replace) starts from a clean, unfiltered
+  // list.
+  useEffect(() => {
+    setDraftValue('');
+    committedRef.current = false;
+  }, [pill.value, opened]);
 
   // The picker lists values to switch this pill to, so it must not be scoped
   // by the active query or by the pill's own filter. Reusing chartConfig
@@ -146,6 +163,18 @@ function FilterPill({
     : `${pill.field}${operator}${pill.value}`;
 
   const showDangerAccent = isExcluded && !isInvalid;
+
+  // Commit the typed/picked value, but only when it actually differs from the
+  // current one (avoids a redundant query on blur with no change). The
+  // committedRef guard prevents a double commit when picking an option.
+  const commitValue = (value: string) => {
+    const trimmed = value.trim();
+    if (!committedRef.current && trimmed && trimmed !== pill.value) {
+      committedRef.current = true;
+      onReplaceValue(trimmed);
+    }
+    setOpened(false);
+  };
 
   const handleCopy = async () => {
     const ok = await copyTextToClipboard(pill.value);
@@ -255,23 +284,35 @@ function FilterPill({
     >
       <Popover.Target>{pillWithTooltip}</Popover.Target>
       <Popover.Dropdown p={6}>
-        <Select
+        <Autocomplete
           size="xs"
           w={220}
-          searchable
           mb={6}
           data={valueOptions}
-          value={pill.value}
-          onChange={value => {
-            if (value && value !== pill.value) {
-              onReplaceValue(value);
-              setOpened(false);
+          value={draftValue}
+          onChange={setDraftValue}
+          // Picking a suggestion commits immediately.
+          onOptionSubmit={commitValue}
+          onKeyDown={e => {
+            if (e.key !== 'Enter') {
+              return;
+            }
+            // If the user is keyboard-navigating the dropdown, an option is
+            // highlighted (Mantine marks it with [data-combobox-selected]).
+            // Let the combobox handle Enter natively so it submits that option
+            // via onOptionSubmit. Only commit free text when no option is
+            // highlighted, so a typed value not in the list still applies.
+            const hasHighlightedOption = !!document.querySelector(
+              '[data-combobox-selected]',
+            );
+            if (!hasHighlightedOption) {
+              e.preventDefault();
+              commitValue(draftValue);
             }
           }}
+          onBlur={() => commitValue(draftValue)}
           comboboxProps={{ withinPortal: false }}
-          nothingFoundMessage={
-            isFetchingValues ? 'Loading values...' : 'No values'
-          }
+          placeholder={isFetchingValues ? 'Loading values...' : pill.value}
           aria-label="Change filter value"
         />
         <Flex gap={4} align="center">
