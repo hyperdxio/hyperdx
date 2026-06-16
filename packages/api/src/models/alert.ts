@@ -84,6 +84,9 @@ export interface IAlert {
     until: Date;
   };
 
+  // Multi-window alerting: fire only after N violations in M consecutive windows
+  windowsLookback?: number;
+
   // Errors recorded during the most recent execution
   executionErrors?: IAlertError[];
   createdAt: Date;
@@ -189,6 +192,11 @@ const AlertSchema = new Schema<IAlert>(
     tileId: {
       type: String,
       required: false,
+    },
+    windowsLookback: {
+      type: Number,
+      required: false,
+      min: 1,
     },
     silenced: {
       required: false,
