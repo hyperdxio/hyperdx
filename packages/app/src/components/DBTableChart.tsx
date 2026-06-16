@@ -1,13 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useRouter } from 'next/router';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { isRatioChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   isBuilderChartConfig,
+  isPromqlChartConfig,
   isRawSqlChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
-import { Box, Code, Text } from '@mantine/core';
+import { Text } from '@mantine/core';
 import { SortingState } from '@tanstack/react-table';
 
 import {
@@ -22,9 +21,11 @@ import { useChartNumberFormats, useSource } from '@/source';
 import { useIntersectionObserver } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
+import ChartErrorState, {
+  ChartErrorStateVariant,
+} from './charts/ChartErrorState';
 import { getClientSideSortingFn } from './DBTable/sorting';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-import { SQLPreview } from './ChartSQLPreview';
 
 export default function DBTableChart({
   config,
@@ -39,6 +40,7 @@ export default function DBTableChart({
   toolbarSuffix,
   showMVOptimizationIndicator = true,
   variant,
+  errorVariant,
 }: {
   config: ChartConfigWithOptTimestamp;
   getRowSearchLink?: (row: any) => string | null;
@@ -52,6 +54,7 @@ export default function DBTableChart({
   toolbarSuffix?: React.ReactNode[];
   showMVOptimizationIndicator?: boolean;
   variant?: TableVariant;
+  errorVariant?: ChartErrorStateVariant;
 }) {
   const [sort, setSort] = useState<SortingState>([]);
 
@@ -76,6 +79,7 @@ export default function DBTableChart({
 
   const queriedConfig = useMemo(() => {
     if (isRawSqlChartConfig(config)) return config;
+    if (isPromqlChartConfig(config)) return config;
 
     const _config = convertToTableChartConfig(config);
 
@@ -103,7 +107,7 @@ export default function DBTableChart({
 
   // Returns an array of aliases, so we can check if something is using an alias
   const aliasMap = useMemo(() => {
-    if (isRawSqlChartConfig(config)) {
+    if (isRawSqlChartConfig(config) || isPromqlChartConfig(config)) {
       return [];
     }
 
@@ -217,32 +221,10 @@ export default function DBTableChart({
     queriedConfig,
   ]);
 
-  const getOnClickLink = useOnClickLinkBuilder({
+  const getRowAction = useOnClickLinkBuilder({
     onClick: config.onClick,
     dateRange: queriedConfig.dateRange,
   });
-
-  const router = useRouter();
-  const hasOnRowClick = !!getOnClickLink || !!getRowSearchLink;
-  const onRowClick = useCallback(
-    (row: Record<string, unknown>, e?: React.MouseEvent) => {
-      const url = getOnClickLink
-        ? getOnClickLink(row)
-        : getRowSearchLink
-          ? getRowSearchLink(row)
-          : null;
-
-      // getOnClickLink will surface any errors notifications
-      if (!url) return;
-
-      if (e?.metaKey || e?.ctrlKey || e?.button === 1) {
-        window.open(url, '_blank');
-      } else {
-        router.push(url);
-      }
-    },
-    [getOnClickLink, getRowSearchLink, router],
-  );
 
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
@@ -251,32 +233,7 @@ export default function DBTableChart({
           Loading Chart Data...
         </div>
       ) : isError && error ? (
-        <div className="h-100 w-100 align-items-center justify-content-center text-muted overflow-scroll">
-          <Text ta="center" size="sm" mt="sm">
-            Error loading chart, please check your query or try again later.
-          </Text>
-          <Box mt="sm">
-            <Text my="sm" size="sm" ta="center">
-              Error Message:
-            </Text>
-            <Code
-              block
-              style={{
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {error.message}
-            </Code>
-            {error instanceof ClickHouseQueryError && (
-              <>
-                <Text my="sm" size="sm" ta="center">
-                  Sent Query:
-                </Text>
-                <SQLPreview data={error?.query} />
-              </>
-            )}
-          </Box>
-        </div>
+        <ChartErrorState error={error} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           No data found within time range.
@@ -285,7 +242,8 @@ export default function DBTableChart({
         <Table
           data={data?.data ?? []}
           columns={columns}
-          onRowClick={hasOnRowClick ? onRowClick : undefined}
+          getRowAction={getRowAction ?? undefined}
+          getRowSearchLink={getRowAction ? undefined : getRowSearchLink}
           sorting={effectiveSort}
           enableClientSideSorting={isRawSqlChartConfig(config)}
           onSortingChange={handleSortingChange}

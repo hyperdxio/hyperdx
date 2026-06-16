@@ -22,6 +22,7 @@ import {
   SourceSchema,
   TLogSource,
   TMetricSource,
+  TPromqlSource,
   TSessionSource,
   TSource,
   TSourceNoId,
@@ -80,10 +81,10 @@ export function getDisplayedTimestampValueExpression(eventModel: TSource) {
 export function getEventBody(eventModel: TSource) {
   let expression: string | undefined;
   if (eventModel.kind === SourceKind.Trace) {
-    expression = eventModel.spanNameExpression ?? undefined;
+    expression = eventModel.spanNameExpression || undefined;
   } else if (eventModel.kind === SourceKind.Log) {
     expression =
-      eventModel.bodyExpression ?? eventModel.implicitColumnExpression;
+      eventModel.bodyExpression || eventModel.implicitColumnExpression;
   }
   const multiExpr = splitAndTrimWithBracket(expression ?? '');
   return multiExpr.length === 1 ? expression : multiExpr[0];
@@ -264,7 +265,8 @@ type InferredSourceConfig =
   | TStrippedSource<TLogSource>
   | TStrippedSource<TTraceSource>
   | TStrippedSource<TMetricSource>
-  | TStrippedSource<TSessionSource>;
+  | TStrippedSource<TSessionSource>
+  | TStrippedSource<TPromqlSource>;
 
 export async function inferTableSourceConfig({
   databaseName,
@@ -307,6 +309,10 @@ export async function inferTableSourceConfig({
       : {}),
     kind,
   };
+
+  if (kind === SourceKind.Promql) {
+    return baseConfig as TStrippedSource<TPromqlSource>;
+  }
 
   if (kind === SourceKind.Session) {
     const isSessionSchema =

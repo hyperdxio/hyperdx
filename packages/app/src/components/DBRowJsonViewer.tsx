@@ -44,13 +44,20 @@ export function buildJSONExtractQuery(
   parsedJsonRootPath: string[],
   jsonColumns: string[] = [],
   jsonExtractFn: JSONExtractFn = 'JSONExtractString',
+  mapColumns: string[] = [],
 ): string | null {
   const nestedPath = keyPath.slice(parsedJsonRootPath.length);
   if (nestedPath.length === 0) {
     return null; // No nested path to extract
   }
 
-  const baseColumn = mergePath(parsedJsonRootPath, jsonColumns);
+  // `parsedJsonRootPath[0]` is the column the parsed-JSON view is anchored on.
+  // It can be a JSON column (auto-detected by ClickHouse JSON type) OR a Map
+  // column whose sub-value is a JSON-parseable string (HyperJson promotes those
+  // to `isInParsedJson=true`, see HyperJson.tsx:227). Thread `mapColumns` so a
+  // numeric-looking Map sub-key renders as `Map['1']` instead of the array
+  // `Map[2]`. See HDX-4369.
+  const baseColumn = mergePath(parsedJsonRootPath, jsonColumns, mapColumns);
   const jsonPathArgs = nestedPath.map(p => `'${p}'`).join(', ');
   return `${jsonExtractFn}(${baseColumn}, ${jsonPathArgs})`;
 }
@@ -332,9 +339,14 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
 export function DBRowJsonViewer({
   data,
   jsonColumns,
+  mapColumns,
 }: {
   data: any;
   jsonColumns?: string[];
+  // Map column names from the result-set metadata. Threaded into
+  // `mergePath` so numeric-looking sub-keys on a Map render as
+  // `Map['key']` instead of the array `Map[N+1]`. HDX-4369.
+  mapColumns?: string[];
 }) {
   const {
     onPropertyAddClick,
@@ -369,7 +381,7 @@ export function DBRowJsonViewer({
   const getLineActions = useCallback<GetLineActions>(
     ({ keyPath, value, isInParsedJson, parsedJsonRootPath }) => {
       const actions: LineAction[] = [];
-      const fieldPath = mergePath(keyPath, jsonColumns);
+      const fieldPath = mergePath(keyPath, jsonColumns, mapColumns);
       const isJsonColumn =
         keyPath.length > 0 && jsonColumns?.includes(keyPath[0]);
 
@@ -384,12 +396,7 @@ export function DBRowJsonViewer({
       ) {
         actions.push({
           key: 'add-to-search',
-          label: (
-            <Group gap={2}>
-              <IconFilter size={14} />
-              Add to Filters
-            </Group>
-          ),
+          label: <IconFilter size={14} />,
           title: 'Add to Filters',
           onClick: () => {
             let filterFieldPath = fieldPath;
@@ -400,6 +407,8 @@ export function DBRowJsonViewer({
                 keyPath,
                 parsedJsonRootPath,
                 jsonColumns,
+                'JSONExtractString',
+                mapColumns,
               );
               if (jsonQuery) {
                 filterFieldPath = jsonQuery;
@@ -428,12 +437,7 @@ export function DBRowJsonViewer({
       if (generateSearchUrl && typeof value !== 'object') {
         actions.push({
           key: 'search',
-          label: (
-            <Group gap={2}>
-              <IconSearch size={14} />
-              Search
-            </Group>
-          ),
+          label: <IconSearch size={14} />,
           title: 'Search for this value only',
           onClick: () => {
             let searchFieldPath = fieldPath;
@@ -453,6 +457,7 @@ export function DBRowJsonViewer({
                 parsedJsonRootPath,
                 jsonColumns,
                 jsonExtractFn,
+                mapColumns,
               );
 
               if (jsonQuery) {
@@ -496,6 +501,8 @@ export function DBRowJsonViewer({
                 keyPath,
                 parsedJsonRootPath,
                 jsonColumns,
+                'JSONExtractString',
+                mapColumns,
               );
               if (jsonQuery) {
                 chartFieldPath = jsonQuery;
@@ -523,6 +530,8 @@ export function DBRowJsonViewer({
             keyPath,
             parsedJsonRootPath,
             jsonColumns,
+            'JSONExtractString',
+            mapColumns,
           );
           if (jsonQuery) {
             columnFieldPath = jsonQuery;
@@ -532,17 +541,7 @@ export function DBRowJsonViewer({
         const isIncluded = displayedColumns?.includes(columnFieldPath);
         actions.push({
           key: 'toggle-column',
-          label: isIncluded ? (
-            <Group gap={2}>
-              <IconMinus size={14} />
-              Column
-            </Group>
-          ) : (
-            <Group gap={2}>
-              <IconPlus size={14} />
-              Column
-            </Group>
-          ),
+          label: isIncluded ? <IconMinus size={14} /> : <IconPlus size={14} />,
           title: isIncluded
             ? `Remove ${fieldPath} column from results table`
             : `Add ${fieldPath} column to results table`,
@@ -589,18 +588,15 @@ export function DBRowJsonViewer({
       if (typeof value === 'object') {
         actions.push({
           key: 'copy-object',
-          label: 'Copy Object',
+          label: <IconCopy size={14} />,
+          title: 'Copy object',
           onClick: handleCopyObject,
         });
       } else {
         actions.push({
           key: 'copy-value',
-          label: (
-            <Group gap={2}>
-              <IconCopy size={14} />
-              Copy Value
-            </Group>
-          ),
+          label: <IconCopy size={14} />,
+          title: 'Copy value',
           onClick: async () => {
             const copied = await copyTextToClipboard(
               typeof value === 'string'
@@ -632,6 +628,7 @@ export function DBRowJsonViewer({
       rowData,
       toggleColumn,
       jsonColumns,
+      mapColumns,
     ],
   );
 

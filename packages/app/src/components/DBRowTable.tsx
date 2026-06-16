@@ -31,6 +31,10 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  DENOISE_NOISE_THRESHOLD,
+  DENOISE_SAMPLE_SIZE,
+} from '@hyperdx/common-utils/dist/drain';
+import {
   BuilderChartConfigWithDateRange,
   SelectList,
   SourceKind,
@@ -38,7 +42,6 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
-  Code,
   Flex,
   Group,
   Modal,
@@ -93,13 +96,16 @@ import {
 import { FormatTime } from '@/useFormatTime';
 import { useUserPreferences } from '@/useUserPreferences';
 import {
-  COLORS,
+  getChartColorInfo,
   getLogLevelClass,
   logLevelColor,
   useLocalStorage,
   usePrevious,
 } from '@/utils';
 
+import ChartErrorState, {
+  ChartErrorStateVariant,
+} from './charts/ChartErrorState';
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import TableHeader from './DBTable/TableHeader';
@@ -269,16 +275,19 @@ const PatternTrendChart = ({
               isAnimationActive={false}
               dataKey="count"
               stackId="a"
-              fill={color || COLORS[0]}
+              // `getChartColorInfo()` resolves a CSS var via
+              // `getComputedStyle(document.documentElement)` and is
+              // invoked once per row render. Kept inline (instead of
+              // hoisted into a memo) because memoizing would either
+              // require a stable theme-class subscription this
+              // component doesn't already have, or risk a stale
+              // value on theme toggle. The per-row cost is acceptable:
+              // pattern rows render in a virtualized list and the
+              // `getComputedStyle` read is sub-microsecond. Revisit
+              // if this surfaces in a profile.
+              fill={color || getChartColorInfo()}
               maxBarSize={24}
             />
-            {/* <Line
-              key={'count'}
-              type="monotone"
-              dataKey={'count'}
-              stroke={COLORS[0]}
-              dot={false}
-            /> */}
             <Tooltip content={<PatternTrendChartTooltip />} />
           </BarChart>
         </ResponsiveContainer>
@@ -342,6 +351,7 @@ export const RawLogTable = memo(
     dedupRows,
     isError,
     error,
+    errorVariant = 'inline',
     columnTypeMap,
     dateRange,
     loadingDate,
@@ -378,6 +388,7 @@ export const RawLogTable = memo(
 
     isError?: boolean;
     error?: ClickHouseQueryError | Error;
+    errorVariant?: ChartErrorStateVariant;
     dateRange?: [Date, Date];
     loadingDate?: Date;
     config?: BuilderChartConfigWithDateRange;
@@ -1226,7 +1237,16 @@ export const RawLogTable = memo(
                 })}
                 <tr>
                   <td colSpan={800}>
-                    <div className="rounded fs-7 bg-muted text-center d-flex align-items-center justify-content-center mt-3">
+                    <div
+                      className={cx(
+                        'rounded fs-7 d-flex align-items-center justify-content-center mt-3',
+                        // Errors render the shared ChartErrorState, which carries
+                        // its own styling/alignment; drop the muted background and
+                        // centered text so it matches the error state of other
+                        // chart types.
+                        { 'bg-muted text-center': !isError },
+                      )}
+                    >
                       {isLoading ? (
                         <div className="my-3">
                           <div className="d-inline-block">
@@ -1265,40 +1285,8 @@ export const RawLogTable = memo(
                         isLoading == false &&
                         dedupedRows.length > 0 ? (
                         <div className="my-3">End of Results</div>
-                      ) : isError ? (
-                        <div className="my-3">
-                          <Text ta="center" size="sm">
-                            Error loading results, please check your query or
-                            try again.
-                          </Text>
-                          <Box p="sm">
-                            <Box mt="sm">
-                              <Code
-                                block
-                                style={{
-                                  whiteSpace: 'pre-wrap',
-                                }}
-                              >
-                                {error?.message}
-                              </Code>
-                            </Box>
-                            {error instanceof ClickHouseQueryError && (
-                              <>
-                                <Text my="sm" size="sm" ta="center">
-                                  Sent Query:
-                                </Text>
-                                <Flex
-                                  w="100%"
-                                  ta="initial"
-                                  align="center"
-                                  justify="center"
-                                >
-                                  <SQLPreview data={error?.query} />
-                                </Flex>
-                              </>
-                            )}
-                          </Box>
-                        </div>
+                      ) : isError && error ? (
+                        <ChartErrorState error={error} variant={errorVariant} />
                       ) : hasNextPage == false &&
                         isLoading == false &&
                         dedupedRows.length === 0 ? (
@@ -1368,9 +1356,20 @@ export function appendSelectWithAdditionalKeys(
   partitionKey: string,
   extraKeys: string[] = [],
 ): { select: SelectList; additionalKeysLength: number } {
+  // Include both the raw key expressions (e.g. toStartOfFiveMinutes(Timestamp))
+  // and the extracted column references (e.g. Timestamp). The raw expressions
+  // are needed so the row WHERE clause can filter on PK expressions directly.
   const partitionKeyArr = extractColumnReferencesFromKey(partitionKey);
   const primaryKeyArr = extractColumnReferencesFromKey(primaryKeys);
-  const allKeys = new Set([...partitionKeyArr, ...primaryKeyArr, ...extraKeys]);
+  const rawPartitionExprs = splitAndTrimWithBracket(partitionKey);
+  const rawPrimaryExprs = splitAndTrimWithBracket(primaryKeys);
+  const allKeys = new Set([
+    ...partitionKeyArr,
+    ...primaryKeyArr,
+    ...rawPartitionExprs,
+    ...rawPrimaryExprs,
+    ...extraKeys,
+  ]);
   if (typeof select === 'string') {
     const selectSplit = splitAndTrimWithBracket(select);
     const selectColumns = new Set(selectSplit);
@@ -1448,7 +1447,27 @@ export function useConfigWithAdditionalSelect(
       extraKeys,
     );
 
-    return { ...config, select, additionalKeysLength };
+    // When block columns are available, the PK + partition + block columns
+    // uniquely identify a row. Compute the full set of key column names
+    // (both raw expressions like toStartOfFiveMinutes(Timestamp) and bare
+    // column references like Timestamp, ServiceName) so the row WHERE clause
+    // can use only these, avoiding expensive index loading on large columns
+    // like Body.
+    const hasBlockColumns =
+      extraKeys.includes('_block_number') &&
+      extraKeys.includes('_block_offset');
+
+    const rowKeyColumns = hasBlockColumns
+      ? new Set([
+          ...splitAndTrimWithBracket(partitionKey),
+          ...splitAndTrimWithBracket(primaryKey),
+          ...extractColumnReferencesFromKey(partitionKey),
+          ...extractColumnReferencesFromKey(primaryKey),
+          ...extraKeys,
+        ])
+      : undefined;
+
+    return { ...config, select, additionalKeysLength, rowKeyColumns };
   }, [primaryKey, partitionKey, config, tableMetadata, columns, sourceId]);
 }
 
@@ -1499,6 +1518,8 @@ function DBSqlRowTableComponent({
   initialSortBy,
   variant = 'default',
   enableSmallFirstWindow,
+  tableId,
+  errorVariant,
 }: {
   config: BuilderChartConfigWithDateRange;
   sourceId?: string;
@@ -1523,6 +1544,8 @@ function DBSqlRowTableComponent({
   onSortingChange?: (v: SortingState | null) => void;
   variant?: DBRowTableVariant;
   enableSmallFirstWindow?: boolean;
+  tableId?: string;
+  errorVariant?: ChartErrorStateVariant;
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
@@ -1674,7 +1697,11 @@ function DBSqlRowTableComponent({
     [data],
   );
 
-  const getRowWhere = useRowWhere({ meta: data?.meta, aliasMap });
+  const getRowWhere = useRowWhere({
+    meta: data?.meta,
+    aliasMap,
+    primaryKeyColumns: mergedConfig?.rowKeyColumns,
+  });
 
   const _onRowDetailsClick = useCallback(
     (row: Record<string, any>) => {
@@ -1693,7 +1720,7 @@ function DBSqlRowTableComponent({
   const patternColumn = columns[columns.length - 1];
   const groupedPatterns = useGroupedPatterns({
     config,
-    samples: 10_000,
+    samples: DENOISE_SAMPLE_SIZE,
     bodyValueExpression: patternColumn ?? '',
     severityTextExpression:
       (source?.kind === SourceKind.Log
@@ -1706,7 +1733,9 @@ function DBSqlRowTableComponent({
     queryKey: ['noisy-patterns', config],
     queryFn: async () => {
       return Object.values(groupedPatterns.data).filter(
-        p => p.count / (groupedPatterns.sampledRowCount ?? 1) > 0.1,
+        p =>
+          p.count / (groupedPatterns.sampledRowCount ?? 1) >
+          DENOISE_NOISE_THRESHOLD,
       );
     },
     enabled:
@@ -1813,6 +1842,7 @@ function DBSqlRowTableComponent({
         generateRowId={getRowWhere}
         isError={isError}
         error={error ?? undefined}
+        errorVariant={errorVariant}
         columnTypeMap={columnMap}
         dateRange={config.dateRange}
         loadingDate={loadingDate}
@@ -1828,6 +1858,7 @@ function DBSqlRowTableComponent({
         getRowWhere={getRowWhere}
         variant={variant}
         onRemoveColumn={toggleColumn ? onRemoveColumnFromTable : undefined}
+        tableId={tableId}
       />
     </>
   );

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Control,
   FieldArrayWithId,
@@ -25,7 +26,9 @@ import {
 } from '@/components/ChartEditor/types';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
-import SourceSchemaPreview from '@/components/SourceSchemaPreview';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from '@/components/SourceSchemaPreview';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { IS_LOCAL_MODE } from '@/config';
@@ -45,6 +48,7 @@ type ChartEditorControlsProps = {
   append: (value: SavedChartConfigWithSelectArray['select'][number]) => void;
   removeSeries: (index: number) => void;
   swapSeries: (from: number, to: number) => void;
+  duplicateSeries: (index: number) => void;
   tableSource?: TSource;
   tableConnection: TableConnection;
   databaseName?: string;
@@ -73,6 +77,7 @@ export function ChartEditorControls({
   append,
   removeSeries,
   swapSeries,
+  duplicateSeries,
   tableSource,
   tableConnection,
   databaseName,
@@ -91,6 +96,13 @@ export function ChartEditorControls({
   openDisplaySettings,
   openHeatmapSettings,
 }: ChartEditorControlsProps) {
+  const canAddSeries =
+    displayType !== DisplayType.Number &&
+    displayType !== DisplayType.Pie &&
+    displayType !== DisplayType.Heatmap;
+  const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
+    useState(false);
+
   return (
     <>
       <Flex mb="md" align="center" justify="space-between">
@@ -108,9 +120,14 @@ export function ChartEditorControls({
                 ? [...HEATMAP_ALLOWED_SOURCE_KINDS]
                 : undefined
             }
-            sourceSchemaPreview={
-              <SourceSchemaPreview source={tableSource} variant="text" />
-            }
+            onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+            isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(tableSource)}
+          />
+          <SourceSchemaPreview
+            source={tableSource}
+            controlled
+            open={isSourceSchemaPreviewOpen}
+            onClose={() => setIsSourceSchemaPreviewOpen(false)}
           />
         </Group>
         <Group>
@@ -148,6 +165,7 @@ export function ChartEditorControls({
               onRemoveSeries={removeSeries}
               length={fields.length}
               onSwapSeries={swapSeries}
+              onDuplicateSeries={duplicateSeries}
               onSubmit={onSubmit}
               setValue={setValue}
               connectionId={tableSource?.connection}
@@ -157,6 +175,7 @@ export function ChartEditorControls({
               showHaving={
                 fields.length === 1 && displayType === DisplayType.Table
               }
+              showDuplicate={canAddSeries}
               tableName={tableName ?? ''}
               tableSource={tableSource}
               errors={
@@ -228,26 +247,24 @@ export function ChartEditorControls({
           <Divider mt="md" mb="sm" />
           <Flex mt={4} align="center" justify="space-between">
             <Group gap="xs">
-              {displayType !== DisplayType.Number &&
-                displayType !== DisplayType.Pie &&
-                displayType !== DisplayType.Heatmap && (
-                  <Button
-                    variant="subtle"
-                    size="sm"
-                    color="gray"
-                    onClick={() => {
-                      append({
-                        aggFn: 'count',
-                        aggCondition: '',
-                        aggConditionLanguage: 'lucene',
-                        valueExpression: '',
-                      });
-                    }}
-                  >
-                    <IconCirclePlus size={14} className="me-2" />
-                    Add Series
-                  </Button>
-                )}
+              {canAddSeries && (
+                <Button
+                  variant="subtle"
+                  size="sm"
+                  color="gray"
+                  onClick={() => {
+                    append({
+                      aggFn: 'count',
+                      aggCondition: '',
+                      aggConditionLanguage: 'lucene',
+                      valueExpression: '',
+                    });
+                  }}
+                >
+                  <IconCirclePlus size={14} className="me-2" />
+                  Add Series
+                </Button>
+              )}
               {fields.length == 2 && displayType !== DisplayType.Number && (
                 <Switch
                   label="As Ratio"

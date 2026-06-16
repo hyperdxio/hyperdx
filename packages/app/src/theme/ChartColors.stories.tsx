@@ -1,19 +1,21 @@
 import React from 'react';
 
 import {
+  CATEGORICAL_PALETTE_TOKENS,
   COLORS,
   getChartColorError,
+  getChartColorInfo,
   getChartColorSuccess,
   getChartColorWarning,
 } from '@/utils';
 
-// Labels for chart colors - brand green first, then Observable palette
+// Pretty labels for the picker UI, in the same order as CATEGORICAL_PALETTE_TOKENS.
 const COLOR_LABELS = [
-  'Green (Brand)',
   'Blue',
   'Orange',
   'Red',
   'Cyan',
+  'Green',
   'Pink',
   'Purple',
   'Light Blue',
@@ -21,11 +23,12 @@ const COLOR_LABELS = [
   'Gray',
 ];
 
-// Derive chart colors from the single source of truth in utils.ts
-const CHART_COLORS = COLORS.map((hex, i) => ({
-  name: `color-chart-${i + 1}`,
-  hex,
-  label: COLOR_LABELS[i] || `Color ${i + 1}`,
+// Derive chart colors from the single source of truth in utils.ts; the token
+// (e.g. `chart-blue`) is the CSS-var slug too.
+const CHART_COLORS = CATEGORICAL_PALETTE_TOKENS.map((token, i) => ({
+  name: `color-${token}`,
+  hex: COLORS[i],
+  label: COLOR_LABELS[i] ?? token,
 }));
 
 const SEMANTIC_CHART_COLORS = [
@@ -43,6 +46,11 @@ const SEMANTIC_CHART_COLORS = [
     name: 'color-chart-error',
     hex: getChartColorError(),
     label: 'Error (Red)',
+  },
+  {
+    name: 'color-chart-info',
+    hex: getChartColorInfo(),
+    label: 'Info (Blue)',
   },
 ];
 
@@ -124,6 +132,18 @@ export const AllChartColors = () => (
     </div>
 
     <h3 style={{ fontSize: 16, marginBottom: 16 }}>Semantic Chart Colors</h3>
+    <p
+      style={{
+        marginBottom: 16,
+        color: 'var(--color-text-muted)',
+        fontSize: 13,
+      }}
+    >
+      Semantic chart colors are unified across HyperDX and ClickStack —
+      `success` aliases categorical `chart-green` and `info` aliases
+      `chart-blue`. Brand identity for charts is carried by non-chart UI chrome
+      (Mantine accent, sidebar gradient), not by these tokens.
+    </p>
     <div style={{ marginBottom: 32 }}>
       {SEMANTIC_CHART_COLORS.map(({ name, hex, label }) => (
         <ColorSwatch key={name} name={name} hex={hex} label={label} />
@@ -321,7 +341,7 @@ export const SemanticColorsPreview = () => (
               fontSize: 24,
             }}
           >
-            {i === 0 ? '98%' : i === 1 ? '15' : '3'}
+            {i === 0 ? '98%' : i === 1 ? '15' : i === 2 ? '3' : '42'}
           </div>
           <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
           <code style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>
@@ -352,7 +372,7 @@ export const AccessibilityCheck = () => (
         border: '1px solid var(--color-border)',
       }}
     >
-      {CHART_COLORS.map(({ hex, label }, i) => (
+      {CHART_COLORS.map(({ hex, label }) => (
         <div
           key={label}
           style={{
@@ -370,8 +390,7 @@ export const AccessibilityCheck = () => (
             gap: 2,
           }}
         >
-          <span>{i + 1}</span>
-          <span style={{ fontSize: 9, fontWeight: 400 }}>{label}</span>
+          <span style={{ fontSize: 11 }}>{label}</span>
         </div>
       ))}
     </div>

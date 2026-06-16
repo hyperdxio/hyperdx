@@ -15,6 +15,14 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  type DashboardFilterQueryIssue,
+  type SavedFilterValueIssue,
+  type SavedQueryIssue,
+  validateDashboardFilterQueries,
+  validateSavedFilterValues,
+  validateSavedQuery,
+} from '@hyperdx/common-utils/dist/filters';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   type DashboardTemplate,
@@ -24,6 +32,7 @@ import {
   isOnClickSearchById,
   isTraceSource,
   SavedChartConfig,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
@@ -38,6 +47,7 @@ import {
   TagsInput,
   Text,
   TextInput,
+  Tooltip,
 } from '@mantine/core';
 import { Dropzone } from '@mantine/dropzone';
 import { useDisclosure } from '@mantine/hooks';
@@ -50,10 +60,12 @@ import {
 } from '@tabler/icons-react';
 
 import SelectControlled from './components/SelectControlled';
+import { SourceMultiSelectControlled } from './components/SourceMultiSelect';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import { useConnections } from './connection';
 import {
+  normalizeRawDashboardTileColors,
   useCreateDashboard,
   useDashboards,
   useUpdateDashboard,
@@ -61,6 +73,48 @@ import {
 import { getDashboardTemplate } from './dashboardTemplates';
 import { withAppNav } from './layout';
 import { useSources } from './source';
+
+/**
+ * A colored headline message with an optional collapsible "details" section,
+ * toggled by a chevron button. Shared by the import error and the various
+ * non-blocking import warnings so they stay visually consistent. The collapse
+ * state is local, so the details start collapsed each time it's rendered.
+ */
+function CollapsibleMessage({
+  color,
+  message,
+  details,
+  'data-testid': dataTestId,
+}: {
+  color: string;
+  message: ReactNode;
+  details?: ReactNode;
+  'data-testid'?: string;
+}) {
+  const [detailsOpen, { toggle: toggleDetails }] = useDisclosure(false);
+  return (
+    <div data-testid={dataTestId}>
+      <Text c={color}>{message}</Text>
+      {details != null && (
+        <>
+          <Button variant="transparent" onClick={toggleDetails} px={0}>
+            <Group c={color} gap={0} align="center">
+              <IconChevronRight
+                size="16px"
+                style={{
+                  transition: 'transform 0.2s ease-in-out',
+                  transform: detailsOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                }}
+              />
+              {detailsOpen ? 'Hide Details' : 'Show Details'}
+            </Group>
+          </Button>
+          <Collapse expanded={detailsOpen}>{details}</Collapse>
+        </>
+      )}
+    </div>
+  );
+}
 
 function FileSelection({
   onComplete,
@@ -76,7 +130,14 @@ function FileSelection({
     message: string;
     details?: ReactNode;
   } | null>(null);
-  const [errorDetails, { toggle: toggleErrorDetails }] = useDisclosure(false);
+  const [filterWarnings, setFilterWarnings] = useState<SavedFilterValueIssue[]>(
+    [],
+  );
+  const [filterQueryWarnings, setFilterQueryWarnings] = useState<
+    DashboardFilterQueryIssue[]
+  >([]);
+  const [savedQueryWarning, setSavedQueryWarning] =
+    useState<SavedQueryIssue | null>(null);
 
   const { control, handleSubmit } = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
@@ -84,6 +145,9 @@ function FileSelection({
 
   const onSubmit = async ({ file }: FormValues) => {
     setError(null);
+    setFilterWarnings([]);
+    setFilterQueryWarnings([]);
+    setSavedQueryWarning(null);
     if (!file) return;
 
     let data: unknown;
@@ -98,6 +162,14 @@ function FileSelection({
       });
       return;
     }
+
+    // Heal legacy `chart-1`..`chart-10` tile colors from #2265 *before*
+    // the strict `DashboardTemplateSchema.safeParse` runs. The schema's
+    // `ChartPaletteTokenSchema` is a plain `z.enum` (no `z.preprocess`),
+    // so a template exported from a pre-rename deploy would otherwise
+    // fail import with an opaque enum error and never reach the
+    // write-time normalizer in `useCreateDashboard`.
+    data = normalizeRawDashboardTileColors(data);
 
     const result = DashboardTemplateSchema.safeParse(data);
     if (!result.success) {
@@ -116,6 +188,32 @@ function FileSelection({
       });
       return;
     }
+
+    // The schema only guarantees saved filter values are well-shaped, not that
+    // their condition strings parse. Surface a non-blocking warning so users
+    // who hand-edited or generated the file know a value won't actually filter,
+    // while still letting them proceed with the import.
+    setFilterWarnings(
+      validateSavedFilterValues(result.data.savedFilterValues ?? []),
+    );
+
+    // Import never runs the filters' values queries, so a filter whose `where`
+    // clause is malformed would otherwise only surface as a failed query after
+    // opening the dashboard. Statically validate the `where` clauses here so the
+    // problem is visible up front (non-blocking).
+    setFilterQueryWarnings(
+      validateDashboardFilterQueries(result.data.filters ?? []),
+    );
+
+    // The dashboard's default saved query is also free-form text. A malformed
+    // one is lower impact (it surfaces in the dashboard search bar where it can
+    // be edited), but warn about it for consistency (non-blocking).
+    setSavedQueryWarning(
+      validateSavedQuery(
+        result.data.savedQuery,
+        result.data.savedQueryLanguage,
+      ),
+    );
 
     onComplete(result.data);
   };
@@ -182,36 +280,107 @@ function FileSelection({
         />
 
         {error && (
-          <div>
-            <Text c="red">{error.message}</Text>
-            {error.details != null && (
-              <>
-                <Button
-                  variant="transparent"
-                  onClick={toggleErrorDetails}
-                  px={0}
-                >
-                  <Group c="red" gap={0} align="center">
-                    <IconChevronRight
-                      size="16px"
-                      style={{
-                        transition: 'transform 0.2s ease-in-out',
-                        transform: errorDetails
-                          ? 'rotate(90deg)'
-                          : 'rotate(0deg)',
-                      }}
-                    />
-                    {errorDetails ? 'Hide Details' : 'Show Details'}
-                  </Group>
-                </Button>
-                <Collapse expanded={errorDetails}>{error.details}</Collapse>
-              </>
-            )}
-          </div>
+          <CollapsibleMessage
+            color="red"
+            message={error.message}
+            details={error.details}
+            data-testid="import-error"
+          />
+        )}
+
+        {filterWarnings.length > 0 && (
+          <CollapsibleMessage
+            color="yellow"
+            data-testid="import-warning-saved-filter-values"
+            message={
+              filterWarnings.length === 1
+                ? '1 saved filter value has an invalid condition and will not be applied.'
+                : `${filterWarnings.length} saved filter values have invalid conditions and will not be applied.`
+            }
+            details={
+              <Stack gap={0}>
+                {filterWarnings.map(warning => (
+                  <Text
+                    key={`${warning.index}:${warning.condition}`}
+                    c="yellow"
+                  >
+                    Invalid {warning.language} condition: {warning.condition}
+                  </Text>
+                ))}
+              </Stack>
+            }
+          />
+        )}
+
+        {filterQueryWarnings.length > 0 && (
+          <CollapsibleMessage
+            color="yellow"
+            data-testid="import-warning-filter-queries"
+            message={
+              filterQueryWarnings.length === 1
+                ? "1 filter has an invalid query and won't load values."
+                : `${filterQueryWarnings.length} filters have invalid queries and won't load values.`
+            }
+            details={
+              <Stack gap={0}>
+                {filterQueryWarnings.map(warning => (
+                  <Text key={warning.filterId} c="yellow">
+                    {warning.filterName}: invalid {warning.language} query:{' '}
+                    {warning.where}
+                  </Text>
+                ))}
+              </Stack>
+            }
+          />
+        )}
+
+        {savedQueryWarning && (
+          <CollapsibleMessage
+            color="yellow"
+            data-testid="import-warning-saved-query"
+            message="The dashboard's saved query has an invalid condition and will not be applied."
+            details={
+              <Text c="yellow">
+                Invalid {savedQueryWarning.language} query:{' '}
+                {savedQueryWarning.query}
+              </Text>
+            }
+          />
         )}
       </Stack>
     </form>
   );
+}
+
+/**
+ * Resolve a filter's templated `appliesToSourceIds` (an ordered list of
+ * source names from the exported file) against the current workspace's
+ * sources. Names that don't match any current source are dropped.
+ *
+ * `resolvedIndexOf(name)` returns the position of `name` in the surviving
+ * `ids` array (case-insensitive), or -1 if the name wasn't present in the
+ * template or didn't resolve.
+ */
+function resolveAppliesToSources(
+  templateNames: string[] | undefined,
+  sources: TSource[] | undefined,
+): { ids: string[]; resolvedIndexOf: (name: string) => number } {
+  const ids: string[] = [];
+  const resolvedIndexByLowerName = new Map<string, number>();
+  templateNames?.forEach(name => {
+    const match = sources?.find(
+      source => source.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (match) {
+      resolvedIndexByLowerName.set(name.toLowerCase(), ids.length);
+      ids.push(match.id);
+    }
+  });
+  return {
+    ids,
+    resolvedIndexOf: name =>
+      resolvedIndexByLowerName.get(name.toLowerCase()) ?? -1,
+  };
 }
 
 const MappingFormStateSchema = z.object({
@@ -223,6 +392,12 @@ const MappingFormStateSchema = z.object({
   connectionMappings: z.array(z.string()),
   /** A list of filter source mappings, ordered by input filter index */
   filterSourceMappings: z.array(z.string()).optional(),
+  /**
+   * Per-filter applies-to source mappings. Each entry is an array of mapped
+   * source IDs in the same order as the filter's `appliesToSourceIds` names
+   * from the template. Empty arrays mean "applies to all" after import.
+   */
+  filterAppliesToSourceMappings: z.array(z.array(z.string())).optional(),
   /** A list of onClick source mappings, ordered by input tile index */
   onClickSourceMappings: z.array(z.string()).optional(),
   /** A list of onClick dashboard mappings, ordered by input tile index */
@@ -239,7 +414,7 @@ function Mapping({ input }: { input: DashboardTemplate }) {
   const { data: existingTags } = api.useTags();
   const [dashboardId] = useQueryState('dashboardId', parseAsString);
 
-  const { handleSubmit, getFieldState, control, setValue } =
+  const { handleSubmit, getFieldState, control, setValue, getValues } =
     useForm<MappingFormState>({
       resolver: zodResolver(MappingFormStateSchema),
       defaultValues: {
@@ -248,6 +423,7 @@ function Mapping({ input }: { input: DashboardTemplate }) {
         tileSourceMappings: input.tiles.map(() => ''),
         connectionMappings: input.tiles.map(() => ''),
         filterSourceMappings: input.filters?.map(() => '') ?? [],
+        filterAppliesToSourceMappings: input.filters?.map(() => []) ?? [],
         onClickSourceMappings: input.tiles.map(() => ''),
         onClickDashboardMappings: input.tiles.map(() => ''),
       },
@@ -282,6 +458,14 @@ function Mapping({ input }: { input: DashboardTemplate }) {
       return match?.id || '';
     });
 
+    // For each filter, map its declared applies-to source names to IDs in
+    // the current workspace via the shared resolver. Names that don't
+    // resolve are dropped — the surviving IDs become the multiselect's
+    // initial value.
+    const filterAppliesToSourceMappings = input.filters?.map(
+      filter => resolveAppliesToSources(filter.appliesToSourceIds, sources).ids,
+    );
+
     // onClick targets in a template carry the source/dashboard *name* in
     // target.id (see convertToDashboardTemplate). Map those names back to
     // the corresponding id in the current workspace. Template-mode targets
@@ -309,6 +493,9 @@ function Mapping({ input }: { input: DashboardTemplate }) {
     setValue('tileSourceMappings', tileSourceMappings);
     setValue('connectionMappings', connectionMappings);
     setValue('filterSourceMappings', filterSourceMappings);
+    filterAppliesToSourceMappings?.forEach((mapping, idx) => {
+      setValue(`filterAppliesToSourceMappings.${idx}`, mapping);
+    });
     setValue('onClickSourceMappings', onClickSourceMappings);
     setValue('onClickDashboardMappings', onClickDashboardMappings);
   }, [setValue, sources, connections, dashboards, input]);
@@ -348,7 +535,9 @@ function Mapping({ input }: { input: DashboardTemplate }) {
     // Find the changed tile source mapping, if any
     if (tileSourceMappings) {
       const idx = tileSourceMappings.findIndex(
-        (mapping, i) => mapping !== prevSourceMappingsRef.current?.[i],
+        (mapping, i) =>
+          mapping !== prevSourceMappingsRef.current?.[i] &&
+          getFieldState(`tileSourceMappings.${i}`).isDirty,
       );
       if (idx !== -1) {
         prevSourceMappingsRef.current = tileSourceMappings;
@@ -360,7 +549,9 @@ function Mapping({ input }: { input: DashboardTemplate }) {
     // If no tile source mapping was changed, check the filter source mappings for changes
     if (inputSourceName == null && filterSourceMappings) {
       const idx = filterSourceMappings.findIndex(
-        (mapping, i) => mapping !== prevFilterSourceMappingsRef.current?.[i],
+        (mapping, i) =>
+          mapping !== prevFilterSourceMappingsRef.current?.[i] &&
+          getFieldState(`filterSourceMappings.${i}`).isDirty,
       );
       if (idx !== -1) {
         prevFilterSourceMappingsRef.current = filterSourceMappings;
@@ -372,7 +563,9 @@ function Mapping({ input }: { input: DashboardTemplate }) {
     // If no filter source mapping was changed, check the onClick source mappings for changes
     if (inputSourceName == null && onClickSourceMappings) {
       const idx = onClickSourceMappings.findIndex(
-        (mapping, i) => mapping !== prevOnClickSourceMappingsRef.current?.[i],
+        (mapping, i) =>
+          mapping !== prevOnClickSourceMappingsRef.current?.[i] &&
+          getFieldState(`onClickSourceMappings.${i}`).isDirty,
       );
       if (idx !== -1) {
         prevOnClickSourceMappingsRef.current = onClickSourceMappings;
@@ -420,6 +613,32 @@ function Mapping({ input }: { input: DashboardTemplate }) {
         setValue(key, selectedSourceId, { shouldValidate: true });
       }
     }
+
+    // Propagate changes to applies-to multiselects. Anchor the splice on
+    // the resolver's stripped-list index so it lines up with the form-state
+    // array (which has unresolved template names dropped).
+    input.filters?.forEach((filter, filterIdx) => {
+      if (!filter.appliesToSourceIds?.includes(inputSourceName)) return;
+      const key = `filterAppliesToSourceMappings.${filterIdx}` as const;
+      if (getFieldState(key).isDirty) return;
+      const currentIdMappings = getValues(key)?.slice() ?? [];
+      if (selectedSourceId && currentIdMappings.includes(selectedSourceId))
+        return;
+
+      const { resolvedIndexOf } = resolveAppliesToSources(
+        filter.appliesToSourceIds,
+        sources,
+      );
+      const indexToUpdate = resolvedIndexOf(inputSourceName);
+      if (indexToUpdate >= 0) {
+        const next = [
+          ...currentIdMappings.slice(0, indexToUpdate),
+          selectedSourceId,
+          ...currentIdMappings.slice(indexToUpdate + 1),
+        ];
+        setValue(key, next, { shouldValidate: true });
+      }
+    });
     isUpdatingRef.current = false;
   }, [
     tileSourceMappings,
@@ -428,7 +647,9 @@ function Mapping({ input }: { input: DashboardTemplate }) {
     input.tiles,
     input.filters,
     getFieldState,
+    getValues,
     setValue,
+    sources,
   ]);
 
   // Propagate connection mapping changes to other RawSQL tiles with the same input connection
@@ -437,7 +658,9 @@ function Mapping({ input }: { input: DashboardTemplate }) {
     if (!connectionMappings || !input.tiles) return;
 
     const changedIdx = connectionMappings.findIndex(
-      (mapping, idx) => mapping !== prevConnectionMappingsRef.current?.[idx],
+      (mapping, idx) =>
+        mapping !== prevConnectionMappingsRef.current?.[idx] &&
+        getFieldState(`connectionMappings.${idx}`).isDirty,
     );
     if (changedIdx === -1) return;
 
@@ -480,7 +703,8 @@ function Mapping({ input }: { input: DashboardTemplate }) {
 
     const changedIdx = onClickDashboardMappings.findIndex(
       (mapping, idx) =>
-        mapping !== prevOnClickDashboardMappingsRef.current?.[idx],
+        mapping !== prevOnClickDashboardMappingsRef.current?.[idx] &&
+        getFieldState(`onClickDashboardMappings.${idx}`).isDirty,
     );
     if (changedIdx === -1) return;
 
@@ -576,9 +800,13 @@ function Mapping({ input }: { input: DashboardTemplate }) {
       // Zip the source mappings with the input filters
       const zippedFilters = input.filters?.map((filter, idx) => {
         const source = findSource(data.filterSourceMappings?.[idx]);
+        const appliesTo = data.filterAppliesToSourceMappings?.[idx]?.filter(
+          id => !!id?.length,
+        );
         return {
           ...filter,
           source: source!.id,
+          appliesToSourceIds: appliesTo?.length ? appliesTo : undefined,
         };
       });
 
@@ -746,24 +974,47 @@ function Mapping({ input }: { input: DashboardTemplate }) {
 
             {/** Map filter sources */}
             {input.filters?.map((filter, i) => (
-              <Table.Tr key={filter.id}>
-                <Table.Td>{filter.name} (Filter)</Table.Td>
-                <Table.Td>Data Source</Table.Td>
-                <Table.Td>{filter.source}</Table.Td>
-                <Table.Td>
-                  <SelectControlled
-                    control={control}
-                    name={`filterSourceMappings.${i}`}
-                    data={sources?.map(source => ({
-                      value: source.id,
-                      label: source.name,
-                    }))}
-                    placeholder="Select a source"
-                  />
-                </Table.Td>
-                <Table.Td />
-                <Table.Td />
-              </Table.Tr>
+              <Fragment key={filter.id}>
+                <Table.Tr>
+                  <Table.Td>{filter.name} (Filter)</Table.Td>
+                  <Table.Td>Data Source</Table.Td>
+                  <Table.Td>{filter.source}</Table.Td>
+                  <Table.Td>
+                    <SelectControlled
+                      control={control}
+                      name={`filterSourceMappings.${i}`}
+                      data={sources?.map(source => ({
+                        value: source.id,
+                        label: source.name,
+                      }))}
+                      placeholder="Select a source"
+                    />
+                  </Table.Td>
+                  <Table.Td />
+                  <Table.Td />
+                </Table.Tr>
+                {!!filter.appliesToSourceIds?.length && (
+                  <Table.Tr>
+                    <Table.Td>{filter.name} (Filter)</Table.Td>
+                    <Table.Td>
+                      <Tooltip label="The list of sources that this filter will be applied to. Leave empty to apply to all tiles, regardless of source.">
+                        <span>Applies to Sources</span>
+                      </Tooltip>
+                    </Table.Td>
+                    <Table.Td>{filter.appliesToSourceIds.join(', ')}</Table.Td>
+                    <Table.Td>
+                      <SourceMultiSelectControlled
+                        control={control}
+                        name={`filterAppliesToSourceMappings.${i}`}
+                        placeholder="Select sources"
+                        data-testid={`filter-applies-to-mapping-${filter.name}`}
+                      />
+                    </Table.Td>
+                    <Table.Td />
+                    <Table.Td />
+                  </Table.Tr>
+                )}
+              </Fragment>
             ))}
           </Table.Tbody>
         </Table>

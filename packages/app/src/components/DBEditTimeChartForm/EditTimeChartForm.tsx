@@ -45,6 +45,7 @@ import { getPreviousDateRange } from '@/ChartUtils';
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from '@/components/ChartDisplaySettingsDrawer';
+import PromqlChartEditor from '@/components/ChartEditor/PromqlChartEditor';
 import RawSqlChartEditor from '@/components/ChartEditor/RawSqlChartEditor';
 import {
   ChartEditorFormState,
@@ -65,6 +66,7 @@ import HeatmapSettingsDrawer, {
 import { InputControlled } from '@/components/InputControlled';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
+import { IS_PROMQL_ENABLED } from '@/config';
 import HDXMarkdownChart from '@/HDXMarkdownChart';
 import {
   getDurationMsExpression,
@@ -149,6 +151,7 @@ export default function EditTimeChartForm({
   const {
     control,
     setValue,
+    getValues,
     handleSubmit,
     register,
     setError,
@@ -163,12 +166,30 @@ export default function EditTimeChartForm({
   const {
     fields,
     append,
+    insert: insertSeries,
     remove: removeSeries,
     swap: swapSeries,
   } = useFieldArray({
     control,
     name: 'series',
   });
+
+  // Insert a copy of an existing series directly below it so a near-identical
+  // variant (e.g. avg + p95 of the same column) does not have to be re-entered.
+  // structuredClone keeps the copy independent of the source row. The alias is
+  // cleared on the copy: a non-empty alias renders as `AS "<alias>"`, so two
+  // rows sharing one alias produce duplicate column names and ClickHouse rejects
+  // the query. An empty alias renders without `AS`, giving each row a distinct
+  // auto-generated name.
+  const duplicateSeries = useCallback(
+    (index: number) => {
+      insertSeries(index + 1, {
+        ...structuredClone(getValues(`series.${index}`)),
+        alias: '',
+      });
+    },
+    [insertSeries, getValues],
+  );
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -188,6 +209,7 @@ export default function EditTimeChartForm({
   const chartConfigAlert = chartConfig.alert;
   const isRawSqlInput =
     configType === 'sql' && isRawSqlDisplayType(displayType);
+  const isPromqlInput = configType === 'promql';
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -208,25 +230,32 @@ export default function EditTimeChartForm({
     }
   }, [configType, displayType, previousDisplayType, setValue]);
 
-  const showGeneratedSql = TABS_WITH_GENERATED_SQL.has(activeTab);
+  const showGeneratedSql =
+    TABS_WITH_GENERATED_SQL.has(activeTab) && !isPromqlInput;
 
   const showSampleEvents =
-    tableSource?.kind !== SourceKind.Metric && !isRawSqlInput;
+    tableSource?.kind !== SourceKind.Metric && !isRawSqlInput && !isPromqlInput;
 
   const [
     alignDateRangeToGranularity,
     fillNulls,
     compareToPreviousPeriod,
+    fitYAxisToData,
     numberFormat,
     groupByColumnsOnLeft,
+    color,
+    colorRules,
   ] = useWatch({
     control,
     name: [
       'alignDateRangeToGranularity',
       'fillNulls',
       'compareToPreviousPeriod',
+      'fitYAxisToData',
       'numberFormat',
       'groupByColumnsOnLeft',
+      'color',
+      'colorRules',
     ],
   });
 
@@ -244,15 +273,21 @@ export default function EditTimeChartForm({
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      color,
+      colorRules,
     }),
     [
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      color,
+      colorRules,
     ],
   );
 
@@ -531,13 +566,19 @@ export default function EditTimeChartForm({
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      fitYAxisToData,
       groupByColumnsOnLeft,
+      color,
+      colorRules,
     }: ChartConfigDisplaySettings) => {
       setValue('numberFormat', numberFormat);
       setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
+      setValue('fitYAxisToData', fitYAxisToData);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
+      setValue('color', color);
+      setValue('colorRules', colorRules);
       onSubmit();
     },
     [setValue, onSubmit],
@@ -666,6 +707,9 @@ export default function EditTimeChartForm({
                   data={[
                     { label: 'Builder', value: 'builder' },
                     { label: 'SQL', value: 'sql' },
+                    ...(IS_PROMQL_ENABLED
+                      ? [{ label: 'PromQL', value: 'promql' }]
+                      : []),
                   ]}
                 />
               )}
@@ -694,6 +738,12 @@ export default function EditTimeChartForm({
               />
             </Box>
           </div>
+        ) : isPromqlInput ? (
+          <PromqlChartEditor
+            control={control}
+            onSubmit={onSubmit}
+            onOpenDisplaySettings={openDisplaySettings}
+          />
         ) : isRawSqlInput ? (
           <RawSqlChartEditor
             control={control}
@@ -714,6 +764,7 @@ export default function EditTimeChartForm({
             append={append}
             removeSeries={removeSeries}
             swapSeries={swapSeries}
+            duplicateSeries={duplicateSeries}
             tableSource={tableSource}
             tableConnection={tableConnection}
             databaseName={databaseName}

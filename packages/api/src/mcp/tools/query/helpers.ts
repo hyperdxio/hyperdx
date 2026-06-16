@@ -1,7 +1,13 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  getFirstTimestampValueExpression,
+  splitAndTrimWithBracket,
+} from '@hyperdx/common-utils/dist/core/utils';
+import {
+  isBuilderSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import type {
   ChartConfigWithDateRange,
   MetricTable,
@@ -23,6 +29,112 @@ import {
 import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
+
+// ─── Source body expression helpers ──────────────────────────────────────────
+
+export interface SourceBodyFields {
+  kind: string;
+  spanNameExpression?: string;
+  bodyExpression?: string;
+  implicitColumnExpression?: string;
+}
+
+/**
+ * Resolve the body column expression for pattern mining from a source.
+ * Mirrors the web app's getEventBody() logic (packages/app/src/source.ts).
+ */
+export function resolveBodyExpression(
+  source: SourceBodyFields,
+): string | undefined {
+  let expression: string | undefined;
+  if (source.kind === SourceKind.Trace) {
+    expression = source.spanNameExpression;
+  } else if (source.kind === SourceKind.Log) {
+    expression = source.bodyExpression ?? source.implicitColumnExpression;
+  }
+  if (!expression) return undefined;
+  const multiExpr = splitAndTrimWithBracket(expression);
+  return multiExpr.length === 1 ? expression : multiExpr[0];
+}
+
+/** Reject bodyExpression values containing SQL-unsafe characters. */
+// eslint-disable-next-line no-useless-escape
+export const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
+
+// ─── Safety limits ───────────────────────────────────────────────────────────
+
+/** ClickHouse settings applied to all MCP query-tool executions.
+ *  readonly=2 so max_execution_time can be set
+ *  (readonly=1 rejects all setting changes). */
+const MCP_CLICKHOUSE_SETTINGS = {
+  max_execution_time: 30,
+  readonly: 2,
+} as const;
+
+/**
+ * HTTP request timeout for MCP query-tool ClickHouse clients.
+ * Set slightly above max_execution_time so ClickHouse can return a clean
+ * timeout error before the HTTP connection is aborted.
+ */
+const MCP_REQUEST_TIMEOUT = 32_000; // 30s query limit + 2s buffer
+
+// ─── Where merging ───────────────────────────────────────────────────────────
+
+export interface MergeWhereResult<T> {
+  items: T[];
+  /** Non-empty when items were skipped due to language mismatch. */
+  warnings: string[];
+}
+
+/**
+ * Merge a top-level `where` filter into each select item so it becomes part
+ * of the per-item aggCondition. Table/line/number/pie display types don't have
+ * a chart-level where — filtering is per-select-item.
+ *
+ * When the top-level and item-level languages differ, the item's own filter
+ * takes precedence (we can't easily merge Lucene + SQL). A warning is returned
+ * so callers can surface it in the response.
+ */
+export function mergeWhereIntoSelectItems<
+  T extends {
+    where?: string;
+    whereLanguage?: 'lucene' | 'sql';
+  },
+>(
+  items: T[],
+  topWhere: string,
+  topLang: 'lucene' | 'sql',
+): MergeWhereResult<T> {
+  if (!topWhere) return { items, warnings: [] };
+
+  const warnings: string[] = [];
+
+  const merged = items.map((item, idx) => {
+    const itemWhere = item.where || '';
+    const itemLang = item.whereLanguage || 'lucene';
+
+    // If both languages match, combine with AND
+    if (itemWhere && itemLang === topLang) {
+      const combined = `(${topWhere}) AND (${itemWhere})`;
+      return { ...item, where: combined, whereLanguage: topLang };
+    }
+
+    // If the item has no where, just use the top-level
+    if (!itemWhere) {
+      return { ...item, where: topWhere, whereLanguage: topLang };
+    }
+
+    // Languages differ — keep item's where unchanged (can't easily merge
+    // Lucene + SQL). The item's own filter takes precedence.
+    warnings.push(
+      `select[${idx}]: top-level where (${topLang}) was NOT applied because this item uses whereLanguage:"${itemLang}". ` +
+        `Set the item's whereLanguage to "${topLang}" or rewrite the top-level where in ${itemLang} to apply both filters.`,
+    );
+    return item;
+  });
+
+  return { items: merged, warnings };
+}
 
 // ─── Tile construction ───────────────────────────────────────────────────────
 
@@ -62,8 +174,8 @@ export function parseTimeRange(
       error: 'Invalid startTime or endTime: must be valid ISO 8601 strings',
     };
   }
-  if (startDate > endDate) {
-    return { error: 'startTime must not be after endTime' };
+  if (startDate >= endDate) {
+    return { error: 'endTime must be greater than startTime' };
   }
   return { startDate, endDate };
 }
@@ -82,9 +194,7 @@ function isEmptyResult(result: unknown): boolean {
 }
 
 function formatQueryResult(result: unknown) {
-  const trimmedResult = trimToolResponse(result);
-  const isTrimmed =
-    JSON.stringify(trimmedResult).length < JSON.stringify(result).length;
+  const { data: trimmedResult, isTrimmed } = trimToolResponse(result);
   const empty = isEmptyResult(result);
   return {
     content: [
@@ -133,7 +243,7 @@ export async function runConfigTile(
   const internalTile = convertToInternalTileConfig(tile);
   const savedConfig = internalTile.config;
 
-  if (!isRawSqlSavedChartConfig(savedConfig)) {
+  if (isBuilderSavedChartConfig(savedConfig)) {
     const builderConfig = savedConfig;
 
     if (
@@ -157,7 +267,7 @@ export async function runConfigTile(
         content: [
           {
             type: 'text' as const,
-            text: `Source not found: ${builderConfig.source}`,
+            text: `Source not found: ${builderConfig.source}. Call clickstack_list_sources to discover available source IDs.`,
           },
         ],
       };
@@ -184,6 +294,7 @@ export async function runConfigTile(
       host: connection.host,
       username: connection.username,
       password: connection.password,
+      requestTimeout: MCP_REQUEST_TIMEOUT,
     });
 
     const isSearch = builderConfig.displayType === DisplayType.Search;
@@ -231,27 +342,17 @@ export async function runConfigTile(
     } satisfies ChartConfigWithDateRange;
 
     const metadata = getMetadata(clickhouseClient);
-    let result;
     try {
-      result = await clickhouseClient.queryChartConfig({
+      const result = await clickhouseClient.queryChartConfig({
         config: chartConfig,
         metadata,
         querySettings: source.querySettings,
+        opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
       });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return {
-        isError: true as const,
-        content: [
-          {
-            type: 'text' as const,
-            text: `ClickHouse query failed: ${message}`,
-          },
-        ],
-      };
+      return formatQueryResult(result);
+    } catch (e) {
+      return clickHouseErrorResult(e);
     }
-
-    return formatQueryResult(result);
   }
 
   // Raw SQL tile — hydrate source fields for macro support ($__sourceTable, $__filters)
@@ -291,7 +392,7 @@ export async function runConfigTile(
       content: [
         {
           type: 'text' as const,
-          text: `Connection not found: ${savedConfig.connection}`,
+          text: `Connection not found: ${savedConfig.connection}. Call clickstack_list_sources to discover available connection IDs.`,
         },
       ],
     };
@@ -301,6 +402,7 @@ export async function runConfigTile(
     host: connection.host,
     username: connection.username,
     password: connection.password,
+    requestTimeout: MCP_REQUEST_TIMEOUT,
   });
 
   const chartConfig = {
@@ -310,25 +412,91 @@ export async function runConfigTile(
   } satisfies ChartConfigWithDateRange;
 
   const metadata = getMetadata(clickhouseClient);
-  let result;
   try {
-    result = await clickhouseClient.queryChartConfig({
+    const result = await clickhouseClient.queryChartConfig({
       config: chartConfig,
       metadata,
       querySettings: undefined,
+      opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
     });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text: `ClickHouse query failed: ${message}`,
-        },
-      ],
-    };
+    return formatQueryResult(result);
+  } catch (e) {
+    return clickHouseErrorResult(e);
   }
+}
 
-  return formatQueryResult(result);
+// ─── Error hints ─────────────────────────────────────────────────────────────
+
+/**
+ * Decorate raw ClickHouse error messages with actionable guidance before
+ * they reach the agent. Some ClickHouse errors are unhelpful in isolation —
+ * e.g. "Cannot convert string '...Z' to type DateTime64(9)" leaves the agent
+ * guessing about the right format. Catch common patterns and append a hint.
+ */
+export function clickHouseErrorResult(e: unknown): {
+  isError: true;
+  content: [{ type: 'text'; text: string }];
+} {
+  const raw = e instanceof Error ? e.message : String(e);
+  const hint = errorHint(raw);
+  const text = hint ? `${raw}\n\nHINT: ${hint}` : raw;
+  return {
+    isError: true as const,
+    content: [{ type: 'text' as const, text }],
+  };
+}
+
+/** @internal Exported for testing only. */
+export function errorHint(msg: string): string | null {
+  if (
+    /Cannot (convert|parse) string .* (to|as) (type )?DateTime64/i.test(msg)
+  ) {
+    return (
+      "Wrap ISO timestamps with `parseDateTime64BestEffort('YYYY-MM-DDTHH:MM:SSZ')` — " +
+      'this works for both DateTime and DateTime64 columns. For the sql tool, prefer ' +
+      '`$__timeFilter(Timestamp)` which handles casting automatically. ' +
+      'Bare ISO 8601 strings will NOT auto-cast to DateTime/DateTime64.'
+    );
+  }
+  if (/Syntax error.*\bAS\b/.test(msg)) {
+    return (
+      'Quote the alias if it contains reserved words or special chars: ' +
+      '`expr AS "alias"`. The MCP builder tools accept `alias` as a ' +
+      'separate field on each select entry — use that to avoid SQL-quoting ' +
+      'headaches.'
+    );
+  }
+  if (
+    /response length exceeds the maximum allowed size of V8 String/i.test(msg)
+  ) {
+    return (
+      'Add a LIMIT, narrow the time range, or use a smaller granularity. ' +
+      'The result row count is too large to serialize back to the agent.'
+    );
+  }
+  if (/TOO_MANY_ROWS_OR_BYTES|RESULT_IS_TOO_LARGE/i.test(msg)) {
+    return (
+      'The query returned too many rows. ' +
+      'Add a LIMIT, narrow the time range, or add filters to reduce the result set.'
+    );
+  }
+  if (
+    /Unknown (expression|identifier)|UNKNOWN_IDENTIFIER|Missing columns/i.test(
+      msg,
+    )
+  ) {
+    return (
+      'Call clickstack_describe_source to discover available columns and ' +
+      'map attribute keys before retrying.'
+    );
+  }
+  if (/SETTING_CONSTRAINT_VIOLATION|shouldn't be greater than/i.test(msg)) {
+    return (
+      'This ClickHouse connection has a profile that restricts one or more ' +
+      'settings to a value lower than requested. This is a server-side ' +
+      'constraint — the query cannot override it. Try running the query ' +
+      'without the constrained setting, or contact the connection administrator.'
+    );
+  }
+  return null;
 }

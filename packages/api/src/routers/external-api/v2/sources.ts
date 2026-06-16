@@ -79,6 +79,8 @@ function formatExternalSource(source: SourceDocument) {
           return source.toJSON({ getters: true });
         case SourceKind.Session:
           return source.toJSON({ getters: true });
+        case SourceKind.Promql:
+          return source.toJSON({ getters: true });
         default:
           source satisfies never;
           return {};

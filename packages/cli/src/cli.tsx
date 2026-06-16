@@ -1300,6 +1300,16 @@ program
     'The API version to use (v1 for HyperDX V1 Cloud, v2 for latest)',
     'v1',
   )
-  .action(uploadSourcemaps);
+  .action(async opts => {
+    try {
+      await uploadSourcemaps(opts);
+    } catch (err) {
+      // uploadSourcemaps already prints user-facing messages via logError().
+      // Append a short reason line for machine-readable CI logs and exit non-zero.
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`${chalk.red(`Upload failed: ${msg}`)}\n`);
+      process.exit(1);
+    }
+  });
 
 program.parse();

@@ -29,6 +29,7 @@ import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
@@ -68,19 +69,23 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { useHotkeys } from '@mantine/hooks';
+import { useDebouncedValue, useHotkeys, useInViewport } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconAlertTriangle,
   IconArrowsMaximize,
   IconBell,
   IconChartBar,
+  IconChevronsDown,
+  IconChevronsUp,
   IconCopy,
   IconCornerDownRight,
   IconDeviceFloppy,
   IconDotsVertical,
   IconDownload,
   IconFilterEdit,
+  IconLayoutSidebarRightCollapse,
+  IconLayoutSidebarRightExpand,
   IconPencil,
   IconPlayerPlay,
   IconPlus,
@@ -104,12 +109,15 @@ import {
   DashboardDndProvider,
   type DragHandleProps,
 } from '@/components/DashboardDndContext';
+import DashboardTableOfContents from '@/components/DashboardTableOfContents';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import DBNumberChart from '@/components/DBNumberChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
+import { PageHeader } from '@/components/PageHeader';
+import { PageLayout } from '@/components/PageLayout';
 import { TimePicker } from '@/components/TimePicker';
 import { parseTimeRangeInput } from '@/components/TimePicker/utils';
 import {
@@ -169,7 +177,7 @@ import {
 import { useConfirm } from './useConfirm';
 import { FormatTime } from './useFormatTime';
 import { useUserPreferences } from './useUserPreferences';
-import { getMetricTableName } from './utils';
+import { getMetricTableName, useLocalStorage } from './utils';
 import { useZIndex, ZIndexContext } from './zIndex';
 
 import 'react-grid-layout/css/styles.css';
@@ -183,6 +191,7 @@ function HeatmapTile({
   queriedConfig,
   source,
   dateRange,
+  enabled = true,
 }: {
   keyPrefix: string;
   chartId: string;
@@ -191,6 +200,7 @@ function HeatmapTile({
   queriedConfig: BuilderChartConfigWithDateRange;
   source: TSource | undefined;
   dateRange: [Date, Date];
+  enabled?: boolean;
 }) {
   const { heatmapConfig, scaleType } = toHeatmapChartConfig(queriedConfig);
 
@@ -235,6 +245,7 @@ function HeatmapTile({
         toolbarPrefix={toolbar}
         config={heatmapConfig}
         scaleType={scaleType}
+        enabled={enabled}
         showLegend
       />
       {clickPos != null && eventDeltasUrl != null && (
@@ -387,6 +398,26 @@ const Tile = forwardRef(
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [isFocused, setIsFocused] = useState(false);
 
+    // Lazy loading: only fetch a tile's data once it has scrolled into the
+    // browser viewport. React Grid Layout mounts every tile up front, so
+    // without this gating each tile would issue its ClickHouse query
+    // immediately, regardless of whether it is visible. We debounce the
+    // viewport signal (RGL briefly renders all tiles before the layout
+    // settles) and make visibility "sticky" so that a tile keeps its data
+    // once loaded instead of refetching every time it scrolls back into view.
+    const { ref: inViewportRef, inViewport } = useInViewport();
+    const [debouncedInViewport] = useDebouncedValue(inViewport, 200);
+    // Latch to true the first time the tile becomes visible and never flip
+    // back, so a loaded tile keeps its data instead of refetching every time
+    // it scrolls out of and back into view. Adjusting state during render (the
+    // React-recommended pattern for deriving state from changing inputs) is
+    // cheaper than an effect and only fires once, since the condition is false
+    // after the first visible render.
+    const [hasBeenVisible, setHasBeenVisible] = useState(false);
+    if (debouncedInViewport && !hasBeenVisible) {
+      setHasBeenVisible(true);
+    }
+
     const {
       userPreferences: { isUTC },
     } = useUserPreferences();
@@ -463,6 +494,19 @@ const Tile = forwardRef(
       !chart.config.source;
 
     useEffect(() => {
+      if (isPromqlSavedChartConfig(chart.config)) {
+        if (source != null) {
+          setQueriedConfig({
+            ...chart.config,
+            from: source.from,
+            connection: source.connection,
+            dateRange,
+            granularity,
+          });
+        }
+        return;
+      }
+
       if (isRawSqlSavedChartConfig(chart.config)) {
         // Some raw SQL charts don't have a source
         if (!chart.config.source) {
@@ -482,6 +526,9 @@ const Tile = forwardRef(
               'from',
               'metricTables',
             ]),
+            ...(isLogSource(source)
+              ? { bodyExpression: source.bodyExpression }
+              : {}),
             sampleWeightExpression: getSampleWeightExpression(source),
             dateRange,
             granularity,
@@ -521,6 +568,9 @@ const Tile = forwardRef(
               isLogSource(source) || isTraceSource(source)
                 ? source.useTextIndexForImplicitColumn
                 : undefined,
+            bodyExpression: isLogSource(source)
+              ? source.bodyExpression
+              : undefined,
             sampleWeightExpression: getSampleWeightExpression(source),
             filters,
             metricTables: isMetricSource ? source.metricTables : undefined,
@@ -777,6 +827,10 @@ const Tile = forwardRef(
           : [hoverToolbar, filterWarning];
         const keyPrefix = isFullscreenView ? 'fullscreen' : 'tile';
 
+        // The fullscreen view is always visible, so it should always load.
+        // In the tile (grid) view, gate data fetching on viewport visibility.
+        const chartEnabled = isFullscreenView ? true : hasBeenVisible;
+
         // Use the fullscreen-local date range and granularity when rendering
         // inside the fullscreen modal so that changing them does not affect
         // the dashboard.
@@ -835,6 +889,7 @@ const Tile = forwardRef(
                     toolbarPrefix={toolbar}
                     sourceId={chart.config.source}
                     showDisplaySwitcher={true}
+                    enabled={chartEnabled}
                     config={effectiveQueriedConfig}
                     onTimeRangeSelect={
                       isFullscreenView
@@ -858,6 +913,7 @@ const Tile = forwardRef(
                       key={`${keyPrefix}-${chart.id}`}
                       title={title}
                       toolbarPrefix={toolbar}
+                      enabled={chartEnabled}
                       config={effectiveQueriedConfig}
                       variant="muted"
                       getRowSearchLink={
@@ -879,6 +935,7 @@ const Tile = forwardRef(
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
                     toolbarPrefix={toolbar}
+                    enabled={chartEnabled}
                     config={effectiveQueriedConfig}
                   />
                 )}
@@ -887,6 +944,7 @@ const Tile = forwardRef(
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
                     toolbarPrefix={toolbar}
+                    enabled={chartEnabled}
                     config={effectiveQueriedConfig}
                   />
                 )}
@@ -897,6 +955,7 @@ const Tile = forwardRef(
                       chartId={chart.id}
                       title={title}
                       toolbar={toolbar}
+                      enabled={chartEnabled}
                       queriedConfig={effectiveQueriedConfig}
                       source={source}
                       dateRange={effectiveDateRange}
@@ -922,7 +981,7 @@ const Tile = forwardRef(
                     >
                       <DBSqlRowTableWithSideBar
                         key={`${keyPrefix}-${chart.id}`}
-                        enabled
+                        enabled={chartEnabled}
                         sourceId={chart.config.source}
                         config={{
                           ...effectiveQueriedConfig,
@@ -948,6 +1007,7 @@ const Tile = forwardRef(
                         isLive={false}
                         queryKeyPrefix={'search'}
                         variant="muted"
+                        errorVariant="collapsible"
                       />
                     </ChartContainer>
                   )}
@@ -970,6 +1030,7 @@ const Tile = forwardRef(
         filterWarning,
         isSourceMissing,
         isSourceUnset,
+        hasBeenVisible,
       ],
     );
 
@@ -1027,6 +1088,7 @@ const Tile = forwardRef(
             />
           )}
           <div
+            ref={inViewportRef}
             className="fs-7 text-muted flex-grow-1 overflow-hidden cursor-default"
             onMouseDown={e => e.stopPropagation()}
           >
@@ -1356,9 +1418,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const {
     filterValues,
     setFilterValue,
-    filterQueries,
     setFilterQueries,
     ignoredFilterExpressions,
+    getFilterQueriesForSource,
   } = useDashboardFilters(filters);
 
   const dashboardReady =
@@ -1611,6 +1673,22 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     () => dashboard?.containers ?? [],
     [dashboard?.containers],
   );
+  // Persisted right-rail Table of Contents visibility. Off by default;
+  // discoverable via the dashboard "View" menu.
+  const [tocVisible, setTocVisible] = useLocalStorage<boolean>(
+    'dashboard-toc-visible',
+    false,
+  );
+  // react-grid-layout's WidthProvider only listens to window resize events,
+  // so when the TOC rail toggles and the grid's column width changes via
+  // Flex, RGL keeps drawing tiles at the old width. Nudge it after the
+  // layout has committed.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [tocVisible]);
   // URL-based collapse state: tracks which containers the current viewer has
   // explicitly collapsed/expanded. Falls back to the DB-stored default.
   const [urlCollapsedIds, setUrlCollapsedIds] = useQueryState(
@@ -1761,97 +1839,106 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   );
 
   const renderTileComponent = useCallback(
-    (chart: Tile) => (
-      <Tile
-        key={chart.id}
-        chart={chart}
-        dateRange={searchedTimeRange}
-        onEditClick={() => setEditedTile(chart)}
-        granularity={
-          isRefreshEnabled ? granularityOverride : (granularity ?? undefined)
-        }
-        filters={[
-          {
-            type: whereLanguage === 'sql' ? 'sql' : 'lucene',
-            condition: where,
-          },
-          ...(filterQueries ?? []),
-        ]}
-        onTimeRangeSelect={onTimeRangeSelect}
-        isHighlighted={highlightedTileId === chart.id}
-        onUpdateChart={newChart => {
-          if (!dashboard) return;
-          setDashboard(
-            produce(dashboard, draft => {
-              const chartIndex = draft.tiles.findIndex(c => c.id === chart.id);
-              if (chartIndex === -1) return;
-              draft.tiles[chartIndex] = newChart;
-            }),
-          );
-        }}
-        onDuplicateClick={async () => {
-          if (dashboard != null) {
-            if (
-              !(await confirm(
-                <>
-                  Duplicate {'"'}
-                  <Text component="span" fw={700}>
-                    {chart.config.name}
-                  </Text>
-                  {'"'}?
-                </>,
-                'Duplicate',
-              ))
-            ) {
-              return;
-            }
-            setDashboard({
-              ...dashboard,
-              tiles: [
-                ...dashboard.tiles,
-                {
-                  ...chart,
-                  id: makeId(),
-                  config: {
-                    ...chart.config,
-                    alert: undefined,
+    (chart: Tile) => {
+      // Resolve the tile's source ID so per-source-scoped filters can be
+      // narrowed to only the tiles they target. Builder and RawSQL configs
+      // both carry a `source` field; markdown / other configs don't.
+      const tileSourceId =
+        'source' in chart.config ? chart.config.source : undefined;
+      return (
+        <Tile
+          key={chart.id}
+          chart={chart}
+          dateRange={searchedTimeRange}
+          onEditClick={() => setEditedTile(chart)}
+          granularity={
+            isRefreshEnabled ? granularityOverride : (granularity ?? undefined)
+          }
+          filters={[
+            {
+              type: whereLanguage === 'sql' ? 'sql' : 'lucene',
+              condition: where,
+            },
+            ...getFilterQueriesForSource(tileSourceId),
+          ]}
+          onTimeRangeSelect={onTimeRangeSelect}
+          isHighlighted={highlightedTileId === chart.id}
+          onUpdateChart={newChart => {
+            if (!dashboard) return;
+            setDashboard(
+              produce(dashboard, draft => {
+                const chartIndex = draft.tiles.findIndex(
+                  c => c.id === chart.id,
+                );
+                if (chartIndex === -1) return;
+                draft.tiles[chartIndex] = newChart;
+              }),
+            );
+          }}
+          onDuplicateClick={async () => {
+            if (dashboard != null) {
+              if (
+                !(await confirm(
+                  <>
+                    Duplicate {'"'}
+                    <Text component="span" fw={700}>
+                      {chart.config.name}
+                    </Text>
+                    {'"'}?
+                  </>,
+                  'Duplicate',
+                ))
+              ) {
+                return;
+              }
+              setDashboard({
+                ...dashboard,
+                tiles: [
+                  ...dashboard.tiles,
+                  {
+                    ...chart,
+                    id: makeId(),
+                    config: {
+                      ...chart.config,
+                      alert: undefined,
+                    },
                   },
-                },
-              ],
-            });
-          }
-        }}
-        onDeleteClick={async () => {
-          if (dashboard != null) {
-            if (
-              !(await confirm(
-                <>
-                  Delete{' '}
-                  <Text component="span" fw={700}>
-                    {chart.config.name}
-                  </Text>
-                  ?
-                </>,
-                'Delete',
-                { variant: 'danger' },
-              ))
-            ) {
-              return;
+                ],
+              });
             }
-            setDashboard({
-              ...dashboard,
-              tiles: dashboard.tiles.filter(c => c.id !== chart.id),
-            });
+          }}
+          onDeleteClick={async () => {
+            if (dashboard != null) {
+              if (
+                !(await confirm(
+                  <>
+                    Delete{' '}
+                    <Text component="span" fw={700}>
+                      {chart.config.name}
+                    </Text>
+                    ?
+                  </>,
+                  'Delete',
+                  { variant: 'danger' },
+                ))
+              ) {
+                return;
+              }
+              setDashboard({
+                ...dashboard,
+                tiles: dashboard.tiles.filter(c => c.id !== chart.id),
+              });
+            }
+          }}
+          moveTargets={moveTargetContainers}
+          onMoveToGroup={(containerId, tabId) =>
+            handleMoveTileToGroup(chart.id, containerId, tabId)
           }
-        }}
-        moveTargets={moveTargetContainers}
-        onMoveToGroup={(containerId, tabId) =>
-          handleMoveTileToGroup(chart.id, containerId, tabId)
-        }
-        isSelected={selectedTileIds.has(chart.id)}
-        onSelect={handleToggleTileSelect}
-      />
-    ),
+          isSelected={selectedTileIds.has(chart.id)}
+          onSelect={handleToggleTileSelect}
+        />
+      );
+    },
     [
       dashboard,
       searchedTimeRange,
@@ -1864,7 +1951,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       where,
       whereLanguage,
       onTimeRangeSelect,
-      filterQueries,
+      getFilterQueriesForSource,
       moveTargetContainers,
       handleMoveTileToGroup,
       selectedTileIds,
@@ -1948,6 +2035,28 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       setUrlExpandedIds,
     ],
   );
+
+  // Collapsible-only subset, used both for bulk collapse/expand and for
+  // disabling the menu items when nothing can be toggled.
+  const collapsibleContainers = useMemo(
+    () => containers.filter(c => c.collapsible !== false),
+    [containers],
+  );
+
+  // Bulk collapse: write all collapsible container IDs into the URL
+  // `collapsed` set, clearing `expanded`. Per-viewer only — does not mutate
+  // the dashboard's stored defaults.
+  const handleCollapseAll = useCallback(() => {
+    const ids = collapsibleContainers.map(c => c.id);
+    setUrlCollapsedIds(ids.length > 0 ? ids : null);
+    setUrlExpandedIds(null);
+  }, [collapsibleContainers, setUrlCollapsedIds, setUrlExpandedIds]);
+
+  const handleExpandAll = useCallback(() => {
+    const ids = collapsibleContainers.map(c => c.id);
+    setUrlExpandedIds(ids.length > 0 ? ids : null);
+    setUrlCollapsedIds(null);
+  }, [collapsibleContainers, setUrlCollapsedIds, setUrlExpandedIds]);
 
   // Toggle the DB-stored default collapsed state (menu action).
   // This changes what all viewers see by default when opening the dashboard.
@@ -2146,8 +2255,309 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     dashboard?.savedQuery || dashboard?.savedFilterValues?.length,
   );
 
-  return (
-    <Box p="sm" data-testid="dashboard-page">
+  const dashboardMeta =
+    !isLocalDashboard && dashboard ? (
+      <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
+        {dashboard.createdBy && (
+          <span>
+            Created by {dashboard.createdBy.name || dashboard.createdBy.email}.{' '}
+          </span>
+        )}
+        {dashboard.updatedAt && (
+          <Tooltip
+            label={
+              <>
+                <FormatTime value={dashboard.updatedAt} format="short" />
+                {dashboard.updatedBy
+                  ? ` by ${dashboard.updatedBy.name || dashboard.updatedBy.email}`
+                  : ''}
+              </>
+            }
+          >
+            <span>{`Updated ${formatDistanceToNow(new Date(dashboard.updatedAt), { addSuffix: true })}.`}</span>
+          </Tooltip>
+        )}
+      </Text>
+    ) : null;
+
+  const pageBreadcrumbs = (
+    <Flex justify="space-between" align="center" gap="sm" w="100%">
+      <Breadcrumbs fz="sm">
+        <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
+          Dashboards
+        </Anchor>
+        <Text fz="sm" c="dimmed" maw={500} truncate="end" lh={1}>
+          {isLocalDashboard
+            ? 'Temporary Dashboard'
+            : (dashboard?.name ?? 'Untitled')}
+        </Text>
+      </Breadcrumbs>
+      {dashboardMeta}
+    </Flex>
+  );
+
+  const dashboardName = (
+    <EditablePageName
+      key={`${dashboardHash}`}
+      name={dashboard?.name ?? ''}
+      onSave={editedName => {
+        if (dashboard != null) {
+          setDashboard({
+            ...dashboard,
+            name: editedName,
+          });
+        }
+      }}
+    />
+  );
+
+  const dashboardActions = !isLocalDashboard ? (
+    <Group gap="xs" wrap="nowrap">
+      {dashboard?.id && (
+        <FavoriteButton resourceType="dashboard" resourceId={dashboard.id} />
+      )}
+      {dashboard?.id && (
+        <Tags
+          allowCreate
+          values={dashboard?.tags || []}
+          onChange={handleUpdateTags}
+        >
+          <Button
+            variant="secondary"
+            px="xs"
+            size="xs"
+            style={{ flexShrink: 0 }}
+          >
+            <IconTags size={14} className="me-2" />
+            {dashboard?.tags?.length || 0}{' '}
+            {dashboard?.tags?.length === 1 ? 'Tag' : 'Tags'}
+          </Button>
+        </Tags>
+      )}
+      {/* local dashboards cant be "deleted" */}
+      <Menu width={250}>
+        <Menu.Target>
+          <ActionIcon
+            variant="secondary"
+            size="input-xs"
+            data-testid="dashboard-menu-button"
+          >
+            <IconDotsVertical size={14} />
+          </ActionIcon>
+        </Menu.Target>
+
+        <Menu.Dropdown>
+          {containers.length > 0 && (
+            <>
+              <Menu.Label>View</Menu.Label>
+              <Menu.Item
+                leftSection={
+                  tocVisible ? (
+                    <IconLayoutSidebarRightCollapse size={16} />
+                  ) : (
+                    <IconLayoutSidebarRightExpand size={16} />
+                  )
+                }
+                onClick={() => setTocVisible(v => !v)}
+                data-testid="toggle-toc-menu-item"
+              >
+                {tocVisible
+                  ? 'Hide table of contents'
+                  : 'Show table of contents'}
+              </Menu.Item>
+              <Menu.Item
+                leftSection={<IconChevronsUp size={16} />}
+                onClick={handleCollapseAll}
+                disabled={collapsibleContainers.length === 0}
+                data-testid="collapse-all-sections-menu-item"
+              >
+                Collapse all sections
+              </Menu.Item>
+              <Menu.Item
+                leftSection={<IconChevronsDown size={16} />}
+                onClick={handleExpandAll}
+                disabled={collapsibleContainers.length === 0}
+                data-testid="expand-all-sections-menu-item"
+              >
+                Expand all sections
+              </Menu.Item>
+              <Menu.Divider />
+            </>
+          )}
+          {hasTiles && (
+            <Menu.Item
+              leftSection={<IconDownload size={16} />}
+              data-testid="export-dashboard-menu-item"
+              onClick={() => {
+                if (!sources || !dashboard) {
+                  notifications.show({
+                    color: 'red',
+                    message: 'Export Failed',
+                  });
+                  return;
+                }
+                downloadObjectAsJson(
+                  convertToDashboardTemplate(
+                    dashboard,
+                    sources,
+                    connections,
+                    allDashboards ?? [],
+                  ),
+                  dashboard?.name,
+                );
+              }}
+            >
+              Export Dashboard
+            </Menu.Item>
+          )}
+          <Menu.Item
+            leftSection={<IconUpload size={16} />}
+            onClick={() => {
+              if (dashboard && !dashboard.tiles.length) {
+                router.push(`/dashboards/import?dashboardId=${dashboard.id}`);
+              } else {
+                router.push('/dashboards/import');
+              }
+            }}
+          >
+            {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
+          </Menu.Item>
+          <Menu.Divider />
+          <Menu.Item
+            data-testid="save-default-query-filters-menu-item"
+            leftSection={<IconDeviceFloppy size={16} />}
+            onClick={handleSaveQuery}
+          >
+            {hasSavedQueryAndFilterDefaults
+              ? 'Update Default Query & Filters'
+              : 'Save Query & Filters as Default'}
+          </Menu.Item>
+          {hasSavedQueryAndFilterDefaults && (
+            <Menu.Item
+              data-testid="remove-default-query-filters-menu-item"
+              leftSection={<IconX size={16} />}
+              color="red"
+              onClick={handleRemoveSavedQuery}
+            >
+              Remove Default Query & Filters
+            </Menu.Item>
+          )}
+          <Menu.Divider />
+          <Menu.Item
+            leftSection={<IconTrash size={16} />}
+            color="red"
+            onClick={() =>
+              deleteDashboard.mutate(dashboard?.id ?? '', {
+                onSuccess: () => {
+                  router.push('/dashboards/list');
+                },
+              })
+            }
+          >
+            Delete Dashboard
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu>
+    </Group>
+  ) : null;
+
+  const titleRow = (
+    <Flex justify="space-between" align="flex-start" gap="sm">
+      {dashboardName}
+      {dashboardActions}
+    </Flex>
+  );
+
+  const queryToolbar = (
+    <Flex
+      gap="sm"
+      wrap="wrap"
+      component="form"
+      onSubmit={e => {
+        e.preventDefault();
+        onSubmit();
+      }}
+    >
+      <SearchWhereInput
+        tableConnections={tableConnections}
+        control={control}
+        name="where"
+        onSubmit={onSubmit}
+        onLanguageChange={(lang: 'sql' | 'lucene') =>
+          setValue('whereLanguage', lang)
+        }
+        label="WHERE"
+        enableHotkey
+        allowMultiline
+        minWidth={300}
+        data-testid="search-input"
+      />
+      <TimePicker
+        inputValue={displayedTimeInputValue}
+        setInputValue={setDisplayedTimeInputValue}
+        onSearch={range => {
+          onSearch(range);
+        }}
+      />
+      <GranularityPickerControlled control={control} name="granularity" />
+      <Tooltip
+        withArrow
+        label={
+          isRefreshEnabled
+            ? `Auto-refreshing with ${granularityOverride} interval`
+            : 'Enable auto-refresh'
+        }
+        fz="xs"
+        color="gray"
+      >
+        <Button
+          onClick={() => setIsLive(prev => !prev)}
+          size="sm"
+          variant={isLive ? 'primary' : 'secondary'}
+          title={isLive ? 'Disable auto-refresh' : 'Enable auto-refresh'}
+        >
+          Live
+        </Button>
+      </Tooltip>
+      <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
+        <ActionIcon
+          onClick={refresh}
+          loading={manualRefreshCooloff}
+          disabled={manualRefreshCooloff}
+          variant="secondary"
+          title="Refresh dashboard"
+          size="input-sm"
+        >
+          <IconRefresh size={18} />
+        </ActionIcon>
+      </Tooltip>
+      <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
+        <ActionIcon
+          variant="secondary"
+          onClick={() => setShowFiltersModal(true)}
+          data-testid="edit-filters-button"
+          size="input-sm"
+        >
+          <IconFilterEdit size={18} />
+        </ActionIcon>
+      </Tooltip>
+      <Button
+        data-testid="search-submit-button"
+        variant="primary"
+        type="submit"
+        leftSection={<IconPlayerPlay size={16} />}
+        style={{ flexShrink: 0 }}
+      >
+        Run
+      </Button>
+    </Flex>
+  );
+
+  // Extracted for the same reason as `KubernetesDashboardPage`: keeps the
+  // `<PageLayout>` return shallow and prevents the tile-grid tree below
+  // from being wrapped in an extra indentation level.
+  const dashboardBody = (
+    <>
       <Head>
         <title>
           {dashboard?.name ? `${dashboard.name}` : 'Dashboard'} – {brandName}
@@ -2189,284 +2599,23 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           );
         }}
       />
-
-      {isLocalDashboard ? (
-        <>
-          <Breadcrumbs mb="xs" mt="xs" fz="sm">
-            <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-              Dashboards
-            </Anchor>
-            <Text fz="sm" c="dimmed">
-              Temporary Dashboard
+      {isLocalDashboard && (
+        <Paper mt="xs" mb="md" p="md" data-testid="temporary-dashboard-banner">
+          <Flex justify="space-between" align="center">
+            <Text size="sm">
+              This is a temporary dashboard and can not be saved.
             </Text>
-          </Breadcrumbs>
-          <Paper my="lg" p="md" data-testid="temporary-dashboard-banner">
-            <Flex justify="space-between" align="center">
-              <Text size="sm">
-                This is a temporary dashboard and can not be saved.
-              </Text>
-              <Button
-                variant="primary"
-                fw={400}
-                onClick={onCreateDashboard}
-                data-testid="create-dashboard-button"
-              >
-                Create New Saved Dashboard
-              </Button>
-            </Flex>
-          </Paper>
-        </>
-      ) : (
-        <Group align="flex-start" mb="xs" mt="xs" justify="space-between">
-          <Breadcrumbs fz="sm">
-            <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
-              Dashboards
-            </Anchor>
-            <Text fz="sm" c="dimmed" maw={500} truncate="end" lh={1}>
-              {dashboard?.name ?? 'Untitled'}
-            </Text>
-          </Breadcrumbs>
-          {!isLocalDashboard && dashboard && (
-            <Text size="xs" c="dimmed">
-              {dashboard.createdBy && (
-                <span>
-                  Created by{' '}
-                  {dashboard.createdBy.name || dashboard.createdBy.email}.{' '}
-                </span>
-              )}
-              {dashboard.updatedAt && (
-                <Tooltip
-                  label={
-                    <>
-                      <FormatTime value={dashboard.updatedAt} format="short" />
-                      {dashboard.updatedBy
-                        ? ` by ${dashboard.updatedBy.name || dashboard.updatedBy.email}`
-                        : ''}
-                    </>
-                  }
-                >
-                  <span>{`Updated ${formatDistanceToNow(new Date(dashboard.updatedAt), { addSuffix: true })}.`}</span>
-                </Tooltip>
-              )}
-            </Text>
-          )}
-        </Group>
-      )}
-      <Flex mt="xs" mb="md" justify="space-between" align="flex-start">
-        <EditablePageName
-          key={`${dashboardHash}`}
-          name={dashboard?.name ?? ''}
-          onSave={editedName => {
-            if (dashboard != null) {
-              setDashboard({
-                ...dashboard,
-                name: editedName,
-              });
-            }
-          }}
-        />
-        <Group gap="xs">
-          {!isLocalDashboard && dashboard?.id && (
-            <FavoriteButton
-              resourceType="dashboard"
-              resourceId={dashboard.id}
-            />
-          )}
-          {!isLocalDashboard && dashboard?.id && (
-            <Tags
-              allowCreate
-              values={dashboard?.tags || []}
-              onChange={handleUpdateTags}
+            <Button
+              variant="primary"
+              fw={400}
+              onClick={onCreateDashboard}
+              data-testid="create-dashboard-button"
             >
-              <Button
-                variant="secondary"
-                px="xs"
-                size="xs"
-                style={{ flexShrink: 0 }}
-              >
-                <IconTags size={14} className="me-2" />
-                {dashboard?.tags?.length || 0}{' '}
-                {dashboard?.tags?.length === 1 ? 'Tag' : 'Tags'}
-              </Button>
-            </Tags>
-          )}
-          {!isLocalDashboard /* local dashboards cant be "deleted" */ && (
-            <Menu width={250}>
-              <Menu.Target>
-                <ActionIcon
-                  variant="secondary"
-                  size="input-xs"
-                  data-testid="dashboard-menu-button"
-                >
-                  <IconDotsVertical size={14} />
-                </ActionIcon>
-              </Menu.Target>
-
-              <Menu.Dropdown>
-                {hasTiles && (
-                  <Menu.Item
-                    leftSection={<IconDownload size={16} />}
-                    onClick={() => {
-                      if (!sources || !dashboard) {
-                        notifications.show({
-                          color: 'red',
-                          message: 'Export Failed',
-                        });
-                        return;
-                      }
-                      downloadObjectAsJson(
-                        convertToDashboardTemplate(
-                          dashboard,
-                          sources,
-                          connections,
-                          allDashboards ?? [],
-                        ),
-                        dashboard?.name,
-                      );
-                    }}
-                  >
-                    Export Dashboard
-                  </Menu.Item>
-                )}
-                <Menu.Item
-                  leftSection={<IconUpload size={16} />}
-                  onClick={() => {
-                    if (dashboard && !dashboard.tiles.length) {
-                      router.push(
-                        `/dashboards/import?dashboardId=${dashboard.id}`,
-                      );
-                    } else {
-                      router.push('/dashboards/import');
-                    }
-                  }}
-                >
-                  {hasTiles ? 'Import New Dashboard' : 'Import Dashboard'}
-                </Menu.Item>
-                <Menu.Divider />
-                <Menu.Item
-                  data-testid="save-default-query-filters-menu-item"
-                  leftSection={<IconDeviceFloppy size={16} />}
-                  onClick={handleSaveQuery}
-                >
-                  {hasSavedQueryAndFilterDefaults
-                    ? 'Update Default Query & Filters'
-                    : 'Save Query & Filters as Default'}
-                </Menu.Item>
-                {hasSavedQueryAndFilterDefaults && (
-                  <Menu.Item
-                    data-testid="remove-default-query-filters-menu-item"
-                    leftSection={<IconX size={16} />}
-                    color="red"
-                    onClick={handleRemoveSavedQuery}
-                  >
-                    Remove Default Query & Filters
-                  </Menu.Item>
-                )}
-                <Menu.Divider />
-                <Menu.Item
-                  leftSection={<IconTrash size={16} />}
-                  color="red"
-                  onClick={() =>
-                    deleteDashboard.mutate(dashboard?.id ?? '', {
-                      onSuccess: () => {
-                        router.push('/dashboards');
-                      },
-                    })
-                  }
-                >
-                  Delete Dashboard
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          )}
-        </Group>
-        {/* <Button variant="outline" size="sm">
-          Save
-        </Button> */}
-      </Flex>
-      <Flex
-        gap="sm"
-        mt="sm"
-        wrap="wrap"
-        component="form"
-        onSubmit={e => {
-          e.preventDefault();
-          onSubmit();
-        }}
-      >
-        <SearchWhereInput
-          tableConnections={tableConnections}
-          control={control}
-          name="where"
-          onSubmit={onSubmit}
-          onLanguageChange={(lang: 'sql' | 'lucene') =>
-            setValue('whereLanguage', lang)
-          }
-          label="WHERE"
-          enableHotkey
-          allowMultiline
-          minWidth={300}
-          data-testid="search-input"
-        />
-        <TimePicker
-          inputValue={displayedTimeInputValue}
-          setInputValue={setDisplayedTimeInputValue}
-          onSearch={range => {
-            onSearch(range);
-          }}
-        />
-        <GranularityPickerControlled control={control} name="granularity" />
-        <Tooltip
-          withArrow
-          label={
-            isRefreshEnabled
-              ? `Auto-refreshing with ${granularityOverride} interval`
-              : 'Enable auto-refresh'
-          }
-          fz="xs"
-          color="gray"
-        >
-          <Button
-            onClick={() => setIsLive(prev => !prev)}
-            size="sm"
-            variant={isLive ? 'primary' : 'secondary'}
-            title={isLive ? 'Disable auto-refresh' : 'Enable auto-refresh'}
-          >
-            Live
-          </Button>
-        </Tooltip>
-        <Tooltip withArrow label="Refresh dashboard" fz="xs" color="gray">
-          <ActionIcon
-            onClick={refresh}
-            loading={manualRefreshCooloff}
-            disabled={manualRefreshCooloff}
-            variant="secondary"
-            title="Refresh dashboard"
-            size="input-sm"
-          >
-            <IconRefresh size={18} />
-          </ActionIcon>
-        </Tooltip>
-        <Tooltip withArrow label="Edit Filters" fz="xs" color="gray">
-          <ActionIcon
-            variant="secondary"
-            onClick={() => setShowFiltersModal(true)}
-            data-testid="edit-filters-button"
-            size="input-sm"
-          >
-            <IconFilterEdit size={18} />
-          </ActionIcon>
-        </Tooltip>
-        <Button
-          data-testid="search-submit-button"
-          variant="primary"
-          type="submit"
-          leftSection={<IconPlayerPlay size={16} />}
-          style={{ flexShrink: 0 }}
-        >
-          Run
-        </Button>
-      </Flex>
+              Create New Saved Dashboard
+            </Button>
+          </Flex>
+        </Paper>
+      )}
       {shouldShowIgnoredFiltersBanner &&
         ignoredFilterExpressions.length > 0 && (
           <Alert
@@ -2519,123 +2668,138 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           </Flex>
         </Paper>
       )}
-      <Box mt="sm">
-        {dashboard != null && dashboard.tiles != null ? (
-          <ErrorBoundary
-            onError={console.error}
-            fallback={
-              <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
-                An error occurred while rendering the dashboard.
-              </div>
-            }
-          >
-            <DashboardDndProvider
-              containers={containers}
-              onReorderContainers={handleReorderContainers}
-            >
-              {ungroupedTiles.length > 0 && (
-                <ReactGridLayout
-                  layout={ungroupedTiles.map(tileToLayoutItem)}
-                  containerPadding={[0, 0]}
-                  onLayoutChange={onUngroupedLayoutChange}
-                  cols={24}
-                  rowHeight={32}
+      <Flex gap="md" align="flex-start" mt="sm">
+        <Box style={{ flex: 1, minWidth: 0 }}>
+          <Box>
+            {dashboard != null && dashboard.tiles != null ? (
+              <ErrorBoundary
+                onError={console.error}
+                fallback={
+                  <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent">
+                    An error occurred while rendering the dashboard.
+                  </div>
+                }
+              >
+                <DashboardDndProvider
+                  containers={containers}
+                  onReorderContainers={handleReorderContainers}
                 >
-                  {ungroupedTiles.map(renderTileComponent)}
-                </ReactGridLayout>
-              )}
-              {containers.map(container => (
-                <SortableContainerWrapper
-                  key={container.id}
-                  containerId={container.id}
-                  containerTitle={container.title}
-                >
-                  {(dragHandleProps: DragHandleProps) => (
-                    <DashboardContainerRow
-                      container={container}
-                      containerTiles={
-                        tilesByContainerId.get(container.id) ?? []
-                      }
-                      isCollapsed={isContainerCollapsed(container)}
-                      activeTabId={getActiveTabId(container)}
-                      alertingTabIds={alertingTabIdsByContainer.get(
-                        container.id,
-                      )}
-                      onToggleCollapse={() =>
-                        handleToggleCollapse(container.id)
-                      }
-                      onToggleDefaultCollapsed={() =>
-                        handleToggleDefaultCollapsed(container.id)
-                      }
-                      onToggleCollapsible={() =>
-                        handleToggleCollapsible(container.id)
-                      }
-                      onToggleBordered={() =>
-                        handleToggleBordered(container.id)
-                      }
-                      onDeleteContainer={action =>
-                        handleDeleteContainer(container.id, action)
-                      }
-                      onAddTile={onAddTile}
-                      onAddTab={() => {
-                        const newTabId = handleAddTab(container.id);
-                        if (newTabId) handleTabChange(container.id, newTabId);
-                      }}
-                      onRenameTab={(tabId, title) =>
-                        handleRenameTab(container.id, tabId, title)
-                      }
-                      onDeleteTab={(tabId, action) =>
-                        handleDeleteTab(container.id, tabId, action)
-                      }
-                      onRenameContainer={title =>
-                        handleRenameContainer(container.id, title)
-                      }
-                      onTabChange={tabId =>
-                        handleTabChange(container.id, tabId)
-                      }
-                      dragHandleProps={dragHandleProps}
-                      makeLayoutChangeHandler={makeOnLayoutChange}
-                      tileToLayoutItem={tileToLayoutItem}
-                      renderTileComponent={renderTileComponent}
-                    />
+                  {ungroupedTiles.length > 0 && (
+                    <ReactGridLayout
+                      layout={ungroupedTiles.map(tileToLayoutItem)}
+                      containerPadding={[0, 0]}
+                      onLayoutChange={onUngroupedLayoutChange}
+                      cols={24}
+                      rowHeight={32}
+                    >
+                      {ungroupedTiles.map(renderTileComponent)}
+                    </ReactGridLayout>
                   )}
-                </SortableContainerWrapper>
-              ))}
-            </DashboardDndProvider>
-          </ErrorBoundary>
-        ) : null}
-      </Box>
-      <Menu position="top" width={200}>
-        <Menu.Target>
-          <Button
-            data-testid="add-dropdown-button"
-            variant={dashboard?.tiles.length === 0 ? 'primary' : 'secondary'}
-            mt="sm"
-            fw={400}
-            w="100%"
-            leftSection={<IconPlus size={16} />}
-          >
-            Add
-          </Button>
-        </Menu.Target>
-        <Menu.Dropdown>
-          <Menu.Item
-            data-testid="add-new-tile-menu-item"
-            leftSection={<IconChartBar size={16} />}
-            onClick={() => onAddTile()}
-          >
-            New Tile
-          </Menu.Item>
-          <Menu.Divider />
-          <Menu.Item
-            data-testid="add-new-group-menu-item"
-            leftSection={<IconSquaresDiagonal size={16} />}
-            onClick={() => handleAddContainer()}
-          >
-            New Group
-          </Menu.Item>
-        </Menu.Dropdown>
-      </Menu>
+                  {containers.map(container => (
+                    <SortableContainerWrapper
+                      key={container.id}
+                      containerId={container.id}
+                      containerTitle={container.title}
+                    >
+                      {(dragHandleProps: DragHandleProps) => (
+                        <DashboardContainerRow
+                          container={container}
+                          containerTiles={
+                            tilesByContainerId.get(container.id) ?? []
+                          }
+                          isCollapsed={isContainerCollapsed(container)}
+                          activeTabId={getActiveTabId(container)}
+                          alertingTabIds={alertingTabIdsByContainer.get(
+                            container.id,
+                          )}
+                          onToggleCollapse={() =>
+                            handleToggleCollapse(container.id)
+                          }
+                          onToggleDefaultCollapsed={() =>
+                            handleToggleDefaultCollapsed(container.id)
+                          }
+                          onToggleCollapsible={() =>
+                            handleToggleCollapsible(container.id)
+                          }
+                          onToggleBordered={() =>
+                            handleToggleBordered(container.id)
+                          }
+                          onDeleteContainer={action =>
+                            handleDeleteContainer(container.id, action)
+                          }
+                          onAddTile={onAddTile}
+                          onAddTab={() => {
+                            const newTabId = handleAddTab(container.id);
+                            if (newTabId)
+                              handleTabChange(container.id, newTabId);
+                          }}
+                          onRenameTab={(tabId, title) =>
+                            handleRenameTab(container.id, tabId, title)
+                          }
+                          onDeleteTab={(tabId, action) =>
+                            handleDeleteTab(container.id, tabId, action)
+                          }
+                          onRenameContainer={title =>
+                            handleRenameContainer(container.id, title)
+                          }
+                          onTabChange={tabId =>
+                            handleTabChange(container.id, tabId)
+                          }
+                          dragHandleProps={dragHandleProps}
+                          makeLayoutChangeHandler={makeOnLayoutChange}
+                          tileToLayoutItem={tileToLayoutItem}
+                          renderTileComponent={renderTileComponent}
+                        />
+                      )}
+                    </SortableContainerWrapper>
+                  ))}
+                </DashboardDndProvider>
+              </ErrorBoundary>
+            ) : null}
+          </Box>
+          <Menu position="top" width={200}>
+            <Menu.Target>
+              <Button
+                data-testid="add-dropdown-button"
+                variant={
+                  dashboard?.tiles.length === 0 ? 'primary' : 'secondary'
+                }
+                mt="sm"
+                fw={400}
+                w="100%"
+                leftSection={<IconPlus size={16} />}
+              >
+                Add
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item
+                data-testid="add-new-tile-menu-item"
+                leftSection={<IconChartBar size={16} />}
+                onClick={() => onAddTile()}
+              >
+                New Tile
+              </Menu.Item>
+              <Menu.Divider />
+              <Menu.Item
+                data-testid="add-new-group-menu-item"
+                leftSection={<IconSquaresDiagonal size={16} />}
+                onClick={() => handleAddContainer()}
+              >
+                New Group
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        </Box>
+        {tocVisible && (
+          <DashboardTableOfContents
+            containers={containers}
+            isCollapsed={isContainerCollapsed}
+            onToggleCollapse={handleToggleCollapse}
+            onClose={() => setTocVisible(false)}
+          />
+        )}
+      </Flex>
       <DashboardFiltersModal
         opened={showFiltersModal}
         onClose={() => setShowFiltersModal(false)}
@@ -2644,7 +2808,20 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         onRemoveFilter={handleRemoveFilter}
         isLoading={isSavingDashboard || isFetchingDashboard}
       />
-    </Box>
+    </>
+  );
+
+  return (
+    <PageLayout
+      data-testid="dashboard-page"
+      header={
+        <PageHeader breadcrumbs={pageBreadcrumbs} stickyRow={queryToolbar}>
+          {titleRow}
+        </PageHeader>
+      }
+      padded
+      content={dashboardBody}
+    />
   );
 }
 

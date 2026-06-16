@@ -13,6 +13,7 @@ import {
 
 import {
   aliasMapToWithClauses,
+  convertToDashboardDocument,
   convertToDashboardTemplate,
   extractSettingsClauseFromEnd,
   findJsonExpressions,
@@ -28,6 +29,7 @@ import {
   parseTokenizerFromTextIndex,
   parseToNumber,
   parseToStartOfFunction,
+  pickBucketTimestampColumn,
   replaceJsonExpressions,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
@@ -602,6 +604,337 @@ describe('utils', () => {
           },
         ],
       });
+    });
+
+    it('should include saved default query and filter values in the template', () => {
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Dashboard With Defaults',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'Log Tile',
+              source: 'source1',
+              select: '',
+              where: '',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+        savedQuery: 'level:error',
+        savedQueryLanguage: 'lucene',
+        savedFilterValues: [
+          {
+            type: 'lucene',
+            condition: 'ServiceName:"accounting"',
+          },
+        ],
+      };
+
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: {
+            databaseName: 'db1',
+            tableName: 'logs_table',
+          },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.savedQuery).toBe('level:error');
+      expect(template.savedQueryLanguage).toBe('lucene');
+      expect(template.savedFilterValues).toEqual([
+        { type: 'lucene', condition: 'ServiceName:"accounting"' },
+      ]);
+
+      const document = convertToDashboardDocument(template);
+      expect(document.savedQuery).toBe('level:error');
+      expect(document.savedQueryLanguage).toBe('lucene');
+      expect(document.savedFilterValues).toEqual([
+        { type: 'lucene', condition: 'ServiceName:"accounting"' },
+      ]);
+    });
+
+    describe('savedFilterValues export/import round trip', () => {
+      const baseSources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'logs_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const makeDashboard = (
+        savedFilterValues?: z.infer<
+          typeof DashboardSchema
+        >['savedFilterValues'],
+      ): z.infer<typeof DashboardSchema> => ({
+        id: 'dashboard1',
+        name: 'Service Filter Dashboard',
+        tags: [],
+        tiles: [
+          {
+            id: 'tile1',
+            config: {
+              name: 'Log Tile',
+              source: 'source1',
+              select: '',
+              where: '',
+            },
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 6,
+          },
+        ],
+        filters: [
+          {
+            id: 'filter1',
+            type: 'QUERY_EXPRESSION',
+            name: 'ServiceName Filter',
+            expression: 'ServiceName',
+            source: 'source1',
+          },
+        ],
+        ...(savedFilterValues !== undefined ? { savedFilterValues } : {}),
+      });
+
+      it('omits savedFilterValues when no services are selected (undefined)', () => {
+        const dashboard = makeDashboard(undefined);
+
+        const template = convertToDashboardTemplate(dashboard, baseSources);
+        expect(template.savedFilterValues).toBeUndefined();
+        expect('savedFilterValues' in template).toBe(false);
+
+        const document = convertToDashboardDocument(template);
+        expect(document.savedFilterValues).toBeUndefined();
+        expect('savedFilterValues' in document).toBe(false);
+      });
+
+      it('omits savedFilterValues when the selection is an empty array', () => {
+        const dashboard = makeDashboard([]);
+
+        const template = convertToDashboardTemplate(dashboard, baseSources);
+        expect(template.savedFilterValues).toBeUndefined();
+        expect('savedFilterValues' in template).toBe(false);
+
+        const document = convertToDashboardDocument(template);
+        expect(document.savedFilterValues).toBeUndefined();
+        expect('savedFilterValues' in document).toBe(false);
+      });
+
+      it('carries a single selected service through the round trip', () => {
+        const savedFilterValues = [
+          {
+            type: 'lucene' as const,
+            condition: 'ServiceName:"hdx-oss-dev-api"',
+          },
+        ];
+        const dashboard = makeDashboard(savedFilterValues);
+
+        const template = convertToDashboardTemplate(dashboard, baseSources);
+        expect(template.savedFilterValues).toEqual(savedFilterValues);
+
+        const document = convertToDashboardDocument(template);
+        expect(document.savedFilterValues).toEqual(savedFilterValues);
+      });
+
+      it('carries multiple selected services through the round trip', () => {
+        const savedFilterValues = [
+          {
+            type: 'lucene' as const,
+            condition:
+              '(ServiceName:"hdx-oss-dev-api" OR ServiceName:"hdx-oss-dev-app")',
+          },
+        ];
+        const dashboard = makeDashboard(savedFilterValues);
+
+        const template = convertToDashboardTemplate(dashboard, baseSources);
+        expect(template.savedFilterValues).toEqual(savedFilterValues);
+
+        const document = convertToDashboardDocument(template);
+        expect(document.savedFilterValues).toEqual(savedFilterValues);
+      });
+
+      it('carries selected values across multiple filter expressions', () => {
+        const savedFilterValues = [
+          {
+            type: 'lucene' as const,
+            condition:
+              '(ServiceName:"hdx-oss-dev-api" OR ServiceName:"hdx-oss-dev-app")',
+          },
+          { type: 'lucene' as const, condition: 'SeverityText:"error"' },
+        ];
+        const dashboard = makeDashboard(savedFilterValues);
+
+        const template = convertToDashboardTemplate(dashboard, baseSources);
+        expect(template.savedFilterValues).toEqual(savedFilterValues);
+
+        const document = convertToDashboardDocument(template);
+        expect(document.savedFilterValues).toEqual(savedFilterValues);
+      });
+
+      it('deep-clones savedFilterValues so the template does not alias the input', () => {
+        const savedFilterValues = [
+          {
+            type: 'lucene' as const,
+            condition: 'ServiceName:"hdx-oss-dev-api"',
+          },
+        ];
+        const dashboard = makeDashboard(savedFilterValues);
+
+        const template = convertToDashboardTemplate(dashboard, baseSources);
+        expect(template.savedFilterValues).not.toBe(
+          dashboard.savedFilterValues,
+        );
+        expect(template.savedFilterValues?.[0]).not.toBe(savedFilterValues[0]);
+
+        // Mutating the source after export must not leak into the template.
+        savedFilterValues[0].condition = 'ServiceName:"mutated"';
+        const exported = template.savedFilterValues?.[0];
+        expect(exported).toEqual({
+          type: 'lucene',
+          condition: 'ServiceName:"hdx-oss-dev-api"',
+        });
+      });
+
+      it('produces a template that validates against DashboardTemplateSchema', () => {
+        const dashboard = makeDashboard([
+          {
+            type: 'lucene' as const,
+            condition: 'ServiceName:"hdx-oss-dev-api"',
+          },
+        ]);
+
+        const template = convertToDashboardTemplate(dashboard, baseSources);
+        expect(() => DashboardTemplateSchema.parse(template)).not.toThrow();
+      });
+    });
+
+    it('should remap filter.appliesToSourceIds from IDs to names', () => {
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'logs_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+        {
+          id: 'source2',
+          name: 'Traces',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'traces_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Mixed-Source Dashboard',
+        tags: [],
+        tiles: [],
+        filters: [
+          {
+            // Multi-source scope — every ID resolves; both become names.
+            id: 'filter-multi',
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            source: 'source1',
+            appliesToSourceIds: ['source1', 'source2'],
+          },
+          {
+            // Mixed: one resolvable + one stale ID. Stale ID is dropped
+            // silently so the surviving names land in the template.
+            id: 'filter-partial',
+            type: 'QUERY_EXPRESSION',
+            name: 'Region',
+            expression: 'Region',
+            source: 'source1',
+            appliesToSourceIds: ['source1', 'deleted-source-id'],
+          },
+          {
+            // Every ID is stale → the array would be empty, which would
+            // import as "no tiles match". Field is omitted instead so the
+            // template imports as broadcast-to-all (safer default).
+            id: 'filter-all-unresolved',
+            type: 'QUERY_EXPRESSION',
+            name: 'Cluster',
+            expression: 'Cluster',
+            source: 'source1',
+            appliesToSourceIds: ['deleted-source-id'],
+          },
+          {
+            // Unscoped filter (field omitted in the source doc) must stay
+            // unscoped — no array gets materialized in the template.
+            id: 'filter-broadcast',
+            type: 'QUERY_EXPRESSION',
+            name: 'Env',
+            expression: 'Env',
+            source: 'source1',
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.filters).toEqual([
+        {
+          id: 'filter-multi',
+          type: 'QUERY_EXPRESSION',
+          name: 'Service',
+          expression: 'ServiceName',
+          source: 'Logs',
+          appliesToSourceIds: ['Logs', 'Traces'],
+        },
+        {
+          id: 'filter-partial',
+          type: 'QUERY_EXPRESSION',
+          name: 'Region',
+          expression: 'Region',
+          source: 'Logs',
+          appliesToSourceIds: ['Logs'],
+        },
+        {
+          id: 'filter-all-unresolved',
+          type: 'QUERY_EXPRESSION',
+          name: 'Cluster',
+          expression: 'Cluster',
+          source: 'Logs',
+          // appliesToSourceIds intentionally absent — empty result is
+          // collapsed to undefined so the import treats it as broadcast.
+        },
+        {
+          id: 'filter-broadcast',
+          type: 'QUERY_EXPRESSION',
+          name: 'Env',
+          expression: 'Env',
+          source: 'Logs',
+        },
+      ]);
+      expect(template.filters?.[2].appliesToSourceIds).toBeUndefined();
+      expect(template.filters?.[3].appliesToSourceIds).toBeUndefined();
     });
 
     it('should convert a dashboard without filters to a dashboard template', () => {
@@ -2274,6 +2607,144 @@ describe('utils', () => {
         database: 'db',
         table: 'tbl',
       });
+    });
+  });
+
+  describe('pickBucketTimestampColumn', () => {
+    // Stubs the small subset of Metadata that pickBucketTimestampColumn needs.
+    function makeMetadata(types: Record<string, string>) {
+      return {
+        getColumn: async ({ column }: { column: string }) =>
+          // eslint-disable-next-line security/detect-object-injection
+          types[column] ? { type: types[column] } : undefined,
+      };
+    }
+
+    const opts = {
+      databaseName: 'logs',
+      tableName: 'events',
+      connectionId: 'conn',
+    };
+
+    it('single-column input passes through unchanged', async () => {
+      const metadata = makeMetadata({ Timestamp: 'DateTime64(9)' });
+      expect(
+        await pickBucketTimestampColumn({
+          timestampValueExpression: 'Timestamp',
+          metadata,
+          ...opts,
+        }),
+      ).toBe('Timestamp');
+    });
+
+    it('single-column input does not hit metadata', async () => {
+      const getColumn = jest.fn();
+      const metadata = { getColumn };
+      await pickBucketTimestampColumn({
+        timestampValueExpression: 'EventTime',
+        metadata,
+        ...opts,
+      });
+      expect(getColumn).not.toHaveBeenCalled();
+    });
+
+    it('multi-column: highest-precision DateTime wins, Date skipped (EventDate, EventTime)', async () => {
+      const metadata = makeMetadata({
+        EventDate: 'Date',
+        EventTime: 'DateTime',
+      });
+      expect(
+        await pickBucketTimestampColumn({
+          timestampValueExpression: 'EventDate, EventTime',
+          metadata,
+          ...opts,
+        }),
+      ).toBe('EventTime');
+    });
+
+    it('multi-column: DateTime64 beats DateTime (EventDate, EventTime, Timestamp)', async () => {
+      const metadata = makeMetadata({
+        EventDate: 'Date',
+        EventTime: 'DateTime',
+        Timestamp: 'DateTime64(9)',
+      });
+      expect(
+        await pickBucketTimestampColumn({
+          timestampValueExpression: 'EventDate, EventTime, Timestamp',
+          metadata,
+          ...opts,
+        }),
+      ).toBe('Timestamp');
+    });
+
+    it('multi-column: order does not change the pick (Timestamp first)', async () => {
+      const metadata = makeMetadata({
+        Timestamp: 'DateTime64(9)',
+        EventTime: 'DateTime',
+      });
+      expect(
+        await pickBucketTimestampColumn({
+          timestampValueExpression: 'Timestamp, EventTime',
+          metadata,
+          ...opts,
+        }),
+      ).toBe('Timestamp');
+    });
+
+    it('all-Date fallback: returns first token with a warn', async () => {
+      const metadata = makeMetadata({
+        EventDate: 'Date',
+        OtherDate: 'Date',
+      });
+      expect(
+        await pickBucketTimestampColumn({
+          timestampValueExpression: 'EventDate, OtherDate',
+          metadata,
+          ...opts,
+        }),
+      ).toBe('EventDate');
+    });
+
+    it('Nullable(DateTime) still classifies as DateTime', async () => {
+      const metadata = makeMetadata({
+        EventDate: 'Date',
+        EventTime: 'Nullable(DateTime)',
+      });
+      expect(
+        await pickBucketTimestampColumn({
+          timestampValueExpression: 'EventDate, EventTime',
+          metadata,
+          ...opts,
+        }),
+      ).toBe('EventTime');
+    });
+
+    it('higher DateTime64 precision wins over lower', async () => {
+      const metadata = makeMetadata({
+        TsMs: 'DateTime64(3)',
+        TsNs: 'DateTime64(9)',
+      });
+      expect(
+        await pickBucketTimestampColumn({
+          timestampValueExpression: 'TsMs, TsNs',
+          metadata,
+          ...opts,
+        }),
+      ).toBe('TsNs');
+    });
+
+    it('unresolvable column does not block resolution of the resolvable sibling', async () => {
+      const metadata = makeMetadata({
+        EventTime: 'DateTime',
+        // CteAlias intentionally omitted; metadata.getColumn returns undefined
+      });
+      expect(
+        await pickBucketTimestampColumn({
+          timestampValueExpression: 'CteAlias, EventTime',
+          metadata,
+          ...opts,
+        }),
+      ).toBe('EventTime');
     });
   });
 });

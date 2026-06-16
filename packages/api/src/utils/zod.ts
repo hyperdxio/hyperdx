@@ -3,11 +3,13 @@ import {
   AggregateFunctionSchema,
   alertNoteSchema,
   AlertThresholdType,
+  ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_TILES,
   DashboardFilterSchema,
   MetricsDataType,
   NumberFormatSchema,
+  NumberTileColorConditionSchema,
   OnClickDashboardSchema,
   OnClickSearchSchema,
   scheduleStartAtSchema,
@@ -23,7 +25,7 @@ import { AlertSource } from '@/models/alert';
 
 export const objectIdSchema = z.string().refine(val => {
   return Types.ObjectId.isValid(val);
-});
+}, 'Invalid ObjectId');
 
 // ================================
 // Charts & Dashboards (old format)
@@ -146,7 +148,7 @@ export type ExternalDashboardFilter = z.infer<
 >;
 
 export const externalDashboardSavedFilterValueSchema = z.object({
-  type: z.enum(['sql', 'lucene']).optional().default('sql'),
+  type: z.literal('sql').optional().default('sql'),
   condition: z.string().max(10000),
 });
 
@@ -255,6 +257,7 @@ const externalDashboardLineChartConfigSchema =
   externalDashboardTimeChartConfigSchema.extend({
     displayType: z.literal('line'),
     compareToPreviousPeriod: z.boolean().optional(),
+    fitYAxisToData: z.boolean().optional(),
   });
 
 const externalDashboardLineRawSqlChartConfigSchema =
@@ -263,6 +266,7 @@ const externalDashboardLineRawSqlChartConfigSchema =
     compareToPreviousPeriod: z.boolean().optional(),
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
+    fitYAxisToData: z.boolean().optional(),
   });
 
 const externalDashboardBarChartConfigSchema =
@@ -299,6 +303,14 @@ const externalDashboardTableRawSqlChartConfigSchema =
 const externalDashboardNumberRawSqlChartConfigSchema =
   externalDashboardRawSqlChartConfigBaseSchema.extend({
     displayType: z.literal('number'),
+    // Raw SQL number tiles expose the same static tile color as builder
+    // number tiles: the editor gates the picker on displayType, not
+    // configType (`ChartDisplaySettingsDrawer`). `colorRules` is
+    // intentionally omitted here because the editor's save path
+    // (`convertFormStateToSavedChartConfig`) picks `color` but not
+    // `colorRules` for raw SQL configs, so persisted raw SQL number tiles
+    // never carry rules.
+    color: ChartPaletteTokenSchema.optional(),
   });
 
 const externalDashboardPieRawSqlChartConfigSchema =
@@ -311,6 +323,19 @@ const externalDashboardNumberChartConfigSchema = z.object({
   sourceId: objectIdSchema,
   select: z.array(externalDashboardSelectItemSchema).length(1),
   numberFormat: NumberFormatSchema.optional(),
+  // Number-tile color authoring. Mirrors the internal
+  // `SharedChartSettingsSchema` fields (common-utils types.ts), which the
+  // editor gates to number tiles (`ChartDisplaySettingsDrawer`:
+  // `showTileColor = displayType === DisplayType.Number`). `color` is a
+  // hue-named palette token; `colorRules` are ordered conditional rules
+  // (last match wins), capped at 10 to match the editor. `colorRules` uses
+  // `NumberTileColorConditionSchema` (numeric and equality operators only),
+  // not the full `ColorConditionSchema`, so the API cannot accept the
+  // string-match or regex rules the number-tile editor never emits. Both
+  // schemas are imported from common-utils so the external surface cannot
+  // drift from what the UI persists.
+  color: ChartPaletteTokenSchema.optional(),
+  colorRules: z.array(NumberTileColorConditionSchema).max(10).optional(),
 });
 
 const externalDashboardPieChartConfigSchema = z.object({

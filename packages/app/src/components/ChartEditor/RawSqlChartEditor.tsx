@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
 import {
   TableConnection,
@@ -31,7 +31,9 @@ import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { ConnectionSelectControlled } from '../ConnectionSelect';
 import { OnClickFormButton } from '../DBEditTimeChartForm/OnClickForm/OnClickFormButton';
-import SourceSchemaPreview from '../SourceSchemaPreview';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from '../SourceSchemaPreview';
 import { SourceSelectControlled } from '../SourceSelect';
 
 import { SQL_PLACEHOLDERS } from './constants';
@@ -137,9 +139,8 @@ export default function RawSqlChartEditor({
     return [...paramCompletions, ...macroCompletions];
   }, [displayType]);
 
-  const sourceSchemaPreview = useMemo(() => {
-    return <SourceSchemaPreview source={sourceObject} variant="text" />;
-  }, [sourceObject]);
+  const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
+    useState(false);
 
   const tableConnections: TableConnection[] = useMemo(() => {
     if (!sources) return [];
@@ -206,7 +207,14 @@ export default function RawSqlChartEditor({
             size="xs"
             clearable
             placeholder="None"
-            sourceSchemaPreview={sourceSchemaPreview}
+            onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+            isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(sourceObject)}
+          />
+          <SourceSchemaPreview
+            source={sourceObject}
+            controlled
+            open={isSourceSchemaPreviewOpen}
+            onClose={() => setIsSourceSchemaPreviewOpen(false)}
           />
         </Group>
         <Group gap="xs">
@@ -254,6 +262,7 @@ export default function RawSqlChartEditor({
           placeholder={placeholderSQl}
           tableConnections={tableConnections}
           additionalCompletions={additionalCompletions}
+          onSubmit={onSubmit}
         />
         <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
       </Box>

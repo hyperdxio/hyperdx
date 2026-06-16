@@ -1,3 +1,6 @@
+/* Legacy class. Still used by DBTableSelect for its inline schema-preview
+ * text button. New code uses SourceManagementMenu (kebab) instead.
+ */
 .sourceSchemaPreviewButton {
   pointer-events: all;
   font-size: var(--mantine-font-size-xxs);
@@ -15,4 +18,74 @@
   &::after {
     border-color: var(--color-border);
   }
+}
+
+/* Chip + kebab wrapper. Holds the Mantine Select and the SourceManagementMenu
+ * ActionIcon as a single inline-flex unit. When the kebab is present
+ * (`[data-with-menu]`), the two surfaces are "glued" into a split-button chip:
+ * the adjoining corners are squared, the kebab overlaps the input's right
+ * border by 1px so they share a single vertical seam, and the kebab stretches
+ * to match the input's height so the chip reads as one unit.
+ *
+ * Override Mantine via its own CSS variables (`--input-radius`, `--ai-radius`)
+ * rather than fighting class-level `border-radius`: Mantine v7 reads these
+ * vars to compute the rounded corners, so setting them is the canonical
+ * override path.
+ */
+.sourceSelectGroup {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+
+  &[data-with-menu] {
+    /* Square only the right edge of the input. */
+    .sourceSelectInput {
+      --input-radius: 0;
+
+      border-top-left-radius: var(--mantine-radius-default);
+      border-bottom-left-radius: var(--mantine-radius-default);
+    }
+
+    /* Square only the left edge of the kebab. The ActionIcon's `input-*`
+     * size (driven by the adjacent Select's `size`) makes it square and
+     * matches the input chip's height; -1px margin overlaps the input's
+     * right edge so the shared border is one pixel wide, not two. */
+    .sourceMenuButton {
+      --ai-radius: 0;
+
+      margin-left: -1px;
+      background-color: var(--color-bg-field-addon);
+      border: 1px solid var(--input-bd, var(--color-border));
+      border-top-right-radius: var(--mantine-radius-default);
+      border-bottom-right-radius: var(--mantine-radius-default);
+    }
+  }
+}
+
+/* Chip hover state. The Mantine Select input is the "chip" surface;
+ * we tint its background and force a pointer cursor on hover so the
+ * chevron + label feel like a single clickable affordance even though
+ * the input itself is searchable.
+ */
+.sourceSelectInput {
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover:not(:focus-within) {
+    background-color: var(--mantine-color-default-hover);
+  }
+
+  /* Once the user actually starts typing, keep text cursor semantics. */
+  &:focus-within {
+    cursor: text;
+  }
+}
+
+/* Kebab button. Mantine's subtle variant gives the hover tint; layout shared
+ * with the input is set up in the `[data-with-menu]` block above.
+ */
+.sourceMenuButton {
+  flex-shrink: 0;
 }

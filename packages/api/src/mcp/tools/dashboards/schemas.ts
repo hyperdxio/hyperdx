@@ -1,6 +1,6 @@
 // prose-lint: allow-file
 // MCP tool descriptions intentionally use the established en-dash
-// separator (e.g. "Source ID – call hyperdx_list_sources") for LLM
+// separator (e.g. "Source ID – call clickstack_list_sources") for LLM
 // readability. Reformatting all separators is out of scope here.
 import {
   AggregateFunctionSchema,
@@ -16,67 +16,73 @@ import { z } from 'zod';
 import { externalQuantileLevelSchema, objectIdSchema } from '@/utils/zod';
 
 // ─── Shared tile schemas for MCP dashboard tools ─────────────────────────────
-const mcpNumberFormatSchema = z
-  .object({
-    output: z
-      .enum([
-        'currency',
-        'percent',
-        'byte',
-        'time',
-        'duration',
-        'number',
-        'data_rate',
-        'throughput',
-      ])
-      .describe(
-        'Format category. "duration" auto-formats elapsed times as e.g. "1.2s" (use factor for input unit). ' +
-          '"time" formats clock-style durations. "byte" formats as KB/MB/GB. ' +
-          '"data_rate" formats as bytes/sec. "throughput" formats as count/sec. ' +
-          '"currency" prepends a symbol. "percent" appends %.',
-      ),
-    mantissa: z
-      .number()
-      .int()
-      .optional()
-      .describe(
-        'Decimal places (0–10). Not used for "time" or "duration" output.',
-      ),
-    thousandSeparated: z
-      .boolean()
-      .optional()
-      .describe('Separate thousands (e.g. 1,234,567)'),
-    average: z
-      .boolean()
-      .optional()
-      .describe('Abbreviate large numbers (e.g. 1.2m)'),
-    decimalBytes: z
-      .boolean()
-      .optional()
-      .describe(
-        'Use decimal base for bytes (1KB = 1000). Only for "byte" output.',
-      ),
-    factor: z
-      .number()
-      .optional()
-      .describe(
-        'Input unit factor for "time" or "duration" output. ' +
-          '1 = seconds, 0.001 = milliseconds, 0.000001 = microseconds, 0.000000001 = nanoseconds.',
-      ),
-    currencySymbol: z
-      .string()
-      .optional()
-      .describe('Currency symbol (e.g. "$"). Only for "currency" output.'),
-    unit: z
-      .string()
-      .optional()
-      .describe('Suffix appended to the value (e.g. " req/s")'),
-  })
-  .describe(
-    'Controls how the number value is formatted for display. ' +
-      'Most useful: { output: "duration", factor: 0.000000001 } to auto-format nanosecond durations, ' +
-      'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.',
-  );
+
+const seriesLevelNumberFormatDescription =
+  'Per-series display formatting, applied to this series only (overrides any tile-level numberFormat). ' +
+  'Controls how the series number value(s) are formatted for display. ' +
+  'Most useful: { output: "duration", factor: 0.000000001 } to auto-format nanosecond durations, ' +
+  'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.';
+
+const tileLevelNumberFormatDescription =
+  'Controls how the number value(s) are formatted for display. Applies to series or numbers without a series-level numberFormat. ' +
+  'Most useful: { output: "duration", factor: 0.000000001 } to auto-format nanosecond durations, ' +
+  'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.';
+
+const mcpNumberFormatSchema = z.object({
+  output: z
+    .enum([
+      'currency',
+      'percent',
+      'byte',
+      'time',
+      'duration',
+      'number',
+      'data_rate',
+      'throughput',
+    ])
+    .describe(
+      'Format category. "duration" auto-formats elapsed times as e.g. "1.2s" (use factor for input unit). ' +
+        '"time" formats clock-style durations. "byte" formats as KB/MB/GB. ' +
+        '"data_rate" formats as bytes/sec. "throughput" formats as count/sec. ' +
+        '"currency" prepends a symbol. "percent" appends %, and divides the value by 100 (0.5 becomes 50%).',
+    ),
+  mantissa: z
+    .number()
+    .int()
+    .optional()
+    .describe(
+      'Decimal places (0–10). Not used for "time" or "duration" output.',
+    ),
+  thousandSeparated: z
+    .boolean()
+    .optional()
+    .describe('Separate thousands (e.g. 1,234,567)'),
+  average: z
+    .boolean()
+    .optional()
+    .describe('Abbreviate large numbers (e.g. 1.2m)'),
+  decimalBytes: z
+    .boolean()
+    .optional()
+    .describe(
+      'Use decimal base for bytes (1KB = 1000). Only for "byte" output.',
+    ),
+  factor: z
+    .number()
+    .optional()
+    .describe(
+      'Input unit factor for "time" or "duration" output. ' +
+        '1 = seconds, 0.001 = milliseconds, 0.000001 = microseconds, 0.000000001 = nanoseconds.',
+    ),
+  currencySymbol: z
+    .string()
+    .optional()
+    .describe('Currency symbol (e.g. "$"). Only for "currency" output.'),
+  unit: z
+    .string()
+    .optional()
+    .describe('Suffix appended to the value (e.g. " req/s")'),
+});
 
 const mcpTileSelectItemSchema = z
   .object({
@@ -98,17 +104,21 @@ const mcpTileSelectItemSchema = z
       .default('')
       .describe('Filter in Lucene syntax. Example: "level:error"'),
     whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
-    alias: z.string().optional().describe('Display label for this series'),
+    alias: z
+      .string()
+      .optional()
+      .describe(
+        'Display label for this series — used in chart legends, table column headers, CSV exports, and onClick templates. ' +
+          'Always set a short, human-readable alias (e.g. "Requests", "P95 Latency", "Error Rate"). ' +
+          'Without an alias the UI shows the raw ClickHouse expression (e.g. count(), quantile(0.95)(Duration)) which is hard to read. ' +
+          'Heatmap select items are the only exception (no alias needed).',
+      ),
     level: externalQuantileLevelSchema
       .optional()
       .describe('Percentile level for aggFn="quantile"'),
     numberFormat: mcpNumberFormatSchema
       .optional()
-      .describe(
-        'Per-series display formatting, applied to this series only (overrides any tile-level numberFormat). ' +
-          'Example: { output: "duration", factor: 0.000000001 } to render a nanosecond Duration series as human-readable time ' +
-          'while leaving sibling count series unformatted.',
-      ),
+      .describe(seriesLevelNumberFormatDescription),
   })
   .superRefine((data, ctx) => {
     if (data.level && data.aggFn !== 'quantile') {
@@ -174,8 +184,8 @@ const mcpOnClickTargetSchema = z
           .min(1)
           .describe(
             'Concrete source ID (for type=search) or dashboard ID (for type=dashboard). ' +
-              'Get source IDs from hyperdx_list_sources; get dashboard IDs from ' +
-              'hyperdx_get_dashboard (no id arg returns the list). ' +
+              'Get source IDs from clickstack_list_sources; get dashboard IDs from ' +
+              'clickstack_get_dashboard (no id arg returns the list). ' +
               'For type=search the source kind must be "log" or "trace"; the /search ' +
               'page does not render metric/session sources.',
           ),
@@ -245,7 +255,9 @@ const mcpOnClickSearchSchema = z
 
 const mcpOnClickDashboardSchema = z
   .object({
-    type: z.literal('dashboard').describe('Link to another HyperDX dashboard.'),
+    type: z
+      .literal('dashboard')
+      .describe('Link to another ClickStack dashboard.'),
     target: mcpOnClickTargetSchema,
     whereTemplate: z
       .string()
@@ -309,7 +321,7 @@ const mcpOnClickSchema = z
   );
 
 const mcpTileLayoutSchema = z.object({
-  name: z.string().describe('Tile title shown on the dashboard'),
+  name: z.string().min(1).describe('Tile title shown on the dashboard'),
   x: z
     .number()
     .min(0)
@@ -366,7 +378,7 @@ const mcpTileLayoutSchema = z.object({
 const mcpLineTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('line').describe('Line chart over time'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z
       .array(mcpTileSelectItemSchema)
       .min(1)
@@ -389,6 +401,19 @@ const mcpLineTileSchema = mcpTileLayoutSchema.extend({
       .describe(
         'Plot as ratio of two metrics (requires exactly 2 select items)',
       ),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(tileLevelNumberFormatDescription),
+    compareToPreviousPeriod: z
+      .boolean()
+      .optional()
+      .describe('Overlay the previous period as a dashed comparison series.'),
+    fitYAxisToData: z
+      .boolean()
+      .optional()
+      .describe(
+        'Scale the y-axis to the data range instead of starting at zero.',
+      ),
   }),
 });
 
@@ -397,19 +422,22 @@ const mcpBarTileSchema = mcpTileLayoutSchema.extend({
     displayType: z
       .literal('stacked_bar')
       .describe('Stacked bar chart over time'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).min(1).max(20),
     groupBy: z.string().optional(),
     fillNulls: z.boolean().optional().default(true),
     alignDateRangeToGranularity: z.boolean().optional(),
     asRatio: z.boolean().optional(),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(tileLevelNumberFormatDescription),
   }),
 });
 
 const mcpTableTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('table').describe('Tabular aggregated data'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).min(1).max(20),
     groupBy: z
       .string()
@@ -428,7 +456,14 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
           'from a groupBy: "StatusMessage" table. Mirrors the same field on the REST ' +
           'table chart config in `externalDashboardTableChartConfigSchema`.',
       ),
-    orderBy: z.string().optional().describe('Sort results by this column'),
+    orderBy: z
+      .string()
+      .optional()
+      .describe(
+        'Sort results by this column. ' +
+          'When ordering by an alias that contains spaces or special characters, ' +
+          `wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+      ),
     asRatio: z.boolean().optional(),
     groupByColumnsOnLeft: z
       .boolean()
@@ -437,6 +472,9 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
         'Render Group By columns on the left side of the table, before the series columns. ' +
           'Default false (Group By columns on the right).',
       ),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(tileLevelNumberFormatDescription),
     onClick: mcpOnClickSchema.optional(),
   }),
 });
@@ -444,24 +482,21 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
 const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('number').describe('Single aggregate scalar value'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z
       .array(mcpTileSelectItemSchema)
       .length(1)
       .describe('Exactly one metric to display'),
     numberFormat: mcpNumberFormatSchema
       .optional()
-      .describe(
-        'Display formatting for the number value. Example: { output: "duration", factor: 0.000000001 } ' +
-          'to auto-format nanosecond durations as human-readable time.',
-      ),
+      .describe(tileLevelNumberFormatDescription),
   }),
 });
 
 const mcpPieTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('pie').describe('Pie chart'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     select: z.array(mcpTileSelectItemSchema).length(1),
     groupBy: z
       .string()
@@ -470,6 +505,9 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
         'Column that defines pie slices. Use PascalCase for top-level columns. ' +
           "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
       ),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(tileLevelNumberFormatDescription),
   }),
 });
 
@@ -512,7 +550,7 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
     sourceId: z
       .string()
       .describe(
-        'Source ID. Must be a Trace source today; use hyperdx_list_sources and ' +
+        'Source ID. Must be a Trace source today; use clickstack_list_sources and ' +
           'pick one whose kind is "trace".',
       ),
     select: z
@@ -539,7 +577,7 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
 const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('search').describe('Log/event search results list'),
-    sourceId: z.string().describe('Source ID – call hyperdx_list_sources'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
     where: z
       .string()
       .optional()
@@ -577,7 +615,17 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
     connectionId: z
       .string()
       .describe(
-        'Connection ID (not sourceId) – call hyperdx_list_sources to find available connections',
+        'Connection ID (not sourceId) – call clickstack_list_sources to find available connections',
+      ),
+    sourceId: z
+      .string()
+      .optional()
+      .describe(
+        'Source ID for the table this query reads from (call clickstack_list_sources). ' +
+          'ALWAYS set this for raw SQL tiles UNLESS the query reads from multiple tables ' +
+          '(e.g. JOINs or sub-queries spanning several sources), in which case omit it. ' +
+          'sourceId is REQUIRED by two macros: $__filters and $__sourceTable. ' +
+          'The sourceId must belong to the same connection as connectionId.',
       ),
     sqlTemplate: z
       .string()
@@ -587,13 +635,32 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
           '{intervalSeconds:Int64}, {intervalMilliseconds:Int64}.\n' +
           'Or use macros: $__timeFilter(col), $__timeFilter_ms(col), $__dateFilter(col), ' +
           '$__fromTime, $__toTime, $__fromTime_ms, $__toTime_ms, ' +
-          '$__timeInterval(col), $__timeInterval_ms(col), $__interval_s, $__filters.\n' +
+          '$__timeInterval(col), $__timeInterval_ms(col), $__interval_s, $__filters, $__sourceTable.\n' +
+          'IMPORTANT: $__filters and $__sourceTable both require sourceId to be set on this tile. ' +
+          'Prefer including "AND $__filters" in the WHERE clause so dashboard filters apply.\n' +
           'Example: "SELECT $__timeInterval(TimestampTime) AS ts, ServiceName, count() ' +
           'FROM otel_logs WHERE $__timeFilter(TimestampTime) AND $__filters ' +
           'GROUP BY ServiceName, ts ORDER BY ts"',
       ),
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(tileLevelNumberFormatDescription),
+    compareToPreviousPeriod: z
+      .boolean()
+      .optional()
+      .describe(
+        'Overlay the previous period as a dashed comparison series. ' +
+          'Valid only when displayType is "line", ignored otherwise.',
+      ),
+    fitYAxisToData: z
+      .boolean()
+      .optional()
+      .describe(
+        'Scale the y-axis to the data range instead of starting at zero. ' +
+          'Valid only when displayType is "line", ignored otherwise.',
+      ),
     onClick: mcpOnClickSchema.optional(),
   }),
 });
@@ -610,22 +677,62 @@ const mcpTileSchema = z.union([
   mcpSqlTileSchema,
 ]);
 
+// Layout schema without defaults for the patch tool: layout fields stay
+// truly `undefined` when omitted so the merge logic can fall back to the
+// existing tile's values instead of Zod filling in 0/12/4.
+const mcpPatchTileLayoutSchema = z.object({
+  name: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Tile title. Omit to keep the existing title.'),
+  x: z.number().min(0).max(23).optional(),
+  y: z.number().min(0).optional(),
+  w: z.number().min(1).max(24).optional(),
+  h: z.number().min(1).optional(),
+  containerId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
+  tabId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
+});
+
+// Build the patch tile union by extending the default-free layout with
+// each tile type's config shape. We only need the `config` field from
+// each tile schema; the layout wrapper is replaced.
+const mcpPatchTileSchema = z.union([
+  mcpPatchTileLayoutSchema.extend({ config: mcpLineTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpBarTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpTableTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpNumberTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpPieTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpHeatmapTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpSearchTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpMarkdownTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({ config: mcpSqlTileSchema.shape.config }),
+]);
+
 export const mcpTilesParam = z
   .array(mcpTileSchema)
   .describe(
     'Array of dashboard tiles. Each tile needs a name, optional layout (x/y/w/h), and a config block. ' +
-      'The config block varies by displayType – use hyperdx_list_sources for sourceId and connectionId values.\n\n' +
+      'The config block varies by displayType – use clickstack_list_sources for sourceId and connectionId values.\n\n' +
       'Example tiles:\n' +
       '1. Line chart: { "name": "Error Rate", "config": { "displayType": "line", "sourceId": "<from list_sources>", ' +
-      '"groupBy": "ResourceAttributes[\'service.name\']", "select": [{ "aggFn": "count", "where": "StatusCode:STATUS_CODE_ERROR" }] } }\n' +
+      '"groupBy": "ResourceAttributes[\'service.name\']", "select": [{ "aggFn": "count", "where": "StatusCode:STATUS_CODE_ERROR", "alias": "Errors" }] } }\n' +
       '2. Table: { "name": "Top Endpoints", "config": { "displayType": "table", "sourceId": "<from list_sources>", ' +
-      '"groupBy": "SpanAttributes[\'http.route\']", "select": [{ "aggFn": "count" }, ' +
-      '{ "aggFn": "avg", "valueExpression": "Duration", "numberFormat": { "output": "duration", "factor": 0.000000001 } }] } }\n' +
+      '"groupBy": "SpanAttributes[\'http.route\']", "select": [{ "aggFn": "count", "alias": "Requests" }, ' +
+      '{ "aggFn": "avg", "valueExpression": "Duration", "alias": "Avg Duration", "numberFormat": { "output": "duration", "factor": 0.000000001 } }] } }\n' +
       '   (per-series numberFormat lets one column render as a duration while a sibling count column stays a plain number)\n' +
       '3. Number: { "name": "Total Requests", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
-      '"select": [{ "aggFn": "count" }], "numberFormat": { "output": "number", "average": true } } }\n' +
+      '"select": [{ "aggFn": "count", "alias": "Requests" }], "numberFormat": { "output": "number", "average": true } } }\n' +
       '4. Number (duration): { "name": "P95 Latency", "config": { "displayType": "number", "sourceId": "<from list_sources>", ' +
-      '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration" }], ' +
+      '"select": [{ "aggFn": "quantile", "level": 0.95, "valueExpression": "Duration", "alias": "P95 Latency" }], ' +
       '"numberFormat": { "output": "duration", "factor": 0.000000001 } } }\n' +
       '5. Heatmap: { "name": "Latency Heatmap", "config": { "displayType": "heatmap", "sourceId": "<from list_sources, must be a Trace source>", ' +
       '"select": [{ "valueExpression": "Duration" }], ' +
@@ -640,7 +747,7 @@ const mcpDashboardFilterSchema = z
       .describe(
         'Filter identity. ' +
           'On UPDATE of an existing dashboard, every filter in the array MUST carry ' +
-          'an id: pass the exact id returned by hyperdx_get_dashboard for any filter ' +
+          'an id: pass the exact id returned by clickstack_get_dashboard for any filter ' +
           'you are keeping (so saved values bound to it stay attached), and generate ' +
           'a fresh random hex/ObjectId string for any filter you are adding in this ' +
           'update. Omitting `id` on an existing filter would orphan its saved values; ' +
@@ -670,7 +777,7 @@ const mcpDashboardFilterSchema = z
       ),
     sourceId: objectIdSchema.describe(
       'Source the filter values are pulled from (for the dropdown). ' +
-        'Get IDs from hyperdx_list_sources.',
+        'Get IDs from clickstack_list_sources.',
     ),
     sourceMetricType: z
       .nativeEnum(MetricsDataType)
@@ -688,6 +795,18 @@ const mcpDashboardFilterSchema = z
     whereLanguage: SearchConditionLanguageSchema.describe(
       'Filter language for `where` ("lucene" or "sql"). Optional, but set it explicitly.',
     ),
+    appliesToSourceIds: z
+      .array(objectIdSchema)
+      .optional()
+      .describe(
+        'Optional list of source IDs that this filter is applied to. ' +
+          'Omit (or pass `undefined`) to apply the filter to ALL tiles regardless of source ' +
+          '— this is the recommended default. ' +
+          'A non-empty array restricts the filter to only tiles whose source ID is in the list; ' +
+          'tiles on other sources are not affected by the dropdown value at all. ' +
+          'Useful on mixed-source dashboards where a column (e.g. SpanName) only exists on ' +
+          'a subset of sources.',
+      ),
   })
   .describe(
     'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
@@ -704,12 +823,65 @@ export const mcpFiltersParam = z
       'If another tile\'s onClick targets THIS dashboard with `filters: [{ expression: "X", ... }]`, ' +
       'this array MUST declare a filter whose `expression` is "X". Otherwise the value is ' +
       'dropped on arrival and the destination opens unfiltered.\n\n' +
-      'Example:\n' +
+      'By default a filter applies to every tile on the dashboard. On mixed-source dashboards, ' +
+      'use the optional `appliesToSourceIds` field to restrict a filter to only the tiles whose ' +
+      'source carries the referenced column — leave `appliesToSourceIds` omitted to keep the ' +
+      'broadcast-to-all-tiles default.\n\n' +
+      'Example (broadcast to every tile):\n' +
       '[\n' +
       '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
       '    "sourceId": "<trace-source-id>", "whereLanguage": "sql" }\n' +
+      ']\n\n' +
+      'Example (scoped on a mixed log/trace/metric dashboard):\n' +
+      '[\n' +
+      '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "SpanName",\n' +
+      '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
+      '    "appliesToSourceIds": ["<trace-source-id>"] }\n' +
       ']',
   );
+
+export const mcpPatchDashboardSchema = z.object({
+  dashboardId: objectIdSchema.describe('Dashboard ID.'),
+  name: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('New dashboard name. Omit to keep the current name.'),
+  tags: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'New tags array (replaces all existing tags). Omit to keep the current tags.',
+    ),
+  tileId: z
+    .string()
+    .optional()
+    .describe(
+      'ID of the tile to replace. Must be paired with `tile`. ' +
+        'Obtain tile IDs from clickstack_get_dashboard.',
+    ),
+  tile: mcpPatchTileSchema
+    .optional()
+    .describe(
+      'The full replacement tile definition. Replaces the tile matched by tileId. ' +
+        'Layout fields (x, y, w, h), name, and containerId/tabId default to the ' +
+        "existing tile's values when omitted, so you only need to specify what changed.",
+    ),
+});
+
+export const mcpSearchDashboardsSchema = z.object({
+  query: z
+    .string()
+    .max(200)
+    .optional()
+    .describe(
+      'Search term to match against dashboard names (case-insensitive substring match).',
+    ),
+  tags: z
+    .array(z.string().min(1))
+    .optional()
+    .describe('Filter to dashboards that have ALL of these tags.'),
+});
 
 export const mcpContainersParam = z
   .array(DashboardContainerSchema)

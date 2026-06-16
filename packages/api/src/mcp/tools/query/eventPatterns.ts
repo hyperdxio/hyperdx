@@ -38,6 +38,24 @@ const eventPatternsSchema = z.object({
         'Auto-detected from the source if omitted (Body for logs, SpanName for traces). ' +
         'Example: "Body", "SpanName", "SpanAttributes[\'http.url\']"',
     ),
+  topN: z
+    .number()
+    .min(1)
+    .max(100)
+    .optional()
+    .default(20)
+    .describe('Number of top patterns to return (1-100). Default: 20.'),
+  trendBuckets: z
+    .number()
+    .min(0)
+    .max(60)
+    .optional()
+    .default(24)
+    .describe(
+      'Number of time buckets for per-pattern trend sparklines (0-60). Default: 24. ' +
+        'Compare bucket counts at start vs end to spot patterns that started or stopped mid-window. ' +
+        'Set to 0 to disable trend computation (smaller response).',
+    ),
   startTime: startTimeSchema,
   endTime: endTimeSchema,
 });
@@ -48,25 +66,29 @@ export function registerEventPatterns(server: McpServer, context: McpContext) {
   const { teamId } = context;
 
   server.registerTool(
-    'hyperdx_event_patterns',
+    'clickstack_event_patterns',
     {
       title: 'Event Pattern Mining',
       description:
         'Discover the most common log messages and event patterns. ' +
         'Samples random events, clusters them using the Drain algorithm, and returns ' +
         'patterns sorted by frequency with estimated counts and time trends.\n\n' +
-        'Use this when asked about "top patterns", "common logs", "noisy services", ' +
+        'PREFER THIS TOOL over clickstack_search or clickstack_table when the goal is to ' +
+        'understand what kinds of messages, errors, or events exist — e.g. "sample logs", ' +
+        '"what errors are happening", "show me common messages", "what does this service log". ' +
+        'It returns frequency-ranked patterns instead of raw rows, giving a much better overview.\n\n' +
+        'Also use when asked about "top patterns", "common logs", "noisy services", ' +
         '"recurring messages", or log noise analysis.\n\n' +
         'Each pattern includes a "whereSnippet" — use it as the "where" parameter in ' +
-        'a follow-up hyperdx_search call to browse matching raw events.\n\n' +
-        'Requires sourceId — call hyperdx_list_sources first.\n\n' +
+        'a follow-up clickstack_search call to browse matching raw events.\n\n' +
+        'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
         'When to use which tool:\n' +
-        '  - hyperdx_event_patterns: clustering / recurring shapes / noise analysis\n' +
-        '  - hyperdx_search: raw individual rows\n' +
-        '  - hyperdx_table: aggregated metrics / counts / top-N',
+        '  - clickstack_event_patterns: clustering / recurring shapes / noise analysis\n' +
+        '  - clickstack_search: raw individual rows\n' +
+        '  - clickstack_table: aggregated metrics / counts / top-N',
       inputSchema: eventPatternsSchema,
     },
-    withToolTracing('hyperdx_event_patterns', context, async input => {
+    withToolTracing('clickstack_event_patterns', context, async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
         return {
@@ -86,6 +108,8 @@ export function registerEventPatterns(server: McpServer, context: McpContext) {
           whereLanguage: input.whereLanguage,
           bodyExpression: input.bodyExpression,
           sampleSize: input.sampleSize,
+          topN: input.topN,
+          trendBuckets: input.trendBuckets,
         },
       );
     }),

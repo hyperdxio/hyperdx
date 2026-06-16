@@ -12,7 +12,8 @@ export type MappingType =
   | 'Data Source'
   | 'Data Connection'
   | 'On Click - Search Source'
-  | 'On Click - Dashboard';
+  | 'On Click - Dashboard'
+  | 'Applies to Sources';
 
 export class DashboardImportPage {
   readonly page: Page;
@@ -123,14 +124,40 @@ export class DashboardImportPage {
         ? 'Select a connection'
         : mappingType === 'On Click - Dashboard'
           ? 'Select a dashboard'
-          : 'Select a source';
+          : mappingType === 'Applies to Sources'
+            ? 'Select sources'
+            : 'Select a source';
     await row.getByPlaceholder(placeholder).click();
     await this.page
       .getByRole('option', { name: optionName, exact: true })
       .click();
+    if (mappingType === 'Applies to Sources') {
+      // Multiselect — close the dropdown so it doesn't intercept future clicks.
+      await this.page.keyboard.press('Escape');
+    }
   }
 
   getImportSuccessNotification() {
     return this.page.getByText('Import Successful!');
+  }
+
+  /** The non-blocking warning shown when imported saved filter values have invalid conditions. */
+  getSavedFilterValuesWarning() {
+    return this.page.getByTestId('import-warning-saved-filter-values');
+  }
+
+  /** The non-blocking warning shown when imported dashboard filters have invalid value queries. */
+  getFilterQueriesWarning() {
+    return this.page.getByTestId('import-warning-filter-queries');
+  }
+
+  /** The non-blocking warning shown when the imported dashboard's saved query is invalid. */
+  getSavedQueryWarning() {
+    return this.page.getByTestId('import-warning-saved-query');
+  }
+
+  /** Expand the "Show Details" section of one of the import warning/error blocks. */
+  async showDetails(warning: Locator) {
+    await warning.getByRole('button', { name: 'Show Details' }).click();
   }
 }

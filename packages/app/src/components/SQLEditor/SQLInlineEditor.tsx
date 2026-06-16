@@ -305,7 +305,7 @@ export default function SQLInlineEditor({
 
   // Only apply expanded styling when multiline is enabled and focused
   const isExpanded = allowMultiline && isFocused;
-  const baseHeight = size === 'xs' ? 32 : 36;
+  const baseHeight = size === 'xs' ? 30 : 36;
 
   return (
     <div

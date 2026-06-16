@@ -1328,6 +1328,83 @@ describe('validateChartForm', () => {
   });
 });
 
+describe('color round-trip (sql/promql Number tile)', () => {
+  it('preserves color through convertFormStateToSavedChartConfig for sql Number tile', () => {
+    const form: ChartEditorFormState = {
+      configType: 'sql',
+      displayType: DisplayType.Number,
+      sqlTemplate: 'SELECT count() FROM logs',
+      connection: 'conn-1',
+      color: 'chart-success',
+      series: [],
+    };
+    const result = convertFormStateToSavedChartConfig(
+      form,
+      undefined,
+    ) as RawSqlSavedChartConfig;
+    expect(result).toBeDefined();
+    expect(result.color).toBe('chart-success');
+  });
+
+  it('preserves color through convertFormStateToChartConfig for sql Number tile', () => {
+    const form: ChartEditorFormState = {
+      configType: 'sql',
+      displayType: DisplayType.Number,
+      sqlTemplate: 'SELECT count() FROM logs',
+      connection: 'conn-1',
+      color: 'chart-orange',
+      series: [],
+    };
+    const result = convertFormStateToChartConfig(form, dateRange, undefined);
+    expect(result).toBeDefined();
+    expect((result as any).color).toBe('chart-orange');
+  });
+
+  it('preserves color through convertFormStateToSavedChartConfig for promql Number tile', () => {
+    const form: ChartEditorFormState = {
+      configType: 'promql',
+      displayType: DisplayType.Number,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      color: 'chart-warning',
+      series: [],
+    };
+    const result = convertFormStateToSavedChartConfig(form, undefined);
+    expect(result).toBeDefined();
+    expect((result as any).color).toBe('chart-warning');
+  });
+
+  it('preserves color through convertFormStateToChartConfig for promql Number tile', () => {
+    const form: ChartEditorFormState = {
+      configType: 'promql',
+      displayType: DisplayType.Number,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      color: 'chart-error',
+      series: [],
+    };
+    const result = convertFormStateToChartConfig(form, dateRange, undefined);
+    expect(result).toBeDefined();
+    expect((result as any).color).toBe('chart-error');
+  });
+
+  it('omits color when not set on sql Number tile', () => {
+    const form: ChartEditorFormState = {
+      configType: 'sql',
+      displayType: DisplayType.Number,
+      sqlTemplate: 'SELECT count() FROM logs',
+      connection: 'conn-1',
+      series: [],
+    };
+    const result = convertFormStateToSavedChartConfig(
+      form,
+      undefined,
+    ) as RawSqlSavedChartConfig;
+    expect(result).toBeDefined();
+    expect(result.color).toBeUndefined();
+  });
+});
+
 describe('heatmap round-trip', () => {
   it('preserves countExpression and heatmapScaleType through form state conversion', () => {
     const form: ChartEditorFormState = {

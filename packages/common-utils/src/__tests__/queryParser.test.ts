@@ -493,6 +493,114 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
       "((hasToken(lower(concatWithSeparator(';',Body,OtherColumn)), lower('foo'))) AND (hasToken(lower(concatWithSeparator(';',Body,OtherColumn)), lower('bar'))))";
     expect(actualSql).toBe(expectedSql);
   });
+
+  describe('CustomSchemaSQLSerializerV2: implicit column falls back to bodyExpression', () => {
+    // Symmetric counterpart to the one-way fallback in
+    // `getEventBody` (packages/app/src/source.ts): a log source admin who
+    // configures Body Expression but not Implicit Column Expression should
+    // still be able to run bare-text Lucene search. HDX-4376.
+    it('uses bodyExpression when implicitColumnExpression is unset', async () => {
+      const bodyOnlySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: 'message',
+      });
+      const sql = await new SearchQueryBuilder(
+        'Prometheus',
+        bodyOnlySerializer,
+      ).build();
+      expect(sql).toMatch(/lower\(message\)/);
+    });
+
+    it('implicit wins over body when both are set on the source', async () => {
+      const bothSerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'indexed_message',
+        bodyExpression: 'message',
+      });
+      const sql = await new SearchQueryBuilder(
+        'Prometheus',
+        bothSerializer,
+      ).build();
+      expect(sql).toMatch(/lower\(indexed_message\)/);
+      expect(sql).not.toMatch(/lower\(message\)/);
+    });
+
+    it('throws when neither implicit nor body is set', async () => {
+      const emptySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: undefined,
+      });
+      await expect(
+        new SearchQueryBuilder('Prometheus', emptySerializer).build(),
+      ).rejects.toThrow(
+        'Can not search bare text without an implicit column set.',
+      );
+    });
+
+    it('per-context implicit override wins over the source body fallback', async () => {
+      const bodyOnlySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: 'message',
+      });
+      const sql = await bodyOnlySerializer.getColumnForField('<implicit>', {
+        implicitColumnExpression: 'override_col',
+      });
+      expect(sql.column).toBe('override_col');
+    });
+
+    it('per-context body override wins over the source body fallback', async () => {
+      // Arm 3 of the resolution chain
+      // (context.implicit ?? this.implicit ?? context.body ?? this.body).
+      const bodyOnlySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: 'message',
+      });
+      const sql = await bodyOnlySerializer.getColumnForField('<implicit>', {
+        bodyExpression: 'override_col',
+      });
+      expect(sql.column).toBe('override_col');
+    });
+
+    it('renders concatWithSeparator when bodyExpression is multi-column', async () => {
+      // The multi-column-concat path at queryParser.ts:1727 fires
+      // whenever neither context override is set, including the
+      // body-fallback case. Guards splitAndTrimWithBracket +
+      // concatWithSeparator(';',...) rendering on body fallback
+      // against future regressions.
+      const multiColumnBodySerializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: undefined,
+        bodyExpression: 'Body, Message',
+      });
+      const sql = await new SearchQueryBuilder(
+        'foo',
+        multiColumnBodySerializer,
+      ).build();
+      expect(sql).toContain("concatWithSeparator(';',Body,Message)");
+    });
+  });
 });
 
 describe('CustomSchemaSQLSerializerV2 - bloom_filter tokens() indices', () => {
@@ -868,6 +976,35 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
     expect(sql).toBe("((hasAllTokens(Body, 'foo')))");
   });
 
+  it('should use hasAllTokens when text index exists on the body-fallback column', async () => {
+    // Pins that shouldUseTokenBf widening preserves the
+    // hasAllTokens optimization when the resolver falls back to
+    // bodyExpression (implicitColumnExpression unset on the source).
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_body_text',
+        type: 'text',
+        typeFull: 'text(tokenizer=splitByNonAlpha)',
+        expression: 'Body',
+        granularity: '8',
+      },
+    ]);
+
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: undefined,
+      bodyExpression: 'Body',
+    });
+
+    const builder = new SearchQueryBuilder('foo', serializer);
+    const sql = await builder.build();
+
+    expect(sql).toBe("((hasAllTokens(Body, 'foo')))");
+  });
+
   it('should use hasAllTokens when text index exists on multi-column expression', async () => {
     metadata.getSkipIndices = jest.fn().mockResolvedValue([
       {
@@ -1177,6 +1314,161 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
     expect(sql).toBe("((hasToken(lower(Body), lower('foo'))))");
   });
 
+  describe('lower(Body) text index (no preprocessor)', () => {
+    it('should use hasAllTokens(lower(Body), lower(...)) when index expression is lower(Body)', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_lower_body',
+          type: 'text',
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+          expression: 'lower(Body)',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+      });
+
+      const builder = new SearchQueryBuilder('Foo', serializer);
+      const sql = await builder.build();
+
+      expect(sql).toBe("((hasAllTokens(lower(Body), lower('Foo'))))");
+    });
+
+    it('should use hasAllTokens(lower(Body), lower(...)) for multi-token terms', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_lower_body',
+          type: 'text',
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+          expression: 'lower(Body)',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+      });
+
+      const builder = new SearchQueryBuilder('"Foo Bar"', serializer);
+      const sql = await builder.build();
+
+      expect(sql).toContain("hasAllTokens(lower(Body), lower('Foo Bar'))");
+      expect(sql).toContain("(lower(Body) LIKE lower('%Foo Bar%'))");
+    });
+
+    it('should handle negated searches with lower(Body) index', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_lower_body',
+          type: 'text',
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+          expression: 'lower(Body)',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+      });
+
+      const builder = new SearchQueryBuilder('-Foo', serializer);
+      const sql = await builder.build();
+
+      expect(sql).toBe("((NOT hasAllTokens(lower(Body), lower('Foo'))))");
+    });
+
+    it('should NOT use lower() when index is directly on Body', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_body_text',
+          type: 'text',
+          typeFull: 'text(tokenizer=splitByNonAlpha)',
+          expression: 'Body',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+      });
+
+      const builder = new SearchQueryBuilder('Foo', serializer);
+      const sql = await builder.build();
+
+      expect(sql).toBe("((hasAllTokens(Body, 'Foo')))");
+    });
+
+    it('should batch tokens with lower() when index is on lower(Body)', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_lower_body',
+          type: 'text',
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+          expression: 'lower(Body)',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+      });
+
+      const builder = new SearchQueryBuilder('FOO NOT BAR BAZ', serializer);
+      const sql = await builder.build();
+
+      expect(sql).toContain("hasAllTokens(lower(Body), lower('FOO'))");
+      expect(sql).toContain("NOT (hasAllTokens(lower(Body), lower('BAR')))");
+      expect(sql).toContain("hasAllTokens(lower(Body), lower('BAZ'))");
+    });
+
+    it('should detect LOWER(Body) case-insensitively', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_lower_body',
+          type: 'text',
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+          expression: 'LOWER(Body)',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+      });
+
+      const builder = new SearchQueryBuilder('foo', serializer);
+      const sql = await builder.build();
+
+      expect(sql).toBe("((hasAllTokens(lower(Body), lower('foo'))))");
+    });
+  });
+
   describe('useTextIndexForImplicitColumn source preference', () => {
     it('Auto preserves the existing detection behavior when a text index is found', async () => {
       metadata.getSkipIndices = jest.fn().mockResolvedValue([
@@ -1310,6 +1602,30 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
       const sql = await new SearchQueryBuilder('foo', serializer).build();
       expect(sql).not.toContain('hasAllTokens');
       expect(sql).toBe("((hasAll(tokens(lower(Body)), tokens(lower('foo')))))");
+    });
+
+    it('Enabled uses lower() wrapping when a lower(Body) text index exists', async () => {
+      metadata.getSkipIndices = jest.fn().mockResolvedValue([
+        {
+          name: 'idx_lower_body',
+          type: 'text',
+          typeFull: "text(tokenizer = 'splitByNonAlpha')",
+          expression: 'lower(Body)',
+          granularity: '8',
+        },
+      ]);
+
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'Body',
+        useTextIndexForImplicitColumn: UseTextIndex.Enabled,
+      });
+
+      const sql = await new SearchQueryBuilder('foo', serializer).build();
+      expect(sql).toBe("((hasAllTokens(lower(Body), lower('foo'))))");
     });
 
     it('Enabled with a multi-token term still falls back to LIKE when separators exist', async () => {
@@ -1805,6 +2121,66 @@ describe('CustomSchemaSQLSerializerV2 - Array and Nested Fields', () => {
   );
 });
 
+describe('genEnglishExplanation', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+  metadata.getColumn = jest.fn().mockImplementation(async () => undefined);
+  metadata.getMaterializedColumnsLookupTable = jest
+    .fn()
+    .mockImplementation(async () => new Map());
+
+  const databaseName = 'testName';
+  const tableName = 'testTable';
+  const connectionId = 'testId';
+  const query = 'bar';
+
+  it('serializes to english when table, database, and connection are present', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName, databaseName, connectionId },
+      metadata,
+    });
+    expect(actual).toBe('event has whole word bar');
+  });
+
+  it('falls back to the raw message when tableName is missing', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName: '', databaseName, connectionId },
+      metadata,
+    });
+    expect(actual).toBe(`Message containing ${query}`);
+  });
+
+  it('falls back to the raw message when databaseName is missing', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName, databaseName: '', connectionId },
+      metadata,
+    });
+    expect(actual).toBe(`Message containing ${query}`);
+  });
+
+  it('falls back to the raw message when connectionId is missing', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName, databaseName, connectionId: '' },
+      metadata,
+    });
+    expect(actual).toBe(`Message containing ${query}`);
+  });
+
+  it('falls back to the raw message when all table connection fields are missing', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName: '', databaseName: '', connectionId: '' },
+      metadata,
+    });
+    expect(actual).toBe(`Message containing ${query}`);
+  });
+});
+
 describe('parseKvItemsExpression', () => {
   it('parses standard KV items expression', () => {
     expect(
@@ -1980,6 +2356,9 @@ describe('CustomSchemaSQLSerializerV2 - KV items index optimization', () => {
     },
   ]);
   metadata.getSetting = jest.fn().mockImplementation(async () => '0');
+  metadata.getServerVersion = jest
+    .fn()
+    .mockImplementation(async () => [26, 5, 0, 0] as const);
 
   const serializer = new CustomSchemaSQLSerializerV2({
     metadata,
@@ -2092,6 +2471,9 @@ describe('CustomSchemaSQLSerializerV2 - KV items with MATERIALIZED column', () =
     },
   ]);
   metadata.getSetting = jest.fn().mockImplementation(async () => '0');
+  metadata.getServerVersion = jest
+    .fn()
+    .mockImplementation(async () => [26, 5, 0, 0] as const);
 
   const serializer = new CustomSchemaSQLSerializerV2({
     metadata,
@@ -2113,6 +2495,78 @@ describe('CustomSchemaSQLSerializerV2 - KV items with MATERIALIZED column', () =
   });
 });
 
+describe('CustomSchemaSQLSerializerV2 - KV items with ALIAS column (expanded index expr)', () => {
+  // ClickHouse expands the skip-index `expr` for ALIAS columns to the full
+  // default_expression, instead of keeping it as the bare column name like it
+  // does for MATERIALIZED columns. This matches what the FTS schema emits.
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+  const databaseName = 'default';
+  const tableName = 'otel_logs';
+  const connectionId = 'test';
+  const aliasDefaultExpression =
+    "arrayMap(arr -> concat(arr.1, '=', arr.2), CAST(LogAttributes, 'Array(Tuple(String, String))'))";
+
+  metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+    if (column === 'LogAttributes') {
+      return { name: 'LogAttributes', type: 'Map(String, String)' };
+    } else if (column === 'Body') {
+      return { name: 'Body', type: 'String' };
+    }
+    return undefined;
+  });
+  metadata.getMaterializedColumnsLookupTable = jest
+    .fn()
+    .mockResolvedValue(new Map());
+  metadata.getColumns = jest.fn().mockResolvedValue([
+    {
+      name: 'LogAttributes',
+      type: 'Map(String, String)',
+      default_type: '',
+      default_expression: '',
+    },
+    {
+      name: 'LogAttributeItems',
+      type: 'Array(String)',
+      default_type: 'ALIAS',
+      default_expression: aliasDefaultExpression,
+    },
+  ]);
+  metadata.getSkipIndices = jest.fn().mockResolvedValue([
+    {
+      name: 'idx_log_attr_items',
+      type: 'text',
+      typeFull: 'text(tokenizer=array)',
+      expression: aliasDefaultExpression,
+      granularity: 1,
+    },
+  ]);
+  metadata.getSetting = jest.fn().mockResolvedValue('0');
+  metadata.getServerVersion = jest
+    .fn()
+    .mockResolvedValue([26, 5, 0, 0] as const);
+
+  const serializer = new CustomSchemaSQLSerializerV2({
+    metadata,
+    databaseName,
+    tableName,
+    connectionId,
+    implicitColumnExpression: 'Body',
+  });
+
+  it('matches the index by its expanded ALIAS expression', async () => {
+    const builder = new SearchQueryBuilder(
+      'LogAttributes.error.message:"Failed to fetch"',
+      serializer,
+    );
+    const sql = await builder.build();
+    expect(sql).toBe(
+      "((has(`LogAttributeItems`, concat('error.message', '=', 'Failed to fetch'))))",
+    );
+  });
+});
+
 describe('CustomSchemaSQLSerializerV2 - KV items fallback cases', () => {
   const databaseName = 'default';
   const tableName = 'otel_logs';
@@ -2122,6 +2576,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items fallback cases', () => {
     columns?: any[];
     skipIndices?: any[];
     getColumn?: (opts: { column: string }) => any;
+    serverVersion?: readonly [number, number, number, number] | undefined;
   }) {
     const metadata = getMetadata(
       new ClickhouseClient({ host: 'http://localhost:8123' }),
@@ -2146,6 +2601,15 @@ describe('CustomSchemaSQLSerializerV2 - KV items fallback cases', () => {
       .fn()
       .mockImplementation(async () => overrides.skipIndices ?? []);
     metadata.getSetting = jest.fn().mockImplementation(async () => '0');
+    const serverVersion = Object.prototype.hasOwnProperty.call(
+      overrides,
+      'serverVersion',
+    )
+      ? overrides.serverVersion
+      : ([26, 5, 0, 0] as const);
+    metadata.getServerVersion = jest
+      .fn()
+      .mockImplementation(async () => serverVersion);
 
     return new CustomSchemaSQLSerializerV2({
       metadata,
@@ -2293,5 +2757,149 @@ describe('CustomSchemaSQLSerializerV2 - KV items fallback cases', () => {
     // Should use CAST for numeric comparison, not has()
     expect(sql).not.toContain('has(');
     expect(sql).toContain('CAST');
+  });
+});
+
+describe('CustomSchemaSQLSerializerV2 - KV items version gate', () => {
+  const databaseName = 'default';
+  const tableName = 'otel_logs';
+  const connectionId = 'test';
+
+  function buildSerializer(
+    serverVersion: readonly [number, number, number, number] | undefined,
+    defaultType: 'ALIAS' | 'MATERIALIZED' = 'ALIAS',
+  ) {
+    const metadata = getMetadata(
+      new ClickhouseClient({ host: 'http://localhost:8123' }),
+    );
+    metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+      if (column === 'LogAttributes') {
+        return { name: 'LogAttributes', type: 'Map(String, String)' };
+      } else if (column === 'Body') {
+        return { name: 'Body', type: 'String' };
+      }
+      return undefined;
+    });
+    metadata.getMaterializedColumnsLookupTable = jest
+      .fn()
+      .mockResolvedValue(new Map());
+    metadata.getColumns = jest.fn().mockResolvedValue([
+      {
+        name: 'LogAttributes',
+        type: 'Map(String, String)',
+        default_type: '',
+        default_expression: '',
+      },
+      {
+        name: 'LogAttributeItems',
+        type: 'Array(String)',
+        default_type: defaultType,
+        default_expression:
+          "arrayMap((arr) -> concat(arr.1, '=', arr.2), LogAttributes::Array(Tuple(String, String)))",
+      },
+    ]);
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_log_attr_items',
+        type: 'text',
+        typeFull: 'text(tokenizer=array)',
+        expression: 'LogAttributeItems',
+        granularity: 1,
+      },
+    ]);
+    metadata.getSetting = jest.fn().mockResolvedValue('0');
+    metadata.getServerVersion = jest.fn().mockResolvedValue(serverVersion);
+
+    return new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+  }
+
+  async function buildSql(
+    serverVersion: readonly [number, number, number, number] | undefined,
+    defaultType: 'ALIAS' | 'MATERIALIZED' = 'ALIAS',
+  ) {
+    const serializer = buildSerializer(serverVersion, defaultType);
+    const builder = new SearchQueryBuilder(
+      'LogAttributes.service.name:"my-app"',
+      serializer,
+    );
+    return builder.build();
+  }
+
+  const HAS_FORM =
+    "has(`LogAttributeItems`, concat('service.name', '=', 'my-app'))";
+
+  describe('ALIAS items column - emits has() on supported versions', () => {
+    it.each<readonly [number, number, number, number]>([
+      [26, 2, 19, 43],
+      [26, 2, 20, 0],
+      [26, 3, 12, 3],
+      [26, 3, 13, 0],
+      [26, 4, 3, 37],
+      [26, 4, 99, 99],
+      [26, 5, 0, 0],
+      [26, 6, 0, 0],
+      [27, 0, 0, 0],
+    ])('%j', async (...version) => {
+      const sql = await buildSql(version, 'ALIAS');
+      expect(sql).toContain(HAS_FORM);
+    });
+  });
+
+  describe('ALIAS items column - falls back on unsupported versions', () => {
+    it.each<readonly [number, number, number, number]>([
+      [26, 2, 19, 42],
+      [26, 2, 0, 0],
+      [26, 3, 12, 2],
+      [26, 3, 0, 0],
+      [26, 4, 3, 36],
+      [26, 4, 1, 3],
+      [26, 4, 0, 99],
+      [26, 1, 99, 99],
+      [25, 12, 0, 0],
+    ])('%j', async (...version) => {
+      const sql = await buildSql(version, 'ALIAS');
+      expect(sql).not.toContain('has(`LogAttributeItems`');
+      expect(sql).toContain("= 'my-app'");
+    });
+  });
+
+  it('ALIAS items column falls back when server version is unknown', async () => {
+    const sql = await buildSql(undefined, 'ALIAS');
+    expect(sql).not.toContain('has(`LogAttributeItems`');
+    expect(sql).toContain("= 'my-app'");
+  });
+
+  describe('MATERIALIZED items column - emits has() on EVERY version', () => {
+    it.each<readonly [number, number, number, number]>([
+      [26, 2, 19, 43],
+      [26, 2, 19, 42],
+      [26, 2, 0, 0],
+      [26, 3, 12, 3],
+      [26, 3, 12, 2],
+      [26, 3, 0, 0],
+      [26, 4, 3, 37],
+      [26, 4, 3, 36],
+      [26, 4, 1, 3],
+      [26, 4, 0, 99],
+      [26, 1, 99, 99],
+      [26, 0, 0, 0],
+      [25, 12, 0, 0],
+      [26, 5, 0, 0],
+      [27, 0, 0, 0],
+    ])('%j', async (...version) => {
+      const sql = await buildSql(version, 'MATERIALIZED');
+      expect(sql).toContain(HAS_FORM);
+    });
+  });
+
+  it('MATERIALIZED items column emits has() even when server version is unknown', async () => {
+    const sql = await buildSql(undefined, 'MATERIALIZED');
+    expect(sql).toContain(HAS_FORM);
   });
 });

@@ -1,0 +1,247 @@
+{
+  "scenario": "noisy-signals",
+  "agentPrompt": "We want to cut log ingest cost. What are the top noisy signals we should drop or throttle?",
+  "expected": {
+    "totalLogVolume": 16000000,
+    "designNote": "Every (ServiceName, SeverityText) cell that contains a noise pattern also contains a high-volume LOAD-BEARING pattern of comparable size. The agent has to inspect event.name / body templates to disambiguate noise from legitimate logs WITHIN each cell — grouping by service+severity alone is insufficient. A blanket drop on any of these cells would destroy load-bearing data.",
+    "compositeCells": [
+      {
+        "cell": "notification-service × DEBUG",
+        "noise": {
+          "eventName": "cache.hit",
+          "approxCount": 1000000,
+          "remediation": "drop debug-level cache hit logs"
+        },
+        "loadBearing": {
+          "eventName": "notification.delivery",
+          "approxCount": 1000000,
+          "whyKeep": "Push delivery audit trail — required for support and compliance."
+        }
+      },
+      {
+        "cell": "billing-service × INFO",
+        "noise": {
+          "eventName": "subscription.metric.calculated",
+          "metricName": "subscription_mrr",
+          "approxCount": 1000000,
+          "remediation": "convert to a gauge metric (subscription_mrr); stop emitting as a log"
+        },
+        "loadBearing": {
+          "eventName": "invoice.charged / invoice.refunded / subscription.activated / subscription.cancelled / payment.failed",
+          "approxCount": 1000000,
+          "whyKeep": "Financial / audit events — required for compliance and revenue recognition."
+        }
+      },
+      {
+        "cell": "worker × ERROR",
+        "noise": {
+          "eventName": "job.caught_exception",
+          "errorKind": "NonFatalRetryableError",
+          "approxCount": 400000,
+          "remediation": "downgrade severity or throttle — caught/handled error"
+        },
+        "loadBearing": {
+          "eventName": "job.failed.permanent",
+          "approxCount": 400000,
+          "whyKeep": "Real, unhandled failures — must be kept for incident response."
+        }
+      },
+      {
+        "cell": "{inventory,pricing,shipping,recommendation}-service × DEBUG",
+        "noise": {
+          "eventName": "health.check",
+          "approxCount": 2000000,
+          "remediation": "drop entirely; replace with a metric"
+        },
+        "loadBearing": {
+          "eventName": "inventory.stock_lookup / pricing.calculation / shipping.rate.quote / recommendation.score",
+          "approxCount": 2000000,
+          "whyKeep": "Operational debug used by SREs to diagnose hot-path slowness in each service."
+        }
+      },
+      {
+        "cell": "frontend-proxy × INFO",
+        "noise": {
+          "eventName": "lb.health.probe",
+          "approxCount": 1000000,
+          "remediation": "filter out kube-probe / LB internal health probes at the proxy"
+        },
+        "loadBearing": {
+          "eventName": "proxy.access",
+          "approxCount": 1000000,
+          "whyKeep": "Envoy access logs — request-level auditing and debugging."
+        }
+      },
+      {
+        "cell": "frontend × INFO",
+        "noise": {
+          "eventName": "frontend.console.log_dump",
+          "approxCount": 800000,
+          "remediation": "stop flushing client-side console.log dumps to backend logs"
+        },
+        "loadBearing": {
+          "eventName": "page.render",
+          "approxCount": 800000,
+          "whyKeep": "RUM data — frontend performance signal."
+        }
+      },
+      {
+        "cell": "search-service × INFO",
+        "noise": {
+          "eventName": "search.cache.miss",
+          "approxCount": 600000,
+          "remediation": "drop verbose per-query cache-miss logs; replace with a counter"
+        },
+        "loadBearing": {
+          "eventName": "index.shard.flush",
+          "approxCount": 600000,
+          "whyKeep": "Indexer health signal — needed to track pipeline lag."
+        }
+      }
+    ],
+    "loadBearingOnlyCells": [
+      {
+        "cell": "analytics-service × INFO",
+        "eventName": "product.view / cart.add / checkout.* / search.* / etc.",
+        "approxCount": 600000,
+        "whyKeep": "Product analytics feeding business dashboards."
+      }
+    ]
+  },
+  "rubric": {
+    "programmatic": [
+      ["names_heartbeat_pattern", 2, "(health\\.check|heartbeat)"],
+      ["names_cache_hit_pattern", 2, "cache\\.?hit"],
+      [
+        "names_subscription_metric_pattern",
+        2,
+        "(subscription_mrr|metric\\.name=subscription|metric.{0,15}calculated|mrr)"
+      ],
+      [
+        "names_stacktrace_pattern",
+        2,
+        "(NonFatalRetryableError|job\\.caught_exception|caught.{0,8}exception)"
+      ],
+      [
+        "names_lb_probe_pattern",
+        2,
+        "(lb\\.health\\.probe|kube[- ]?probe|/healthz|health.?probe|LB.{0,20}probe|internal.{0,10}health.?check)"
+      ],
+      [
+        "names_console_dump_pattern",
+        2,
+        "(console\\.log_dump|console\\.log dump|console.{0,10}dump|client.?side.{0,15}console|frontend.{0,10}console)"
+      ],
+      [
+        "names_search_miss_pattern",
+        1,
+        "(search\\.cache\\.miss|cache.?miss.{0,30}(search|verbose|per.?query)|verbose.{0,20}cache.?miss)"
+      ],
+      [
+        "names_keep_notification_delivery",
+        1,
+        "(notification\\.delivery|push.{0,10}delivery|delivery.{0,15}(audit|record|trail))"
+      ],
+      [
+        "names_keep_billing_events",
+        1,
+        "(invoice\\.(charged|refunded)|subscription\\.(activated|cancelled)|payment\\.failed|billing.{0,15}(events?|financial|audit))"
+      ],
+      [
+        "names_keep_job_failed_permanent",
+        1,
+        "(job\\.failed\\.permanent|permanent.{0,15}(failure|fail)|unhandled.{0,20}(failure|error|job))"
+      ],
+      [
+        "false_blanket_drop_notification_debug",
+        3,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\bnotification-service[^.\\n]{0,40}?\\bdebug\\b(?![^.\\n]*?(cache\\.?hit|cache.?lookup))",
+        true
+      ],
+      [
+        "false_blanket_drop_billing_info",
+        3,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\bbilling-service[^.\\n]{0,40}?\\binfo\\b(?![^.\\n]*?(subscription|metric|mrr))",
+        true
+      ],
+      [
+        "false_blanket_drop_worker_errors",
+        3,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\bworker[^.\\n]{0,40}?\\berror\\b(?![^.\\n]*?(NonFatalRetryable|caught|retryable|handled))",
+        true
+      ],
+      [
+        "false_drop_envoy_access",
+        2,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(envoy.{0,20}?access|proxy\\.access|access.?log)\\b",
+        true
+      ],
+      [
+        "false_drop_page_render",
+        2,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(page\\.render|rum|frontend.{0,15}render)",
+        true
+      ],
+      [
+        "false_drop_indexing",
+        1,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(index\\.shard\\.flush|indexing.?progress|indexer.?health)",
+        true
+      ],
+      [
+        "false_drop_analytics_events",
+        2,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(analytics-service|product\\.view|cart\\.add|checkout\\.[a-z]+|event tracking|product analytics)",
+        true
+      ],
+      [
+        "false_drop_notification_delivery",
+        2,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(notification\\.delivery|push.{0,10}delivery|delivery.?(audit|record|trail))",
+        true
+      ],
+      [
+        "false_drop_billing_events",
+        2,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(invoice\\.(charged|refunded)|subscription\\.(activated|cancelled)|payment\\.failed|financial.?event)",
+        true
+      ],
+      [
+        "false_drop_job_failed_permanent",
+        2,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(job\\.failed\\.permanent|permanent.{0,15}(failure|fail))",
+        true
+      ],
+      [
+        "false_drop_service_ops_debug",
+        2,
+        "(drop|throttle|sample.?out|stop emitting|remove)[^.\\n]{0,80}?\\b(inventory\\.stock_lookup|pricing\\.calculation|shipping\\.rate\\.quote|recommendation\\.score)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Did the answer correctly identify the SEVEN noise patterns and name them by event.name or body template? (1) health.check heartbeats across inventory/pricing/shipping/recommendation services × DEBUG, (2) notification-service cache.hit chatter, (3) billing-service subscription_mrr metric-as-log, (4) worker NonFatalRetryableError caught-exception, (5) frontend-proxy lb.health.probe internal probes, (6) frontend console.log_dump client-side dumps, (7) search-service search.cache.miss verbose. Missing the billing metric-as-log (most subtle — it's INFO not DEBUG) is a correctness failure. Missing pattern 5/6/7 (the new mixed-cell noises) is also a correctness failure."
+        },
+        {
+          "id": "completeness",
+          "weight": 2,
+          "description": "Did it propose a concrete remediation for each noise pattern (drop, throttle, sample, downgrade severity, or convert to metric)? The billing-service one specifically should be flagged as 'convert to a gauge metric'."
+        },
+        {
+          "id": "calibration",
+          "weight": 3,
+          "description": "CRITICAL — every (ServiceName, SeverityText) cell that contains a noise pattern ALSO contains a high-volume LOAD-BEARING pattern of comparable size. The agent must DISTINGUISH noise from legitimate within each cell. Specifically: notification-service DEBUG has cache.hit (drop) AND notification.delivery (KEEP, push delivery audit); billing-service INFO has subscription_mrr-as-log (drop/convert) AND invoice/refund/subscription financial events (KEEP); worker ERROR has NonFatalRetryableError (drop/downgrade) AND job.failed.permanent (KEEP, real failures); inventory/pricing/shipping/recommendation × DEBUG each have heartbeats (drop) AND legit per-service ops debug (KEEP); frontend-proxy INFO has lb.health.probe (drop/filter) AND envoy access (KEEP); frontend INFO has console.log_dump (drop) AND page.render (KEEP, RUM); search-service INFO has search.cache.miss (drop) AND index.shard.flush (KEEP). A blanket 'drop notification-service DEBUG' or 'drop worker ERROR' recommendation that does not name the specific event.name to drop is a calibration failure — it would destroy load-bearing data. The recommendation must be event.name-specific, not service-and-severity-specific."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Was the answer concise, well-structured, and ranked clearly?"
+        }
+      ]
+    }
+  }
+}
