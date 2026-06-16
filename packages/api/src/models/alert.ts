@@ -85,7 +85,7 @@ export interface IAlert {
   };
 
   // Multi-window alerting: fire only after N violations in M consecutive windows
-  windowsLookback?: number;
+  numConsecutiveWindows?: number;
 
   // Errors recorded during the most recent execution
   executionErrors?: IAlertError[];
@@ -193,7 +193,7 @@ const AlertSchema = new Schema<IAlert>(
       type: String,
       required: false,
     },
-    windowsLookback: {
+    numConsecutiveWindows: {
       type: Number,
       required: false,
       min: 1,

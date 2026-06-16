@@ -8422,8 +8422,8 @@ describe('checkAlerts', () => {
       expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
     });
 
-    describe('multi-window alerting (windowsLookback)', () => {
-      it('fires on the first violation when windowsLookback=1', async () => {
+    describe('multi-window alerting (numConsecutiveWindows)', () => {
+      it('fires on the first violation when numConsecutiveWindows=1', async () => {
         const { team, webhook, connection, source, savedSearch, teamWebhooksById, clickhouseClient } =
           await setupSavedSearchAlertTest();
 
@@ -8437,7 +8437,7 @@ describe('checkAlerts', () => {
             thresholdType: AlertThresholdType.ABOVE,
             threshold: 0,
             savedSearchId: savedSearch.id,
-            windowsLookback: 1,
+            numConsecutiveWindows: 1,
           },
           { taskType: AlertTaskType.SAVED_SEARCH, savedSearch },
         );
@@ -8471,7 +8471,7 @@ describe('checkAlerts', () => {
             thresholdType: AlertThresholdType.ABOVE,
             threshold: 0,
             savedSearchId: savedSearch.id,
-            windowsLookback: 3,
+            numConsecutiveWindows: 3,
           },
           { taskType: AlertTaskType.SAVED_SEARCH, savedSearch },
         );
@@ -8521,7 +8521,7 @@ describe('checkAlerts', () => {
             thresholdType: AlertThresholdType.ABOVE,
             threshold: 1, // threshold=1 so zero-fill (no data) produces OK, not ALERT
             savedSearchId: savedSearch.id,
-            windowsLookback: 3,
+            numConsecutiveWindows: 3,
           },
           { taskType: AlertTaskType.SAVED_SEARCH, savedSearch },
         );

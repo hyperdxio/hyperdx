@@ -598,7 +598,7 @@ export const AlertBaseObjectSchema = z.object({
       until: z.string(),
     })
     .optional(),
-  windowsLookback: z.number().int().min(1).optional(),
+  numConsecutiveWindows: z.number().int().min(1).optional(),
 });
 
 // Keep AlertBaseSchema as a ZodObject for backwards compatibility with
@@ -2037,7 +2037,7 @@ export const AlertsPageItemSchema = z.object({
     })
     .optional(),
   executionErrors: z.array(AlertErrorSchema).optional(),
-  windowsLookback: z.number().int().min(1).optional(),
+  numConsecutiveWindows: z.number().int().min(1).optional(),
 });
 
 export type AlertsPageItem = z.infer<typeof AlertsPageItemSchema>;

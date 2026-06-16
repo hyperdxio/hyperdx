@@ -72,9 +72,9 @@ export function TileAlertEditor({
     control,
     name: 'alert.scheduleOffsetMinutes',
   });
-  const alertWindowsLookback = useWatch({
+  const alertnumConsecutiveWindows = useWatch({
     control,
-    name: 'alert.windowsLookback',
+    name: 'alert.numConsecutiveWindows',
   });
   const maxAlertScheduleOffsetMinutes = alert?.interval
     ? Math.max(intervalToMinutes(alert.interval) - 1, 0)
@@ -214,7 +214,7 @@ export function TileAlertEditor({
             </Text>
             <Controller
               control={control}
-              name="alert.windowsLookback"
+              name="alert.numConsecutiveWindows"
               render={({ field }) => (
                 <NumberInput
                   {...field}
@@ -230,7 +230,7 @@ export function TileAlertEditor({
               )}
             />
             <Text size="sm" opacity={0.7}>
-              {(alertWindowsLookback ?? 1) === 1
+              {(alertnumConsecutiveWindows ?? 1) === 1
                 ? 'window'
                 : 'consecutive windows'}
             </Text>

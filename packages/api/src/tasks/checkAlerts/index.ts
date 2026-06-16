@@ -1002,7 +1002,7 @@ export const processAlert = async (
     const shouldFireBasedOnConsecutiveWindows = async (
       groupKey: string,
     ): Promise<boolean> => {
-      const numWindowsToLookBack = alert.windowsLookback ?? 1;
+      const numWindowsToLookBack = alert.numConsecutiveWindows ?? 1;
 
       if (numWindowsToLookBack <= 1) {
         return true;

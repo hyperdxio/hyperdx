@@ -157,7 +157,7 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
     tileId: alert.tileId,
 
     // Multi-window alerting
-    windowsLookback: alert.windowsLookback,
+    numConsecutiveWindows: alert.numConsecutiveWindows,
   };
 };
 

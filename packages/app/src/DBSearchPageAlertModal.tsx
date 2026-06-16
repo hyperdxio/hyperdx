@@ -77,7 +77,7 @@ const SavedSearchAlertFormSchema = z
     scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
     channel: zAlertChannel,
-    windowsLookback: z.number().int().min(1).optional(),
+    numConsecutiveWindows: z.number().int().min(1).optional(),
   })
   .passthrough()
   .superRefine(validateAlertScheduleOffsetMinutes)
@@ -151,7 +151,7 @@ const AlertForm = ({
   const groupByValue = useWatch({ control, name: 'groupBy' });
   const threshold = useWatch({ control, name: 'threshold' });
   const thresholdMax = useWatch({ control, name: 'thresholdMax' });
-  const windowsLookback = useWatch({ control, name: 'windowsLookback' });
+  const numConsecutiveWindows = useWatch({ control, name: 'numConsecutiveWindows' });
   const maxScheduleOffsetMinutes = Math.max(
     intervalToMinutes(interval ?? '5m') - 1,
     0,
@@ -248,7 +248,7 @@ const AlertForm = ({
             </Text>
             <Controller
               control={control}
-              name="windowsLookback"
+              name="numConsecutiveWindows"
               render={({ field }) => (
                 <NumberInput
                   {...field}
@@ -264,7 +264,7 @@ const AlertForm = ({
               )}
             />
             <Text size="sm" opacity={0.7}>
-              {(windowsLookback ?? 1) === 1
+              {(numConsecutiveWindows ?? 1) === 1
                 ? 'window'
                 : 'consecutive windows'}
             </Text>

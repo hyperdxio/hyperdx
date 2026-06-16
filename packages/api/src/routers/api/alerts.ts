@@ -84,7 +84,7 @@ const formatAlertResponse = (
       'createdAt',
       'updatedAt',
       'executionErrors',
-      'windowsLookback',
+      'numConsecutiveWindows',
     ]),
   };
 };
