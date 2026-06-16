@@ -27,6 +27,7 @@ import {
   readConfig,
 } from './hyperdx/config';
 import { runCheck, runSetup } from './hyperdx/setup';
+import { columnKeyFor } from './reports/aggregate';
 import { writeBatchSummary } from './reports/store';
 import { instrumentBatch, summarizeTimingRecord } from './runs/instrument';
 import { batchDirName } from './runs/path';
@@ -319,7 +320,12 @@ program
     'MCP to use as baseline in reports (default: first MCP in list)',
   )
   .option('--runs <n>', 'Number of runs per (scenario,MCP) cell', '3')
-  .option('--model <id>', 'Model ID to pass to Claude Code', 'claude-opus-4-6')
+  .option(
+    '--model <ids>',
+    'Comma-separated model IDs to pass to Claude Code. When multiple ' +
+      'models are given, every (mcp, model) pair is compared in reports.',
+    'claude-opus-4-6',
+  )
   // Lower than the previous 25 — tightens the budget so sloppy agents that
   // make 20+ exploratory calls can't paper over correctness with volume.
   // Override with --max-turns if a specific scenario needs more.
@@ -415,11 +421,22 @@ program
       for (const mcp of mcpKinds) {
         getMcpDefinition(config, mcp);
       }
-      const baseline = cmdOpts.baseline ?? mcpKinds[0];
-      if (cmdOpts.baseline && !mcpKinds.includes(cmdOpts.baseline)) {
-        throw new Error(
-          `--baseline "${cmdOpts.baseline}" is not in the MCP list: ${mcpKinds.join(', ')}`,
+      const models = parseModelFlag(cmdOpts.model);
+      const multiModel = models.length > 1;
+      // For baseline resolution: when multi-model, the column key is
+      // mcp/sanitizedModel; otherwise just mcp.
+      const firstColumnKey = columnKeyFor(mcpKinds[0], models[0], multiModel);
+      const baseline = cmdOpts.baseline ?? firstColumnKey;
+      if (cmdOpts.baseline) {
+        // Validate: baseline must match one of the column keys.
+        const allColumnKeys = mcpKinds.flatMap(m =>
+          models.map(mod => columnKeyFor(m, mod, multiModel)),
         );
+        if (!allColumnKeys.includes(cmdOpts.baseline)) {
+          throw new Error(
+            `--baseline "${cmdOpts.baseline}" is not in the column list: ${[...new Set(allColumnKeys)].join(', ')}`,
+          );
+        }
       }
       const promptVariant: PromptVariant = parsePromptVariant(
         cmdOpts.promptVariant,
@@ -517,12 +534,14 @@ program
       console.log(`\nBatch: runs/${batchDir}`);
       console.log(`Scenario: ${scenario.name}`);
       console.log(`MCPs: ${mcpKinds.join(', ')}`);
+      console.log(`Models: ${models.join(', ')}`);
       console.log(
-        `Runs/cell: ${runs}, model: ${cmdOpts.model}, max-turns: ${maxTurns}, concurrency: ${concurrency}, prompt-variant: ${promptVariant}\n`,
+        `Runs/cell: ${runs}, max-turns: ${maxTurns}, concurrency: ${concurrency}, prompt-variant: ${promptVariant}\n`,
       );
 
       type SummaryRow = {
         mcp: McpKind;
+        model: string;
         i: number;
         toolCalls: number;
         inputTokens: number;
@@ -532,25 +551,33 @@ program
         path: string;
       };
 
-      // Flatten the (mcp, runIndex) matrix into a single queue and pull from it
-      // with a worker pool of size `concurrency`.
-      const cells: Array<{ mcp: McpKind; i: number }> = [];
+      // Flatten the (mcp, model, runIndex) matrix into a single queue and
+      // pull from it with a worker pool of size `concurrency`.
+      const cells: Array<{ mcp: McpKind; model: string; i: number }> = [];
       for (const mcp of mcpKinds) {
-        for (let i = 0; i < runs; i++) cells.push({ mcp, i });
+        for (const model of models) {
+          for (let i = 0; i < runs; i++) cells.push({ mcp, model, i });
+        }
       }
 
       const summary: SummaryRow[] = [];
       let cursor = 0;
-      const errors: Array<{ mcp: string; i: number; error: string }> = [];
+      const errors: Array<{
+        mcp: string;
+        model: string;
+        i: number;
+        error: string;
+      }> = [];
       async function worker(workerId: number): Promise<void> {
         while (true) {
           const idx = cursor++;
           if (idx >= cells.length) return;
-          const { mcp, i } = cells[idx];
+          const { mcp, model, i } = cells[idx];
+          const cellLabel = columnKeyFor(mcp, model, multiModel);
           const label = concurrency > 1 ? `[w${workerId}] ` : '  ';
           try {
             process.stdout.write(
-              `${label}${mcp} run ${i + 1}/${runs}... starting\n`,
+              `${label}${cellLabel} run ${i + 1}/${runs}... starting\n`,
             );
             const startedMs = Date.now();
             const record = await runCell({
@@ -558,7 +585,7 @@ program
               scenario: scenario.name,
               agentPrompt: scenario.agentPrompt,
               mcp,
-              model: cmdOpts.model,
+              model,
               maxTurns,
               timeoutMs,
               runIndex: i,
@@ -570,10 +597,11 @@ program
             const path = writeRun({ record, batchDir });
             const seconds = ((Date.now() - startedMs) / 1000).toFixed(1);
             console.log(
-              `${label}${mcp} run ${i + 1}/${runs}: ${record.termination} · ${record.toolCalls.length} tool calls · ${record.tokens.input}+${record.tokens.output} tok · ${seconds}s`,
+              `${label}${cellLabel} run ${i + 1}/${runs}: ${record.termination} · ${record.toolCalls.length} tool calls · ${record.tokens.input}+${record.tokens.output} tok · ${seconds}s`,
             );
             summary.push({
               mcp,
+              model,
               i,
               toolCalls: record.toolCalls.length,
               inputTokens: record.tokens.input,
@@ -585,9 +613,9 @@ program
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             console.error(
-              `${label}${mcp} run ${i + 1}/${runs}: FAILED — ${msg}`,
+              `${label}${cellLabel} run ${i + 1}/${runs}: FAILED — ${msg}`,
             );
-            errors.push({ mcp, i, error: msg });
+            errors.push({ mcp, model, i, error: msg });
           }
         }
       }
@@ -599,15 +627,26 @@ program
       if (errors.length > 0) {
         console.error(
           `\n${errors.length} run(s) failed:\n` +
-            errors.map(e => `  ${e.mcp} #${e.i}: ${e.error}`).join('\n'),
+            errors
+              .map(e => {
+                const cl = columnKeyFor(e.mcp, e.model, multiModel);
+                return `  ${cl} #${e.i}: ${e.error}`;
+              })
+              .join('\n'),
         );
       }
       console.log('\nResults written under runs/' + batchDir);
-      // Sort by (mcp, i) for stable summary output even with parallel workers.
-      summary.sort((a, b) => a.mcp.localeCompare(b.mcp) || a.i - b.i);
+      // Sort by (mcp, model, i) for stable summary output.
+      summary.sort(
+        (a, b) =>
+          a.mcp.localeCompare(b.mcp) ||
+          a.model.localeCompare(b.model) ||
+          a.i - b.i,
+      );
       for (const row of summary) {
+        const cl = columnKeyFor(row.mcp, row.model, multiModel);
         console.log(
-          `  ${row.mcp.padEnd(10)} #${row.i}  ${row.termination.padEnd(13)}  tools=${row.toolCalls}  tokens=${row.inputTokens}+${row.outputTokens}  ${row.durationS}s`,
+          `  ${cl.padEnd(multiModel ? 30 : 10)} #${row.i}  ${row.termination.padEnd(13)}  tools=${row.toolCalls}  tokens=${row.inputTokens}+${row.outputTokens}  ${row.durationS}s`,
         );
       }
 
@@ -879,6 +918,21 @@ function parseMcpFlag(
     }
   }
   return names;
+}
+
+function parseModelFlag(v: string): string[] {
+  const models = [
+    ...new Set(
+      v
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (models.length === 0) {
+    throw new Error(`--model must be a comma-separated list of model IDs`);
+  }
+  return models;
 }
 
 function parsePromptVariant(v: string): PromptVariant {
