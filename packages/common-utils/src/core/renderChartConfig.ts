@@ -1237,6 +1237,28 @@ async function renderSeriesLimitCte(
     return undefined;
   }
 
+  // When the query was chunked into time windows, rank over the shared
+  // range the caller pinned (the newest window) instead of each chunk's own
+  // window — otherwise each chunk keeps its own top-N and the union across
+  // chunks exceeds N. Inclusivity is normalized so all chunks emit an
+  // identical CTE (non-first windows set dateRangeEndInclusive=false).
+  const cteConfig = chartConfig.seriesLimitDateRange
+    ? {
+        ...chartConfig,
+        dateRange: chartConfig.seriesLimitDateRange,
+        dateRangeStartInclusive: true,
+        dateRangeEndInclusive: true,
+      }
+    : undefined;
+  // groupBy is re-rendered (not reused) because timeBucketExpr derives the
+  // bucket size from dateRange when granularity is 'auto'.
+  const [cteWhere = where, cteGroupBy = groupBy] = cteConfig
+    ? await Promise.all([
+        renderWhere(cteConfig, metadata),
+        renderGroupBy(cteConfig, metadata),
+      ])
+    : [];
+
   // One ChSql per group-by column (groupBy may be an array or a comma-separated
   // string). splitAndTrimWithBracket respects []/()/quotes so it won't split
   // inside Map['a,b']; the per-column null filter below needs them separated.
@@ -1277,8 +1299,8 @@ async function renderSeriesLimitCte(
     ' AND ',
     groupByCols.map(g => chSql`${g} IS NOT NULL`),
   );
-  const innerWhere = where.sql
-    ? concatChSql(' AND ', where, groupByNotNullFilter)
+  const innerWhere = cteWhere.sql
+    ? concatChSql(' AND ', cteWhere, groupByNotNullFilter)
     : groupByNotNullFilter;
 
   // Per-(group, bucket) aggregate, then max per group, keeping the top N.
@@ -1288,7 +1310,7 @@ async function renderSeriesLimitCte(
       SELECT tuple(${groupByTuple}) AS \`group\`, ${rankValue} AS \`__hdx_series_rank\`
       FROM ${from}
       WHERE ${innerWhere}
-      GROUP BY ${groupBy}
+      GROUP BY ${cteGroupBy}
     )
     GROUP BY \`group\`
     ORDER BY max(\`__hdx_series_rank\`) DESC, \`group\`

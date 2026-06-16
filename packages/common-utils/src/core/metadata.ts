@@ -37,6 +37,17 @@ import {
 export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 3e6;
 const DEFAULT_MAX_KEYS = 1000;
 
+// See https://github.com/hyperdxio/hyperdx/issues/2163. Inlining a validated
+// integer literal avoids the `_CAST` wrapper entirely.
+const inlineNonNegativeInt = (value: number, label: string): string => {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(
+      `${label} must be a non-negative integer, got: ${String(value)}`,
+    );
+  }
+  return String(value);
+};
+
 export class MetadataCache {
   private cache = new Map<string, any>();
   private pendingQueries = new Map<string, Promise<any>>();
@@ -490,7 +501,7 @@ export class Metadata {
               : DEFAULT_METADATA_MAX_ROWS_TO_READ,
           }}
         )
-        SELECT groupUniqArrayArray(${{ Int32: maxKeys }})(keys) as keysArr
+        SELECT groupUniqArrayArray(${{ UNSAFE_RAW_SQL: inlineNonNegativeInt(maxKeys, 'maxKeys') }})(keys) as keysArr
         FROM sampledKeys`;
     } else {
       sql = chSql`
@@ -1588,12 +1599,12 @@ export class Metadata {
         ? chSql`LIMIT ${{ Int32: maxKeys }}`
         : chSql``;
       const sql = chSql`
-            SELECT ColumnIdentifier, Key, groupUniqArray(${{ Int32: maxValuesPerKey }})(Value) AS Values
+            SELECT ColumnIdentifier, Key, groupUniqArray(${{ UNSAFE_RAW_SQL: inlineNonNegativeInt(maxValuesPerKey, 'maxValuesPerKey') }})(Value) AS Values
             FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
             WHERE Value != ''
               AND ${timeFilter}
             GROUP BY ColumnIdentifier, Key
-            ORDER BY ColumnIdentifier = 'NativeColumn' DESC, ColumnIdentifier, Key
+            ORDER BY ColumnIdentifier = 'NativeColumn' DESC, ColumnIdentifier = 'ResourceAttributes' DESC, ColumnIdentifier, Key
             ${limitClause}
           `;
 

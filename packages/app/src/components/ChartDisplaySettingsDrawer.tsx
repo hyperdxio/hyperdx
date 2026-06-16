@@ -13,11 +13,13 @@ import {
   Divider,
   Drawer,
   Group,
+  NumberInput,
   Stack,
   Text,
 } from '@mantine/core';
 
 import { shouldFillNullsWithZero } from '@/ChartUtils';
+import { DEFAULT_SERIES_LIMIT } from '@/defaults';
 import { FormatTime } from '@/useFormatTime';
 
 import {
@@ -41,6 +43,11 @@ export type ChartConfigDisplaySettings = Pick<
   | 'colorRules'
 > & {
   groupByColumnsOnLeft?: boolean;
+  // Per-tile cap on the number of series fetched for a group-by time chart.
+  // null/undefined = disabled (no __hdx_series_limit CTE; every series is
+  // fetched). The editor clears to `null` (not `undefined`) so the cleared
+  // state survives JSON round-tripping through the URL query state.
+  seriesLimit?: number | null;
 };
 
 /**
@@ -81,6 +88,9 @@ function applyDefaultSettings(
     compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
     fitYAxisToData: settings.fitYAxisToData ?? false,
     groupByColumnsOnLeft: settings.groupByColumnsOnLeft ?? false,
+    // Coerce to null so `reset` clears the input; undefined leaves the
+    // previously registered field value in place.
+    seriesLimit: settings.seriesLimit ?? null,
     color: settings.color,
     colorRules: settings.colorRules
       ? attachLocalIds(settings.colorRules)
@@ -144,6 +154,10 @@ export default function ChartDisplaySettingsDrawer({
   const isTimeChart =
     displayType === DisplayType.Line || displayType === DisplayType.StackedBar;
 
+  // The series-limit CTE is only emitted for builder group-by time charts;
+  // raw SQL configs author their own LIMIT logic directly.
+  const showSeriesLimit = isTimeChart && configType !== 'sql';
+
   // Group By column ordering only applies to builder table charts; raw SQL
   // configs let the user author whatever column order they want directly.
   const showGroupByColumnsOnLeft =
@@ -203,6 +217,28 @@ export default function ChartDisplaySettingsDrawer({
               label="Fit Y-Axis to Data"
               description="Start the y-axis at the minimum of the displayed data instead of zero. Only applicable to line charts."
             />
+            {showSeriesLimit && (
+              <Box>
+                <Controller
+                  control={control}
+                  name="seriesLimit"
+                  render={({ field: { onChange, value } }) => (
+                    <NumberInput
+                      size="xs"
+                      label="Series Limit"
+                      description="Maximum number of series fetched for a group-by chart. Leave empty to fetch every series."
+                      placeholder={`Disabled (e.g. ${DEFAULT_SERIES_LIMIT})`}
+                      min={1}
+                      allowDecimal={false}
+                      value={value ?? ''}
+                      onChange={v =>
+                        onChange(v === '' || v == null ? null : Number(v))
+                      }
+                    />
+                  )}
+                />
+              </Box>
+            )}
             <Divider />
           </>
         )}

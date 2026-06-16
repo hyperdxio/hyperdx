@@ -461,4 +461,98 @@ describe('queryChartConfig Integration Tests', () => {
       });
     }
   });
+
+  // Chunked fetches narrow dateRange per window; seriesLimitDateRange pins the
+  // top-N ranking to one shared range (the newest window) so every chunk keeps
+  // the SAME group set — otherwise the union of per-window top-N sets exceeds
+  // the limit.
+  it('keeps a consistent top-N group set across chunked windows via seriesLimitDateRange', async () => {
+    const TABLE = 'logs_chunked_series_limit_int_test';
+    await client.command({
+      query: `CREATE OR REPLACE TABLE ${DATABASE}.${TABLE} (
+        Timestamp DateTime CODEC(ZSTD(1)),
+        ServiceName String CODEC(ZSTD(1))
+      ) ENGINE = MergeTree ORDER BY (ServiceName, Timestamp)`,
+    });
+
+    // Older window (00:00-00:30): svcA dominates. Newest window (00:30-01:00):
+    // svcB dominates — the ranking is pinned to the newest window, so svcB
+    // must win in BOTH chunks even though svcA's older peak is larger.
+    const rows = [
+      ...Array.from({ length: 100 }, () => ({
+        Timestamp: '2025-04-15 00:10:00',
+        ServiceName: 'svcA',
+      })),
+      { Timestamp: '2025-04-15 00:10:00', ServiceName: 'svcB' },
+      { Timestamp: '2025-04-15 00:40:00', ServiceName: 'svcA' },
+      ...Array.from({ length: 50 }, () => ({
+        Timestamp: '2025-04-15 00:40:00',
+        ServiceName: 'svcB',
+      })),
+    ];
+    await client.insert({
+      table: `${DATABASE}.${TABLE}`,
+      values: rows,
+      format: 'JSONEachRow',
+    });
+
+    try {
+      const newestWindow: [Date, Date] = [
+        new Date('2025-04-15T00:30:00Z'),
+        new Date('2025-04-15T01:00:00Z'),
+      ];
+      const windows: Array<{
+        dateRange: [Date, Date];
+        dateRangeEndInclusive: boolean;
+      }> = [
+        {
+          dateRange: newestWindow,
+          dateRangeEndInclusive: true,
+        },
+        {
+          dateRange: [new Date('2025-04-15T00:00:00Z'), newestWindow[0]],
+          dateRangeEndInclusive: false,
+        },
+      ];
+
+      const groupsPerWindow = await Promise.all(
+        windows.map(async window => {
+          const config: ChartConfigWithOptDateRange = {
+            displayType: DisplayType.Line,
+            connection: 'test-connection',
+            from: { databaseName: DATABASE, tableName: TABLE },
+            select: [{ aggFn: 'count', aggCondition: '', valueExpression: '' }],
+            groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+            where: '',
+            whereLanguage: 'sql',
+            timestampValueExpression: 'Timestamp',
+            granularity: '5 minute',
+            seriesLimit: 1,
+            ...window,
+            seriesLimitDateRange: newestWindow,
+          };
+          const result = await hdxClient.queryChartConfig({
+            config,
+            metadata,
+            querySettings: undefined,
+          });
+          return new Set(
+            (result.data as Array<{ ServiceName: string }>).map(
+              r => r.ServiceName,
+            ),
+          );
+        }),
+      );
+
+      // Both windows keep the newest-window winner only — without the pinned
+      // range, the older window would keep svcA (its local top-1) and the
+      // union would be 2.
+      expect(groupsPerWindow[0]).toEqual(new Set(['svcB']));
+      expect(groupsPerWindow[1]).toEqual(new Set(['svcB']));
+    } finally {
+      await client.command({
+        query: `DROP TABLE IF EXISTS ${DATABASE}.${TABLE}`,
+      });
+    }
+  });
 });

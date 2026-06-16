@@ -698,16 +698,15 @@ const getResponseMetadata = (
  * Parses the following from the given alert query result:
  * - `value`: the numeric value to compare against the alert threshold, taken
  *   from the last column in the result which is included in valueColumnNames
- * - `extraFields`: an array of strings representing the names and values of
- *   each column in the result which is neither the timestampColumnName nor a
- *   valueColumnName, formatted as "columnName:value".
+ * - `extraFields`: ordered `[columnName, value]` tuples for each column in the
+ *   result which is neither the timestampColumnName nor a valueColumnName.
  */
-const parseAlertData = (
+export const parseAlertData = (
   data: Record<string, string | number>,
   meta: ResponseMetadata,
 ) => {
   let value: number | null = null;
-  const extraFields: string[] = [];
+  const extraFields: Array<[string, string]> = [];
 
   for (const [k, v] of Object.entries(data)) {
     if (meta.valueColumnNames.has(k)) {
@@ -716,7 +715,7 @@ const parseAlertData = (
       // Floats are not returned as strings (unless output_format_json_quote_64bit_floats=1, which is not the default).
       value = isString(v) ? parseInt(v) : v;
     } else if (meta.type !== 'time_series' || k !== meta.timestampColumnName) {
-      extraFields.push(`${k}:${v}`);
+      extraFields.push([k, `${v}`]);
     }
   }
 
@@ -950,11 +949,13 @@ export const processAlert = async (
       totalCount,
       state,
       startTime = nowInMinsRoundDown,
+      attributes = {},
     }: {
       state: AlertState;
       totalCount: number;
       group: string;
       startTime?: Date;
+      attributes?: Record<string, string>;
     }) => {
       logger.info(
         { alertId: alert.id, group, totalCount },
@@ -971,7 +972,7 @@ export const processAlert = async (
         await fireChannelEvent({
           alert,
           alertProvider,
-          attributes: {}, // FIXME: support attributes (logs + resources ?)
+          attributes,
           clickhouseClient,
           dashboard: (details as any).dashboard,
           startTime,
@@ -1132,8 +1133,10 @@ export const processAlert = async (
           continue;
         }
 
-        // Group key is the joined extraFields for group-by alerts, or empty string for non-grouped
-        const groupKey = hasGroupBy ? extraFields.join(', ') : '';
+        const groupKey = hasGroupBy
+          ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
+          : '';
+        const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
         const history = getOrCreateHistory(groupKey);
 
         if (doesExceedThreshold(alert, value)) {
@@ -1143,6 +1146,7 @@ export const processAlert = async (
             group: groupKey,
             totalCount: value,
             startTime: bucketStart,
+            attributes,
           });
 
           history.counts += 1;

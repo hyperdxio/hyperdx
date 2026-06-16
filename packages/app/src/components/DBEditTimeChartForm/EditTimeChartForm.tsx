@@ -243,6 +243,7 @@ export default function EditTimeChartForm({
     fitYAxisToData,
     numberFormat,
     groupByColumnsOnLeft,
+    seriesLimit,
     color,
     colorRules,
   ] = useWatch({
@@ -254,6 +255,7 @@ export default function EditTimeChartForm({
       'fitYAxisToData',
       'numberFormat',
       'groupByColumnsOnLeft',
+      'seriesLimit',
       'color',
       'colorRules',
     ],
@@ -276,6 +278,7 @@ export default function EditTimeChartForm({
       fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      seriesLimit,
       color,
       colorRules,
     }),
@@ -286,6 +289,7 @@ export default function EditTimeChartForm({
       fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      seriesLimit,
       color,
       colorRules,
     ],
@@ -568,6 +572,7 @@ export default function EditTimeChartForm({
       compareToPreviousPeriod,
       fitYAxisToData,
       groupByColumnsOnLeft,
+      seriesLimit,
       color,
       colorRules,
     }: ChartConfigDisplaySettings) => {
@@ -577,6 +582,10 @@ export default function EditTimeChartForm({
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
       setValue('fitYAxisToData', fitYAxisToData);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
+      // Persist `null` (not undefined) when cleared so the disabled state
+      // survives JSON round-tripping through the URL query state — otherwise
+      // the dropped key lets RHF's `values` sync restore the stale value.
+      setValue('seriesLimit', seriesLimit ?? null);
       setValue('color', color);
       setValue('colorRules', colorRules);
       onSubmit();
