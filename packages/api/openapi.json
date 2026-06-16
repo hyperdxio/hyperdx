@@ -25,6 +25,10 @@
       "description": "Endpoints for querying chart data"
     },
     {
+      "name": "Connections",
+      "description": "Endpoints for managing ClickHouse connections"
+    },
+    {
       "name": "Sources",
       "description": "Endpoints for managing data sources"
     },
@@ -577,6 +581,188 @@
             "description": "Array of data points for the series",
             "items": {
               "$ref": "#/components/schemas/SeriesDataPoint"
+            }
+          }
+        }
+      },
+      "Connection": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "host",
+          "username"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique connection ID.",
+            "example": "507f1f77bcf86cd799439012"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name for the connection.",
+            "example": "Production ClickHouse"
+          },
+          "host": {
+            "type": "string",
+            "description": "ClickHouse HTTP endpoint URL.",
+            "example": "https://clickhouse.example.com:8443"
+          },
+          "username": {
+            "type": "string",
+            "description": "ClickHouse username.",
+            "example": "default"
+          },
+          "hyperdxSettingPrefix": {
+            "type": "string",
+            "description": "Optional prefix for HyperDX-specific ClickHouse settings. Must only contain alphanumeric characters and underscores.",
+            "nullable": true,
+            "example": "hyperdx_"
+          },
+          "prometheusEndpoint": {
+            "type": "string",
+            "description": "Optional Prometheus-compatible API endpoint. When set, PromQL queries are proxied to this endpoint.",
+            "nullable": true,
+            "example": "http://prometheus:9090"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp",
+            "example": "2025-01-01T00:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp",
+            "example": "2025-06-15T10:30:00.000Z"
+          }
+        }
+      },
+      "CreateConnectionRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "host",
+          "username"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the connection.",
+            "example": "Production ClickHouse"
+          },
+          "host": {
+            "type": "string",
+            "description": "ClickHouse HTTP endpoint URL.",
+            "example": "https://clickhouse.example.com:8443"
+          },
+          "username": {
+            "type": "string",
+            "description": "ClickHouse username.",
+            "example": "default"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "ClickHouse password. Never returned by the API.",
+            "example": "my-secret-password"
+          },
+          "hyperdxSettingPrefix": {
+            "type": "string",
+            "description": "Optional prefix for HyperDX-specific ClickHouse settings. Must only contain alphanumeric characters and underscores.",
+            "nullable": true,
+            "example": "hyperdx_"
+          },
+          "prometheusEndpoint": {
+            "type": "string",
+            "description": "Optional Prometheus-compatible API endpoint. When set, PromQL queries are proxied to this endpoint.",
+            "example": "http://prometheus:9090"
+          }
+        }
+      },
+      "UpdateConnectionRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "host",
+          "username"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the connection.",
+            "example": "Production ClickHouse"
+          },
+          "host": {
+            "type": "string",
+            "description": "ClickHouse HTTP endpoint URL.",
+            "example": "https://clickhouse.example.com:8443"
+          },
+          "username": {
+            "type": "string",
+            "description": "ClickHouse username.",
+            "example": "default"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "ClickHouse password. If omitted or empty, the existing password is kept.",
+            "example": "my-new-secret-password"
+          },
+          "hyperdxSettingPrefix": {
+            "type": "string",
+            "description": "Optional prefix for HyperDX-specific ClickHouse settings. Set to null or an empty string to clear the existing value. If omitted, the existing value is kept.",
+            "nullable": true,
+            "example": "hyperdx_"
+          },
+          "prometheusEndpoint": {
+            "type": "string",
+            "description": "Optional Prometheus-compatible API endpoint. Set to null to clear the existing value. If omitted, the existing value is kept.",
+            "nullable": true,
+            "example": "http://prometheus:9090"
+          }
+        }
+      },
+      "ConnectionResponseEnvelope": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Connection",
+            "description": "The connection object."
+          }
+        }
+      },
+      "ConnectionsListResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "description": "List of connection objects.",
+            "items": {
+              "$ref": "#/components/schemas/Connection"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "description": "Present only when one or more stored connections could not be serialized and were omitted from `data`.",
+            "properties": {
+              "skipped": {
+                "type": "integer",
+                "description": "Number of connections omitted from the response because they failed serialization.",
+                "example": 1
+              },
+              "skippedIds": {
+                "type": "array",
+                "description": "IDs of the connections that were omitted.",
+                "items": {
+                  "type": "string"
+                },
+                "example": [
+                  "507f1f77bcf86cd799439012"
+                ]
+              }
             }
           }
         }
@@ -4504,6 +4690,307 @@
                 },
                 "example": {
                   "error": "Internal server error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/connections": {
+      "get": {
+        "summary": "List Connections",
+        "description": "Retrieves a list of all ClickHouse connections for the authenticated team. Passwords are never returned.",
+        "operationId": "listConnections",
+        "tags": [
+          "Connections"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved connections",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionsListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Connection",
+        "description": "Creates a new ClickHouse connection",
+        "operationId": "createConnection",
+        "tags": [
+          "Connections"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConnectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully created connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Body validation failed: name: Required"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/connections/{id}": {
+      "get": {
+        "summary": "Get Connection",
+        "description": "Retrieves a specific ClickHouse connection by ID. Passwords are never returned.",
+        "operationId": "getConnection",
+        "tags": [
+          "Connections"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Connection ID",
+            "example": "507f1f77bcf86cd799439012"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponseEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Connection not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Connection not found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Connection",
+        "description": "Updates an existing ClickHouse connection.\n\nField semantics: if `password` is omitted or empty the existing\npassword is kept. `hyperdxSettingPrefix` is cleared when set to null\nor an empty string, and `prometheusEndpoint` is cleared when set to\nnull; both are kept unchanged when omitted.\n",
+        "operationId": "updateConnection",
+        "tags": [
+          "Connections"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Connection ID",
+            "example": "507f1f77bcf86cd799439012"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConnectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully updated connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Body validation failed: host: Required"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Connection not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Connection not found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Connection",
+        "description": "Deletes a ClickHouse connection",
+        "operationId": "deleteConnection",
+        "tags": [
+          "Connections"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Connection ID",
+            "example": "507f1f77bcf86cd799439012"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully deleted connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                },
+                "example": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Connection not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Connection not found"
                 }
               }
             }
