@@ -998,6 +998,31 @@ export const processAlert = async (
       }
     };
 
+    // Fire an alert when a codnition is met in M consecutive time windows
+    const shouldFireBasedOnConsecutiveWindows = async (
+      groupKey: string,
+    ): Promise<boolean> => {
+      const numWindowsToLookBack = alert.windowsLookback ?? 1;
+
+      if (numWindowsToLookBack <= 1) {
+        return true;
+      }
+
+      const groupFilter = groupKey ? { group: groupKey } : { group: null };
+      const alertHistory = await AlertHistory.find({
+        alert: new mongoose.Types.ObjectId(alert.id),
+        ...groupFilter,
+        createdAt: { $lt: nowInMinsRoundDown },
+      })
+        .sort({ createdAt: -1 })
+        .limit(numWindowsToLookBack - 1);
+
+      return (
+        alertHistory.length === numWindowsToLookBack - 1 &&
+        alertHistory.every(h => h.state === AlertState.ALERT)
+      );
+    };
+
     const sendNotificationIfResolved = async (
       previousHistory: AggregatedAlertHistory | undefined,
       currentHistory: IAlertHistory,
@@ -1005,6 +1030,7 @@ export const processAlert = async (
     ) => {
       if (
         previousHistory?.state === AlertState.ALERT &&
+        previousHistory?.fired === true &&
         currentHistory.state === AlertState.OK
       ) {
         const lastValue =
@@ -1042,12 +1068,15 @@ export const processAlert = async (
       if (doesExceedThreshold(alert, value)) {
         history.state = AlertState.ALERT;
         history.counts += 1;
-        await trySendNotification({
-          state: AlertState.ALERT,
-          group: '',
-          totalCount: value,
-          startTime: alertTimestamp,
-        });
+        if (await shouldFireBasedOnConsecutiveWindows('')) {
+          history.fired = true;
+          await trySendNotification({
+            state: AlertState.ALERT,
+            group: '',
+            totalCount: value,
+            startTime: alertTimestamp,
+          });
+        }
       }
 
       // Auto-resolve
@@ -1107,12 +1136,15 @@ export const processAlert = async (
           history.lastValues.push({ count: 0, startTime: bucketStart });
           history.state = AlertState.ALERT;
           history.counts += 1;
-          await trySendNotification({
-            state: AlertState.ALERT,
-            group: '',
-            totalCount: 0,
-            startTime: bucketStart,
-          });
+          if (await shouldFireBasedOnConsecutiveWindows('')) {
+            history.fired = true;
+            await trySendNotification({
+              state: AlertState.ALERT,
+              group: '',
+              totalCount: 0,
+              startTime: bucketStart,
+            });
+          }
         } else if (!hasGroupBy || !hasAlertsInPreviousMap) {
           // For grouped alerts, if there are alerts in the previous map,
           // we will handle creating a history as part of auto-resolve later
@@ -1141,15 +1173,17 @@ export const processAlert = async (
 
         if (doesExceedThreshold(alert, value)) {
           history.state = AlertState.ALERT;
-          await trySendNotification({
-            state: AlertState.ALERT,
-            group: groupKey,
-            totalCount: value,
-            startTime: bucketStart,
-            attributes,
-          });
-
           history.counts += 1;
+          if (await shouldFireBasedOnConsecutiveWindows(groupKey)) {
+            history.fired = true;
+            await trySendNotification({
+              state: AlertState.ALERT,
+              group: groupKey,
+              totalCount: value,
+              startTime: bucketStart,
+              attributes,
+            });
+          }
         } else {
           // TODO: if the alert was previously alerting (different bucket), should we set state to OK (plus auto-resolve)?
         }
@@ -1242,6 +1276,7 @@ export interface AggregatedAlertHistory {
   createdAt: Date;
   state: AlertState;
   group?: string;
+  fired?: boolean;
 }
 
 /**
@@ -1296,6 +1331,7 @@ export const getPreviousAlertHistories = async (
               },
               createdAt: { $first: '$createdAt' },
               state: { $first: '$state' },
+              fired: { $first: '$fired' },
             },
           },
           {
@@ -1304,6 +1340,7 @@ export const getPreviousAlertHistories = async (
               createdAt: 1,
               state: 1,
               group: '$_id.group',
+              fired: 1,
             },
           },
         ]);
