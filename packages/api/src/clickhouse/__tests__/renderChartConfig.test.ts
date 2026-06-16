@@ -872,6 +872,96 @@ describe('renderChartConfig', () => {
       // Verify we actually got data back (not an empty result set).
       expect(v2Results.length).toBeGreaterThan(0);
     });
+
+    it('cross-scope same-key attributes collapse into one series under mapConcat semantics', async () => {
+      // HDX-4466 pinning test. Two cumulative Sum rows that carry the same
+      // logical attribute set ({service.name: api, host: h1}) but distribute
+      // the host key across different attribute scopes:
+      //
+      //   Row A: ResourceAttributes={service.name: api, host: h1}, Attributes={}
+      //   Row B: ResourceAttributes={service.name: api},           Attributes={host: h1}
+      //
+      // Under the current Map-schema attrHashExpr (cityHash64 of mapConcat),
+      // both rows hash to the same AttributesHash because mapConcat merges
+      // the three maps into a single map before hashing. The two rows land
+      // in one series, the lagInFrame Rate on Row B captures the cumulative
+      // increase (110 - 100 = 10), and the bucketed Sum aggregation reports
+      // a positive Value for the time bucket holding both rows.
+      //
+      // Under the JSON-schema attrHashExpr (variadic
+      // cityHash64(ScopeAttributes, ResourceAttributes, Attributes)), the
+      // two rows would hash distinctly. Each row would be the first row of
+      // its own series, the lagInFrame Rate would be NULL for both, and
+      // the bucketed Sum aggregation would report Value=0 for that bucket.
+      //
+      // This test pins the current Map-schema behaviour. If HDX-4466
+      // Option B is taken (unify on variadic for both schemas), the
+      // expected total below must flip to 0 and the snapshot must be
+      // regenerated.
+      const metricName = 'hdx4466.cross_scope.events.total';
+
+      await bulkInsertMetricsSum([
+        {
+          MetricName: metricName,
+          ServiceName: 'api',
+          ResourceAttributes: { 'service.name': 'api', host: 'h1' },
+          Attributes: {},
+          Value: 100,
+          TimeUnix: new Date(now + ms('1m')),
+          IsMonotonic: true,
+          AggregationTemporality: 2, // Cumulative
+        },
+        {
+          MetricName: metricName,
+          ServiceName: 'api',
+          ResourceAttributes: { 'service.name': 'api' },
+          Attributes: { host: 'h1' },
+          Value: 110,
+          TimeUnix: new Date(now + ms('2m')),
+          IsMonotonic: true,
+          AggregationTemporality: 2, // Cumulative
+        },
+      ]);
+
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'sum',
+              metricName,
+              metricType: MetricsDataType.Sum,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('5m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+        querySettings,
+      );
+
+      const results = await queryData(query);
+
+      // Under mapConcat semantics the bucketed Sum aggregation captures the
+      // cumulative increase from Row A → Row B as a positive Rate; under
+      // variadic semantics both rows would be first-in-series and the
+      // total would collapse to 0. This assertion fails clearly on the
+      // semantic shift, complementing the snapshot below.
+      const totalValue = results.reduce(
+        (acc: number, r: any) => acc + (r.Value == null ? 0 : Number(r.Value)),
+        0,
+      );
+      expect(totalValue).toBeGreaterThan(0);
+
+      // Snapshot pins the exact bucketed output (currently { Value: 10 }
+      // in the one populated bucket). Regenerate this when Option B lands.
+      expect(results).toMatchSnapshot();
+    });
   });
 
   describe('Query Metrics - Histogram', () => {

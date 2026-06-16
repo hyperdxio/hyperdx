@@ -426,6 +426,15 @@ exports[`renderChartConfig Query Metrics - Sum calculates min_rate/max_rate corr
 ]
 `;
 
+exports[`renderChartConfig Query Metrics - Sum cross-scope same-key attributes collapse into one series under mapConcat semantics 1`] = `
+[
+  {
+    "Value": 10,
+    "__hdx_time_bucket": "2022-01-05T00:00:00Z",
+  },
+]
+`;
+
 exports[`renderChartConfig Query Metrics - Sum handles counter resets correctly for sum metrics 1`] = `
 [
   {
