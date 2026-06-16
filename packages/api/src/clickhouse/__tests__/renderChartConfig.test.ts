@@ -873,7 +873,7 @@ describe('renderChartConfig', () => {
       expect(v2Results.length).toBeGreaterThan(0);
     });
 
-    it('cross-scope same-key attributes collapse into one series under mapConcat semantics', async () => {
+    it('cross-scope same-key attributes split into two series under variadic AttributesHash (HDX-4466)', async () => {
       // HDX-4466 pinning test. Two cumulative Sum rows that carry the same
       // logical attribute set ({service.name: api, host: h1}) but distribute
       // the host key across different attribute scopes:
@@ -881,23 +881,20 @@ describe('renderChartConfig', () => {
       //   Row A: ResourceAttributes={service.name: api, host: h1}, Attributes={}
       //   Row B: ResourceAttributes={service.name: api},           Attributes={host: h1}
       //
-      // Under the current Map-schema attrHashExpr (cityHash64 of mapConcat),
-      // both rows hash to the same AttributesHash because mapConcat merges
-      // the three maps into a single map before hashing. The two rows land
-      // in one series, the lagInFrame Rate on Row B captures the cumulative
-      // increase (110 - 100 = 10), and the bucketed Sum aggregation reports
-      // a positive Value for the time bucket holding both rows.
+      // AttributesHash is now computed as the variadic
+      //   cityHash64(ScopeAttributes, ResourceAttributes, Attributes)
+      // for all metric schemas (Map and JSON), so the two rows hash
+      // distinctly: each lands in its own series. Both rows are then the
+      // first row of their respective series, the lagInFrame Rate is NULL
+      // for both, and the bucketed Sum aggregation collapses to 0 for the
+      // bucket holding them.
       //
-      // Under the JSON-schema attrHashExpr (variadic
-      // cityHash64(ScopeAttributes, ResourceAttributes, Attributes)), the
-      // two rows would hash distinctly. Each row would be the first row of
-      // its own series, the lagInFrame Rate would be NULL for both, and
-      // the bucketed Sum aggregation would report Value=0 for that bucket.
-      //
-      // This test pins the current Map-schema behaviour. If HDX-4466
-      // Option B is taken (unify on variadic for both schemas), the
-      // expected total below must flip to 0 and the snapshot must be
-      // regenerated.
+      // Pre-HDX-4466 (Map schema only) this was different: the Map path
+      // wrapped the three maps in mapConcat() before hashing, which
+      // collapsed both rows into a single series. Row B's lagInFrame
+      // captured the cumulative increase (110 - 100 = 10) and the bucket
+      // reported Value=10. The pre-refactor commit pinned that behaviour;
+      // this assertion records the variadic outcome that replaced it.
       const metricName = 'hdx4466.cross_scope.events.total';
 
       await bulkInsertMetricsSum([
@@ -947,19 +944,17 @@ describe('renderChartConfig', () => {
 
       const results = await queryData(query);
 
-      // Under mapConcat semantics the bucketed Sum aggregation captures the
-      // cumulative increase from Row A → Row B as a positive Rate; under
-      // variadic semantics both rows would be first-in-series and the
-      // total would collapse to 0. This assertion fails clearly on the
-      // semantic shift, complementing the snapshot below.
+      // Under variadic AttributesHash, both rows are first-in-series, so
+      // no rate is captured and the bucketed Sum collapses to 0. A
+      // regression that reintroduced mapConcat-style collapsing would
+      // produce Value=10 in the populated bucket, failing this check.
       const totalValue = results.reduce(
         (acc: number, r: any) => acc + (r.Value == null ? 0 : Number(r.Value)),
         0,
       );
-      expect(totalValue).toBeGreaterThan(0);
+      expect(totalValue).toBe(0);
 
-      // Snapshot pins the exact bucketed output (currently { Value: 10 }
-      // in the one populated bucket). Regenerate this when Option B lands.
+      // Snapshot pins the bucketed output for the two-series-split case.
       expect(results).toMatchSnapshot();
     });
   });
