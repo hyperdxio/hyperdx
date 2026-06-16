@@ -389,7 +389,7 @@ export async function runConfigTile(
   tile: ExternalDashboardTileWithId,
   startDate: Date,
   endDate: Date,
-  options?: { maxResults?: number },
+  options?: { maxResults?: number; granularity?: string },
 ) {
   if (!isConfigTile(tile)) {
     return {
@@ -518,10 +518,27 @@ export async function runConfigTile(
           }
         : {};
 
+    // Re-inject granularity for time charts. The MCP tool input carries
+    // it, but buildTile parses through externalDashboardTileSchemaWithId,
+    // whose line/stacked_bar schemas don't declare `granularity`, so Zod
+    // strips it. Without this the renderer's `granularity != null` guard
+    // fails and no __hdx_time_bucket is emitted — every timeseries call
+    // collapses to one row per group. Default to "auto" so the renderer
+    // picks a bucket, mirroring the REST charts path
+    // (packages/api/src/routers/external-api/v2/charts.ts:289).
+    // Search tiles intentionally have no granularity (handled above).
+    const granularityOverride =
+      !isSearch &&
+      (builderConfig.displayType === DisplayType.Line ||
+        builderConfig.displayType === DisplayType.StackedBar)
+        ? { granularity: options?.granularity ?? 'auto' }
+        : {};
+
     const chartConfig = {
       ...builderConfig,
       ...searchOverrides,
       ...metricSelectOverrides,
+      ...granularityOverride,
       from: {
         databaseName: source.from.databaseName,
         tableName: isMetricSource ? '' : source.from.tableName,

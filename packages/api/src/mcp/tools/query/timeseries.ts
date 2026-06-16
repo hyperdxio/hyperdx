@@ -147,6 +147,7 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
         tile,
         startDate,
         endDate,
+        { granularity: input.granularity },
       );
 
       // Surface language-mismatch warnings so the agent knows the top-level
