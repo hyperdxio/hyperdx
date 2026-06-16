@@ -1030,7 +1030,7 @@ export const processAlert = async (
     ) => {
       if (
         previousHistory?.state === AlertState.ALERT &&
-        previousHistory?.fired === true &&
+        previousHistory?.fired !== false &&
         currentHistory.state === AlertState.OK
       ) {
         const lastValue =
