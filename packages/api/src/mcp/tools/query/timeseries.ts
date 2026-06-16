@@ -1,3 +1,4 @@
+import { FIXED_TIME_BUCKET_EXPR_ALIAS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
@@ -166,9 +167,12 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
       // may be truncated to 20 groups.
       annotateIncreaseTopNHint(result, select, input.groupBy);
 
-      // Detect single-bucket collapse: when a timeseries query returns only
-      // 1 row, the data likely collapsed into a single time bucket. Add a
-      // hint so the agent knows to adjust the time range.
+      // Time-dimension hints, keyed on the renderer's time-bucket column
+      // (FIXED_TIME_BUCKET_EXPR_ALIAS) in result.meta rather than on a raw
+      // row count. Counting rows conflated three cases: genuine collapse,
+      // a single group under groupBy (working as intended), and the
+      // no-time-bucket case — where "use a coarser granularity" is
+      // actively wrong advice.
       if (
         result.content?.[0]?.type === 'text' &&
         !('isError' in result && result.isError)
@@ -176,16 +180,40 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
         try {
           const parsed = JSON.parse(result.content[0].text);
           const data = parsed?.result?.data;
-          if (Array.isArray(data) && data.length === 1 && input.granularity) {
-            appendHint(
-              parsed,
-              `Timeseries returned only 1 time bucket. ` +
-                `All data may have collapsed into a single "${input.granularity}" bucket. ` +
-                `The queried range was ${startDate.toISOString()} to ${endDate.toISOString()}. ` +
-                `If this looks wrong, adjust startTime/endTime to match the actual data range, ` +
-                `or try a coarser granularity.`,
-            );
-            result.content[0].text = JSON.stringify(parsed, null, 2);
+          const meta = parsed?.result?.meta;
+          if (Array.isArray(data) && data.length > 0) {
+            const hasTimeBucket =
+              Array.isArray(meta) &&
+              meta.some(
+                (m: { name?: string }) =>
+                  m?.name === FIXED_TIME_BUCKET_EXPR_ALIAS,
+              );
+            if (!hasTimeBucket) {
+              // No time bucket column — the result is not bucketed over
+              // time at all (a single aggregate per group). Adjusting
+              // granularity cannot help here.
+              appendHint(
+                parsed,
+                `Result is not bucketed over time (no ${FIXED_TIME_BUCKET_EXPR_ALIAS} column). ` +
+                  `Each row is a single aggregate over the whole range ` +
+                  `(${startDate.toISOString()} to ${endDate.toISOString()}). ` +
+                  `Pass a granularity (e.g. "1 minute", "1 hour") to get a per-bucket time series.`,
+              );
+              result.content[0].text = JSON.stringify(parsed, null, 2);
+            } else if (data.length === 1) {
+              // Genuine single-bucket collapse: the time bucket is present
+              // but everything landed in one bucket. Coarser/adjust-range
+              // advice is appropriate here.
+              appendHint(
+                parsed,
+                `Timeseries returned only 1 time bucket. ` +
+                  `All data may have collapsed into a single bucket over ` +
+                  `${startDate.toISOString()} to ${endDate.toISOString()}. ` +
+                  `If this looks wrong, widen startTime/endTime to match the actual data range, ` +
+                  `or try a finer granularity.`,
+              );
+              result.content[0].text = JSON.stringify(parsed, null, 2);
+            }
           }
         } catch {
           // If parsing fails, return the original result unmodified

@@ -912,6 +912,10 @@ describe('MCP Query Tools', () => {
         (m: { name: string }) => m.name,
       );
       expect(metaNames).toContain('__hdx_time_bucket');
+      // Since the result IS bucketed, the "not bucketed over time" hint
+      // must never fire (it would be wrong advice).
+      const hints: string[] = output.hints ?? [];
+      expect(hints.some(h => /not bucketed over time/.test(h))).toBe(false);
     });
 
     it('runs clickstack_table aggFn:"increase" against a sum metric source', async () => {
