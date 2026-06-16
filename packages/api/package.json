@@ -47,7 +47,7 @@
     "pino": "^10.0.0",
     "pino-http": "^11.0.0",
     "promised-handlebars": "^2.0.1",
-    "protobufjs": "^7.5.8",
+    "protobufjs": "^7.6.3",
     "serialize-error": "^8.1.0",
     "uuid": "^8.3.2",
     "zod": "3.25",
