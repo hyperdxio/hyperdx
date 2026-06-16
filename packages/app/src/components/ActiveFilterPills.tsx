@@ -302,7 +302,12 @@ function FilterPill({
             // Let the combobox handle Enter natively so it submits that option
             // via onOptionSubmit. Only commit free text when no option is
             // highlighted, so a typed value not in the list still applies.
-            const hasHighlightedOption = !!document.querySelector(
+            // Scope the lookup to this input's own listbox (via aria-controls)
+            // rather than the whole document, so another open combobox on the
+            // page can't make us swallow Enter here.
+            const listId = e.currentTarget.getAttribute('aria-controls');
+            const list = listId ? document.getElementById(listId) : null;
+            const hasHighlightedOption = !!list?.querySelector(
               '[data-combobox-selected]',
             );
             if (!hasHighlightedOption) {

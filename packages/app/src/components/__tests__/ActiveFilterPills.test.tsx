@@ -542,19 +542,17 @@ describe('ActiveFilterPills', () => {
     await user.click(screen.getByTestId('active-filter-pill-status'));
     const input = await screen.findByLabelText('Change filter value');
     input.focus();
-    // Open the dropdown, move down to the first option, then commit with Enter.
+    // The picker lists ['200', '404', '500']. First ArrowDown highlights the
+    // first option ('200'), the second moves to '404'; Enter then submits the
+    // highlighted '404' — not the empty typed draft.
     await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
 
-    // The highlighted option is applied (not the empty typed draft).
     expect(searchFilters.replaceFilterValue).toHaveBeenCalledWith(
       'status',
       '200',
-      expect.any(String),
+      '404',
       'include',
     );
-    const submitted = (searchFilters.replaceFilterValue as jest.Mock).mock
-      .calls[0][2];
-    expect(['200', '404', '500']).toContain(submitted);
   });
 
   it('replaces with a free-typed value not in the suggestion list', async () => {
