@@ -1000,7 +1000,7 @@ export const processAlert = async (
 
     // Fire an alert when a condition is met in M consecutive time windows
     const shouldFireBasedOnConsecutiveWindows = async (
-      groupKey: string,
+      groupKey?: string,
     ): Promise<boolean> => {
       const numWindowsToLookBack = alert.numConsecutiveWindows ?? 1;
 
@@ -1068,7 +1068,7 @@ export const processAlert = async (
       if (doesExceedThreshold(alert, value)) {
         history.state = AlertState.ALERT;
         history.counts += 1;
-        if (await shouldFireBasedOnConsecutiveWindows('')) {
+        if (await shouldFireBasedOnConsecutiveWindows()) {
           history.fired = true;
           await trySendNotification({
             state: AlertState.ALERT,
@@ -1138,7 +1138,7 @@ export const processAlert = async (
           history.lastValues.push({ count: 0, startTime: bucketStart });
           history.state = AlertState.ALERT;
           history.counts += 1;
-          if (await shouldFireBasedOnConsecutiveWindows('')) {
+          if (await shouldFireBasedOnConsecutiveWindows()) {
             history.fired = true;
             await trySendNotification({
               state: AlertState.ALERT,
