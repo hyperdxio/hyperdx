@@ -630,6 +630,107 @@ describe('searchFilters', () => {
     });
   });
 
+  describe('round-trip: DateTime columns', () => {
+    const dateTimeColumns = new Set(['Timestamp']);
+
+    it('round-trips an excluded DateTime value (no areFiltersEqual reset)', () => {
+      const originalFilters = {
+        Timestamp: {
+          included: new Set<string | boolean>(),
+          excluded: new Set<string | boolean>([
+            '2026-06-16T15:35:16.731000000Z',
+          ]),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, { dateTimeColumns });
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        Timestamp: {
+          included: new Set(),
+          excluded: new Set(['2026-06-16T15:35:16.731000000Z']),
+        },
+      });
+    });
+
+    it('round-trips an included DateTime value with multiple entries', () => {
+      const originalFilters = {
+        Timestamp: {
+          included: new Set<string | boolean>(['2026-06-16', '2026-06-17']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, { dateTimeColumns });
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        Timestamp: {
+          included: new Set(['2026-06-16', '2026-06-17']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parseQuery unwraps the DateTime wrapper independently of the producer', () => {
+      const parsed = parseQuery([
+        {
+          type: 'sql',
+          condition:
+            "Timestamp NOT IN (parseDateTime64BestEffort('a', 9), parseDateTime64BestEffort('b', 9))",
+        },
+      ]);
+
+      expect(parsed.filters).toEqual({
+        Timestamp: {
+          included: new Set(),
+          excluded: new Set(['a', 'b']),
+        },
+      });
+    });
+
+    it('unwraps the DateTime part of a compound AND condition', () => {
+      const parsed = parseQuery([
+        {
+          type: 'sql',
+          condition:
+            "ServiceName IN ('api') AND Timestamp NOT IN (parseDateTime64BestEffort('2026-06-16', 9))",
+        },
+      ]);
+
+      expect(parsed.filters).toEqual({
+        ServiceName: {
+          included: new Set(['api']),
+          excluded: new Set(),
+        },
+        Timestamp: {
+          included: new Set(),
+          excluded: new Set(['2026-06-16']),
+        },
+      });
+    });
+
+    it('round-trips a DateTime value containing the wrapper suffix', () => {
+      const originalFilters = {
+        Timestamp: {
+          included: new Set<string | boolean>(["a', 9)b"]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, { dateTimeColumns });
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        Timestamp: {
+          included: new Set(["a', 9)b"]),
+          excluded: new Set(),
+        },
+      });
+    });
+  });
+
   describe('useSearchPageFilterState', () => {
     const onFilterChange = jest.fn();
 

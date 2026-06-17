@@ -1,6 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import cx from 'classnames';
 import {
+  convertCHDataTypeToJSType,
+  JSDataType,
+} from '@hyperdx/common-utils/dist/clickhouse';
+import {
   TableMetadata,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
@@ -1205,6 +1209,18 @@ const DBSearchPageFiltersComponent = ({
     connectionId: chartConfig.connection,
   });
 
+  // DateTime/DateTime64 column names so filtersToQuery wraps their values in
+  // parseDateTime64BestEffort() rather than a bare literal ClickHouse can't cast.
+  const dateTimeColumns = useMemo(
+    () =>
+      new Set(
+        (columns ?? [])
+          .filter(c => convertCHDataTypeToJSType(c.type) === JSDataType.Date)
+          .map(c => c.name),
+      ),
+    [columns],
+  );
+
   const { data: tableMetadata } = useTableMetadata(sourceTableConnection);
 
   useEffect(() => {
@@ -1378,7 +1394,7 @@ const DBSearchPageFiltersComponent = ({
             chartConfig: {
               ...chartConfig,
               dateRange,
-              filters: filtersToQuery(strippedFilterState),
+              filters: filtersToQuery(strippedFilterState, { dateTimeColumns }),
             },
             keys: [sqlKey],
             limit: LOAD_MORE_LOAD_LIMIT,
@@ -1407,6 +1423,7 @@ const DBSearchPageFiltersComponent = ({
       chartConfig,
       setExtraFacets,
       dateRange,
+      dateTimeColumns,
       filterState,
       metadata,
       source,

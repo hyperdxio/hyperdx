@@ -18,7 +18,10 @@ const escapeString = (s: string) => {
 
 export const filtersToQuery = (
   filters: FilterState,
-  { stringifyKeys = false }: { stringifyKeys?: boolean } = {},
+  {
+    stringifyKeys = false,
+    dateTimeColumns,
+  }: { stringifyKeys?: boolean; dateTimeColumns?: Set<string> } = {},
 ): Filter[] => {
   return Object.entries(filters)
     .filter(
@@ -31,11 +34,23 @@ export const filtersToQuery = (
       const conditions: Filter[] = [];
       const actualKey = stringifyKeys ? `toString(${key})` : key;
 
+      // DateTime/DateTime64 columns can't be compared against a bare string
+      // literal in ClickHouse, so wrap each value in parseDateTime64BestEffort.
+      // Skip when stringifyKeys is set: the key is cast via toString(), so the
+      // comparison is string-vs-string and a plain literal is correct.
+      const isDateTime = !stringifyKeys && (dateTimeColumns?.has(key) ?? false);
+      const formatValue = (v: string | boolean): string | boolean =>
+        typeof v !== 'string'
+          ? v
+          : isDateTime
+            ? `parseDateTime64BestEffort('${escapeString(v)}', 9)`
+            : `'${escapeString(v)}'`;
+
       if (values.included.size > 0) {
         conditions.push({
           type: 'sql' as const,
           condition: `${actualKey} IN (${Array.from(values.included)
-            .map(v => (typeof v === 'string' ? `'${escapeString(v)}'` : v))
+            .map(formatValue)
             .join(', ')})`,
         });
       }
@@ -43,7 +58,7 @@ export const filtersToQuery = (
         conditions.push({
           type: 'sql' as const,
           condition: `${actualKey} NOT IN (${Array.from(values.excluded)
-            .map(v => (typeof v === 'string' ? `'${escapeString(v)}'` : v))
+            .map(formatValue)
             .join(', ')})`,
         });
       }

@@ -280,7 +280,19 @@ function extractInClauses(condition: string): Array<{
           ? trimmedValues.slice(1, -1)
           : trimmedValues;
 
-      const valuesArray = splitValuesOnComma(withoutParens);
+      // Unwrap DateTime literals emitted by filtersToQuery for DateTime columns
+      // (parseDateTime64BestEffort('X', 9)) back into the plain quoted literal
+      // 'X' before splitting on commas. The wrapper itself contains an
+      // unquoted comma (before the `9` argument), so this must run before
+      // splitValuesOnComma. The capture group `'(?:[^']|'')*'` consumes the
+      // SQL-escaped quoted string ('' for embedded quotes), keeping the
+      // round-trip exact even if a value contained quotes.
+      const unwrapped = withoutParens.replace(
+        /parseDateTime64BestEffort\(('(?:[^']|'')*'),\s*9\)/g,
+        '$1',
+      );
+
+      const valuesArray = splitValuesOnComma(unwrapped);
 
       results.push({
         key: keyStr,
@@ -358,9 +370,11 @@ export const parseQuery = (
 export const useSearchPageFilterState = ({
   searchQuery = [],
   onFilterChange,
+  dateTimeColumns,
 }: {
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
+  dateTimeColumns?: Set<string>;
 }) => {
   const parsedQuery = useMemo(() => {
     try {
@@ -383,9 +397,9 @@ export const useSearchPageFilterState = ({
 
   const updateFilterQuery = useCallback(
     (newFilters: FilterState) => {
-      onFilterChange(filtersToQuery(newFilters));
+      onFilterChange(filtersToQuery(newFilters, { dateTimeColumns }));
     },
-    [onFilterChange],
+    [onFilterChange, dateTimeColumns],
   );
 
   const setFilterValue = useCallback(
