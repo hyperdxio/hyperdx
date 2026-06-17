@@ -114,12 +114,21 @@ describe('ActiveFilterPills', () => {
       },
     });
     renderPills(searchFilters);
-    expect(screen.getByTestId('active-filter-pill-status')).toHaveStyle({
-      backgroundColor: 'var(--color-bg-hover)',
-    });
-    expect(screen.getByTestId('active-filter-pill-level')).toHaveStyle({
-      backgroundColor: 'var(--mantine-color-red-light)',
-    });
+
+    const included = screen.getByTestId('active-filter-pill-status');
+    const excluded = screen.getByTestId('active-filter-pill-level');
+
+    // Assert on the raw inline-style string so the token check can't silently
+    // no-op on a jsdom that drops unresolved CSS custom properties.
+    expect(included.getAttribute('style')).toContain('var(--color-bg-hover)');
+    expect(excluded.getAttribute('style')).toContain(
+      'var(--mantine-color-red-light)',
+    );
+    expect(
+      excluded
+        .querySelector('button[aria-label="Remove filter"]')
+        ?.getAttribute('style'),
+    ).toContain('var(--mantine-color-red-light-color)');
   });
 
   it('renders range filter pills', () => {
