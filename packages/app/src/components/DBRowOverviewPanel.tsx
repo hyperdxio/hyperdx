@@ -38,6 +38,7 @@ export function RowOverviewPanel({
   hideHeader = false,
   breadcrumbPath,
   onBreadcrumbClick,
+  onNavigateToLinkedTrace,
   'data-testid': dataTestId,
 }: {
   source: TSource;
@@ -46,6 +47,12 @@ export function RowOverviewPanel({
   hideHeader?: boolean;
   breadcrumbPath?: BreadcrumbPath;
   onBreadcrumbClick?: BreadcrumbNavigationCallback;
+  // Prototype (HDX-3191 demo): when provided, "Open trace" on a span link
+  // navigates the enclosing trace flyout in place (trace-level back stack)
+  // instead of opening a nested drawer. Only the inline-split DBTracePanel
+  // passes this; every other caller leaves it undefined and keeps the
+  // nested-drawer behavior.
+  onNavigateToLinkedTrace?: (link: SpanLinkData) => void;
   'data-testid'?: string;
 }) {
   const { data } = useRowData({ source, rowId, aliasWith });
@@ -363,7 +370,13 @@ export function RowOverviewPanel({
               <Box px="md">
                 <SpanLinksSubpanel
                   spanLinks={firstRow?.__hdx_span_links}
-                  onOpenTrace={link => setOpenedLink(link)}
+                  onOpenTrace={link => {
+                    if (onNavigateToLinkedTrace) {
+                      onNavigateToLinkedTrace(link);
+                    } else {
+                      setOpenedLink(link);
+                    }
+                  }}
                 />
               </Box>
             </Accordion.Panel>
