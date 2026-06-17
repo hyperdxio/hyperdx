@@ -1142,6 +1142,157 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
     });
   });
 
+  describe('raw SQL macro warnings', () => {
+    // These warnings are advisory: a raw SQL tile that omits the dashboard
+    // time-range / filter / source macros still saves successfully, but the
+    // response carries a `warnings` array so the agent can spot a tile that
+    // won't react to dashboard controls.
+    it('returns a non-blocking warning when a raw SQL tile omits macros on create', async () => {
+      const connectionId = ctx.connection._id.toString();
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'SQL Dashboard without macros',
+        tiles: [
+          {
+            name: 'Static SQL',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sqlTemplate: 'SELECT 1 AS value LIMIT 1',
+            },
+          },
+        ],
+      });
+
+      // Non-blocking: the save succeeds and the dashboard is persisted.
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.id).toBeDefined();
+      expect(output.tiles).toHaveLength(1);
+      const dashboard = await Dashboard.findById(output.id);
+      expect(dashboard).not.toBeNull();
+
+      // The advisory names the tile and recommends the missing macros.
+      expect(Array.isArray(output.warnings)).toBe(true);
+      expect(output.warnings).toHaveLength(1);
+      expect(output.warnings[0]).toContain('Static SQL');
+      expect(output.warnings[0]).toContain('$__timeFilter');
+      expect(output.warnings[0]).toContain('$__filters');
+      expect(output.warnings[0]).toContain('$__sourceTable');
+      expect(output.warnings[0]).toContain('strongly recommended');
+    });
+
+    it('omits warnings when a raw SQL tile uses all recommended macros', async () => {
+      const connectionId = ctx.connection._id.toString();
+      const sourceId = ctx.traceSource._id.toString();
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'SQL Dashboard with macros',
+        tiles: [
+          {
+            name: 'Macro SQL',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sourceId,
+              sqlTemplate:
+                'SELECT ServiceName, count() AS c FROM $__sourceTable ' +
+                'WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY ServiceName LIMIT 10',
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.warnings).toBeUndefined();
+    });
+
+    it('flags a missing interval macro on a time-series raw SQL tile', async () => {
+      const connectionId = ctx.connection._id.toString();
+      const sourceId = ctx.traceSource._id.toString();
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'SQL line tile without interval',
+        tiles: [
+          {
+            name: 'Line SQL',
+            config: {
+              configType: 'sql',
+              displayType: 'line',
+              connectionId,
+              sourceId,
+              // Has time-range + filters + source table, but buckets by a
+              // fixed minute instead of $__timeInterval, so granularity is
+              // ignored.
+              sqlTemplate:
+                'SELECT toStartOfMinute(Timestamp) AS ts, count() AS c FROM $__sourceTable ' +
+                'WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY ts ORDER BY ts',
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(Array.isArray(output.warnings)).toBe(true);
+      expect(output.warnings).toHaveLength(1);
+      expect(output.warnings[0]).toContain('$__timeInterval');
+    });
+
+    it('returns a non-blocking warning when a raw SQL tile omits macros on update', async () => {
+      const connectionId = ctx.connection._id.toString();
+      const sourceId = ctx.traceSource._id.toString();
+
+      // Create with a well-formed builder tile (no warnings expected).
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Update to static SQL',
+          tiles: [
+            {
+              name: 'Builder Tile',
+              config: {
+                displayType: 'number',
+                sourceId,
+                select: [{ aggFn: 'count' }],
+              },
+            },
+          ],
+        },
+      );
+      const created = JSON.parse(getFirstText(createResult));
+      expect(created.warnings).toBeUndefined();
+
+      // Update, replacing the tile with a macro-less raw SQL tile.
+      const updateResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          id: created.id,
+          name: 'Update to static SQL',
+          tiles: [
+            {
+              name: 'Static SQL',
+              config: {
+                configType: 'sql',
+                displayType: 'table',
+                connectionId,
+                sqlTemplate: 'SELECT 1 AS value LIMIT 1',
+              },
+            },
+          ],
+        },
+      );
+
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.id).toBe(created.id);
+      expect(Array.isArray(updated.warnings)).toBe(true);
+      expect(updated.warnings[0]).toContain('Static SQL');
+    });
+  });
+
   describe('containers and tabs', () => {
     // Mirrors the v2 external-API "Containers and tabs" describe block so
     // the MCP path enforces the same 5 cross-field rules: container id
