@@ -224,10 +224,16 @@ function SourceSelectControlledComponent({
       <SelectControlled
         {...props}
         data={sourceItems}
-        comboboxProps={{ withinPortal: false, ...comboboxProps }}
+        comboboxProps={{
+          withinPortal: false,
+          width: 'max-content',
+          position: 'bottom-start',
+          ...comboboxProps,
+        }}
         classNames={{
           input: styles.sourceSelectInput,
           groupLabel: styles.groupLabel,
+          dropdown: styles.sourceSelectDropdown,
         }}
         renderOption={renderOption}
         filter={sourceSelectFilter}
