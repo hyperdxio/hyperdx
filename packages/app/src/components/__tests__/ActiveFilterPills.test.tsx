@@ -102,6 +102,35 @@ describe('ActiveFilterPills', () => {
     expect(screen.getByText('status')).toBeInTheDocument();
   });
 
+  it('styles the excluded pill with a soft red-light background and the included pill with neutral hover', () => {
+    const searchFilters = makeSearchFilters({
+      status: {
+        included: new Set<string | boolean>(['200']),
+        excluded: new Set<string | boolean>(),
+      },
+      level: {
+        included: new Set<string | boolean>(),
+        excluded: new Set<string | boolean>(['error']),
+      },
+    });
+    renderPills(searchFilters);
+
+    const included = screen.getByTestId('active-filter-pill-status');
+    const excluded = screen.getByTestId('active-filter-pill-level');
+
+    // Assert on the raw inline-style string so the token check can't silently
+    // no-op on a jsdom that drops unresolved CSS custom properties.
+    expect(included.getAttribute('style')).toContain('var(--color-bg-hover)');
+    expect(excluded.getAttribute('style')).toContain(
+      'var(--mantine-color-red-light)',
+    );
+    expect(
+      excluded
+        .querySelector('button[aria-label="Remove filter"]')
+        ?.getAttribute('style'),
+    ).toContain('var(--mantine-color-red-light-color)');
+  });
+
   it('renders range filter pills', () => {
     const searchFilters = makeSearchFilters({
       duration: {
