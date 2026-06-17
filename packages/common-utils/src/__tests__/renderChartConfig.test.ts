@@ -552,7 +552,7 @@ describe('renderChartConfig', () => {
         );
 
       // Two chunked windows of the same chart (most recent window first,
-      // older windows are end-exclusive — mirrors fetchDataInChunks).
+      // older windows are end-exclusive, mirroring fetchDataInChunks).
       const recentChunk = await renderWindow(
         [new Date('2025-02-12T18:00:00Z'), rankingRange[1]],
         true,
@@ -562,7 +562,7 @@ describe('renderChartConfig', () => {
         false,
       );
 
-      // The CTE end is the first `) SELECT` — the outer query starts there.
+      // The CTE end is the first `) SELECT`; the outer query starts there.
       const cteOf = (sql: string) => {
         const start = sql.indexOf('`__hdx_series_limit` AS (');
         const end = sql.indexOf(') SELECT ');
@@ -667,7 +667,7 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain('__hdx_series_limit');
-      // Each column gets its own NULL check, split on the top-level comma — not
+      // Each column gets its own NULL check, split on the top-level comma, not
       // the comma inside Map['...'].
       expect(sql).toMatch(
         /LogAttributes\[['"]agentToServer\.capabilities['"]\]\s+IS\s+NOT\s+NULL/,
@@ -3281,7 +3281,7 @@ describe('renderChartConfig', () => {
         undefined,
       );
 
-      // PromQL configs return empty SQL — queries go through the Prometheus API route
+      // PromQL configs return empty SQL; queries go through the Prometheus API route
       expect(generatedSql.sql).toBe('');
       expect(generatedSql.params).toEqual({});
     });
