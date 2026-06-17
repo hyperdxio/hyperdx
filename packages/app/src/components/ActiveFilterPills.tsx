@@ -20,6 +20,7 @@ import {
 
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import type { FilterStateHook } from '@/searchFilters';
+import { useFormatTime } from '@/useFormatTime';
 import {
   CLIPBOARD_ERROR_MESSAGE,
   copyTextToClipboard,
@@ -29,15 +30,37 @@ const MAX_VISIBLE_PILLS = 8;
 // Cap the value list fetched for the in-pill value picker.
 const VALUE_EDIT_LIMIT = 50;
 
+// Stable identity so a caller that omits the prop doesn't invalidate the
+// flattenFilters useMemo on every render.
+const EMPTY_DATE_TIME_COLUMNS: ReadonlySet<string> = new Set();
+
+type FormatTime = ReturnType<typeof useFormatTime>;
+
 type PillItem = {
   field: string;
   value: string;
   type: 'included' | 'excluded' | 'range';
   rawValue?: string | boolean;
+  // Display-only label for the pill (e.g. a DateTime value formatted to the
+  // user's locale/timezone). The raw `value`/`rawValue` are kept intact for
+  // SQL generation, value editing, copy, and the URL round-trip.
+  displayValue?: string;
 };
 
-function flattenFilters(filters: FilterStateHook['filters']): PillItem[] {
+function flattenFilters(
+  filters: FilterStateHook['filters'],
+  {
+    dateTimeColumns,
+    formatTime,
+  }: { dateTimeColumns: ReadonlySet<string>; formatTime: FormatTime },
+): PillItem[] {
   const pills: PillItem[] = [];
+
+  const formatDisplayValue = (field: string, val: string | boolean) =>
+    dateTimeColumns.has(field) && typeof val === 'string'
+      ? formatTime(val, { format: 'withMs' })
+      : undefined;
+
   for (const [field, state] of Object.entries(filters)) {
     for (const val of state.included) {
       pills.push({
@@ -45,6 +68,7 @@ function flattenFilters(filters: FilterStateHook['filters']): PillItem[] {
         value: String(val),
         type: 'included',
         rawValue: val,
+        displayValue: formatDisplayValue(field, val),
       });
     }
     for (const val of state.excluded) {
@@ -53,6 +77,7 @@ function flattenFilters(filters: FilterStateHook['filters']): PillItem[] {
         value: String(val),
         type: 'excluded',
         rawValue: val,
+        displayValue: formatDisplayValue(field, val),
       });
     }
     if (state.range != null) {
@@ -140,10 +165,11 @@ function FilterPill({
     [keyValues, pill.value],
   );
 
+  const label = pill.displayValue ?? pill.value;
   const tooltipLabel = isInvalid
     ? (invalidReason ??
       `Filter not applied: "${pill.field}" isn't a column on the current source. It will reapply if you switch back.`)
-    : `${pill.field}${operator}${pill.value}`;
+    : `${pill.field}${operator}${label}`;
 
   const showDangerAccent = isExcluded && !isInvalid;
 
@@ -218,7 +244,7 @@ function FilterPill({
           truncate
           style={{ textDecoration: isInvalid ? 'line-through' : undefined }}
         >
-          {pill.value}
+          {label}
         </Text>
         <ActionIcon
           size={14}
@@ -319,9 +345,11 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
   invalidFields,
   invalidFieldReason,
   chartConfig,
+  dateTimeColumns = EMPTY_DATE_TIME_COLUMNS,
   ...flexProps
 }: {
   searchFilters: FilterStateHook;
+  dateTimeColumns?: ReadonlySet<string>;
   /**
    * Field names whose filters are present in state but not applied to the
    * current query (e.g. column doesn't exist on the active source). These
@@ -348,7 +376,11 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
     clearAllFilters,
   } = searchFilters;
 
-  const pills = useMemo(() => flattenFilters(filters), [filters]);
+  const formatTime = useFormatTime();
+  const pills = useMemo(
+    () => flattenFilters(filters, { dateTimeColumns, formatTime }),
+    [filters, dateTimeColumns, formatTime],
+  );
   const [expanded, setExpanded] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);

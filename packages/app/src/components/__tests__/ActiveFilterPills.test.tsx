@@ -19,6 +19,13 @@ jest.mock('@/hooks/useMetadata', () => ({
   useGetKeyValues: jest.fn(() => ({ data: [], isFetching: false })),
 }));
 
+// Deterministic stand-in for the locale/timezone-aware formatter so assertions
+// don't depend on the test runner's timezone or clock preference.
+jest.mock('@/useFormatTime', () => ({
+  __esModule: true,
+  useFormatTime: () => (value: unknown) => `formatted(${String(value)})`,
+}));
+
 const mockedUseGetKeyValues = useGetKeyValues as jest.Mock;
 
 // Mantine's Combobox calls scrollIntoView when its dropdown opens; jsdom lacks
@@ -580,5 +587,66 @@ describe('ActiveFilterPills', () => {
       '502',
       'exclude',
     );
+  });
+
+  describe('DateTime value formatting', () => {
+    const TS = '2026-06-16T15:35:16.731000000Z';
+
+    function renderWithDateTime(
+      searchFilters: FilterStateHook,
+      dateTimeColumns: Set<string>,
+    ) {
+      return renderWithMantine(
+        <ActiveFilterPills
+          searchFilters={searchFilters}
+          chartConfig={CHART_CONFIG}
+          dateTimeColumns={dateTimeColumns}
+        />,
+      );
+    }
+
+    it('formats a DateTime column pill value for display', () => {
+      const searchFilters = makeSearchFilters({
+        Timestamp: {
+          included: new Set<string | boolean>(),
+          excluded: new Set<string | boolean>([TS]),
+        },
+      });
+      renderWithDateTime(searchFilters, new Set(['Timestamp']));
+
+      expect(screen.getByText(`formatted(${TS})`)).toBeInTheDocument();
+      // The raw, unformatted value is not shown.
+      expect(screen.queryByText(TS)).not.toBeInTheDocument();
+    });
+
+    it('does not format pill values for non-DateTime columns', () => {
+      const searchFilters = makeSearchFilters({
+        status: {
+          included: new Set<string | boolean>([TS]),
+          excluded: new Set<string | boolean>(),
+        },
+      });
+      renderWithDateTime(searchFilters, new Set(['Timestamp']));
+
+      expect(screen.getByText(TS)).toBeInTheDocument();
+      expect(screen.queryByText(`formatted(${TS})`)).not.toBeInTheDocument();
+    });
+
+    it('preserves the raw value for filter operations despite the formatted label', () => {
+      const searchFilters = makeSearchFilters({
+        Timestamp: {
+          included: new Set<string | boolean>(),
+          excluded: new Set<string | boolean>([TS]),
+        },
+      });
+      renderWithDateTime(searchFilters, new Set(['Timestamp']));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remove filter' }));
+      expect(searchFilters.setFilterValue).toHaveBeenCalledWith(
+        'Timestamp',
+        TS,
+        'exclude',
+      );
+    });
   });
 });

@@ -2087,6 +2087,7 @@ export function DBSearchPage() {
         <ActiveFilterPills
           searchFilters={searchFilters}
           chartConfig={filtersChartConfig}
+          dateTimeColumns={dateTimeColumns}
           mt={6}
         />
       </form>
