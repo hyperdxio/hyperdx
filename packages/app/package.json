@@ -60,6 +60,7 @@
     "crypto-js": "^4.2.0",
     "crypto-randomuuid": "^1.0.0",
     "date-fns": "^2.28.0",
+    "date-fns-tz": "^2.0.0",
     "dayjs": "^1.11.19",
     "flat": "^5.0.2",
     "fuse.js": "^6.6.2",

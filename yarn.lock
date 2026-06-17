@@ -4496,6 +4496,7 @@ __metadata:
     crypto-js: "npm:^4.2.0"
     crypto-randomuuid: "npm:^1.0.0"
     date-fns: "npm:^2.28.0"
+    date-fns-tz: "npm:^2.0.0"
     dayjs: "npm:^1.11.19"
     eslint-config-next: "npm:^16.0.10"
     eslint-plugin-playwright: "npm:^2.4.0"
