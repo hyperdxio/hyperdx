@@ -115,7 +115,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     const created = JSON.parse(getFirstText(createResult));
     const tileId = created.tiles[0].id;
 
-    // Patch without specifying layout — layout should be preserved
+    // Patch without specifying layout; layout should be preserved
     const patchResult = await callTool(
       ctx.client!,
       'clickstack_patch_dashboard',
@@ -464,7 +464,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     );
     expect(patchResult.isError).toBeFalsy();
 
-    // Read raw DB tiles again — tiles B and C should be byte-identical
+    // Read raw DB tiles again; tiles B and C should be byte-identical
     const afterPatch = await Dashboard.findById(dashboardId).lean();
     const tilesAfterPatch = (afterPatch as any).tiles;
 
@@ -498,7 +498,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     const created = JSON.parse(getFirstText(createResult));
     const tileId = created.tiles[0].id;
 
-    // Patch config only — no name field at all
+    // Patch config only; no name field at all
     const patchResult = await callTool(
       ctx.client!,
       'clickstack_patch_dashboard',
@@ -566,7 +566,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
       $pull: { tiles: { id: tileAId } },
     });
 
-    // Now try to patch tile A — it no longer exists in the array.
+    // Now try to patch tile A; it no longer exists in the array.
     const patchResult = await callTool(
       ctx.client!,
       'clickstack_patch_dashboard',
@@ -623,6 +623,8 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
           displayType: 'number',
           sourceId,
           select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+          color: 'chart-blue',
+          colorRules: [{ operator: 'gte', value: 500, color: 'chart-error' }],
         },
       },
     });
@@ -643,6 +645,10 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     expect(tile.name).toBe('Patched');
     expect(tile.config.displayType).toBe('number');
     expect(tile.config.select[0].aggFn).toBe('avg');
+    expect(tile.config.color).toBe('chart-blue');
+    expect(tile.config.colorRules).toEqual([
+      { operator: 'gte', value: 500, color: 'chart-error' },
+    ]);
   });
 
   describe('raw SQL macro warnings', () => {

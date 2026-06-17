@@ -4,11 +4,13 @@
 // readability. Reformatting all separators is out of scope here.
 import {
   AggregateFunctionSchema,
+  ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_CONTAINERS,
   DashboardContainerSchema,
   DashboardFilterType,
   MetricsDataType,
+  NumberTileColorConditionSchema,
   SearchConditionLanguageSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
@@ -27,6 +29,26 @@ const tileLevelNumberFormatDescription =
   'Controls how the number value(s) are formatted for display. Applies to series or numbers without a series-level numberFormat. ' +
   'Most useful: { output: "duration", factor: 0.000000001 } to auto-format nanosecond durations, ' +
   'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.';
+
+const numberTileColorDescription =
+  'Static color for the displayed number, as a palette token such as ' +
+  '"chart-blue", "chart-green", or "chart-success" (see the enum for the ' +
+  'full set). Applied unless a colorRules entry matches the value.';
+
+const numberTileColorRulesDescription =
+  'Conditional colors for the number, evaluated in array order with the ' +
+  'last matching rule winning; falls back to color (then the default text ' +
+  'color) when none match. Up to 10 rules. Each rule is ' +
+  '{ operator, value, color, label? }: operator gt | gte | lt | lte with a ' +
+  'number value, between with a [min, max] value, or eq | neq with a number ' +
+  'or string value. color is a palette token. Example: ' +
+  '[{ operator: "gte", value: 500, color: "chart-error", label: "Critical" }].';
+
+const rawSqlNumberTileColorDescription =
+  'Static color for the displayed number, as a palette token such as ' +
+  '"chart-blue" or "chart-success". Valid only when displayType is ' +
+  '"number", ignored otherwise. Raw SQL number tiles do not support ' +
+  'conditional colorRules.';
 
 const mcpNumberFormatSchema = z.object({
   output: z
@@ -490,6 +512,14 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(tileLevelNumberFormatDescription),
+    color: ChartPaletteTokenSchema.optional().describe(
+      numberTileColorDescription,
+    ),
+    colorRules: z
+      .array(NumberTileColorConditionSchema)
+      .max(10)
+      .optional()
+      .describe(numberTileColorRulesDescription),
   }),
 });
 
@@ -674,6 +704,9 @@ GROUP BY ServiceName, ts
         'Scale the y-axis to the data range instead of starting at zero. ' +
           'Valid only when displayType is "line", ignored otherwise.',
       ),
+    color: ChartPaletteTokenSchema.optional().describe(
+      rawSqlNumberTileColorDescription,
+    ),
     onClick: mcpOnClickSchema.optional(),
   }),
 });

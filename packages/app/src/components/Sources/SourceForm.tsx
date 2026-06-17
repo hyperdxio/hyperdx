@@ -97,11 +97,12 @@ import { ConnectionSelectControlled } from '../ConnectionSelect';
 import { DatabaseSelectControlled } from '../DatabaseSelect';
 import { DBTableSelectControlled } from '../DBTableSelect';
 import { ErrorCollapse } from '../Error/ErrorCollapse';
-import { InputControlled } from '../InputControlled';
+import { AutocompleteControlled, InputControlled } from '../InputControlled';
 import SelectControlled from '../SelectControlled';
 
 import { ExpressionValidationStatus } from './ExpressionValidationStatus';
 import { SourceFieldCandidateHint } from './SourceFieldCandidateHint';
+import { distinctSections } from './sourceFormUtils';
 
 type CorrelationField =
   | 'logSourceId'
@@ -2152,6 +2153,11 @@ export function TableSourceForm({
 
   // Bidirectional source linking
   const { data: sources } = useSources();
+  // Existing section names, offered as Section autocomplete suggestions.
+  const sectionSuggestions = useMemo(
+    () => distinctSections(sources),
+    [sources],
+  );
   const currentSourceId = useWatch({ control, name: 'id' });
 
   // Watch all potential correlation fields
@@ -2520,9 +2526,10 @@ export function TableSourceForm({
           />
         </FormRow>
         <FormRow label={'Section'}>
-          <InputControlled
+          <AutocompleteControlled
             control={control}
             name="section"
+            data={sectionSuggestions}
             placeholder="Optional group, e.g. Billing or Control Plane Prod"
             maxLength={256}
           />
