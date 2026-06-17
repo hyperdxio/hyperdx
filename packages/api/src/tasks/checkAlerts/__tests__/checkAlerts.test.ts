@@ -5566,7 +5566,7 @@ describe('checkAlerts', () => {
 
       // Insert gauge metrics for two different services
       // Note: ResourceAttributes must differ per service so that
-      // AttributesHash (cityHash64 of mapConcat(ScopeAttributes, ResourceAttributes, Attributes))
+      // AttributesHash (variadic cityHash64(ScopeAttributes, ResourceAttributes, Attributes))
       // produces distinct hashes. Otherwise, the Bucketed CTE collapses all rows into one group.
       const gaugePoints = [
         // service-a: high CPU values (should trigger alert)
