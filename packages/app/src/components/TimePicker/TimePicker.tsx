@@ -1,5 +1,6 @@
 import React, { memo, useMemo, useState } from 'react';
-import { add, Duration, format, sub } from 'date-fns';
+import { add, Duration, format, parse, sub } from 'date-fns';
+import { formatInTimeZone, zonedTimeToUtc } from 'date-fns-tz';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -52,19 +53,14 @@ const DATE_INPUT_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 const toDate = (v: Date | string | null, isUTC: boolean): Date | null => {
   if (v == null) return null;
   if (v instanceof Date) return v;
-  // Date-only strings ("YYYY-MM-DD") are parsed as UTC by the ES spec.
-  // We need to parse them as local midnight (or UTC midnight based on pref).
-  const dateOnlyMatch = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (dateOnlyMatch) {
-    const [, y, m, d] = dateOnlyMatch;
-    if (isUTC) {
-      return new Date(Date.UTC(+y, +m - 1, +d, 0, 0, 0));
-    }
-    return new Date(+y, +m - 1, +d, 0, 0, 0);
-  }
-  // Datetime strings ("YYYY-MM-DD HH:mm:ss")
   if (isUTC) {
-    return new Date(v.replace(' ', 'T') + 'Z');
+    return zonedTimeToUtc(v, 'UTC');
+  }
+  // date-fns parse always creates local-timezone dates, which is correct
+  // for date-only strings that new Date() would wrongly interpret as UTC.
+  const dateOnlyMatch = v.match(/^\d{4}-\d{2}-\d{2}$/);
+  if (dateOnlyMatch) {
+    return parse(v, 'yyyy-MM-dd', new Date(0)); // eslint-disable-line no-restricted-syntax
   }
   return new Date(v);
 };
@@ -77,13 +73,7 @@ const toDate = (v: Date | string | null, isUTC: boolean): Date | null => {
  */
 const formatDateForInput = (date: Date, isUTC: boolean): string => {
   if (isUTC) {
-    const y = date.getUTCFullYear();
-    const m = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const d = String(date.getUTCDate()).padStart(2, '0');
-    const h = String(date.getUTCHours()).padStart(2, '0');
-    const min = String(date.getUTCMinutes()).padStart(2, '0');
-    const s = String(date.getUTCSeconds()).padStart(2, '0');
-    return `${y}-${m}-${d} ${h}:${min}:${s}`;
+    return formatInTimeZone(date, 'UTC', 'yyyy-MM-dd HH:mm:ss');
   }
   return format(date, 'yyyy-MM-dd HH:mm:ss');
 };
