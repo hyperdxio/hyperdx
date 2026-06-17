@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import objectHash from 'object-hash';
 import {
   ColumnMeta,
@@ -99,6 +99,20 @@ export function useColumns(
     enabled: !!databaseName && !!tableName && !!connectionId,
     ...options,
   });
+}
+
+export function useDateTimeColumns(
+  columns: ColumnMeta[] | undefined,
+): Set<string> {
+  return useMemo(
+    () =>
+      new Set(
+        filterColumnMetaByType(columns ?? [], [JSDataType.Date])?.map(
+          c => c.name,
+        ),
+      ),
+    [columns],
+  );
 }
 
 export function useJsonColumns(

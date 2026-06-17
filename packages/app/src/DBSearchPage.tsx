@@ -28,8 +28,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import {
   ClickHouseQueryError,
   ColumnMeta,
-  convertCHDataTypeToJSType,
-  JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
@@ -136,7 +134,11 @@ import {
   getRelativeTimeOptionLabel,
   LIVE_TAIL_DURATION_MS,
 } from './components/TimePicker/utils';
-import { useColumns, useTableMetadata } from './hooks/useMetadata';
+import {
+  useColumns,
+  useDateTimeColumns,
+  useTableMetadata,
+} from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import { useStableCallback } from './hooks/useStableCallback';
 import {
@@ -1111,19 +1113,7 @@ export function DBSearchPage() {
     { enabled: !!watchedSourceObj },
   );
 
-  // DateTime/DateTime64 column names, so the filter pipeline wraps their values
-  // in parseDateTime64BestEffort() rather than emitting a bare string literal
-  // that ClickHouse can't cast (covers DateTime, DateTime64, Date, Date32 and
-  // their LowCardinality/Nullable wrappers via convertCHDataTypeToJSType).
-  const dateTimeColumns = useMemo(
-    () =>
-      new Set(
-        (watchedSourceColumns ?? [])
-          .filter(c => convertCHDataTypeToJSType(c.type) === JSDataType.Date)
-          .map(c => c.name),
-      ),
-    [watchedSourceColumns],
-  );
+  const dateTimeColumns = useDateTimeColumns(watchedSourceColumns);
 
   const filters = useWatch({ name: 'filters', control });
   const searchFilters = useSearchPageFilterState({
