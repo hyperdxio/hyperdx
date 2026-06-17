@@ -176,7 +176,7 @@ function FilterPill({
           backgroundColor: isInvalid
             ? 'transparent'
             : isExcluded
-              ? 'var(--color-bg-danger)'
+              ? 'var(--mantine-color-red-light)'
               : 'var(--color-bg-hover)',
           border: isInvalid
             ? '1px dashed var(--color-border-emphasis)'
@@ -203,7 +203,9 @@ function FilterPill({
           size="xxs"
           c="dimmed"
           style={{
-            color: showDangerAccent ? 'var(--color-text-danger)' : undefined,
+            color: showDangerAccent
+              ? 'var(--mantine-color-red-light-color)'
+              : undefined,
             textDecoration: isInvalid ? 'line-through' : undefined,
           }}
         >
@@ -230,7 +232,9 @@ function FilterPill({
           style={{
             flexShrink: 0,
             marginLeft: 2,
-            color: showDangerAccent ? 'var(--color-text-danger)' : undefined,
+            color: showDangerAccent
+              ? 'var(--mantine-color-red-light-color)'
+              : undefined,
           }}
           aria-label="Remove filter"
         >

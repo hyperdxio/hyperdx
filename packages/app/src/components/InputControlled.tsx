@@ -1,6 +1,8 @@
 import React from 'react';
 import { Control, Controller, FieldValues, Path } from 'react-hook-form';
 import {
+  Autocomplete,
+  AutocompleteProps,
   Checkbox,
   CheckboxProps,
   Input,
@@ -41,6 +43,16 @@ interface CheckboxControlledProps<T extends FieldValues>
       React.InputHTMLAttributes<HTMLInputElement>,
       'name' | 'size' | 'color'
     > {
+  name: Path<T>;
+  control: Control<T>;
+  rules?: Parameters<Control<T>['register']>[1];
+}
+
+// Autocomplete already extends the native input attributes (minus its own
+// value-based onChange and size), so it carries maxLength/placeholder without
+// a second InputHTMLAttributes extend that would clash on onChange.
+interface AutocompleteControlledProps<T extends FieldValues>
+  extends Omit<AutocompleteProps, 'name' | 'style'> {
   name: Path<T>;
   control: Control<T>;
   rules?: Parameters<Control<T>['register']>[1];
@@ -116,6 +128,32 @@ export function CheckBoxControlled<T extends FieldValues>({
           {...props}
           {...field}
           checked={value}
+          error={error?.message}
+        />
+      )}
+    />
+  );
+}
+
+export function AutocompleteControlled<T extends FieldValues>({
+  name,
+  control,
+  rules,
+  ...props
+}: AutocompleteControlledProps<T>) {
+  return (
+    <Controller
+      name={name}
+      control={control}
+      rules={rules}
+      // Autocomplete is free-text: onChange passes the typed/selected string
+      // straight through, and value is coerced from a possibly-undefined field
+      // to '' so it stays controlled.
+      render={({ field: { value, ...field }, fieldState: { error } }) => (
+        <Autocomplete
+          {...props}
+          {...field}
+          value={value ?? ''}
           error={error?.message}
         />
       )}

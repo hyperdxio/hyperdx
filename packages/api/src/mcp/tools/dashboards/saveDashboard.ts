@@ -27,7 +27,10 @@ import { mcpError } from '../../utils/errors';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
-import { getRawSqlMissingSourceError } from './validation';
+import {
+  getRawSqlMissingSourceError,
+  getRawSqlTileMacroWarnings,
+} from './validation';
 
 export function registerSaveDashboard(
   server: McpServer,
@@ -194,6 +197,8 @@ async function createDashboard({
     };
   }
 
+  const macroWarnings = getRawSqlTileMacroWarnings(tilesWithId);
+
   const internalTiles = convertExternalTilesToInternal(tilesWithId);
   const filtersWithIds = convertExternalFiltersToInternal(filters ?? []);
 
@@ -224,6 +229,7 @@ async function createDashboard({
               ? { url: `${frontendUrl}/dashboards/${newDashboard._id}` }
               : {}),
             hint: 'Use clickstack_query_tile to test individual tile queries before viewing the dashboard.',
+            ...(macroWarnings.length > 0 ? { warnings: macroWarnings } : {}),
           },
           null,
           2,
@@ -311,6 +317,8 @@ async function updateDashboard({
     };
   }
 
+  const macroWarnings = getRawSqlTileMacroWarnings(tilesWithId);
+
   const existingTileIds = new Set(
     (existingDashboard.tiles ?? []).map((t: { id: string }) => t.id),
   );
@@ -387,6 +395,7 @@ async function updateDashboard({
               ? { url: `${frontendUrl}/dashboards/${updatedDashboard._id}` }
               : {}),
             hint: 'Use clickstack_query_tile to test individual tile queries before viewing the dashboard.',
+            ...(macroWarnings.length > 0 ? { warnings: macroWarnings } : {}),
           },
           null,
           2,
