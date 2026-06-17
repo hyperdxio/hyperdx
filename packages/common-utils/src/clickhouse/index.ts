@@ -923,6 +923,19 @@ function extractOuterSelectProjection(sql: string): string | null {
       if (c === '`') inBacktick = false;
       continue;
     }
+    // Skip SQL comments so keywords / brackets inside them are ignored.
+    if (c === '-' && sql[i + 1] === '-') {
+      const lineEnd = sql.indexOf('\n', i + 2);
+      if (lineEnd === -1) break;
+      i = lineEnd;
+      continue;
+    }
+    if (c === '/' && sql[i + 1] === '*') {
+      const blockEnd = sql.indexOf('*/', i + 2);
+      if (blockEnd === -1) break;
+      i = blockEnd + 1;
+      continue;
+    }
     if (c === "'") {
       inSingleQuote = true;
       continue;

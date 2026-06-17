@@ -290,6 +290,17 @@ describe('chSqlToAliasMap - resilient parsing of ClickHouse-specific SQL', () =>
     });
   });
 
+  it('ignores SELECT / FROM keywords inside SQL comments', () => {
+    const chSqlInput: ChSql = {
+      sql: `${samplingCte} SELECT /* not a real SELECT ... FROM */ ServiceName as service, -- trailing SELECT x FROM y\n Timestamp as ts FROM db.t WHERE ${samplingWhere}`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      service: 'ServiceName',
+      ts: 'Timestamp',
+    });
+  });
+
   it('returns an empty map when neither the full query nor the projection parses', () => {
     const chSqlInput: ChSql = {
       sql: 'NOT VALID SQL AT ALL )(',
