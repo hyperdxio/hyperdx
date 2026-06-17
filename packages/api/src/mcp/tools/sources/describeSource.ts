@@ -58,6 +58,10 @@ async function describeSourceSchema(
     timestampColumn: source.timestampValueExpression,
   };
 
+  if (source.section) {
+    meta.section = source.section;
+  }
+
   if (
     'eventAttributesExpression' in source &&
     source.eventAttributesExpression

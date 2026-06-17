@@ -78,6 +78,7 @@ describe('MCP Source Tools', () => {
       traceIdExpression: 'TraceId',
       connection: connection._id,
       name: 'Logs',
+      section: 'Billing',
     });
 
     const context: McpContext = {
@@ -147,6 +148,19 @@ describe('MCP Source Tools', () => {
       expect(log.keyColumns).toBeDefined();
       expect(log.keyColumns).toHaveProperty('severityText');
       expect(log.keyColumns).toHaveProperty('body');
+    });
+
+    it('includes a source section when set and omits it when unset', async () => {
+      const result = await callTool(client, 'clickstack_list_sources');
+      const output = JSON.parse(getFirstText(result));
+
+      const log = output.sources.find((s: any) => s.kind === SourceKind.Log);
+      expect(log.section).toBe('Billing');
+
+      const trace = output.sources.find(
+        (s: any) => s.kind === SourceKind.Trace,
+      );
+      expect(trace.section).toBeUndefined();
     });
 
     it('should return empty sources for a team with no sources', async () => {
@@ -220,6 +234,24 @@ describe('MCP Source Tools', () => {
         severityText: 'SeverityText',
         serviceName: 'ServiceName',
       });
+    });
+
+    it('includes the source section when set and omits it when unset', async () => {
+      const withSection = await callTool(client, 'clickstack_describe_source', {
+        sourceId: logSource._id.toString(),
+      });
+      expect(JSON.parse(getFirstText(withSection)).source.section).toBe(
+        'Billing',
+      );
+
+      const withoutSection = await callTool(
+        client,
+        'clickstack_describe_source',
+        { sourceId: traceSource._id.toString() },
+      );
+      expect(
+        JSON.parse(getFirstText(withoutSection)).source.section,
+      ).toBeUndefined();
     });
 
     it('should include map attribute keys', async () => {
