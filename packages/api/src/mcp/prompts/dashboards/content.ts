@@ -977,6 +977,33 @@ Common outputs:
   data_rate  Bytes per second.
   throughput Count per second.
 
+== NUMBER TILE COLOR ==
+
+number tiles can color the value. Two fields on the tile config:
+
+  color       A palette token applied to the number (e.g. "chart-blue", "chart-green", "chart-success"). Use it for a fixed brand or status color.
+
+  colorRules  Conditional colors. An ordered array, evaluated with the LAST matching rule winning, falling back to color (then the default text color) when none match. Up to 10 rules. USE THIS for status dashboards where a value should turn yellow then red as it crosses thresholds.
+
+Each colorRules entry is { operator, value, color, label? }:
+  gt / gte / lt / lte   value is a number. e.g. { operator: "gte", value: 500, color: "chart-error" }
+  between               value is a [min, max] pair. e.g. { operator: "between", value: [100, 500], color: "chart-warning" }
+  eq / neq             value is a number or string.
+
+Colors are palette tokens, not hex. Order rules from least to most severe so the most severe match wins. Example: a latency tile green by default, warning past 200ms, error past 500ms:
+  config: {
+    displayType: "number",
+    sourceId: "...",
+    select: [{ aggFn: "avg", valueExpression: "Duration", numberFormat: { output: "duration", factor: 0.000000001 } }],
+    color: "chart-green",
+    colorRules: [
+      { operator: "gte", value: 200000000, color: "chart-warning", label: "Slow" },
+      { operator: "gte", value: 500000000, color: "chart-error", label: "Critical" }
+    ]
+  }
+
+colorRules is for number builder tiles only. Raw SQL number tiles (configType: "sql") support color but not colorRules.
+
 == asRatio ==
 
 Set asRatio: true on line / stacked_bar / table tiles with exactly 2 select items
