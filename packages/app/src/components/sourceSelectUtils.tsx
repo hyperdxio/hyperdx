@@ -16,8 +16,8 @@ export const SOURCE_KIND_ICONS: Record<string, React.ReactNode> = {
   [SourceKind.Promql]: <IconChartLine size={16} />,
 };
 
-/** Header for sources that have no section assigned. */
-export const UNSECTIONED_SOURCE_GROUP = 'Other';
+/** Header for sources that have no section assigned. Internal to this module. */
+const UNSECTIONED_SOURCE_GROUP = 'Other';
 
 export type SourceSelectGroup = { group: string; items: ComboboxItem[] };
 
