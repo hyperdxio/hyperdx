@@ -819,12 +819,152 @@ export function parameterizedQueryToSql({
   }, sql);
 }
 
+// Table name used when re-parsing only the outer projection (see
+// extractOuterSelectProjection). It is never executed, only fed to the parser.
+const ALIAS_FALLBACK_TABLE = '__hdx_alias_src';
+
+/**
+ * Builds an alias map from a SELECT statement that node-sql-parser can parse.
+ * Alias expressions are sliced out of `parsedSql` using the AST node
+ * locations, so callers must pass the exact string that was parsed. Throws if
+ * the SQL does not parse.
+ */
+function selectColumnsToAliasMap(
+  parsedSql: string,
+  jsonReplacements: Map<string, string>,
+): Record<string, string> {
+  const aliasMap: Record<string, string> = {};
+  const parser = new SQLParser.Parser();
+
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type
+  const ast = parser.astify(parsedSql, {
+    database: 'Postgresql',
+    parseOptions: { includeLocations: true },
+  }) as SQLParser.Select;
+
+  if (ast.columns != null) {
+    ast.columns.forEach(column => {
+      if (column.as != null) {
+        if (column.type === 'expr' && column.expr.type === 'column_ref') {
+          aliasMap[column.as] =
+            column.expr.array_index && column.expr.array_index[0]?.brackets
+              ? // alias with brackets, ex: ResourceAttributes['service.name'] as service_name
+                `${column.expr.column.expr.value}['${column.expr.array_index[0].index.value}']`
+              : // normal alias
+                column.expr.column.expr.value;
+        } else if (column.expr.loc != null) {
+          aliasMap[column.as] = parsedSql.slice(
+            column.expr.loc.start.offset,
+            column.expr.loc.end.offset,
+          );
+        } else {
+          console.error('Unknown alias column type', column);
+        }
+      }
+    });
+  }
+
+  // Replace the JSON replacement tokens with the original JSON expressions
+  for (const [alias, aliasExpression] of Object.entries(aliasMap)) {
+    for (const [replacement, original] of jsonReplacements) {
+      if (aliasExpression.includes(replacement)) {
+        aliasMap[alias] = aliasExpression.replaceAll(replacement, original);
+      }
+    }
+  }
+
+  return aliasMap;
+}
+
+/**
+ * Returns the text of the outer SELECT projection (everything between the
+ * top-level SELECT and its FROM). Leading WITH/CTE clauses, the WHERE clause,
+ * and nested subqueries are skipped because their SELECT/FROM keywords sit
+ * inside parentheses. Returns null when no top-level SELECT...FROM is found.
+ *
+ * Used as a fallback by chSqlToAliasMap: the alias map only needs the outer
+ * projection's `expr AS alias` pairs, so when the full statement is
+ * unparseable by node-sql-parser (e.g. a sampling CTE containing
+ * `CAST(x AS UInt32)`), re-parsing just the projection still recovers them.
+ */
+function extractOuterSelectProjection(sql: string): string | null {
+  let parenDepth = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inBacktick = false;
+  let projectionStart = -1;
+
+  const isWordChar = (c: string | undefined) =>
+    c != null && /[A-Za-z0-9_]/.test(c);
+  const matchesKeywordAt = (index: number, keyword: string): boolean => {
+    if (sql.slice(index, index + keyword.length).toUpperCase() !== keyword) {
+      return false;
+    }
+    // Require word boundaries so we don't match inside a longer identifier.
+    return (
+      !isWordChar(sql[index - 1]) && !isWordChar(sql[index + keyword.length])
+    );
+  };
+
+  for (let i = 0; i < sql.length; i++) {
+    const c = sql[i];
+
+    // Skip over string / quoted-identifier contents so keywords and brackets
+    // inside them are ignored.
+    if (inSingleQuote) {
+      if (c === "'") inSingleQuote = false;
+      continue;
+    }
+    if (inDoubleQuote) {
+      if (c === '"') inDoubleQuote = false;
+      continue;
+    }
+    if (inBacktick) {
+      if (c === '`') inBacktick = false;
+      continue;
+    }
+    if (c === "'") {
+      inSingleQuote = true;
+      continue;
+    }
+    if (c === '"') {
+      inDoubleQuote = true;
+      continue;
+    }
+    if (c === '`') {
+      inBacktick = true;
+      continue;
+    }
+    if (c === '(') {
+      parenDepth++;
+      continue;
+    }
+    if (c === ')') {
+      parenDepth--;
+      continue;
+    }
+    if (parenDepth !== 0) {
+      continue;
+    }
+
+    if (projectionStart === -1) {
+      if (matchesKeywordAt(i, 'SELECT')) {
+        projectionStart = i + 'SELECT'.length;
+        i = projectionStart - 1;
+      }
+    } else if (matchesKeywordAt(i, 'FROM')) {
+      return sql.slice(projectionStart, i).trim();
+    }
+  }
+
+  return null;
+}
+
 export function chSqlToAliasMap(
   chSql: ChSql | undefined,
 ): Record<string, string> {
-  const aliasMap: Record<string, string> = {};
   if (chSql == null || !chSql.sql) {
-    return aliasMap;
+    return {};
   }
 
   try {
@@ -836,45 +976,26 @@ export function chSqlToAliasMap(
     // Replace JSON expressions with replacement tokens so that node-sql-parser can parse the SQL
     const { sqlWithReplacements, replacements: jsonReplacementsToExpressions } =
       replaceJsonExpressions(sqlWithoutSettingsClause);
-    const parser = new SQLParser.Parser();
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type
-    const ast = parser.astify(sqlWithReplacements, {
-      database: 'Postgresql',
-      parseOptions: { includeLocations: true },
-    }) as SQLParser.Select;
-
-    if (ast.columns != null) {
-      ast.columns.forEach(column => {
-        if (column.as != null) {
-          if (column.type === 'expr' && column.expr.type === 'column_ref') {
-            aliasMap[column.as] =
-              column.expr.array_index && column.expr.array_index[0]?.brackets
-                ? // alias with brackets, ex: ResourceAttributes['service.name'] as service_name
-                  `${column.expr.column.expr.value}['${column.expr.array_index[0].index.value}']`
-                : // normal alias
-                  column.expr.column.expr.value;
-          } else if (column.expr.loc != null) {
-            aliasMap[column.as] = sqlWithReplacements.slice(
-              column.expr.loc.start.offset,
-              column.expr.loc.end.offset,
-            );
-          } else {
-            console.error('Unknown alias column type', column);
-          }
-        }
-      });
-    }
-
-    // Replace the JSON replacement tokens with the original JSON expressions
-    for (const [alias, aliasExpression] of Object.entries(aliasMap)) {
-      for (const [replacement, original] of jsonReplacementsToExpressions) {
-        if (aliasExpression.includes(replacement)) {
-          aliasMap[alias] = aliasExpression.replaceAll(replacement, original);
-        }
+    try {
+      return selectColumnsToAliasMap(
+        sqlWithReplacements,
+        jsonReplacementsToExpressions,
+      );
+    } catch (fullParseError) {
+      // node-sql-parser's Postgresql dialect rejects some ClickHouse-specific
+      // SQL (e.g. `CAST(x AS UInt32)` in a sampling CTE, or parameterized
+      // identifiers). The alias map only needs the outer SELECT projection, so
+      // retry with `SELECT <projection> FROM <table>` before giving up.
+      const projection = extractOuterSelectProjection(sqlWithReplacements);
+      if (projection == null) {
+        throw fullParseError;
       }
+      return selectColumnsToAliasMap(
+        `SELECT ${projection} FROM ${ALIAS_FALLBACK_TABLE}`,
+        jsonReplacementsToExpressions,
+      );
     }
-    return aliasMap;
   } catch (e) {
     console.error(
       'Error parsing alias map with JSON removed',
@@ -884,7 +1005,7 @@ export function chSqlToAliasMap(
     );
   }
 
-  return aliasMap;
+  return {};
 }
 
 export type ColumnMetaType = { name: string; type: string };
