@@ -988,7 +988,7 @@ number tiles can color the value. Two fields on the tile config:
 Each colorRules entry is { operator, value, color, label? }:
   gt / gte / lt / lte   value is a number. e.g. { operator: "gte", value: 500, color: "chart-error" }
   between               value is a [min, max] pair. e.g. { operator: "between", value: [100, 500], color: "chart-warning" }
-  eq / neq             value is a number or string.
+  eq / neq              value is a number or string.
 
 Colors are palette tokens, not hex. Order rules from least to most severe so the most severe match wins. Example: a latency tile green by default, warning past 200ms, error past 500ms:
   config: {
