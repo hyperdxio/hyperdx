@@ -1,0 +1,22 @@
+# Enables remote-write of OTLP metrics to a Prometheus-compatible endpoint.
+# Only included when CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT is set.
+#
+# Mirrors the OpAMP-managed behavior in
+# packages/api/src/opamp/controllers/opampController.ts (gated on
+# IS_PROMQL_ENABLED). When updating this file, keep it in sync with
+# buildOtelCollectorConfig().
+
+exporters:
+  prometheusremotewrite:
+    endpoint: http://${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}/write
+    tls:
+      insecure: true
+    resource_to_telemetry_conversion:
+      enabled: true
+
+service:
+  pipelines:
+    metrics/promql:
+      receivers: [otlp/hyperdx]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite]

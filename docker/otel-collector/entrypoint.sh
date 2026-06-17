@@ -51,6 +51,15 @@ if [ -z "$OPAMP_SERVER_URL" ]; then
     COLLECTOR_ARGS="$COLLECTOR_ARGS --config /etc/otelcol-contrib/standalone-auth-config.yaml"
   fi
 
+  # Enable prometheus remote-write of OTLP metrics only when an endpoint is
+  # configured. Mirrors the OpAMP-managed IS_PROMQL_ENABLED gating in
+  # packages/api/src/opamp/controllers/opampController.ts so the standalone
+  # collector does not attempt to export to a missing endpoint.
+  if [ -n "$CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT" ]; then
+    echo "CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT is set, enabling prometheus remote-write"
+    COLLECTOR_ARGS="$COLLECTOR_ARGS --config /etc/otelcol-contrib/standalone-promql-config.yaml"
+  fi
+
   # Add custom config file if specified
   if [ -n "$CUSTOM_OTELCOL_CONFIG_FILE" ]; then
     echo "Including custom config: $CUSTOM_OTELCOL_CONFIG_FILE"
