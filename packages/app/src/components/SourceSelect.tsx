@@ -22,6 +22,7 @@ import {
 import SelectControlled from '@/components/SelectControlled';
 import {
   SOURCE_KIND_ICONS,
+  sourceSelectFilter,
   useFilteredSortedSourceItems,
   useSourceKindMap,
 } from '@/components/sourceSelectUtils';
@@ -206,6 +207,7 @@ function SourceSelectControlledComponent({
     sources: data,
     allowedSourceKinds,
     connectionId,
+    groupBySection: true,
   });
 
   const hasSelection = !!selectedSourceId;
@@ -228,6 +230,7 @@ function SourceSelectControlledComponent({
           groupLabel: styles.groupLabel,
         }}
         renderOption={renderOption}
+        filter={sourceSelectFilter}
         searchable
         placeholder="Data Source"
         leftSection={leftIcon}
