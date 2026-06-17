@@ -746,9 +746,13 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       const saved = JSON.parse(getFirstText(saveResult));
       expect(saved.tiles[0].config).toMatchObject(numberConfig);
 
-      const getResult = await callTool(ctx.client!, 'clickstack_get_dashboard', {
-        id: saved.id,
-      });
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        {
+          id: saved.id,
+        },
+      );
       expect(getResult.isError).toBeFalsy();
       const fetched = JSON.parse(getFirstText(getResult));
       expect(fetched.tiles[0].config).toMatchObject(numberConfig);
@@ -788,7 +792,9 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
               displayType: 'number',
               sourceId,
               select: [{ aggFn: 'count' }],
-              colorRules: [{ operator: 'regex', value: '.*', color: 'chart-blue' }],
+              colorRules: [
+                { operator: 'regex', value: '.*', color: 'chart-blue' },
+              ],
             },
           },
         ],
@@ -813,7 +819,9 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
                 connectionId,
                 sqlTemplate: 'SELECT 0.99 AS value LIMIT 1',
                 color: 'chart-success',
-                colorRules: [{ operator: 'gte', value: 1, color: 'chart-error' }],
+                colorRules: [
+                  { operator: 'gte', value: 1, color: 'chart-error' },
+                ],
               },
             },
           ],
@@ -867,8 +875,16 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         numberFormat,
         color: 'chart-green' as const,
         colorRules: [
-          { operator: 'gte' as const, value: 100, color: 'chart-warning' as const },
-          { operator: 'gte' as const, value: 500, color: 'chart-error' as const },
+          {
+            operator: 'gte' as const,
+            value: 100,
+            color: 'chart-warning' as const,
+          },
+          {
+            operator: 'gte' as const,
+            value: 500,
+            color: 'chart-error' as const,
+          },
         ],
       };
       const tiles = [
