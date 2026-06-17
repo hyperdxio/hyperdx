@@ -87,3 +87,133 @@ test.describe('Custom Time Range', { tag: '@custom-time-range' }, () => {
     await expect(searchPage.timePicker.startDateInput).toHaveValue(/15:22/);
   });
 });
+
+/**
+ * Regression coverage for the "date picker picks UTC midnight even in local
+ * timezone mode" bug (HDX-4576).
+ *
+ * When the user has Local TZ selected and picks a date from the calendar,
+ * the time should default to 00:00:00 in the local timezone (not 00:00:00
+ * UTC). This test uses a non-UTC timezone to expose the difference.
+ */
+test.describe(
+  'Calendar Date Picker Timezone',
+  { tag: '@custom-time-range' },
+  () => {
+    test.use({ timezoneId: 'America/Los_Angeles' });
+
+    test.describe('Local timezone mode', () => {
+      let searchPage: SearchPage;
+
+      test.beforeEach(async ({ page }) => {
+        await page.addInitScript(() => {
+          window.localStorage.setItem(
+            'hdx-user-preferences',
+            JSON.stringify({
+              isUTC: false,
+              timeFormat: '24h',
+              colorMode: 'dark',
+              font: 'IBM Plex Mono',
+            }),
+          );
+        });
+
+        searchPage = new SearchPage(page);
+        await page.goto('/search');
+        await expect(searchPage.form).toBeVisible();
+        await searchPage.timePicker.open();
+        await searchPage.timePicker.disableRelativeTime();
+        await searchPage.timePicker.selectRangeMode();
+      });
+
+      test('calendar date pick should use local timezone midnight', async ({
+        page,
+      }) => {
+        await test.step('Pick a date from the calendar', async () => {
+          await searchPage.timePicker.fillStartDate('2026-06-01 12:00:00');
+          await searchPage.timePicker.pickStartDateFromCalendar(5);
+        });
+
+        await test.step('Verify the date input shows midnight local time', async () => {
+          await expect(searchPage.timePicker.startDateInput).toHaveValue(
+            '2026-06-05 00:00:00',
+          );
+        });
+
+        await test.step('Set end date and apply', async () => {
+          await searchPage.timePicker.fillEndDate('2026-06-05 23:59:59');
+          await searchPage.timePicker.apply();
+        });
+
+        await test.step('URL from param corresponds to local midnight, not UTC midnight', async () => {
+          await page.waitForURL('**/search**from=**to=**');
+          const url = new URL(page.url());
+          const fromEpoch = Number(url.searchParams.get('from'));
+
+          // June 5, 2026 00:00:00 PDT (UTC-7) = June 5, 2026 07:00:00 UTC
+          const expectedLocalMidnight = Date.UTC(2026, 5, 5, 7, 0, 0);
+          // June 5, 2026 00:00:00 UTC (wrong if bug is present)
+          const wrongUtcMidnight = Date.UTC(2026, 5, 5, 0, 0, 0);
+
+          expect(fromEpoch).toBe(expectedLocalMidnight);
+          expect(fromEpoch).not.toBe(wrongUtcMidnight);
+        });
+      });
+    });
+
+    test.describe('UTC mode', () => {
+      let searchPage: SearchPage;
+
+      test.beforeEach(async ({ page }) => {
+        await page.addInitScript(() => {
+          window.localStorage.setItem(
+            'hdx-user-preferences',
+            JSON.stringify({
+              isUTC: true,
+              timeFormat: '24h',
+              colorMode: 'dark',
+              font: 'IBM Plex Mono',
+            }),
+          );
+        });
+
+        searchPage = new SearchPage(page);
+        await page.goto('/search');
+        await expect(searchPage.form).toBeVisible();
+        await searchPage.timePicker.open();
+        await searchPage.timePicker.disableRelativeTime();
+        await searchPage.timePicker.selectRangeMode();
+      });
+
+      test('calendar date pick should use UTC midnight when isUTC is true', async ({
+        page,
+      }) => {
+        await test.step('Pick a date from the calendar', async () => {
+          await searchPage.timePicker.fillStartDate('2026-06-01 12:00:00');
+          await searchPage.timePicker.pickStartDateFromCalendar(5);
+        });
+
+        await test.step('Verify the date input shows midnight (UTC context)', async () => {
+          await expect(searchPage.timePicker.startDateInput).toHaveValue(
+            '2026-06-05 00:00:00',
+          );
+        });
+
+        await test.step('Set end date and apply', async () => {
+          await searchPage.timePicker.fillEndDate('2026-06-05 23:59:59');
+          await searchPage.timePicker.apply();
+        });
+
+        await test.step('URL from param corresponds to UTC midnight', async () => {
+          await page.waitForURL('**/search**from=**to=**');
+          const url = new URL(page.url());
+          const fromEpoch = Number(url.searchParams.get('from'));
+
+          // June 5, 2026 00:00:00 UTC
+          const expectedUtcMidnight = Date.UTC(2026, 5, 5, 0, 0, 0);
+          expect(fromEpoch).toBe(expectedUtcMidnight);
+        });
+      });
+    });
+  },
+);

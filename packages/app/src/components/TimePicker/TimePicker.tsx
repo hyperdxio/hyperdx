@@ -3,6 +3,7 @@ import { add, Duration, format, sub } from 'date-fns';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 import {
   Button,
   Card,
@@ -30,6 +31,7 @@ import { TimePickerMode } from './types';
 import { useTimePickerForm } from './useTimePickerForm';
 import {
   dateParser,
+  dateParserUTC,
   DURATION_OPTIONS,
   DURATIONS,
   LIVE_TAIL_DURATION_MS,
@@ -47,8 +49,44 @@ const DATE_INPUT_PLACEHOLDER = 'YYYY-MM-DD HH:mm:ss';
 const DATE_INPUT_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 
 /** Ensure a value is a Date object (Mantine v9 DateInput returns strings). */
-const toDate = (v: Date | string | null): Date | null =>
-  v == null ? null : v instanceof Date ? v : new Date(v);
+const toDate = (v: Date | string | null, isUTC: boolean): Date | null => {
+  if (v == null) return null;
+  if (v instanceof Date) return v;
+  // Date-only strings ("YYYY-MM-DD") are parsed as UTC by the ES spec.
+  // We need to parse them as local midnight (or UTC midnight based on pref).
+  const dateOnlyMatch = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) {
+    const [, y, m, d] = dateOnlyMatch;
+    if (isUTC) {
+      return new Date(Date.UTC(+y, +m - 1, +d, 0, 0, 0));
+    }
+    return new Date(+y, +m - 1, +d, 0, 0, 0);
+  }
+  // Datetime strings ("YYYY-MM-DD HH:mm:ss")
+  if (isUTC) {
+    return new Date(v.replace(' ', 'T') + 'Z');
+  }
+  return new Date(v);
+};
+
+/**
+ * Format a Date for Mantine DateInput's controlled value prop.
+ * Produces a timezone-naive "YYYY-MM-DD HH:mm:ss" string in the user's
+ * preferred timezone so that calendar date picks create midnight in the
+ * correct timezone context.
+ */
+const formatDateForInput = (date: Date, isUTC: boolean): string => {
+  if (isUTC) {
+    const y = date.getUTCFullYear();
+    const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(date.getUTCDate()).padStart(2, '0');
+    const h = String(date.getUTCHours()).padStart(2, '0');
+    const min = String(date.getUTCMinutes()).padStart(2, '0');
+    const s = String(date.getUTCSeconds()).padStart(2, '0');
+    return `${y}-${m}-${d} ${h}:${min}:${s}`;
+  }
+  return format(date, 'yyyy-MM-dd HH:mm:ss');
+};
 
 /**
  * Wrapper around Mantine v9 DateInput that bridges the Date ↔ string gap.
@@ -64,11 +102,13 @@ const toDate = (v: Date | string | null): Date | null =>
 type DateInputCmpProps = Omit<DateInputProps, 'value' | 'onChange'> & {
   value?: Date | null;
   onChange?: (value: Date | null) => void;
+  isUTC?: boolean;
 };
 
 const DateInputCmp = ({
   value,
   onChange: onChangeProp,
+  isUTC = false,
   ...props
 }: DateInputCmpProps) => (
   <DateInput
@@ -78,15 +118,17 @@ const DateInputCmp = ({
     placeholder={DATE_INPUT_PLACEHOLDER}
     valueFormat={DATE_INPUT_FORMAT}
     variant="filled"
-    dateParser={dateParser}
+    dateParser={isUTC ? dateParserUTC : dateParser}
     onKeyDown={e => {
       if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
         e.target.blur();
       }
     }}
     {...props}
-    value={value instanceof Date ? value.toISOString() : (value ?? null)}
-    onChange={v => onChangeProp?.(toDate(v))}
+    value={
+      value instanceof Date ? formatDateForInput(value, isUTC) : (value ?? null)
+    }
+    onChange={v => onChangeProp?.(toDate(v, isUTC))}
   />
 );
 
@@ -120,7 +162,7 @@ const TimePickerComponent = ({
   size?: 'xs' | 'sm';
 }) => {
   const {
-    userPreferences: { timeFormat },
+    userPreferences: { timeFormat, isUTC },
   } = useUserPreferences();
 
   const [opened, { close, toggle }] = useDisclosure(false);
@@ -143,8 +185,8 @@ const TimePickerComponent = ({
   const form = useTimePickerForm({ mode });
 
   const dateRange = React.useMemo(() => {
-    return parseTimeRangeInput(value);
-  }, [value]);
+    return parseTimeRangeInput(value, isUTC);
+  }, [value, isUTC]);
 
   React.useEffect(() => {
     // Only update form values from external dateRange when popover is closed
@@ -189,24 +231,31 @@ const TimePickerComponent = ({
       if (!from || !to) {
         return;
       }
-      const formatStr =
-        timeFormat === '24h' ? 'MMM d HH:mm:ss' : 'MMM d h:mm:ss a';
+      const clock = timeFormat === '24h' ? '24h' : '12h';
       const rangeStr = [from, to]
-        .map(d => d && format(d, formatStr))
+        .map(
+          d =>
+            d &&
+            formatDate(d, {
+              isUTC,
+              format: 'normal',
+              clock,
+            }),
+        )
         .join(' - ');
       onChange(rangeStr);
       onSearch(rangeStr);
       close();
     },
-    [close, onChange, onSearch, timeFormat],
+    [close, onChange, onSearch, timeFormat, isUTC],
   );
 
   const handleApply = React.useCallback(() => {
     if (!form.isValid() || !opened) {
       return;
     }
-    const startDate = toDate(form.values.startDate);
-    const endDate = toDate(form.values.endDate);
+    const startDate = toDate(form.values.startDate, isUTC);
+    const endDate = toDate(form.values.endDate, isUTC);
     if (mode === TimePickerMode.Range) {
       handleSearch([startDate, endDate]);
       close();
@@ -218,19 +267,19 @@ const TimePickerComponent = ({
       handleSearch([from, to]);
       close();
     }
-  }, [close, form, handleSearch, mode, opened]);
+  }, [close, form, handleSearch, isUTC, mode, opened]);
 
   useHotkeys('Enter', handleApply, [handleApply]);
 
   const handleMove = React.useCallback(
     (d: Duration) => {
-      const startDate = toDate(form.values.startDate);
-      const endDate = toDate(form.values.endDate);
+      const startDate = toDate(form.values.startDate, isUTC);
+      const endDate = toDate(form.values.endDate, isUTC);
       const from = startDate && add(startDate, d);
       const to = endDate && add(endDate, d);
       handleSearch([from, to]);
     },
-    [form.values, handleSearch],
+    [form.values, handleSearch, isUTC],
   );
 
   const [isRelative, setIsRelative] = useState(defaultRelativeTimeMode);
@@ -399,8 +448,8 @@ const TimePickerComponent = ({
                     form.values.startDate &&
                     form.values.endDate
                   ) {
-                    const start = toDate(form.values.startDate)!;
-                    const end = toDate(form.values.endDate)!;
+                    const start = toDate(form.values.startDate, isUTC)!;
+                    const end = toDate(form.values.endDate, isUTC)!;
                     const midpoint = new Date(
                       (start.getTime() + end.getTime()) / 2,
                     );
@@ -431,6 +480,7 @@ const TimePickerComponent = ({
                 <>
                   <H>Start time</H>
                   <DateInputCmp
+                    isUTC={isUTC}
                     disabled={isRelative}
                     popoverProps={dateComponentPopoverProps}
                     maxDate={today}
@@ -439,6 +489,7 @@ const TimePickerComponent = ({
                   />
                   <H>End time</H>
                   <DateInputCmp
+                    isUTC={isUTC}
                     popoverProps={dateComponentPopoverProps}
                     maxDate={today}
                     minDate={form.values.startDate ?? undefined}
@@ -450,6 +501,7 @@ const TimePickerComponent = ({
                 <>
                   <H>Time</H>
                   <DateInputCmp
+                    isUTC={isUTC}
                     disabled={isRelative}
                     popoverProps={dateComponentPopoverProps}
                     maxDate={today}

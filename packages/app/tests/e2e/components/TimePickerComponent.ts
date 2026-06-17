@@ -237,4 +237,38 @@ export class TimePickerComponent {
     await this.fillEndDate(to);
     await this.apply();
   }
+
+  /**
+   * Click a specific day number in the calendar dropdown of the Start date input.
+   * Opens the calendar by clicking the input, then clicks the day button.
+   * Only clicks days that are not outside the current month and not disabled.
+   */
+  async pickStartDateFromCalendar(dayNumber: number) {
+    await this.startDateInput.click();
+    const calendarDay = this.pickerPopover
+      .locator(
+        'button:not([data-outside]):not([data-disabled]):not([data-hidden])',
+      )
+      .filter({ hasText: new RegExp(`^${dayNumber}$`) })
+      .first();
+    await calendarDay.waitFor({ state: 'visible', timeout: 5000 });
+    await calendarDay.click();
+  }
+
+  /**
+   * Click a specific day number in the calendar dropdown of the End date input.
+   * Opens the calendar by clicking the input, then clicks the day button.
+   * Only clicks days that are not outside the current month and not disabled.
+   */
+  async pickEndDateFromCalendar(dayNumber: number) {
+    await this.endDateInput.click();
+    const calendarDay = this.pickerPopover
+      .locator(
+        'button:not([data-outside]):not([data-disabled]):not([data-hidden])',
+      )
+      .filter({ hasText: new RegExp(`^${dayNumber}$`) })
+      .first();
+    await calendarDay.waitFor({ state: 'visible', timeout: 5000 });
+    await calendarDay.click();
+  }
 }

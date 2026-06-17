@@ -141,3 +141,11 @@ export const dateParser = (input?: string) => {
   const parsed = chrono.casual.parse(input)[0];
   return normalizeParsedDate(parsed?.start);
 };
+
+export const dateParserUTC = (input?: string) => {
+  if (!input) {
+    return null;
+  }
+  const parsed = chrono.casual.parse(input, { timezone: 0 })[0];
+  return normalizeParsedDate(parsed?.start);
+};
