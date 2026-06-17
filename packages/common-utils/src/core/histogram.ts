@@ -4,21 +4,16 @@ import { BuilderChartConfig } from '@/types';
 type WithClauses = BuilderChartConfig['with'];
 type TemplatedInput = ChSql | string;
 
-// Returns the SQL expression for hashing metric attributes into a unique key.
-// When using the JSON schema (BETA_CH_OTEL_JSON_SCHEMA_ENABLED), the attribute
-// columns are JSON type instead of Map(String, String), so mapConcat() would
-// fail with "Function mapConcat requires at least one argument of type Map".
-// cityHash64 accepts JSON columns directly as variadic arguments, which avoids
-// the per-row toJSONString serialization overhead (~28% faster).
-export function attrHashExpr(isJsonSchema: boolean): string {
-  return isJsonSchema
-    ? 'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)'
-    : 'cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes))';
-}
+// SQL expression for hashing metric attributes into a per-series key.
+// Variadic cityHash64 over the three attribute scopes — works for both
+// Map(LowCardinality(String), String) and JSON columns. Prior to HDX-4466
+// the Map-schema path wrapped the three maps in mapConcat() before hashing;
+// see the ticket for the cross-scope same-key implications of the switch.
+const ATTR_HASH_EXPR =
+  'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)';
 
 export const translateHistogram = ({
   select,
-  isJsonSchema = false,
   ...rest
 }: {
   select: Exclude<BuilderChartConfig['select'], string>[number];
@@ -27,7 +22,6 @@ export const translateHistogram = ({
   from: TemplatedInput;
   where: TemplatedInput;
   valueAlias: TemplatedInput;
-  isJsonSchema?: boolean;
 }) => {
   if (select.aggFn === 'quantile') {
     if (!('level' in select) || select.level === null)
@@ -35,11 +29,10 @@ export const translateHistogram = ({
     return translateHistogramQuantile({
       ...rest,
       level: select.level,
-      isJsonSchema,
     });
   }
   if (select.aggFn === 'count') {
-    return translateHistogramCount({ ...rest, isJsonSchema });
+    return translateHistogramCount(rest);
   }
   throw new Error(`${select.aggFn} is not supported for histograms currently`);
 };
@@ -50,14 +43,12 @@ const translateHistogramCount = ({
   from,
   where,
   valueAlias,
-  isJsonSchema = false,
 }: {
   timeBucketSelect: TemplatedInput;
   groupBy?: TemplatedInput;
   from: TemplatedInput;
   where: TemplatedInput;
   valueAlias: TemplatedInput;
-  isJsonSchema?: boolean;
 }): WithClauses => [
   {
     name: 'source',
@@ -67,7 +58,7 @@ const translateHistogramCount = ({
             AggregationTemporality,
             ${timeBucketSelect},
             ${groupBy ? chSql`[${groupBy}] AS group,` : ''}
-            ${attrHashExpr(isJsonSchema)} AS attr_hash,
+            ${ATTR_HASH_EXPR} AS attr_hash,
             cityHash64(ExplicitBounds) AS bounds_hash,
             toInt64(Count) AS current_count,
             lagInFrame(toNullable(current_count), 1, NULL) OVER (
@@ -103,7 +94,6 @@ const translateHistogramQuantile = ({
   where,
   valueAlias,
   level,
-  isJsonSchema = false,
 }: {
   timeBucketSelect: TemplatedInput;
   groupBy?: TemplatedInput;
@@ -111,7 +101,6 @@ const translateHistogramQuantile = ({
   where: TemplatedInput;
   valueAlias: TemplatedInput;
   level: number;
-  isJsonSchema?: boolean;
 }): WithClauses => [
   {
     name: 'source',
@@ -150,7 +139,7 @@ const translateHistogramQuantile = ({
                   ExplicitBounds,
                   ResourceAttributes,
                   Attributes,
-                  ${attrHashExpr(isJsonSchema)} AS attr_hash,
+                  ${ATTR_HASH_EXPR} AS attr_hash,
                   cityHash64(ExplicitBounds) AS bounds_hash,
                   CAST(BucketCounts AS Array(Int64)) counts
               FROM ${from}
