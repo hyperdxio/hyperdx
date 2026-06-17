@@ -109,28 +109,36 @@ export function useFilteredSortedSourceItems({
  * grouped so the matched header explains why each result is there. The signal
  * kind is deliberately not part of the haystack; only name and section match.
  */
-export const sourceSelectFilter: OptionsFilter = ({ options, search }) => {
+export const sourceSelectFilter: OptionsFilter = ({
+  options,
+  search,
+  limit,
+}) => {
   const tokens = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) {
-    return options;
-  }
 
   const matches = (label: string, groupLabel?: string) =>
     tokens.every(token =>
       `${label} ${groupLabel ?? ''}`.toLowerCase().includes(token),
     );
 
+  // Honor Mantine's `limit` (Infinity unless a caller sets it) over the total
+  // options across all groups, keeping the group structure intact.
   const result: typeof options = [];
+  let remaining = limit;
   for (const option of options) {
+    if (remaining <= 0) break;
     if ('group' in option) {
-      const items = option.items.filter(item =>
-        matches(item.label, option.group),
-      );
+      const matched = tokens.length
+        ? option.items.filter(item => matches(item.label, option.group))
+        : option.items;
+      const items = matched.slice(0, remaining);
       if (items.length > 0) {
         result.push({ ...option, items });
+        remaining -= items.length;
       }
-    } else if (matches(option.label)) {
+    } else if (!tokens.length || matches(option.label)) {
       result.push(option);
+      remaining -= 1;
     }
   }
   return result;

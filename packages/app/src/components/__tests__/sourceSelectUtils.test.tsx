@@ -246,6 +246,22 @@ describe('sourceSelectFilter', () => {
     expect(run('   ')).toEqual(grouped);
   });
 
+  it('honors the Mantine limit by capping the total options across groups', () => {
+    // Billing has three items; a limit of 2 truncates it and drops the
+    // remaining groups, matching the OptionsFilter contract.
+    expect(
+      sourceSelectFilter({ options: grouped, search: '', limit: 2 }),
+    ).toEqual([
+      {
+        group: 'Billing',
+        items: [
+          { value: 'billing-logs', label: 'Billing Logs' },
+          { value: 'billing-traces', label: 'Billing Traces' },
+        ],
+      },
+    ]);
+  });
+
   it('treats the section header as a tag: a section name selects the whole section', () => {
     expect(run('billing')).toEqual([
       {
