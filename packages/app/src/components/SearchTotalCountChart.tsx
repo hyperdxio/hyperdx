@@ -39,8 +39,8 @@ export function useSearchTotalCount(
 
   // queriedConfig, queryKey, and enableQueryChunking match DBTimeChart so that react query can de-dupe these queries.
   const queriedConfig = useMemo(
-    () => convertToTimeChartConfig(config, me?.team?.seriesLimit),
-    [config, me?.team?.seriesLimit],
+    () => convertToTimeChartConfig(config),
+    [config],
   );
   const {
     data: totalCountData,
