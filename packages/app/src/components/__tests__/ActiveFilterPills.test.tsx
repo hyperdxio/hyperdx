@@ -102,6 +102,26 @@ describe('ActiveFilterPills', () => {
     expect(screen.getByText('status')).toBeInTheDocument();
   });
 
+  it('styles the excluded pill with a soft red-light background and the included pill with neutral hover', () => {
+    const searchFilters = makeSearchFilters({
+      status: {
+        included: new Set<string | boolean>(['200']),
+        excluded: new Set<string | boolean>(),
+      },
+      level: {
+        included: new Set<string | boolean>(),
+        excluded: new Set<string | boolean>(['error']),
+      },
+    });
+    renderPills(searchFilters);
+    expect(screen.getByTestId('active-filter-pill-status')).toHaveStyle({
+      backgroundColor: 'var(--color-bg-hover)',
+    });
+    expect(screen.getByTestId('active-filter-pill-level')).toHaveStyle({
+      backgroundColor: 'var(--mantine-color-red-light)',
+    });
+  });
+
   it('renders range filter pills', () => {
     const searchFilters = makeSearchFilters({
       duration: {
