@@ -43,4 +43,15 @@ describe('sparklinePointsFromGraphResults', () => {
       { x: 400, y: 9 },
     ]);
   });
+
+  it('skips rows with a non-finite timestamp', () => {
+    const graphResults = [
+      { [ts]: Number.NaN, [value]: 5 },
+      { [ts]: Number.POSITIVE_INFINITY, [value]: 6 },
+      { [ts]: 300, [value]: 9 },
+    ];
+    expect(sparklinePointsFromGraphResults(graphResults, ts, value)).toEqual([
+      { x: 300, y: 9 },
+    ]);
+  });
 });

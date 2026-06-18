@@ -60,7 +60,12 @@ export function sparklinePointsFromGraphResults(
   for (const row of graphResults) {
     const x = row[timestampKey];
     const y = row[valueKey];
-    if (typeof x === 'number' && typeof y === 'number' && Number.isFinite(y)) {
+    if (
+      typeof x === 'number' &&
+      Number.isFinite(x) &&
+      typeof y === 'number' &&
+      Number.isFinite(y)
+    ) {
       points.push({ x, y });
     }
   }
@@ -77,14 +82,25 @@ function NumberTileBackgroundChartInner({
   // Number tiles strip granularity / group-by (`convertToNumberChartConfig`),
   // collapsing the query to a single value. Request a line series at the
   // tile's granularity (auto when unset) to recover the temporal trend.
-  const timeConfig = useMemo<ChartConfigWithDateRange>(
-    () => ({
-      ...config,
+  //
+  // Drop number-tile display-only fields first: they flow into the query key
+  // (via `convertToTimeChartConfig`), so leaving them in would refetch
+  // identical time-series data on every purely visual edit (sparkline type,
+  // reference line, tile color, number format).
+  const timeConfig = useMemo<ChartConfigWithDateRange>(() => {
+    const {
+      backgroundChart: _backgroundChart,
+      color: _color,
+      colorRules: _colorRules,
+      numberFormat: _numberFormat,
+      ...rest
+    } = config;
+    return {
+      ...rest,
       displayType: DisplayType.Line,
       granularity: config.granularity ?? 'auto',
-    }),
-    [config],
-  );
+    };
+  }, [config]);
 
   const { dateRange, granularity, fillNulls } =
     useTimeChartSettings(timeConfig);
