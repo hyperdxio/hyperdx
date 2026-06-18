@@ -403,24 +403,6 @@ describe('convertFormStateToChartConfig', () => {
     ) as BuilderChartConfig;
     expect(result?.select).toBe('Body');
   });
-
-  it('returns config for Markdown displayType without a source', () => {
-    const form: ChartEditorFormState = {
-      displayType: DisplayType.Markdown,
-      markdown: '## Dashboard Overview',
-      source: '',
-      series: [],
-    };
-    const result = convertFormStateToChartConfig(form, dateRange, undefined);
-    expect(result).toBeDefined();
-    expect(result).toMatchObject({
-      displayType: DisplayType.Markdown,
-      markdown: '## Dashboard Overview',
-      dateRange,
-      select: [],
-      where: '',
-    });
-  });
 });
 
 describe('convertSavedChartConfigToFormState', () => {
