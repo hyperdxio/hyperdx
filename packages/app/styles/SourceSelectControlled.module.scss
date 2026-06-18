@@ -46,14 +46,13 @@
       border-bottom-left-radius: var(--mantine-radius-default);
     }
 
-    /* Square only the left edge of the kebab. Fixed 30px height matches the
-     * input chip; -1px margin overlaps the input's right edge so the shared
-     * border is one pixel wide, not two. */
+    /* Square only the left edge of the kebab. The ActionIcon's `input-*`
+     * size (driven by the adjacent Select's `size`) makes it square and
+     * matches the input chip's height; -1px margin overlaps the input's
+     * right edge so the shared border is one pixel wide, not two. */
     .sourceMenuButton {
       --ai-radius: 0;
 
-      width: 30px;
-      height: 30px;
       margin-left: -1px;
       background-color: var(--color-bg-field-addon);
       border: 1px solid var(--input-bd, var(--color-border));
@@ -89,4 +88,13 @@
  */
 .sourceMenuButton {
   flex-shrink: 0;
+}
+
+/* Grouped dropdown decoupled from the compact picker (comboboxProps
+ * width="max-content", floored wider, capped to the viewport, pinned left
+ * via position="bottom-start"). The input keeps its own width.
+ */
+.sourceSelectDropdown {
+  min-width: 22rem;
+  max-width: min(32rem, calc(100vw - 2rem));
 }

@@ -64,6 +64,7 @@ import {
   useGetKeyValues,
   useGetValuesDistribution,
   useJsonColumns,
+  useMapColumns,
   useTableMetadata,
 } from '@/hooks/useMetadata';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
@@ -1141,6 +1142,7 @@ const DBSearchPageFiltersComponent = ({
   const { data: source } = useSource({ id: sourceId });
   const sourceTableConnection = tcFromSource(source);
   const { data: jsonColumns } = useJsonColumns(sourceTableConnection);
+  const { data: mapColumns } = useMapColumns(sourceTableConnection);
   const filterMode = showAllValues ? ('all' as const) : ('exact' as const);
 
   const hasMVs = !!sourceTableConnection.metadataMVs;
@@ -1237,7 +1239,7 @@ const DBSearchPageFiltersComponent = ({
       .map(({ path, type }) => {
         return {
           type,
-          path: mergePath(path, jsonColumns ?? []),
+          path: mergePath(path, jsonColumns ?? [], mapColumns ?? []),
           isMapSubField: path.length > 1,
         };
       })
@@ -1259,6 +1261,7 @@ const DBSearchPageFiltersComponent = ({
   }, [
     allFields,
     jsonColumns,
+    mapColumns,
     filterState,
     showMoreFields,
     isFieldPinned,

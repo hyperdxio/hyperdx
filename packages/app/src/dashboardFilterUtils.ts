@@ -7,6 +7,11 @@
 // and one place to maintain. Page-level (`DBDashboardPage.tsx`),
 // hook-level (`useDashboardFilters.tsx`), and chip-level
 // (`DashboardFilters.tsx`) all consume the same primitives.
+//
+// `parseQuery` parses simple `type: 'sql'` IN / NOT IN / BETWEEN
+// conditions into a keyed `FilterState` and ignores anything else, so
+// the saved/URL filter values these helpers round-trip are the same
+// `type: 'sql'` shape `filtersToQuery` emits.
 import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   type FilterState,
@@ -54,18 +59,14 @@ export const stripConstantsFromUrl = (
   constantExpressions: Set<string>,
 ): Filter[] | null => {
   if (constantExpressions.size === 0) return savedFilterValues;
-  const { filters: parsedSaved, passthroughFilters } =
-    parseQuery(savedFilterValues);
+  const { filters: parsedSaved } = parseQuery(savedFilterValues);
   const remaining: FilterState = {};
   for (const [key, value] of Object.entries(parsedSaved)) {
     if (!constantExpressions.has(normalizeExpression(key))) {
       remaining[key] = value;
     }
   }
-  const remainingQueries = [
-    ...filtersToQuery(remaining),
-    ...passthroughFilters,
-  ];
+  const remainingQueries = filtersToQuery(remaining);
   return remainingQueries.length ? remainingQueries : null;
 };
 
@@ -82,31 +83,21 @@ export const mergeConstantFiltersForSave = (
   constantExpressions: Set<string>,
 ): Filter[] => {
   if (constantExpressions.size === 0) return urlFilterValues;
-  const { filters: parsedSaved, passthroughFilters: savedPassthrough } =
-    parseQuery(savedFilterValues ?? []);
+  const { filters: parsedSaved } = parseQuery(savedFilterValues ?? []);
   const preservedSaved: FilterState = {};
   for (const [key, value] of Object.entries(parsedSaved)) {
     if (constantExpressions.has(normalizeExpression(key))) {
       preservedSaved[key] = value;
     }
   }
-  const preservedQueries = [
-    ...filtersToQuery(preservedSaved),
-    ...savedPassthrough,
-  ];
-  const { filters: parsedUrl, passthroughFilters: urlPassthrough } =
-    parseQuery(urlFilterValues);
+  const { filters: parsedUrl } = parseQuery(urlFilterValues);
   const filteredUrl: FilterState = {};
   for (const [key, value] of Object.entries(parsedUrl)) {
     if (!constantExpressions.has(normalizeExpression(key))) {
       filteredUrl[key] = value;
     }
   }
-  return [
-    ...preservedQueries,
-    ...filtersToQuery(filteredUrl),
-    ...urlPassthrough,
-  ];
+  return [...filtersToQuery(preservedSaved), ...filtersToQuery(filteredUrl)];
 };
 
 /**
@@ -122,7 +113,7 @@ export const upsertSavedDefault = (
   values: string[],
 ): Filter[] => {
   const existing = savedFilterValues ?? [];
-  const { filters: parsed, passthroughFilters } = parseQuery(existing);
+  const { filters: parsed } = parseQuery(existing);
   const norm = normalizeExpression(expression);
   const remaining: FilterState = {};
   for (const [key, value] of Object.entries(parsed)) {
@@ -136,7 +127,7 @@ export const upsertSavedDefault = (
       excluded: new Set(),
     };
   }
-  return [...filtersToQuery(remaining), ...passthroughFilters];
+  return filtersToQuery(remaining);
 };
 
 /**
@@ -151,12 +142,12 @@ export const removeSavedDefaultForExpression = (
 ): Filter[] | undefined => {
   if (!savedFilterValues?.length) return savedFilterValues ?? undefined;
   const norm = normalizeExpression(expression);
-  const { filters: parsed, passthroughFilters } = parseQuery(savedFilterValues);
+  const { filters: parsed } = parseQuery(savedFilterValues);
   const remaining: FilterState = {};
   for (const [key, value] of Object.entries(parsed)) {
     if (normalizeExpression(key) !== norm) {
       remaining[key] = value;
     }
   }
-  return [...filtersToQuery(remaining), ...passthroughFilters];
+  return filtersToQuery(remaining);
 };

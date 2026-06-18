@@ -82,22 +82,22 @@ describe('buildConstantExpressionSet', () => {
 
 describe('stripConstantsFromUrl', () => {
   const luceneFilter = (condition: string): Filter => ({
-    type: 'lucene',
+    type: 'sql',
     condition,
   });
 
   it('returns the input unchanged when no expressions are constant', () => {
     const input = [
-      luceneFilter('ServiceName:"api"'),
-      luceneFilter('SpanName:"GET /v1"'),
+      luceneFilter("ServiceName IN ('api')"),
+      luceneFilter("SpanName IN ('GET /v1')"),
     ];
     expect(stripConstantsFromUrl(input, new Set())).toEqual(input);
   });
 
   it('removes entries whose expression is in the constant set', () => {
     const input = [
-      luceneFilter('ServiceName:"api"'),
-      luceneFilter('SpanName:"GET /v1"'),
+      luceneFilter("ServiceName IN ('api')"),
+      luceneFilter("SpanName IN ('GET /v1')"),
     ];
     const result = stripConstantsFromUrl(input, new Set(['ServiceName']));
     expect(result).not.toBeNull();
@@ -108,8 +108,8 @@ describe('stripConstantsFromUrl', () => {
 
   it('matches bracket-notation expressions against dot-notation keys', () => {
     const input = [
-      luceneFilter('SpanAttributes.k8s.pod.name:"pod-1"'),
-      luceneFilter('ServiceName:"api"'),
+      luceneFilter("SpanAttributes.k8s.pod.name IN ('pod-1')"),
+      luceneFilter("ServiceName IN ('api')"),
     ];
     const result = stripConstantsFromUrl(
       input,
@@ -122,7 +122,7 @@ describe('stripConstantsFromUrl', () => {
   });
 
   it('returns null when stripping leaves nothing', () => {
-    const input = [luceneFilter('ServiceName:"api"')];
+    const input = [luceneFilter("ServiceName IN ('api')")];
     const result = stripConstantsFromUrl(input, new Set(['ServiceName']));
     expect(result).toBeNull();
   });
@@ -130,22 +130,22 @@ describe('stripConstantsFromUrl', () => {
 
 describe('mergeConstantFiltersForSave', () => {
   const lucene = (condition: string): Filter => ({
-    type: 'lucene',
+    type: 'sql',
     condition,
   });
 
   it('returns the URL state unchanged when there are no constants', () => {
-    const url = [lucene('SpanName:"GET /v1"')];
+    const url = [lucene("SpanName IN ('GET /v1')")];
     expect(mergeConstantFiltersForSave([], url, new Set())).toEqual(url);
   });
 
   it('preserves constant entries from savedFilterValues and drops URL collisions', () => {
     const constants = new Set(['ServiceName']);
-    const saved = [lucene('ServiceName:"locked"')];
+    const saved = [lucene("ServiceName IN ('locked')")];
     // URL contains a stale ServiceName plus a normal SpanName entry.
     const url = [
-      lucene('ServiceName:"stale-from-share-link"'),
-      lucene('SpanName:"GET /v1"'),
+      lucene("ServiceName IN ('stale-from-share-link')"),
+      lucene("SpanName IN ('GET /v1')"),
     ];
     const result = mergeConstantFiltersForSave(saved, url, constants);
     expect(result).toHaveLength(2);
@@ -164,7 +164,7 @@ describe('mergeConstantFiltersForSave', () => {
 
   it('handles missing savedFilterValues (constant declared without saved value)', () => {
     const constants = new Set(['ServiceName']);
-    const url = [lucene('SpanName:"GET /v1"')];
+    const url = [lucene("SpanName IN ('GET /v1')")];
     const result = mergeConstantFiltersForSave(undefined, url, constants);
     expect(result).toHaveLength(1);
     expect('condition' in result[0] ? result[0].condition : '').toContain(
@@ -184,7 +184,7 @@ describe('upsertSavedDefault', () => {
 
   it('replaces an existing saved value for the same expression', () => {
     const existing: Filter[] = [
-      { type: 'lucene', condition: 'ServiceName:"old"' },
+      { type: 'sql', condition: "ServiceName IN ('old')" },
     ];
     const result = upsertSavedDefault(existing, 'ServiceName', ['new']);
     expect(result).toHaveLength(1);
@@ -195,8 +195,8 @@ describe('upsertSavedDefault', () => {
 
   it('removes the entry when called with an empty values array', () => {
     const existing: Filter[] = [
-      { type: 'lucene', condition: 'ServiceName:"api"' },
-      { type: 'lucene', condition: 'SpanName:"GET /v1"' },
+      { type: 'sql', condition: "ServiceName IN ('api')" },
+      { type: 'sql', condition: "SpanName IN ('GET /v1')" },
     ];
     const result = upsertSavedDefault(existing, 'ServiceName', []);
     expect(result).toHaveLength(1);
@@ -207,8 +207,8 @@ describe('upsertSavedDefault', () => {
   it('matches bracket-notation against dot-notation entries', () => {
     const existing: Filter[] = [
       {
-        type: 'lucene',
-        condition: 'SpanAttributes.k8s.pod.name:"old-pod"',
+        type: 'sql',
+        condition: "SpanAttributes.k8s.pod.name IN ('old-pod')",
       },
     ];
     const result = upsertSavedDefault(
@@ -233,8 +233,8 @@ describe('removeSavedDefaultForExpression', () => {
 
   it('strips entries matching the normalized expression', () => {
     const existing: Filter[] = [
-      { type: 'lucene', condition: 'ServiceName:"api"' },
-      { type: 'lucene', condition: 'SpanName:"GET /v1"' },
+      { type: 'sql', condition: "ServiceName IN ('api')" },
+      { type: 'sql', condition: "SpanName IN ('GET /v1')" },
     ];
     const result = removeSavedDefaultForExpression(existing, 'ServiceName');
     expect(result).toHaveLength(1);
@@ -245,8 +245,8 @@ describe('removeSavedDefaultForExpression', () => {
   it('matches bracket-notation expressions', () => {
     const existing: Filter[] = [
       {
-        type: 'lucene',
-        condition: 'SpanAttributes.k8s.pod.name:"pod-1"',
+        type: 'sql',
+        condition: "SpanAttributes.k8s.pod.name IN ('pod-1')",
       },
     ];
     const result = removeSavedDefaultForExpression(

@@ -17,10 +17,6 @@ import {
   getAlignedDateRange,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
-import {
-  type FilterState,
-  filtersToQuery,
-} from '@hyperdx/common-utils/dist/filters';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunction as AggFnV2,
@@ -41,6 +37,7 @@ import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
+import { DEFAULT_SERIES_LIMIT } from './defaults';
 import { getMetricNameSql } from './otelSemanticConventions';
 import { AggFn, TableChartSeries, TimeChartSeries } from './types';
 import { NumberFormat } from './types';
@@ -107,9 +104,19 @@ function getTimeChartDateRange(
     : getAlignedDateRange(dateRange, granularity);
 }
 
+export const MAX_TIME_CHART_SERIES = DEFAULT_SERIES_LIMIT;
+
 export function convertToTimeChartConfig(
   config: ChartConfigWithDateRange,
 ): ChartConfigWithDateRange {
+  // Series capping is opt-in per tile via the chart's Display Settings; when
+  // unset, no __hdx_series_limit CTE is emitted and every series is fetched.
+  const seriesLimit = isBuilderChartConfig(config)
+    ? config.seriesLimit != null
+      ? Math.max(1, config.seriesLimit)
+      : undefined
+    : undefined;
+
   const granularity = getTimeChartGranularity(
     config.granularity,
     config.dateRange,
@@ -137,6 +144,9 @@ export function convertToTimeChartConfig(
         dateRangeEndInclusive,
         granularity,
         limit: { limit: 100000 },
+        // Overwrite (not conditionally spread) so a cleared `null` from the
+        // source config is normalized to undefined rather than carried over.
+        seriesLimit,
       }
     : {
         ...config,
@@ -927,19 +937,13 @@ export function buildEventsSearchUrl({
 
   // Add group-by column filters
   if (groupFilters && groupFilters.length > 0) {
-    const filterState: FilterState = {};
-    for (const { column, value } of groupFilters) {
+    groupFilters.forEach(({ column, value }) => {
       if (column && value != null) {
-        if (!filterState[column]) {
-          filterState[column] = {
-            included: new Set(),
-            excluded: new Set(),
-          };
-        }
-        filterState[column].included.add(String(value));
+        // Can't use SQLString.escape here because the search endpoint relies on exist match for UI
+        const condition = `${column} IN (${SqlString.escape(value)})`;
+        additionalFilters.push({ type: 'sql', condition });
       }
-    }
-    additionalFilters.push(...filtersToQuery(filterState));
+    });
   }
 
   // Add Y-axis value range filter (±threshold) for charts

@@ -205,10 +205,10 @@ test.describe(
         const url = new URL(page.url());
         expect(url.searchParams.get('source')).toBe(logsSourceId);
         expect(url.searchParams.get('isLive')).toBe('false');
-        // Default row click encodes the group-by filter as a Lucene condition
-        // in the JSON-encoded `filters` param.
+        // Default row click encodes the group-by filter as a SQL IN clause in
+        // the JSON-encoded `filters` param.
         const filters = url.searchParams.get('filters') ?? '[]';
-        expect(filters).toContain(`ServiceName:\\"${serviceName}\\"`);
+        expect(filters).toContain(`ServiceName IN ('${serviceName}')`);
         const from = Number(url.searchParams.get('from'));
         const to = Number(url.searchParams.get('to'));
         expect(from).toBeGreaterThan(0);
@@ -563,8 +563,8 @@ test.describe(
         const filters = JSON.parse(decodeURIComponent(filtersRaw!));
         expect(filters).toEqual([
           {
-            type: 'lucene',
-            condition: `ServiceName:"${serviceName}"`,
+            type: 'sql',
+            condition: `ServiceName IN ('${serviceName}')`,
           },
         ]);
       });
@@ -649,8 +649,8 @@ test.describe(
         const filters = JSON.parse(decodeURIComponent(filtersRaw!));
         expect(filters).toEqual([
           {
-            type: 'lucene',
-            condition: `ServiceName:"${serviceName}"`,
+            type: 'sql',
+            condition: `ServiceName IN ('${serviceName}')`,
           },
         ]);
       });
@@ -749,6 +749,70 @@ test.describe(
           `${targetDashboardName} Renamed`,
         );
         await expect(dashboardPage.ignoredUrlFiltersBanner).toBeHidden();
+      });
+    });
+
+    test('Trailing arrow hint appears on row hover and navigates to the action URL (HDX-4405)', async ({
+      page,
+    }) => {
+      // Pivot of the original HDX-4405 regression test: the row-click hint
+      // is now an anchored Mantine Tooltip wrapping a trailing arrow-up-right
+      // icon in the last cell, rather than a Tooltip.Floating that tracks the
+      // cursor. The arrow is hidden until the row is hovered and the
+      // tooltip is tied to the icon's lifecycle, so no stranded popup is
+      // possible by construction.
+      const ts = Date.now();
+
+      await test.step('Create a table tile with a Search row-click action', async () => {
+        await addTableTile(`E2E Tooltip ${ts}`);
+        await dashboardPage.chartEditor.openRowClickDrawer();
+        await dashboardPage.chartEditor.setRowClickMode('Search');
+        await dashboardPage.chartEditor.fillRowClickTemplate(
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+        await dashboardPage.chartEditor.applyRowClickDrawer();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Set time range to Last 6 hours so rows render', async () => {
+        await dashboardPage.timePicker.selectRelativeTime('Last 6 hours');
+      });
+
+      await dashboardPage.waitForTableTileRows(0);
+
+      await test.step('Trailing arrow is hidden until the row is hovered', async () => {
+        const hint = dashboardPage.getRowActionHint(0);
+        // The icon is in the DOM but its visibility is gated by the
+        // .tableRow:hover .rowActionHint CSS opacity transition.
+        await expect(hint).toHaveCSS('opacity', '0');
+      });
+
+      await test.step('Hovering the row reveals the arrow and the tooltip describes the action', async () => {
+        const tooltip = await dashboardPage.hoverFirstTableRowAndGetTooltip(0);
+        await expect(tooltip).toContainText(/Search|Open/);
+      });
+
+      await test.step('Moving the cursor away closes the tooltip', async () => {
+        // Move to a neutral area; Mantine Tooltip closes on mouseleave
+        // (closeDelay=100ms in the component). Narrow the role match to
+        // the row-action tooltip text so the assertion does not flake on
+        // unrelated header / resize-handle tooltips that may also live in
+        // the portal at the moment of the check.
+        await page.mouse.move(10, 10);
+        await expect(
+          page.getByRole('tooltip', { name: /Search|Open/ }),
+        ).toBeHidden({ timeout: 3000 });
+      });
+
+      await test.step('Clicking the trailing arrow navigates to the same destination as the row body', async () => {
+        // Re-hover the row, then click the arrow. The Link inside the
+        // tooltip-wrapped arrow points to the same href as the per-cell
+        // links, so click navigates exactly as a row click would.
+        const row = dashboardPage.getFirstTableRow(0);
+        await row.hover();
+        const hint = dashboardPage.getRowActionHint(0);
+        await hint.click();
+        await expect(page).toHaveURL(/\/search\?/, { timeout: 10000 });
       });
     });
   },

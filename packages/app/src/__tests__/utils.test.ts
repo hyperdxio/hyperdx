@@ -1,4 +1,9 @@
-import { NumericUnit, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartPaletteTokenSchema,
+  ColorCondition,
+  NumericUnit,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 import { act, renderHook } from '@testing-library/react';
 
@@ -6,6 +11,7 @@ import { MetricsDataType, NumberFormat } from '../types';
 import * as utils from '../utils';
 import {
   COLORS,
+  evaluateColorCondition,
   formatAttributeClause,
   formatDurationMs,
   formatDurationMsCompact,
@@ -14,8 +20,10 @@ import {
   getColorFromCSSToken,
   getMetricTableName,
   mapKeyBy,
+  mergePath,
   orderByStringToSortingState,
   parseTimestampToMs,
+  resolveConditionalColor,
   sortingStateToOrderByString,
   stripTrailingSlash,
   useQueryHistory,
@@ -1205,18 +1213,134 @@ describe('formatDurationMsCompact', () => {
   });
 });
 
+describe('mergePath', () => {
+  describe('default (Array / unknown column)', () => {
+    it('returns the bare key for a single-segment path', () => {
+      expect(mergePath(['Body'])).toBe('Body');
+    });
+
+    it('numeric sub-segment becomes 1-based array index', () => {
+      // ClickHouse arrays are 1-based but flattened data uses 0-based indices.
+      expect(mergePath(['SomeArray', '0'])).toBe('SomeArray[1]');
+      expect(mergePath(['SomeArray', '4'])).toBe('SomeArray[5]');
+    });
+
+    it('non-numeric sub-segment becomes string-key subscript', () => {
+      expect(mergePath(['SomeColumn', 'service.name'])).toBe(
+        "SomeColumn['service.name']",
+      );
+    });
+
+    it('mixed numeric and string segments chain', () => {
+      expect(mergePath(['Outer', '1', 'inner'])).toBe("Outer[2]['inner']");
+    });
+  });
+
+  describe('JSON column', () => {
+    it('emits dotted backtick-quoted accessor', () => {
+      expect(mergePath(['BodyJson', 'service', 'name'], ['BodyJson'])).toBe(
+        'BodyJson.`service`.`name`',
+      );
+    });
+  });
+
+  describe('Map column (HDX-4369)', () => {
+    // Failing reproducer from the issue body: on a Map(String, String), a
+    // numeric-looking sub-key must NOT collapse into array-index syntax.
+    // ClickHouse rejects `LogAttributes[2]` against a Map column with
+    // "Illegal types of arguments: Map(String, String), UInt8 for function
+    // arrayElement". The fix adds a `mapColumns` parameter that forces the
+    // bracketed string-key form regardless of whether the key parses as a
+    // non-negative integer.
+    it('numeric sub-key on a Map renders as string subscript, not array index', () => {
+      const result = mergePath(['LogAttributes', '1'], [], ['LogAttributes']);
+      expect(result).not.toBe('LogAttributes[2]');
+      expect(result).not.toMatch(/\[\d+\]$/);
+      expect(result).toBe("LogAttributes['1']");
+    });
+
+    it('non-numeric Map sub-key keeps string subscript (unchanged)', () => {
+      expect(
+        mergePath(['LogAttributes', 'service.name'], [], ['LogAttributes']),
+      ).toBe("LogAttributes['service.name']");
+    });
+
+    it('multi-segment Map path chains string subscripts', () => {
+      expect(
+        mergePath(['LogAttributes', '1', 'foo'], [], ['LogAttributes']),
+      ).toBe("LogAttributes['1']['foo']");
+    });
+
+    it('Array column with numeric key still uses array-index syntax', () => {
+      // Inverse case: keep existing behavior for non-Map parents.
+      expect(mergePath(['SomeArray', '1'], [], ['LogAttributes'])).toBe(
+        'SomeArray[2]',
+      );
+    });
+
+    it('JSON column wins over Map column when both lists contain the key', () => {
+      // Caller can't currently configure the same column as both; the order
+      // is deterministic if they did.
+      expect(mergePath(['Body', '1'], ['Body'], ['Body'])).toBe('Body.`1`');
+    });
+  });
+
+  describe('SQL escaping of single quotes and backslashes', () => {
+    // Keys can contain user-controlled characters (Map sub-keys carry
+    // arbitrary text). An unescaped single quote produces malformed SQL like
+    // `Map['it's']`, which ClickHouse parses as the broken token sequence
+    // `Map['it']s']`. Backslash must escape first so the quote-escape
+    // backslash is not itself doubled.
+    it('escapes single quotes in Map sub-keys', () => {
+      expect(mergePath(['LogAttributes', "it's"], [], ['LogAttributes'])).toBe(
+        "LogAttributes['it\\'s']",
+      );
+    });
+
+    it('escapes backslashes in Map sub-keys', () => {
+      expect(
+        mergePath(['LogAttributes', 'back\\slash'], [], ['LogAttributes']),
+      ).toBe("LogAttributes['back\\\\slash']");
+    });
+
+    it('escapes a key containing both a backslash and a quote', () => {
+      expect(
+        mergePath(['LogAttributes', "a\\b'c"], [], ['LogAttributes']),
+      ).toBe("LogAttributes['a\\\\b\\'c']");
+    });
+
+    it('escapes single quotes in default-branch string subscripts', () => {
+      // The default Array / unknown column branch also takes string-key
+      // subscripts when the segment is non-numeric. Same escape applies.
+      expect(mergePath(['SomeColumn', "it's"])).toBe("SomeColumn['it\\'s']");
+    });
+
+    it('leaves numeric segments untouched in the default branch', () => {
+      // Numeric path collapses to bracketed integer index; escape is a
+      // no-op because Number.isInteger(asNumber) succeeds. Sanity check.
+      expect(mergePath(['SomeArray', '0'])).toBe('SomeArray[1]');
+    });
+  });
+});
+
 describe('getColorFromCSSToken', () => {
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
-  it('returns the CSS variable value when getComputedStyle provides one', () => {
-    jest.spyOn(global, 'getComputedStyle').mockReturnValue({
-      getPropertyValue: (name: string) =>
-        name === '--color-chart-1' ? '#custom-green' : '',
-    } as unknown as CSSStyleDeclaration);
+  it('returns the categorical hex directly from CATEGORICAL_HEX_BY_TOKEN without reading CSS', () => {
+    // Categorical tokens are unified across themes, so the resolver
+    // intentionally skips getComputedStyle to avoid a per-series
+    // layout read. A CSS-var override has no effect on the returned
+    // value (and shouldn't be relied upon by JS callers).
+    const getComputedStyleSpy = jest
+      .spyOn(global, 'getComputedStyle')
+      .mockReturnValue({
+        getPropertyValue: () => '#should-be-ignored',
+      } as unknown as CSSStyleDeclaration);
 
-    expect(getColorFromCSSToken('chart-1')).toBe('#custom-green');
+    expect(getColorFromCSSToken('chart-blue')).toBe(COLORS[0]);
+    expect(getComputedStyleSpy).not.toHaveBeenCalled();
   });
 
   it('returns the CSS variable value for semantic tokens when provided', () => {
@@ -1228,40 +1352,349 @@ describe('getColorFromCSSToken', () => {
     expect(getColorFromCSSToken('chart-success')).toBe('#theme-green');
   });
 
-  it('falls back to COLORS[0] for chart-1 when the CSS variable is empty', () => {
-    jest.spyOn(global, 'getComputedStyle').mockReturnValue({
-      getPropertyValue: () => '',
-    } as unknown as CSSStyleDeclaration);
-
-    expect(getColorFromCSSToken('chart-1')).toBe(COLORS[0]);
-  });
-
-  it('falls back to the SSR palette when getComputedStyle throws', () => {
+  it('falls back to SEMANTIC_CHART_PALETTE when getComputedStyle throws for semantic tokens', () => {
     jest.spyOn(global, 'getComputedStyle').mockImplementation(() => {
       throw new Error('getComputedStyle unavailable');
     });
 
-    // Semantic tokens fall back to their designated palette colors.
-    // These hex values are the CHART_PALETTE constants used in paletteTokenSSRFallback.
-    expect(getColorFromCSSToken('chart-success')).toBe('#00c28a');
+    // Defaults to HyperDX in jsdom because the document has no
+    // theme-clickstack class.
+    expect(getColorFromCSSToken('chart-success')).toBe('#3ca951');
     expect(getColorFromCSSToken('chart-warning')).toBe('#efb118');
     expect(getColorFromCSSToken('chart-error')).toBe('#ff725c');
-    // Categorical token falls back to the COLORS array by index.
-    expect(getColorFromCSSToken('chart-1')).toBe(COLORS[0]);
-    expect(getColorFromCSSToken('chart-10')).toBe(COLORS[9]);
   });
 
-  it('falls back to the SSR palette for all categorical indices (chart-1 through chart-10)', () => {
-    // Verify every categorical token resolves to its expected COLORS entry.
-    // The throw-branch exercises the same paletteTokenSSRFallback code as the
-    // SSR branch (window === undefined), which jsdom prevents from being
-    // simulated via Object.defineProperty.
-    jest.spyOn(global, 'getComputedStyle').mockImplementation(() => {
-      throw new Error('not available');
+  it('returns the canonical hex for every categorical token in CATEGORICAL_PALETTE_TOKENS', () => {
+    utils.CATEGORICAL_PALETTE_TOKENS.forEach((token, i) => {
+      expect(getColorFromCSSToken(token)).toBe(COLORS[i]);
+    });
+  });
+
+  it('schema rejects legacy chart-1..10; render-time consumers rely on resolveChartPaletteToken instead', () => {
+    // The schema is deliberately strict (no `z.preprocess`) so that
+    // its `z.input` type matches its `z.output` type — otherwise
+    // `validateRequest` in the API would infer `req.body.tiles[i]
+    // .config.color` as `unknown`. Legacy migration for stored
+    // configs from #2265 happens at fetch time via
+    // `normalizeDashboardTileColors` and at render time via
+    // `resolveChartPaletteToken`.
+    expect(() => ChartPaletteTokenSchema.parse('chart-1')).toThrow();
+    expect(() => ChartPaletteTokenSchema.parse('chart-10')).toThrow();
+  });
+});
+
+// ─── evaluateColorCondition ───────────────────────────────────────────────────
+
+describe('evaluateColorCondition', () => {
+  describe('numeric ordered operators', () => {
+    it('gt: returns true when value > rule.value', () => {
+      const rule: ColorCondition = {
+        operator: 'gt',
+        value: 10,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(11, rule)).toBe(true);
+      expect(evaluateColorCondition(10, rule)).toBe(false);
+      expect(evaluateColorCondition(9, rule)).toBe(false);
     });
 
-    for (let i = 1; i <= 10; i++) {
-      expect(getColorFromCSSToken(`chart-${i}` as any)).toBe(COLORS[i - 1]);
-    }
+    it('gte: returns true when value >= rule.value', () => {
+      const rule: ColorCondition = {
+        operator: 'gte',
+        value: 10,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(10, rule)).toBe(true);
+      expect(evaluateColorCondition(11, rule)).toBe(true);
+      expect(evaluateColorCondition(9, rule)).toBe(false);
+    });
+
+    it('lt: returns true when value < rule.value', () => {
+      const rule: ColorCondition = {
+        operator: 'lt',
+        value: 10,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(9, rule)).toBe(true);
+      expect(evaluateColorCondition(10, rule)).toBe(false);
+    });
+
+    it('lte: returns true when value <= rule.value', () => {
+      const rule: ColorCondition = {
+        operator: 'lte',
+        value: 10,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(10, rule)).toBe(true);
+      expect(evaluateColorCondition(9, rule)).toBe(true);
+      expect(evaluateColorCondition(11, rule)).toBe(false);
+    });
+
+    it('numeric operators return false for string values', () => {
+      const rule: ColorCondition = {
+        operator: 'gt',
+        value: 10,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition('15', rule)).toBe(false);
+    });
+  });
+
+  describe('between operator', () => {
+    it('returns true when value is within [lo, hi]', () => {
+      const rule: ColorCondition = {
+        operator: 'between',
+        value: [10, 100],
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(50, rule)).toBe(true);
+      expect(evaluateColorCondition(10, rule)).toBe(true);
+      expect(evaluateColorCondition(100, rule)).toBe(true);
+      expect(evaluateColorCondition(9, rule)).toBe(false);
+      expect(evaluateColorCondition(101, rule)).toBe(false);
+    });
+
+    it('handles inverted range (first > second) by normalising to [lo, hi]', () => {
+      const rule: ColorCondition = {
+        operator: 'between',
+        value: [100, 10],
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(50, rule)).toBe(true);
+      expect(evaluateColorCondition(5, rule)).toBe(false);
+    });
+
+    it('returns false for string values', () => {
+      const rule: ColorCondition = {
+        operator: 'between',
+        value: [10, 100],
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition('50', rule)).toBe(false);
+    });
+  });
+
+  describe('eq / neq operators', () => {
+    it('eq: returns true on strict equality (number)', () => {
+      const rule: ColorCondition = {
+        operator: 'eq',
+        value: 5,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(5, rule)).toBe(true);
+      expect(evaluateColorCondition(6, rule)).toBe(false);
+    });
+
+    it('eq: returns true on strict equality (string)', () => {
+      const rule: ColorCondition = {
+        operator: 'eq',
+        value: 'CRIT',
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition('CRIT', rule)).toBe(true);
+      expect(evaluateColorCondition('crit', rule)).toBe(false);
+    });
+
+    it('eq: cross-type mismatch returns false ("5" vs 5)', () => {
+      const rule: ColorCondition = {
+        operator: 'eq',
+        value: '5',
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(5, rule)).toBe(false);
+    });
+
+    it('neq: returns true when value differs', () => {
+      const rule: ColorCondition = {
+        operator: 'neq',
+        value: 0,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition(1, rule)).toBe(true);
+      expect(evaluateColorCondition(0, rule)).toBe(false);
+    });
+
+    it('neq: cross-type mismatch returns false (number vs string)', () => {
+      const rule: ColorCondition = {
+        operator: 'neq',
+        value: 'none',
+        color: 'chart-blue',
+      };
+      // Without the typeof guard, `42 !== 'none'` is true, which would make
+      // the rule match every numeric value. Guarding keeps the docstring
+      // contract: cross-type mismatches return false.
+      expect(evaluateColorCondition(42, rule)).toBe(false);
+    });
+
+    it('neq: cross-type mismatch returns false (string vs number)', () => {
+      const rule: ColorCondition = {
+        operator: 'neq',
+        value: 42,
+        color: 'chart-blue',
+      };
+      expect(evaluateColorCondition('none', rule)).toBe(false);
+    });
+  });
+
+  describe('string operators', () => {
+    it('contains: returns true when string includes value', () => {
+      const rule: ColorCondition = {
+        operator: 'contains',
+        value: 'error',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition('fatal error occurred', rule)).toBe(true);
+      expect(evaluateColorCondition('warning', rule)).toBe(false);
+    });
+
+    it('contains: returns false for number values', () => {
+      const rule: ColorCondition = {
+        operator: 'contains',
+        value: 'error',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition(42, rule)).toBe(false);
+    });
+
+    it('startsWith: matches prefix', () => {
+      const rule: ColorCondition = {
+        operator: 'startsWith',
+        value: 'ERR',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition('ERR_500', rule)).toBe(true);
+      expect(evaluateColorCondition('WARN_ERR', rule)).toBe(false);
+    });
+
+    it('endsWith: matches suffix', () => {
+      const rule: ColorCondition = {
+        operator: 'endsWith',
+        value: 'CRIT',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition('ALERT_CRIT', rule)).toBe(true);
+      expect(evaluateColorCondition('CRIT_OK', rule)).toBe(false);
+    });
+
+    it('regex: matches valid pattern', () => {
+      const rule: ColorCondition = {
+        operator: 'regex',
+        value: '^err.*',
+        color: 'chart-error',
+      };
+      expect(evaluateColorCondition('error123', rule)).toBe(true);
+      expect(evaluateColorCondition('warning', rule)).toBe(false);
+    });
+
+    it('regex: bad pattern returns false without throwing', () => {
+      const rule = {
+        operator: 'regex' as const,
+        value: '[invalid',
+        color: 'chart-error' as const,
+      };
+      expect(() => evaluateColorCondition('test', rule)).not.toThrow();
+      expect(evaluateColorCondition('test', rule)).toBe(false);
+    });
+  });
+});
+
+// ─── resolveConditionalColor ──────────────────────────────────────────────────
+
+describe('resolveConditionalColor', () => {
+  it('returns fallback when rules is undefined', () => {
+    expect(resolveConditionalColor(50, undefined, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns fallback when rules is empty', () => {
+    expect(resolveConditionalColor(50, [], 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns fallback when value is null', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 0, color: 'chart-warning' },
+    ];
+    expect(resolveConditionalColor(null, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns fallback when value is undefined', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 0, color: 'chart-warning' },
+    ];
+    expect(resolveConditionalColor(undefined, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns the matching rule color when one rule matches', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+    ];
+    expect(resolveConditionalColor(200, rules, 'chart-success')).toBe(
+      'chart-warning',
+    );
+  });
+
+  it('returns the LAST matching rule color (last-match-wins)', () => {
+    // value 1000: both rules match; last (chart-error) wins
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+      { operator: 'gte', value: 500, color: 'chart-error' },
+    ];
+    expect(resolveConditionalColor(1000, rules, 'chart-success')).toBe(
+      'chart-error',
+    );
+  });
+
+  it('returns fallback when no rule matches', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+      { operator: 'gte', value: 500, color: 'chart-error' },
+    ];
+    // value 50: no rule matches, return fallback
+    expect(resolveConditionalColor(50, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('covers the DBNumberChart success/warning/error scenario', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+      { operator: 'gte', value: 500, color: 'chart-error' },
+    ];
+    // 50 → no match → static color
+    expect(resolveConditionalColor(50, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+    // 200 → rule 1 matches, rule 2 doesn't → chart-warning
+    expect(resolveConditionalColor(200, rules, 'chart-success')).toBe(
+      'chart-warning',
+    );
+    // 1000 → both match → last match = chart-error
+    expect(resolveConditionalColor(1000, rules, 'chart-success')).toBe(
+      'chart-error',
+    );
+  });
+
+  it('string rules do not match numeric values', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'contains', value: 'err', color: 'chart-error' },
+    ];
+    // numeric value, string rule: no match
+    expect(resolveConditionalColor(42, rules, 'chart-success')).toBe(
+      'chart-success',
+    );
+  });
+
+  it('returns undefined fallback when fallback is undefined and no rule matches', () => {
+    const rules: ColorCondition[] = [
+      { operator: 'gte', value: 100, color: 'chart-warning' },
+    ];
+    expect(resolveConditionalColor(50, rules, undefined)).toBeUndefined();
   });
 });

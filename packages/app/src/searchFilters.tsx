@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import produce from 'immer';
-import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import {
-  coerceBooleanValue,
   type FilterState,
   filtersToQuery,
-  parseLuceneFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 
@@ -300,8 +297,6 @@ export const parseQuery = (
   q: Filter[],
 ): {
   filters: FilterState;
-  /** Filters that could not be parsed into FilterState (preserved for re-emission) */
-  passthroughFilters: Filter[];
 } => {
   const state = new Map<
     string,
@@ -311,29 +306,7 @@ export const parseQuery = (
       range?: { min: number; max: number };
     }
   >();
-  const passthroughFilters: Filter[] = [];
   for (const filter of q) {
-    if (filter.type === 'lucene') {
-      const parsedFields = parseLuceneFilter(filter.condition);
-      if (parsedFields === undefined) {
-        // Parse failure — preserve so it isn't silently lost
-        if (filter.condition.trim()) {
-          passthroughFilters.push(filter);
-        }
-      } else {
-        for (const { key, included, excluded, range } of parsedFields) {
-          if (!state.has(key)) {
-            state.set(key, { included: new Set(), excluded: new Set() });
-          }
-          const sets = state.get(key)!;
-          for (const v of included) sets.included.add(v);
-          for (const v of excluded) sets.excluded.add(v);
-          if (range) sets.range = range;
-        }
-      }
-      continue;
-    }
-
     if (filter.type !== 'sql') continue;
 
     // Check for BETWEEN condition (only when BETWEEN appears outside quotes)
@@ -379,7 +352,7 @@ export const parseQuery = (
       });
     }
   }
-  return { filters: Object.fromEntries(state), passthroughFilters };
+  return { filters: Object.fromEntries(state) };
 };
 
 export const useSearchPageFilterState = ({
@@ -394,7 +367,7 @@ export const useSearchPageFilterState = ({
       return parseQuery(searchQuery);
     } catch (e) {
       console.error(e);
-      return { filters: {}, passthroughFilters: [] };
+      return { filters: {} };
     }
   }, [searchQuery]);
 
@@ -408,32 +381,11 @@ export const useSearchPageFilterState = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsedQuery.filters]);
 
-  // Migrate legacy SQL filters to Lucene on load so URLs become canonical
-  const hasMigratedRef = useRef(false);
-  useEffect(() => {
-    if (hasMigratedRef.current) return;
-    const hasSqlFilters = searchQuery?.some(
-      f => 'condition' in f && f.type === 'sql',
-    );
-    if (hasSqlFilters && Object.keys(parsedQuery.filters).length > 0) {
-      hasMigratedRef.current = true;
-      onFilterChange([
-        ...filtersToQuery(parsedQuery.filters),
-        ...parsedQuery.passthroughFilters,
-      ]);
-    }
-  }, [searchQuery, parsedQuery, onFilterChange]);
-
   const updateFilterQuery = useCallback(
     (newFilters: FilterState) => {
-      // Preserve unparseable filters so they aren't silently lost when
-      // the user toggles a sidebar facet.
-      onFilterChange([
-        ...filtersToQuery(newFilters),
-        ...parsedQuery.passthroughFilters,
-      ]);
+      onFilterChange(filtersToQuery(newFilters));
     },
-    [onFilterChange, parsedQuery.passthroughFilters],
+    [onFilterChange],
   );
 
   const setFilterValue = useCallback(
@@ -442,21 +394,15 @@ export const useSearchPageFilterState = ({
       value: string | boolean,
       action?: 'only' | 'exclude' | 'include',
     ) => {
-      // Normalize bracket notation to dot notation so the key matches
-      // what parseQuery returns after a Lucene round-trip.
-      const key = parseKeyPath(property).join('.');
-      // Normalize "true"/"false" strings to booleans so the value matches
-      // what parseLuceneFilter returns after a Lucene round-trip.
-      const normalizedValue = coerceBooleanValue(value);
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
-          if (!draft[key]) {
-            draft[key] = { included: new Set(), excluded: new Set() };
+          if (!draft[property]) {
+            draft[property] = { included: new Set(), excluded: new Set() };
           }
 
           if (action === 'only') {
-            draft[key] = {
-              included: new Set([normalizedValue]),
+            draft[property] = {
+              included: new Set([value]),
               excluded: new Set(),
             };
             return;
@@ -464,22 +410,22 @@ export const useSearchPageFilterState = ({
 
           if (action === 'exclude') {
             // Remove from included if it was there
-            draft[key].included.delete(normalizedValue);
+            draft[property].included.delete(value);
             // Toggle in excluded
-            if (draft[key].excluded.has(normalizedValue)) {
-              draft[key].excluded.delete(normalizedValue);
+            if (draft[property].excluded.has(value)) {
+              draft[property].excluded.delete(value);
             } else {
-              draft[key].excluded.add(normalizedValue);
+              draft[property].excluded.add(value);
             }
             return;
           }
 
           // Regular toggle (include)
-          draft[key].excluded.delete(normalizedValue);
-          if (draft[key].included.has(normalizedValue)) {
-            draft[key].included.delete(normalizedValue);
+          draft[property].excluded.delete(value);
+          if (draft[property].included.has(value)) {
+            draft[property].included.delete(value);
           } else {
-            draft[key].included.add(normalizedValue);
+            draft[property].included.add(value);
           }
         });
         updateFilterQuery(newFilters);
@@ -491,13 +437,12 @@ export const useSearchPageFilterState = ({
 
   const setFilterRange = useCallback(
     (property: string, range: { min: number; max: number }) => {
-      const key = parseKeyPath(property).join('.');
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
-          if (!draft[key]) {
-            draft[key] = { included: new Set(), excluded: new Set() };
+          if (!draft[property]) {
+            draft[property] = { included: new Set(), excluded: new Set() };
           }
-          draft[key].range = range;
+          draft[property].range = range;
         });
         updateFilterQuery(newFilters);
         return newFilters;
@@ -508,10 +453,38 @@ export const useSearchPageFilterState = ({
 
   const clearFilter = useCallback(
     (property: string) => {
-      const key = parseKeyPath(property).join('.');
       setFilters(prevFilters => {
         const newFilters = produce(prevFilters, draft => {
-          delete draft[key];
+          delete draft[property];
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
+  // Swap one value for another within the same set (included or excluded),
+  // preserving polarity, in a single state update. Two setFilterValue calls
+  // would emit onFilterChange twice (one query run each); this emits once.
+  const replaceFilterValue = useCallback(
+    (
+      property: string,
+      oldValue: string | boolean,
+      newValue: string | boolean,
+      action: 'include' | 'exclude',
+    ) => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          if (!draft[property]) {
+            draft[property] = { included: new Set(), excluded: new Set() };
+          }
+          const set =
+            action === 'exclude'
+              ? draft[property].excluded
+              : draft[property].included;
+          set.delete(oldValue);
+          set.add(newValue);
         });
         updateFilterQuery(newFilters);
         return newFilters;
@@ -533,7 +506,7 @@ export const useSearchPageFilterState = ({
       const dropped: string[] = [];
       const kept: FilterState = {};
       for (const [key, value] of Object.entries(filters)) {
-        // Filter keys are dot-normalized — top-level columns are stored as-is,
+        // Filter keys are dot-normalized, top-level columns are stored as-is,
         // nested JSON/Map keys as `Root.nested.path`. An exact match handles
         // the rare case of a column with dots in its name.
         const dotIdx = key.indexOf('.');
@@ -557,6 +530,7 @@ export const useSearchPageFilterState = ({
     filters,
     setFilters,
     setFilterValue,
+    replaceFilterValue,
     setFilterRange,
     clearFilter,
     clearAllFilters,
@@ -634,7 +608,7 @@ function toggleValueInFilters(
 
 /**
  * Hook for personal pinned filters stored in localStorage.
- * This is the original storage mechanism — per-user, per-browser.
+ * This is the original storage mechanism, per-user, per-browser.
  */
 function usePersonalPinnedFilters(sourceId: string | null) {
   const [_pinnedFilters, _setPinnedFilters] = useLocalStorage<{
@@ -695,7 +669,7 @@ export function usePinnedFilters(sourceId: string | null) {
   const updateTeamMutation = useUpdatePinnedFilters();
 
   // Optimistic state keyed by sourceId so it is automatically ignored when
-  // the source changes — no useEffect needed to clear stale state.
+  // the source changes, no useEffect needed to clear stale state.
   const [optimisticTeam, setOptimisticTeam] = useState<{
     sourceId: string;
     fields: string[];
@@ -723,7 +697,7 @@ export function usePinnedFilters(sourceId: string | null) {
     [effectiveTeam, personal.fields, personal.filters],
   );
 
-  // Debounce for team API writes — cancelled on unmount to prevent stale writes.
+  // Debounce for team API writes, cancelled on unmount to prevent stale writes.
   const pendingTeamUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -786,7 +760,7 @@ export function usePinnedFilters(sourceId: string | null) {
     [personal],
   );
 
-  // Personal-only checks (not merged) — so team pins don't show as personal
+  // Personal-only checks (not merged), so team pins don't show as personal
   const isFilterPinned = useCallback(
     (property: string, value: string | boolean): boolean => {
       return (
@@ -817,7 +791,7 @@ export function usePinnedFilters(sourceId: string | null) {
       const fieldIndex = currentFields.indexOf(field);
 
       if (fieldIndex >= 0) {
-        // Removing field from shared — also clean up its filter values
+        // Removing field from shared, also clean up its filter values
         const newFields = currentFields.filter((_, i) => i !== fieldIndex);
         delete currentFilters[field];
         flushTeamUpdate(newFields, currentFilters);

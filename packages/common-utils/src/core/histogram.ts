@@ -4,6 +4,14 @@ import { BuilderChartConfig } from '@/types';
 type WithClauses = BuilderChartConfig['with'];
 type TemplatedInput = ChSql | string;
 
+// SQL expression for hashing metric attributes into a per-series key.
+// Variadic cityHash64 over the three attribute scopes — works for both
+// Map(LowCardinality(String), String) and JSON columns. Prior to HDX-4466
+// the Map-schema path wrapped the three maps in mapConcat() before hashing;
+// see the ticket for the cross-scope same-key implications of the switch.
+const ATTR_HASH_EXPR =
+  'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)';
+
 export const translateHistogram = ({
   select,
   ...rest
@@ -50,7 +58,7 @@ const translateHistogramCount = ({
             AggregationTemporality,
             ${timeBucketSelect},
             ${groupBy ? chSql`[${groupBy}] AS group,` : ''}
-            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+            ${ATTR_HASH_EXPR} AS attr_hash,
             cityHash64(ExplicitBounds) AS bounds_hash,
             toInt64(Count) AS current_count,
             lagInFrame(toNullable(current_count), 1, NULL) OVER (
@@ -131,7 +139,7 @@ const translateHistogramQuantile = ({
                   ExplicitBounds,
                   ResourceAttributes,
                   Attributes,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+                  ${ATTR_HASH_EXPR} AS attr_hash,
                   cityHash64(ExplicitBounds) AS bounds_hash,
                   CAST(BucketCounts AS Array(Int64)) counts
               FROM ${from}

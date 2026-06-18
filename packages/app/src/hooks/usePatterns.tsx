@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { timeBucketByGranularity, toStartOfInterval } from '@/ChartUtils';
 import { useConfigWithAdditionalSelect } from '@/components/DBRowTable';
+import { reconstructTemplate } from '@/components/Patterns/reconstructTemplate';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
 
@@ -54,10 +55,14 @@ class Miner {
     await this.pyodide.runPythonAsync(`
 import js
 import json
+import string
 from drain3 import TemplateMiner
 from drain3.template_miner_config import TemplateMinerConfig
 
-${this.minerVariableName} = TemplateMiner(None, TemplateMinerConfig())
+_config = TemplateMinerConfig()
+_config.drain_extra_delimiters = list(string.punctuation)
+
+${this.minerVariableName} = TemplateMiner(None, _config)
     `);
   }
 
@@ -168,7 +173,7 @@ function usePatterns({
   } = usePyodide({ enabled });
 
   const query = useQuery({
-    queryKey: ['patterns', config],
+    queryKey: ['patterns', config, bodyValueExpression],
     queryFn: () => {
       if (configWithPrimaryAndPartitionKey == null) {
         throw new Error('Unexpected configWithPrimaryAndPartitionKey is null');
@@ -290,10 +295,16 @@ export function useGroupedPatterns({
       // return at least 1
       const count = Math.max(Math.round(rows.length * sampleMultiplier), 1);
       const lastRow = rows.at(-1);
+      const reconstructedPattern = lastRow
+        ? reconstructTemplate(
+            stripAnsi((lastRow[PATTERN_COLUMN_ALIAS] ?? '') as string),
+            (lastRow.__hdx_pattern ?? '') as string,
+          )
+        : undefined;
 
       fullPatternGroups[patternId] = {
         id: patternId,
-        pattern: lastRow?.__hdx_pattern, // last pattern is usually the most up to date templated pattern
+        pattern: reconstructedPattern, // last pattern is usually the most up to date templated pattern
         count,
         countStr: `~${count}`,
         severityText: lastRow?.[SEVERITY_TEXT_COLUMN_ALIAS], // last severitytext is usually representative of the entire pattern set

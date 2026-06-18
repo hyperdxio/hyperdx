@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HDX Eval Viewer</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="title">hdx-eval viewer</div>
+      <div class="batch-picker">
+        <label>batch</label>
+        <select id="batch-select"></select>
+        <span id="batch-meta" class="muted"></span>
+      </div>
+    </header>
+
+    <main>
+      <aside id="sidebar">
+        <div class="muted small">scenario / mcp / run</div>
+        <div id="nav"></div>
+      </aside>
+
+      <section id="content">
+        <div id="summary" class="tab-pane active">
+          <div id="summary-content" class="muted center">
+            Loading...
+          </div>
+        </div>
+        <div id="empty" class="muted center" hidden>
+          Select a run from the sidebar.
+        </div>
+        <div id="run" hidden>
+          <div id="run-header"></div>
+
+          <div class="tabs">
+            <button data-tab="trajectory" class="tab active">Trajectory</button>
+            <button data-tab="answer" class="tab">Final Answer</button>
+            <button data-tab="grading" class="tab">Grading</button>
+            <button data-tab="raw" class="tab">Raw</button>
+          </div>
+
+          <div id="tab-trajectory" class="tab-pane active">
+            <div id="traj-controls">
+              <label
+                ><input type="checkbox" id="hide-toolsearch" /> hide
+                ToolSearch</label
+              >
+              <label
+                ><input type="checkbox" id="errors-only" /> errors only</label
+              >
+              <input
+                type="search"
+                id="traj-filter"
+                placeholder="filter tool or text..."
+              />
+            </div>
+            <ol id="trajectory"></ol>
+          </div>
+          <div id="tab-answer" class="tab-pane"></div>
+          <div id="tab-grading" class="tab-pane"></div>
+          <div id="tab-raw" class="tab-pane"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

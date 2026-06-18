@@ -1,13 +1,14 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
+import { objectIdSchema } from '@/utils/zod';
 
 import { withToolTracing } from '../../utils/tracing';
 import { parseTimeRange, runConfigTile } from '../query/helpers';
 import type { McpContext } from '../types';
+import { getRawSqlTileMacroWarnings } from './validation';
 
 export function registerQueryTile(
   server: McpServer,
@@ -16,21 +17,21 @@ export function registerQueryTile(
   const { teamId } = context;
 
   server.registerTool(
-    'hyperdx_query_tile',
+    'clickstack_query_tile',
     {
       title: 'Query a Dashboard Tile',
       description:
         'Execute the query for a specific tile on an existing dashboard. ' +
         'Useful for validating that a tile returns data or for spot-checking results ' +
         'without rebuilding the query from scratch. ' +
-        'Use hyperdx_get_dashboard with an ID to find tile IDs.',
+        'Use clickstack_get_dashboard with an ID to find tile IDs.',
       inputSchema: z.object({
-        dashboardId: z.string().describe('Dashboard ID.'),
+        dashboardId: objectIdSchema.describe('Dashboard ID.'),
         tileId: z
           .string()
           .describe(
             'Tile ID within the dashboard. ' +
-              'Obtain from hyperdx_get_dashboard.',
+              'Obtain from clickstack_get_dashboard.',
           ),
         startTime: z
           .string()
@@ -46,7 +47,7 @@ export function registerQueryTile(
       }),
     },
     withToolTracing(
-      'hyperdx_query_tile',
+      'clickstack_query_tile',
       context,
       async ({ dashboardId, tileId, startTime, endTime }) => {
         const timeRange = parseTimeRange(startTime, endTime);
@@ -57,13 +58,6 @@ export function registerQueryTile(
           };
         }
         const { startDate, endDate } = timeRange;
-
-        if (!mongoose.Types.ObjectId.isValid(dashboardId)) {
-          return {
-            isError: true,
-            content: [{ type: 'text' as const, text: 'Invalid dashboard ID' }],
-          };
-        }
 
         const dashboard = await Dashboard.findOne({
           _id: dashboardId,
@@ -90,7 +84,32 @@ export function registerQueryTile(
           };
         }
 
-        return runConfigTile(teamId.toString(), tile, startDate, endDate);
+        const result = await runConfigTile(
+          teamId.toString(),
+          tile,
+          startDate,
+          endDate,
+        );
+
+        // Surface non-blocking missing macro warnings alongside
+        // the successful result so the agent can spot a tile that runs but
+        // ignores dashboard controls.
+        const macroWarnings = getRawSqlTileMacroWarnings([tile]);
+        if (
+          macroWarnings.length > 0 &&
+          !('isError' in result && result.isError) &&
+          result.content?.[0]?.type === 'text'
+        ) {
+          try {
+            const parsed = JSON.parse(result.content[0].text);
+            parsed.warnings = macroWarnings;
+            result.content[0].text = JSON.stringify(parsed, null, 2);
+          } catch {
+            // leave result unmodified
+          }
+        }
+
+        return result;
       },
     ),
   );

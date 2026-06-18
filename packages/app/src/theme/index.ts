@@ -1,3 +1,4 @@
+import { env } from 'next-runtime-env';
 import { z } from 'zod';
 
 import { clickstackTheme } from './themes/clickstack';
@@ -171,10 +172,14 @@ export function safeLocalStorageRemove(key: string): void {
 }
 
 // Default theme (validated against registry, falls back to hyperdx)
-const envTheme = process.env.NEXT_PUBLIC_THEME;
-let resolvedDefaultTheme: ThemeName = isValidThemeName(envTheme)
-  ? envTheme
-  : 'hyperdx';
+// Use runtimeEnv so the theme can be changed at container start-up
+// without rebuilding the Next.js bundle.
+function getEnvTheme(): ThemeName {
+  const value = env('NEXT_PUBLIC_THEME');
+  return isValidThemeName(value) ? value : 'hyperdx';
+}
+
+let resolvedDefaultTheme: ThemeName = getEnvTheme();
 
 // Validate that the resolved default theme exists and is valid
 if (!themes[resolvedDefaultTheme]) {

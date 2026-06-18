@@ -151,6 +151,7 @@ export default function EditTimeChartForm({
   const {
     control,
     setValue,
+    getValues,
     handleSubmit,
     register,
     setError,
@@ -165,12 +166,30 @@ export default function EditTimeChartForm({
   const {
     fields,
     append,
+    insert: insertSeries,
     remove: removeSeries,
     swap: swapSeries,
   } = useFieldArray({
     control,
     name: 'series',
   });
+
+  // Insert a copy of an existing series directly below it so a near-identical
+  // variant (e.g. avg + p95 of the same column) does not have to be re-entered.
+  // structuredClone keeps the copy independent of the source row. The alias is
+  // cleared on the copy: a non-empty alias renders as `AS "<alias>"`, so two
+  // rows sharing one alias produce duplicate column names and ClickHouse rejects
+  // the query. An empty alias renders without `AS`, giving each row a distinct
+  // auto-generated name.
+  const duplicateSeries = useCallback(
+    (index: number) => {
+      insertSeries(index + 1, {
+        ...structuredClone(getValues(`series.${index}`)),
+        alias: '',
+      });
+    },
+    [insertSeries, getValues],
+  );
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -221,18 +240,24 @@ export default function EditTimeChartForm({
     alignDateRangeToGranularity,
     fillNulls,
     compareToPreviousPeriod,
+    fitYAxisToData,
     numberFormat,
     groupByColumnsOnLeft,
+    seriesLimit,
     color,
+    colorRules,
   ] = useWatch({
     control,
     name: [
       'alignDateRangeToGranularity',
       'fillNulls',
       'compareToPreviousPeriod',
+      'fitYAxisToData',
       'numberFormat',
       'groupByColumnsOnLeft',
+      'seriesLimit',
       'color',
+      'colorRules',
     ],
   });
 
@@ -250,17 +275,23 @@ export default function EditTimeChartForm({
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      seriesLimit,
       color,
+      colorRules,
     }),
     [
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      seriesLimit,
       color,
+      colorRules,
     ],
   );
 
@@ -539,15 +570,24 @@ export default function EditTimeChartForm({
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      fitYAxisToData,
       groupByColumnsOnLeft,
+      seriesLimit,
       color,
+      colorRules,
     }: ChartConfigDisplaySettings) => {
       setValue('numberFormat', numberFormat);
       setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
+      setValue('fitYAxisToData', fitYAxisToData);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
+      // Persist `null` (not undefined) when cleared so the disabled state
+      // survives JSON round-tripping through the URL query state — otherwise
+      // the dropped key lets RHF's `values` sync restore the stale value.
+      setValue('seriesLimit', seriesLimit ?? null);
       setValue('color', color);
+      setValue('colorRules', colorRules);
       onSubmit();
     },
     [setValue, onSubmit],
@@ -733,6 +773,7 @@ export default function EditTimeChartForm({
             append={append}
             removeSeries={removeSeries}
             swapSeries={swapSeries}
+            duplicateSeries={duplicateSeries}
             tableSource={tableSource}
             tableConnection={tableConnection}
             databaseName={databaseName}

@@ -6,42 +6,17 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import { minePatterns } from '@hyperdx/common-utils/dist/drain';
 import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
-import { clickHouseErrorResult } from './helpers';
-
-// ─── Source helpers ──────────────────────────────────────────────────────────
-
-interface SourceBodyFields {
-  kind: string;
-  spanNameExpression?: string;
-  bodyExpression?: string;
-  implicitColumnExpression?: string;
-}
-
-/**
- * Resolve the body column expression for pattern mining from a source.
- * Mirrors the web app's getEventBody() logic (packages/app/src/source.ts).
- */
-function resolveBodyExpression(source: SourceBodyFields): string | undefined {
-  let expression: string | undefined;
-  if (source.kind === SourceKind.Trace) {
-    expression = source.spanNameExpression;
-  } else if (source.kind === SourceKind.Log) {
-    expression = source.bodyExpression ?? source.implicitColumnExpression;
-  }
-  if (!expression) return undefined;
-  const multiExpr = splitAndTrimWithBracket(expression);
-  return multiExpr.length === 1 ? expression : multiExpr[0];
-}
-
-/** Reject bodyExpression values containing SQL-unsafe characters. */
-// eslint-disable-next-line no-useless-escape
-const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
+import {
+  clickHouseErrorResult,
+  resolveBodyExpression,
+  SAFE_BODY_EXPR_CHARS,
+} from './helpers';
 
 // ─── Event pattern mining ────────────────────────────────────────────────────
 
@@ -71,7 +46,7 @@ export async function runEventPatterns(
       content: [
         {
           type: 'text' as const,
-          text: `Source not found: ${sourceId}. Call hyperdx_list_sources to discover available source IDs.`,
+          text: `Source not found: ${sourceId}. Call clickstack_list_sources to discover available source IDs.`,
         },
       ],
     };
@@ -88,7 +63,7 @@ export async function runEventPatterns(
       content: [
         {
           type: 'text' as const,
-          text: `Connection not found for source: ${sourceId}. Call hyperdx_list_sources to discover available source IDs.`,
+          text: `Connection not found for source: ${sourceId}. Call clickstack_list_sources to discover available source IDs.`,
         },
       ],
     };
@@ -286,7 +261,7 @@ export async function runEventPatterns(
   // ── Format response ──
   // Convert trend timestamps to ISO strings, extract sample body texts,
   // and build a whereSnippet per pattern so the agent can drill into
-  // matching events via a follow-up hyperdx_search query.
+  // matching events via a follow-up clickstack_search query.
   const sampledCount = sampleRows.length;
   const slicedPatterns = rawPatterns.slice(0, topN);
 
@@ -349,7 +324,7 @@ export async function runEventPatterns(
       (trendBuckets > 0
         ? 'trend.count is similarly extrapolated from sample bucket counts. '
         : '') +
-      'Use whereSnippet as the "where" parameter in a hyperdx_search call to browse matching raw events.',
+      'Use whereSnippet as the "where" parameter in a clickstack_search call to browse matching raw events.',
   };
 
   const { data: trimmedOutput, isTrimmed } = trimToolResponse(output);

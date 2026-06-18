@@ -188,7 +188,7 @@ describe('errorHint', () => {
       "Cannot convert string '2025-01-01T00:00:00Z' to type DateTime64(9)",
     );
     expect(hint).not.toBeNull();
-    expect(hint).toContain('toDateTime64');
+    expect(hint).toContain('parseDateTime64BestEffort');
   });
 
   it('should match DateTime64 parse errors', () => {
@@ -196,7 +196,7 @@ describe('errorHint', () => {
       "Cannot parse string '2025-01-01' as type DateTime64",
     );
     expect(hint).not.toBeNull();
-    expect(hint).toContain('toDateTime64');
+    expect(hint).toContain('parseDateTime64BestEffort');
   });
 
   it('should match AS alias syntax errors with word boundary', () => {
@@ -223,6 +223,28 @@ describe('errorHint', () => {
     );
     expect(hint).not.toBeNull();
     expect(hint).toContain('LIMIT');
+  });
+
+  it('should match RESULT_IS_TOO_LARGE errors', () => {
+    const hint = errorHint('Code: 396. DB::Exception: RESULT_IS_TOO_LARGE');
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('too many rows');
+    expect(hint).toContain('LIMIT');
+  });
+
+  it('should match TOO_MANY_ROWS_OR_BYTES errors', () => {
+    const hint = errorHint('Code: 396. DB::Exception: TOO_MANY_ROWS_OR_BYTES');
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('too many rows');
+  });
+
+  it('should match SETTING_CONSTRAINT_VIOLATION errors', () => {
+    const hint = errorHint(
+      "Setting max_result_rows shouldn't be greater than 1000. (SETTING_CONSTRAINT_VIOLATION)",
+    );
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('profile');
+    expect(hint).toContain('constraint');
   });
 
   it('should return null for unrecognized errors', () => {
@@ -276,9 +298,69 @@ describe('resolveOrderBy', () => {
   });
 
   it('should prefer alias over synthesized expression', () => {
+    expect(resolveOrderBy('count', [{ aggFn: 'count', alias: 'Total' }])).toBe(
+      'Total',
+    );
+  });
+
+  it('should quote a multi-word alias resolved from an aggFn match', () => {
     expect(
       resolveOrderBy('count', [{ aggFn: 'count', alias: 'Total Rows' }]),
-    ).toBe('Total Rows');
+    ).toBe('"Total Rows"');
+  });
+
+  it('should quote a multi-word alias matched directly', () => {
+    expect(
+      resolveOrderBy('P95 Latency', [
+        {
+          aggFn: 'quantile',
+          valueExpression: 'Duration',
+          alias: 'P95 Latency',
+        },
+      ]),
+    ).toBe('"P95 Latency"');
+  });
+
+  it('should quote a multi-word alias and preserve direction', () => {
+    expect(
+      resolveOrderBy('p95 latency DESC', [
+        {
+          aggFn: 'quantile',
+          valueExpression: 'Duration',
+          alias: 'P95 Latency',
+        },
+      ]),
+    ).toBe('"P95 Latency" DESC');
+  });
+
+  it('should accept an already-quoted multi-word alias without double-quoting', () => {
+    expect(
+      resolveOrderBy('"P95 Latency" DESC', [
+        {
+          aggFn: 'quantile',
+          valueExpression: 'Duration',
+          alias: 'P95 Latency',
+        },
+      ]),
+    ).toBe('"P95 Latency" DESC');
+  });
+
+  it('should normalize a backtick-quoted alias to double quotes', () => {
+    expect(
+      resolveOrderBy('`P95 Latency`', [
+        {
+          aggFn: 'quantile',
+          valueExpression: 'Duration',
+          alias: 'P95 Latency',
+        },
+      ]),
+    ).toBe('"P95 Latency"');
+  });
+
+  it('should leave a bare single-word alias unquoted', () => {
+    expect(resolveOrderBy('Total', [{ aggFn: 'count', alias: 'Total' }])).toBe(
+      'Total',
+    );
   });
 
   it('should be case-insensitive for aggFn matching', () => {

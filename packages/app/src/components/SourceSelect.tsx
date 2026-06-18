@@ -22,6 +22,7 @@ import {
 import SelectControlled from '@/components/SelectControlled';
 import {
   SOURCE_KIND_ICONS,
+  sourceSelectFilter,
   useFilteredSortedSourceItems,
   useSourceKindMap,
 } from '@/components/sourceSelectUtils';
@@ -46,6 +47,7 @@ interface SourceManagementMenuProps {
    */
   onManageSources?: () => void;
   onCreate?: () => void;
+  size?: string;
 }
 
 /**
@@ -63,6 +65,7 @@ interface SourceManagementMenuProps {
  */
 export const SourceManagementMenu = ({
   hasSelection,
+  size = 'sm',
   onSchemaPreview,
   isSchemaPreviewEnabled = true,
   onEdit,
@@ -133,7 +136,7 @@ export const SourceManagementMenu = ({
           <ActionIcon
             variant="subtle"
             color="gray"
-            size="input-xs"
+            size={`input-${size}`}
             className={styles.sourceMenuButton}
             data-testid="source-actions-menu"
             aria-label="Source actions"
@@ -204,6 +207,7 @@ function SourceSelectControlledComponent({
     sources: data,
     allowedSourceKinds,
     connectionId,
+    groupBySection: true,
   });
 
   const hasSelection = !!selectedSourceId;
@@ -220,12 +224,19 @@ function SourceSelectControlledComponent({
       <SelectControlled
         {...props}
         data={sourceItems}
-        comboboxProps={{ withinPortal: false, ...comboboxProps }}
+        comboboxProps={{
+          withinPortal: false,
+          width: 'max-content',
+          position: 'bottom-start',
+          ...comboboxProps,
+        }}
         classNames={{
           input: styles.sourceSelectInput,
           groupLabel: styles.groupLabel,
+          dropdown: styles.sourceSelectDropdown,
         }}
         renderOption={renderOption}
+        filter={sourceSelectFilter}
         searchable
         placeholder="Data Source"
         leftSection={leftIcon}
@@ -236,6 +247,7 @@ function SourceSelectControlledComponent({
       {hasMenu && (
         <SourceManagementMenu
           hasSelection={hasSelection}
+          size={size}
           onSchemaPreview={onSchemaPreview}
           isSchemaPreviewEnabled={isSchemaPreviewEnabled}
           onEdit={onEdit}

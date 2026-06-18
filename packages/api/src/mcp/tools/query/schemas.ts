@@ -13,7 +13,10 @@ const WHERE_DESCRIPTION =
   '  Lucene uses DOT notation:    SpanAttributes.http.method:GET\n' +
   "  SQL uses BRACKET notation:   SpanAttributes['http.method'] = 'GET'\n\n" +
   "WRONG: SpanAttributes['key']:value   (Lucene cannot parse bracket syntax)\n" +
-  'WRONG: level = "error"               (SQL syntax with whereLanguage:"lucene")';
+  'WRONG: level = "error"               (SQL syntax with whereLanguage:"lucene")\n\n' +
+  'SUBSTRING TRAP: Lucene field:value matches ANY row containing "value" as a substring, not exact equality.\n' +
+  '  SpanKind:Server matches "Server", "ServerStreaming", "InternalServer", etc.\n' +
+  "  For exact match, use SQL: SpanKind = 'Server'";
 
 const WHERE_LANGUAGE_DESCRIPTION =
   'Query language for the "where" filter. Default: lucene.\n' +
@@ -21,8 +24,10 @@ const WHERE_LANGUAGE_DESCRIPTION =
   '  Lucene (default): Column:value, Column.mapKey:value, Column:>100\n' +
   "  SQL:              Column = 'value', SpanAttributes['key'] = 'value'\n\n" +
   'Lucene supports comparisons (>= > < <=), wildcards (field:val*), ranges ([1 TO 5]), ' +
-  'and map attributes via dot notation. ' +
-  'Use "sql" for IN(...) lists, complex expressions, or function calls.\n\n' +
+  'and map attributes via dot notation. Use "sql" for IN(...) lists, complex expressions, or function calls.\n' +
+  'IMPORTANT: Lucene field:value is a SUBSTRING match (ilike), not exact equality. ' +
+  'field:val* is prefix-within-substring, not a true prefix match. ' +
+  "For exact matching or reliable wildcards, use SQL: WHERE field = 'value' or WHERE field LIKE 'val%'.\n\n" +
   'Common mistake: writing Column:value (Lucene) but setting whereLanguage to "sql". ' +
   'If your filter uses colon syntax, leave whereLanguage as "lucene" (the default).';
 
@@ -99,7 +104,11 @@ export const mcpSelectItemSchema = z.object({
   alias: z
     .string()
     .optional()
-    .describe('Display label for this series. Example: "Error rate"'),
+    .describe(
+      'Display label for this series — used in chart legends, table column headers, CSV exports, and onClick templates. ' +
+        'Always set a short, human-readable alias (e.g. "Requests", "P95 Latency", "Error Rate"). ' +
+        'Without an alias the UI shows the raw ClickHouse expression (e.g. count(), quantile(0.95)(Duration)) which is hard to read.',
+    ),
   level: z
     .union([z.literal(0.5), z.literal(0.9), z.literal(0.95), z.literal(0.99)])
     .optional()
@@ -125,7 +134,7 @@ export const endTimeSchema = z
 export const sourceIdSchema = z
   .string()
   .describe(
-    'Source ID (required). Call hyperdx_list_sources to find available sources.',
+    'Source ID (required). Call clickstack_list_sources to find available sources.',
   );
 
 export const whereSchema = z
@@ -166,5 +175,7 @@ export const orderBySchema = z
   .string()
   .optional()
   .describe(
-    'Column to sort results by (builder display types only, mainly "table").',
+    'Sort results by this column. ' +
+      'When ordering by an alias that contains spaces or special characters, ' +
+      `wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
   );

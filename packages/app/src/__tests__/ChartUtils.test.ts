@@ -11,7 +11,15 @@ import {
   formatResponseForPieChart,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
-import { COLORS, getChartColorError } from '@/utils';
+import { COLORS } from '@/utils';
+
+// Anchor info/error to concrete hexes rather than `getChartColorInfo()` /
+// `getChartColorError()` so a regression that breaks the helpers can't
+// move expected and actual in lockstep. Keep in sync with
+// `_chart-categorical-tokens.scss` (`chart-semantic-tokens` mixin) and
+// `SEMANTIC_CHART_PALETTE` in `packages/app/src/utils.ts`.
+const SEMANTIC_INFO_HEX = '#437eef';
+const SEMANTIC_ERROR_HEX = '#ff725c';
 
 describe('ChartUtils', () => {
   describe('formatResponseForTimeChart', () => {
@@ -306,7 +314,7 @@ describe('ChartUtils', () => {
 
       expect(actual.lineData).toEqual([
         {
-          color: COLORS[0],
+          color: SEMANTIC_INFO_HEX,
           dataKey: 'info',
           currentPeriodKey: 'info',
           previousPeriodKey: 'info (previous)',
@@ -315,7 +323,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: COLORS[0],
+          color: SEMANTIC_INFO_HEX,
           dataKey: 'debug',
           currentPeriodKey: 'debug',
           previousPeriodKey: 'debug (previous)',
@@ -324,7 +332,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: getChartColorError(),
+          color: SEMANTIC_ERROR_HEX,
           dataKey: 'error',
           currentPeriodKey: 'error',
           previousPeriodKey: 'error (previous)',
@@ -797,6 +805,37 @@ describe('ChartUtils', () => {
         convertToTimeChartConfig(config).granularity;
 
       expect(granularityFromFunction).toBe('5 minute');
+    });
+
+    // seriesLimit lives on the builder member of the ChartConfigWithDateRange
+    // union, so narrow the result before reading it. The per-tile value is
+    // read from the config itself (no team override anymore).
+    const seriesLimitOf = (seriesLimit?: number | null) =>
+      (
+        convertToTimeChartConfig({
+          granularity: '5 minute',
+          dateRange: [
+            new Date('2025-11-26T00:00:00Z'),
+            new Date('2025-11-27T00:00:00Z'),
+          ],
+          ...(seriesLimit !== undefined ? { seriesLimit } : {}),
+        } as BuilderChartConfigWithDateRange) as BuilderChartConfigWithDateRange
+      ).seriesLimit;
+
+    it('omits seriesLimit (capping disabled) when the tile has no limit', () => {
+      expect(seriesLimitOf()).toBeUndefined();
+    });
+
+    it('normalizes a cleared (null) seriesLimit to undefined (disabled)', () => {
+      expect(seriesLimitOf(null)).toBeUndefined();
+    });
+
+    it('uses the tile seriesLimit when provided', () => {
+      expect(seriesLimitOf(5)).toBe(5);
+    });
+
+    it('passes a large tile seriesLimit through unbounded', () => {
+      expect(seriesLimitOf(100000)).toBe(100000);
     });
   });
 

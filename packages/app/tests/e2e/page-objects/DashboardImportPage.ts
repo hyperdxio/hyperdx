@@ -140,4 +140,24 @@ export class DashboardImportPage {
   getImportSuccessNotification() {
     return this.page.getByText('Import Successful!');
   }
+
+  /** The non-blocking warning shown when imported saved filter values have invalid conditions. */
+  getSavedFilterValuesWarning() {
+    return this.page.getByTestId('import-warning-saved-filter-values');
+  }
+
+  /** The non-blocking warning shown when imported dashboard filters have invalid value queries. */
+  getFilterQueriesWarning() {
+    return this.page.getByTestId('import-warning-filter-queries');
+  }
+
+  /** The non-blocking warning shown when the imported dashboard's saved query is invalid. */
+  getSavedQueryWarning() {
+    return this.page.getByTestId('import-warning-saved-query');
+  }
+
+  /** Expand the "Show Details" section of one of the import warning/error blocks. */
+  async showDetails(warning: Locator) {
+    await warning.getByRole('button', { name: 'Show Details' }).click();
+  }
 }
