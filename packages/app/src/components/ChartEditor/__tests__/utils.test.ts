@@ -281,6 +281,41 @@ describe('convertFormStateToSavedChartConfig', () => {
     ) as BuilderSavedChartConfig;
     expect(result.where).toBe('');
   });
+
+  it('returns config for Markdown displayType without a source', () => {
+    const form: ChartEditorFormState = {
+      displayType: DisplayType.Markdown,
+      markdown: '## Hello World',
+      source: '',
+      series: [],
+    };
+    const result = convertFormStateToSavedChartConfig(
+      form,
+      undefined,
+    ) as BuilderSavedChartConfig;
+    expect(result).toBeDefined();
+    expect(result.displayType).toBe(DisplayType.Markdown);
+    expect(result.markdown).toBe('## Hello World');
+    expect(result.source).toBe('');
+    expect(result.select).toEqual([]);
+    expect(result.where).toBe('');
+  });
+
+  it('returns config for Markdown displayType with a source', () => {
+    const form: ChartEditorFormState = {
+      displayType: DisplayType.Markdown,
+      markdown: '## With Source',
+      series: [],
+    };
+    const result = convertFormStateToSavedChartConfig(
+      form,
+      logSource,
+    ) as BuilderSavedChartConfig;
+    expect(result).toBeDefined();
+    expect(result.displayType).toBe(DisplayType.Markdown);
+    expect(result.source).toBe('source-log');
+    expect(result.markdown).toBe('## With Source');
+  });
 });
 
 describe('convertFormStateToChartConfig', () => {
@@ -367,6 +402,24 @@ describe('convertFormStateToChartConfig', () => {
       logSource,
     ) as BuilderChartConfig;
     expect(result?.select).toBe('Body');
+  });
+
+  it('returns config for Markdown displayType without a source', () => {
+    const form: ChartEditorFormState = {
+      displayType: DisplayType.Markdown,
+      markdown: '## Dashboard Overview',
+      source: '',
+      series: [],
+    };
+    const result = convertFormStateToChartConfig(form, dateRange, undefined);
+    expect(result).toBeDefined();
+    expect(result).toMatchObject({
+      displayType: DisplayType.Markdown,
+      markdown: '## Dashboard Overview',
+      dateRange,
+      select: [],
+      where: '',
+    });
   });
 });
 

@@ -118,6 +118,16 @@ export function convertFormStateToSavedChartConfig(
     return rawSqlConfig;
   }
 
+  if (form.displayType === DisplayType.Markdown && form.configType !== 'sql') {
+    const config: BuilderSavedChartConfig = {
+      ...omit(form, ['series', 'configType', 'sqlTemplate']),
+      select: [],
+      where: form.where ?? '',
+      source: source?.id ?? form.source ?? '',
+    };
+    return config;
+  }
+
   if (source) {
     // Merge the series and select fields back together, and prevent the series field from being submitted
     const config: BuilderSavedChartConfig = {
@@ -200,6 +210,17 @@ export function convertFormStateToChartConfig(
     };
 
     return { ...rawSqlConfig, dateRange };
+  }
+
+  if (form.displayType === DisplayType.Markdown && form.configType !== 'sql') {
+    const newConfig: ChartConfigWithDateRange = {
+      ...omit(form, ['series', 'configType', 'sqlTemplate']),
+      dateRange,
+      connection: source?.connection ?? '',
+      where: form.where ?? '',
+      select: [],
+    };
+    return newConfig;
   }
 
   if (source) {
