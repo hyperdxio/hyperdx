@@ -101,14 +101,15 @@ export function useColumns(
   });
 }
 
+// Derives a map of DateTime/Date column name → ClickHouse type.
 export function useDateTimeColumns(
   columns: ColumnMeta[] | undefined,
-): Set<string> {
+): Map<string, string> {
   return useMemo(
     () =>
-      new Set(
+      new Map(
         filterColumnMetaByType(columns ?? [], [JSDataType.Date])?.map(
-          c => c.name,
+          c => [c.name, c.type] as const,
         ),
       ),
     [columns],

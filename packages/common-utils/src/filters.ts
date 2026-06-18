@@ -16,12 +16,41 @@ const escapeString = (s: string) => {
   return s.replace(/\\/g, '\\\\').replace(/'/g, "''");
 };
 
+// Wrap a quoted string literal in a ClickHouse expression whose result type
+// matches the date column's type.
+const dateTimeValueExpr = (chType: string, quotedValue: string): string => {
+  const dt64 = chType.match(/DateTime64\((\d+)/);
+
+  if (dt64) {
+    return `parseDateTime64BestEffort(${quotedValue}, ${dt64[1]})`;
+  }
+
+  if (/\bDateTime\b/.test(chType)) {
+    return `parseDateTimeBestEffort(${quotedValue})`;
+  }
+
+  if (/\bDate32\b/.test(chType)) {
+    return `toDate32(${quotedValue})`;
+  }
+
+  if (/\bDate\b/.test(chType)) {
+    return `toDate(${quotedValue})`;
+  }
+
+  // Fallback for an unexpected type; DateTime64(9) covers the widest range.
+  return `parseDateTime64BestEffort(${quotedValue}, 9)`;
+};
+
 export const filtersToQuery = (
   filters: FilterState,
   {
     stringifyKeys = false,
     dateTimeColumns,
-  }: { stringifyKeys?: boolean; dateTimeColumns?: Set<string> } = {},
+  }: {
+    stringifyKeys?: boolean;
+    /** Map of DateTime/Date column name → its ClickHouse type. */
+    dateTimeColumns?: ReadonlyMap<string, string>;
+  } = {},
 ): Filter[] => {
   return Object.entries(filters)
     .filter(
@@ -35,15 +64,14 @@ export const filtersToQuery = (
       const actualKey = stringifyKeys ? `toString(${key})` : key;
 
       // DateTime/DateTime64 columns can't be compared against a bare string
-      // literal in ClickHouse, so wrap each value in parseDateTime64BestEffort.
-      // Skip when stringifyKeys is set: the key is cast via toString(), so the
-      // comparison is string-vs-string and a plain literal is correct.
-      const isDateTime = !stringifyKeys && (dateTimeColumns?.has(key) ?? false);
+      // literal in ClickHouse, so wrap each value in a parse/convert expression whose
+      // result type matches the column type.
+      const chType = stringifyKeys ? undefined : dateTimeColumns?.get(key);
       const formatValue = (v: string | boolean): string | boolean =>
         typeof v !== 'string'
           ? v
-          : isDateTime
-            ? `parseDateTime64BestEffort('${escapeString(v)}', 9)`
+          : chType != null
+            ? dateTimeValueExpr(chType, `'${escapeString(v)}'`)
             : `'${escapeString(v)}'`;
 
       if (values.included.size > 0) {

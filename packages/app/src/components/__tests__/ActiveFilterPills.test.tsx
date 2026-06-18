@@ -594,7 +594,7 @@ describe('ActiveFilterPills', () => {
 
     function renderWithDateTime(
       searchFilters: FilterStateHook,
-      dateTimeColumns: Set<string>,
+      dateTimeColumns: Map<string, string>,
     ) {
       return renderWithMantine(
         <ActiveFilterPills
@@ -612,7 +612,10 @@ describe('ActiveFilterPills', () => {
           excluded: new Set<string | boolean>([TS]),
         },
       });
-      renderWithDateTime(searchFilters, new Set(['Timestamp']));
+      renderWithDateTime(
+        searchFilters,
+        new Map([['Timestamp', 'DateTime64(9)']]),
+      );
 
       expect(screen.getByText(`formatted(${TS})`)).toBeInTheDocument();
       // The raw, unformatted value is not shown.
@@ -626,7 +629,10 @@ describe('ActiveFilterPills', () => {
           excluded: new Set<string | boolean>(),
         },
       });
-      renderWithDateTime(searchFilters, new Set(['Timestamp']));
+      renderWithDateTime(
+        searchFilters,
+        new Map([['Timestamp', 'DateTime64(9)']]),
+      );
 
       expect(screen.getByText(TS)).toBeInTheDocument();
       expect(screen.queryByText(`formatted(${TS})`)).not.toBeInTheDocument();
@@ -639,7 +645,10 @@ describe('ActiveFilterPills', () => {
           excluded: new Set<string | boolean>([TS]),
         },
       });
-      renderWithDateTime(searchFilters, new Set(['Timestamp']));
+      renderWithDateTime(
+        searchFilters,
+        new Map([['Timestamp', 'DateTime64(9)']]),
+      );
 
       fireEvent.click(screen.getByRole('button', { name: 'Remove filter' }));
       expect(searchFilters.setFilterValue).toHaveBeenCalledWith(

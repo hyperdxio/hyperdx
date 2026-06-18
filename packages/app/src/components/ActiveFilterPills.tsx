@@ -32,7 +32,7 @@ const VALUE_EDIT_LIMIT = 50;
 
 // Stable identity so a caller that omits the prop doesn't invalidate the
 // flattenFilters useMemo on every render.
-const EMPTY_DATE_TIME_COLUMNS: ReadonlySet<string> = new Set();
+const EMPTY_DATE_TIME_COLUMNS: ReadonlyMap<string, string> = new Map();
 
 type FormatTime = ReturnType<typeof useFormatTime>;
 
@@ -52,7 +52,7 @@ function flattenFilters(
   {
     dateTimeColumns,
     formatTime,
-  }: { dateTimeColumns: ReadonlySet<string>; formatTime: FormatTime },
+  }: { dateTimeColumns: ReadonlyMap<string, string>; formatTime: FormatTime },
 ): PillItem[] {
   const pills: PillItem[] = [];
 
@@ -349,7 +349,12 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
   ...flexProps
 }: {
   searchFilters: FilterStateHook;
-  dateTimeColumns?: ReadonlySet<string>;
+  /**
+   * Map of DateTime/Date column name → ClickHouse type. Their pill values are
+   * formatted to the user's locale/timezone for display, matching the results
+   * table, while the underlying raw value is preserved for SQL/editing/copy.
+   */
+  dateTimeColumns?: ReadonlyMap<string, string>;
   /**
    * Field names whose filters are present in state but not applied to the
    * current query (e.g. column doesn't exist on the active source). These

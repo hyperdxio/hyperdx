@@ -280,15 +280,17 @@ function extractInClauses(condition: string): Array<{
           ? trimmedValues.slice(1, -1)
           : trimmedValues;
 
-      // Unwrap DateTime literals emitted by filtersToQuery for DateTime columns
-      // (parseDateTime64BestEffort('X', 9)) back into the plain quoted literal
-      // 'X' before splitting on commas. The wrapper itself contains an
-      // unquoted comma (before the `9` argument), so this must run before
-      // splitValuesOnComma. The capture group `'(?:[^']|'')*'` consumes the
-      // SQL-escaped quoted string ('' for embedded quotes), keeping the
-      // round-trip exact even if a value contained quotes.
+      // Unwrap the date-value expressions filtersToQuery emits for date columns
+      // back into the plain quoted literal 'X' before splitting on commas. The
+      // DateTime64 wrapper contains an unquoted comma (before its precision
+      // argument), so this must run before splitValuesOnComma. The capture
+      // group `'(?:[^']|'')*'` consumes the SQL-escaped quoted string ('' for
+      // embedded quotes), keeping the round-trip exact even if a value
+      // contained quotes; the optional `, N` covers parseDateTime64BestEffort's
+      // precision argument. Matches the four producers in `dateTimeValueExpr`:
+      // parseDateTime64BestEffort, parseDateTimeBestEffort, toDate32, toDate.
       const unwrapped = withoutParens.replace(
-        /parseDateTime64BestEffort\(('(?:[^']|'')*'),\s*9\)/g,
+        /(?:parseDateTime64BestEffort|parseDateTimeBestEffort|toDate32|toDate)\(('(?:[^']|'')*')(?:\s*,\s*\d+)?\)/g,
         '$1',
       );
 
@@ -374,7 +376,7 @@ export const useSearchPageFilterState = ({
 }: {
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
-  dateTimeColumns?: Set<string>;
+  dateTimeColumns?: ReadonlyMap<string, string>;
 }) => {
   const parsedQuery = useMemo(() => {
     try {

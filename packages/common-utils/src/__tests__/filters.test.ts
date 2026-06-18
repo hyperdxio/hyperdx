@@ -170,9 +170,12 @@ describe('filters', () => {
     });
 
     describe('dateTimeColumns', () => {
-      const dateTimeColumns = new Set(['Timestamp']);
+      const dateTimeColumns = new Map<string, string>([
+        ['Timestamp', 'DateTime64(9)'],
+        ['TimestampTime', 'DateTime'],
+      ]);
 
-      it('wraps an excluded DateTime value in parseDateTime64BestEffort', () => {
+      it('wraps an excluded DateTime64 value in parseDateTime64BestEffort', () => {
         const filters = {
           Timestamp: {
             included: new Set<string | boolean>(),
@@ -190,7 +193,7 @@ describe('filters', () => {
         ]);
       });
 
-      it('wraps an included DateTime value in parseDateTime64BestEffort', () => {
+      it('wraps an included DateTime64 value in parseDateTime64BestEffort', () => {
         const filters = {
           Timestamp: {
             included: new Set<string | boolean>([
@@ -208,7 +211,59 @@ describe('filters', () => {
         ]);
       });
 
-      it('wraps multiple DateTime values', () => {
+      it('wraps a plain DateTime column with parseDateTimeBestEffort (IN does not promote DateTime↔DateTime64)', () => {
+        const filters = {
+          TimestampTime: {
+            included: new Set<string | boolean>(['2026-06-17T11:56:41Z']),
+            excluded: new Set<string | boolean>(),
+          },
+        };
+        expect(filtersToQuery(filters, { dateTimeColumns })).toEqual([
+          {
+            type: 'sql',
+            condition:
+              "TimestampTime IN (parseDateTimeBestEffort('2026-06-17T11:56:41Z'))",
+          },
+        ]);
+      });
+
+      it('matches the precision of a non-9 DateTime64 column', () => {
+        const filters = {
+          ts3: {
+            included: new Set<string | boolean>(['2026-06-17T11:56:41.123Z']),
+            excluded: new Set<string | boolean>(),
+          },
+        };
+        expect(
+          filtersToQuery(filters, {
+            dateTimeColumns: new Map([['ts3', "DateTime64(3, 'UTC')"]]),
+          }),
+        ).toEqual([
+          {
+            type: 'sql',
+            condition:
+              "ts3 IN (parseDateTime64BestEffort('2026-06-17T11:56:41.123Z', 3))",
+          },
+        ]);
+      });
+
+      it('wraps a Date column with toDate', () => {
+        const filters = {
+          day: {
+            included: new Set<string | boolean>(['2026-06-17']),
+            excluded: new Set<string | boolean>(),
+          },
+        };
+        expect(
+          filtersToQuery(filters, {
+            dateTimeColumns: new Map([['day', 'Date']]),
+          }),
+        ).toEqual([
+          { type: 'sql', condition: "day IN (toDate('2026-06-17'))" },
+        ]);
+      });
+
+      it('wraps multiple DateTime64 values', () => {
         const filters = {
           Timestamp: {
             included: new Set<string | boolean>(),

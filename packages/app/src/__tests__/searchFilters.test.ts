@@ -631,7 +631,10 @@ describe('searchFilters', () => {
   });
 
   describe('round-trip: DateTime columns', () => {
-    const dateTimeColumns = new Set(['Timestamp']);
+    const dateTimeColumns = new Map<string, string>([
+      ['Timestamp', 'DateTime64(9)'],
+      ['TimestampTime', 'DateTime'],
+    ]);
 
     it('round-trips an excluded DateTime value (no areFiltersEqual reset)', () => {
       const originalFilters = {
@@ -727,6 +730,43 @@ describe('searchFilters', () => {
           included: new Set(["a', 9)b"]),
           excluded: new Set(),
         },
+      });
+    });
+
+    it('round-trips a plain DateTime column (parseDateTimeBestEffort wrapper)', () => {
+      const originalFilters = {
+        TimestampTime: {
+          included: new Set<string | boolean>(['2026-06-17T11:56:41Z']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, { dateTimeColumns });
+      // Sanity: produces the DateTime (non-64) wrapper.
+      expect(query[0].condition).toBe(
+        "TimestampTime IN (parseDateTimeBestEffort('2026-06-17T11:56:41Z'))",
+      );
+
+      expect(parseQuery(query).filters).toEqual({
+        TimestampTime: {
+          included: new Set(['2026-06-17T11:56:41Z']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parseQuery unwraps parseDateTimeBestEffort and toDate wrappers', () => {
+      const parsed = parseQuery([
+        {
+          type: 'sql',
+          condition: "TimestampTime IN (parseDateTimeBestEffort('a'))",
+        },
+        { type: 'sql', condition: "day NOT IN (toDate('2026-06-17'))" },
+      ]);
+
+      expect(parsed.filters).toEqual({
+        TimestampTime: { included: new Set(['a']), excluded: new Set() },
+        day: { included: new Set(), excluded: new Set(['2026-06-17']) },
       });
     });
   });

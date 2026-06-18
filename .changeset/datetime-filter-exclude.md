@@ -3,4 +3,4 @@
 "@hyperdx/app": patch
 ---
 
-fix(search): wrap DateTime column values in parseDateTime64BestEffort when building IN/NOT IN filters so including/excluding a timestamp value no longer fails with "Cannot convert string ... to type DateTime64"
+fix(search): wrap date column values in a type-matching parse/convert expression when building IN/NOT IN filters, so including/excluding a timestamp value no longer fails with "Cannot convert string ... to type DateTime64" or "Type mismatch in IN ... Expected: DateTime. Got: Decimal64".
