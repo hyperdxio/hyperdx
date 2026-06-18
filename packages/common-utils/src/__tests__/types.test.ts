@@ -320,4 +320,60 @@ describe('BackgroundChartSchema', () => {
         .success,
     ).toBe(false);
   });
+
+  // ─── Reference line ─────────────────────────────────────────────────────────
+
+  it('parses with a reference line value', () => {
+    expect(
+      BackgroundChartSchema.safeParse({
+        type: 'area',
+        referenceLine: { value: 0 },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('parses a reference line with label and color', () => {
+    expect(
+      BackgroundChartSchema.safeParse({
+        type: 'line',
+        referenceLine: { value: 99.9, label: 'SLA', color: 'chart-warning' },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects a reference line without a value', () => {
+    expect(
+      BackgroundChartSchema.safeParse({
+        type: 'area',
+        referenceLine: { label: 'SLA' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a non-finite reference line value', () => {
+    expect(
+      BackgroundChartSchema.safeParse({
+        type: 'area',
+        referenceLine: { value: Number.POSITIVE_INFINITY },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an invalid reference line color', () => {
+    expect(
+      BackgroundChartSchema.safeParse({
+        type: 'area',
+        referenceLine: { value: 0, color: 'not-a-token' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a reference line label longer than 40 chars', () => {
+    expect(
+      BackgroundChartSchema.safeParse({
+        type: 'area',
+        referenceLine: { value: 0, label: 'a'.repeat(41) },
+      }).success,
+    ).toBe(false);
+  });
 });

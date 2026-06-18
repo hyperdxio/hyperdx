@@ -1132,6 +1132,18 @@ export type NumberTileColorCondition = z.infer<
 export const BackgroundChartSchema = z.object({
   type: z.enum(['line', 'area']),
   color: ChartPaletteTokenSchema.optional(),
+  // Optional horizontal reference line drawn across the sparkline (for
+  // example a 0 error-budget line, an SLA, or a target). `value` is where the
+  // line sits on the value axis; the renderer extends the axis domain to
+  // include it so the line is always visible. `label` is an optional caption,
+  // `color` an optional palette-token override (defaults to a warning hue).
+  referenceLine: z
+    .object({
+      value: z.number().finite(),
+      label: z.string().max(40).optional(),
+      color: ChartPaletteTokenSchema.optional(),
+    })
+    .optional(),
 });
 
 export type BackgroundChart = z.infer<typeof BackgroundChartSchema>;

@@ -5,7 +5,9 @@ import {
   AreaChart,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
+  YAxis,
 } from 'recharts';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -132,6 +134,36 @@ function NumberTileBackgroundChartInner({
 
   const margin = { top: 4, right: 0, bottom: 0, left: 0 };
 
+  // Optional reference line (e.g. a 0 budget line, an SLA, or a target).
+  // A hidden YAxis gives recharts a value scale to position it on, and
+  // `ifOverflow="extendDomain"` keeps the line visible when the value sits
+  // outside the data range. Both are direct chart children (recharts does not
+  // see them through a fragment), reused across the area / line branches.
+  const refLine = backgroundChart.referenceLine;
+  const refColor = refLine
+    ? getColorFromCSSToken(refLine.color ?? 'chart-warning')
+    : undefined;
+  const yAxisEl = refLine ? <YAxis hide domain={['auto', 'auto']} /> : null;
+  const refLineEl = refLine ? (
+    <ReferenceLine
+      y={refLine.value}
+      stroke={refColor}
+      strokeOpacity={STROKE_OPACITY}
+      strokeDasharray="4 3"
+      ifOverflow="extendDomain"
+      label={
+        refLine.label
+          ? {
+              value: refLine.label,
+              position: 'insideTopRight',
+              fontSize: 10,
+              fill: refColor,
+            }
+          : undefined
+      }
+    />
+  ) : null;
+
   return (
     <div
       aria-hidden
@@ -146,6 +178,8 @@ function NumberTileBackgroundChartInner({
       <ResponsiveContainer width="100%" height="100%">
         {backgroundChart.type === 'area' ? (
           <AreaChart data={points} margin={margin}>
+            {yAxisEl}
+            {refLineEl}
             <Area
               type="monotone"
               dataKey={VALUE_KEY}
@@ -160,6 +194,8 @@ function NumberTileBackgroundChartInner({
           </AreaChart>
         ) : (
           <LineChart data={points} margin={margin}>
+            {yAxisEl}
+            {refLineEl}
             <Line
               type="monotone"
               dataKey={VALUE_KEY}
