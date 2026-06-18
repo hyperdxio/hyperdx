@@ -533,6 +533,54 @@ describe('External API v2 Sources', () => {
       expect(response.body.data).toHaveLength(1);
       expect(response.body.data[0].id).toBe(validSource._id.toString());
     });
+
+    describe('section field', () => {
+      const SECTION = 'Control Plane Prod';
+
+      it('returns the section on a source that has one', async () => {
+        const logSource = await LogSource.create({
+          kind: SourceKind.Log,
+          team: team._id,
+          name: 'Sectioned Log Source',
+          section: SECTION,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_LOGS_TABLE,
+          },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '*',
+          connection: connection._id,
+        });
+
+        const response = await authRequest('get', BASE_URL).expect(200);
+
+        expect(response.body.data).toHaveLength(1);
+        expect(response.body.data[0]).toMatchObject({
+          id: logSource._id.toString(),
+          section: SECTION,
+        });
+      });
+
+      it('omits the section on a source that has none', async () => {
+        await LogSource.create({
+          kind: SourceKind.Log,
+          team: team._id,
+          name: 'Unsectioned Log Source',
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_LOGS_TABLE,
+          },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '*',
+          connection: connection._id,
+        });
+
+        const response = await authRequest('get', BASE_URL).expect(200);
+
+        expect(response.body.data).toHaveLength(1);
+        expect(response.body.data[0]).not.toHaveProperty('section');
+      });
+    });
   });
 
   describe('backward compatibility with legacy flat-model documents', () => {

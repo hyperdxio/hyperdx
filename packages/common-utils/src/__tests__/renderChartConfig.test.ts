@@ -31,7 +31,6 @@ describe('renderChartConfig', () => {
       { name: 'value', type: 'Float64' },
       { name: 'TraceId', type: 'String' },
       { name: 'ServiceName', type: 'String' },
-      { name: 'severity', type: 'String' },
     ];
     mockMetadata = {
       getColumns: jest.fn().mockResolvedValue([
@@ -512,6 +511,78 @@ describe('renderChartConfig', () => {
         await renderChartConfig(baseLogsConfig, mockMetadata, querySettings),
       );
       expect(sql).not.toContain('__hdx_series_limit');
+
+      // seriesLimitDateRange alone (no seriesLimit) must not emit a CTE either.
+      const sqlWithRangeOnly = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...baseLogsConfig,
+            seriesLimitDateRange: baseLogsConfig.dateRange,
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sqlWithRangeOnly).not.toContain('__hdx_series_limit');
+    });
+
+    it('pins the series-limit CTE to seriesLimitDateRange while the outer query stays windowed', async () => {
+      // The chunking caller pins all chunks to one shared ranking range
+      // (the newest window); the render layer is agnostic to which range.
+      const rankingRange: [Date, Date] = [
+        new Date('2025-02-12T00:00:00Z'),
+        new Date('2025-02-13T00:00:00Z'),
+      ];
+      const renderWindow = async (
+        dateRange: [Date, Date],
+        dateRangeEndInclusive: boolean,
+      ) =>
+        parameterizedQueryToSql(
+          await renderChartConfig(
+            {
+              ...baseLogsConfig,
+              seriesLimit: 60,
+              dateRange,
+              dateRangeEndInclusive,
+              seriesLimitDateRange: rankingRange,
+            },
+            mockMetadata,
+            querySettings,
+          ),
+        );
+
+      // Two chunked windows of the same chart (most recent window first,
+      // older windows are end-exclusive — mirrors fetchDataInChunks).
+      const recentChunk = await renderWindow(
+        [new Date('2025-02-12T18:00:00Z'), rankingRange[1]],
+        true,
+      );
+      const olderChunk = await renderWindow(
+        [rankingRange[0], new Date('2025-02-12T18:00:00Z')],
+        false,
+      );
+
+      // The CTE end is the first `) SELECT` — the outer query starts there.
+      const cteOf = (sql: string) => {
+        const start = sql.indexOf('`__hdx_series_limit` AS (');
+        const end = sql.indexOf(') SELECT ');
+        expect(start).toBeGreaterThanOrEqual(0);
+        expect(end).toBeGreaterThan(start);
+        return sql.slice(start, end);
+      };
+
+      // Both chunks rank over the identical pinned range, so they keep the
+      // same top-N set; the windowed range only applies to the outer query.
+      expect(cteOf(recentChunk)).toBe(cteOf(olderChunk));
+      expect(cteOf(recentChunk)).toContain(String(rankingRange[0].getTime()));
+      expect(cteOf(recentChunk)).toContain(String(rankingRange[1].getTime()));
+      const outerOf = (sql: string) => sql.slice(sql.indexOf(') SELECT '));
+      expect(outerOf(olderChunk)).toContain(
+        String(new Date('2025-02-12T18:00:00Z').getTime()),
+      );
+      expect(outerOf(olderChunk)).not.toContain(
+        String(rankingRange[1].getTime()),
+      );
     });
 
     it('does not emit a series-limit CTE without a group-by', async () => {
@@ -2253,400 +2324,6 @@ describe('renderChartConfig', () => {
     });
   });
 
-  describe('SELECT alias references in a Lucene WHERE', () => {
-    // ClickHouse resolves SELECT aliases in WHERE. A Lucene WHERE that
-    // references a SELECT alias (here `Body AS Content`) must resolve the alias
-    // to a bare identifier rather than rendering the no-match predicate.
-    it('resolves a Lucene WHERE reference to a SELECT alias', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        select: [{ valueExpression: 'Body', alias: 'Content' }],
-        where: 'Content:"swagger"',
-        whereLanguage: 'lucene',
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain("Content = 'swagger'");
-    });
-
-    it('renders an unknown, non-alias field in a Lucene WHERE as the no-match predicate', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        select: [{ valueExpression: 'Body', alias: 'Content' }],
-        where: 'NotAColumn:"swagger"',
-        whereLanguage: 'lucene',
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain('(1 = 0)');
-      expect(actual).not.toContain('NotAColumn');
-    });
-
-    // String-form select lists (e.g. a source's defaultTableSelectExpression)
-    // declare aliases as raw SQL. These are parsed to recover the aliases so
-    // alias references in a Lucene WHERE still resolve.
-    it('resolves a Lucene WHERE reference to an alias in a string-form select', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        select: 'Body AS Content',
-        where: 'Content:"swagger"',
-        whereLanguage: 'lucene',
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain("Content = 'swagger'");
-    });
-
-    it('resolves an alias from a realistic default-view string select', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        select: 'Timestamp, ServiceName as service, Body',
-        where: 'service:"prod"',
-        whereLanguage: 'lucene',
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain("service = 'prod'");
-    });
-
-    it('renders an unknown field as the no-match predicate when a string select declares no matching alias', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        select: 'Timestamp, Body',
-        where: 'NotAColumn:"x"',
-        whereLanguage: 'lucene',
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain('(1 = 0)');
-      expect(actual).not.toContain('NotAColumn');
-    });
-
-    // SAVED_SEARCH alerts select count() while injecting the saved search's
-    // select aliases as expression-form WITH clauses (isSubquery: false). A
-    // Lucene WHERE referencing such an alias must resolve to the bare
-    // identifier, not the no-match predicate.
-    it('resolves a Lucene WHERE reference to an expression-form WITH alias', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        with: [
-          {
-            name: 'Content',
-            sql: chSql`toString(Body)`,
-            isSubquery: false,
-          },
-        ],
-        select: [{ aggFn: 'count', valueExpression: '' }],
-        where: 'Content:"swagger"',
-        whereLanguage: 'lucene',
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain("Content = 'swagger'");
-      expect(actual).not.toContain('(1 = 0)');
-    });
-
-    // Subquery CTEs (isSubquery: true) name a table-like source, not a column,
-    // so an alias reference to one in a Lucene WHERE is still unknown and must
-    // render the no-match predicate.
-    it('does not treat a subquery WITH alias as a column reference', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        with: [
-          {
-            name: 'sub',
-            sql: chSql`SELECT 1`,
-            isSubquery: true,
-          },
-        ],
-        select: [{ aggFn: 'count', valueExpression: '' }],
-        where: 'sub:"x"',
-        whereLanguage: 'lucene',
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain('(1 = 0)');
-    });
-  });
-
-  describe('SELECT alias references in other Lucene call sites', () => {
-    // The main WHERE clause is covered above; these exercise the remaining
-    // Lucene-capable call sites in renderChartConfig (filters array,
-    // per-aggregate conditions, and HAVING), all of which must resolve SELECT
-    // aliases identically to the main WHERE.
-
-    it('resolves a Lucene filter reference to a SELECT alias', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        select: [{ valueExpression: 'Body', alias: 'Content' }],
-        where: '',
-        filters: [{ type: 'lucene', condition: 'Content:"swagger"' }],
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain("Content = 'swagger'");
-    });
-
-    it('renders an unknown, non-alias field in a Lucene filter as the no-match predicate', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        select: [{ valueExpression: 'Body', alias: 'Content' }],
-        where: '',
-        filters: [{ type: 'lucene', condition: 'NotAColumn:"swagger"' }],
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain('(1 = 0)');
-      expect(actual).not.toContain('NotAColumn');
-    });
-
-    // A per-aggregate Lucene condition is pushed into the WHERE clause (when
-    // every select has one) and also rendered as the aggregate's `...If(...)`
-    // predicate. Both paths must resolve the alias. The alias here is an
-    // expression-form WITH clause to avoid a select referencing its own alias.
-    it('resolves a Lucene per-aggregate condition to a SELECT alias', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        with: [
-          {
-            name: 'Content',
-            sql: chSql`toString(Body)`,
-            isSubquery: false,
-          },
-        ],
-        select: [
-          {
-            aggFn: 'count',
-            valueExpression: '',
-            aggCondition: 'Content:"swagger"',
-            aggConditionLanguage: 'lucene',
-          },
-        ],
-        where: '',
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain("Content = 'swagger'");
-      expect(actual).not.toContain('(1 = 0)');
-    });
-
-    it('renders an unknown per-aggregate Lucene field as the no-match predicate', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        select: [
-          {
-            aggFn: 'count',
-            valueExpression: '',
-            aggCondition: 'NotAColumn:"swagger"',
-            aggConditionLanguage: 'lucene',
-          },
-        ],
-        where: '',
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain('(1 = 0)');
-      expect(actual).not.toContain('NotAColumn');
-    });
-
-    // A Lucene value expression (aggFn omitted, valueExpressionLanguage: lucene)
-    // is rendered as a SELECT column expression and must resolve aliases too.
-    it('resolves a Lucene value expression reference to a SELECT alias', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        with: [
-          {
-            name: 'Content',
-            sql: chSql`toString(Body)`,
-            isSubquery: false,
-          },
-        ],
-        select: [
-          {
-            valueExpression: 'Content:"swagger"',
-            valueExpressionLanguage: 'lucene',
-            alias: 'matched',
-          },
-        ],
-        where: '',
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain("Content = 'swagger'");
-      expect(actual).not.toContain('(1 = 0)');
-    });
-
-    // ClickHouse resolves SELECT aliases in HAVING, so a Lucene HAVING that
-    // references an alias must resolve it rather than render the no-match
-    // predicate.
-    it('resolves a Lucene HAVING reference to a SELECT alias', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        select: [{ valueExpression: 'Body', alias: 'Content' }],
-        where: '',
-        having: 'Content:"swagger"',
-        havingLanguage: 'lucene',
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain("Content = 'swagger'");
-    });
-
-    it('renders an unknown, non-alias field in a Lucene HAVING as the no-match predicate', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        displayType: DisplayType.Table,
-        connection: 'test-connection',
-        from: {
-          databaseName: 'default',
-          tableName: 'logs',
-        },
-        select: [{ valueExpression: 'Body', alias: 'Content' }],
-        where: '',
-        having: 'NotAColumn:"swagger"',
-        havingLanguage: 'lucene',
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-      expect(actual).toContain('(1 = 0)');
-      expect(actual).not.toContain('NotAColumn');
-    });
-  });
-
   describe('SETTINGS clause', () => {
     const config: ChartConfigWithOptDateRangeEx = {
       displayType: DisplayType.Table,
@@ -3696,210 +3373,11 @@ describe('renderChartConfig', () => {
     });
   });
 
-  describe('JSON schema (BETA_CH_OTEL_JSON_SCHEMA_ENABLED)', () => {
-    // When the ClickHouse exporter uses json: true, attribute columns are JSON
-    // type instead of Map(String, String). mapConcat() fails on JSON columns, so
-    // cityHash64 receives the JSON columns directly as variadic arguments.
-
-    let jsonSchemaMockMetadata: jest.Mocked<Metadata>;
-
-    beforeEach(() => {
-      const jsonSchemaColumns = [
-        { name: 'TimeUnix', type: 'DateTime64(9)' },
-        { name: 'MetricName', type: 'LowCardinality(String)' },
-        { name: 'Attributes', type: 'JSON' },
-        { name: 'ScopeAttributes', type: 'JSON' },
-        { name: 'ResourceAttributes', type: 'JSON' },
-        { name: 'Value', type: 'Float64' },
-        { name: 'AggregationTemporality', type: 'Int32' },
-      ];
-      jsonSchemaMockMetadata = {
-        getColumns: jest.fn().mockResolvedValue(jsonSchemaColumns),
-        getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(null),
-        getColumn: jest
-          .fn()
-          .mockImplementation(async ({ column }: { column: string }) =>
-            jsonSchemaColumns.find(col => col.name === column),
-          ),
-        getTableMetadata: jest
-          .fn()
-          .mockResolvedValue({ primary_key: 'TimeUnix' }),
-        getSkipIndices: jest.fn().mockResolvedValue([]),
-        getSetting: jest.fn().mockResolvedValue(undefined),
-      } as unknown as jest.Mocked<Metadata>;
-    });
-
-    const baseMetricConfig = {
-      displayType: DisplayType.Line,
-      connection: 'test-connection',
-      metricTables: {
-        gauge: 'otel_metrics_gauge',
-        histogram: 'otel_metrics_histogram',
-        sum: 'otel_metrics_sum',
-        summary: 'otel_metrics_summary',
-        'exponential histogram': 'otel_metrics_exponential_histogram',
-      },
-      from: {
-        databaseName: 'default',
-        tableName: '',
-      },
-      where: '',
-      whereLanguage: 'sql' as const,
-      timestampValueExpression: 'TimeUnix',
-      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')] as [
-        Date,
-        Date,
-      ],
-      granularity: '1 minute' as const,
-      limit: { limit: 10 },
-    };
-
-    it('should use direct cityHash64 for gauge metric when Attributes column is JSON type', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        ...baseMetricConfig,
-        select: [
-          {
-            aggFn: 'avg',
-            aggCondition: '',
-            aggConditionLanguage: 'lucene',
-            valueExpression: 'Value',
-            metricName: 'system.cpu.utilization',
-            metricType: MetricsDataType.Gauge,
-          },
-        ],
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        jsonSchemaMockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-
-      expect(actual).toContain(
-        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
-      );
-      expect(actual).not.toContain('toJSONString');
-      expect(actual).not.toContain('mapConcat');
-      expect(actual).toMatchSnapshot();
-    });
-
-    it('should use direct cityHash64 for sum metric when Attributes column is JSON type', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        ...baseMetricConfig,
-        granularity: '5 minute',
-        select: [
-          {
-            aggFn: 'avg',
-            aggCondition: '',
-            aggConditionLanguage: 'lucene',
-            valueExpression: 'Value',
-            metricName: 'db.client.connections.usage',
-            metricType: MetricsDataType.Sum,
-          },
-        ],
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        jsonSchemaMockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-
-      expect(actual).toContain(
-        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
-      );
-      expect(actual).not.toContain('toJSONString');
-      expect(actual).not.toContain('mapConcat');
-      expect(actual).toMatchSnapshot();
-    });
-
-    it('should use direct cityHash64 for histogram (quantile) metric when Attributes column is JSON type', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        ...baseMetricConfig,
-        granularity: '2 minute',
-        select: [
-          {
-            aggFn: 'quantile',
-            level: 0.95,
-            valueExpression: 'Value',
-            metricName: 'http.server.duration',
-            metricType: MetricsDataType.Histogram,
-          },
-        ],
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        jsonSchemaMockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-
-      expect(actual).toContain(
-        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
-      );
-      expect(actual).not.toContain('toJSONString');
-      expect(actual).not.toContain('mapConcat');
-      expect(actual).toMatchSnapshot();
-    });
-
-    it('should use direct cityHash64 for histogram (count) metric when Attributes column is JSON type', async () => {
-      const config: ChartConfigWithOptDateRange = {
-        ...baseMetricConfig,
-        granularity: '2 minute',
-        select: [
-          {
-            aggFn: 'count',
-            valueExpression: 'Value',
-            metricName: 'http.server.request.count',
-            metricType: MetricsDataType.Histogram,
-          },
-        ],
-      };
-
-      const generatedSql = await renderChartConfig(
-        config,
-        jsonSchemaMockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-
-      expect(actual).toContain(
-        'cityHash64(ScopeAttributes, ResourceAttributes, Attributes)',
-      );
-      expect(actual).not.toContain('toJSONString');
-      expect(actual).not.toContain('mapConcat');
-      expect(actual).toMatchSnapshot();
-    });
-
-    it('should still use mapConcat when Attributes column is Map type (non-JSON schema)', async () => {
-      // Verify existing Map-schema behaviour is unchanged
-      const config: ChartConfigWithOptDateRange = {
-        ...baseMetricConfig,
-        select: [
-          {
-            aggFn: 'avg',
-            aggCondition: '',
-            aggConditionLanguage: 'lucene',
-            valueExpression: 'Value',
-            metricName: 'system.cpu.utilization',
-            metricType: MetricsDataType.Gauge,
-          },
-        ],
-      };
-
-      // mockMetadata returns Map-typed columns (default setup from beforeEach)
-      const generatedSql = await renderChartConfig(
-        config,
-        mockMetadata,
-        querySettings,
-      );
-      const actual = parameterizedQueryToSql(generatedSql);
-
-      expect(actual).toContain('mapConcat');
-      expect(actual).not.toContain('toJSONString');
-    });
-  });
+  // The Map-schema vs JSON-schema attrHashExpr distinction was collapsed in
+  // HDX-4466. Both schemas now render the same variadic
+  // cityHash64(ScopeAttributes, ResourceAttributes, Attributes) expression,
+  // which works for both Map(LowCardinality(String), String) and JSON
+  // attribute columns. Coverage of the variadic form lives in the regenerated
+  // gauge / sum / histogram snapshots earlier in this file plus the
+  // cross-scope integration test in packages/api/src/clickhouse/__tests__.
 });
