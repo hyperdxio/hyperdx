@@ -246,6 +246,7 @@ export default function EditTimeChartForm({
     seriesLimit,
     color,
     colorRules,
+    backgroundChart,
   ] = useWatch({
     control,
     name: [
@@ -258,6 +259,7 @@ export default function EditTimeChartForm({
       'seriesLimit',
       'color',
       'colorRules',
+      'backgroundChart',
     ],
   });
 
@@ -281,6 +283,7 @@ export default function EditTimeChartForm({
       seriesLimit,
       color,
       colorRules,
+      backgroundChart,
     }),
     [
       alignDateRangeToGranularity,
@@ -292,6 +295,7 @@ export default function EditTimeChartForm({
       seriesLimit,
       color,
       colorRules,
+      backgroundChart,
     ],
   );
 
@@ -575,6 +579,7 @@ export default function EditTimeChartForm({
       seriesLimit,
       color,
       colorRules,
+      backgroundChart,
     }: ChartConfigDisplaySettings) => {
       setValue('numberFormat', numberFormat);
       setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
@@ -583,11 +588,12 @@ export default function EditTimeChartForm({
       setValue('fitYAxisToData', fitYAxisToData);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
       // Persist `null` (not undefined) when cleared so the disabled state
-      // survives JSON round-tripping through the URL query state — otherwise
+      // survives JSON round-tripping through the URL query state; otherwise
       // the dropped key lets RHF's `values` sync restore the stale value.
       setValue('seriesLimit', seriesLimit ?? null);
       setValue('color', color);
       setValue('colorRules', colorRules);
+      setValue('backgroundChart', backgroundChart);
       onSubmit();
     },
     [setValue, onSubmit],

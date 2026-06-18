@@ -32,6 +32,7 @@ import ChartErrorState, {
   ChartErrorStateVariant,
 } from './charts/ChartErrorState';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
+import NumberTileBackgroundChart from './NumberTileBackgroundChart';
 
 const NUMBER_TILE_MIN_FONT_SIZE = 10;
 const NUMBER_TILE_MAX_FONT_SIZE = 72;
@@ -180,7 +181,7 @@ function AutoSizeNumber({
 }
 
 // Wraps AutoSizeNumber in an error boundary so a runtime failure in the
-// measurement / ResizeObserver pipeline never blanks out the tile —
+// measurement / ResizeObserver pipeline never blanks out the tile;
 // instead the dashboard falls back to the original fixed-size rendering.
 function SafeAutoSizeNumber({
   children,
@@ -361,9 +362,19 @@ export default function DBNumberChart({
           No data found within time range.
         </div>
       ) : (
-        <SafeAutoSizeNumber color={tileColor}>
-          {formattedValue ?? 'N/A'}
-        </SafeAutoSizeNumber>
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+          {config.backgroundChart && (
+            <NumberTileBackgroundChart
+              config={config}
+              backgroundChart={config.backgroundChart}
+            />
+          )}
+          <div style={{ position: 'relative', zIndex: 1, height: '100%' }}>
+            <SafeAutoSizeNumber color={tileColor}>
+              {formattedValue ?? 'N/A'}
+            </SafeAutoSizeNumber>
+          </div>
+        </div>
       )}
     </ChartContainer>
   );
