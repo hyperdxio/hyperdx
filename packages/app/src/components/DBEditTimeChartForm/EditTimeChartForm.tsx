@@ -341,7 +341,11 @@ export default function EditTimeChartForm({
         console.error(
           'convertFormStateToSavedChartConfig returned undefined after validation passed. ' +
             'This likely means a new displayType or configType combination is not handled.',
-          { displayType: form.displayType, configType: form.configType, source: form.source },
+          {
+            displayType: form.displayType,
+            configType: form.configType,
+            source: form.source,
+          },
         );
         return { errors: [], config: null };
       }
