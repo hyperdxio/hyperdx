@@ -122,15 +122,23 @@ describe('convertFormStateToSavedChartConfig', () => {
     });
   });
 
-  it('returns undefined for sql config with an unsupported displayType', () => {
+  it('returns markdown config even when configType is sql', () => {
     const form: ChartEditorFormState = {
       configType: 'sql',
       displayType: DisplayType.Markdown,
+      markdown: '## Note',
       sqlTemplate: 'SELECT 1',
       connection: 'conn-1',
       series: [],
     };
-    expect(convertFormStateToSavedChartConfig(form, undefined)).toBeUndefined();
+    const result = convertFormStateToSavedChartConfig(
+      form,
+      undefined,
+    ) as BuilderSavedChartConfig;
+    expect(result).toBeDefined();
+    expect(result.displayType).toBe(DisplayType.Markdown);
+    expect(result.markdown).toBe('## Note');
+    expect(result.select).toEqual([]);
   });
 
   it('uses sqlTemplate empty string as default when undefined', () => {

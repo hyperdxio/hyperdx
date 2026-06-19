@@ -118,7 +118,7 @@ export function convertFormStateToSavedChartConfig(
     return rawSqlConfig;
   }
 
-  if (form.displayType === DisplayType.Markdown && form.configType !== 'sql') {
+  if (form.displayType === DisplayType.Markdown) {
     const config: BuilderSavedChartConfig = {
       ...omit(form, ['series', 'configType', 'sqlTemplate']),
       select: [],

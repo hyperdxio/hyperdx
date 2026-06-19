@@ -337,7 +337,14 @@ export default function EditTimeChartForm({
       if (errors.length > 0) return { errors, config: null };
 
       const savedConfig = convertFormStateToSavedChartConfig(form, tableSource);
-      if (!savedConfig) return { errors: [], config: null };
+      if (!savedConfig) {
+        console.error(
+          'convertFormStateToSavedChartConfig returned undefined after validation passed. ' +
+            'This likely means a new displayType or configType combination is not handled.',
+          { displayType: form.displayType, configType: form.configType, source: form.source },
+        );
+        return { errors: [], config: null };
+      }
 
       const config = isRawSqlSavedChartConfig(savedConfig)
         ? savedConfig
