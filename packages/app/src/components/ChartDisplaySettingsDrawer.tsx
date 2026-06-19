@@ -172,10 +172,12 @@ export default function ChartDisplaySettingsDrawer({
   const showTileColor = displayType === DisplayType.Number;
 
   // The background sparkline is derived from a time-bucketed version of the
-  // tile's query, so it only applies to builder number tiles. Raw SQL number
-  // tiles return a single value with no time dimension to bucket.
-  const showBackgroundChart =
-    displayType === DisplayType.Number && configType !== 'sql';
+  // tile's query, so it only applies to builder number tiles: raw SQL number
+  // tiles return a single value with no time dimension to bucket. On a SQL
+  // number tile the control is shown disabled with a hint rather than hidden,
+  // so the option stays discoverable.
+  const showBackgroundChart = displayType === DisplayType.Number;
+  const isBackgroundChartDisabled = configType === 'sql';
 
   return (
     <Drawer
@@ -301,7 +303,11 @@ export default function ChartDisplaySettingsDrawer({
               control={control}
               name="backgroundChart"
               render={({ field: { onChange, value } }) => (
-                <BackgroundChartInput value={value} onChange={onChange} />
+                <BackgroundChartInput
+                  value={value}
+                  onChange={onChange}
+                  disabled={isBackgroundChartDisabled}
+                />
               )}
             />
             <Divider />
