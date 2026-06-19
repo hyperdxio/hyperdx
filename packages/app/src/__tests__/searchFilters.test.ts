@@ -10,6 +10,8 @@ import {
 
 enableMapSet();
 
+type ConditionFilter = { type: 'sql' | 'lucene'; condition: string };
+
 describe('searchFilters', () => {
   describe('parseQuery', () => {
     it('empty query', () => {
@@ -743,7 +745,8 @@ describe('searchFilters', () => {
 
       const query = filtersToQuery(originalFilters, { dateTimeColumns });
       // Sanity: produces the DateTime (non-64) wrapper.
-      expect(query[0].condition).toBe(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((query[0] as ConditionFilter).condition).toBe(
         "TimestampTime IN (parseDateTimeBestEffort('2026-06-17T11:56:41Z'))",
       );
 
@@ -768,6 +771,55 @@ describe('searchFilters', () => {
         TimestampTime: { included: new Set(['a']), excluded: new Set() },
         day: { included: new Set(), excluded: new Set(['2026-06-17']) },
       });
+    });
+
+    // The map key can be a query-result column name that isn't a table column:
+    // an alias (`TimestampTime AS time`) or a computed expression
+    // (`toDate(TimestampTime)`). These only become filterable correctly when the
+    // type map is sourced from the result set rather than the table schema.
+    it('wraps and round-trips an aliased DateTime column', () => {
+      const aliasColumns = new Map<string, string>([['time', 'DateTime64(9)']]);
+      const originalFilters = {
+        time: {
+          included: new Set<string | boolean>(['2026-06-18T10:33:55Z']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, {
+        dateTimeColumns: aliasColumns,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((query[0] as ConditionFilter).condition).toBe(
+        "time IN (parseDateTime64BestEffort('2026-06-18T10:33:55Z', 9))",
+      );
+
+      expect(parseQuery(query).filters).toEqual({
+        time: {
+          included: new Set(['2026-06-18T10:33:55Z']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('wraps a computed DateTime expression with the type-matched function', () => {
+      const exprColumns = new Map<string, string>([
+        ['toDate(TimestampTime)', 'Date'],
+      ]);
+      const originalFilters = {
+        'toDate(TimestampTime)': {
+          included: new Set<string | boolean>(['2026-06-18']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, {
+        dateTimeColumns: exprColumns,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((query[0] as ConditionFilter).condition).toBe(
+        "toDate(TimestampTime) IN (toDate('2026-06-18'))",
+      );
     });
   });
 

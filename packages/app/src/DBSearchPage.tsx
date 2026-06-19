@@ -136,7 +136,7 @@ import {
 } from './components/TimePicker/utils';
 import {
   useColumns,
-  useDateTimeColumns,
+  useResolvedDateTimeColumns,
   useTableMetadata,
 } from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
@@ -1113,7 +1113,8 @@ export function DBSearchPage() {
     { enabled: !!watchedSourceObj },
   );
 
-  const dateTimeColumns = useDateTimeColumns(watchedSourceColumns);
+  const { dateTimeColumns, onResolvedColumnsChange } =
+    useResolvedDateTimeColumns(watchedSourceColumns);
 
   const filters = useWatch({ name: 'filters', control });
   const searchFilters = useSearchPageFilterState({
@@ -2429,6 +2430,7 @@ export function DBSearchPage() {
                             onSortingChange={onSortingChange}
                             initialSortBy={initialSortBy}
                             enableSmallFirstWindow
+                            onResolvedColumnsChange={onResolvedColumnsChange}
                           />
                         )}
                     </Box>
