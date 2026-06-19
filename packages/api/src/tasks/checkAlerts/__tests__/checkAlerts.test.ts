@@ -8424,8 +8424,15 @@ describe('checkAlerts', () => {
 
     describe('multi-window alerting (numConsecutiveWindows)', () => {
       it('fires on the first violation when numConsecutiveWindows=1', async () => {
-        const { team, webhook, connection, source, savedSearch, teamWebhooksById, clickhouseClient } =
-          await setupSavedSearchAlertTest();
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
 
         const details = await createAlertDetails(
           team,
@@ -8443,10 +8450,22 @@ describe('checkAlerts', () => {
         );
 
         await bulkInsertLogs([
-          { ServiceName: 'api', Timestamp: new Date('2024-01-01T00:05:00Z'), SeverityText: 'error', Body: 'err' },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2024-01-01T00:05:00Z'),
+            SeverityText: 'error',
+            Body: 'err',
+          },
         ]);
 
-        await processAlertAtTime(new Date('2024-01-01T00:12:00Z'), details, clickhouseClient, connection, alertProvider, teamWebhooksById);
+        await processAlertAtTime(
+          new Date('2024-01-01T00:12:00Z'),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
 
         const histories = await AlertHistory.find({ alert: details.alert.id });
         expect(histories).toHaveLength(1);
@@ -8456,10 +8475,19 @@ describe('checkAlerts', () => {
       });
 
       it('suppresses notification until all M windows have violated', async () => {
-        const { team, webhook, connection, source, savedSearch, teamWebhooksById, clickhouseClient } =
-          await setupSavedSearchAlertTest();
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
 
-        jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+        jest
+          .spyOn(slack, 'postMessageToWebhook')
+          .mockResolvedValue(null as any);
 
         const details = await createAlertDetails(
           team,
@@ -8477,39 +8505,90 @@ describe('checkAlerts', () => {
         );
 
         await bulkInsertLogs([
-          { ServiceName: 'api', Timestamp: new Date('2024-01-01T00:05:00Z'), SeverityText: 'error', Body: 'err' },
-          { ServiceName: 'api', Timestamp: new Date('2024-01-01T00:10:00Z'), SeverityText: 'error', Body: 'err' },
-          { ServiceName: 'api', Timestamp: new Date('2024-01-01T00:15:00Z'), SeverityText: 'error', Body: 'err' },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2024-01-01T00:05:00Z'),
+            SeverityText: 'error',
+            Body: 'err',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2024-01-01T00:10:00Z'),
+            SeverityText: 'error',
+            Body: 'err',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2024-01-01T00:15:00Z'),
+            SeverityText: 'error',
+            Body: 'err',
+          },
         ]);
 
         // don't fire on windows 1 or 2 since we need 3 consecutive violations to fire
-        await processAlertAtTime(new Date('2024-01-01T00:12:00Z'), details, clickhouseClient, connection, alertProvider, teamWebhooksById);
+        await processAlertAtTime(
+          new Date('2024-01-01T00:12:00Z'),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
         expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(0);
-        let histories = await AlertHistory.find({ alert: details.alert.id }).sort({ createdAt: 1 });
+        let histories = await AlertHistory.find({
+          alert: details.alert.id,
+        }).sort({ createdAt: 1 });
         expect(histories).toHaveLength(1);
         expect(histories[0].state).toBe('ALERT');
         expect(histories[0].fired).toBeFalsy(); // shouldn't fire yet
 
-        await processAlertAtTime(new Date('2024-01-01T00:17:00Z'), details, clickhouseClient, connection, alertProvider, teamWebhooksById);
+        await processAlertAtTime(
+          new Date('2024-01-01T00:17:00Z'),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
         expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(0);
-        histories = await AlertHistory.find({ alert: details.alert.id }).sort({ createdAt: 1 });
+        histories = await AlertHistory.find({ alert: details.alert.id }).sort({
+          createdAt: 1,
+        });
         expect(histories).toHaveLength(2);
         expect(histories[1].state).toBe('ALERT');
         expect(histories[1].fired).toBeFalsy(); // shouldn't fire yet
 
-        await processAlertAtTime(new Date('2024-01-01T00:22:00Z'), details, clickhouseClient, connection, alertProvider, teamWebhooksById);
+        await processAlertAtTime(
+          new Date('2024-01-01T00:22:00Z'),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
         expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
-        histories = await AlertHistory.find({ alert: details.alert.id }).sort({ createdAt: 1 });
+        histories = await AlertHistory.find({ alert: details.alert.id }).sort({
+          createdAt: 1,
+        });
         expect(histories).toHaveLength(3);
         expect(histories[2].state).toBe('ALERT');
         expect(histories[2].fired).toBe(true); // fires here b/c it's the third consecutive violation
       });
 
       it('does not send a resolution notification when no alert had previously fired', async () => {
-        const { team, webhook, connection, source, savedSearch, teamWebhooksById, clickhouseClient } =
-          await setupSavedSearchAlertTest();
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
 
-        jest.spyOn(slack, 'postMessageToWebhook').mockResolvedValue(null as any);
+        jest
+          .spyOn(slack, 'postMessageToWebhook')
+          .mockResolvedValue(null as any);
 
         const details = await createAlertDetails(
           team,
@@ -8527,21 +8606,54 @@ describe('checkAlerts', () => {
         );
 
         await bulkInsertLogs([
-          { ServiceName: 'api', Timestamp: new Date('2024-01-01T00:05:00Z'), SeverityText: 'error', Body: 'err' },
-          { ServiceName: 'api', Timestamp: new Date('2024-01-01T00:10:00Z'), SeverityText: 'error', Body: 'err' },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2024-01-01T00:05:00Z'),
+            SeverityText: 'error',
+            Body: 'err',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date('2024-01-01T00:10:00Z'),
+            SeverityText: 'error',
+            Body: 'err',
+          },
         ]);
 
-        await processAlertAtTime(new Date('2024-01-01T00:12:00Z'), details, clickhouseClient, connection, alertProvider, teamWebhooksById);
+        await processAlertAtTime(
+          new Date('2024-01-01T00:12:00Z'),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
         expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(0);
 
-        await processAlertAtTime(new Date('2024-01-01T00:17:00Z'), details, clickhouseClient, connection, alertProvider, teamWebhooksById);
+        await processAlertAtTime(
+          new Date('2024-01-01T00:17:00Z'),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
         expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(0);
 
         // window 3 is ok (no violation)
-        await processAlertAtTime(new Date('2024-01-01T00:22:00Z'), details, clickhouseClient, connection, alertProvider, teamWebhooksById);
+        await processAlertAtTime(
+          new Date('2024-01-01T00:22:00Z'),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
         expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(0); // webhook should never fire in this case
 
-        const histories = await AlertHistory.find({ alert: details.alert.id }).sort({ createdAt: 1 });
+        const histories = await AlertHistory.find({
+          alert: details.alert.id,
+        }).sort({ createdAt: 1 });
         expect(histories).toHaveLength(3);
         expect(histories[0].state).toBe('ALERT');
         expect(histories[0].fired).toBeFalsy();
