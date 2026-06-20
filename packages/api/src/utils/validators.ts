@@ -7,10 +7,7 @@ export const passwordSchema = z
     pass => /[a-z]/.test(pass) && /[A-Z]/.test(pass),
     'Password must include both lower and upper case characters',
   )
-  .refine(
-    pass => /\d/.test(pass),
-    'Password must include at least one number',
-  )
+  .refine(pass => /\d/.test(pass), 'Password must include at least one number')
   .refine(
     pass => /[!@#$%^&*(),.?":{}|<>;\-+=]/.test(pass),
     'Password must include at least one special character',

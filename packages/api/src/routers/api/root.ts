@@ -16,7 +16,7 @@ import User from '@/models/user'; // TODO -> do not import model directly
 import { setupTeamDefaults } from '@/setupDefaults';
 import logger from '@/utils/logger';
 import passport from '@/utils/passport';
-import { validatePassword, passwordSchema } from '@/utils/validators';
+import { passwordSchema, validatePassword } from '@/utils/validators';
 
 const registrationSchema = z
   .object({
