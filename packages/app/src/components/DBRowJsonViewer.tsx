@@ -385,12 +385,15 @@ export function DBRowJsonViewer({
       const isJsonColumn =
         keyPath.length > 0 && jsonColumns?.includes(keyPath[0]);
 
-      // Add to Filters action (strings only)
+      // Add to Filters action
       // FIXME: TOTAL HACK To disallow adding timestamp to filters
       if (
         onPropertyAddClick != null &&
-        typeof value === 'string' &&
-        value &&
+        (typeof value === 'string' ||
+          typeof value === 'number' ||
+          typeof value === 'boolean') &&
+        value !== '' &&
+        value != null &&
         fieldPath != 'Timestamp' &&
         fieldPath != 'TimestampTime'
       ) {
@@ -425,10 +428,10 @@ export function DBRowJsonViewer({
                 : fieldPath;
             }
 
-            onPropertyAddClick(filterFieldPath, value);
+            onPropertyAddClick(filterFieldPath, String(value));
             notifications.show({
               color: 'green',
-              message: `Added "${fieldPath} = ${value}" to filters`,
+              message: `Added "${fieldPath} = ${String(value)}" to filters`,
             });
           },
         });
