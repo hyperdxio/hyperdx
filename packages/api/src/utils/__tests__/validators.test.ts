@@ -18,6 +18,9 @@ describe('validators', () => {
       expect(validators.validatePassword('Abcdefghijkl')).toBe(false); // no num/special
       expect(validators.validatePassword('Abcdefghijk1')).toBe(false); // no special
       expect(validators.validatePassword('Abcdefghijk!')).toBe(false); // no num
+      expect(validators.validatePassword('ValidPass123!'.repeat(6))).toBe(
+        false,
+      ); // 78 chars (over 72)
     });
   });
 });
