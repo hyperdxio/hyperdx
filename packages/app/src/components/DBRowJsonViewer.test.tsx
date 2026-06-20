@@ -158,6 +158,17 @@ describe('DBRowJsonViewer', () => {
   });
 
   describe('timestamp fields', () => {
+    it('displays Timestamp using the same formatter as the results table', () => {
+      renderComponent({
+        Timestamp: '2026-06-15T02:23:15.895Z',
+      });
+
+      expect(
+        screen.queryByText('2026-06-15T02:23:15.895Z'),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText('Timestamp')).toBeInTheDocument();
+    });
+
     it.each([['Timestamp'], ['TimestampTime']])(
       'formats %s field correctly',
       field => {
