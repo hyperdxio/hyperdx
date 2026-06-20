@@ -385,8 +385,11 @@ export function DBRowJsonViewer({
   }, [data, debouncedFilter, jsonOptions.filterBlanks]);
 
   const formatLeafValue = useCallback<FormatLeafValue>(
-    ({ keyName, value }) => {
-      if (keyName !== 'Timestamp' && keyName !== 'TimestampTime') {
+    ({ keyName, keyPath, value }) => {
+      if (
+        keyPath.length !== 1 ||
+        (keyName !== 'Timestamp' && keyName !== 'TimestampTime')
+      ) {
         return undefined;
       }
 
