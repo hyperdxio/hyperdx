@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { ColorConditionSchema } from '../types';
+import { BackgroundChartSchema, ColorConditionSchema } from '../types';
 
 describe('ColorConditionSchema', () => {
   // ─── Positive cases ─────────────────────────────────────────────────────────
@@ -280,5 +280,44 @@ describe('colorRules array in SharedChartSettingsSchema', () => {
       color: 'chart-blue' as const,
     }));
     expect(rulesSchema.safeParse(rules).success).toBe(false);
+  });
+});
+
+describe('BackgroundChartSchema', () => {
+  // ─── Positive cases ─────────────────────────────────────────────────────────
+
+  it.each(['line', 'area'] as const)(
+    'parses type %s without a color override',
+    type => {
+      expect(BackgroundChartSchema.safeParse({ type }).success).toBe(true);
+    },
+  );
+
+  it('parses with a palette-token color override', () => {
+    expect(
+      BackgroundChartSchema.safeParse({ type: 'area', color: 'chart-success' })
+        .success,
+    ).toBe(true);
+  });
+
+  // ─── Negative cases ──────────────────────────────────────────────────────────
+
+  it('rejects an unknown chart type', () => {
+    expect(BackgroundChartSchema.safeParse({ type: 'bar' }).success).toBe(
+      false,
+    );
+  });
+
+  it('rejects a missing type', () => {
+    expect(
+      BackgroundChartSchema.safeParse({ color: 'chart-blue' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an invalid palette token', () => {
+    expect(
+      BackgroundChartSchema.safeParse({ type: 'line', color: 'not-a-token' })
+        .success,
+    ).toBe(false);
   });
 });
