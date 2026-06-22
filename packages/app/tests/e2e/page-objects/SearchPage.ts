@@ -234,6 +234,15 @@ export class SearchPage {
   }
 
   /**
+   * Locator for the results table's error state (rendered by ChartErrorState
+   * when the underlying ClickHouse query fails). Assert `toHaveCount(0)` to
+   * confirm the results loaded without error.
+   */
+  getTableError() {
+    return this.page.getByText(/Error loading/i);
+  }
+
+  /**
    * Get SELECT editor (CodeMirror)
    */
   getSELECTEditor() {
