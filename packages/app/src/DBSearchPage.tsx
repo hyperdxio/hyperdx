@@ -1085,9 +1085,29 @@ export function DBSearchPage() {
   );
 
   const filters = useWatch({ name: 'filters', control });
+
+  // Top-level column names for the active source, used to quote
+  // filter keys that contain special characters.
+  const { data: inputSourceColumns } = useColumns(
+    {
+      databaseName: inputSourceObj?.from?.databaseName ?? '',
+      tableName: inputSourceObj?.from?.tableName ?? '',
+      connectionId: inputSourceObj?.connection ?? '',
+    },
+    { enabled: !!inputSourceObj },
+  );
+  const knownColumns = useMemo(
+    () =>
+      inputSourceColumns
+        ? new Set(inputSourceColumns.map(c => c.name))
+        : new Set<string>(),
+    [inputSourceColumns],
+  );
+
   const searchFilters = useSearchPageFilterState({
     searchQuery: filters ?? undefined,
     onFilterChange: handleSetFilters,
+    knownColumns,
   });
 
   const watchedSource = useWatch({
