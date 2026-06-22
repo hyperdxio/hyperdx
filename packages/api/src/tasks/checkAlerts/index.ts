@@ -1009,17 +1009,23 @@ export const processAlert = async (
       }
 
       const groupFilter = groupKey ? { group: groupKey } : { group: null };
+      const earliestAllowedTime = new Date(
+        nowInMinsRoundDown.getTime() -
+          (numWindowsToLookBack - 1) * windowSizeInMins * 60_000,
+      );
       const alertHistory = await AlertHistory.find({
         alert: new mongoose.Types.ObjectId(alert.id),
         ...groupFilter,
-        createdAt: { $lt: nowInMinsRoundDown },
+        createdAt: { $gte: earliestAllowedTime, $lt: nowInMinsRoundDown },
       })
         .sort({ createdAt: -1 })
         .limit(numWindowsToLookBack - 1);
 
       return (
         alertHistory.length === numWindowsToLookBack - 1 &&
-        alertHistory.every(h => h.state === AlertState.ALERT)
+        alertHistory.every(
+          h => h.state === AlertState.ALERT || h.state === AlertState.PENDING,
+        )
       );
     };
 
@@ -1066,9 +1072,9 @@ export const processAlert = async (
 
       history.lastValues.push({ count: value, startTime: alertTimestamp });
       if (doesExceedThreshold(alert, value)) {
-        history.state = AlertState.ALERT;
         history.counts += 1;
         if (await shouldFireBasedOnConsecutiveWindows()) {
+          history.state = AlertState.ALERT;
           history.fired = true;
           await trySendNotification({
             state: AlertState.ALERT,
@@ -1077,6 +1083,7 @@ export const processAlert = async (
             startTime: alertTimestamp,
           });
         } else {
+          history.state = AlertState.PENDING;
           history.fired = false;
         }
       }
@@ -1131,14 +1138,18 @@ export const processAlert = async (
 
         const hasAlertsInPreviousMap = previousMap
           .values()
-          .some(history => history.state === AlertState.ALERT);
+          .some(
+            history =>
+              history.state === AlertState.ALERT ||
+              history.state === AlertState.PENDING,
+          );
 
         if (zeroValueIsAlert) {
           const history = getOrCreateHistory('');
           history.lastValues.push({ count: 0, startTime: bucketStart });
-          history.state = AlertState.ALERT;
           history.counts += 1;
           if (await shouldFireBasedOnConsecutiveWindows()) {
+            history.state = AlertState.ALERT;
             history.fired = true;
             await trySendNotification({
               state: AlertState.ALERT,
@@ -1147,6 +1158,7 @@ export const processAlert = async (
               startTime: bucketStart,
             });
           } else {
+            history.state = AlertState.PENDING;
             history.fired = false;
           }
         } else if (!hasGroupBy || !hasAlertsInPreviousMap) {
@@ -1176,9 +1188,9 @@ export const processAlert = async (
         const history = getOrCreateHistory(groupKey);
 
         if (doesExceedThreshold(alert, value)) {
-          history.state = AlertState.ALERT;
           history.counts += 1;
           if (await shouldFireBasedOnConsecutiveWindows(groupKey)) {
+            history.state = AlertState.ALERT;
             history.fired = true;
             await trySendNotification({
               state: AlertState.ALERT,
@@ -1188,6 +1200,7 @@ export const processAlert = async (
               attributes,
             });
           } else {
+            history.state = AlertState.PENDING;
             history.fired = false;
           }
         } else {

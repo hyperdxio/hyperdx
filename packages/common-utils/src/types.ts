@@ -425,6 +425,7 @@ export enum AlertState {
   DISABLED = 'DISABLED',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
+  PENDING = 'PENDING',
 }
 
 export enum AlertErrorType {

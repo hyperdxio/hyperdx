@@ -380,7 +380,9 @@ export default class DefaultAlertProvider implements AlertProvider {
 
     const finalState = historiesToCheck.some(h => h.state === AlertState.ALERT)
       ? AlertState.ALERT
-      : AlertState.OK;
+      : historiesToCheck.some(h => h.state === AlertState.PENDING)
+        ? AlertState.PENDING
+        : AlertState.OK;
 
     // Update alert state + errors based on this execution
     await Alert.updateOne(

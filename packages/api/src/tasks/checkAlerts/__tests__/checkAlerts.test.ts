@@ -8539,7 +8539,7 @@ describe('checkAlerts', () => {
           alert: details.alert.id,
         }).sort({ createdAt: 1 });
         expect(histories).toHaveLength(1);
-        expect(histories[0].state).toBe('ALERT');
+        expect(histories[0].state).toBe('PENDING');
         expect(histories[0].fired).toBeFalsy(); // shouldn't fire yet
 
         await processAlertAtTime(
@@ -8555,7 +8555,7 @@ describe('checkAlerts', () => {
           createdAt: 1,
         });
         expect(histories).toHaveLength(2);
-        expect(histories[1].state).toBe('ALERT');
+        expect(histories[1].state).toBe('PENDING');
         expect(histories[1].fired).toBeFalsy(); // shouldn't fire yet
 
         await processAlertAtTime(
@@ -8655,9 +8655,9 @@ describe('checkAlerts', () => {
           alert: details.alert.id,
         }).sort({ createdAt: 1 });
         expect(histories).toHaveLength(3);
-        expect(histories[0].state).toBe('ALERT');
+        expect(histories[0].state).toBe('PENDING');
         expect(histories[0].fired).toBeFalsy();
-        expect(histories[1].state).toBe('ALERT');
+        expect(histories[1].state).toBe('PENDING');
         expect(histories[1].fired).toBeFalsy();
         expect(histories[2].state).toBe('OK');
       });
