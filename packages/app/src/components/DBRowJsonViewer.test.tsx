@@ -196,9 +196,7 @@ describe('DBRowJsonViewer', () => {
         },
       });
 
-      expect(
-        screen.getByText('2026-06-15T02:23:15.895Z'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('2026-06-15T02:23:15.895Z')).toBeInTheDocument();
     });
 
     it.each([['Timestamp'], ['TimestampTime']])(
