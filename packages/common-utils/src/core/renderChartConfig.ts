@@ -688,10 +688,7 @@ async function renderSelectList(
 
   const isRatio = isRatioChartConfig(selectList, chartConfig);
 
-  const selectAliases = extractSelectAliases({
-    selectLists: [chartConfig.select, chartConfig.groupBy],
-    withClauses: chartConfig.with,
-  });
+  const selectAliases = extractSelectAliases(chartConfig);
 
   const selectsSQL = await Promise.all(
     selectList.map(async select => {
@@ -1002,14 +999,25 @@ function renderFrom({
  * query selects count() while the saved search's select aliases are injected as
  * expression WITH clauses (see `computeAliasWithClauses` in the alert task).
  */
-function extractSelectAliases({
-  selectLists,
-  withClauses,
-}: {
-  selectLists: (SelectList | undefined)[];
-  withClauses?: BuilderChartConfigWithDateRange['with'];
-}): Set<string> {
+// Memoizes the alias set per chart config. `renderSelectList`, `renderWhere`,
+// and `renderHaving` each need it from the same config, so without this a single
+// render reparses any string-form select list (via `chSqlToAliasMap`) up to
+// three times. Keyed on config identity; entries are GC'd with the config.
+const selectAliasesByChartConfig = new WeakMap<object, Set<string>>();
+
+function extractSelectAliases(
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
+): Set<string> {
+  const cached = selectAliasesByChartConfig.get(chartConfig);
+  if (cached != null) {
+    return cached;
+  }
+
   const aliases: string[] = [];
+  const selectLists: (SelectList | undefined)[] = [
+    chartConfig.select,
+    chartConfig.groupBy,
+  ];
 
   for (const list of selectLists) {
     if (list == null) {
@@ -1035,13 +1043,15 @@ function extractSelectAliases({
     }
   }
 
-  for (const clause of withClauses ?? []) {
+  for (const clause of chartConfig.with ?? []) {
     if (clause.isSubquery === false && clause.name.trim() !== '') {
       aliases.push(clause.name);
     }
   }
 
-  return new Set(aliases);
+  const result = new Set(aliases);
+  selectAliasesByChartConfig.set(chartConfig, result);
+  return result;
 }
 
 async function renderWhereExpressionStr({
@@ -1127,10 +1137,7 @@ async function renderWhere(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql> {
-  const selectAliases = extractSelectAliases({
-    selectLists: [chartConfig.select, chartConfig.groupBy],
-    withClauses: chartConfig.with,
-  });
+  const selectAliases = extractSelectAliases(chartConfig);
 
   let whereSearchCondition: ChSql | [] = [];
   if (isNonEmptyWhereExpr(chartConfig.where)) {
@@ -1415,10 +1422,7 @@ async function renderHaving(
     metadata,
     connectionId: chartConfig.connection,
     with: chartConfig.with,
-    selectAliases: extractSelectAliases({
-      selectLists: [chartConfig.select, chartConfig.groupBy],
-      withClauses: chartConfig.with,
-    }),
+    selectAliases: extractSelectAliases(chartConfig),
   });
 }
 
