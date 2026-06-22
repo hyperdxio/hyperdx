@@ -809,6 +809,87 @@ export class DashboardPage {
     return this.page.getByTestId(`dashboard-filter-select-${name}`);
   }
 
+  /**
+   * Create a Number tile that counts events from `sourceName`. The tile editor's
+   * default aggregation is "Count of Events", so no agg configuration is needed.
+   * Leaves exactly one tile on the dashboard.
+   */
+  async addNumberTile(name: string, sourceName: string) {
+    await this.addTile();
+    await expect(this.chartEditor.nameInput).toBeVisible();
+    await this.chartEditor.waitForDataToLoad();
+    await this.chartEditor.setChartType(DisplayType.Number);
+    await this.chartEditor.setChartName(name);
+    await this.chartEditor.selectSource(sourceName);
+    await this.chartEditor.runQuery(false);
+    await this.chartEditor.save();
+    await expect(this.getTiles()).toHaveCount(1, { timeout: 10000 });
+  }
+
+  /** Locator for the rendered value of a Number tile. */
+  getNumberTileValue(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).getByTestId('number-chart-value');
+  }
+
+  /** Locator for a tile's error state (rendered by ChartErrorState). */
+  getTileError(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).getByText(/Error loading/i);
+  }
+
+  /**
+   * Add a dashboard filter whose key is an arbitrary column expression. Unlike
+   * `fillFilterForm`, the expression is inserted via `insertText` so CodeMirror's
+   * bracket/quote auto-closing does not corrupt expressions containing `[`, `'`,
+   * or backticks. Assumes the Edit Filters modal is already open; leaves it open
+   * (on the filters list) so multiple filters can be added in sequence.
+   */
+  async addCustomFilter(name: string, sourceName: string, expression: string) {
+    await this.addFiltersButton.click();
+    const nameInput = this.page.getByTestId('filter-name-input');
+    await nameInput.waitFor({ state: 'visible', timeout: 10000 });
+    await nameInput.fill(name);
+    await this.filtersSourceSelector.click();
+    await this.page
+      .getByRole('option', { name: sourceName, exact: true })
+      .click();
+    const editor = getSqlEditor(this.page, 'expression');
+    await editor.click();
+    await this.page.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    );
+    await this.page.keyboard.press('Backspace');
+    await this.page.keyboard.insertText(expression);
+    // Blur the SQL editor before saving so its CodeMirror autocomplete tooltip
+    // closes — left open it overlaps the save button and makes the click flake
+    // on "element is not stable".
+    await nameInput.click();
+    const saveButton = this.page.getByTestId('save-filter-button');
+    await expect(saveButton).toBeEnabled();
+    await saveButton.click();
+    // Wait for the filter to actually land in the list before returning, so a
+    // slow save doesn't race the next add (which would silently drop a filter).
+    await this.getFilterItemByName(name).waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /**
+   * Toggle a value in a dashboard filter's multi-select. Selecting an unselected
+   * value applies it; calling again with the same value clears it. Closes the
+   * dropdown afterward so the rest of the dashboard is interactable.
+   */
+  async toggleFilterValue(filterName: string, value: string) {
+    const select = this.getFilterSelectByName(filterName);
+    await select.waitFor({ state: 'visible', timeout: 15000 });
+    await select.scrollIntoViewIfNeeded();
+    await select.click();
+    const option = this.page.getByRole('option', { name: value, exact: true });
+    await option.waitFor({ state: 'visible', timeout: 15000 });
+    await option.click();
+    await this.page.keyboard.press('Escape');
+  }
+
   async clickFilterOption(filterName: string, option: string) {
     const serviceFilter = this.getFilterSelectByName(filterName);
     serviceFilter.click();
