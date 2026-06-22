@@ -2,7 +2,13 @@ import isPlainObject from 'lodash/isPlainObject';
 import * as SQLParser from 'node-sql-parser';
 import SqlString from 'sqlstring';
 
-import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
+import {
+  ChSql,
+  chSql,
+  chSqlToAliasMap,
+  concatChSql,
+  wrapChSqlIfNotEmpty,
+} from '@/clickhouse';
 import { translateHistogram } from '@/core/histogram';
 import { Metadata } from '@/core/metadata';
 import {
@@ -682,6 +688,11 @@ async function renderSelectList(
 
   const isRatio = isRatioChartConfig(selectList, chartConfig);
 
+  const selectAliases = extractSelectAliases({
+    selectLists: [chartConfig.select, chartConfig.groupBy],
+    withClauses: chartConfig.with,
+  });
+
   const selectsSQL = await Promise.all(
     selectList.map(async select => {
       const whereClause = isNonEmptyWhereExpr(select.aggCondition)
@@ -696,6 +707,7 @@ async function renderSelectList(
             metadata,
             connectionId: chartConfig.connection,
             with: chartConfig.with,
+            selectAliases,
           })
         : chSql``;
 
@@ -714,6 +726,7 @@ async function renderSelectList(
                 metadata,
                 connectionId: chartConfig.connection,
                 with: chartConfig.with,
+                selectAliases,
               })
             : chSql`${{ UNSAFE_RAW_SQL: select.valueExpression }}`;
       } else if (
@@ -973,6 +986,64 @@ function renderFrom({
   );
 }
 
+/**
+ * Collects the aliases a Lucene WHERE may legally reference as bare
+ * identifiers: SELECT-list aliases plus expression-form WITH clauses.
+ *
+ * Array-form select lists expose `alias` directly. Raw-string lists (e.g. a
+ * source's `defaultTableSelectExpression` like
+ * 'Timestamp, ServiceName as service, Body') are parsed via `chSqlToAliasMap`
+ * to recover their declared aliases.
+ *
+ * WITH clauses only contribute when they declare an expression alias
+ * (`isSubquery === false`, i.e. `WITH (expr) AS ident`). Subquery CTEs
+ * (`WITH ident AS (subquery)`) name a table-like source, not a column usable in
+ * WHERE, so they're excluded. SAVED_SEARCH alerts depend on this: the alert
+ * query selects count() while the saved search's select aliases are injected as
+ * expression WITH clauses (see `computeAliasWithClauses` in the alert task).
+ */
+function extractSelectAliases({
+  selectLists,
+  withClauses,
+}: {
+  selectLists: (SelectList | undefined)[];
+  withClauses?: BuilderChartConfigWithDateRange['with'];
+}): Set<string> {
+  const aliases: string[] = [];
+
+  for (const list of selectLists) {
+    if (list == null) {
+      continue;
+    }
+
+    if (typeof list === 'string') {
+      // Wrap the select-list string in a parse scaffold (mirrors the
+      // `SELECT * FROM \`t\`` scaffold used below). chSqlToAliasMap swallows
+      // parse failures and returns {}, so an unparseable list contributes no
+      // aliases rather than throwing.
+      const aliasMap = chSqlToAliasMap(
+        chSql`SELECT ${{ UNSAFE_RAW_SQL: list }} FROM t`,
+      );
+      aliases.push(...Object.keys(aliasMap));
+      continue;
+    }
+
+    for (const col of list) {
+      if (col.alias && col.alias.trim() !== '') {
+        aliases.push(col.alias);
+      }
+    }
+  }
+
+  for (const clause of withClauses ?? []) {
+    if (clause.isSubquery === false && clause.name.trim() !== '') {
+      aliases.push(clause.name);
+    }
+  }
+
+  return new Set(aliases);
+}
+
 async function renderWhereExpressionStr({
   condition,
   language,
@@ -983,6 +1054,7 @@ async function renderWhereExpressionStr({
   useTextIndexForImplicitColumn,
   connectionId,
   with: withClauses,
+  selectAliases,
 }: {
   condition: SearchCondition;
   language: SearchConditionLanguage;
@@ -993,6 +1065,7 @@ async function renderWhereExpressionStr({
   useTextIndexForImplicitColumn?: BuilderChartConfigWithDateRange['useTextIndexForImplicitColumn'];
   connectionId: string;
   with?: BuilderChartConfigWithDateRange['with'];
+  selectAliases?: Set<string>;
 }): Promise<string> {
   let _condition = condition;
   if (language === 'lucene') {
@@ -1004,6 +1077,7 @@ async function renderWhereExpressionStr({
       bodyExpression,
       useTextIndexForImplicitColumn,
       connectionId: connectionId,
+      selectAliases,
     });
     const builder = new SearchQueryBuilder(condition, serializer);
     _condition = await builder.build();
@@ -1053,6 +1127,11 @@ async function renderWhere(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql> {
+  const selectAliases = extractSelectAliases({
+    selectLists: [chartConfig.select, chartConfig.groupBy],
+    withClauses: chartConfig.with,
+  });
+
   let whereSearchCondition: ChSql | [] = [];
   if (isNonEmptyWhereExpr(chartConfig.where)) {
     whereSearchCondition = wrapChSqlIfNotEmpty(
@@ -1067,6 +1146,7 @@ async function renderWhere(
         metadata,
         connectionId: chartConfig.connection,
         with: chartConfig.with,
+        selectAliases,
       }),
       '(',
       ')',
@@ -1095,6 +1175,7 @@ async function renderWhere(
               metadata,
               connectionId: chartConfig.connection,
               with: chartConfig.with,
+              selectAliases,
             });
           }
           return null;
@@ -1143,6 +1224,7 @@ async function renderWhere(
             metadata,
             connectionId: chartConfig.connection,
             with: chartConfig.with,
+            selectAliases,
           }),
           '(',
           ')',
@@ -1333,6 +1415,10 @@ async function renderHaving(
     metadata,
     connectionId: chartConfig.connection,
     with: chartConfig.with,
+    selectAliases: extractSelectAliases({
+      selectLists: [chartConfig.select, chartConfig.groupBy],
+      withClauses: chartConfig.with,
+    }),
   });
 }
 

@@ -223,6 +223,73 @@ describe('chSqlToAliasMap - alias unit test', () => {
     };
     expect(res).toEqual(aliasMap);
   });
+
+  it('Parametric aggregate functions (getKeyValues repro)', () => {
+    // node-sql-parser can't parse the double-paren `func(params)(args)` form, so
+    // these were silently dropped and spammed "Error parsing alias map". The
+    // aliases must now resolve to the full original expression.
+    const chSqlInput: ChSql = {
+      sql: 'SELECT groupUniqArray(20)(param0) AS param0, groupUniqArray(20)(param1) AS param1 FROM t',
+      params: {},
+    };
+    const res = chSqlToAliasMap(chSqlInput);
+    expect(res).toEqual({
+      param0: 'groupUniqArray(20)(param0)',
+      param1: 'groupUniqArray(20)(param1)',
+    });
+  });
+
+  it('Parametric aggregate mixed with normal and bracketed aliases', () => {
+    const chSqlInput: ChSql = {
+      sql: "SELECT Timestamp as ts, groupUniqArray(20)(ServiceName) AS svc, ResourceAttributes['x'] as rx FROM t",
+      params: {},
+    };
+    const res = chSqlToAliasMap(chSqlInput);
+    expect(res).toEqual({
+      ts: 'Timestamp',
+      svc: 'groupUniqArray(20)(ServiceName)',
+      rx: "ResourceAttributes['x']",
+    });
+  });
+
+  it('Parametric aggregate over a dotted/JSON column', () => {
+    // Parametric replacement runs before JSON replacement, so the dotted inner
+    // expression must survive intact inside the restored alias value.
+    const chSqlInput: ChSql = {
+      sql: 'SELECT groupUniqArray(20)(ResourceAttributes.service.name) AS svc FROM t',
+      params: {},
+    };
+    const res = chSqlToAliasMap(chSqlInput);
+    expect(res).toEqual({
+      svc: 'groupUniqArray(20)(ResourceAttributes.service.name)',
+    });
+  });
+
+  it('Parametric aggregate with numeric params', () => {
+    const chSqlInput: ChSql = {
+      sql: 'SELECT quantiles(0.5, 0.9)(Duration) AS q FROM t',
+      params: {},
+    };
+    const res = chSqlToAliasMap(chSqlInput);
+    expect(res).toEqual({
+      q: 'quantiles(0.5, 0.9)(Duration)',
+    });
+  });
+
+  it('Single-paren aggregates are not treated as parametric', () => {
+    // count() has a single group and must parse natively; the parametric
+    // aggregates alongside it must still resolve.
+    const chSqlInput: ChSql = {
+      sql: 'SELECT count() AS c, groupUniqArray(20)(a) AS ga, quantile(0.9)(b) AS p90 FROM t',
+      params: {},
+    };
+    const res = chSqlToAliasMap(chSqlInput);
+    expect(res).toEqual({
+      c: 'count()',
+      ga: 'groupUniqArray(20)(a)',
+      p90: 'quantile(0.9)(b)',
+    });
+  });
 });
 
 describe('computeRatio', () => {
