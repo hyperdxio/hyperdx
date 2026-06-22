@@ -73,6 +73,13 @@ export class ClickhouseClient extends BaseClickhouseClient {
     super(options);
   }
 
+  // This subclass always builds a web client, so narrow the base class's
+  // platform-agnostic client type to the web-specific one.
+  protected getClient(): WebClickHouseClient {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- subclass always builds a web client
+    return super.getClient() as WebClickHouseClient;
+  }
+
   private buildClient() {
     let url = this.host!;
     let myFetch: typeof fetch;
@@ -141,7 +148,7 @@ export class ClickhouseClient extends BaseClickhouseClient {
     };
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- client library type mismatch
-    return (this.getClient() as WebClickHouseClient).query({
+    return this.getClient().query({
       query,
       query_params,
       format,
