@@ -1009,9 +1009,14 @@ export const processAlert = async (
       }
 
       const groupFilter = groupKey ? { group: groupKey } : { group: null };
+
+      // filters the alert history to only include the last M _eligible_ windows (plus a couple of)
+      // windows of buffer, in order to ensure that we don't fire in the case where e.g.
+      // there's an offending log line, then the service is down for a while, then it comes back and there's
+      // another offending log line and they look consecutive, but are not.
       const earliestAllowedTime = new Date(
         nowInMinsRoundDown.getTime() -
-          (numWindowsToLookBack - 1) * windowSizeInMins * 60_000,
+          (numWindowsToLookBack + 1) * windowSizeInMins * 60_000,
       );
       const alertHistory = await AlertHistory.find({
         alert: new mongoose.Types.ObjectId(alert.id),
