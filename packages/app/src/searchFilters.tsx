@@ -6,10 +6,41 @@ import {
 } from '@hyperdx/common-utils/dist/filters';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 
+import {
+  cleanClickHouseExpression,
+  toQuotedClickHouseKeyExpression,
+} from './components/DBSearchPageFilters/utils';
 import { usePinnedFiltersApi, useUpdatePinnedFilters } from './pinnedFilters';
 import { useLocalStorage } from './utils';
 
 export const IS_ROOT_SPAN_COLUMN_NAME = 'isRootSpan';
+
+// Filter keys live in two forms.
+// 1. In-memory `FilterState`: use the clean/unquoted forms of each key. This is what
+// the UI renders, what test ids are built from, and what every key comparison expects.
+// 2. The persisted `Filter[]`: Uses the quoted/bracketed ClickHouse form so it emits
+// valid SQL verbatim. Persisted in URL params, local storage, and MongoDB for saved searches.
+
+// Convert the clean FilterState keys to valid SQL (quoted/bracket) keys.
+export const escapeFilterStateKeys = (
+  filters: FilterState,
+  knownColumns: Set<string>,
+): FilterState => {
+  const escaped: FilterState = {};
+  for (const [key, value] of Object.entries(filters)) {
+    escaped[toQuotedClickHouseKeyExpression(key, knownColumns)] = value;
+  }
+  return escaped;
+};
+
+// Convert valid SQL/persisted keys to clean FilterState keys.
+const unescapeFilterStateKeys = (filters: FilterState): FilterState => {
+  const cleaned: FilterState = {};
+  for (const [key, value] of Object.entries(filters)) {
+    cleaned[cleanClickHouseExpression(key)] = value;
+  }
+  return cleaned;
+};
 
 export const areFiltersEqual = (a: FilterState, b: FilterState) => {
   const aKeys = Object.keys(a);
@@ -358,13 +389,33 @@ export const parseQuery = (
 export const useSearchPageFilterState = ({
   searchQuery = [],
   onFilterChange,
+  knownColumns,
 }: {
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
+  /**
+   * Top-level column names on the table, used to quote
+   * column names that contain special characters
+   * (eg. service-name --> `service-name`).
+   **/
+  knownColumns: Set<string>;
 }) => {
+  // Access knownColumns through a ref so the returned mutators (which depend on
+  // updateFilterQuery) keep stable identities across knownColumns reference
+  // changes. The known columns are only used by the mutators, which are called
+  // on user input, not render, so avoid re-render by using a stable ref.
+  const knownColumnsRef = useRef<Set<string>>(knownColumns);
+  useEffect(() => {
+    knownColumnsRef.current = knownColumns;
+  }, [knownColumns]);
+
+  // Persisted filters carry canonical (escaped) keys; convert back to the clean
+  // keys the sidebar/comparisons use as they enter in-memory FilterState.
   const parsedQuery = useMemo(() => {
     try {
-      return parseQuery(searchQuery);
+      return {
+        filters: unescapeFilterStateKeys(parseQuery(searchQuery).filters),
+      };
     } catch (e) {
       console.error(e);
       return { filters: {} };
@@ -383,7 +434,13 @@ export const useSearchPageFilterState = ({
 
   const updateFilterQuery = useCallback(
     (newFilters: FilterState) => {
-      onFilterChange(filtersToQuery(newFilters));
+      // Escape filter keys here prior to saving so the URL / saved
+      // search holds valid-SQL keys while FilterState stays clean.
+      const escapedFilters = escapeFilterStateKeys(
+        newFilters,
+        knownColumnsRef.current,
+      );
+      onFilterChange(filtersToQuery(escapedFilters));
     },
     [onFilterChange],
   );
