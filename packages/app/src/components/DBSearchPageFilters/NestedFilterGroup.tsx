@@ -13,6 +13,10 @@ type NestedFilterGroupProps = {
     key: string;
     value: (string | boolean)[];
     propertyPath: string;
+    // Canonical (quoted/bracket) SQL form of `key`, used wherever the key
+    // becomes a raw SQL expression (distribution query, "Add column" SELECT).
+    // Falls back to `key` when absent.
+    sqlKey?: string;
   }[];
   selectedValues?: FilterState;
   onChange: (key: string, value: string | boolean) => void;
@@ -200,7 +204,7 @@ export const NestedFilterGroup = ({
                           <FilterGroup
                             data-testid={`nested-filter-group-${child.key}`}
                             name={child.propertyPath}
-                            distributionKey={child.key}
+                            distributionKey={child.sqlKey ?? child.key}
                             options={child.value.map(value => ({
                               value: value,
                               label: value.toString(),
@@ -235,11 +239,12 @@ export const NestedFilterGroup = ({
                             }}
                             onColumnToggle={
                               onColumnToggle
-                                ? () => onColumnToggle(child.key)
+                                ? () =>
+                                    onColumnToggle(child.sqlKey ?? child.key)
                                 : undefined
                             }
                             isColumnDisplayed={displayedColumns?.includes(
-                              child.key,
+                              child.sqlKey ?? child.key,
                             )}
                             onLoadMore={() => onLoadMore(child.key)}
                             loadMoreLoading={
