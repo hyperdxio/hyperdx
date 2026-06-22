@@ -87,7 +87,7 @@ function SimpleNumber({
 }) {
   return (
     <Flex align="center" justify="center" h="100%" style={{ flexGrow: 1 }}>
-      <Text size="4rem" c={color}>
+      <Text size="4rem" c={color} data-testid="number-chart-value">
         {children}
       </Text>
     </Flex>
@@ -167,6 +167,7 @@ function AutoSizeNumber({
       <Text
         ref={textRef}
         c={color}
+        data-testid="number-chart-value"
         style={{
           fontSize,
           lineHeight: 1.1,
