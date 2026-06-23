@@ -128,6 +128,7 @@ jest.mock('@/theme/ThemeProvider', () => ({
 }));
 
 jest.mock('../hooks/useMetadata', () => ({
+  ...jest.requireActual('../hooks/useMetadata'),
   useTableMetadata: () => ({
     data: { sorting_key: 'Timestamp' },
     isLoading: false,
