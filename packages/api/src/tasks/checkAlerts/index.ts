@@ -1215,16 +1215,17 @@ export const processAlert = async (
       }
     }
 
-    // Handle missing groups: If current check found no data, check if any previously alerting groups need to be resolved
-    // For group-by alerts, check if any previously alerting groups are missing from current data
+    // Handle missing groups: If current check found no data, check if any previously alerting/pending groups need to be resolved
+    // For group-by alerts, check if any previously alerting or pending groups are missing from current data
     if (hasGroupBy && previousMap && previousMap.size > 0) {
       for (const [previousKey, previousHistory] of previousMap.entries()) {
         const groupKey = extractGroupKeyFromMapKey(previousKey, alert.id);
 
-        // If this group was previously ALERT but is missing from current data and would be resolved by a 0 value,
+        // If this group was previously ALERT or PENDING but is missing from current data and would be resolved by a 0 value,
         // create an OK history for the group
         if (
-          previousHistory.state === AlertState.ALERT &&
+          (previousHistory.state === AlertState.ALERT ||
+            previousHistory.state === AlertState.PENDING) &&
           !histories.has(groupKey) &&
           !doesExceedThreshold(alert, 0)
         ) {
@@ -1233,7 +1234,7 @@ export const processAlert = async (
               alertId: alert.id,
               group: groupKey,
             },
-            `Group "${groupKey}" is missing from current data but was previously alerting - creating OK history`,
+            `Group "${groupKey}" is missing from current data but was previously ${previousHistory.state} - creating OK history`,
           );
           const history = getOrCreateHistory(groupKey);
           history.lastValues.push({ count: 0, startTime: expectedBuckets[0] });
