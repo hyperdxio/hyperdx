@@ -806,7 +806,7 @@ export function isOnClickDashboardById(
  *
  * `chart-info` is a render-time CSS variable (defined in the shared
  * `chart-semantic-tokens` SCSS mixin) but is intentionally *not* in the
- * picker enum — it's consumed only by code paths that always want
+ * picker enum; it's consumed only by code paths that always want
  * brand-primary (e.g. info-level log series, `getChartColorInfo()`).
  *
  * Storing tokens (not hex) lets user choices reflow correctly across
@@ -1004,7 +1004,7 @@ export function walkRawDashboardTileColors(
 /**
  * Strict Zod schema for the curated palette tokens. Intentionally
  * does NOT accept legacy numeric tokens (`chart-1` .. `chart-10`)
- * from #2265 — wrapping the enum in `z.preprocess` would force the
+ * from #2265. Wrapping the enum in `z.preprocess` would force the
  * schema's input type to `unknown`, which breaks downstream `z.infer`
  * consumers (e.g. `validateRequest` in the API handlers infers
  * `req.body` as `unknown` for any field reached through this schema).
@@ -1118,6 +1118,26 @@ export type NumberTileColorCondition = z.infer<
   typeof NumberTileColorConditionSchema
 >;
 
+/**
+ * Optional background trend ("sparkline") drawn behind a number tile's
+ * value. Derived from a time-bucketed version of the same query, so the
+ * value's trend over the selected range is visible at a glance (useful for
+ * SLO / error-budget tiles, where burn is temporal).
+ *
+ * `type` picks the shape (`line` or `area`). `color` is an optional
+ * palette-token override; when unset the sparkline inherits the tile's
+ * static `color`. Number tiles only; the UI gates the control on a builder
+ * config (raw SQL number tiles return a single value with no time
+ * dimension to bucket). Lives in common-utils so both the app and a future
+ * external-API parity PR can import it.
+ */
+export const BackgroundChartSchema = z.object({
+  type: z.enum(['line', 'area']),
+  color: ChartPaletteTokenSchema.optional(),
+});
+
+export type BackgroundChart = z.infer<typeof BackgroundChartSchema>;
+
 // When making changes here, consider if they need to be made to the external API
 // as well: the Zod schema (packages/api/src/utils/zod.ts) and the hand-written
 // OpenAPI JSDoc (packages/api/src/routers/external-api/v2/dashboards.ts), which
@@ -1148,6 +1168,12 @@ const SharedChartSettingsSchema = z.object({
   // table-tile slice can attach per-column rules without a schema change.
   // The UI gates the section on `displayType === DisplayType.Number`.
   colorRules: z.array(ColorConditionSchema).max(10).optional(),
+  // Optional background trend (line / area sparkline) drawn behind a number
+  // tile's value, derived from a time-bucketed version of the same query.
+  // Number tiles only; the UI gates the control on a builder config (raw SQL
+  // number tiles have no time dimension to bucket). Other display types
+  // ignore the field. Kept at shared level mirroring `color` / `colorRules`.
+  backgroundChart: BackgroundChartSchema.optional(),
 });
 
 export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
@@ -1710,7 +1736,7 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   implicitColumnExpression: z.string().optional(),
   /**
    * @deprecated Application-side SQL predicate AND'd into every query against
-   * the source. Not a security boundary — bypassable by direct table SELECT.
+   * the source. Not a security boundary; bypassable by direct table SELECT.
    * For hard tenant isolation, use a ClickHouse ROW POLICY at the DB level:
    * https://clickhouse.com/docs/sql-reference/statements/create/row-policy
    *

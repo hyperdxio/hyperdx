@@ -22,6 +22,7 @@ import { shouldFillNullsWithZero } from '@/ChartUtils';
 import { DEFAULT_SERIES_LIMIT } from '@/defaults';
 import { FormatTime } from '@/useFormatTime';
 
+import { BackgroundChartInput } from './BackgroundChartInput';
 import {
   attachLocalIds,
   ColorRulesEditor,
@@ -41,6 +42,7 @@ export type ChartConfigDisplaySettings = Pick<
   | 'fitYAxisToData'
   | 'color'
   | 'colorRules'
+  | 'backgroundChart'
 > & {
   groupByColumnsOnLeft?: boolean;
   // Per-tile cap on the number of series fetched for a group-by time chart.
@@ -95,6 +97,7 @@ function applyDefaultSettings(
     colorRules: settings.colorRules
       ? attachLocalIds(settings.colorRules)
       : undefined,
+    backgroundChart: settings.backgroundChart,
   };
 }
 
@@ -167,6 +170,14 @@ export default function ChartDisplaySettingsDrawer({
   // Per-series colors on line / bar / pie ship in a follow-up PR via
   // `select[i].color`.
   const showTileColor = displayType === DisplayType.Number;
+
+  // The background sparkline is derived from a time-bucketed version of the
+  // tile's query, so it only applies to builder number tiles: raw SQL number
+  // tiles return a single value with no time dimension to bucket. On a SQL
+  // number tile the control is shown disabled with a hint rather than hidden,
+  // so the option stays discoverable.
+  const showBackgroundChart = displayType === DisplayType.Number;
+  const isBackgroundChartDisabled = configType === 'sql';
 
   return (
     <Drawer
@@ -282,6 +293,23 @@ export default function ChartDisplaySettingsDrawer({
                 )}
               />
             </Box>
+            <Divider />
+          </>
+        )}
+
+        {showBackgroundChart && (
+          <>
+            <Controller
+              control={control}
+              name="backgroundChart"
+              render={({ field: { onChange, value } }) => (
+                <BackgroundChartInput
+                  value={value}
+                  onChange={onChange}
+                  disabled={isBackgroundChartDisabled}
+                />
+              )}
+            />
             <Divider />
           </>
         )}
