@@ -435,11 +435,19 @@ export function DBRowJsonViewer({
 
             // Handle parsed JSON from string columns using JSONExtractString
             if (isInParsedJson && parsedJsonRootPath) {
+              let jsonExtractFn: JSONExtractFn = 'JSONExtractString';
+
+              if (typeof value === 'number') {
+                jsonExtractFn = 'JSONExtractFloat';
+              } else if (typeof value === 'boolean') {
+                jsonExtractFn = 'JSONExtractBool';
+              }
+
               const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
                 jsonColumns,
-                'JSONExtractString',
+                jsonExtractFn,
                 mapColumns,
               );
               if (jsonQuery) {
@@ -497,8 +505,9 @@ export function DBRowJsonViewer({
               }
             }
 
-            let defaultWhere = `${searchFieldPath} = ${typeof value === 'string' ? `'${value}'` : value
-              }`;
+            let defaultWhere = `${searchFieldPath} = ${
+              typeof value === 'string' ? `'${value}'` : value
+            }`;
 
             // FIXME: TOTAL HACK
             if (
@@ -580,8 +589,9 @@ export function DBRowJsonViewer({
             toggleColumn(columnFieldPath);
             notifications.show({
               color: 'green',
-              message: `Column "${fieldPath}" ${isIncluded ? 'removed from' : 'added to'
-                } results table`,
+              message: `Column "${fieldPath}" ${
+                isIncluded ? 'removed from' : 'added to'
+              } results table`,
             });
           },
         });
