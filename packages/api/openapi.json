@@ -6011,6 +6011,12 @@
         "responses": {
           "200": {
             "description": "Successfully removed the member"
+          },
+          "400": {
+            "description": "Cannot remove yourself from the team"
+          },
+          "404": {
+            "description": "Member not found"
           }
         }
       }

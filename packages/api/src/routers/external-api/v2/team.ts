@@ -175,7 +175,7 @@ router.get('/invitations', async (req, res, next) => {
 
     const teamInvites = await TeamInvite.find(
       { teamId: teamId.toString() },
-      { createdAt: 1, email: 1, name: 1 },
+      { createdAt: 1, email: 1, name: 1, token: 1 },
     );
 
     return res.json({
@@ -184,6 +184,7 @@ router.get('/invitations', async (req, res, next) => {
         createdAt: ti.createdAt,
         email: ti.email,
         name: ti.name,
+        url: `${config.FRONTEND_URL}/join-team?token=${ti.token}`,
       })),
     });
   } catch (e) {
@@ -254,6 +255,10 @@ router.delete(
  *     responses:
  *       '200':
  *         description: Successfully removed the member
+ *       '400':
+ *         description: Cannot remove yourself from the team
+ *       '404':
+ *         description: Member not found
  */
 router.delete(
   '/member/:id',
@@ -266,11 +271,21 @@ router.delete(
         return res.sendStatus(403);
       }
 
-      await deleteTeamMember(
+      if (req.params.id === requestingUserId.toString()) {
+        return res.status(400).json({
+          message: 'You cannot remove yourself from the team',
+        });
+      }
+
+      const deletedUser = await deleteTeamMember(
         teamId.toString(),
         req.params.id,
         requestingUserId,
       );
+
+      if (!deletedUser) {
+        return res.sendStatus(404);
+      }
 
       return res.json({ data: { success: true } });
     } catch (e) {
