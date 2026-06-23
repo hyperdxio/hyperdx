@@ -51,7 +51,7 @@ import styles from '@/../styles/LogSidePanel.module.scss';
 export type RowSidePanelContextProps = {
   onPropertyAddClick?: (
     keyPath: string,
-    value: string | boolean,
+    value: string,
     action?: 'only' | 'exclude' | 'include',
   ) => void;
   generateSearchUrl?: ({

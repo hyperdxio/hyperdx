@@ -467,7 +467,10 @@ export function DBRowJsonViewer({
 
             onPropertyAddClick(
               filterFieldPath,
-              typeof value === 'boolean' ? value : String(value),
+              (filterFieldPath.startsWith('toString(') ||
+              typeof value !== 'boolean'
+                ? String(value)
+                : value) as string,
             );
             notifications.show({
               color: 'green',
