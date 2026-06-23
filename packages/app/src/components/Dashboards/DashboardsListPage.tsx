@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import Router from 'next/router';
-import { useQueryState } from 'nuqs';
+import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
 import {
   ActionIcon,
   Anchor,
@@ -11,9 +11,8 @@ import {
   Flex,
   Group,
   Menu,
-  Select,
+  MultiSelect,
   SimpleGrid,
-  Stack,
   Table,
   Text,
   TextInput,
@@ -46,7 +45,6 @@ import {
 import { useFavorites } from '@/favorites';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { useConfirm } from '@/useConfirm';
-import { groupByTags } from '@/utils/groupByTags';
 
 import { withAppNav } from '../../layout';
 
@@ -83,11 +81,30 @@ export default function DashboardsListPage() {
   const createDashboard = useCreateDashboard();
   const deleteDashboard = useDeleteDashboard();
   const [search, setSearch] = useState('');
-  const [tagFilter, setTagFilter] = useQueryState('tag');
+  const [selectedTags, setSelectedTags] = useQueryState(
+    'tags',
+    parseAsArrayOf(parseAsString)
+      .withDefault([])
+      .withOptions({ history: 'replace' }),
+  );
+  const [legacyTag, setLegacyTag] = useQueryState('tag');
   const [viewMode, setViewMode] = useLocalStorage<'grid' | 'list'>({
     key: 'dashboardsViewMode',
     defaultValue: 'grid',
   });
+
+  // Backward compat for shared links / bookmarks built before multi-select.
+  // `?tag=foo` becomes `?tags=foo` once on mount. Modern `?tags=...` wins
+  // when both are present.
+  useEffect(() => {
+    if (legacyTag) {
+      if (selectedTags.length === 0) {
+        setSelectedTags([legacyTag]);
+      }
+      setLegacyTag(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: favorites } = useFavorites();
   const favoritedDashboards = useMemo(() => {
@@ -114,8 +131,8 @@ export default function DashboardsListPage() {
   const filteredDashboards = useMemo(() => {
     if (!dashboards) return [];
     let result = dashboards;
-    if (tagFilter) {
-      result = result.filter(d => d.tags.includes(tagFilter));
+    if (selectedTags.length > 0) {
+      result = result.filter(d => d.tags.some(t => selectedTags.includes(t)));
     }
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -126,12 +143,7 @@ export default function DashboardsListPage() {
       );
     }
     return result.slice().sort((a, b) => a.name.localeCompare(b.name));
-  }, [dashboards, search, tagFilter]);
-
-  const tagGroups = useMemo(
-    () => groupByTags(filteredDashboards, tagFilter),
-    [filteredDashboards, tagFilter],
-  );
+  }, [dashboards, search, selectedTags]);
 
   const handleCreate = useCallback(() => {
     createDashboard.mutate(
@@ -252,14 +264,16 @@ export default function DashboardsListPage() {
               miw={100}
             />
             {allTags.length > 0 && (
-              <Select
-                placeholder="Filter by tag"
+              <MultiSelect
+                placeholder="Filter by tags"
                 data={allTags}
-                value={tagFilter}
-                onChange={v => setTagFilter(v)}
+                value={selectedTags}
+                onChange={setSelectedTags}
                 clearable
                 searchable
-                style={{ maxWidth: 200 }}
+                style={{ flex: 1, maxWidth: 400 }}
+                miw={200}
+                data-testid="tag-filter"
               />
             )}
           </Group>
@@ -347,7 +361,7 @@ export default function DashboardsListPage() {
             <EmptyState
               icon={<IconLayoutGrid size={32} />}
               title={
-                search || tagFilter
+                search || selectedTags.length > 0
                   ? 'No matching dashboards yet'
                   : 'No dashboards yet'
               }
@@ -413,34 +427,25 @@ export default function DashboardsListPage() {
             </Table.Tbody>
           </Table>
         ) : (
-          <Stack gap="lg">
-            {tagGroups.map(group => (
-              <div key={group.tag}>
-                <Text fw={500} size="sm" c="dimmed" mb="sm">
-                  {group.tag}
-                </Text>
-                <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
-                  {group.items.map(d => (
-                    <ListingCard
-                      key={d.id}
-                      name={d.name}
-                      href={`/dashboards/${d.id}`}
-                      tags={d.tags}
-                      description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
-                      onDelete={() => handleDelete(d.id)}
-                      statusIcon={
-                        <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />
-                      }
-                      resourceId={d.id}
-                      resourceType="dashboard"
-                      updatedAt={d.updatedAt}
-                      updatedBy={d.updatedBy?.name || d.updatedBy?.email}
-                    />
-                  ))}
-                </SimpleGrid>
-              </div>
+          <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
+            {filteredDashboards.map(d => (
+              <ListingCard
+                key={d.id}
+                name={d.name}
+                href={`/dashboards/${d.id}`}
+                tags={d.tags}
+                description={`${d.tiles.length} ${d.tiles.length === 1 ? 'tile' : 'tiles'}`}
+                onDelete={() => handleDelete(d.id)}
+                statusIcon={
+                  <AlertStatusIcon alerts={getDashboardAlerts(d.tiles)} />
+                }
+                resourceId={d.id}
+                resourceType="dashboard"
+                updatedAt={d.updatedAt}
+                updatedBy={d.updatedBy?.name || d.updatedBy?.email}
+              />
             ))}
-          </Stack>
+          </SimpleGrid>
         )}
       </Container>
     </div>

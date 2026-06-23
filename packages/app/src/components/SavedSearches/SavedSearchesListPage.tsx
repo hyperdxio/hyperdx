@@ -1,16 +1,15 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Router from 'next/router';
-import { useQueryState } from 'nuqs';
+import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
 import {
   ActionIcon,
   Button,
   Container,
   Flex,
   Group,
-  Select,
+  MultiSelect,
   SimpleGrid,
-  Stack,
   Table,
   Text,
   TextInput,
@@ -34,7 +33,6 @@ import { useFavorites } from '@/favorites';
 import { useDeleteSavedSearch, useSavedSearches } from '@/savedSearch';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { useConfirm } from '@/useConfirm';
-import { groupByTags } from '@/utils/groupByTags';
 
 import { withAppNav } from '../../layout';
 
@@ -44,11 +42,30 @@ export default function SavedSearchesListPage() {
   const confirm = useConfirm();
   const deleteSavedSearch = useDeleteSavedSearch();
   const [search, setSearch] = useState('');
-  const [tagFilter, setTagFilter] = useQueryState('tag');
+  const [selectedTags, setSelectedTags] = useQueryState(
+    'tags',
+    parseAsArrayOf(parseAsString)
+      .withDefault([])
+      .withOptions({ history: 'replace' }),
+  );
+  const [legacyTag, setLegacyTag] = useQueryState('tag');
   const [viewMode, setViewMode] = useLocalStorage<'grid' | 'list'>({
     key: 'savedSearchesViewMode',
     defaultValue: 'grid',
   });
+
+  // Backward compat for shared links / bookmarks built before multi-select.
+  // `?tag=foo` becomes `?tags=foo` once on mount. Modern `?tags=...` wins
+  // when both are present.
+  useEffect(() => {
+    if (legacyTag) {
+      if (selectedTags.length === 0) {
+        setSelectedTags([legacyTag]);
+      }
+      setLegacyTag(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: favorites } = useFavorites();
   const favoritedSavedSearches = useMemo(() => {
@@ -75,8 +92,8 @@ export default function SavedSearchesListPage() {
   const filteredSavedSearches = useMemo(() => {
     if (!savedSearches) return [];
     let result = savedSearches;
-    if (tagFilter) {
-      result = result.filter(s => s.tags.includes(tagFilter));
+    if (selectedTags.length > 0) {
+      result = result.filter(s => s.tags.some(t => selectedTags.includes(t)));
     }
     const trimmedSearch = search.trim();
     if (trimmedSearch) {
@@ -88,12 +105,7 @@ export default function SavedSearchesListPage() {
       );
     }
     return result.slice().sort((a, b) => a.name.localeCompare(b.name));
-  }, [savedSearches, search, tagFilter]);
-
-  const tagGroups = useMemo(
-    () => groupByTags(filteredSavedSearches, tagFilter),
-    [filteredSavedSearches, tagFilter],
-  );
+  }, [savedSearches, search, selectedTags]);
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -180,14 +192,16 @@ export default function SavedSearchesListPage() {
               miw={100}
             />
             {allTags.length > 0 && (
-              <Select
-                placeholder="Filter by tag"
+              <MultiSelect
+                placeholder="Filter by tags"
                 data={allTags}
-                value={tagFilter}
-                onChange={v => setTagFilter(v)}
+                value={selectedTags}
+                onChange={setSelectedTags}
                 clearable
                 searchable
-                style={{ maxWidth: 200 }}
+                style={{ flex: 1, maxWidth: 400 }}
+                miw={200}
+                data-testid="tag-filter"
               />
             )}
           </Group>
@@ -238,7 +252,7 @@ export default function SavedSearchesListPage() {
             <EmptyState
               icon={<IconTable size={32} />}
               title={
-                search || tagFilter
+                search || selectedTags.length > 0
                   ? 'No matching saved searches yet'
                   : 'No saved searches yet'
               }
@@ -292,31 +306,22 @@ export default function SavedSearchesListPage() {
             </Table.Tbody>
           </Table>
         ) : (
-          <Stack gap="lg">
-            {tagGroups.map(group => (
-              <div key={group.tag}>
-                <Text fw={500} size="sm" c="dimmed" mb="sm">
-                  {group.tag}
-                </Text>
-                <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
-                  {group.items.map(s => (
-                    <ListingCard
-                      key={s.id}
-                      name={s.name}
-                      href={`/search/${s.id}`}
-                      tags={s.tags}
-                      onDelete={() => handleDelete(s.id)}
-                      statusIcon={<AlertStatusIcon alerts={s.alerts} />}
-                      resourceId={s.id}
-                      resourceType="savedSearch"
-                      updatedAt={s.updatedAt}
-                      updatedBy={s.updatedBy?.name || s.updatedBy?.email}
-                    />
-                  ))}
-                </SimpleGrid>
-              </div>
+          <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }}>
+            {filteredSavedSearches.map(s => (
+              <ListingCard
+                key={s.id}
+                name={s.name}
+                href={`/search/${s.id}`}
+                tags={s.tags}
+                onDelete={() => handleDelete(s.id)}
+                statusIcon={<AlertStatusIcon alerts={s.alerts} />}
+                resourceId={s.id}
+                resourceType="savedSearch"
+                updatedAt={s.updatedAt}
+                updatedBy={s.updatedBy?.name || s.updatedBy?.email}
+              />
             ))}
-          </Stack>
+          </SimpleGrid>
         )}
       </Container>
     </div>

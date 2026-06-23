@@ -110,16 +110,23 @@ export class DashboardsListPage {
   }
 
   getTagFilterSelect() {
-    return this.page.getByPlaceholder('Filter by tag');
+    // Mantine's MultiSelect hides the placeholder once chips are present,
+    // so target the stable data-testid on the wrapper instead.
+    return this.page.getByTestId('tag-filter');
   }
 
   async selectTagFilter(tag: string) {
     await this.getTagFilterSelect().click();
     await this.page.getByRole('option', { name: tag, exact: true }).click();
+    // MultiSelect keeps the dropdown open after a selection; close it so
+    // subsequent UI interactions (e.g. clicking a card) are not blocked.
+    await this.page.keyboard.press('Escape');
   }
 
   async clearTagFilter() {
-    // The Mantine Select clear button is a sibling button next to the textbox
+    // The Mantine MultiSelect clear button is a sibling button next to the
+    // chip area; CSS-target it directly since Mantine v9's
+    // ComboboxClearButton carries aria-hidden="true".
     const select = this.getTagFilterSelect();
     await select.locator('..').locator('button').click();
   }
