@@ -831,6 +831,7 @@ describe('searchFilters', () => {
         useSearchPageFilterState({
           searchQuery: [],
           onFilterChange,
+          knownColumns: new Set(),
         }),
       );
 
@@ -860,6 +861,7 @@ describe('searchFilters', () => {
             { type: 'sql', condition: `level IN ('info', 'ok')` },
           ],
           onFilterChange,
+          knownColumns: new Set(),
         }),
       );
 
@@ -884,6 +886,7 @@ describe('searchFilters', () => {
             { type: 'sql', condition: `level IN ('info', 'ok')` },
           ],
           onFilterChange,
+          knownColumns: new Set(),
         }),
       );
 
@@ -906,6 +909,7 @@ describe('searchFilters', () => {
             { type: 'sql', condition: `level IN ('info', 'ok')` },
           ],
           onFilterChange,
+          knownColumns: new Set(),
         }),
       );
 
@@ -930,6 +934,7 @@ describe('searchFilters', () => {
             { type: 'sql', condition: `level NOT IN ('error')` },
           ],
           onFilterChange,
+          knownColumns: new Set(),
         }),
       );
 
@@ -950,6 +955,7 @@ describe('searchFilters', () => {
           useSearchPageFilterState({
             searchQuery: [],
             onFilterChange: onFilterChangeLocal,
+            knownColumns: new Set(),
           }),
         );
 
@@ -973,6 +979,7 @@ describe('searchFilters', () => {
               { type: 'lucene', condition: 'SeverityText:"error"' },
             ],
             onFilterChange: onFilterChangeLocal,
+            knownColumns: new Set(),
           }),
         );
 
@@ -999,6 +1006,7 @@ describe('searchFilters', () => {
               },
             ],
             onFilterChange: onFilterChangeLocal,
+            knownColumns: new Set(),
           }),
         );
 
@@ -1022,6 +1030,7 @@ describe('searchFilters', () => {
               { type: 'sql', condition: `AnotherGone IN ('y')` },
             ],
             onFilterChange: onFilterChangeLocal,
+            knownColumns: new Set(),
           }),
         );
 
@@ -1045,6 +1054,7 @@ describe('searchFilters', () => {
               { type: 'sql', condition: `Body IN ('oops')` },
             ],
             onFilterChange: onFilterChangeLocal,
+            knownColumns: new Set(),
           }),
         );
 

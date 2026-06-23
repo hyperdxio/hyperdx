@@ -72,6 +72,7 @@ import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { usePinnedFiltersApi } from '@/pinnedFilters';
 import {
+  escapeFilterStateKeys,
   FilterStateHook,
   IS_ROOT_SPAN_COLUMN_NAME,
   usePinnedFilters,
@@ -89,7 +90,7 @@ import { SharedFiltersSection } from './DBSearchPageFilters/SharedFilters';
 import {
   getFilterStateEntry,
   groupFacetsByBaseName,
-  toClickHouseKeyExpression,
+  toQuotedClickHouseKeyExpression,
 } from './DBSearchPageFilters/utils';
 
 import resizeStyles from '../../styles/ResizablePanel.module.scss';
@@ -184,9 +185,14 @@ const TextButton = ({
 type FilterPercentageProps = {
   percentage: number;
   isLoading?: boolean;
+  'data-testid'?: string;
 };
 
-const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
+const FilterPercentage = ({
+  percentage,
+  isLoading,
+  'data-testid': dataTestId,
+}: FilterPercentageProps) => {
   const formattedPercentage =
     percentage < 1
       ? `<1%`
@@ -195,7 +201,11 @@ const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
         : `~${Math.round(percentage)}%`;
 
   return (
-    <Text size="xs" className={isLoading ? 'effect-pulse' : ''}>
+    <Text
+      size="xs"
+      className={isLoading ? 'effect-pulse' : ''}
+      data-testid={dataTestId}
+    >
       {formattedPercentage}
     </Text>
   );
@@ -278,6 +288,7 @@ const FilterCheckbox = ({
               <FilterPercentage
                 percentage={percentage}
                 isLoading={isPercentageLoading}
+                data-testid={`filter-distribution-${columnName}-${label}`}
               />
             )}
           </Group>
@@ -1200,7 +1211,7 @@ const DBSearchPageFiltersComponent = ({
   const isLoading = useExactPipeline ? isFieldsLoading : isMVLoading;
   const error = useExactPipeline ? fieldsError : mvError;
 
-  const { data: columns } = useColumns({
+  const { data: columns, isLoading: isColumnsLoading } = useColumns({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
     connectionId: chartConfig.connection,
@@ -1296,18 +1307,51 @@ const DBSearchPageFiltersComponent = ({
     [chartConfig, dateRange, filterMode],
   );
 
+  // Conditionally backtick-quote facet keys that contain special characters and
+  // match known column names, so they can be used in the ClickHouse query to get
+  // key values.
+  const knownColumns = useMemo(
+    () => (columns ? new Set(columns.map(c => c.name)) : new Set<string>()),
+    [columns],
+  );
+  const { escapedKeysToFetch, sqlKeyToUiKey } = useMemo(() => {
+    // Don't fetch any keys until the column list is loaded,
+    // since we need the real column names to escape correctly.
+    if (isColumnsLoading) {
+      return { escapedKeysToFetch: [], sqlKeyToUiKey: new Map() };
+    }
+
+    const sqlKeyToUiKey = new Map<string, string>();
+    const escapedKeysToFetch = keysToFetch.map(key => {
+      const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
+      sqlKeyToUiKey.set(sqlKey, key);
+      return sqlKey;
+    });
+    return { escapedKeysToFetch, sqlKeyToUiKey };
+  }, [isColumnsLoading, keysToFetch, knownColumns]);
+
   // Exact pipeline step 2: fetch values for discovered keys
   const {
-    data: exactFacets,
+    data: rawExactFacets,
     isLoading: isExactFacetsLoading,
     isFetching: isExactFacetsFetching,
   } = useGetKeyValues(
     {
       chartConfig: facetsChartConfig,
       limit: INITIAL_LOAD_LIMIT,
-      keys: keysToFetch,
+      keys: escapedKeysToFetch,
     },
     { enabled: useExactPipeline },
+  );
+
+  // Map the (escaped) result keys back to the original UI keys.
+  const exactFacets = useMemo(
+    () =>
+      rawExactFacets?.map(f => ({
+        ...f,
+        key: sqlKeyToUiKey.get(f.key) ?? f.key,
+      })),
+    [rawExactFacets, sqlKeyToUiKey],
   );
 
   const facets = useExactPipeline ? exactFacets : mvFieldsAndValues;
@@ -1347,12 +1391,13 @@ const DBSearchPageFiltersComponent = ({
       setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
       try {
         // Coerce dot-form Map sub-keys (LogAttributes.foo) into bracket form
-        // (LogAttributes['foo']) before handing them to ClickHouse. Bracket
-        // form is the canonical SQL key produced by mergePath; dot form ends
+        // (LogAttributes['foo']) and conditionally backtick-quote special-char
+        // identifiers before handing them to ClickHouse. `getKeyValues` no
+        // longer escapes, so the caller must pass a valid SQL key; dot form ends
         // up in filterState after setFilterValue's parseKeyPath().join('.')
         // normalization or after a Lucene URL round-trip, and ClickHouse
         // cannot resolve it as map access.
-        const sqlKey = toClickHouseKeyExpression(key);
+        const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
         let newValues: string[];
         if (!useExactPipeline) {
           const results = await metadata.getAllKeyValues({
@@ -1381,7 +1426,10 @@ const DBSearchPageFiltersComponent = ({
             chartConfig: {
               ...chartConfig,
               dateRange,
-              filters: filtersToQuery(strippedFilterState, { dateTimeColumns }),
+              filters: filtersToQuery(
+                escapeFilterStateKeys(strippedFilterState, knownColumns),
+                { dateTimeColumns },
+              ),
             },
             keys: [sqlKey],
             limit: LOAD_MORE_LOAD_LIMIT,
@@ -1416,6 +1464,7 @@ const DBSearchPageFiltersComponent = ({
       source,
       useExactPipeline,
       sourceTableConnection.metadataMVs,
+      knownColumns,
     ],
   );
 
@@ -1679,7 +1728,16 @@ const DBSearchPageFiltersComponent = ({
               key={`${keyPrefix}${group.key}`}
               data-testid={`${keyPrefix}nested-filter-group-${group.key}`}
               name={group.key}
-              childFilters={group.children}
+              // sqlKey is the canonical (quoted/bracket) SQL form used wherever
+              // the key becomes raw SQL (distribution query, "Add column"
+              // SELECT); child.key stays clean for the UI.
+              childFilters={group.children.map(child => ({
+                ...child,
+                sqlKey: toQuotedClickHouseKeyExpression(
+                  child.key,
+                  knownColumns,
+                ),
+              }))}
               selectedValues={group.children.reduce((acc, child) => {
                 acc[child.key] = getFilterStateEntry(
                   filterState,
@@ -1740,56 +1798,63 @@ const DBSearchPageFiltersComponent = ({
               isLive={isLive}
             />
           ))}
-          {nonGrouped.map(facet => (
-            <FilterGroup
-              key={`${keyPrefix}${facet.key}`}
-              data-testid={`${keyPrefix}filter-group-${facet.key}`}
-              name={cleanedFacetName(facet.key)}
-              showFilterCounts={showFilterCounts}
-              options={facet.value.map(value => ({
-                value,
-                label: value.toString(),
-              }))}
-              optionsLoading={isFacetsLoading}
-              selectedValues={
-                getFilterStateEntry(filterState, facet.key) ?? {
-                  included: new Set(),
-                  excluded: new Set(),
+          {nonGrouped.map(facet => {
+            const facetSqlKey = toQuotedClickHouseKeyExpression(
+              facet.key,
+              knownColumns,
+            );
+            return (
+              <FilterGroup
+                key={`${keyPrefix}${facet.key}`}
+                data-testid={`${keyPrefix}filter-group-${facet.key}`}
+                name={cleanedFacetName(facet.key)}
+                distributionKey={facetSqlKey}
+                showFilterCounts={showFilterCounts}
+                options={facet.value.map(value => ({
+                  value,
+                  label: value.toString(),
+                }))}
+                optionsLoading={isFacetsLoading}
+                selectedValues={
+                  getFilterStateEntry(filterState, facet.key) ?? {
+                    included: new Set(),
+                    excluded: new Set(),
+                  }
                 }
-              }
-              onChange={value => setFilterValue(facet.key, value)}
-              onClearClick={() => clearFilter(facet.key)}
-              onOnlyClick={value => setFilterValue(facet.key, value, 'only')}
-              onExcludeClick={value =>
-                setFilterValue(facet.key, value, 'exclude')
-              }
-              valuePins={makeValuePins(facet.key)}
-              fieldPins={makeFieldPins(facet.key)}
-              onColumnToggle={
-                onColumnToggle ? () => onColumnToggle(facet.key) : undefined
-              }
-              isColumnDisplayed={displayedColumns?.includes(facet.key)}
-              onLoadMore={loadMoreFilterValuesForKey}
-              loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
-              hasLoadedMore={Boolean(extraFacets[facet.key])}
-              isDefaultExpanded={(() => {
-                const entry = getFilterStateEntry(filterState, facet.key);
-                return (
-                  forceExpanded ??
-                  (isFieldPrimary(tableMetadata, facet.key) ||
-                    isFieldPinned(facet.key) ||
-                    isSharedFieldPinned(facet.key) ||
-                    (entry != null &&
-                      (entry.included.size > 0 ||
-                        entry.excluded.size > 0 ||
-                        entry.range != null)))
-                );
-              })()}
-              chartConfig={chartConfig}
-              isLive={isLive}
-              onRangeChange={range => setFilterRange(facet.key, range)}
-            />
-          ))}
+                onChange={value => setFilterValue(facet.key, value)}
+                onClearClick={() => clearFilter(facet.key)}
+                onOnlyClick={value => setFilterValue(facet.key, value, 'only')}
+                onExcludeClick={value =>
+                  setFilterValue(facet.key, value, 'exclude')
+                }
+                valuePins={makeValuePins(facet.key)}
+                fieldPins={makeFieldPins(facet.key)}
+                onColumnToggle={
+                  onColumnToggle ? () => onColumnToggle(facetSqlKey) : undefined
+                }
+                isColumnDisplayed={displayedColumns?.includes(facetSqlKey)}
+                onLoadMore={loadMoreFilterValuesForKey}
+                loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
+                hasLoadedMore={Boolean(extraFacets[facet.key])}
+                isDefaultExpanded={(() => {
+                  const entry = getFilterStateEntry(filterState, facet.key);
+                  return (
+                    forceExpanded ??
+                    (isFieldPrimary(tableMetadata, facet.key) ||
+                      isFieldPinned(facet.key) ||
+                      isSharedFieldPinned(facet.key) ||
+                      (entry != null &&
+                        (entry.included.size > 0 ||
+                          entry.excluded.size > 0 ||
+                          entry.range != null)))
+                  );
+                })()}
+                chartConfig={chartConfig}
+                isLive={isLive}
+                onRangeChange={range => setFilterRange(facet.key, range)}
+              />
+            );
+          })}
         </>
       );
     },
@@ -1816,6 +1881,7 @@ const DBSearchPageFiltersComponent = ({
       isLive,
       setFilterRange,
       tableMetadata,
+      knownColumns,
     ],
   );
 

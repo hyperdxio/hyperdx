@@ -110,7 +110,9 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
           scoped[expression] = state;
         }
       }
-      return filtersToQuery(scoped);
+      // Wrap keys in `toString()` to support JSON/Dynamic-type columns,
+      // consistent with the transformation applied in `queriesForExistingFilters` above.
+      return filtersToQuery(scoped, { stringifyKeys: true });
     },
     [valuesForExistingFilters, filtersByExpression],
   );
