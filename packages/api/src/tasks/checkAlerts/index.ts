@@ -1016,7 +1016,7 @@ export const processAlert = async (
       // another offending log line and they look consecutive, but are not.
       const earliestAllowedTime = new Date(
         nowInMinsRoundDown.getTime() -
-          (numWindowsToLookBack + 1) * windowSizeInMins * 60_000,
+          (numWindowsToLookBack - 1) * windowSizeInMins * 60_000,
       );
       const alertHistory = await AlertHistory.find({
         alert: new mongoose.Types.ObjectId(alert.id),
