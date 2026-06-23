@@ -1040,7 +1040,8 @@ export const processAlert = async (
       groupKey: string,
     ) => {
       if (
-        previousHistory?.state === AlertState.ALERT &&
+        (previousHistory?.state === AlertState.ALERT ||
+          previousHistory?.state === AlertState.PENDING) &&
         previousHistory?.fired !== false &&
         currentHistory.state === AlertState.OK
       ) {
@@ -1076,6 +1077,7 @@ export const processAlert = async (
           : 0;
 
       history.lastValues.push({ count: value, startTime: alertTimestamp });
+      const previous = previousMap.get(computeHistoryMapKey(alert.id, ''));
       if (doesExceedThreshold(alert, value)) {
         history.counts += 1;
         if (await shouldFireBasedOnConsecutiveWindows()) {
@@ -1089,12 +1091,12 @@ export const processAlert = async (
           });
         } else {
           history.state = AlertState.PENDING;
-          history.fired = false;
+          // Carry forward fired=true if a notification was previously sent and not yet resolved.
+          history.fired = previous?.fired !== false;
         }
       }
 
       // Auto-resolve
-      const previous = previousMap.get(computeHistoryMapKey(alert.id, ''));
       await sendNotificationIfResolved(previous, history, '');
 
       const historyRecords = Array.from(histories.values());
@@ -1164,7 +1166,10 @@ export const processAlert = async (
             });
           } else {
             history.state = AlertState.PENDING;
-            history.fired = false;
+            // Carry forward fired=true if a notification was previously sent and not yet resolved.
+            history.fired =
+              previousMap.get(computeHistoryMapKey(alert.id, ''))?.fired !==
+              false;
           }
         } else if (!hasGroupBy || !hasAlertsInPreviousMap) {
           // For grouped alerts, if there are alerts in the previous map,
@@ -1206,7 +1211,11 @@ export const processAlert = async (
             });
           } else {
             history.state = AlertState.PENDING;
-            history.fired = false;
+            // Carry forward fired=true if a notification was previously sent and not yet resolved.
+            history.fired =
+              previousMap.get(
+                computeHistoryMapKey(alert.id, groupKey),
+              )?.fired !== false;
           }
         } else {
           // TODO: if the alert was previously alerting (different bucket), should we set state to OK (plus auto-resolve)?
