@@ -1,3 +1,4 @@
+import { pick } from 'lodash';
 import {
   chSqlToAliasMap,
   ClickHouseQueryError,
@@ -22,7 +23,11 @@ import {
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  getSampleWeightExpression,
+  isLogSource,
+  isMetricSource,
   QuerySettings,
+  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   useQuery,
@@ -40,6 +45,35 @@ import { useSource } from '@/source';
 import { generateTimeWindowsDescending } from '@/utils/searchWindows';
 
 import { useMVOptimizationExplanation } from './useMVOptimizationExplanation';
+
+/**
+ * Hydrate a raw SQL chart config with source metadata fields required for
+ * macro expansion ($__sourceTable, $__filters). The saved config only stores
+ * the source ID; the runtime fields (from, metricTables, etc.) must be merged
+ * from the fetched Source document before the config is rendered.
+ *
+ * Mirrors the hydration done in the Dashboard Tile useEffect
+ * (DBDashboardPage.tsx) so that all chart rendering contexts — dashboards,
+ * notebooks, chart explorer — resolve macros identically.
+ */
+export function hydrateRawSqlConfigFromSource<
+  T extends ChartConfigWithOptDateRange,
+>(config: T, source: TSource | undefined): T {
+  if (!isRawSqlChartConfig(config) || !config.source || !source) {
+    return config;
+  }
+  return {
+    ...config,
+    ...pick(source, [
+      'implicitColumnExpression',
+      'useTextIndexForImplicitColumn',
+      'from',
+    ]),
+    ...(isLogSource(source) ? { bodyExpression: source.bodyExpression } : {}),
+    metricTables: isMetricSource(source) ? source.metricTables : undefined,
+    sampleWeightExpression: getSampleWeightExpression(source),
+  };
+}
 
 interface AdditionalUseQueriedChartConfigOptions {
   onError?: (error: Error | ClickHouseQueryError) => void;
@@ -295,11 +329,13 @@ export function useQueriedChartConfig(
     id: config.source,
   });
 
+  const hydratedConfig = hydrateRawSqlConfigFromSource(config, source);
+
   const query = useQuery<TQueryFnData, ClickHouseQueryError | Error>({
     // Include enableQueryChunking in the query key to ensure that queries with the
     // same config but different enableQueryChunking values do not share a query
     queryKey: [
-      config,
+      hydratedConfig,
       options?.enableQueryChunking ?? false,
       options?.enableParallelQueries ?? false,
     ],
@@ -307,14 +343,17 @@ export function useQueriedChartConfig(
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
     queryFn: async context => {
       // PromQL queries go through the Prometheus API route, not ClickHouse proxy
-      if (isPromqlChartConfig(config) && config.dateRange) {
-        const [startDate, endDate] = config.dateRange;
+      if (isPromqlChartConfig(hydratedConfig) && hydratedConfig.dateRange) {
+        const [startDate, endDate] = hydratedConfig.dateRange;
         const startSec = startDate.getTime() / 1000;
         const endSec = endDate.getTime() / 1000;
 
         // Convert HyperDX granularity ("5 minute") to Prometheus step ("300s")
         let stepStr = '60s';
-        if (config.granularity && config.granularity !== 'auto') {
+        if (
+          hydratedConfig.granularity &&
+          hydratedConfig.granularity !== 'auto'
+        ) {
           const granToSec: Record<string, number> = {
             '15 second': 15,
             '30 second': 30,
@@ -329,17 +368,17 @@ export function useQueriedChartConfig(
             '12 hour': 43200,
             '1 day': 86400,
           };
-          stepStr = `${granToSec[config.granularity] ?? 60}s`;
+          stepStr = `${granToSec[hydratedConfig.granularity] ?? 60}s`;
         }
 
         const resp = await prometheusApi.queryRange({
-          query: config.promqlExpression,
+          query: hydratedConfig.promqlExpression,
           start: startSec,
           end: endSec,
           step: stepStr,
-          connectionId: config.connection,
-          database: config.from?.databaseName ?? 'default',
-          table: config.from?.tableName ?? 'otel_metrics_ts',
+          connectionId: hydratedConfig.connection,
+          database: hydratedConfig.from?.databaseName ?? 'default',
+          table: hydratedConfig.from?.tableName ?? 'otel_metrics_ts',
         });
 
         if (resp.status !== 'success' || !resp.data) {
@@ -394,7 +433,8 @@ export function useQueriedChartConfig(
         };
       }
 
-      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
+      const optimizedConfig =
+        mvOptimizationData?.optimizedConfig ?? hydratedConfig;
       const query = queryClient
         .getQueryCache()
         .find({ queryKey: context.queryKey, exact: true });
@@ -477,18 +517,20 @@ export function useRenderedSqlChartConfig(
     id: config.source,
   });
 
+  const hydratedConfig = hydrateRawSqlConfigFromSource(config, source);
+
   const query = useQuery({
-    queryKey: ['renderedSql', config],
+    queryKey: ['renderedSql', hydratedConfig],
     queryFn: async () => {
-      const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
+      const optimizedConfig =
+        mvOptimizationData?.optimizedConfig ?? hydratedConfig;
       const query = await renderChartConfig(
         optimizedConfig,
         metadata,
         source?.querySettings,
       );
       const sql = parameterizedQueryToSql(query);
-      // sql-formatter can't handle prometheusQuery() / CTE syntax in PromQL queries
-      if (isPromqlChartConfig(config)) {
+      if (isPromqlChartConfig(hydratedConfig)) {
         return sql;
       }
       return format(sql);
@@ -498,7 +540,7 @@ export function useRenderedSqlChartConfig(
       enabled &&
       !isLoadingMVOptimization &&
       !isSourceLoading &&
-      !isPromqlChartConfig(config),
+      !isPromqlChartConfig(hydratedConfig),
   });
 
   return {
