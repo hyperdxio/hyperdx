@@ -34,7 +34,7 @@ interface Props {
   onScroll?: (scrollTop: number) => void;
   onSidebarOpen?: (rowId: string) => void;
   onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
-  onPropertyAddClick?: (keyPath: string, value: string) => void;
+  onPropertyAddClick?: (keyPath: string, value: string | boolean) => void;
   context?: RowSidePanelContextProps;
   enabled?: boolean;
   isLive?: boolean;

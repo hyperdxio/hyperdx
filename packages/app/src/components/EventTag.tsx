@@ -33,7 +33,7 @@ export default function EventTag({
     }
   | {
       sqlExpression: string; // sql expression ex. col['prop']
-      onPropertyAddClick: (key: string, value: string) => void;
+      onPropertyAddClick: (key: string, value: string | boolean) => void;
     }
 )) {
   const [opened, setOpened] = useState(false);
