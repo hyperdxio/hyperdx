@@ -12,6 +12,13 @@ jest.mock('next/router', () => ({
   },
 }));
 
+const mockFormatTime = jest.fn();
+
+jest.mock('@/useFormatTime', () => ({
+  useFormatTime: () => mockFormatTime,
+  FormatTime: jest.fn(() => null),
+}));
+
 describe('DBRowJsonViewer', () => {
   const mockGenerateSearchUrl = jest.fn();
   const mockOnPropertyAddClick = jest.fn();
@@ -50,6 +57,13 @@ describe('DBRowJsonViewer', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFormatTime.mockImplementation((time, { format } = {}) => {
+      const date = time instanceof Date ? time : new Date(time);
+      if (format === 'withMs') {
+        return `formatted:${date.toISOString()}`;
+      }
+      return String(time);
+    });
   });
 
   // Helper to render component
@@ -158,6 +172,33 @@ describe('DBRowJsonViewer', () => {
   });
 
   describe('timestamp fields', () => {
+    it('displays Timestamp using the same formatter as the results table', () => {
+      renderComponent({
+        Timestamp: '2026-06-15T02:23:15.895Z',
+      });
+
+      expect(
+        screen.queryByText('2026-06-15T02:23:15.895Z'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText('formatted:2026-06-15T02:23:15.895Z'),
+      ).toBeInTheDocument();
+      expect(mockFormatTime).toHaveBeenCalledWith(
+        expect.any(Date),
+        expect.objectContaining({ format: 'withMs' }),
+      );
+    });
+
+    it('does not reformat nested Timestamp attributes', () => {
+      renderComponent({
+        LogAttributes: {
+          Timestamp: '2026-06-15T02:23:15.895Z',
+        },
+      });
+
+      expect(screen.getByText('2026-06-15T02:23:15.895Z')).toBeInTheDocument();
+    });
+
     it.each([['Timestamp'], ['TimestampTime']])(
       'formats %s field correctly',
       field => {
