@@ -27,7 +27,12 @@ import {
   IconTextWrap,
 } from '@tabler/icons-react';
 
-import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
+import HyperJson, {
+  FormatLeafValue,
+  GetLineActions,
+  LineAction,
+} from '@/components/HyperJson';
+import { useFormatTime } from '@/useFormatTime';
 import { mergePath } from '@/utils';
 import {
   CLIPBOARD_ERROR_MESSAGE,
@@ -348,6 +353,7 @@ export function DBRowJsonViewer({
   // `Map['key']` instead of the array `Map[N+1]`. HDX-4369.
   mapColumns?: string[];
 }) {
+  const formatTime = useFormatTime();
   const {
     onPropertyAddClick,
     generateSearchUrl,
@@ -377,6 +383,29 @@ export function DBRowJsonViewer({
 
     return filterObjectRecursively(cleanedData, debouncedFilter);
   }, [data, debouncedFilter, jsonOptions.filterBlanks]);
+
+  const formatLeafValue = useCallback<FormatLeafValue>(
+    ({ keyName, keyPath, value }) => {
+      if (
+        keyPath.length !== 1 ||
+        (keyName !== 'Timestamp' && keyName !== 'TimestampTime')
+      ) {
+        return undefined;
+      }
+
+      if (typeof value !== 'string' || value.length === 0) {
+        return undefined;
+      }
+
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return undefined;
+      }
+
+      return formatTime(date, { format: 'withMs' });
+    },
+    [formatTime],
+  );
 
   const getLineActions = useCallback<GetLineActions>(
     ({ keyPath, value, isInParsedJson, parsedJsonRootPath }) => {
@@ -664,6 +693,7 @@ export function DBRowJsonViewer({
           <HyperJson
             data={rowData}
             getLineActions={getLineActions}
+            formatLeafValue={formatLeafValue}
             {...jsonOptions}
           />
         ) : (
