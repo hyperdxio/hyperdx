@@ -2,8 +2,8 @@ import {
   blindAnswer,
   type BlindingEntry,
   buildBlindingEntries,
-} from '../grading/blind';
-import type { McpDefinition } from '../harness/types';
+} from '@/grading/blind';
+import type { McpDefinition } from '@/harness/types';
 
 const hyperdxDef: McpDefinition = {
   type: 'http',

@@ -1,13 +1,13 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
+import type { McpContext } from '@/mcp/tools/types';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
 import { objectIdSchema } from '@/utils/zod';
 
-import { withToolTracing } from '../../utils/tracing';
-import { parseTimeRange, runConfigTile } from '../query/helpers';
-import type { McpContext } from '../types';
 import { getRawSqlTileMacroWarnings } from './validation';
 
 export function registerQueryTile(

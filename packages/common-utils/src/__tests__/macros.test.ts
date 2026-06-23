@@ -1,5 +1,5 @@
-import { hasMacro, replaceMacros } from '../macros';
-import type { MetricTable } from '../types';
+import { hasMacro, replaceMacros } from '@/macros';
+import type { MetricTable } from '@/types';
 
 const ALL_METRIC_TABLES: MetricTable = {
   gauge: 'otel_metrics_gauge',

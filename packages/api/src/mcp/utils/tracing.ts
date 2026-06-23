@@ -1,9 +1,8 @@
 import opentelemetry, { SpanStatusCode } from '@opentelemetry/api';
 
 import { CODE_VERSION } from '@/config';
+import type { McpContext } from '@/mcp/tools/types';
 import logger from '@/utils/logger';
-
-import type { McpContext } from '../tools/types';
 
 const mcpTracer = opentelemetry.trace.getTracer('clickstack-mcp', CODE_VERSION);
 

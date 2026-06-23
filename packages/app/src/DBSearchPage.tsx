@@ -156,7 +156,7 @@ import { EditablePageName } from './EditablePageName';
 import { SearchConfig } from './types';
 import { FormatTime } from './useFormatTime';
 
-import searchPageStyles from '../styles/SearchPage.module.scss';
+import searchPageStyles from '@styles/SearchPage.module.scss';
 
 const LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS = [
   { value: '1000', label: '1s' },

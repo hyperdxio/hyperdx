@@ -32,13 +32,13 @@ jest.mock('@/utils', () => ({ hashCode: jest.fn(() => 0) }));
 
 import { LEGACY_CHART_PALETTE_TOKEN_MAP } from '@hyperdx/common-utils/dist/types';
 
-import { hdxServer } from '../api';
+import { hdxServer } from '@/api';
 import {
   fetchDashboards,
   normalizeRawDashboardTileColors,
   useCreateDashboard,
   useUpdateDashboard,
-} from '../dashboard';
+} from '@/dashboard';
 
 const hdxServerMock = hdxServer as jest.Mock;
 

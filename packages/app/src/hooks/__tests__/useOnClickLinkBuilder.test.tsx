@@ -6,9 +6,8 @@ import { notifications } from '@mantine/notifications';
 import { renderHook } from '@testing-library/react';
 
 import { useDashboards } from '@/dashboard';
+import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
 import { useSources } from '@/source';
-
-import { useOnClickLinkBuilder } from '../useOnClickLinkBuilder';
 
 jest.mock('@/source', () => ({
   useSources: jest.fn(),

@@ -2,7 +2,10 @@ import React from 'react';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { ColorRulesEditor, ColorRuleWithId } from '../ColorRulesEditor';
+import {
+  ColorRulesEditor,
+  ColorRuleWithId,
+} from '@/components/ColorRulesEditor';
 
 // Stable localIds so tests can reference them by index.
 // Uses `as ColorRuleWithId` because spreading Partial<ColorRuleWithId> over a

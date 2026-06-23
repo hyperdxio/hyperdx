@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import type { EvalConfig } from '../hyperdx/config';
+import type { EvalConfig } from '@/hyperdx/config';
+
 import { allowedToolsPattern, buildMcpConfig } from './mcpConfig';
 import { buildSettings, deniedToolsFor } from './settingsFile';
 import {

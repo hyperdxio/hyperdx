@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
-import type { McpDefinition, McpKind } from '../harness/types';
+import type { McpDefinition, McpKind } from '@/harness/types';
 
 export type ScenarioSourceIds = {
   tracesSourceId: string;

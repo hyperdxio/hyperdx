@@ -4,7 +4,7 @@ import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   getSourceConfigPairingWarnings,
   inferSourceFieldCandidates,
-} from '../sourceFieldSuggestions';
+} from '@/utils/sourceFieldSuggestions';
 
 const col = (name: string, type: string): ColumnMetaType => ({ name, type });
 

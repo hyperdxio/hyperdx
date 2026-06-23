@@ -31,7 +31,7 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { useGetKeyValues, useTableMetadata } from './hooks/useMetadata';
 import { getEventBody } from './source';
 
-import styles from '../styles/LogSidePanel.module.scss';
+import styles from '@styles/LogSidePanel.module.scss';
 
 const CHART_HEIGHT = 300;
 const defaultTimeRange = parseTimeQuery('Past 1h', false);
