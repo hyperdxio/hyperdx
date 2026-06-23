@@ -1092,7 +1092,7 @@ export const processAlert = async (
         } else {
           history.state = AlertState.PENDING;
           // Carry forward fired=true if a notification was previously sent and not yet resolved.
-          history.fired = previous?.fired !== false;
+          history.fired = previous?.fired === true;
         }
       }
 
@@ -1168,8 +1168,8 @@ export const processAlert = async (
             history.state = AlertState.PENDING;
             // Carry forward fired=true if a notification was previously sent and not yet resolved.
             history.fired =
-              previousMap.get(computeHistoryMapKey(alert.id, ''))?.fired !==
-              false;
+              previousMap.get(computeHistoryMapKey(alert.id, ''))?.fired ===
+              true;
           }
         } else if (!hasGroupBy || !hasAlertsInPreviousMap) {
           // For grouped alerts, if there are alerts in the previous map,
@@ -1215,7 +1215,7 @@ export const processAlert = async (
             history.fired =
               previousMap.get(
                 computeHistoryMapKey(alert.id, groupKey),
-              )?.fired !== false;
+              )?.fired === true;
           }
         } else {
           // TODO: if the alert was previously alerting (different bucket), should we set state to OK (plus auto-resolve)?
