@@ -497,9 +497,8 @@ export function DBRowJsonViewer({
               }
             }
 
-            let defaultWhere = `${searchFieldPath} = ${
-              typeof value === 'string' ? `'${value}'` : value
-            }`;
+            let defaultWhere = `${searchFieldPath} = ${typeof value === 'string' ? `'${value}'` : value
+              }`;
 
             // FIXME: TOTAL HACK
             if (
@@ -581,9 +580,8 @@ export function DBRowJsonViewer({
             toggleColumn(columnFieldPath);
             notifications.show({
               color: 'green',
-              message: `Column "${fieldPath}" ${
-                isIncluded ? 'removed from' : 'added to'
-              } results table`,
+              message: `Column "${fieldPath}" ${isIncluded ? 'removed from' : 'added to'
+                } results table`,
             });
           },
         });
