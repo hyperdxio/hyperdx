@@ -131,12 +131,26 @@ router.post(
       });
 
       if (!teamInvite) {
-        teamInvite = await new TeamInvite({
-          teamId: teamId.toString(),
-          name,
-          email: normalizedEmail,
-          token: crypto.randomBytes(32).toString('hex'),
-        }).save();
+        try {
+          teamInvite = await new TeamInvite({
+            teamId: teamId.toString(),
+            name,
+            email: normalizedEmail,
+            token: crypto.randomBytes(32).toString('hex'),
+          }).save();
+        } catch (err: any) {
+          // ponytail: concurrent insert lost the race on the {teamId, email}
+          // unique index — re-fetch the winner's doc to stay idempotent.
+          if (err?.code === 11000) {
+            teamInvite = await TeamInvite.findOne({
+              teamId: teamId.toString(),
+              email: normalizedEmail,
+            });
+          }
+          if (!teamInvite) {
+            throw err;
+          }
+        }
       }
 
       return res.json({

@@ -93,5 +93,32 @@ describe('External API v2 Team', () => {
         .send({ email: user.email })
         .expect(400);
     });
+
+    it('handles concurrent invites for the same email idempotently', async () => {
+      const email = 'race@deploysentinel.com';
+      const responses = await Promise.all(
+        Array.from({ length: 5 }, () =>
+          authRequest('post', `${TEAM_BASE_URL}/invitation`).send({ email }),
+        ),
+      );
+
+      // No request should 500 on the {teamId, email} unique-index race.
+      for (const res of responses) {
+        expect(res.status).toBe(200);
+      }
+
+      // All requests resolve to the same single invitation.
+      const ids = new Set(responses.map(r => r.body.data.invitationId));
+      expect(ids.size).toBe(1);
+
+      const listRes = await authRequest(
+        'get',
+        `${TEAM_BASE_URL}/invitations`,
+      ).expect(200);
+      expect(
+        listRes.body.data.filter((i: { email: string }) => i.email === email)
+          .length,
+      ).toBe(1);
+    });
   });
 });
