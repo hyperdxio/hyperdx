@@ -465,7 +465,10 @@ export function DBRowJsonViewer({
                 : fieldPath;
             }
 
-            onPropertyAddClick(filterFieldPath, String(value));
+            onPropertyAddClick(
+              filterFieldPath,
+              value as string | number | boolean,
+            );
             notifications.show({
               color: 'green',
               message: `Added "${fieldPath} = ${String(value)}" to filters`,
