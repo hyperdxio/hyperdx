@@ -26,6 +26,17 @@ import styles from '../../../styles/AlertsPage.module.scss';
 
 const HISTORY_ITEMS = 18;
 
+function stateToBgColorClass(state: AlertState) {
+  switch (state) {
+    case AlertState.OK:
+      return styles.ok;
+    case AlertState.PENDING:
+      return styles.pending;
+    default:
+      return styles.alarm;
+  }
+}
+
 function AlertHistoryCard({
   history,
   alertUrl,
@@ -58,7 +69,7 @@ function AlertHistoryCard({
     <div
       className={cx(
         styles.historyCard,
-        history.state === AlertState.OK ? styles.ok : styles.alarm,
+        stateToBgColorClass(history.state),
         href && styles.clickable,
       )}
     />
