@@ -3,8 +3,7 @@ import express from 'express';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import * as config from '@/config';
-import { getTeam } from '@/controllers/team';
+import { getTeam, getTeamInviteUrl } from '@/controllers/team';
 import {
   deleteTeamMember,
   findUserByEmail,
@@ -32,12 +31,12 @@ const router = express.Router();
 router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
-    if (teamId == null) {
+    if (!teamId) {
       return res.sendStatus(403);
     }
 
     const team = await getTeam(teamId.toString());
-    if (team == null) {
+    if (!team) {
       return res.sendStatus(404);
     }
 
@@ -68,7 +67,7 @@ router.get('/members', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     const userId = req.user?._id;
-    if (teamId == null) {
+    if (!teamId) {
       return res.sendStatus(403);
     }
 
@@ -78,7 +77,7 @@ router.get('/members', async (req, res, next) => {
         id: user._id.toString(),
         email: user.email,
         name: user.name,
-        isCurrentUser: userId != null && user._id.equals(userId),
+        isCurrentUser: !!userId && user._id.equals(userId),
       })),
     });
   } catch (e) {
@@ -111,7 +110,7 @@ router.post(
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
-      if (teamId == null) {
+      if (!teamId) {
         return res.sendStatus(403);
       }
 
@@ -145,7 +144,7 @@ router.post(
           email: normalizedEmail,
           invitationId: teamInvite._id.toString(),
           status: 'pending',
-          url: `${config.FRONTEND_URL}/join-team?token=${teamInvite.token}`,
+          url: getTeamInviteUrl(teamInvite.token),
         },
       });
     } catch (e) {
@@ -169,7 +168,7 @@ router.post(
 router.get('/invitations', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
-    if (teamId == null) {
+    if (!teamId) {
       return res.sendStatus(403);
     }
 
@@ -184,7 +183,7 @@ router.get('/invitations', async (req, res, next) => {
         createdAt: ti.createdAt,
         email: ti.email,
         name: ti.name,
-        url: `${config.FRONTEND_URL}/join-team?token=${ti.token}`,
+        url: getTeamInviteUrl(ti.token),
       })),
     });
   } catch (e) {
@@ -218,7 +217,7 @@ router.delete(
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
-      if (teamId == null) {
+      if (!teamId) {
         return res.sendStatus(403);
       }
 
@@ -267,7 +266,7 @@ router.delete(
     try {
       const teamId = req.user?.team;
       const requestingUserId = req.user?._id;
-      if (teamId == null || requestingUserId == null) {
+      if (!teamId || !requestingUserId) {
         return res.sendStatus(403);
       }
 
