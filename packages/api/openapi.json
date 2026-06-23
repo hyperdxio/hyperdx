@@ -5896,6 +5896,125 @@
         }
       }
     },
+    "/api/v2/team": {
+      "get": {
+        "summary": "Get Team",
+        "description": "Retrieves the authenticated team's basic settings.",
+        "operationId": "getTeam",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved team"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/api/v2/team/members": {
+      "get": {
+        "summary": "List Team Members",
+        "description": "Retrieves the team's members.",
+        "operationId": "listTeamMembers",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved members"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitation": {
+      "post": {
+        "summary": "Invite Team Member",
+        "description": "Creates a pending invitation for a new email address.",
+        "operationId": "inviteTeamMember",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully created the invitation"
+          },
+          "400": {
+            "description": "User already exists"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitations": {
+      "get": {
+        "summary": "List Team Invitations",
+        "description": "Retrieves the team's pending invitations.",
+        "operationId": "listTeamInvitations",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved invitations"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitation/{id}": {
+      "delete": {
+        "summary": "Delete Team Invitation",
+        "description": "Deletes a pending team invitation.",
+        "operationId": "deleteTeamInvitation",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully deleted the invitation"
+          },
+          "404": {
+            "description": "Invitation not found"
+          }
+        }
+      }
+    },
+    "/api/v2/team/member/{id}": {
+      "delete": {
+        "summary": "Remove Team Member",
+        "description": "Removes a member from the team.",
+        "operationId": "removeTeamMember",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully removed the member"
+          }
+        }
+      }
+    },
     "/api/v2/webhooks": {
       "get": {
         "summary": "List Webhooks",
