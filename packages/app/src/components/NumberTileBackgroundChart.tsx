@@ -70,6 +70,44 @@ export function sparklinePointsFromGraphResults(
   return points;
 }
 
+/**
+ * Derive the sparkline's time-series query config from a number tile's config.
+ *
+ * The big number strips both `granularity` and `groupBy`
+ * (`convertToNumberChartConfig`), collapsing the query to a single aggregate.
+ * The sparkline must plot that same single series, so it strips `groupBy` too;
+ * otherwise a tile carrying a residual `groupBy` (left over from a prior Line
+ * display type) would query multiple series, and the renderer plots only the
+ * first, which would not match the value. `granularity` is kept (auto when
+ * unset) to recover the temporal trend behind the value.
+ *
+ * Number-tile display-only fields are dropped as well: they flow into the
+ * query key (via `convertToTimeChartConfig`), so leaving them in would refetch
+ * identical time-series data on every purely visual edit (sparkline type, tile
+ * color, color rules, number format). Exported for unit testing.
+ */
+export function buildSparklineTimeConfig(
+  config: ChartConfigWithDateRange,
+): ChartConfigWithDateRange {
+  const {
+    backgroundChart: _backgroundChart,
+    color: _color,
+    colorRules: _colorRules,
+    numberFormat: _numberFormat,
+    ...rest
+  } = config;
+  const timeConfig: ChartConfigWithDateRange = {
+    ...rest,
+    displayType: DisplayType.Line,
+    granularity: config.granularity ?? 'auto',
+  };
+  // `groupBy` exists only on builder configs, so drop it under the guard.
+  if (isBuilderChartConfig(timeConfig)) {
+    delete timeConfig.groupBy;
+  }
+  return timeConfig;
+}
+
 function NumberTileBackgroundChartInner({
   config,
   backgroundChart,
@@ -77,28 +115,7 @@ function NumberTileBackgroundChartInner({
   config: ChartConfigWithDateRange;
   backgroundChart: BackgroundChart;
 }) {
-  // Number tiles strip granularity / group-by (`convertToNumberChartConfig`),
-  // collapsing the query to a single value. Request a line series at the
-  // tile's granularity (auto when unset) to recover the temporal trend.
-  //
-  // Drop number-tile display-only fields first: they flow into the query key
-  // (via `convertToTimeChartConfig`), so leaving them in would refetch
-  // identical time-series data on every purely visual edit (sparkline type,
-  // tile color, number format).
-  const timeConfig = useMemo<ChartConfigWithDateRange>(() => {
-    const {
-      backgroundChart: _backgroundChart,
-      color: _color,
-      colorRules: _colorRules,
-      numberFormat: _numberFormat,
-      ...rest
-    } = config;
-    return {
-      ...rest,
-      displayType: DisplayType.Line,
-      granularity: config.granularity ?? 'auto',
-    };
-  }, [config]);
+  const timeConfig = useMemo(() => buildSparklineTimeConfig(config), [config]);
 
   const { dateRange, granularity, fillNulls } =
     useTimeChartSettings(timeConfig);
