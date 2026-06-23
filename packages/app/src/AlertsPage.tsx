@@ -215,7 +215,7 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
           </Badge>
         )}
         {alert.state === AlertState.PENDING && (
-          <Badge variant="light" color="yellow">
+          <Badge variant="light" color="orange">
             Pending
           </Badge>
         )}

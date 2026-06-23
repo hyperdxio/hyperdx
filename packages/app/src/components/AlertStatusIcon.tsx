@@ -31,7 +31,7 @@ export function AlertStatusIcon({
       ) : pendingCount > 0 ? (
         <IconBellFilled
           size={14}
-          color="var(--mantine-color-yellow-filled)"
+          color="var(--mantine-color-orange-filled)"
           data-testid="alert-status-icon-pending"
         />
       ) : (
