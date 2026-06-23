@@ -10,6 +10,8 @@ import {
 
 enableMapSet();
 
+type ConditionFilter = { type: 'sql' | 'lucene'; condition: string };
+
 describe('searchFilters', () => {
   describe('parseQuery', () => {
     it('empty query', () => {
@@ -627,6 +629,197 @@ describe('searchFilters', () => {
           excluded: new Set(),
         },
       });
+    });
+  });
+
+  describe('round-trip: DateTime columns', () => {
+    const dateTimeColumns = new Map<string, string>([
+      ['Timestamp', 'DateTime64(9)'],
+      ['TimestampTime', 'DateTime'],
+    ]);
+
+    it('round-trips an excluded DateTime value (no areFiltersEqual reset)', () => {
+      const originalFilters = {
+        Timestamp: {
+          included: new Set<string | boolean>(),
+          excluded: new Set<string | boolean>([
+            '2026-06-16T15:35:16.731000000Z',
+          ]),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, { dateTimeColumns });
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        Timestamp: {
+          included: new Set(),
+          excluded: new Set(['2026-06-16T15:35:16.731000000Z']),
+        },
+      });
+    });
+
+    it('round-trips an included DateTime value with multiple entries', () => {
+      const originalFilters = {
+        Timestamp: {
+          included: new Set<string | boolean>(['2026-06-16', '2026-06-17']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, { dateTimeColumns });
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        Timestamp: {
+          included: new Set(['2026-06-16', '2026-06-17']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parseQuery unwraps the DateTime wrapper independently of the producer', () => {
+      const parsed = parseQuery([
+        {
+          type: 'sql',
+          condition:
+            "Timestamp NOT IN (parseDateTime64BestEffort('a', 9), parseDateTime64BestEffort('b', 9))",
+        },
+      ]);
+
+      expect(parsed.filters).toEqual({
+        Timestamp: {
+          included: new Set(),
+          excluded: new Set(['a', 'b']),
+        },
+      });
+    });
+
+    it('unwraps the DateTime part of a compound AND condition', () => {
+      const parsed = parseQuery([
+        {
+          type: 'sql',
+          condition:
+            "ServiceName IN ('api') AND Timestamp NOT IN (parseDateTime64BestEffort('2026-06-16', 9))",
+        },
+      ]);
+
+      expect(parsed.filters).toEqual({
+        ServiceName: {
+          included: new Set(['api']),
+          excluded: new Set(),
+        },
+        Timestamp: {
+          included: new Set(),
+          excluded: new Set(['2026-06-16']),
+        },
+      });
+    });
+
+    it('round-trips a DateTime value containing the wrapper suffix', () => {
+      const originalFilters = {
+        Timestamp: {
+          included: new Set<string | boolean>(["a', 9)b"]),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, { dateTimeColumns });
+      const parsed = parseQuery(query);
+
+      expect(parsed.filters).toEqual({
+        Timestamp: {
+          included: new Set(["a', 9)b"]),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('round-trips a plain DateTime column (parseDateTimeBestEffort wrapper)', () => {
+      const originalFilters = {
+        TimestampTime: {
+          included: new Set<string | boolean>(['2026-06-17T11:56:41Z']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, { dateTimeColumns });
+      // Sanity: produces the DateTime (non-64) wrapper.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((query[0] as ConditionFilter).condition).toBe(
+        "TimestampTime IN (parseDateTimeBestEffort('2026-06-17T11:56:41Z'))",
+      );
+
+      expect(parseQuery(query).filters).toEqual({
+        TimestampTime: {
+          included: new Set(['2026-06-17T11:56:41Z']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('parseQuery unwraps parseDateTimeBestEffort and toDate wrappers', () => {
+      const parsed = parseQuery([
+        {
+          type: 'sql',
+          condition: "TimestampTime IN (parseDateTimeBestEffort('a'))",
+        },
+        { type: 'sql', condition: "day NOT IN (toDate('2026-06-17'))" },
+      ]);
+
+      expect(parsed.filters).toEqual({
+        TimestampTime: { included: new Set(['a']), excluded: new Set() },
+        day: { included: new Set(), excluded: new Set(['2026-06-17']) },
+      });
+    });
+
+    // The map key can be a query-result column name that isn't a table column:
+    // an alias (`TimestampTime AS time`) or a computed expression
+    // (`toDate(TimestampTime)`). These only become filterable correctly when the
+    // type map is sourced from the result set rather than the table schema.
+    it('wraps and round-trips an aliased DateTime column', () => {
+      const aliasColumns = new Map<string, string>([['time', 'DateTime64(9)']]);
+      const originalFilters = {
+        time: {
+          included: new Set<string | boolean>(['2026-06-18T10:33:55Z']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, {
+        dateTimeColumns: aliasColumns,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((query[0] as ConditionFilter).condition).toBe(
+        "time IN (parseDateTime64BestEffort('2026-06-18T10:33:55Z', 9))",
+      );
+
+      expect(parseQuery(query).filters).toEqual({
+        time: {
+          included: new Set(['2026-06-18T10:33:55Z']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('wraps a computed DateTime expression with the type-matched function', () => {
+      const exprColumns = new Map<string, string>([
+        ['toDate(TimestampTime)', 'Date'],
+      ]);
+      const originalFilters = {
+        'toDate(TimestampTime)': {
+          included: new Set<string | boolean>(['2026-06-18']),
+          excluded: new Set<string | boolean>(),
+        },
+      };
+
+      const query = filtersToQuery(originalFilters, {
+        dateTimeColumns: exprColumns,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((query[0] as ConditionFilter).condition).toBe(
+        "toDate(TimestampTime) IN (toDate('2026-06-18'))",
+      );
     });
   });
 
