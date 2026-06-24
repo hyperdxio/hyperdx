@@ -178,6 +178,10 @@ function setCorrelationFieldValue(
 
 const DEFAULT_DATABASE = 'default';
 
+// Placeholder written into from.databaseName / from.tableName when the
+// selected connection is Prometheus-only.
+const PROMETHEUS_PLACEHOLDER = 'prometheus';
+
 const MV_AGGREGATE_FUNCTION_OPTIONS = MV_AGGREGATE_FUNCTIONS.map(fn => ({
   value: fn,
   label: fn,
@@ -2083,6 +2087,33 @@ export function TableSourceForm({
   });
   const prevTableNameRef = useRef(watchedTableName);
 
+  const selectedConnection = useMemo(
+    () => connections?.find(c => c.id === watchedConnection),
+    [connections, watchedConnection],
+  );
+  const isPrometheusOnlyConnection = Boolean(
+    selectedConnection?.isPrometheusEndpoint,
+  );
+
+  useEffect(() => {
+    if (!isPrometheusOnlyConnection) return;
+    if (watchedDatabaseName !== PROMETHEUS_PLACEHOLDER) {
+      setValue('from.databaseName', PROMETHEUS_PLACEHOLDER, {
+        shouldDirty: true,
+      });
+    }
+    if (watchedTableName !== PROMETHEUS_PLACEHOLDER) {
+      setValue('from.tableName', PROMETHEUS_PLACEHOLDER, {
+        shouldDirty: true,
+      });
+    }
+  }, [
+    isPrometheusOnlyConnection,
+    setValue,
+    watchedDatabaseName,
+    watchedTableName,
+  ]);
+
   const metadata = useMetadataWithSettings();
 
   useEffect(() => {
@@ -2090,6 +2121,10 @@ export function TableSourceForm({
       try {
         if (watchedTableName !== prevTableNameRef.current) {
           prevTableNameRef.current = watchedTableName;
+
+          if (isPrometheusOnlyConnection) {
+            return;
+          }
 
           if (
             watchedConnection != null &&
@@ -2135,6 +2170,7 @@ export function TableSourceForm({
     resetField,
     metadata,
     setValue,
+    isPrometheusOnlyConnection,
   ]);
 
   // Sets the default connection field to the first connection after the
@@ -2566,23 +2602,27 @@ export function TableSourceForm({
         <FormRow label={'Server Connection'}>
           <ConnectionSelectControlled control={control} name={`connection`} />
         </FormRow>
-        <FormRow label={'Database'}>
-          <DatabaseSelectControlled
-            control={control}
-            name={`from.databaseName`}
-            connectionId={connectionId}
-          />
-        </FormRow>
-        {kind !== SourceKind.Metric && (
-          <FormRow label={'Table'}>
-            <DBTableSelectControlled
-              database={databaseName}
-              control={control}
-              name={`from.tableName`}
-              connectionId={connectionId}
-              rules={{ required: 'Table is required' }}
-            />
-          </FormRow>
+        {!isPrometheusOnlyConnection && (
+          <>
+            <FormRow label={'Database'}>
+              <DatabaseSelectControlled
+                control={control}
+                name={`from.databaseName`}
+                connectionId={connectionId}
+              />
+            </FormRow>
+            {kind !== SourceKind.Metric && (
+              <FormRow label={'Table'}>
+                <DBTableSelectControlled
+                  database={databaseName}
+                  control={control}
+                  name={`from.tableName`}
+                  connectionId={connectionId}
+                  rules={{ required: 'Table is required' }}
+                />
+              </FormRow>
+            )}
+          </>
         )}
         <FormRow
           label={

@@ -31,10 +31,10 @@ describe('prometheus router', () => {
     return Connection.create({
       team: teamId,
       name: 'Prom',
-      host: 'http://ch-server:8123',
-      username: 'default',
+      host: 'http://prom.example.com',
+      username: '',
       password: '',
-      prometheusEndpoint: 'http://prom.example.com',
+      isPrometheusEndpoint: true,
     });
   };
 
@@ -95,7 +95,7 @@ describe('prometheus router', () => {
       });
     });
 
-    it('proxies to upstream Prometheus when connection has prometheusEndpoint', async () => {
+    it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(team._id);
 
@@ -129,7 +129,7 @@ describe('prometheus router', () => {
       expect(calledUrl).not.toContain('connectionId');
     });
 
-    it('does NOT proxy to Prometheus when connection has no prometheusEndpoint', async () => {
+    it('does NOT proxy to Prometheus when connection is not isPrometheusEndpoint', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedClickHouseConnection(team._id);
 
@@ -197,7 +197,7 @@ describe('prometheus router', () => {
         .expect(404);
     });
 
-    it('proxies to upstream Prometheus when connection has prometheusEndpoint', async () => {
+    it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(team._id);
 
@@ -238,7 +238,7 @@ describe('prometheus router', () => {
         .expect(404);
     });
 
-    it('proxies to upstream Prometheus when connection has prometheusEndpoint', async () => {
+    it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(team._id);
 

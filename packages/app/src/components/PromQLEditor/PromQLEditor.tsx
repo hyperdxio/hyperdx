@@ -4,6 +4,7 @@ import {
   acceptCompletion,
   autocompletion,
   Completion,
+  CompletionResult,
   startCompletion,
 } from '@codemirror/autocomplete';
 import { Paper, useMantineColorScheme } from '@mantine/core';
@@ -35,6 +36,17 @@ type PromQLEditorProps = {
 
 const MAX_EDITOR_HEIGHT = '150px';
 
+// Cap the number of completion options returned per query. With large
+// Prometheus instances `metricNames` can be 1M+ entries; passing the whole
+// list to CodeMirror's fuzzy filter on every keystroke causes severe typing
+// latency.
+const COMPLETION_LIMIT = 500;
+
+// Wait this long after the last keystroke before scanning `metricNames`.
+// `context.aborted` flips to true when CodeMirror starts a newer request, so
+// any in-flight scan from a previous burst short-circuits and returns null.
+const COMPLETION_DEBOUNCE_MS = 150;
+
 export default function PromQLEditor({
   value,
   onChange,
@@ -47,37 +59,58 @@ export default function PromQLEditor({
   const compartmentRef = useRef<Compartment>(new Compartment());
   const [isFocused, setIsFocused] = useState(false);
 
-  const metricCompletions = useMemo<Completion[]>(
-    () =>
-      (metricNames ?? []).map(name => ({
-        label: name,
-        type: 'variable' as const,
-      })),
-    [metricNames],
-  );
-
   const updateAutocomplete = useCallback(
     (viewRef: EditorView) => {
-      if (metricCompletions.length > 0) {
-        viewRef.dispatch({
-          effects: compartmentRef.current.reconfigure(
-            autocompletion({
-              override: [
-                context => {
-                  const word = context.matchBefore(/[\w.:]+/);
-                  if (!word && !context.explicit) return null;
-                  return {
-                    from: word?.from ?? context.pos,
-                    options: metricCompletions,
-                  };
-                },
-              ],
-            }),
-          ),
-        });
-      }
+      const all = metricNames ?? [];
+      if (all.length === 0) return;
+
+      viewRef.dispatch({
+        effects: compartmentRef.current.reconfigure(
+          autocompletion({
+            override: [
+              async (context): Promise<CompletionResult | null> => {
+                const word = context.matchBefore(/[\w.:]+/);
+                if (!word && !context.explicit) return null;
+
+                if (!context.explicit) {
+                  // debounce so we don't do this expensive operation on every keystroke
+                  await new Promise(r => setTimeout(r, COMPLETION_DEBOUNCE_MS));
+                  if (context.aborted) return null;
+                }
+
+                const prefix = (word?.text ?? '').toLowerCase();
+                const matches: Completion[] = [];
+                if (prefix === '') {
+                  for (
+                    let i = 0;
+                    i < all.length && matches.length < COMPLETION_LIMIT;
+                    i++
+                  ) {
+                    matches.push({ label: all[i], type: 'variable' });
+                  }
+                } else {
+                  for (
+                    let i = 0;
+                    i < all.length && matches.length < COMPLETION_LIMIT;
+                    i++
+                  ) {
+                    if (all[i].toLowerCase().startsWith(prefix)) {
+                      matches.push({ label: all[i], type: 'variable' });
+                    }
+                  }
+                }
+
+                return {
+                  from: word?.from ?? context.pos,
+                  options: matches,
+                };
+              },
+            ],
+          }),
+        ),
+      });
     },
-    [metricCompletions],
+    [metricNames],
   );
 
   useEffect(() => {
