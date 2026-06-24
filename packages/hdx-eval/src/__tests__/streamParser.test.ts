@@ -1,4 +1,4 @@
-import { chunkToLines, parseStreamLine } from '../harness/streamParser';
+import { chunkToLines, parseStreamLine } from '@/harness/streamParser';
 
 describe('parseStreamLine', () => {
   it('returns null for blank/invalid input', () => {

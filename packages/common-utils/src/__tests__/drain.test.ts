@@ -1,6 +1,6 @@
-import { TemplateMinerConfig } from '../drain/config';
-import { Drain } from '../drain/drain';
-import { TemplateMiner } from '../drain/template-miner';
+import { TemplateMinerConfig } from '@/drain/config';
+import { Drain } from '@/drain/drain';
+import { TemplateMiner } from '@/drain/template-miner';
 
 describe('Drain', () => {
   it('test_add_shorter_than_depth_message', () => {

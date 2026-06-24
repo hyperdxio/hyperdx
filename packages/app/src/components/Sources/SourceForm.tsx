@@ -59,6 +59,16 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 
+import ConfirmDeleteMenu from '@/components/ConfirmDeleteMenu';
+import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
+import { DatabaseSelectControlled } from '@/components/DatabaseSelect';
+import { DBTableSelectControlled } from '@/components/DBTableSelect';
+import { ErrorCollapse } from '@/components/Error/ErrorCollapse';
+import {
+  AutocompleteControlled,
+  InputControlled,
+} from '@/components/InputControlled';
+import SelectControlled from '@/components/SelectControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import {
@@ -91,14 +101,6 @@ import {
   PairingWarning,
   SourceFieldKind,
 } from '@/utils/sourceFieldSuggestions';
-
-import ConfirmDeleteMenu from '../ConfirmDeleteMenu';
-import { ConnectionSelectControlled } from '../ConnectionSelect';
-import { DatabaseSelectControlled } from '../DatabaseSelect';
-import { DBTableSelectControlled } from '../DBTableSelect';
-import { ErrorCollapse } from '../Error/ErrorCollapse';
-import { AutocompleteControlled, InputControlled } from '../InputControlled';
-import SelectControlled from '../SelectControlled';
 
 import { ExpressionValidationStatus } from './ExpressionValidationStatus';
 import { SourceFieldCandidateHint } from './SourceFieldCandidateHint';

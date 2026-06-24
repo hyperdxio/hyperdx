@@ -12,14 +12,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
 import api from '@/api';
-import { useSources } from '@/source';
-
 import {
   deduplicate2dArray,
   useGetKeyValues,
   useMultipleAllFields,
   useMultipleGetKeyValues,
-} from '../useMetadata';
+} from '@/hooks/useMetadata';
+import { useSources } from '@/source';
 
 // Create a mock ChartConfig based on the Zod schema
 const createMockChartConfig = (

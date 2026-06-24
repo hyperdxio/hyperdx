@@ -37,7 +37,7 @@ import {
 } from './ChartUtils';
 import { FormatTime, useFormatTime } from './useFormatTime';
 
-import styles from '../styles/HDXLineChart.module.scss';
+import styles from '@styles/HDXLineChart.module.scss';
 
 const MAX_LEGEND_ITEMS = 4;
 

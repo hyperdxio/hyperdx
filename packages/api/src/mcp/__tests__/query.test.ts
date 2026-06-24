@@ -10,8 +10,8 @@ import {
   errorHint,
   mergeWhereIntoSelectItems,
   parseTimeRange,
-} from '../tools/query/helpers';
-import { resolveOrderBy } from '../tools/query/table';
+} from '@/mcp/tools/query/helpers';
+import { resolveOrderBy } from '@/mcp/tools/query/table';
 
 describe('parseTimeRange', () => {
   it('should return default range (last 15 minutes) when no arguments provided', () => {

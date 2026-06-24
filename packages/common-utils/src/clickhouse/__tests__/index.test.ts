@@ -2,7 +2,7 @@ import {
   convertCHDataTypeToJSType,
   extractColumnReferencesFromKey,
   JSDataType,
-} from '..';
+} from '@/clickhouse';
 
 describe('extractColumnReferencesFromKey', () => {
   // Suppress expected console.error from parse failures in edge-case tests

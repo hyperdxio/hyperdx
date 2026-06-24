@@ -1,17 +1,16 @@
 import { chSql, ColumnMeta, parameterizedQueryToSql } from '@/clickhouse';
 import { Metadata } from '@/core/metadata';
 import {
+  ChartConfigWithOptDateRangeEx,
+  renderChartConfig,
+  timeFilterExpr,
+} from '@/core/renderChartConfig';
+import {
   ChartConfigWithOptDateRange,
   DisplayType,
   MetricsDataType,
   QuerySettings,
 } from '@/types';
-
-import {
-  ChartConfigWithOptDateRangeEx,
-  renderChartConfig,
-  timeFilterExpr,
-} from '../core/renderChartConfig';
 
 describe('renderChartConfig', () => {
   let mockMetadata: jest.Mocked<Metadata>;

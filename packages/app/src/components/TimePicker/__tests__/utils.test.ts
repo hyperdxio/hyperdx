@@ -1,4 +1,4 @@
-import { dateParser, parseTimeRangeInput } from '../utils';
+import { dateParser, parseTimeRangeInput } from '@/components/TimePicker/utils';
 
 describe('dateParser', () => {
   let mockDate: Date;

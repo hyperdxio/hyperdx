@@ -2,7 +2,7 @@ import React from 'react';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
-import DBTracePanel from '../DBTracePanel';
+import DBTracePanel from '@/components/DBTracePanel';
 
 let mockSources: Record<string, any> = {};
 

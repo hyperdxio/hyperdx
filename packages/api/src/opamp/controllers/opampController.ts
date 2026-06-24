@@ -3,15 +3,14 @@ import { Request, Response } from 'express';
 import * as config from '@/config';
 import { getAllTeams } from '@/controllers/team';
 import type { ITeam } from '@/models/team';
-import logger from '@/utils/logger';
-
-import { agentService } from '../services/agentService';
+import { agentService } from '@/opamp/services/agentService';
 import {
   createRemoteConfig,
   decodeAgentToServer,
   encodeServerToAgent,
   serverCapabilities,
-} from '../utils/protobuf';
+} from '@/opamp/utils/protobuf';
+import logger from '@/utils/logger';
 
 type CollectorConfig = {
   extensions: Record<string, any>;
