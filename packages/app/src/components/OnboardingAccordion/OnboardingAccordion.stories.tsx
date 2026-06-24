@@ -13,8 +13,8 @@ import {
   SegmentedControl,
   Stack,
   Text,
-  TextInput,
   Tooltip,
+  UnstyledButton,
 } from '@mantine/core';
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import {
@@ -25,11 +25,13 @@ import {
   IconCloud,
   IconCopy,
   IconDatabase,
+  IconEye,
+  IconEyeOff,
   IconGauge,
   IconHexagons,
-  IconKey,
   IconLogs,
   IconPencil,
+  IconSparkles,
   IconTable,
 } from '@tabler/icons-react';
 
@@ -57,6 +59,57 @@ export default meta;
 type Story = StoryObj<typeof OnboardingAccordion>;
 
 const ENDPOINT = 'https://vpgy734q1n.otel.us-east-1.aws.clickhouse.cloud:4318';
+const API_KEY = 'hdx_sk_3f9ab2c7d41e8056';
+const MASKED_KEY = '••••••••••••••••';
+
+/** Violet accent used to brand the AI setup assistant (theme-agnostic). */
+const AI_ACCENT = '#7c5cff';
+
+const AI_AGENTS = [
+  { label: 'Cursor', value: 'cursor' },
+  { label: 'VS Code', value: 'vscode' },
+  { label: 'Claude Code', value: 'claude' },
+];
+
+const SETUP_PROMPT = `Set up HyperDX / OpenTelemetry observability in this project.
+
+Instrument the application to export logs, traces, and metrics over OTLP/HTTP to:
+  endpoint: ${ENDPOINT}
+  header:   authorization: ${API_KEY}
+
+Add the OpenTelemetry SDK for this project's language/framework, wire up auto-instrumentation, generate any collector config that's needed, then run the app and confirm telemetry is arriving.`;
+
+const CONNECTION_TABS = [
+  { label: 'URL', value: 'url' },
+  { label: 'Collector config', value: 'collector' },
+  { label: 'Env vars', value: 'env' },
+  {
+    value: 'ai',
+    label: (
+      <Group gap={5} align="center" wrap="nowrap" style={{ color: AI_ACCENT }}>
+        <IconSparkles size={13} />
+        <span>AI agent</span>
+      </Group>
+    ),
+  },
+];
+
+function connectionSnippet(tab: string, revealed: boolean) {
+  const key = revealed ? API_KEY : MASKED_KEY;
+  if (tab === 'collector') {
+    return `exporters:
+  otlphttp:
+    endpoint: "${ENDPOINT}"
+    headers:
+      authorization: "${key}"`;
+  }
+  if (tab === 'env') {
+    return `OTEL_EXPORTER_OTLP_ENDPOINT=${ENDPOINT}
+OTEL_EXPORTER_OTLP_HEADERS=authorization=${key}`;
+  }
+  return `endpoint: ${ENDPOINT}
+api-key:  ${key}`;
+}
 
 function ServiceLogo({ size = 24 }: { size?: number }) {
   return (
@@ -254,58 +307,175 @@ function OnboardingLink({ label }: { label: string }) {
   );
 }
 
-function SendTelemetryBody() {
+function ConnectionPanel() {
   const [tab, setTab] = useState('url');
+  const [revealed, setRevealed] = useState(false);
+  const isAi = tab === 'ai';
+  const display = connectionSnippet(tab, revealed);
+  const copyText = connectionSnippet(tab, true);
 
   return (
-    <Stack gap={22}>
-      <Stack gap={16}>
+    <Box
+      style={{
+        border: '1px solid var(--color-border)',
+        borderRadius: 10,
+        overflow: 'hidden',
+        background: 'var(--color-bg-surface)',
+      }}
+    >
+      <Group
+        justify="space-between"
+        align="center"
+        wrap="nowrap"
+        px={10}
+        py={8}
+        style={{ borderBottom: '1px solid var(--color-border)' }}
+      >
         <SegmentedControl
-          fullWidth
+          size="xs"
+          radius="md"
           value={tab}
           onChange={setTab}
-          data={[
-            { label: 'URL', value: 'url' },
-            { label: 'Collector config', value: 'collector' },
-            { label: 'Env vars', value: 'env' },
-          ]}
+          data={CONNECTION_TABS}
         />
-        <Group gap={8} wrap="nowrap" align="center">
-          <TextInput
-            readOnly
-            flex={1}
-            value={ENDPOINT}
-            styles={{ input: { fontSize: 13 } }}
-            rightSection={
-              <CopyButton value={ENDPOINT}>
-                {({ copied, copy }) => (
-                  <Tooltip label={copied ? 'Copied' : 'Copy'} withArrow>
-                    <ActionIcon variant="subtle" color="gray" onClick={copy}>
-                      {copied ? (
-                        <IconCheck size={16} />
-                      ) : (
-                        <IconCopy size={16} />
-                      )}
-                    </ActionIcon>
-                  </Tooltip>
-                )}
-              </CopyButton>
-            }
-          />
-          <Tooltip label="View API key" withArrow>
-            <ActionIcon
-              size={36}
-              radius={4}
-              style={{
-                background: 'var(--palette-slate-800, #302e32)',
-                color: '#ffffff',
-              }}
+        {isAi ? null : (
+          <UnstyledButton onClick={() => setRevealed(r => !r)}>
+            <Group gap={6} align="center" wrap="nowrap">
+              {revealed ? (
+                <IconEyeOff
+                  size={15}
+                  style={{ color: 'var(--color-text-muted)' }}
+                />
+              ) : (
+                <IconEye
+                  size={15}
+                  style={{ color: 'var(--color-text-muted)' }}
+                />
+              )}
+              <Text
+                fz={12}
+                fw={500}
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                {revealed ? 'Hide key' : 'Reveal key'}
+              </Text>
+            </Group>
+          </UnstyledButton>
+        )}
+      </Group>
+
+      {isAi ? (
+        <AIAgentTab />
+      ) : (
+        <Box
+          style={{ position: 'relative', background: 'var(--color-bg-muted)' }}
+        >
+          <Box
+            component="pre"
+            style={{
+              margin: 0,
+              padding: '14px 52px 14px 16px',
+              fontFamily:
+                'var(--mantine-font-family-monospace, ui-monospace, monospace)',
+              fontSize: 13,
+              lineHeight: 1.65,
+              color: 'var(--color-text)',
+              whiteSpace: 'pre',
+              overflowX: 'auto',
+            }}
+          >
+            {display}
+          </Box>
+          <CopyButton value={copyText}>
+            {({ copied, copy }) => (
+              <Tooltip label={copied ? 'Copied' : 'Copy'} withArrow>
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  onClick={copy}
+                  style={{ position: 'absolute', top: 8, right: 8 }}
+                >
+                  {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                </ActionIcon>
+              </Tooltip>
+            )}
+          </CopyButton>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function AIAgentTab() {
+  const [agent, setAgent] = useState('cursor');
+  const agentLabel =
+    AI_AGENTS.find(a => a.value === agent)?.label ?? 'your agent';
+
+  return (
+    <Box
+      style={{
+        padding: 16,
+        background: `color-mix(in srgb, ${AI_ACCENT} 6%, var(--color-bg-surface))`,
+      }}
+    >
+      <Group gap={12} align="flex-start" wrap="nowrap">
+        <Box
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 9,
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: AI_ACCENT,
+            background: `color-mix(in srgb, ${AI_ACCENT} 16%, transparent)`,
+          }}
+        >
+          <IconSparkles size={20} />
+        </Box>
+        <Stack gap={3} style={{ flex: 1, minWidth: 0 }}>
+          <Text fw={600} fz={14} style={{ color: 'var(--color-text)' }}>
+            Let your AI coding agent set it up
+          </Text>
+          <Text fz={13} lh={1.45} style={{ color: 'var(--color-text-muted)' }}>
+            Copy a prompt for Cursor, VS Code, or Claude Code and let it
+            instrument your app and configure the collector automatically.
+          </Text>
+        </Stack>
+      </Group>
+
+      <Group gap={8} wrap="nowrap" justify="space-between" mt={14}>
+        <SegmentedControl
+          size="xs"
+          radius="md"
+          value={agent}
+          onChange={setAgent}
+          data={AI_AGENTS}
+        />
+        <CopyButton value={SETUP_PROMPT}>
+          {({ copied, copy }) => (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={copy}
+              leftSection={
+                copied ? <IconCheck size={15} /> : <IconCopy size={15} />
+              }
             >
-              <IconKey size={16} />
-            </ActionIcon>
-          </Tooltip>
-        </Group>
-      </Stack>
+              {copied ? 'Prompt copied' : `Copy prompt for ${agentLabel}`}
+            </Button>
+          )}
+        </CopyButton>
+      </Group>
+    </Box>
+  );
+}
+
+function SendTelemetryBody() {
+  return (
+    <Stack gap={20}>
+      <ConnectionPanel />
 
       <Box style={{ height: 1, background: 'var(--color-border)' }} />
 
