@@ -46,6 +46,9 @@ wait_for_ready() {
 emit_otel_data() {
     local endpoint=$1
     local testdir=$2
+    # Optional third argument selects the OTLP signal: logs (default), traces,
+    # or metrics. It maps to the matching /v1/<signal> ingest path.
+    local signal=${3:-logs}
     local datafile="${testdir}/input.json"
 
     # Check if the data file exists and is readable
@@ -60,7 +63,7 @@ emit_otel_data() {
     fi
 
     # Send the JSON file as a single request
-    curl -s -X POST "$endpoint/v1/logs" \
+    curl -s -X POST "$endpoint/v1/${signal}" \
         -H "Content-Type: application/json" \
         --data @"$datafile"
 
@@ -70,6 +73,34 @@ emit_otel_data() {
         return 1
     fi
     return 0
+}
+
+# Poll a ClickHouse count query until it returns a non-zero result or the
+# attempt budget is exhausted. This replaces fixed `sleep` calls after emitting
+# data: the collector's batch timeout is short (100ms in the smoke env), but the
+# round trip through the exporter into ClickHouse is not instantaneous, and a
+# fixed sleep is both slower (always waits the full duration) and flakier (may
+# wait too little under load). Returns 0 as soon as rows are visible.
+#
+# Usage: wait_for_rows <clickhouse_port> <count_query> [max_attempts]
+wait_for_rows() {
+    local port=$1
+    local count_query=$2
+    local max_attempts=${3:-30}
+    local attempt=0
+
+    while [ "$attempt" -lt "$max_attempts" ]; do
+        local count
+        count=$(clickhouse-client --port="$port" --query="$count_query" 2>/dev/null)
+        if [ -n "$count" ] && [ "$count" != "0" ]; then
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 0.5
+    done
+
+    echo "❌ Error: rows did not arrive within $((max_attempts / 2))s for query: $count_query" >&3
+    return 1
 }
 
 attempt_env_cleanup() {
