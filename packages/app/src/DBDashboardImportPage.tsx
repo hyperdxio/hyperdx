@@ -797,7 +797,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
             // here. Only force a mapped id for tiles that declared a source —
             // otherwise `source!.id` throws and the import dies with a generic
             // "Something went wrong" toast.
-            ...(tile.config.source ? { source: source!.id } : {}),
+            ...(source ? { source: source.id } : {}),
           }),
         };
       });
