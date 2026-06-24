@@ -412,5 +412,37 @@ describe('ChartDisplaySettingsDrawer', () => {
         factor: 1,
       });
     });
+
+    // The Time output reads the value through the same `factor` select as
+    // Duration, so switching to Time also seeds the source-derived factor.
+    it('seeds the duration factor when output switches to Time', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...numberBuilderProps}
+          settings={
+            {
+              numberFormat: { output: 'number', factor: 1 },
+            } as ChartConfigDisplaySettings
+          }
+          defaultNumberFormat={durationFormat}
+          onChange={onChange}
+        />,
+      );
+
+      await user.selectOptions(
+        screen.getByRole('combobox', { name: /output format/i }),
+        'time',
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0].numberFormat).toMatchObject({
+        output: 'time',
+        factor: 1e-9,
+      });
+    });
   });
 });
