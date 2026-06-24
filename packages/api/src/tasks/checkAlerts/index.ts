@@ -359,23 +359,6 @@ const fireChannelEvent = async ({
     throw new Error('Team not found');
   }
 
-  // KNOWN LIMITATION: Alert data (including silenced state) is fetched when the
-  // task is queued via AlertProvider, not when it processes. If a user silences
-  // an alert after it's queued but before it processes, this execution may still
-  // send a notification. Subsequent alert checks will respect the silenced state.
-  // This trade-off maintains architectural separation from direct database access.
-  if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
-    alertEvaluationsCounter.add(1, { outcome: 'skipped_silenced' });
-    logger.info(
-      {
-        alertId: alert.id,
-        silenced: alert.silenced,
-      },
-      'Skipped firing alert due to silence',
-    );
-    return;
-  }
-
   const attributesNested = unflattenObject(attributes);
   const templateView: AlertMessageTemplateDefaultView = {
     alert: {
@@ -981,6 +964,24 @@ export const processAlert = async (
       startTime?: Date;
       attributes?: Record<string, string>;
     }) => {
+      // KNOWN LIMITATION: Alert data (including silenced state) is fetched when
+      // the task is queued via AlertProvider, not when it processes. If a user
+      // silences an alert after it's queued but before it processes, this
+      // execution may still send a notification. Subsequent alert checks will
+      // respect the silenced state. This trade-off maintains architectural
+      // separation from direct database access.
+      if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
+        alertEvaluationsCounter.add(1, { outcome: 'skipped_silenced' });
+        logger.info(
+          {
+            alertId: alert.id,
+            silenced: alert.silenced,
+          },
+          'Skipped firing alert due to silence',
+        );
+        return;
+      }
+
       alertEvaluationsCounter.add(1, {
         outcome: state === AlertState.ALERT ? 'fired' : 'resolved',
       });
