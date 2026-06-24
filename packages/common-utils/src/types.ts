@@ -599,7 +599,7 @@ export const AlertBaseObjectSchema = z.object({
       until: z.string(),
     })
     .optional(),
-  numConsecutiveWindows: z.number().int().min(1).optional(),
+  numConsecutiveWindows: z.number().int().min(1).nullish(),
 });
 
 // Keep AlertBaseSchema as a ZodObject for backwards compatibility with
