@@ -1004,6 +1004,23 @@ Colors are palette tokens, not hex. Order rules from least to most severe so the
 
 colorRules is for number builder tiles only. Raw SQL number tiles (configType: "sql") support color but not colorRules.
 
+== NUMBER TILE BACKGROUND CHART ==
+
+number tiles can show a faint background trend sparkline behind the value, derived from a time-bucketed version of the same query. Use it for SLO / error-budget tiles where the trend over the window matters as much as the current value. One field on the tile config:
+
+  backgroundChart  { type, color? }. type is "line" or "area". color is an optional palette token override; when unset the sparkline inherits the tile color.
+
+Example: an availability tile that shows the current value over a faint area trend:
+  config: {
+    displayType: "number",
+    sourceId: "...",
+    select: [{ aggFn: "avg", valueExpression: "Success", numberFormat: { output: "percent" } }],
+    color: "chart-green",
+    backgroundChart: { type: "area" }
+  }
+
+backgroundChart is for number builder tiles only. Raw SQL number tiles (configType: "sql") return a single value with no time dimension to bucket, so they do not support it.
+
 == asRatio ==
 
 Set asRatio: true on line / stacked_bar / table tiles with exactly 2 select items

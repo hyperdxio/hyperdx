@@ -651,6 +651,60 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     ]);
   });
 
+  it('should round-trip backgroundChart: patch then get_dashboard_tile', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Background Chart Patch Test',
+        tiles: [
+          {
+            name: 'Original',
+            config: {
+              displayType: 'line',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+            },
+          },
+        ],
+      },
+    );
+    const created = JSON.parse(getFirstText(createResult));
+    const tileId = created.tiles[0].id;
+
+    await callTool(ctx.client!, 'clickstack_patch_dashboard', {
+      dashboardId: created.id,
+      tileId,
+      tile: {
+        name: 'Patched',
+        config: {
+          displayType: 'number',
+          sourceId,
+          select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+          backgroundChart: { type: 'line', color: 'chart-blue' },
+        },
+      },
+    });
+
+    const getResult = await callTool(
+      ctx.client!,
+      'clickstack_get_dashboard_tile',
+      {
+        dashboardId: created.id,
+        tileId,
+      },
+    );
+
+    expect(getResult.isError).toBeFalsy();
+    const tile = JSON.parse(getFirstText(getResult));
+    expect(tile.config.displayType).toBe('number');
+    expect(tile.config.backgroundChart).toEqual({
+      type: 'line',
+      color: 'chart-blue',
+    });
+  });
+
   describe('raw SQL macro warnings', () => {
     // Patching a tile to a macro-less raw SQL config succeeds (non-blocking)
     // but surfaces an advisory `warnings` array on the response.
