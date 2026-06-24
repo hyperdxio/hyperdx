@@ -427,10 +427,23 @@ router.post('/query', queryHandler);
 // GET /label/:name/values
 // --------------------------
 
+// Prometheus label-name grammar — used to reject anything that could
+// influence the upstream URL we're about to construct (e.g. embedded `?`,
+// `#`, or percent-encoded slashes that Express's param decoder lets through).
+// https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
+const PROMETHEUS_LABEL_NAME = /^[a-zA-Z_:][a-zA-Z0-9_:]*$/;
+
 router.get('/label/:name/values', async (req, res) => {
   try {
     const { teamId } = getNonNullUserWithTeam(req);
     const labelName = req.params.name;
+    if (!PROMETHEUS_LABEL_NAME.test(labelName)) {
+      return res.status(400).json({
+        status: 'error',
+        errorType: 'bad_data',
+        error: 'Invalid label name',
+      });
+    }
     const params = req.query as Record<string, string>;
 
     const connectionId = params.connectionId;
