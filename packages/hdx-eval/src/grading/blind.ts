@@ -10,7 +10,7 @@
  * gets its identity redacted.
  */
 
-import type { McpDefinition, McpKind } from '../harness/types';
+import type { McpDefinition, McpKind } from '@/harness/types';
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

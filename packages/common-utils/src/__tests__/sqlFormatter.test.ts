@@ -1,4 +1,4 @@
-import { format } from '../sqlFormatter';
+import { format } from '@/sqlFormatter';
 
 describe('sqlFormatter(clickhouse)', () => {
   test('should work with normal query', () => {

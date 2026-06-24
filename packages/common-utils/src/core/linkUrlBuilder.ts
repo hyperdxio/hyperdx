@@ -1,11 +1,12 @@
-import { FilterState, filtersToQuery } from '../filters';
+import { FilterState, filtersToQuery } from '@/filters';
 import type {
   Filter,
   OnClick,
   OnClickDashboard,
   OnClickFilterTemplate,
   OnClickSearch,
-} from '../types';
+} from '@/types';
+
 import {
   LinkTemplateError,
   MissingTemplateVariableError,

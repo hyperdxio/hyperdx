@@ -4,7 +4,7 @@ import {
   MissingTemplateVariableError,
   renderLinkTemplate,
   validateTemplate,
-} from '../linkTemplate';
+} from '@/core/linkTemplate';
 
 describe('renderLinkTemplate', () => {
   beforeEach(() => clearLinkTemplateCache());

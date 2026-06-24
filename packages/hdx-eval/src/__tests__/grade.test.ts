@@ -9,9 +9,9 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
-import { gradeBatch } from '../grading/grade';
-import type { GradeRecord } from '../grading/types';
-import type { RunRecord } from '../harness/types';
+import { gradeBatch } from '@/grading/grade';
+import type { GradeRecord } from '@/grading/types';
+import type { RunRecord } from '@/harness/types';
 
 function buildRun(args: {
   scenario: string;

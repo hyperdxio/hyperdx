@@ -10,7 +10,7 @@ import {
 
 import { DBRowTableIconButton } from './DBRowTableIconButton';
 
-import styles from '../../../styles/LogTable.module.scss';
+import styles from '@styles/LogTable.module.scss';
 
 interface DBRowTableRowButtonsProps {
   row: Record<string, any>;

@@ -16,8 +16,7 @@ import { Button, ComboboxData, Group, Modal, Select } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
 import api from '@/api';
-
-import { WebhookForm } from '../components/TeamSettings/WebhookForm';
+import { WebhookForm } from '@/components/TeamSettings/WebhookForm';
 
 type Webhook = {
   _id: string;

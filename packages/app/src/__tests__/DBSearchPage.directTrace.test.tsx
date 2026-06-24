@@ -2,7 +2,7 @@ import React from 'react';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { screen, waitFor } from '@testing-library/react';
 
-import { DBSearchPage } from '../DBSearchPage';
+import { DBSearchPage } from '@/DBSearchPage';
 
 const mockRouterPush = jest.fn();
 const mockSetSearchedConfig = jest.fn();

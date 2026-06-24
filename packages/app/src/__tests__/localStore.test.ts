@@ -19,7 +19,7 @@ import {
   generateDeterministicId,
   localSavedSearches,
   localSources,
-} from '../localStore';
+} from '@/localStore';
 
 type Item = { id: string; name: string };
 

@@ -1,6 +1,5 @@
+import { Agent, agentStore } from '@/opamp/models/agent';
 import logger from '@/utils/logger';
-
-import { Agent, agentStore } from '../models/agent';
 
 export class AgentService {
   /**

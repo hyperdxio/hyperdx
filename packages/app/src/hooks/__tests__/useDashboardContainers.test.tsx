@@ -1,8 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 
 import { Dashboard } from '@/dashboard';
-
-import useDashboardContainers from '../useDashboardContainers';
+import useDashboardContainers from '@/hooks/useDashboardContainers';
 
 function makeDashboard(overrides: Partial<Dashboard> = {}): Dashboard {
   return {
