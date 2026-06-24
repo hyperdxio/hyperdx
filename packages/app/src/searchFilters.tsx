@@ -311,7 +311,21 @@ function extractInClauses(condition: string): Array<{
           ? trimmedValues.slice(1, -1)
           : trimmedValues;
 
-      const valuesArray = splitValuesOnComma(withoutParens);
+      // Unwrap the date-value expressions filtersToQuery emits for date columns
+      // back into the plain quoted literal 'X' before splitting on commas. The
+      // DateTime64 wrapper contains an unquoted comma (before its precision
+      // argument), so this must run before splitValuesOnComma. The capture
+      // group `'(?:[^']|'')*'` consumes the SQL-escaped quoted string ('' for
+      // embedded quotes), keeping the round-trip exact even if a value
+      // contained quotes; the optional `, N` covers parseDateTime64BestEffort's
+      // precision argument. Matches the four producers in `dateTimeValueExpr`:
+      // parseDateTime64BestEffort, parseDateTimeBestEffort, toDate32, toDate.
+      const unwrapped = withoutParens.replace(
+        /(?:parseDateTime64BestEffort|parseDateTimeBestEffort|toDate32|toDate)\(('(?:[^']|'')*')(?:\s*,\s*\d+)?\)/g,
+        '$1',
+      );
+
+      const valuesArray = splitValuesOnComma(unwrapped);
 
       results.push({
         key: keyStr,
@@ -389,10 +403,12 @@ export const parseQuery = (
 export const useSearchPageFilterState = ({
   searchQuery = [],
   onFilterChange,
+  dateTimeColumns,
   knownColumns,
 }: {
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
+  dateTimeColumns?: ReadonlyMap<string, string>;
   /**
    * Top-level column names on the table, used to quote
    * column names that contain special characters
@@ -440,9 +456,9 @@ export const useSearchPageFilterState = ({
         newFilters,
         knownColumnsRef.current,
       );
-      onFilterChange(filtersToQuery(escapedFilters));
+      onFilterChange(filtersToQuery(escapedFilters, { dateTimeColumns }));
     },
-    [onFilterChange],
+    [onFilterChange, dateTimeColumns],
   );
 
   const setFilterValue = useCallback(

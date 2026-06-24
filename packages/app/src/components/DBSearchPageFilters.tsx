@@ -61,6 +61,7 @@ import {
   useAllFields,
   useAllFieldsAndValues,
   useColumns,
+  useDateTimeColumns,
   useGetKeyValues,
   useGetValuesDistribution,
   useJsonColumns,
@@ -92,8 +93,8 @@ import {
   toQuotedClickHouseKeyExpression,
 } from './DBSearchPageFilters/utils';
 
-import resizeStyles from '../../styles/ResizablePanel.module.scss';
-import classes from '../../styles/SearchPage.module.scss';
+import resizeStyles from '@styles/ResizablePanel.module.scss';
+import classes from '@styles/SearchPage.module.scss';
 
 /* The initial number of values per filter to load */
 const INITIAL_LOAD_LIMIT = 20;
@@ -1216,6 +1217,8 @@ const DBSearchPageFiltersComponent = ({
     connectionId: chartConfig.connection,
   });
 
+  const dateTimeColumns = useDateTimeColumns(columns);
+
   const { data: tableMetadata } = useTableMetadata(sourceTableConnection);
 
   useEffect(() => {
@@ -1425,6 +1428,7 @@ const DBSearchPageFiltersComponent = ({
               dateRange,
               filters: filtersToQuery(
                 escapeFilterStateKeys(strippedFilterState, knownColumns),
+                { dateTimeColumns },
               ),
             },
             keys: [sqlKey],
@@ -1454,6 +1458,7 @@ const DBSearchPageFiltersComponent = ({
       chartConfig,
       setExtraFacets,
       dateRange,
+      dateTimeColumns,
       filterState,
       metadata,
       source,

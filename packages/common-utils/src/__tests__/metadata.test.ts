@@ -1,9 +1,9 @@
-import { ClickhouseClient } from '../clickhouse/node';
-import { Metadata, MetadataCache, parseKeyPath } from '../core/metadata';
-import * as renderChartConfigModule from '../core/renderChartConfig';
-import { timeFilterExpr } from '../core/renderChartConfig';
-import { isBuilderChartConfig } from '../guards';
-import { BuilderChartConfigWithDateRange, SourceKind, TSource } from '../types';
+import { ClickhouseClient } from '@/clickhouse/node';
+import { Metadata, MetadataCache, parseKeyPath } from '@/core/metadata';
+import * as renderChartConfigModule from '@/core/renderChartConfig';
+import { timeFilterExpr } from '@/core/renderChartConfig';
+import { isBuilderChartConfig } from '@/guards';
+import { BuilderChartConfigWithDateRange, SourceKind, TSource } from '@/types';
 
 // Mock ClickhouseClient
 const mockClickhouseClient = {

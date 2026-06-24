@@ -3,11 +3,10 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import { deleteDashboard } from '@/controllers/dashboard';
+import type { McpContext } from '@/mcp/tools/types';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import Dashboard from '@/models/dashboard';
 import { objectIdSchema } from '@/utils/zod';
-
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 
 export function registerDeleteDashboard(
   server: McpServer,

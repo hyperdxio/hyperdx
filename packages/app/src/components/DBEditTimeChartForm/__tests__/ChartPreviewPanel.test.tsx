@@ -2,7 +2,7 @@ import React from 'react';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
-import { ChartPreviewPanel } from '../ChartPreviewPanel';
+import { ChartPreviewPanel } from '@/components/DBEditTimeChartForm/ChartPreviewPanel';
 
 jest.mock('@/components/ChartSQLPreview', () => ({
   __esModule: true,

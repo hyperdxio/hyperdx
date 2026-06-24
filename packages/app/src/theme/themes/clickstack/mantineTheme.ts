@@ -15,8 +15,8 @@ import {
   Tooltip,
 } from '@mantine/core';
 
-import variantClasses from '../../../../styles/variants.module.scss';
-import componentClasses from '../components.module.scss';
+import componentClasses from '@/theme/themes/components.module.scss';
+import variantClasses from '@styles/variants.module.scss';
 
 /**
  * ClickStack Theme

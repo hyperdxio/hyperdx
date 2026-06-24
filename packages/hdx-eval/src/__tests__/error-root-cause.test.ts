@@ -1,6 +1,6 @@
-import { mulberry32 } from '../rng/seeded';
-import { errorRootCauseScenario } from '../scenarios/error-root-cause/generate';
-import { collectScenario } from '../scenarios/types';
+import { mulberry32 } from '@/rng/seeded';
+import { errorRootCauseScenario } from '@/scenarios/error-root-cause/generate';
+import { collectScenario } from '@/scenarios/types';
 
 const NOW_MS = Date.parse('2026-05-08T12:00:00.000Z');
 // Tests run at 1% volume (full v5 ≈ 6M base traces / 12M logs).
