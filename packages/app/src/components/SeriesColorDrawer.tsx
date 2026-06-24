@@ -74,6 +74,8 @@ export default function SeriesColorDrawer({
   }, [reset, appliedDefaults, onClose]);
 
   const applyChanges = useCallback(() => {
+    // Close inside the success callback so a future validation rule cannot
+    // discard an in-progress edit on Apply (close only follows a valid submit).
     handleSubmit(values => {
       onChange({
         color: values.color,
@@ -82,8 +84,8 @@ export default function SeriesColorDrawer({
             ? stripLocalIds(values.colorRules)
             : undefined,
       });
+      onClose();
     })();
-    onClose();
   }, [handleSubmit, onChange, onClose]);
 
   const clearColor = useCallback(() => {
