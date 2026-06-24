@@ -52,7 +52,7 @@ import { useSource, useSources } from './source';
 import { FormatTime } from './useFormatTime';
 import { formatDistanceToNowStrictShort } from './utils';
 
-import styles from '../styles/SessionsPage.module.scss';
+import styles from '@styles/SessionsPage.module.scss';
 
 function SessionCard({
   email,

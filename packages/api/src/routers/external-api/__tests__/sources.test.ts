@@ -2,17 +2,14 @@ import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import request, { SuperAgentTest } from 'supertest';
 
-import { ITeam } from '@/models/team';
-import { IUser } from '@/models/user';
-
-import * as config from '../../../config';
+import * as config from '@/config';
 import {
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
   getLoggedInAgent,
   getServer,
-} from '../../../fixtures';
-import Connection, { IConnection } from '../../../models/connection';
+} from '@/fixtures';
+import Connection, { IConnection } from '@/models/connection';
 import {
   ISource,
   LogSource,
@@ -20,8 +17,10 @@ import {
   SessionSource,
   Source,
   TraceSource,
-} from '../../../models/source';
-import { mapGranularityToExternalFormat } from '../v2/sources';
+} from '@/models/source';
+import { ITeam } from '@/models/team';
+import { IUser } from '@/models/user';
+import { mapGranularityToExternalFormat } from '@/routers/external-api/v2/sources';
 
 describe('External API v2 Sources', () => {
   const server = getServer();

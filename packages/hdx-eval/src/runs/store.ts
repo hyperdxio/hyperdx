@@ -1,7 +1,8 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 
-import type { RunRecord } from '../harness/types';
+import type { RunRecord } from '@/harness/types';
+
 import {
   isModelSubdir,
   isRunJson,

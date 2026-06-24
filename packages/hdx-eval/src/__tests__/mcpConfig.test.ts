@@ -1,15 +1,15 @@
-import { allowedToolsPattern, buildMcpConfig } from '../harness/mcpConfig';
+import { allowedToolsPattern, buildMcpConfig } from '@/harness/mcpConfig';
 import {
   buildSettings,
   DENIED_BUILT_IN_TOOLS,
   deniedToolsFor,
-} from '../harness/settingsFile';
-import type { McpDefinition } from '../harness/types';
+} from '@/harness/settingsFile';
+import type { McpDefinition } from '@/harness/types';
 import {
   configMcpNames,
   enabledMcpNames,
   type EvalConfig,
-} from '../hyperdx/config';
+} from '@/hyperdx/config';
 
 const hyperdxDef: McpDefinition = {
   type: 'http',

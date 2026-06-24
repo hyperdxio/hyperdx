@@ -1,6 +1,6 @@
 import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 
-import { getMetricOptions } from '../MetricNameSelect';
+import { getMetricOptions } from '@/components/MetricNameSelect';
 
 const SEPARATOR = ':::::::';
 

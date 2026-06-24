@@ -11,11 +11,10 @@ import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import type { McpContext } from '@/mcp/tools/types';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
-
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 
 // How far back to look when querying the rollup tables for value samples.
 const VALUE_SAMPLE_LOOKBACK_MS = 24 * 60 * 60 * 1000; // 24 hours

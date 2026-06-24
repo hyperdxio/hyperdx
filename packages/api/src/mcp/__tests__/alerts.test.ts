@@ -8,6 +8,7 @@ import {
   getLoggedInAgent,
   getServer,
 } from '@/fixtures';
+import { McpContext } from '@/mcp/tools/types';
 import Alert, { AlertState } from '@/models/alert';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
@@ -15,7 +16,6 @@ import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import Webhook, { WebhookService } from '@/models/webhook';
 
-import { McpContext } from '../tools/types';
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
 describe('MCP Alert Tools', () => {
