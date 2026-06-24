@@ -8,13 +8,12 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import { DashboardDocument } from '@/models/dashboard';
-
 import {
   collectTileContainerRefIssues,
   ConfigTile,
   convertToExternalDashboard,
   convertToInternalTileConfig,
-} from '../dashboards';
+} from '@/routers/external-api/v2/utils/dashboards';
 
 function makeMarkdownTile(
   markdown?: string,

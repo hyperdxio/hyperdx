@@ -1,4 +1,4 @@
-import { isValidSlackUrl, isValidUrl } from '../validation';
+import { isValidSlackUrl, isValidUrl } from '@/validation';
 
 describe('validation', () => {
   it.each([

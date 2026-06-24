@@ -31,8 +31,8 @@ import { UNDEFINED_WIDTH } from './tableUtils';
 import type { NumberFormat } from './types';
 import { formatNumber } from './utils';
 
-import focusStyles from '../styles/focus.module.scss';
 import styles from './HDXMultiSeriesTableChart.module.scss';
+import focusStyles from '@styles/focus.module.scss';
 
 export type TableVariant = 'default' | 'muted';
 

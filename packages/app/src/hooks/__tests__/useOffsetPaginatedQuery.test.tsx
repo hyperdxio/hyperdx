@@ -8,7 +8,7 @@ import {
 } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
-import useOffsetPaginatedQuery from '../useOffsetPaginatedQuery';
+import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 
 // Mock the API module
 jest.mock('@/api', () => ({

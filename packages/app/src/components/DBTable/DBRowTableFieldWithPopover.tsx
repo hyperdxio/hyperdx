@@ -5,16 +5,15 @@ import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconCopy, IconFilter, IconFilterX } from '@tabler/icons-react';
 
+import { RowSidePanelContext } from '@/components/DBRowSidePanel';
 import {
   CLIPBOARD_ERROR_MESSAGE,
   copyTextToClipboard,
 } from '@/utils/clipboard';
 
-import { RowSidePanelContext } from '../DBRowSidePanel';
-
 import { DBRowTableIconButton } from './DBRowTableIconButton';
 
-import styles from '../../../styles/LogTable.module.scss';
+import styles from '@styles/LogTable.module.scss';
 
 interface DBRowTableFieldWithPopoverProps {
   children: React.ReactNode;

@@ -1,8 +1,8 @@
-import { DisplayType, Filter, SourceKind, TSource } from '../../types';
 import {
   ALERT_COUNT_DEFAULT_SELECT,
   buildSearchChartConfig,
-} from '../searchChartConfig';
+} from '@/core/searchChartConfig';
+import { DisplayType, Filter, SourceKind, TSource } from '@/types';
 
 // Factory helpers keep tests focused on the behavior under test rather than
 // the full source shape. We cast to TSource because most per-kind fields are

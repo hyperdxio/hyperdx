@@ -2,9 +2,9 @@ import {
   buildJudgeSystem,
   buildJudgeUser,
   formatGroundTruthFacts,
-} from '../grading/judgePrompt';
-import { loadScenarioRubric } from '../grading/rubric';
-import { getScenario } from '../scenarios';
+} from '@/grading/judgePrompt';
+import { loadScenarioRubric } from '@/grading/rubric';
+import { getScenario } from '@/scenarios';
 
 describe('buildJudgeSystem', () => {
   it('includes the scenario name and every criterion in the rubric', () => {

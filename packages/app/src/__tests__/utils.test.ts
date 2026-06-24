@@ -7,8 +7,8 @@ import {
 import { SortingState } from '@tanstack/react-table';
 import { act, renderHook } from '@testing-library/react';
 
-import { MetricsDataType, NumberFormat } from '../types';
-import * as utils from '../utils';
+import { MetricsDataType, NumberFormat } from '@/types';
+import * as utils from '@/utils';
 import {
   COLORS,
   evaluateColorCondition,
@@ -27,7 +27,7 @@ import {
   sortingStateToOrderByString,
   stripTrailingSlash,
   useQueryHistory,
-} from '../utils';
+} from '@/utils';
 
 describe('formatAttributeClause', () => {
   it('should format SQL attribute clause correctly', () => {

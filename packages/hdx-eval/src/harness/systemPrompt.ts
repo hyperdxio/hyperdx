@@ -1,4 +1,5 @@
-import { scenarioTables } from '../clickhouse/schema';
+import { scenarioTables } from '@/clickhouse/schema';
+
 import type { PromptVariant } from './types';
 
 export function buildSystemPrompt(

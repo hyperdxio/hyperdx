@@ -24,7 +24,7 @@ import {
   IconPercentage,
 } from '@tabler/icons-react';
 
-import { formatNumber } from '../utils';
+import { formatNumber } from '@/utils';
 
 import { ChartConfigDisplaySettings } from './ChartDisplaySettingsDrawer';
 

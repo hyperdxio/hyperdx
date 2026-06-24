@@ -6,8 +6,8 @@
 // #2362 where a semantic-hex `lineData[].color` (e.g. the output of
 // `getChartColorInfo()` on HyperDX) would not have a matching gradient
 // def after the `COLORS` palette was unified to Observable 10.
-import { collectMemoChartGradientHexes } from '../HDXMultiSeriesTimeChart';
-import { COLORS } from '../utils';
+import { collectMemoChartGradientHexes } from '@/HDXMultiSeriesTimeChart';
+import { COLORS } from '@/utils';
 
 describe('collectMemoChartGradientHexes', () => {
   it('includes every categorical hex from COLORS up front', () => {
