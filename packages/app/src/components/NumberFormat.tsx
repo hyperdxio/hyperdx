@@ -157,7 +157,15 @@ export const NumberFormatForm: React.FC<{
   control: Control<Pick<ChartConfigDisplaySettings, 'numberFormat'>>;
   setValue: UseFormSetValue<Pick<ChartConfigDisplaySettings, 'numberFormat'>>;
   disclaimer?: React.ReactNode;
-}> = ({ control, setValue, disclaimer }) => {
+  /**
+   * Source-derived duration factor (e.g. 1e-9 for a nanosecond trace Duration
+   * column). When set, switching the output to a time-based format (duration or
+   * time) seeds `numberFormat.factor` from it instead of keeping the prior
+   * factor, so the value is read with the right input unit. Left undefined for
+   * sources with no detected duration precision, where the factor is untouched.
+   */
+  preferredDurationFactor?: number;
+}> = ({ control, setValue, disclaimer, preferredDurationFactor }) => {
   const format =
     useWatch({ control, name: 'numberFormat' }) ?? DEFAULT_NUMBER_FORMAT;
 
@@ -198,6 +206,17 @@ export const NumberFormatForm: React.FC<{
                     'numberFormat.numericUnit',
                     DEFAULT_NUMERIC_UNIT_BY_OUTPUT[newOutput] ?? undefined,
                   );
+                  // Time-based formats interpret the value through `factor`
+                  // (input unit to seconds). Seed it from the source-derived
+                  // precision so a nanosecond Duration column is not misread as
+                  // seconds; otherwise the prior factor (often Seconds = 1)
+                  // sticks and the user has to re-pick the unit by hand.
+                  if (
+                    (newOutput === 'duration' || newOutput === 'time') &&
+                    preferredDurationFactor != null
+                  ) {
+                    setValue('numberFormat.factor', preferredDurationFactor);
+                  }
                 }}
               />
             )}

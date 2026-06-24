@@ -347,5 +347,102 @@ describe('ChartDisplaySettingsDrawer', () => {
         numberFormat: { output: 'currency' },
       });
     });
+
+    // Switching the output to Duration on a tile whose source is a nanosecond
+    // Duration column should seed the factor from the source precision (1e-9),
+    // not keep the prior Seconds factor (which would read the value as seconds).
+    it('seeds the duration factor from the source precision when output switches to Duration', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...numberBuilderProps}
+          settings={
+            {
+              numberFormat: { output: 'number', factor: 1 },
+            } as ChartConfigDisplaySettings
+          }
+          defaultNumberFormat={durationFormat}
+          onChange={onChange}
+        />,
+      );
+
+      await user.selectOptions(
+        screen.getByRole('combobox', { name: /output format/i }),
+        'duration',
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0].numberFormat).toMatchObject({
+        output: 'duration',
+        factor: 1e-9,
+      });
+    });
+
+    // With no source-derived duration format (non-duration source), switching
+    // to Duration must not force a factor; the prior value (Seconds = 1) stays
+    // and the user picks the input unit manually as before.
+    it('does not force a factor when no source duration format is available', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...numberBuilderProps}
+          settings={
+            {
+              numberFormat: { output: 'number', factor: 1 },
+            } as ChartConfigDisplaySettings
+          }
+          onChange={onChange}
+        />,
+      );
+
+      await user.selectOptions(
+        screen.getByRole('combobox', { name: /output format/i }),
+        'duration',
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0].numberFormat).toMatchObject({
+        output: 'duration',
+        factor: 1,
+      });
+    });
+
+    // The Time output reads the value through the same `factor` select as
+    // Duration, so switching to Time also seeds the source-derived factor.
+    it('seeds the duration factor when output switches to Time', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...numberBuilderProps}
+          settings={
+            {
+              numberFormat: { output: 'number', factor: 1 },
+            } as ChartConfigDisplaySettings
+          }
+          defaultNumberFormat={durationFormat}
+          onChange={onChange}
+        />,
+      );
+
+      await user.selectOptions(
+        screen.getByRole('combobox', { name: /output format/i }),
+        'time',
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0].numberFormat).toMatchObject({
+        output: 'time',
+        factor: 1e-9,
+      });
+    });
   });
 });
