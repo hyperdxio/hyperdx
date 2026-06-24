@@ -4395,7 +4395,7 @@ __metadata:
     express-session: "npm:^1.17.3"
     handlebars: "npm:^4.7.9"
     http-graceful-shutdown: "npm:^3.1.13"
-    http-proxy-middleware: "npm:^3.0.5"
+    http-proxy-middleware: "npm:^3.0.7"
     jest: "npm:^30.2.0"
     jsonwebtoken: "npm:^9.0.0"
     lodash: "npm:^4.18.1"
@@ -4504,7 +4504,7 @@ __metadata:
     eslint-plugin-storybook: "npm:10.1.4"
     flat: "npm:^5.0.2"
     fuse.js: "npm:^6.6.2"
-    http-proxy-middleware: "npm:^3.0.5"
+    http-proxy-middleware: "npm:^3.0.7"
     identity-obj-proxy: "npm:^3.0.0"
     immer: "npm:^9.0.21"
     jest: "npm:^30.2.0"
@@ -17749,9 +17749,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"http-proxy-middleware@npm:^3.0.5":
-  version: 3.0.5
-  resolution: "http-proxy-middleware@npm:3.0.5"
+"http-proxy-middleware@npm:^3.0.7":
+  version: 3.0.7
+  resolution: "http-proxy-middleware@npm:3.0.7"
   dependencies:
     "@types/http-proxy": "npm:^1.17.15"
     debug: "npm:^4.3.6"
@@ -17759,7 +17759,7 @@ __metadata:
     is-glob: "npm:^4.0.3"
     is-plain-object: "npm:^5.0.0"
     micromatch: "npm:^4.0.8"
-  checksum: 10c0/89ff3c8fe65b22b8042a6173ae1b8f77c5171f7eecf3c8b5d6dcffe3c9d688acae7bcf498cc08d1525f566dc0781efaec4e2ddc49224b1f16f020de7987a446b
+  checksum: 10c0/2308a09b1ae7682bb91bed45653d3b17379b87e2bb8cad4e7e71c68eeb2cedb8fd5506f80f6890178d8aa4132a3ce71eaf58979e7ef04cfefac923117da41817
   languageName: node
   linkType: hard
 
