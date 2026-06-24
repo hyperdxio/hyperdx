@@ -263,4 +263,89 @@ describe('ChartDisplaySettingsDrawer', () => {
       expect(onChange.mock.calls[0][0].seriesLimit).toBeNull();
     });
   });
+
+  describe('number format persistence', () => {
+    // A duration number tile (e.g. p95 Duration from a trace source) auto-detects
+    // a duration format from the datasource; the drawer receives it as
+    // `defaultNumberFormat` and shows it as the fallback when no explicit
+    // numberFormat is set.
+    const durationFormat = { output: 'duration' as const, factor: 1e-9 };
+    const numberBuilderProps = {
+      ...baseProps,
+      configType: 'builder' as const,
+      displayType: DisplayType.Number,
+    };
+
+    it('does not persist the auto-detected format when Apply is clicked without changing it', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...numberBuilderProps}
+          defaultNumberFormat={durationFormat}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0].numberFormat).toBeUndefined();
+    });
+
+    it('persists the format when the user changes the output format', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...numberBuilderProps}
+          defaultNumberFormat={durationFormat}
+          onChange={onChange}
+        />,
+      );
+
+      await user.selectOptions(
+        screen.getByRole('combobox', { name: /output format/i }),
+        'number',
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0].numberFormat).toMatchObject({
+        output: 'number',
+      });
+    });
+
+    it('preserves an existing explicit format when only another setting changes', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...numberBuilderProps}
+          settings={
+            {
+              numberFormat: { output: 'currency', currencySymbol: '$' },
+            } as ChartConfigDisplaySettings
+          }
+          onChange={onChange}
+        />,
+      );
+
+      // Change the tile color, not the format.
+      await user.click(screen.getByTestId('color-swatch-input-trigger'));
+      await user.click(
+        await screen.findByTestId('color-swatch-option-chart-blue'),
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        color: 'chart-blue',
+        numberFormat: { output: 'currency' },
+      });
+    });
+  });
 });
