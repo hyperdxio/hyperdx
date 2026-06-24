@@ -275,8 +275,10 @@ export default class DefaultAlertProvider implements AlertProvider {
     const alerts = await Alert.find({});
 
     const now = new Date();
-    const alertIds = alerts.map(({ id }) => id);
-    const previousAlerts = await getPreviousAlertHistories(alertIds, now);
+    const previousAlerts = await getPreviousAlertHistories(
+      alerts.map(alert => ({ id: alert.id, interval: alert.interval })),
+      now,
+    );
 
     for (const alert of alerts) {
       try {
