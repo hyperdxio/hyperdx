@@ -1213,9 +1213,8 @@ export const processAlert = async (
             history.state = AlertState.PENDING;
             // Carry forward fired=true if a notification was previously sent and not yet resolved.
             history.fired =
-              previousMap.get(
-                computeHistoryMapKey(alert.id, groupKey),
-              )?.fired === true;
+              previousMap.get(computeHistoryMapKey(alert.id, groupKey))
+                ?.fired === true;
           }
         } else {
           // TODO: if the alert was previously alerting (different bucket), should we set state to OK (plus auto-resolve)?

@@ -86,7 +86,7 @@ export interface IAlert {
   };
 
   // Multi-window alerting: fire only after N violations in M consecutive windows
-  numConsecutiveWindows?: number;
+  numConsecutiveWindows?: number | null;
 
   // Errors recorded during the most recent execution
   executionErrors?: IAlertError[];

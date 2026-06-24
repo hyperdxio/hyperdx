@@ -2064,7 +2064,7 @@ export const AlertsPageItemSchema = z.object({
     })
     .optional(),
   executionErrors: z.array(AlertErrorSchema).optional(),
-  numConsecutiveWindows: z.number().int().min(1).optional(),
+  numConsecutiveWindows: z.number().int().min(1).nullish(),
 });
 
 export type AlertsPageItem = z.infer<typeof AlertsPageItemSchema>;
