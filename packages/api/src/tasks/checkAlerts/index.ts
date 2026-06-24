@@ -75,7 +75,26 @@ import {
   roundDownToXMinutes,
   unflattenObject,
 } from '@/tasks/util';
+import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+
+// Outcome of a single alert evaluation. Kept low-cardinality (a fixed enum) so
+// it is safe to use as a metric attribute (see agent_docs/observability.md).
+const alertEvaluationsCounter = getCounter('hyperdx.alerts.evaluations', {
+  description:
+    'Count of alert evaluations, labeled by outcome (fired, resolved, or the reason it was skipped).',
+});
+const alertQueryFailuresCounter = getCounter('hyperdx.alerts.query_failures', {
+  description:
+    'Count of alert evaluations where the ClickHouse query failed, skipping the state/history update.',
+});
+const alertProcessFailuresCounter = getCounter(
+  'hyperdx.alerts.process_failures',
+  {
+    description:
+      'Count of alert evaluations that threw an unexpected error during processing.',
+  },
+);
 
 /**
  * Determine if an alert has group-by behavior.
@@ -346,6 +365,7 @@ const fireChannelEvent = async ({
   // send a notification. Subsequent alert checks will respect the silenced state.
   // This trade-off maintains architectural separation from direct database access.
   if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
+    alertEvaluationsCounter.add(1, { outcome: 'skipped_silenced' });
     logger.info(
       {
         alertId: alert.id,
@@ -742,6 +762,7 @@ export const processAlert = async (
       scheduleStartAt: alert.scheduleStartAt,
     });
     if (scheduleStartAt != null && now < scheduleStartAt) {
+      alertEvaluationsCounter.add(1, { outcome: 'skipped_schedule' });
       logger.info(
         {
           alertId: alert.id,
@@ -778,6 +799,7 @@ export const processAlert = async (
 
     // Check if we should skip this alert check based on last evaluation time
     if (shouldSkipAlertCheck(details, hasGroupBy, nowInMinsRoundDown)) {
+      alertEvaluationsCounter.add(1, { outcome: 'skipped_window' });
       logger.info(
         {
           windowSizeInMins,
@@ -801,6 +823,7 @@ export const processAlert = async (
       scheduleStartAt,
     );
     if (dateRange[0].getTime() >= dateRange[1].getTime()) {
+      alertEvaluationsCounter.add(1, { outcome: 'skipped_anchor' });
       logger.info(
         {
           alertId: alert.id,
@@ -900,6 +923,7 @@ export const processAlert = async (
         querySettings: source?.querySettings,
       });
     } catch (e) {
+      alertQueryFailuresCounter.add(1);
       logger.error(
         {
           alertId: alert.id,
@@ -957,6 +981,9 @@ export const processAlert = async (
       startTime?: Date;
       attributes?: Record<string, string>;
     }) => {
+      alertEvaluationsCounter.add(1, {
+        outcome: state === AlertState.ALERT ? 'fired' : 'resolved',
+      });
       logger.info(
         { alertId: alert.id, group, totalCount },
         state === AlertState.ALERT
@@ -1091,6 +1118,7 @@ export const processAlert = async (
       // Handle case where no data is available for this bucket
       const bucketHasData = dataForBucket && dataForBucket.length > 0;
       if (!bucketHasData) {
+        alertEvaluationsCounter.add(1, { outcome: 'empty_bucket' });
         logger.info(
           { alertId: alert.id, bucketStart },
           'No data returned from ClickHouse for time bucket',
@@ -1205,6 +1233,7 @@ export const processAlert = async (
   } catch (e) {
     // Uncomment this for better error messages locally
     // console.error(e);
+    alertProcessFailuresCounter.add(1);
     logger.error(
       {
         alertId: alert.id,
@@ -1348,6 +1377,7 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
         alertTask.conn.team.toString(),
       );
       span.setAttribute('hyperdx.alerts.connection.id', alertTask.conn.id);
+      span.setAttribute('hyperdx.alerts.batch.size', alertTask.alerts.length);
 
       try {
         const { alerts, conn } = alertTask;

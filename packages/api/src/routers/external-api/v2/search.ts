@@ -6,10 +6,24 @@ import { z } from 'zod';
 import { parseTimeRange } from '@/mcp/tools/query/helpers';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
+import {
+  getCounter,
+  getHistogram,
+  recordDuration,
+} from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import { externalDashboardSearchRequestSchema } from '@/utils/zod';
 
 import { runSearchConfig, type SearchErrorCode } from './utils/search';
+
+const searchQueryDuration = getHistogram('hyperdx.search.query.duration_ms', {
+  description: 'Duration of external API v2 search queries against ClickHouse.',
+  unit: 'ms',
+});
+const searchQueryErrors = getCounter('hyperdx.search.query_errors', {
+  description:
+    'Count of external API v2 search query failures, labeled by ClickHouse error type.',
+});
 
 // CH error types caused by user-supplied query content — map to 400.
 const CH_USER_INPUT_ERRORS = new Set([
@@ -379,14 +393,16 @@ router.post(
         orderBy,
       });
 
-      const result = await runSearchConfig({
-        teamId: teamId.toString(),
-        config,
-        startDate,
-        endDate,
-        maxResults,
-        offset,
-      });
+      const result = await recordDuration(searchQueryDuration, () =>
+        runSearchConfig({
+          teamId: teamId.toString(),
+          config,
+          startDate,
+          endDate,
+          maxResults,
+          offset,
+        }),
+      );
 
       if (result.isError) {
         return res
@@ -401,6 +417,7 @@ router.post(
           ?.type ?? 'UNKNOWN') as string;
         const safeMsg =
           (err.message.split('\n')[0] ?? '').slice(0, 300) || 'Query error';
+        searchQueryErrors.add(1, { ch_error_type: chType });
         logger.error({ chType, safeMsg }, '[search] ClickHouse query error');
 
         if (CH_USER_INPUT_ERRORS.has(chType)) {
