@@ -195,6 +195,18 @@ export default function ChartDisplaySettingsDrawer({
   const showBackgroundChart = displayType === DisplayType.Number;
   const isBackgroundChartDisabled = configType === 'sql';
 
+  // When the datasource auto-detects a time-based format (e.g. a trace Duration
+  // column, factor 1e-9 for nanoseconds), seed that factor if the user switches
+  // the output to duration / time in the format control. Without it the prior
+  // factor sticks and a nanosecond value renders as seconds (367,700,000 ns
+  // read as ~11.7y). Only meaningful when the detected default is itself
+  // time-based; otherwise there is no source precision to seed from.
+  const preferredDurationFactor =
+    defaultNumberFormat?.output === 'duration' ||
+    defaultNumberFormat?.output === 'time'
+      ? defaultNumberFormat.factor
+      : undefined;
+
   return (
     <Drawer
       title="Display Settings"
@@ -333,6 +345,7 @@ export default function ChartDisplaySettingsDrawer({
         <NumberFormatForm
           control={control}
           setValue={setValue}
+          preferredDurationFactor={preferredDurationFactor}
           disclaimer={
             isPerSeriesNumberFormatAllowed ? (
               <Alert variant="outline" color="yellow" p="xs">
