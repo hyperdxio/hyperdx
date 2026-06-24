@@ -63,7 +63,7 @@ import {
   setBusinessContext,
   SpanStatusCode,
   withSpan,
-} from '../instrumentation';
+} from '@/utils/instrumentation';
 
 describe('instrumentation', () => {
   beforeEach(() => {
