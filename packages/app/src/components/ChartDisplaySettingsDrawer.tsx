@@ -179,9 +179,10 @@ export default function ChartDisplaySettingsDrawer({
   // raw SQL configs author their own LIMIT logic directly.
   const showSeriesLimit = isTimeChart && configType !== 'sql';
 
-  // Group By column ordering only applies to builder table charts; raw SQL
-  // configs let the user author whatever column order they want directly.
-  const showGroupByColumnsOnLeft =
+  // Builder-table-only display options (Group By column ordering, alternate
+  // row background). Raw SQL table configs author their own layout directly,
+  // so these are hidden there.
+  const showBuilderTableOptions =
     displayType === DisplayType.Table && configType !== 'sql';
 
   // Tile-level color is only meaningful for number tiles today.
@@ -272,7 +273,7 @@ export default function ChartDisplaySettingsDrawer({
           </>
         )}
 
-        {showGroupByColumnsOnLeft && (
+        {showBuilderTableOptions && (
           <>
             <CheckBoxControlled
               control={control}
