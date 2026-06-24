@@ -1194,6 +1194,11 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   eventTableSelect: z.string().optional(),
   source: z.string().optional(),
   groupByColumnsOnLeft: z.boolean().optional(),
+  // Zebra striping for table tiles: when true, the renderer tints
+  // alternating rows so wide tables are easier to scan across. Builder
+  // table tiles only (gated in `ChartDisplaySettingsDrawer`); other display
+  // types ignore the field. Off by default, so existing tiles are unchanged.
+  alternateRowBackground: z.boolean().optional(),
 });
 
 // This is a ChartConfig type without the `with` CTE clause included.

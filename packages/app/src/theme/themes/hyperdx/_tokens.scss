@@ -10,7 +10,7 @@
  * `chart-tokens` is split out so the chart palette is defined once,
  * not duplicated across the dark/light blocks. Both dark and light
  * @include it so specificity stays identical to declaring the vars
- * inline — Sass inlines the body of the mixin at each call site, so
+ * inline; Sass inlines the body of the mixin at each call site, so
  * the resulting CSS is byte-identical to the previous hand-duplicated
  * shape. Categorical and semantic chart tokens come from the shared
  * `chart-categorical-tokens` partial (two mixins: hues, then semantics).
@@ -30,6 +30,7 @@
   --color-bg-inverted: var(--mantine-color-dark-1);
   --color-bg-muted: var(--mantine-color-dark-7);
   --color-bg-highlighted: rgb(55 58 64 / 70%);
+  --color-bg-table-stripe: rgb(255 255 255 / 4%);
   --color-bg-sidenav: var(--mantine-color-dark-9);
   --color-bg-sidenav-link-active: var(--mantine-color-dark-7);
   --color-bg-sidenav-link-active-hover: var(--mantine-color-dark-6);
@@ -132,6 +133,7 @@
   --color-bg-inverted: var(--mantine-color-dark-3);
   --color-bg-muted: #f6f6fa;
   --color-bg-highlighted: rgb(230 232 237 / 70%);
+  --color-bg-table-stripe: rgb(0 0 0 / 3%);
   --color-bg-sidenav: var(--mantine-color-white);
   --color-bg-sidenav-link-active: #ebebef;
   --color-bg-sidenav-link-active-hover: var(--mantine-color-gray-2);

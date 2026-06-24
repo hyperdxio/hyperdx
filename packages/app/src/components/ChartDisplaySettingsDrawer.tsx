@@ -45,6 +45,7 @@ export type ChartConfigDisplaySettings = Pick<
   | 'backgroundChart'
 > & {
   groupByColumnsOnLeft?: boolean;
+  alternateRowBackground?: boolean;
   // Per-tile cap on the number of series fetched for a group-by time chart.
   // null/undefined = disabled (no __hdx_series_limit CTE; every series is
   // fetched). The editor clears to `null` (not `undefined`) so the cleared
@@ -90,6 +91,7 @@ function applyDefaultSettings(
     compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
     fitYAxisToData: settings.fitYAxisToData ?? false,
     groupByColumnsOnLeft: settings.groupByColumnsOnLeft ?? false,
+    alternateRowBackground: settings.alternateRowBackground ?? false,
     // Coerce to null so `reset` clears the input; undefined leaves the
     // previously registered field value in place.
     seriesLimit: settings.seriesLimit ?? null,
@@ -277,6 +279,12 @@ export default function ChartDisplaySettingsDrawer({
               name="groupByColumnsOnLeft"
               size="xs"
               label="Display Group By Columns on Left"
+            />
+            <CheckBoxControlled
+              control={control}
+              name="alternateRowBackground"
+              size="xs"
+              label="Alternate Row Background"
             />
             <Divider />
           </>
