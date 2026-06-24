@@ -2,8 +2,8 @@ import {
   buildCreateDashboardPrompt,
   buildDashboardExamplesPrompt,
   buildQueryGuidePrompt,
-} from '../../prompts/dashboards/content';
-import { buildSourceSummary } from '../../prompts/dashboards/helpers';
+} from '@/mcp/prompts/dashboards/content';
+import { buildSourceSummary } from '@/mcp/prompts/dashboards/helpers';
 
 describe('MCP Dashboard Prompts', () => {
   describe('buildQueryGuidePrompt', () => {

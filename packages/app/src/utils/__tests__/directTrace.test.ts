@@ -2,7 +2,7 @@ import {
   buildDirectTraceWhereClause,
   buildTraceRedirectUrl,
   getDefaultDirectTraceDateRange,
-} from '../directTrace';
+} from '@/utils/directTrace';
 
 describe('buildDirectTraceWhereClause', () => {
   it('uses the provided trace id expression', () => {

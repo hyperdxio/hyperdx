@@ -1,4 +1,4 @@
-import { Api500Error, BaseError, isOperationalError } from '../errors';
+import { Api500Error, BaseError, isOperationalError } from '@/utils/errors';
 
 describe('Errors utils', () => {
   test('BaseError class', () => {

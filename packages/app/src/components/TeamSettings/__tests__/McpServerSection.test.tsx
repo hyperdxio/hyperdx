@@ -4,8 +4,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import api from '@/api';
-
-import McpServerSection from '../McpServerSection';
+import McpServerSection from '@/components/TeamSettings/McpServerSection';
 
 jest.mock('@/api', () => ({
   __esModule: true,

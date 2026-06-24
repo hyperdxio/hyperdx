@@ -1,5 +1,5 @@
 import { createClient } from '@clickhouse/client';
-import { ClickHouseClient } from '@clickhouse/client-common';
+import { ClickHouseClient } from '@clickhouse/client';
 
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';

@@ -5,7 +5,7 @@ import {
   MIN_SAMPLE_SIZE,
   SAMPLE_RATIO,
   SAMPLE_SIZE,
-} from '../deltaChartUtils';
+} from '@/components/deltaChartUtils';
 
 describe('getStableSampleExpression', () => {
   it('returns cityHash64 of spanIdExpression when provided', () => {

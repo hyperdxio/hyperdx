@@ -5,6 +5,9 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
+import type { McpContext } from '@/mcp/tools/types';
+import { mcpError } from '@/mcp/utils/errors';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import {
   cleanupDashboardAlerts,
@@ -23,9 +26,6 @@ import type {
 } from '@/utils/zod';
 import { objectIdSchema } from '@/utils/zod';
 
-import { mcpError } from '../../utils/errors';
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
 import {
   getRawSqlMissingSourceError,

@@ -1,4 +1,4 @@
-import { mulberry32 } from '../rng/seeded';
+import { mulberry32 } from '@/rng/seeded';
 
 describe('mulberry32', () => {
   it('produces an identical sequence for the same seed', () => {

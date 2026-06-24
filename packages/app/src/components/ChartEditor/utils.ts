@@ -24,7 +24,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 
-import { getStoredLanguage } from '../SearchInput';
+import { getStoredLanguage } from '@/components/SearchInput';
 
 import { ChartEditorFormState } from './types';
 

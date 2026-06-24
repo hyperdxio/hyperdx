@@ -93,8 +93,8 @@ import {
   toQuotedClickHouseKeyExpression,
 } from './DBSearchPageFilters/utils';
 
-import resizeStyles from '../../styles/ResizablePanel.module.scss';
-import classes from '../../styles/SearchPage.module.scss';
+import resizeStyles from '@styles/ResizablePanel.module.scss';
+import classes from '@styles/SearchPage.module.scss';
 
 /* The initial number of values per filter to load */
 const INITIAL_LOAD_LIMIT = 20;

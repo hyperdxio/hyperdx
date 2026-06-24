@@ -1,5 +1,5 @@
-import type { LogRow, TraceRow } from '../generators/types';
-import type { SeededRng } from '../rng/seeded';
+import type { LogRow, TraceRow } from '@/generators/types';
+import type { SeededRng } from '@/rng/seeded';
 
 export type GenerateContext = {
   rng: SeededRng;

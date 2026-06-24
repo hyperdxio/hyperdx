@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { BackgroundChartSchema, ColorConditionSchema } from '../types';
+import { BackgroundChartSchema, ColorConditionSchema } from '@/types';
 
 describe('ColorConditionSchema', () => {
   // ─── Positive cases ─────────────────────────────────────────────────────────

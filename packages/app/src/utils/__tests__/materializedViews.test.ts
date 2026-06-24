@@ -10,7 +10,7 @@ import {
   inferMaterializedViewConfig,
   inferTimestampColumnGranularity,
   parseSummedColumns,
-} from '../materializedViews';
+} from '@/utils/materializedViews';
 
 function createMockColumnMeta({
   name,

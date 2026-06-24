@@ -1,4 +1,4 @@
-import { migrateViewerOptions } from '../DBRowJsonViewer';
+import { migrateViewerOptions } from '@/components/DBRowJsonViewer';
 
 describe('migrateViewerOptions', () => {
   beforeEach(() => {

@@ -1,4 +1,4 @@
-import { makeLog } from '../../generators/logs';
+import { makeLog } from '@/generators/logs';
 import {
   analyticsEventLog,
   backgroundLog,
@@ -12,15 +12,15 @@ import {
   pickSeverityIn,
   spreadTimestamp,
   uuidv4,
-} from '../../generators/templates';
-import {
-  makeSpan,
-  msToNs,
-  newSpanId,
-  newTraceId,
-} from '../../generators/traces';
-import type { LogRow, TraceRow } from '../../generators/types';
-import type { GenerateContext, Scenario, ScenarioBatch } from '../types';
+} from '@/generators/templates';
+import { makeSpan, msToNs, newSpanId, newTraceId } from '@/generators/traces';
+import type { LogRow, TraceRow } from '@/generators/types';
+import type {
+  GenerateContext,
+  Scenario,
+  ScenarioBatch,
+} from '@/scenarios/types';
+
 import groundTruth from './ground-truth.json';
 
 const BACKGROUND_SERVICES = [

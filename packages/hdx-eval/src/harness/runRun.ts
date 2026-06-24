@@ -1,4 +1,5 @@
-import { type EvalConfig, getMcpDefinition } from '../hyperdx/config';
+import { type EvalConfig, getMcpDefinition } from '@/hyperdx/config';
+
 import { runClaude } from './claudeSpawn';
 import type { ParsedEvent } from './streamParser';
 import { buildSystemPrompt } from './systemPrompt';

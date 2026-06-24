@@ -42,7 +42,7 @@ jest.mock('@/utils/logger', () => ({
   },
 }));
 
-import { withToolTracing } from '../utils/tracing';
+import { withToolTracing } from '@/mcp/utils/tracing';
 
 describe('withToolTracing', () => {
   const context = { teamId: 'team-123', userId: 'user-456' };

@@ -1,4 +1,4 @@
-import { buildSystemPrompt } from '../harness/systemPrompt';
+import { buildSystemPrompt } from '@/harness/systemPrompt';
 
 describe('buildSystemPrompt', () => {
   it('includes scenario-specific table names', () => {
