@@ -2,6 +2,9 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { uniq } from 'lodash';
 
 import * as config from '@/config';
+import type { McpContext } from '@/mcp/tools/types';
+import { mcpError } from '@/mcp/utils/errors';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import Dashboard from '@/models/dashboard';
 import {
   cleanupDashboardAlerts,
@@ -12,9 +15,6 @@ import {
 } from '@/routers/external-api/v2/utils/dashboards';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
-import { mcpError } from '../../utils/errors';
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 import { mcpPatchDashboardSchema } from './schemas';
 import {
   getRawSqlMissingSourceError,

@@ -1,6 +1,6 @@
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 
-import { distinctSections } from '../Sources/sourceFormUtils';
+import { distinctSections } from '@/components/Sources/sourceFormUtils';
 
 const makeSource = (id: string, section?: string): TSource =>
   ({

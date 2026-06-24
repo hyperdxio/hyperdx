@@ -4,13 +4,12 @@ import { createClient } from '@clickhouse/client';
 import { parameterizedQueryToSql } from '@/clickhouse';
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';
+import { renderChartConfig } from '@/core/renderChartConfig';
 import {
   ChartConfigWithOptDateRange,
   DisplayType,
   QuerySettings,
 } from '@/types';
-
-import { renderChartConfig } from '../core/renderChartConfig';
 
 describe('sample-weighted aggregations (integration)', () => {
   let client: ClickHouseClient;

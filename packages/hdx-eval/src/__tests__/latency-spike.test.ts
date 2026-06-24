@@ -1,6 +1,6 @@
-import { mulberry32 } from '../rng/seeded';
-import { latencySpikeScenario } from '../scenarios/latency-spike/generate';
-import { collectScenario } from '../scenarios/types';
+import { mulberry32 } from '@/rng/seeded';
+import { latencySpikeScenario } from '@/scenarios/latency-spike/generate';
+import { collectScenario } from '@/scenarios/types';
 
 const NOW_MS = Date.parse('2026-05-08T12:00:00.000Z');
 // Tests run at 1% volume to keep memory tractable (full v5 ≈ 6M base

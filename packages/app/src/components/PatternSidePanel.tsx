@@ -18,7 +18,7 @@ import useRowWhere, { RowWhereResult } from '@/hooks/useRowWhere';
 import { getFirstTimestampValueExpression } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
-import styles from '../../styles/LogSidePanel.module.scss';
+import styles from '@styles/LogSidePanel.module.scss';
 
 export default function PatternSidePanel({
   isOpen,

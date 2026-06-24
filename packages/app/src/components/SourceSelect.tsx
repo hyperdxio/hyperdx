@@ -28,7 +28,7 @@ import {
 } from '@/components/sourceSelectUtils';
 import { useSources } from '@/source';
 
-import styles from '../../styles/SourceSelectControlled.module.scss';
+import styles from '@styles/SourceSelectControlled.module.scss';
 
 interface SourceManagementMenuProps {
   hasSelection: boolean;

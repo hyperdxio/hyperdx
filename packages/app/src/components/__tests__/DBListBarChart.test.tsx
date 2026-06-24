@@ -1,12 +1,11 @@
 import React from 'react';
 
+import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
+import DBListBarChart from '@/components/DBListBarChart';
+import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
-
-import DateRangeIndicator from '../charts/DateRangeIndicator';
-import DBListBarChart from '../DBListBarChart';
-import MVOptimizationIndicator from '../MaterializedViews/MVOptimizationIndicator';
 
 // Mock dependencies
 jest.mock('@/hooks/useChartConfig', () => ({

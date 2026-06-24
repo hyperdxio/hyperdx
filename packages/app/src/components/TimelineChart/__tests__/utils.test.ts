@@ -1,4 +1,4 @@
-import { calculateInterval, renderMs } from '../utils';
+import { calculateInterval, renderMs } from '@/components/TimelineChart/utils';
 
 describe('renderMs', () => {
   it('formats sub-second values as ms', () => {

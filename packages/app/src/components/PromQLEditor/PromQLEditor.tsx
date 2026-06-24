@@ -21,7 +21,7 @@ import {
   DEFAULT_CODE_MIRROR_BASIC_SETUP,
 } from '@/components/SQLEditor/utils';
 
-import styles from '../SQLEditor/SQLInlineEditor.module.scss';
+import styles from '@/components/SQLEditor/SQLInlineEditor.module.scss';
 
 const promqlExtension = new PromQLExtension();
 

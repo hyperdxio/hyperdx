@@ -1,4 +1,4 @@
-import { REDACTION_PATTERN_NAMES, redactSecrets } from '../redactSecrets';
+import { REDACTION_PATTERN_NAMES, redactSecrets } from '@/utils/redactSecrets';
 
 describe('redactSecrets', () => {
   describe('passes legitimate observability data through unchanged', () => {

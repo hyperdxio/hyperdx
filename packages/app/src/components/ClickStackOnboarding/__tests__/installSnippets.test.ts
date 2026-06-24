@@ -2,7 +2,7 @@ import {
   buildAllSnippets,
   type DeploymentShape,
   SERVER_NAME,
-} from '../installSnippets';
+} from '@/components/ClickStackOnboarding/installSnippets';
 
 const DEPLOYMENT: DeploymentShape = {
   apiUrl: 'https://hyperdx.example.com/api',

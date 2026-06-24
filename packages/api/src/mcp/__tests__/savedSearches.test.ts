@@ -8,11 +8,11 @@ import {
   getLoggedInAgent,
   getServer,
 } from '@/fixtures';
+import { McpContext } from '@/mcp/tools/types';
 import Connection from '@/models/connection';
 import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 
-import { McpContext } from '../tools/types';
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
 describe('MCP Saved Search Tools', () => {

@@ -6,7 +6,7 @@ import {
   areFiltersEqual,
   parseQuery,
   useSearchPageFilterState,
-} from '../searchFilters';
+} from '@/searchFilters';
 
 enableMapSet();
 
