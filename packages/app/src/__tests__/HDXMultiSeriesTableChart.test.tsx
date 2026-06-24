@@ -404,6 +404,36 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       expect((screen.getByText('10') as HTMLElement).style.color).toBe('');
     });
 
+    it('matches numeric rules against string-serialized values (ClickHouse counts)', () => {
+      // ClickHouse serializes count() (UInt64) and other numeric aggregates as
+      // strings, so the cell value arrives as "600" / "10", not 600 / 10. The
+      // numeric `gt` rule must still match after coercion.
+      renderWithMantine(
+        <Table
+          data={[
+            { ServiceName: 'web', Count: '600' },
+            { ServiceName: 'api', Count: '10' },
+          ]}
+          columns={[
+            serviceCol,
+            {
+              id: 'count',
+              dataKey: 'Count',
+              displayName: 'Count',
+              colorRules: [
+                { operator: 'gt', value: 100, color: 'chart-error' },
+              ],
+            },
+          ]}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+      expect((screen.getByText('600') as HTMLElement).style.color).not.toBe('');
+      expect((screen.getByText('10') as HTMLElement).style.color).toBe('');
+    });
+
     it('renders the default color for an unknown token without throwing', () => {
       expect(() =>
         renderWithMantine(

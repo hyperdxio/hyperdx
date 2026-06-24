@@ -181,13 +181,28 @@ export const Table = ({
 
               // Resolve this cell's color from the column config: ordered
               // rules first (last match wins), then the column's static
-              // color, else no override. The raw value drives evaluation
-              // (numbers for comparisons, strings for equality / string
-              // match); non-primitive values (stringified above) never match.
-              const colorValue =
-                typeof value === 'number' || typeof value === 'string'
-                  ? value
+              // color, else no override. ClickHouse serializes numeric
+              // aggregates (count is UInt64, sums, etc.) as strings, so coerce
+              // a numeric-looking value to a number first; otherwise the
+              // numeric operators (gt / lt / between) never match. Genuine
+              // strings (group-by labels, status values) stay as-is so the
+              // equality / string-match rules still work. Mirrors the value
+              // coercion in DBNumberChart.
+              //
+              // react-table types the getter as `number`, but the runtime
+              // value can be a string (see above), so read it through
+              // `unknown` to narrow honestly without an unsafe cast.
+              const cellValue: unknown = value;
+              const primitiveValue =
+                typeof cellValue === 'number' || typeof cellValue === 'string'
+                  ? cellValue
                   : null;
+              const colorValue =
+                typeof primitiveValue === 'string' &&
+                primitiveValue.trim() !== '' &&
+                Number.isFinite(Number(primitiveValue))
+                  ? Number(primitiveValue)
+                  : primitiveValue;
               const resolvedColorToken = resolveConditionalColor(
                 colorValue,
                 colorRules,
