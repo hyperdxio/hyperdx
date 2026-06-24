@@ -3,9 +3,9 @@ import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { Accordion, Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
-import { FilterGroup } from '../DBSearchPageFilters';
+import { FilterGroup } from '@/components/DBSearchPageFilters';
 
-import classes from '../../../styles/SearchPage.module.scss';
+import classes from '@styles/SearchPage.module.scss';
 
 type NestedFilterGroupProps = {
   name: string;

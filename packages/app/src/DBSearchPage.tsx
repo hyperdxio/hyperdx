@@ -134,7 +134,11 @@ import {
   getRelativeTimeOptionLabel,
   LIVE_TAIL_DURATION_MS,
 } from './components/TimePicker/utils';
-import { useColumns, useTableMetadata } from './hooks/useMetadata';
+import {
+  useColumns,
+  useResolvedDateTimeColumns,
+  useTableMetadata,
+} from './hooks/useMetadata';
 import { useSqlSuggestions } from './hooks/useSqlSuggestions';
 import { useStableCallback } from './hooks/useStableCallback';
 import {
@@ -152,7 +156,7 @@ import { EditablePageName } from './EditablePageName';
 import { SearchConfig } from './types';
 import { FormatTime } from './useFormatTime';
 
-import searchPageStyles from '../styles/SearchPage.module.scss';
+import searchPageStyles from '@styles/SearchPage.module.scss';
 
 const LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS = [
   { value: '1000', label: '1s' },
@@ -1084,8 +1088,6 @@ export function DBSearchPage() {
     [debouncedSubmit, setValue],
   );
 
-  const filters = useWatch({ name: 'filters', control });
-
   // Top-level column names for the active source, used to quote
   // filter keys that contain special characters.
   const { data: inputSourceColumns } = useColumns(
@@ -1103,12 +1105,6 @@ export function DBSearchPage() {
         : new Set<string>(),
     [inputSourceColumns],
   );
-
-  const searchFilters = useSearchPageFilterState({
-    searchQuery: filters ?? undefined,
-    onFilterChange: handleSetFilters,
-    knownColumns,
-  });
 
   const watchedSource = useWatch({
     control,
@@ -1134,6 +1130,17 @@ export function DBSearchPage() {
     },
     { enabled: !!watchedSourceObj },
   );
+
+  const { dateTimeColumns, onResolvedColumnsChange } =
+    useResolvedDateTimeColumns(inputSourceColumns);
+
+  const filters = useWatch({ name: 'filters', control });
+  const searchFilters = useSearchPageFilterState({
+    searchQuery: filters ?? undefined,
+    onFilterChange: handleSetFilters,
+    dateTimeColumns,
+    knownColumns,
+  });
 
   useEffect(() => {
     // If the user changes the source dropdown, reset the select and orderby fields
@@ -2100,6 +2107,7 @@ export function DBSearchPage() {
         <ActiveFilterPills
           searchFilters={searchFilters}
           chartConfig={filtersChartConfig}
+          dateTimeColumns={dateTimeColumns}
           mt={6}
         />
       </form>
@@ -2441,6 +2449,7 @@ export function DBSearchPage() {
                             onSortingChange={onSortingChange}
                             initialSortBy={initialSortBy}
                             enableSmallFirstWindow
+                            onResolvedColumnsChange={onResolvedColumnsChange}
                           />
                         )}
                     </Box>

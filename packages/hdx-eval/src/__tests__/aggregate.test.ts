@@ -1,6 +1,6 @@
-import type { GradeRecord } from '../grading/types';
-import type { RunRecord } from '../harness/types';
-import { buildAggregate, type GradedRunPair } from '../reports/aggregate';
+import type { GradeRecord } from '@/grading/types';
+import type { RunRecord } from '@/harness/types';
+import { buildAggregate, type GradedRunPair } from '@/reports/aggregate';
 
 function pair(args: {
   scenario: string;

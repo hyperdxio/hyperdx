@@ -13,10 +13,10 @@ import pick from 'lodash/pick';
 import { z } from 'zod';
 import { processRequest, validateRequest } from 'zod-express-middleware';
 
-import * as config from '@/config';
 import {
   getTags,
   getTeam,
+  getTeamInviteUrl,
   rotateTeamApiKey,
   setTeamName,
   updateTeamClickhouseSettings,
@@ -180,7 +180,7 @@ router.post(
       }
 
       res.json({
-        url: `${config.FRONTEND_URL}/join-team?token=${teamInvite.token}`,
+        url: getTeamInviteUrl(teamInvite.token),
       });
     } catch (e) {
       next(e);
@@ -210,7 +210,7 @@ router.get('/invitations', async (req, res: TeamInviteExpressRes, next) => {
         createdAt: ti.createdAt.toISOString(),
         email: ti.email,
         name: ti.name,
-        url: `${config.FRONTEND_URL}/join-team?token=${ti.token}`,
+        url: getTeamInviteUrl(ti.token),
       })),
     });
   } catch (e) {

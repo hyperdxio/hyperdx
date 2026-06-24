@@ -1,13 +1,12 @@
 import React from 'react';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { useSource } from '@/source';
-
 import NumberTileBackgroundChart, {
   buildSparklineTimeConfig,
   sparklinePointsFromGraphResults,
-} from '../NumberTileBackgroundChart';
+} from '@/components/NumberTileBackgroundChart';
+import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useSource } from '@/source';
 
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),

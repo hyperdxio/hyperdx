@@ -1,4 +1,4 @@
-import { ResponseJSON } from '@clickhouse/client-common';
+import { ResponseJSON } from '@clickhouse/client';
 
 import {
   ChSql,

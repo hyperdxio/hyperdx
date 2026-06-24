@@ -1,7 +1,7 @@
 import {
   getActiveInfraCorrelations,
   INFRA_CORRELATIONS,
-} from '../infraCorrelations';
+} from '@/components/infraCorrelations';
 
 describe('getActiveInfraCorrelations', () => {
   it('returns the Pod group when only k8s.pod.uid is present', () => {

@@ -2,19 +2,18 @@ import { UseQueryResult } from '@tanstack/react-query';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { useGetValuesDistribution } from '@/hooks/useMetadata';
-
 import {
   cleanedFacetName,
   FilterGroup,
   type FilterGroupProps,
-} from '../DBSearchPageFilters';
-import { NestedFilterGroup } from '../DBSearchPageFilters/NestedFilterGroup';
+} from '@/components/DBSearchPageFilters';
+import { NestedFilterGroup } from '@/components/DBSearchPageFilters/NestedFilterGroup';
 import {
   cleanClickHouseExpression,
   groupFacetsByBaseName,
   parseMapFieldName,
-} from '../DBSearchPageFilters/utils';
+} from '@/components/DBSearchPageFilters/utils';
+import { useGetValuesDistribution } from '@/hooks/useMetadata';
 
 describe('cleanClickHouseExpression', () => {
   it('should remove toString wrapper', () => {

@@ -1,8 +1,8 @@
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
 
-import useFieldExpressionGenerator from '../useFieldExpressionGenerator';
-import { useJsonColumns } from '../useMetadata';
+import useFieldExpressionGenerator from '@/hooks/useFieldExpressionGenerator';
+import { useJsonColumns } from '@/hooks/useMetadata';
 
 // Mock dependencies
 jest.mock('../useMetadata', () => ({

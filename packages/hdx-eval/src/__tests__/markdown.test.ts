@@ -1,7 +1,7 @@
-import type { GradeRecord } from '../grading/types';
-import type { RunRecord } from '../harness/types';
-import { buildAggregate, type GradedRunPair } from '../reports/aggregate';
-import { renderMarkdownReport } from '../reports/markdown';
+import type { GradeRecord } from '@/grading/types';
+import type { RunRecord } from '@/harness/types';
+import { buildAggregate, type GradedRunPair } from '@/reports/aggregate';
+import { renderMarkdownReport } from '@/reports/markdown';
 
 function pair(scenario: string, mcp: string, i: number): GradedRunPair {
   const run: RunRecord = {

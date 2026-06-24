@@ -124,7 +124,7 @@ import {
 } from './ExpandableRowTable';
 import LogLevel from './LogLevel';
 
-import styles from '../../styles/LogTable.module.scss';
+import styles from '@styles/LogTable.module.scss';
 
 type Row = Record<string, any> & { duration: number };
 type AccessorFn = (row: Row, column: string) => any;
@@ -1520,6 +1520,7 @@ function DBSqlRowTableComponent({
   enableSmallFirstWindow,
   tableId,
   errorVariant,
+  onResolvedColumnsChange,
 }: {
   config: BuilderChartConfigWithDateRange;
   sourceId?: string;
@@ -1546,6 +1547,7 @@ function DBSqlRowTableComponent({
   enableSmallFirstWindow?: boolean;
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
+  onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
@@ -1715,6 +1717,14 @@ function DBSqlRowTableComponent({
       onError(error);
     }
   }, [isError, onError, error]);
+
+  // Surface the result-set column types upward.
+  // `data?.meta` keeps a stable identity per query result.
+  useEffect(() => {
+    if (data?.meta != null && data.meta.length > 0) {
+      onResolvedColumnsChange?.(data.meta);
+    }
+  }, [data?.meta, onResolvedColumnsChange]);
 
   const { data: source } = useSource({ id: sourceId });
   const patternColumn = columns[columns.length - 1];

@@ -4,9 +4,8 @@ import { z } from 'zod';
 
 import { getConnectionsByTeam } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';
-
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
+import type { McpContext } from '@/mcp/tools/types';
+import { withToolTracing } from '@/mcp/utils/tracing';
 
 export function registerListSources(
   server: McpServer,

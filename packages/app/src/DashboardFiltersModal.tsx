@@ -44,7 +44,7 @@ import { SourceSelectControlled } from './components/SourceSelect';
 import { useSource, useSources } from './source';
 import { getMetricTableName } from './utils';
 
-import styles from '../styles/DashboardFiltersModal.module.scss';
+import styles from '@styles/DashboardFiltersModal.module.scss';
 
 const MODAL_SIZE = 'md';
 
