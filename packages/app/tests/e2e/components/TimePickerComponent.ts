@@ -91,6 +91,15 @@ export class TimePickerComponent {
           // check at the top of the next iteration will sort it out.
         });
 
+      // The popover is closed here, so it is safe to press Escape to dismiss
+      // any overlay that would intercept the toggle click — most importantly
+      // the search input's autocomplete dropdown ("Searching for:" portal),
+      // which renders on top of the time-picker input after typing a query
+      // (e.g. traces-workflow types "Order" then opens the picker). Escape is
+      // only pressed from this closed baseline, so it can't race a just-opened
+      // popover shut.
+      await this.page.keyboard.press('Escape');
+
       await this.pickerInput.click();
       if (await this.isPopoverStablyOpen()) return;
     }
