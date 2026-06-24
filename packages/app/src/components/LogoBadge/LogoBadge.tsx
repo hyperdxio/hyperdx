@@ -2,10 +2,19 @@ import type { CSSProperties, ReactNode } from 'react';
 import { Box } from '@mantine/core';
 
 /**
- * Layered shadow that gives the badge a soft, floating "tile" appearance.
- * Matches the ClickStack onboarding logo badge in Figma (1px ring + drop).
+ * Layered "tile" shadow, inspired by Tailwind's composed shadow stack (a chain
+ * of inset-shadow → inset-ring → ring → drop layers).
+ *
+ * The colors are driven by the theme token `--logo-badge-shadow`, which is
+ * defined per color scheme in each theme's `_tokens.scss`: dark mode uses a
+ * light-alpha ring + a stronger drop so the tile reads against dark surfaces,
+ * while light mode uses a dark hairline ring + a soft drop. Referencing the
+ * token (instead of hard-coded colors) is what makes the shadow work in both
+ * light and dark mode. The fallback mirrors the light-mode value so the badge
+ * is never shadowless outside the themed app (e.g. isolated rendering).
  */
-export const LOGO_BADGE_SHADOW = ' var(--mantine-shadow-sm)';
+export const LOGO_BADGE_SHADOW =
+  'var(--logo-badge-shadow, inset 0 1px 0 0 rgb(255 255 255 / 0.7), 0 0 0 1px rgb(0 0 0 / 0.06), 0 1px 2px 0 rgb(0 0 0 / 0.08), 0 2px 4px -1px rgb(0 0 0 / 0.06))';
 
 export interface LogoBadgeProps {
   /** Outer badge dimension in px. */
@@ -21,7 +30,6 @@ export interface LogoBadgeProps {
   style?: CSSProperties;
   /** Logo rendered centered within the badge (e.g. a `react-icons` glyph). */
   children?: ReactNode;
-  border?: string;
   /**
    * Render an empty placeholder tile (dashed outline, no fill or shadow) to
    * hint that more integrations can be added.
@@ -37,8 +45,7 @@ export interface LogoBadgeProps {
 export function LogoBadge({
   size = 56,
   radius = 12,
-  background = 'var(--color-bg)',
-  border = '1px solid var(--color-border)',
+  background = 'var(--color-bg-body)',
   dashed = false,
   className,
   style,
@@ -52,7 +59,7 @@ export function LogoBadge({
         height: size,
         borderRadius: radius,
         background: dashed ? 'transparent' : background,
-        border: dashed ? '1.25px dashed var(--color-border)' : border,
+        border: dashed ? '1.25px dashed var(--color-border)' : '',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
