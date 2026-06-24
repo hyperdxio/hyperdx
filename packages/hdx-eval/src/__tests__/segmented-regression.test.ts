@@ -1,6 +1,6 @@
-import { mulberry32 } from '../rng/seeded';
-import { segmentedRegressionScenario } from '../scenarios/segmented-regression/generate';
-import { collectScenario } from '../scenarios/types';
+import { mulberry32 } from '@/rng/seeded';
+import { segmentedRegressionScenario } from '@/scenarios/segmented-regression/generate';
+import { collectScenario } from '@/scenarios/types';
 
 const NOW_MS = Date.parse('2026-05-10T20:00:00.000Z');
 // 1% volume keeps the test cheap (~60K traces) while preserving the

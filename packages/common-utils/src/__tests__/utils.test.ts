@@ -1,16 +1,5 @@
 import { z } from 'zod';
 
-import { isBuilderSavedChartConfig } from '@/guards';
-import {
-  BuilderChartConfigWithDateRange,
-  Connection,
-  DashboardSchema,
-  DashboardTemplateSchema,
-  MetricsDataType,
-  SourceKind,
-  TSource,
-} from '@/types';
-
 import {
   aliasMapToWithClauses,
   convertToDashboardDocument,
@@ -33,7 +22,17 @@ import {
   replaceJsonExpressions,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
-} from '../core/utils';
+} from '@/core/utils';
+import { isBuilderSavedChartConfig } from '@/guards';
+import {
+  BuilderChartConfigWithDateRange,
+  Connection,
+  DashboardSchema,
+  DashboardTemplateSchema,
+  MetricsDataType,
+  SourceKind,
+  TSource,
+} from '@/types';
 
 describe('utils', () => {
   // Suppress expected console.error noise from invalid text index types,

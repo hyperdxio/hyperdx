@@ -7,7 +7,6 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
-
 import {
   buildChartConfigForExplanations,
   buildSampleEventsConfig,
@@ -16,7 +15,7 @@ import {
   isQueryReady,
   seriesToFilters,
   TABS_WITH_GENERATED_SQL,
-} from '../utils';
+} from '@/components/DBEditTimeChartForm/utils';
 
 // ---------------------------------------------------------------------------
 // Fixtures

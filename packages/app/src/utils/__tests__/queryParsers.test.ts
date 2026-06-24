@@ -1,4 +1,4 @@
-import { parseAsJsonEncoded, parseAsStringEncoded } from '../queryParsers';
+import { parseAsJsonEncoded, parseAsStringEncoded } from '@/utils/queryParsers';
 
 // Helper: extract the parse/serialize functions from the parser object
 const stringParser = parseAsStringEncoded;

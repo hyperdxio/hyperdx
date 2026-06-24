@@ -49,7 +49,7 @@ import api from './api';
 import { withAppNav } from './layout';
 import type { AlertsPageItem } from './types';
 
-import styles from '../styles/AlertsPage.module.scss';
+import styles from '@styles/AlertsPage.module.scss';
 
 function getAlertDisplayName(alert: AlertsPageItem): string {
   if (alert.source === AlertSource.TILE && alert.dashboard) {

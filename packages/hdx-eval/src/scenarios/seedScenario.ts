@@ -1,11 +1,12 @@
 import type { ClickHouseClient } from '@clickhouse/client';
 
-import { insertLogRows, insertTraceRows } from '../clickhouse/insert';
+import { insertLogRows, insertTraceRows } from '@/clickhouse/insert';
 import {
   ensureScenarioTables,
   truncateScenarioTables,
-} from '../clickhouse/schema';
-import { mulberry32 } from '../rng/seeded';
+} from '@/clickhouse/schema';
+import { mulberry32 } from '@/rng/seeded';
+
 import { getScenario } from './index';
 
 export type SeedProgress = {

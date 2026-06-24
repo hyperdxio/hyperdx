@@ -22,6 +22,10 @@ import { type ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { type ISource, Source } from '@/models/source';
 import Webhook, { IWebhook } from '@/models/webhook';
 import {
+  AggregatedAlertHistory,
+  getPreviousAlertHistories,
+} from '@/tasks/checkAlerts';
+import {
   type AlertDetails,
   type AlertProvider,
   type AlertTask,
@@ -30,8 +34,6 @@ import {
 import { MappedOmit } from '@/tasks/types';
 import { convertMsToGranularityString } from '@/utils/common';
 import logger from '@/utils/logger';
-
-import { AggregatedAlertHistory, getPreviousAlertHistories } from '..';
 
 type PartialAlertDetails = MappedOmit<AlertDetails, 'previousMap'>;
 

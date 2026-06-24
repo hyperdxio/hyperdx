@@ -24,21 +24,21 @@
  *   5. Calls out that recommendation-service is on different traces and
  *      not the cause.
  */
-import { makeLog } from '../../generators/logs';
+import { makeLog } from '@/generators/logs';
 import {
   buildResourcePool,
   pickResource,
   spreadTimestamp,
   uuidv4,
-} from '../../generators/templates';
-import {
-  makeSpan,
-  msToNs,
-  newSpanId,
-  newTraceId,
-} from '../../generators/traces';
-import type { LogRow, TraceRow } from '../../generators/types';
-import type { GenerateContext, Scenario, ScenarioBatch } from '../types';
+} from '@/generators/templates';
+import { makeSpan, msToNs, newSpanId, newTraceId } from '@/generators/traces';
+import type { LogRow, TraceRow } from '@/generators/types';
+import type {
+  GenerateContext,
+  Scenario,
+  ScenarioBatch,
+} from '@/scenarios/types';
+
 import groundTruth from './ground-truth.json';
 
 // ─── Volumes ───────────────────────────────────────────────────────────────

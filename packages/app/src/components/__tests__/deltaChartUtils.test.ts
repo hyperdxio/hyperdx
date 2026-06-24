@@ -2,7 +2,7 @@ import {
   applyTopNAggregation,
   MAX_CHART_VALUES,
   MAX_CHART_VALUES_UPPER,
-} from '../deltaChartUtils';
+} from '@/components/deltaChartUtils';
 
 describe('applyTopNAggregation', () => {
   const makeData = (names: string[]) =>

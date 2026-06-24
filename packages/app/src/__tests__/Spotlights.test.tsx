@@ -1,8 +1,8 @@
 import { renderHook } from '@testing-library/react';
 
-import { useDashboards } from '../dashboard';
-import { useSavedSearches } from '../savedSearch';
-import { useSpotlightActions } from '../Spotlights';
+import { useDashboards } from '@/dashboard';
+import { useSavedSearches } from '@/savedSearch';
+import { useSpotlightActions } from '@/Spotlights';
 
 jest.mock('next/router', () => ({
   useRouter() {

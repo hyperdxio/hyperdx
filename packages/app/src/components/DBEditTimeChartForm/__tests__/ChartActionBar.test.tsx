@@ -5,8 +5,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
-
-import { ChartActionBar } from '../ChartActionBar';
+import { ChartActionBar } from '@/components/DBEditTimeChartForm/ChartActionBar';
 
 jest.mock('@/components/SQLEditor/SQLInlineEditor', () => ({
   SQLInlineEditorControlled: (props: any) => (

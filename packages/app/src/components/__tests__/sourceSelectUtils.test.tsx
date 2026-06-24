@@ -6,7 +6,7 @@ import {
   SourceSelectGroup,
   useFilteredSortedSourceItems,
   useSourceKindMap,
-} from '../sourceSelectUtils';
+} from '@/components/sourceSelectUtils';
 
 const makeSource = (
   id: string,

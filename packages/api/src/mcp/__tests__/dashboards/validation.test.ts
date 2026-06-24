@@ -1,12 +1,11 @@
 import mongoose from 'mongoose';
 
-import type { ExternalDashboardTileWithId } from '@/utils/zod';
-
 import {
   getRawSqlMissingSourceError,
   getRawSqlTileMacroWarnings,
   getRawSqlTilesMissingRequiredSource,
-} from '../../tools/dashboards/validation';
+} from '@/mcp/tools/dashboards/validation';
+import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
 const connectionId = new mongoose.Types.ObjectId().toString();
 const sourceId = new mongoose.Types.ObjectId().toString();

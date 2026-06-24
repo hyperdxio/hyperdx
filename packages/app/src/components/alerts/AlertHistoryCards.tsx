@@ -22,7 +22,7 @@ import { IconExclamationCircle } from '@tabler/icons-react';
 import type { AlertsPageItem } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 
-import styles from '../../../styles/AlertsPage.module.scss';
+import styles from '@styles/AlertsPage.module.scss';
 
 const HISTORY_ITEMS = 18;
 

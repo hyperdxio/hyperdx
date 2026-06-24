@@ -2,11 +2,11 @@ import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
 import { DEFAULT_DATABASE } from '@/fixtures';
+import { callTool, getFirstText } from '@/mcp/__tests__/mcpTestUtils';
 import Dashboard from '@/models/dashboard';
 import { Source } from '@/models/source';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
-import { callTool, getFirstText } from '../mcpTestUtils';
 import { setupDashboardTests } from './setup';
 
 describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {

@@ -2,9 +2,8 @@ import { useMemo } from 'react';
 import { Box, Card, Divider, Text } from '@mantine/core';
 
 import api from '@/api';
-
-import { type DeploymentShape } from '../ClickStackOnboarding/installSnippets';
-import McpInstallPanel from '../ClickStackOnboarding/McpInstallPanel';
+import { type DeploymentShape } from '@/components/ClickStackOnboarding/installSnippets';
+import McpInstallPanel from '@/components/ClickStackOnboarding/McpInstallPanel';
 
 /**
  * Renders the "Connect your AI Agents" section on the Team

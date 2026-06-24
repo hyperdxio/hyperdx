@@ -1,10 +1,9 @@
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
+import { SourcesList } from '@/components/Sources/SourcesList';
 import { useConnections } from '@/connection';
 import { useSources } from '@/source';
-
-import { SourcesList } from '../Sources/SourcesList';
 
 jest.mock('next/router', () => ({
   useRouter: () => ({ push: jest.fn(), query: {}, pathname: '/' }),
