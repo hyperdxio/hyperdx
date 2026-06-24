@@ -11,7 +11,7 @@ aligned with the
 ## TL;DR (the non-negotiables)
 
 1. **Every team-scoped operation carries team + user context.** Use
-   `setBusinessContext(...)` so `hyperdx.team.id` / `hyperdx.user.id` end up on
+   `setBusinessContext(...)` so `hyperdx.team.id` / `user.id` end up on
    the trace. Auth middleware already does this for HTTP requests; background
    jobs and other entry points must do it themselves.
 2. **If something is worth a log, it's usually worth a metric.** When a log line
@@ -98,8 +98,8 @@ Standard attribute keys:
 | Key                        | Meaning                                                    |
 | -------------------------- | ---------------------------------------------------------- |
 | `hyperdx.team.id`          | Owning team (multi-tenancy boundary). Set this everywhere. |
-| `hyperdx.user.id`          | Acting user.                                               |
-| `hyperdx.user.email`       | Acting user's email.                                       |
+| `user.id`                  | Acting user (OTel `user.*` semconv).                       |
+| `user.email`              | Acting user's email (OTel `user.*` semconv).               |
 | `hyperdx.<domain>.<field>` | Domain IDs, e.g. `hyperdx.alert.id`, `hyperdx.source.id`.  |
 | `feature_flag.<name>`      | Evaluated feature/config flag state.                       |
 
@@ -117,7 +117,7 @@ import {
 } from '@/utils/instrumentation';
 
 const queryErrors = getCounter('hyperdx.search.query_errors', {
-  description: 'Search query failures, labeled by ClickHouse error type.',
+  description: 'Search query failures, labeled by error type.',
 });
 const queryDuration = getHistogram('hyperdx.search.query.duration_ms', {
   description: 'Search query duration.',
@@ -126,7 +126,7 @@ const queryDuration = getHistogram('hyperdx.search.query.duration_ms', {
 
 const result = await recordDuration(queryDuration, () => runQuery(cfg));
 // ...on a known error:
-queryErrors.add(1, { ch_error_type: chType });
+queryErrors.add(1, { error_type: chType });
 ```
 
 Metric conventions:

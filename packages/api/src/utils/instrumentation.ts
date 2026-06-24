@@ -15,11 +15,14 @@ import {
   AI_API_KEY,
   ANTHROPIC_API_KEY,
   CODE_VERSION,
+  IS_CI,
+  IS_DEV,
   IS_LOCAL_APP_MODE,
   IS_PROMQL_ENABLED,
   RUN_SCHEDULED_TASKS_EXTERNALLY,
   USAGE_STATS_ENABLED,
 } from '@/config';
+import logger from '@/utils/logger';
 
 /**
  * Centralized tracing + metrics helpers for the API.
@@ -104,6 +107,11 @@ export type BusinessContext = {
  * SDK) and to the active span. Standardizes the attribute keys so team/user
  * context is consistent across every code path.
  *
+ * User attributes follow the OTel `user.*` semantic conventions (currently
+ * experimental). Team has no OTel equivalent, so it stays under the `hyperdx.*`
+ * namespace. Note these are the server-side API trace attributes and are
+ * distinct from the browser-RUM session attributes (`userEmail`, `userName`).
+ *
  * NOTE: trace-wide attributes require `HDX_NODE_BETA_MODE=1`.
  */
 export function setBusinessContext(context: BusinessContext): void {
@@ -114,10 +122,10 @@ export function setBusinessContext(context: BusinessContext): void {
     attributes['hyperdx.team.id'] = String(teamId);
   }
   if (userId != null) {
-    attributes['hyperdx.user.id'] = String(userId);
+    attributes['user.id'] = String(userId);
   }
   if (email != null) {
-    attributes['hyperdx.user.email'] = String(email);
+    attributes['user.email'] = String(email);
   }
   for (const [key, value] of Object.entries(extra)) {
     if (value != null) {
@@ -148,30 +156,68 @@ export function getStaticFeatureFlags(): Attributes {
   };
 }
 
-const counters = new Map<string, Counter>();
-const histograms = new Map<string, Histogram>();
+type CachedInstrument<T> = { instrument: T; options?: MetricOptions };
+
+const counters = new Map<string, CachedInstrument<Counter>>();
+const histograms = new Map<string, CachedInstrument<Histogram>>();
+
+/**
+ * Warns (in dev/CI only) when a cached instrument is re-requested with options
+ * that differ from the ones it was first registered with. The first registration
+ * wins, so a mismatch means the new description/unit/etc. is silently dropped —
+ * usually a typo or a duplicate name defined in another module.
+ */
+function warnOnOptionsMismatch(
+  kind: string,
+  name: string,
+  existing: MetricOptions | undefined,
+  next: MetricOptions | undefined,
+): void {
+  if (!IS_DEV && !IS_CI) {
+    return;
+  }
+  // Only flag when the caller actually passed options to compare against.
+  if (next == null) {
+    return;
+  }
+  if (JSON.stringify(existing) !== JSON.stringify(next)) {
+    logger.warn(
+      {
+        metric: name,
+        registeredOptions: existing,
+        ignoredOptions: next,
+      },
+      `${kind} "${name}" is already registered with different options; ` +
+        `the original definition is kept and the new options are ignored.`,
+    );
+  }
+}
 
 /**
  * Returns a memoized counter for `name`, creating it on first use. Always use
  * this instead of `meter.createCounter` so instruments are shared across calls.
  */
 export function getCounter(name: string, options?: MetricOptions): Counter {
-  let counter = counters.get(name);
-  if (!counter) {
-    counter = meter.createCounter(name, options);
-    counters.set(name, counter);
+  const cached = counters.get(name);
+  if (cached) {
+    warnOnOptionsMismatch('Counter', name, cached.options, options);
+    return cached.instrument;
   }
-  return counter;
+  const instrument = meter.createCounter(name, options);
+  counters.set(name, { instrument, options });
+  return instrument;
 }
 
 /** Memoized histogram accessor. See {@link getCounter}. */
 export function getHistogram(name: string, options?: MetricOptions): Histogram {
-  let histogram = histograms.get(name);
-  if (!histogram) {
-    histogram = meter.createHistogram(name, options);
-    histograms.set(name, histogram);
+  const cached = histograms.get(name);
+  if (cached) {
+    warnOnOptionsMismatch('Histogram', name, cached.options, options);
+    return cached.instrument;
   }
-  return histogram;
+  const instrument = meter.createHistogram(name, options);
+  histograms.set(name, { instrument, options });
+  return instrument;
 }
 
 /**

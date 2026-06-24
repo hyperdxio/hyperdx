@@ -22,7 +22,8 @@ const searchQueryDuration = getHistogram('hyperdx.search.query.duration_ms', {
 });
 const searchQueryErrors = getCounter('hyperdx.search.query_errors', {
   description:
-    'Count of external API v2 search query failures, labeled by ClickHouse error type.',
+    'Count of external API v2 search query failures, labeled by error type ' +
+    '(semantic error codes like SOURCE_NOT_FOUND, or ClickHouse error types).',
 });
 
 // CH error types caused by user-supplied query content — map to 400.
@@ -405,6 +406,7 @@ router.post(
       );
 
       if (result.isError) {
+        searchQueryErrors.add(1, { error_type: result.code });
         return res
           .status(codeToStatus(result.code))
           .json({ message: result.message });
@@ -417,7 +419,7 @@ router.post(
           ?.type ?? 'UNKNOWN') as string;
         const safeMsg =
           (err.message.split('\n')[0] ?? '').slice(0, 300) || 'Query error';
-        searchQueryErrors.add(1, { ch_error_type: chType });
+        searchQueryErrors.add(1, { error_type: chType });
         logger.error({ chType, safeMsg }, '[search] ClickHouse query error');
 
         if (CH_USER_INPUT_ERRORS.has(chType)) {

@@ -116,8 +116,8 @@ describe('instrumentation', () => {
 
       const expected = {
         'hyperdx.team.id': 'team-1',
-        'hyperdx.user.id': 'user-1',
-        'hyperdx.user.email': 'a@b.com',
+        'user.id': 'user-1',
+        'user.email': 'a@b.com',
       };
       expect(mockSetTraceAttributes).toHaveBeenCalledWith(expected);
       expect(mockSpan.setAttributes).toHaveBeenCalledWith(expected);
