@@ -31,7 +31,10 @@ const chartsSeriesDuration = getHistogram('hyperdx.charts.series.duration_ms', {
   unit: 'ms',
 });
 const chartsSeriesErrors = getCounter('hyperdx.charts.series.errors', {
-  description: 'Count of external API v2 chart /series request failures.',
+  description:
+    'Count of external API v2 chart /series request failures, labeled by ' +
+    'error type (e.g. TEAM_MISSING, TEAM_NOT_FOUND, SOURCE_NOT_FOUND, ' +
+    'CONNECTION_NOT_FOUND, UNHANDLED).',
 });
 
 /**
@@ -365,6 +368,7 @@ type SeriesResult = {
   error?: {
     status: number;
     message: string;
+    code: string;
   };
 };
 
@@ -562,10 +566,12 @@ router.post(
         try {
           const teamId = req.user?.team;
           if (!teamId) {
+            chartsSeriesErrors.add(1, { error_type: 'TEAM_MISSING' });
             return res.status(403).send({ error: 'Team context missing' });
           }
           const team = await getTeam(teamId);
           if (!team) {
+            chartsSeriesErrors.add(1, { error_type: 'TEAM_NOT_FOUND' });
             return res.status(403).send({ error: 'Team not found' });
           }
 
@@ -590,6 +596,7 @@ router.post(
                     error: {
                       status: 404,
                       message: `Source not found for series ${index}`,
+                      code: 'SOURCE_NOT_FOUND',
                     },
                   } as SeriesResult;
                 }
@@ -605,6 +612,7 @@ router.post(
                     error: {
                       status: 404,
                       message: `Connection not found for series ${index}`,
+                      code: 'CONNECTION_NOT_FOUND',
                     },
                   } as SeriesResult;
                 }
@@ -654,7 +662,8 @@ router.post(
             result => 'error' in result && result.error,
           ) as SeriesResult | undefined;
           if (errorResult && errorResult.error) {
-            const { status, message } = errorResult.error;
+            const { status, message, code } = errorResult.error;
+            chartsSeriesErrors.add(1, { error_type: code });
             return res.status(status).json({ error: message });
           }
 
@@ -680,7 +689,7 @@ router.post(
           span.setStatus({ code: SpanStatusCode.OK });
           res.json({ data: responseData });
         } catch (e) {
-          chartsSeriesErrors.add(1);
+          chartsSeriesErrors.add(1, { error_type: 'UNHANDLED' });
           span.recordException(e as Error);
           span.setStatus({ code: SpanStatusCode.ERROR });
           console.error('Error in /series endpoint:', e);
