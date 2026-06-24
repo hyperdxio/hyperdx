@@ -1,4 +1,8 @@
 import { type ReactNode, useState } from 'react';
+import { type IconType } from 'react-icons';
+import { FaJsSquare } from 'react-icons/fa';
+import { RiNextjsFill } from 'react-icons/ri';
+import { SiDeno, SiGo, SiPython, SiRuby } from 'react-icons/si';
 import {
   ActionIcon,
   Anchor,
@@ -17,11 +21,6 @@ import {
   IconActivityHeartbeat,
   IconAffiliate,
   IconArrowRight,
-  IconBrandDocker,
-  IconBrandGolang,
-  IconBrandJavascript,
-  IconBrandPython,
-  IconBrandTypescript,
   IconCheck,
   IconCloud,
   IconCopy,
@@ -33,6 +32,8 @@ import {
   IconPencil,
   IconTable,
 } from '@tabler/icons-react';
+
+import { LogoBadge } from '../LogoBadge/LogoBadge';
 
 import {
   OnboardingAccordion,
@@ -132,13 +133,56 @@ function StatusDot({ label }: { label: string }) {
   );
 }
 
-const INTEGRATIONS = [
-  { Icon: IconBrandJavascript, color: '#f7df1e', top: 8, left: 24 },
-  { Icon: IconBrandPython, color: '#3776ab', top: 78, left: 150 },
-  { Icon: IconBrandTypescript, color: '#3178c6', top: 28, left: 96 },
-  { Icon: IconBrandGolang, color: '#00add8', top: 86, left: 32 },
-  { Icon: IconBrandDocker, color: '#2496ed', top: 6, left: 178 },
+interface GridCell {
+  key: string;
+  Icon?: IconType;
+  color?: string;
+  size?: number;
+}
+
+/**
+ * Checkerboard layout: brand logos on alternating cells, empty dashed tiles in
+ * between to suggest there are many more integrations to plug in.
+ */
+const GRID_CELLS: GridCell[] = [
+  { key: 'e1' },
+  { key: 'js', Icon: FaJsSquare, color: '#f7df1e', size: 26 },
+  { key: 'e2' },
+  { key: 'python', Icon: SiPython, color: '#3776ab', size: 24 },
+  { key: 'e3' },
+  { key: 'go', Icon: SiGo, color: '#00add8', size: 28 },
+  { key: 'ruby', Icon: SiRuby, color: '#cc342d', size: 22 },
+  { key: 'e4' },
+  { key: 'deno', Icon: SiDeno, color: 'var(--color-text)', size: 24 },
+  { key: 'e5' },
+  { key: 'nextjs', Icon: RiNextjsFill, color: 'var(--color-text)', size: 28 },
+  { key: 'e6' },
 ];
+
+/** A 6-column checkerboard of integration logos and empty "add more" tiles. */
+function IntegrationsLogos() {
+  return (
+    <Box
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(6, auto)',
+        gap: 12,
+        justifyContent: 'end',
+        flexShrink: 0,
+      }}
+    >
+      {GRID_CELLS.map(({ key, Icon, color, size }) =>
+        Icon ? (
+          <LogoBadge key={key} size={50}>
+            <Icon size={size} color={color} />
+          </LogoBadge>
+        ) : (
+          <LogoBadge key={key} size={50} dashed />
+        ),
+      )}
+    </Box>
+  );
+}
 
 function IntegrationsCard() {
   return (
@@ -150,7 +194,15 @@ function IntegrationsCard() {
         borderRadius: 8,
       }}
     >
-      <Group align="center" wrap="nowrap" gap={28} py={16} pl={24} pr={8}>
+      <Group
+        align="center"
+        justify="space-between"
+        wrap="nowrap"
+        gap={28}
+        py={16}
+        pl={24}
+        pr={8}
+      >
         <Stack gap={10} style={{ width: 360, flexShrink: 0 }}>
           <Text fw={700} fz={16} style={{ color: 'var(--color-text)' }}>
             Enhance with integrations
@@ -166,40 +218,7 @@ function IntegrationsCard() {
           </Group>
         </Stack>
 
-        <Box
-          style={{
-            position: 'relative',
-            width: 250,
-            height: 168,
-            flexShrink: 0,
-            backgroundImage:
-              'radial-gradient(var(--color-border) 1px, transparent 1px)',
-            backgroundSize: '25px 25px',
-            borderRadius: 8,
-            alignSelf: 'stretch',
-          }}
-        >
-          {INTEGRATIONS.map(({ Icon, color, top, left }) => (
-            <Box
-              key={`${top}-${left}`}
-              style={{
-                position: 'absolute',
-                top,
-                left,
-                width: 48,
-                height: 48,
-                borderRadius: 12,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow:
-                  '0 0 0 1px rgba(9,9,11,0.08), 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)',
-              }}
-            >
-              <Icon size={24} color={color} />
-            </Box>
-          ))}
-        </Box>
+        <IntegrationsLogos />
       </Group>
     </Box>
   );
