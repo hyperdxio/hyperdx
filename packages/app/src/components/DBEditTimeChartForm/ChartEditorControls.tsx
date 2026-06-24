@@ -176,6 +176,7 @@ export function ChartEditorControls({
                 fields.length === 1 && displayType === DisplayType.Table
               }
               showDuplicate={canAddSeries}
+              showColor={displayType === DisplayType.Table}
               tableName={tableName ?? ''}
               tableSource={tableSource}
               errors={

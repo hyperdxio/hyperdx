@@ -1,8 +1,10 @@
 import React from 'react';
+import type { ChartPaletteToken } from '@hyperdx/common-utils/dist/types';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { Table } from '@/HDXMultiSeriesTableChart';
+import { getColorFromCSSToken } from '@/utils';
 
 // Next.js Link needs a router context; the router isn't exercised
 // because we never trigger client-side navigation in these tests.
@@ -323,6 +325,107 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
         screen.queryAllByTestId('dashboard-table-row-action'),
       ).toHaveLength(0);
       expect(screen.queryByTestId('row-action-hint')).toBeNull();
+    });
+  });
+
+  describe('per-column cell color', () => {
+    const serviceCol = {
+      id: 'service',
+      dataKey: 'ServiceName',
+      displayName: 'Service',
+    };
+    const colorData = [
+      { ServiceName: 'web', Count: 600 },
+      { ServiceName: 'api', Count: 10 },
+    ];
+
+    // Normalize an expected token through the same CSSOM the rendered cell
+    // uses, so the assertion is exact without depending on hex-vs-rgb
+    // serialization details.
+    const normalizedColor = (token: ChartPaletteToken) => {
+      const probe = document.createElement('span');
+      probe.style.color = getColorFromCSSToken(token);
+      return probe.style.color;
+    };
+
+    it('applies a static palette-token color to every cell in the column', () => {
+      renderWithMantine(
+        <Table
+          data={colorData}
+          columns={[
+            serviceCol,
+            {
+              id: 'count',
+              dataKey: 'Count',
+              displayName: 'Count',
+              color: 'chart-blue',
+            },
+          ]}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+      const expected = normalizedColor('chart-blue');
+      expect(expected).not.toBe('');
+      expect((screen.getByText('600') as HTMLElement).style.color).toBe(
+        expected,
+      );
+      expect((screen.getByText('10') as HTMLElement).style.color).toBe(
+        expected,
+      );
+      // The uncolored group-by-style column stays default.
+      expect((screen.getByText('web') as HTMLElement).style.color).toBe('');
+    });
+
+    it('applies a conditional rule only to cells whose value matches', () => {
+      renderWithMantine(
+        <Table
+          data={colorData}
+          columns={[
+            serviceCol,
+            {
+              id: 'count',
+              dataKey: 'Count',
+              displayName: 'Count',
+              colorRules: [
+                { operator: 'gt', value: 100, color: 'chart-error' },
+              ],
+            },
+          ]}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+      // 600 > 100 matches the rule; 10 does not, so it falls back to the
+      // default color (no static color set).
+      expect((screen.getByText('600') as HTMLElement).style.color).not.toBe('');
+      expect((screen.getByText('10') as HTMLElement).style.color).toBe('');
+    });
+
+    it('renders the default color for an unknown token without throwing', () => {
+      expect(() =>
+        renderWithMantine(
+          <Table
+            data={[{ ServiceName: 'web', Count: 10 }]}
+            columns={[
+              serviceCol,
+              {
+                id: 'count',
+                dataKey: 'Count',
+                displayName: 'Count',
+                // Simulates a legacy / hand-edited token absent from the
+                // current palette; the renderer must not crash.
+                color: 'chart-1' as unknown as ChartPaletteToken,
+              },
+            ]}
+            sorting={[]}
+            onSortingChange={() => {}}
+          />,
+        ),
+      ).not.toThrow();
+      expect((screen.getByText('10') as HTMLElement).style.color).toBe('');
     });
   });
 });
