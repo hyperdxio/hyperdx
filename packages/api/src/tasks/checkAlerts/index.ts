@@ -1319,7 +1319,7 @@ async function aggregatePreviousAlertHistoriesForAlert(
  * Uses per-alert queries instead of batched $in to leverage the compound index
  * {alert: 1, group: 1, createdAt: -1} for index-backed sorting. The lookback
  * window is sized from each alert's check interval (with a floor and a 7-day
- * fallback when the narrow window returns no rows).
+ * fallback when the narrow window returns no rows but older history exists).
  *
  * @param alerts Alert IDs and intervals to query the latest history for.
  * @param now The current date and time. AlertHistory documents that have a createdAt > now are ignored.
@@ -1350,11 +1350,17 @@ export const getPreviousAlertHistories = async (
           histories.length === 0 &&
           narrowLookbackMs < ALERT_HISTORY_LOOKBACK_MAX_MS
         ) {
-          histories = await aggregatePreviousAlertHistoriesForAlert(
-            alertId,
-            now,
-            ALERT_HISTORY_LOOKBACK_MAX_MS,
-          );
+          const hasAnyHistory = await AlertHistory.exists({
+            alert: alertId,
+            createdAt: { $lte: now },
+          });
+          if (hasAnyHistory) {
+            histories = await aggregatePreviousAlertHistoriesForAlert(
+              alertId,
+              now,
+              ALERT_HISTORY_LOOKBACK_MAX_MS,
+            );
+          }
         }
 
         return histories;

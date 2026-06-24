@@ -8983,6 +8983,19 @@ describe('checkAlerts', () => {
       expect(computeAlertHistoryLookbackMs('1d')).toBe(ms('5d'));
     });
 
+    it('does not run the wide fallback for alerts with no history at all', async () => {
+      const alertId = new mongoose.Types.ObjectId();
+      const aggregateSpy = jest.spyOn(AlertHistory, 'aggregate');
+
+      const result = await getPreviousAlertHistories(
+        [{ id: alertId.toString(), interval: '1m' }],
+        new Date('2025-01-10T00:00:00Z'),
+      );
+
+      expect(result.get(alertId.toString())).toBeUndefined();
+      expect(aggregateSpy).toHaveBeenCalledTimes(1);
+    });
+
     it('falls back to the max lookback when narrow window has no history', async () => {
       const alertId = new mongoose.Types.ObjectId();
       const now = new Date('2025-01-10T00:00:00Z');
@@ -9110,8 +9123,8 @@ describe('checkAlerts', () => {
         new Date('2025-01-01T00:20:00Z'),
       );
 
-      // Alerts with recent history use one narrow query; alerts with none try narrow + fallback.
-      expect(aggregateSpy).toHaveBeenCalledTimes(2 + 150 * 2);
+      // Alerts with recent history: one narrow query. Alerts with none: one narrow query only.
+      expect(aggregateSpy).toHaveBeenCalledTimes(2 + 150);
       expect(result.size).toBe(2);
       expect(result.get(alert1Id.toString())!.createdAt).toEqual(
         new Date('2025-01-01T00:05:00Z'),
