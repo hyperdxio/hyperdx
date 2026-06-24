@@ -9,13 +9,13 @@ import {
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
+import type { McpContext } from '@/mcp/tools/types';
+import { mcpError, validateObjectId } from '@/mcp/utils/errors';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import { type AlertChannel, AlertSource } from '@/models/alert';
 import { BaseError } from '@/utils/errors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 
-import { mcpError, validateObjectId } from '../../utils/errors';
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 import {
   type McpSaveAlertInput,
   mcpSaveAlertSchema,

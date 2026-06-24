@@ -7,10 +7,10 @@ import {
   updateSavedSearch,
 } from '@/controllers/savedSearch';
 import { getSource } from '@/controllers/sources';
+import type { McpContext } from '@/mcp/tools/types';
+import { mcpError, validateObjectId } from '@/mcp/utils/errors';
+import { withToolTracing } from '@/mcp/utils/tracing';
 
-import { mcpError, validateObjectId } from '../../utils/errors';
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 import { mcpSaveSavedSearchSchema } from './schemas';
 
 export function registerSaveSavedSearch(

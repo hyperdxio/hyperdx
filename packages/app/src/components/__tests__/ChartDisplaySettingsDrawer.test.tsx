@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
-} from '../ChartDisplaySettingsDrawer';
+} from '@/components/ChartDisplaySettingsDrawer';
 
 // FormatTime depends on useUserPreferences (jotai + localStorage); mock it
 // so the drawer renders in isolation.

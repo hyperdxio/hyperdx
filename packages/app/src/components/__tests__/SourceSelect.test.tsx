@@ -4,9 +4,11 @@ import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import {
+  SourceManagementMenu,
+  SourceSelectControlled,
+} from '@/components/SourceSelect';
 import { useSources } from '@/source';
-
-import { SourceManagementMenu, SourceSelectControlled } from '../SourceSelect';
 
 jest.mock('@/source', () => ({
   useSources: jest.fn(),

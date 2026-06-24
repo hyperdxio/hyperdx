@@ -1,3 +1,4 @@
+import type { McpContext } from '@/mcp/tools/types';
 import {
   getCounter,
   getHistogram,
@@ -5,8 +6,6 @@ import {
   withSpan,
 } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
-
-import type { McpContext } from '../tools/types';
 
 type ToolResult = {
   content: { type: 'text'; text: string }[];

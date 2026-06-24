@@ -1,4 +1,4 @@
-import { sparklinePointsFromGraphResults } from '../NumberTileBackgroundChart';
+import { sparklinePointsFromGraphResults } from '@/components/NumberTileBackgroundChart';
 
 describe('sparklinePointsFromGraphResults', () => {
   const ts = '__hdx_time_bucket';
