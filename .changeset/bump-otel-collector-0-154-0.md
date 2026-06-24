@@ -1,5 +1,5 @@
 ---
-'@hyperdx/otel-collector': patch
+'@hyperdx/otel-collector': minor
 ---
 
 chore(otel-collector): bump base collector to v0.154.0
