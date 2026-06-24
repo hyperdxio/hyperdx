@@ -9,6 +9,8 @@ load 'test_helpers/assertions.bash'
 
 @test "metrics: gauge data points are ingested into otel_metrics_gauge with attributes and values" {
     emit_otel_data "http://localhost:4318" "data/metrics/gauge-insert" "metrics"
-    wait_for_rows 9000 "SELECT count() FROM otel_metrics_gauge WHERE ResourceAttributes['suite-id'] = 'metrics' AND ResourceAttributes['test-id'] = 'gauge-insert'"
+    # The fixture sends 2 gauge data points; wait for both so the snapshot
+    # assertion never runs against a partially-flushed batch.
+    wait_for_rows 9000 "SELECT count() FROM otel_metrics_gauge WHERE ResourceAttributes['suite-id'] = 'metrics' AND ResourceAttributes['test-id'] = 'gauge-insert'" 2
     assert_test_data "data/metrics/gauge-insert"
 }
