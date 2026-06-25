@@ -3,6 +3,7 @@ import {
   AggregateFunctionSchema,
   alertNoteSchema,
   AlertThresholdType,
+  BackgroundChartSchema,
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_TILES,
@@ -336,6 +337,17 @@ const externalDashboardNumberChartConfigSchema = z.object({
   // drift from what the UI persists.
   color: ChartPaletteTokenSchema.optional(),
   colorRules: z.array(NumberTileColorConditionSchema).max(10).optional(),
+  // Optional background trend sparkline. Mirrors the internal
+  // `SharedChartSettingsSchema.backgroundChart` (common-utils types.ts),
+  // gated by the editor to builder number tiles
+  // (`ChartDisplaySettingsDrawer`: shown for number tiles but disabled when
+  // `configType === 'sql'`). The save path
+  // (`convertFormStateToSavedChartConfig`) persists `backgroundChart` only on
+  // the builder branch (the raw SQL / promql picks omit it), so it lives on
+  // the builder number schema only, like `colorRules`. `BackgroundChartSchema`
+  // is imported from common-utils so the external surface cannot drift from
+  // what the UI persists.
+  backgroundChart: BackgroundChartSchema.optional(),
 });
 
 const externalDashboardPieChartConfigSchema = z.object({
