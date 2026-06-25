@@ -2371,6 +2371,7 @@ describe('External API v2 Dashboards - new format', () => {
               label: 'Critical',
             },
           ],
+          backgroundChart: { type: 'area', color: 'chart-blue' },
         },
       };
 
@@ -3898,6 +3899,7 @@ describe('External API v2 Dashboards - new format', () => {
               label: 'Critical',
             },
           ],
+          backgroundChart: { type: 'area', color: 'chart-blue' },
         },
       };
 
@@ -4907,6 +4909,175 @@ describe('External API v2 Dashboards - new format', () => {
       );
       // chart-4 maps to chart-red.
       expect(get.body.data.tiles[0].config.color).toBe('chart-red');
+    });
+  });
+
+  describe('Number tile background chart (HDX-1360)', () => {
+    // Minimal builder number tile; callers supply backgroundChart. The payload
+    // is sent through `.send()` (untyped) so negative tests can post
+    // intentionally invalid values without tripping the compile-time schema.
+    const numberTile = (config: Record<string, unknown>) => ({
+      name: 'Number',
+      x: 0,
+      y: 0,
+      w: 3,
+      h: 3,
+      config: {
+        displayType: 'number',
+        sourceId: traceSource._id.toString(),
+        select: [{ aggFn: 'count', where: '' }],
+        ...config,
+      },
+    });
+
+    const postTile = (config: Record<string, unknown>) =>
+      authRequest('post', BASE_URL).send({
+        name: 'Number background chart dashboard',
+        tiles: [numberTile(config)],
+        tags: [],
+      });
+
+    const rawSqlNumberTile = (config: Record<string, unknown>) => ({
+      name: 'Number Raw SQL',
+      x: 0,
+      y: 0,
+      w: 3,
+      h: 3,
+      config: {
+        configType: 'sql',
+        displayType: 'number',
+        connectionId: connection._id.toString(),
+        sqlTemplate: 'SELECT count() FROM otel_logs WHERE {timeFilter}',
+        sourceId: traceSource._id.toString(),
+        ...config,
+      },
+    });
+
+    // ── Positive: one per UI input ──────────────────────────────────────
+
+    it('round-trips a builder number tile with a line background chart', async () => {
+      const create = await postTile({
+        backgroundChart: { type: 'line' },
+      }).expect(200);
+      expect(create.body.data.tiles[0].config.backgroundChart).toEqual({
+        type: 'line',
+      });
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.backgroundChart).toEqual({
+        type: 'line',
+      });
+    });
+
+    it('round-trips an area background chart with a color override', async () => {
+      const create = await postTile({
+        backgroundChart: { type: 'area', color: 'chart-green' },
+      }).expect(200);
+      expect(create.body.data.tiles[0].config.backgroundChart).toEqual({
+        type: 'area',
+        color: 'chart-green',
+      });
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.backgroundChart).toEqual({
+        type: 'area',
+        color: 'chart-green',
+      });
+    });
+
+    it('round-trips backgroundChart through an update (PUT)', async () => {
+      const created = await postTile({}).expect(200);
+      const dashboardId = created.body.data.id;
+      const tile = created.body.data.tiles[0];
+
+      const update = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Number background chart dashboard',
+          tiles: [
+            {
+              ...tile,
+              config: {
+                ...tile.config,
+                backgroundChart: { type: 'line', color: 'chart-red' },
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+      expect(update.body.data.tiles[0].config.backgroundChart).toEqual({
+        type: 'line',
+        color: 'chart-red',
+      });
+
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+      expect(get.body.data.tiles[0].config.backgroundChart).toEqual({
+        type: 'line',
+        color: 'chart-red',
+      });
+    });
+
+    // ── Negative: one per schema rejection rule ─────────────────────────
+
+    it('rejects a background chart type outside the line/area enum', async () => {
+      const res = await postTile({
+        backgroundChart: { type: 'bar' },
+      }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.backgroundChart');
+    });
+
+    it('rejects a background chart with no type', async () => {
+      // `type` is required; a color override alone is not a valid sparkline.
+      await postTile({
+        backgroundChart: { color: 'chart-green' },
+      }).expect(400);
+    });
+
+    it('rejects a background chart color that is not a palette token', async () => {
+      await postTile({
+        backgroundChart: { type: 'line', color: '#ff0000' },
+      }).expect(400);
+      // Legacy numeric tokens are normalized on read, never accepted on write.
+      await postTile({
+        backgroundChart: { type: 'line', color: 'chart-1' },
+      }).expect(400);
+    });
+
+    // ── Builder-only: raw SQL number tiles never carry it ───────────────
+
+    it('strips backgroundChart from a raw SQL number tile, keeping color', async () => {
+      // The raw SQL number schema has no backgroundChart (the editor disables
+      // the control for SQL tiles and the save path never persists it), so a
+      // hand-written payload is stripped rather than stored.
+      const create = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Raw SQL backgroundChart',
+          tiles: [
+            rawSqlNumberTile({
+              color: 'chart-blue',
+              backgroundChart: { type: 'line' },
+            }),
+          ],
+          tags: [],
+        })
+        .expect(200);
+      expect(create.body.data.tiles[0].config.color).toBe('chart-blue');
+      expect(create.body.data.tiles[0].config.backgroundChart).toBeUndefined();
+    });
+
+    // ── Backward compatibility: the sparkline is opt-in ─────────────────
+
+    it('round-trips a builder number tile with no background chart', async () => {
+      const create = await postTile({}).expect(200);
+      expect(create.body.data.tiles[0].config.backgroundChart).toBeUndefined();
     });
   });
 
