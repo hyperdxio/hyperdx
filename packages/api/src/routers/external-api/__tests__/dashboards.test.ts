@@ -3,6 +3,20 @@ import { omit } from 'lodash';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';
 
+import * as config from '@/config';
+import {
+  DEFAULT_DATABASE,
+  DEFAULT_TRACES_TABLE,
+  getLoggedInAgent,
+  getServer,
+  makeExternalChart,
+  makeExternalTile,
+} from '@/fixtures';
+import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
+import Connection from '@/models/connection';
+import Dashboard from '@/models/dashboard';
+import { Source } from '@/models/source';
+import Webhook, { WebhookService } from '@/models/webhook';
 import {
   ExternalDashboardTile,
   ExternalDashboardTileWithId,
@@ -11,21 +25,6 @@ import {
   TableChartSeries,
   TimeChartSeries,
 } from '@/utils/zod';
-
-import * as config from '../../../config';
-import {
-  DEFAULT_DATABASE,
-  DEFAULT_TRACES_TABLE,
-  getLoggedInAgent,
-  getServer,
-  makeExternalChart,
-  makeExternalTile,
-} from '../../../fixtures';
-import Alert, { AlertSource, AlertThresholdType } from '../../../models/alert';
-import Connection from '../../../models/connection';
-import Dashboard from '../../../models/dashboard';
-import { Source } from '../../../models/source';
-import Webhook, { WebhookService } from '../../../models/webhook';
 
 // Constants
 const BASE_URL = '/api/v2/dashboards';

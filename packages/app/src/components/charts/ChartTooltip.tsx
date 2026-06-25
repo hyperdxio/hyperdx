@@ -4,7 +4,7 @@ import { IconCaretDownFilled, IconCaretUpFilled } from '@tabler/icons-react';
 import type { NumberFormat } from '@/types';
 import { formatNumber, truncateMiddle } from '@/utils';
 
-import styles from '../../../styles/HDXLineChart.module.scss';
+import styles from '@styles/HDXLineChart.module.scss';
 
 const percentFormatter = new Intl.NumberFormat('en-US', {
   style: 'percent',

@@ -12,13 +12,13 @@ import {
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 
-import type { ChartEditorFormState } from '../types';
+import type { ChartEditorFormState } from '@/components/ChartEditor/types';
 import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
   validateChartForm,
-} from '../utils';
+} from '@/components/ChartEditor/utils';
 
 jest.mock('../../SearchInput', () => ({
   getStoredLanguage: jest.fn().mockReturnValue('lucene'),

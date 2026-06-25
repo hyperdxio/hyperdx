@@ -2,7 +2,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { AutocompleteControlled } from '../InputControlled';
+import { AutocompleteControlled } from '@/components/InputControlled';
 
 // Mantine's Combobox calls scrollIntoView when its dropdown opens; jsdom lacks it.
 window.HTMLElement.prototype.scrollIntoView = jest.fn();

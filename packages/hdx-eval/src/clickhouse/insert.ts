@@ -1,6 +1,7 @@
 import type { ClickHouseClient } from '@clickhouse/client';
 
-import type { LogRow, TraceRow } from '../generators/types';
+import type { LogRow, TraceRow } from '@/generators/types';
+
 import { EVAL_DATABASE } from './schema';
 
 const BATCH_SIZE = 100_000;

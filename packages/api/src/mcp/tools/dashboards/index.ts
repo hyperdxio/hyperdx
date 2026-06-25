@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import type { McpContext, ToolDefinition } from '../types';
+import type { McpContext, ToolDefinition } from '@/mcp/tools/types';
+
 import { registerDeleteDashboard } from './deleteDashboard';
 import { registerGetDashboard } from './getDashboard';
 import { registerGetDashboardTile } from './getDashboardTile';

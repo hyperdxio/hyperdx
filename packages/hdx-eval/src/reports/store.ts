@@ -1,10 +1,11 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
-import type { GradeRecord } from '../grading/types';
-import type { McpKind, RunRecord } from '../harness/types';
-import { isModelSubdir, isRunJson, safeReaddir } from '../runs/path';
-import { SCENARIO_NAMES } from '../scenarios';
+import type { GradeRecord } from '@/grading/types';
+import type { McpKind, RunRecord } from '@/harness/types';
+import { isModelSubdir, isRunJson, safeReaddir } from '@/runs/path';
+import { SCENARIO_NAMES } from '@/scenarios';
+
 import { buildAggregate, type GradedRunPair } from './aggregate';
 import { renderMarkdownReport } from './markdown';
 

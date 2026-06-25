@@ -2,7 +2,7 @@ import React from 'react';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
-import DirectTraceSidePanel from '../DirectTraceSidePanel';
+import DirectTraceSidePanel from '@/components/Search/DirectTraceSidePanel';
 
 let mockSources: Record<string, any> = {};
 let mockIsLoading = false;

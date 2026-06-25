@@ -8,7 +8,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 
-import { UNDEFINED_WIDTH } from '../tableUtils';
+import { UNDEFINED_WIDTH } from '@/tableUtils';
 
 import styles from './Table.module.scss';
 

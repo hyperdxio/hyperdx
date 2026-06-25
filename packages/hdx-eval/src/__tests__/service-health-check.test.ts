@@ -1,6 +1,6 @@
-import { mulberry32 } from '../rng/seeded';
-import { serviceHealthCheckScenario } from '../scenarios/service-health-check/generate';
-import { collectScenario } from '../scenarios/types';
+import { mulberry32 } from '@/rng/seeded';
+import { serviceHealthCheckScenario } from '@/scenarios/service-health-check/generate';
+import { collectScenario } from '@/scenarios/types';
 
 const NOW_MS = Date.parse('2026-05-10T20:00:00.000Z');
 
