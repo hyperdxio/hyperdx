@@ -2221,6 +2221,12 @@ export function DBSearchPage() {
                         config={{
                           ...chartConfig,
                           dateRange: searchedTimeRange,
+                          // Carry the source's select-alias definitions so the
+                          // rebuilt pattern query can filter on aliased columns
+                          // (e.g. `ServiceName as service`) without hitting
+                          // "Unknown identifier". Mirrors the results,
+                          // histogram, and heatmap configs.
+                          with: aliasWith,
                         }}
                         bodyValueExpression={
                           searchedSource
