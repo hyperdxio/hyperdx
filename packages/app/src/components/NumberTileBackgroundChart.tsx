@@ -1,12 +1,5 @@
 import { useMemo } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
-import {
-  Area,
-  AreaChart,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-} from 'recharts';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   BackgroundChart,
@@ -26,22 +19,11 @@ import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useSource } from '@/source';
 import { getColorFromCSSToken } from '@/utils';
 
+import { Sparkline, type SparklinePoint } from './Sparkline';
+
 // Trend hue used when neither the background override nor the tile's static
 // `color` is set, so a sparkline is always visible once enabled.
 const DEFAULT_BACKGROUND_TOKEN: ChartPaletteToken = 'chart-blue';
-
-// The sparkline sits behind the value, so it is intentionally low-contrast:
-// a translucent stroke with a fainter area fill.
-const STROKE_OPACITY = 0.5;
-const STROKE_WIDTH = 2;
-const AREA_FILL_OPACITY = 0.15;
-
-// `y` is the plotted value; `x` (bucket timestamp, seconds) is retained for
-// ordering and future axis use. With no `<XAxis>`, recharts spaces points by
-// array order, which is already sorted by bucket.
-const VALUE_KEY = 'y';
-
-type SparklinePoint = { x: number; y: number };
 
 /**
  * Flatten the time-chart formatter's `graphResults` into sparkline points.
@@ -163,8 +145,6 @@ function NumberTileBackgroundChartInner({
       DEFAULT_BACKGROUND_TOKEN,
   );
 
-  const margin = { top: 4, right: 0, bottom: 0, left: 0 };
-
   return (
     <div
       aria-hidden
@@ -176,35 +156,7 @@ function NumberTileBackgroundChartInner({
         zIndex: 0,
       }}
     >
-      <ResponsiveContainer width="100%" height="100%">
-        {backgroundChart.type === 'area' ? (
-          <AreaChart data={points} margin={margin}>
-            <Area
-              type="monotone"
-              dataKey={VALUE_KEY}
-              stroke={color}
-              strokeOpacity={STROKE_OPACITY}
-              strokeWidth={STROKE_WIDTH}
-              fill={color}
-              fillOpacity={AREA_FILL_OPACITY}
-              isAnimationActive={false}
-              dot={false}
-            />
-          </AreaChart>
-        ) : (
-          <LineChart data={points} margin={margin}>
-            <Line
-              type="monotone"
-              dataKey={VALUE_KEY}
-              stroke={color}
-              strokeOpacity={STROKE_OPACITY}
-              strokeWidth={STROKE_WIDTH}
-              isAnimationActive={false}
-              dot={false}
-            />
-          </LineChart>
-        )}
-      </ResponsiveContainer>
+      <Sparkline points={points} type={backgroundChart.type} color={color} />
     </div>
   );
 }
