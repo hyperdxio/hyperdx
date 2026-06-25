@@ -10,7 +10,12 @@ import {
   encodeServerToAgent,
   serverCapabilities,
 } from '@/opamp/utils/protobuf';
-import { getCounter, SpanKind, withSpan } from '@/utils/instrumentation';
+import {
+  getCounter,
+  SpanKind,
+  SpanStatusCode,
+  withSpan,
+} from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
 // OpAMP messages come from collector agents, not authenticated users, so there
@@ -353,6 +358,7 @@ export class OpampController {
           const contentType = req.get('Content-Type');
           if (contentType !== 'application/x-protobuf') {
             opampMessagesCounter.add(1, { outcome: 'unsupported_media_type' });
+            span.setStatus({ code: SpanStatusCode.OK });
             res
               .status(415)
               .send(
@@ -422,15 +428,23 @@ export class OpampController {
           const encodedResponse = encodeServerToAgent(serverToAgent);
 
           opampMessagesCounter.add(1, { outcome: 'processed' });
+          span.setStatus({ code: SpanStatusCode.OK });
           res.setHeader('Content-Type', 'application/x-protobuf');
           res.send(encodedResponse);
         } catch (error) {
           opampMessagesCounter.add(1, { outcome: 'error' });
+          span.recordException(
+            error instanceof Error ? error : new Error(String(error)),
+          );
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: error instanceof Error ? error.message : String(error),
+          });
           logger.error({ err: error }, 'Error handling OpAMP message');
           res.status(500).send('Internal Server Error');
         }
       },
-      { kind: SpanKind.INTERNAL },
+      { kind: SpanKind.INTERNAL, recordOkStatus: false },
     );
   }
 }
