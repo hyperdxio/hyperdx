@@ -1,6 +1,9 @@
 import { useCallback, useState } from 'react';
 import { useQueryState } from 'nuqs';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  ClickHouseQueryError,
+  ColumnMetaType,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import {
   BuilderChartConfigWithDateRange,
   TSource,
@@ -46,6 +49,7 @@ interface Props {
   enableSmallFirstWindow?: boolean;
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
+  onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
 }
 
 export default function DBSqlRowTableWithSideBar({
@@ -68,6 +72,7 @@ export default function DBSqlRowTableWithSideBar({
   enableSmallFirstWindow,
   tableId,
   errorVariant,
+  onResolvedColumnsChange,
 }: Props) {
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
@@ -149,6 +154,7 @@ export default function DBSqlRowTableWithSideBar({
         enableSmallFirstWindow={enableSmallFirstWindow}
         tableId={tableId}
         errorVariant={errorVariant}
+        onResolvedColumnsChange={onResolvedColumnsChange}
       />
     </RowSidePanelContext.Provider>
   );

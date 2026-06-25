@@ -48,6 +48,7 @@ type ChartEditorControlsProps = {
   append: (value: SavedChartConfigWithSelectArray['select'][number]) => void;
   removeSeries: (index: number) => void;
   swapSeries: (from: number, to: number) => void;
+  duplicateSeries: (index: number) => void;
   tableSource?: TSource;
   tableConnection: TableConnection;
   databaseName?: string;
@@ -76,6 +77,7 @@ export function ChartEditorControls({
   append,
   removeSeries,
   swapSeries,
+  duplicateSeries,
   tableSource,
   tableConnection,
   databaseName,
@@ -94,6 +96,10 @@ export function ChartEditorControls({
   openDisplaySettings,
   openHeatmapSettings,
 }: ChartEditorControlsProps) {
+  const canAddSeries =
+    displayType !== DisplayType.Number &&
+    displayType !== DisplayType.Pie &&
+    displayType !== DisplayType.Heatmap;
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
@@ -159,6 +165,7 @@ export function ChartEditorControls({
               onRemoveSeries={removeSeries}
               length={fields.length}
               onSwapSeries={swapSeries}
+              onDuplicateSeries={duplicateSeries}
               onSubmit={onSubmit}
               setValue={setValue}
               connectionId={tableSource?.connection}
@@ -168,6 +175,7 @@ export function ChartEditorControls({
               showHaving={
                 fields.length === 1 && displayType === DisplayType.Table
               }
+              showDuplicate={canAddSeries}
               tableName={tableName ?? ''}
               tableSource={tableSource}
               errors={
@@ -239,26 +247,24 @@ export function ChartEditorControls({
           <Divider mt="md" mb="sm" />
           <Flex mt={4} align="center" justify="space-between">
             <Group gap="xs">
-              {displayType !== DisplayType.Number &&
-                displayType !== DisplayType.Pie &&
-                displayType !== DisplayType.Heatmap && (
-                  <Button
-                    variant="subtle"
-                    size="sm"
-                    color="gray"
-                    onClick={() => {
-                      append({
-                        aggFn: 'count',
-                        aggCondition: '',
-                        aggConditionLanguage: 'lucene',
-                        valueExpression: '',
-                      });
-                    }}
-                  >
-                    <IconCirclePlus size={14} className="me-2" />
-                    Add Series
-                  </Button>
-                )}
+              {canAddSeries && (
+                <Button
+                  variant="subtle"
+                  size="sm"
+                  color="gray"
+                  onClick={() => {
+                    append({
+                      aggFn: 'count',
+                      aggCondition: '',
+                      aggConditionLanguage: 'lucene',
+                      valueExpression: '',
+                    });
+                  }}
+                >
+                  <IconCirclePlus size={14} className="me-2" />
+                  Add Series
+                </Button>
+              )}
               {fields.length == 2 && displayType !== DisplayType.Number && (
                 <Switch
                   label="As Ratio"

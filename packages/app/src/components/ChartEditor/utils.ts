@@ -24,7 +24,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 
-import { getStoredLanguage } from '../SearchInput';
+import { getStoredLanguage } from '@/components/SearchInput';
 
 import { ChartEditorFormState } from './types';
 
@@ -116,6 +116,16 @@ export function convertFormStateToSavedChartConfig(
       source: form.source || undefined,
     };
     return rawSqlConfig;
+  }
+
+  if (form.displayType === DisplayType.Markdown) {
+    const config: BuilderSavedChartConfig = {
+      ...omit(form, ['series', 'configType', 'sqlTemplate']),
+      select: [],
+      where: form.where ?? '',
+      source: source?.id ?? form.source ?? '',
+    };
+    return config;
   }
 
   if (source) {

@@ -11,10 +11,9 @@ import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-
-import { withToolTracing } from '../../utils/tracing';
-import { parseTimeRange } from '../query/helpers';
-import type { McpContext } from '../types';
+import { parseTimeRange } from '@/mcp/tools/query/helpers';
+import type { McpContext } from '@/mcp/tools/types';
+import { withToolTracing } from '@/mcp/utils/tracing';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 

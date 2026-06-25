@@ -1,6 +1,6 @@
 ## base #############################################################################################
-ARG OTEL_COLLECTOR_VERSION=0.149.0
-ARG OTEL_COLLECTOR_CORE_VERSION=1.55.0
+ARG OTEL_COLLECTOR_VERSION=0.154.0
+ARG OTEL_COLLECTOR_CORE_VERSION=1.60.0
 
 FROM otel/opentelemetry-collector-opampsupervisor:${OTEL_COLLECTOR_VERSION} AS supervisor
 FROM hairyhenderson/gomplate:v4.3.3-alpine AS gomplate
@@ -75,6 +75,7 @@ LABEL org.opencontainers.image.vendor="HyperDX" \
 COPY --chown=10001:10001 docker/otel-collector/config.yaml /etc/otelcol-contrib/config.yaml
 COPY --chown=10001:10001 docker/otel-collector/config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
 COPY --chown=10001:10001 docker/otel-collector/config.standalone.auth.yaml /etc/otelcol-contrib/standalone-auth-config.yaml
+COPY --chown=10001:10001 docker/otel-collector/config.standalone.promql.yaml /etc/otelcol-contrib/standalone-promql-config.yaml
 COPY --chown=10001:10001 docker/otel-collector/supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 COPY --chown=10001:10001 docker/otel-collector/schema /etc/otel/schema
 
@@ -97,6 +98,7 @@ LABEL org.opencontainers.image.vendor="HyperDX" \
 COPY --chown=10001:10001 docker/otel-collector/config.yaml /etc/otelcol-contrib/config.yaml
 COPY --chown=10001:10001 docker/otel-collector/config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
 COPY --chown=10001:10001 docker/otel-collector/config.standalone.auth.yaml /etc/otelcol-contrib/standalone-auth-config.yaml
+COPY --chown=10001:10001 docker/otel-collector/config.standalone.promql.yaml /etc/otelcol-contrib/standalone-promql-config.yaml
 COPY --chown=10001:10001 docker/otel-collector/supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 COPY --chown=10001:10001 docker/otel-collector/schema /etc/otel/schema
 

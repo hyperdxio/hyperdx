@@ -1,6 +1,6 @@
 import { renderHook } from '@testing-library/react';
 
-import { CsvColumn, useCsvExport } from '../useCsvExport';
+import { CsvColumn, useCsvExport } from '@/hooks/useCsvExport';
 
 describe('useCsvExport', () => {
   const mockColumns: CsvColumn[] = [

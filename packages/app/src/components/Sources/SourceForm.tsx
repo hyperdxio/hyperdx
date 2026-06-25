@@ -33,11 +33,13 @@ import {
   Box,
   Button,
   Center,
+  Code,
   Divider,
   Flex,
   Grid,
   Group,
   Modal,
+  Paper,
   Radio,
   Select,
   Slider,
@@ -57,6 +59,16 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 
+import ConfirmDeleteMenu from '@/components/ConfirmDeleteMenu';
+import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
+import { DatabaseSelectControlled } from '@/components/DatabaseSelect';
+import { DBTableSelectControlled } from '@/components/DBTableSelect';
+import { ErrorCollapse } from '@/components/Error/ErrorCollapse';
+import {
+  AutocompleteControlled,
+  InputControlled,
+} from '@/components/InputControlled';
+import SelectControlled from '@/components/SelectControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import {
@@ -90,16 +102,9 @@ import {
   SourceFieldKind,
 } from '@/utils/sourceFieldSuggestions';
 
-import ConfirmDeleteMenu from '../ConfirmDeleteMenu';
-import { ConnectionSelectControlled } from '../ConnectionSelect';
-import { DatabaseSelectControlled } from '../DatabaseSelect';
-import { DBTableSelectControlled } from '../DBTableSelect';
-import { ErrorCollapse } from '../Error/ErrorCollapse';
-import { InputControlled } from '../InputControlled';
-import SelectControlled from '../SelectControlled';
-
 import { ExpressionValidationStatus } from './ExpressionValidationStatus';
 import { SourceFieldCandidateHint } from './SourceFieldCandidateHint';
+import { distinctSections } from './sourceFormUtils';
 
 type CorrelationField =
   | 'logSourceId'
@@ -182,17 +187,6 @@ const MV_AGGREGATE_FUNCTION_OPTIONS = MV_AGGREGATE_FUNCTIONS.map(fn => ({
 const OTEL_CLICKHOUSE_EXPRESSIONS = {
   timestampValueExpression: 'TimeUnix',
   resourceAttributesExpression: 'ResourceAttributes',
-};
-
-const SOURCE_FIELD_LABELS: Record<SourceFieldKind, string> = {
-  bodyExpression: 'Body Expression',
-  implicitColumnExpression: 'Implicit Column Expression',
-  serviceNameExpression: 'Service Name Expression',
-  severityTextExpression: 'Log Level Expression',
-  eventAttributesExpression: 'Event Attributes Expression',
-  resourceAttributesExpression: 'Resource Attributes Expression',
-  traceIdExpression: 'Trace Id Expression',
-  spanIdExpression: 'Span Id Expression',
 };
 
 const CORRELATION_FIELD_MAP: Record<
@@ -2161,6 +2155,11 @@ export function TableSourceForm({
 
   // Bidirectional source linking
   const { data: sources } = useSources();
+  // Existing section names, offered as Section autocomplete suggestions.
+  const sectionSuggestions = useMemo(
+    () => distinctSections(sources),
+    [sources],
+  );
   const currentSourceId = useWatch({ control, name: 'id' });
 
   // Watch all potential correlation fields
@@ -2330,7 +2329,7 @@ export function TableSourceForm({
 
   const applyPairingFix = useCallback(
     (warning: PairingWarning) => {
-      if (!pendingSave || !warning.suggestedFix) {
+      if (!pendingSave) {
         return;
       }
 
@@ -2528,6 +2527,15 @@ export function TableSourceForm({
             rules={{ required: 'Name is required' }}
           />
         </FormRow>
+        <FormRow label={'Section'}>
+          <AutocompleteControlled
+            control={control}
+            name="section"
+            data={sectionSuggestions}
+            placeholder="Optional group, e.g. Billing or Control Plane Prod"
+            maxLength={256}
+          />
+        </FormRow>
         <FormRow label={'Source Data Type'}>
           <Controller
             control={control}
@@ -2670,6 +2678,7 @@ export function TableSourceForm({
         )}
       </Group>
       <Modal
+        size="lg"
         opened={!!pendingSave}
         onClose={() => setPendingSave(undefined)}
         title="Review source configuration"
@@ -2677,21 +2686,41 @@ export function TableSourceForm({
       >
         <Stack gap="md">
           {pendingSave?.warnings.map(warning => (
-            <Box key={warning.field}>
+            <Paper key={warning.field} p="sm">
               <Text size="sm">{warning.message}</Text>
-              {warning.suggestedFix && (
+              <Text mt="md" fw="bold" color="green" size="sm">
+                Recommended ({warning.recommendation}):
+              </Text>
+
+              <Group
+                mt="sm"
+                justify="space-between"
+                align="center"
+                wrap="nowrap"
+              >
+                <Code
+                  block
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    maxHeight: 200,
+                    overflowY: 'auto',
+                  }}
+                >
+                  {warning.suggestedFix.value}
+                </Code>
                 <Button
                   variant="secondary"
                   size="xs"
-                  mt="xs"
+                  style={{ flexShrink: 0 }}
                   onClick={() => applyPairingFix(warning)}
                 >
-                  {`Set ${SOURCE_FIELD_LABELS[warning.suggestedFix.field]} to "${
-                    warning.suggestedFix.value
-                  }"`}
+                  Use this value
                 </Button>
-              )}
-            </Box>
+              </Group>
+            </Paper>
           ))}
           <Group justify="flex-end" mt="sm">
             <Button

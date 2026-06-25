@@ -29,7 +29,7 @@ import {
   OTHER_BUCKET_COLOR,
 } from './deltaChartUtils';
 
-import styles from '../../styles/HDXLineChart.module.scss';
+import styles from '@styles/HDXLineChart.module.scss';
 
 // Layout constants for dynamic grid calculation.
 // CHART_WIDTH is the minimum chart width used to determine how many columns fit; actual rendered

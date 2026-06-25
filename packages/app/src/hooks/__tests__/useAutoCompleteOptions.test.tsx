@@ -2,13 +2,13 @@ import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { Field } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderHook } from '@testing-library/react';
 
-import { LuceneLanguageFormatter } from '../../components/SearchInput/SearchInputV2';
+import { LuceneLanguageFormatter } from '@/components/SearchInput/SearchInputV2';
 import {
   deriveMapColumnsFromFields,
   tokenizeAtCursor,
   useAutoCompleteOptions,
-} from '../useAutoCompleteOptions';
-import { useGetKeyValues, useMultipleAllFields } from '../useMetadata';
+} from '@/hooks/useAutoCompleteOptions';
+import { useGetKeyValues, useMultipleAllFields } from '@/hooks/useMetadata';
 
 // Mock dependencies
 jest.mock('../useMetadata', () => ({

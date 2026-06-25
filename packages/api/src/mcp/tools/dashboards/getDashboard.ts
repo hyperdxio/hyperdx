@@ -4,12 +4,11 @@ import { z } from 'zod';
 
 import * as config from '@/config';
 import { getDashboards } from '@/controllers/dashboard';
+import type { McpContext } from '@/mcp/tools/types';
+import { validateObjectId } from '@/mcp/utils/errors';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
-
-import { validateObjectId } from '../../utils/errors';
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 
 export function registerGetDashboard(
   server: McpServer,

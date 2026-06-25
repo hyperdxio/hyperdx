@@ -20,7 +20,13 @@ import {
 import { Box, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { IconBell, IconHelpCircle } from '@tabler/icons-react';
 
+import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
+import { OnClickFormButton } from '@/components/DBEditTimeChartForm/OnClickForm/OnClickFormButton';
 import { TileAlertEditor } from '@/components/DBEditTimeChartForm/TileAlertEditor';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from '@/components/SourceSchemaPreview';
+import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLEditorControlled } from '@/components/SQLEditor/SQLEditor';
 import { type SQLCompletion } from '@/components/SQLEditor/utils';
 import { IS_LOCAL_MODE } from '@/config';
@@ -28,13 +34,6 @@ import useResizable from '@/hooks/useResizable';
 import { useSources } from '@/source';
 import { getAllMetricTables, usePrevious } from '@/utils';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
-
-import { ConnectionSelectControlled } from '../ConnectionSelect';
-import { OnClickFormButton } from '../DBEditTimeChartForm/OnClickForm/OnClickFormButton';
-import SourceSchemaPreview, {
-  isSourceSchemaPreviewEnabled,
-} from '../SourceSchemaPreview';
-import { SourceSelectControlled } from '../SourceSelect';
 
 import { SQL_PLACEHOLDERS } from './constants';
 import { RawSqlChartInstructions } from './RawSqlChartInstructions';

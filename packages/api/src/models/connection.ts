@@ -18,6 +18,8 @@ export interface IConnection {
   prometheusEndpoint?: string;
 }
 
+export type ConnectionDocument = mongoose.HydratedDocument<IConnection>;
+
 export default mongoose.model<IConnection>(
   'Connection',
   new Schema<IConnection>(

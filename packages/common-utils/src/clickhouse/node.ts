@@ -1,9 +1,10 @@
-import { createClient } from '@clickhouse/client';
 import type {
   BaseResultSet,
+  ClickHouseClient as NodeClickHouseClient,
   ClickHouseSettings,
   DataFormat,
-} from '@clickhouse/client-common';
+} from '@clickhouse/client';
+import { createClient } from '@clickhouse/client';
 
 import {
   BaseClickhouseClient,
@@ -27,6 +28,13 @@ export class ClickhouseClient extends BaseClickhouseClient {
     });
   }
 
+  // This subclass always builds a node client, so narrow the base class's
+  // platform-agnostic client type to the node-specific one.
+  protected getClient(): NodeClickHouseClient {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- subclass always builds a node client
+    return super.getClient() as NodeClickHouseClient;
+  }
+
   protected async __query<Format extends DataFormat>({
     query,
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- default generic value
@@ -43,10 +51,12 @@ export class ClickhouseClient extends BaseClickhouseClient {
     let clickhouseSettings: ClickHouseSettings | undefined;
     // If this is the settings query, we must not process the clickhouse settings, or else we will infinitely recurse
     if (!shouldSkipApplySettings) {
-      clickhouseSettings = await this.processClickhouseSettings({
+      // The shared base class produces a platform-neutral settings object; the
+      // node client expects its own (now self-bundled) ClickHouseSettings type.
+      clickhouseSettings = (await this.processClickhouseSettings({
         externalClickhouseSettings,
         connectionId,
-      });
+      })) as ClickHouseSettings;
     }
 
     // TODO: Custom error handling

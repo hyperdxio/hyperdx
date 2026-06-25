@@ -1,4 +1,4 @@
-import { copyTextToClipboard } from '../clipboard';
+import { copyTextToClipboard } from '@/utils/clipboard';
 
 describe('copyTextToClipboard', () => {
   const originalClipboard = navigator.clipboard;

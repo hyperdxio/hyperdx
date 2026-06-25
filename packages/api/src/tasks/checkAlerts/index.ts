@@ -75,7 +75,26 @@ import {
   roundDownToXMinutes,
   unflattenObject,
 } from '@/tasks/util';
+import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+
+// Outcome of a single alert evaluation. Kept low-cardinality (a fixed enum) so
+// it is safe to use as a metric attribute (see agent_docs/observability.md).
+const alertEvaluationsCounter = getCounter('hyperdx.alerts.evaluations', {
+  description:
+    'Count of alert evaluations, labeled by outcome (fired, resolved, or the reason it was skipped).',
+});
+const alertQueryFailuresCounter = getCounter('hyperdx.alerts.query_failures', {
+  description:
+    'Count of alert evaluations where the ClickHouse query failed, skipping the state/history update.',
+});
+const alertProcessFailuresCounter = getCounter(
+  'hyperdx.alerts.process_failures',
+  {
+    description:
+      'Count of alert evaluations that threw an unexpected error during processing.',
+  },
+);
 
 /**
  * Determine if an alert has group-by behavior.
@@ -338,22 +357,6 @@ const fireChannelEvent = async ({
   const team = alert.team;
   if (team == null) {
     throw new Error('Team not found');
-  }
-
-  // KNOWN LIMITATION: Alert data (including silenced state) is fetched when the
-  // task is queued via AlertProvider, not when it processes. If a user silences
-  // an alert after it's queued but before it processes, this execution may still
-  // send a notification. Subsequent alert checks will respect the silenced state.
-  // This trade-off maintains architectural separation from direct database access.
-  if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
-    logger.info(
-      {
-        alertId: alert.id,
-        silenced: alert.silenced,
-      },
-      'Skipped firing alert due to silence',
-    );
-    return;
   }
 
   const attributesNested = unflattenObject(attributes);
@@ -698,16 +701,15 @@ const getResponseMetadata = (
  * Parses the following from the given alert query result:
  * - `value`: the numeric value to compare against the alert threshold, taken
  *   from the last column in the result which is included in valueColumnNames
- * - `extraFields`: an array of strings representing the names and values of
- *   each column in the result which is neither the timestampColumnName nor a
- *   valueColumnName, formatted as "columnName:value".
+ * - `extraFields`: ordered `[columnName, value]` tuples for each column in the
+ *   result which is neither the timestampColumnName nor a valueColumnName.
  */
-const parseAlertData = (
+export const parseAlertData = (
   data: Record<string, string | number>,
   meta: ResponseMetadata,
 ) => {
   let value: number | null = null;
-  const extraFields: string[] = [];
+  const extraFields: Array<[string, string]> = [];
 
   for (const [k, v] of Object.entries(data)) {
     if (meta.valueColumnNames.has(k)) {
@@ -716,7 +718,7 @@ const parseAlertData = (
       // Floats are not returned as strings (unless output_format_json_quote_64bit_floats=1, which is not the default).
       value = isString(v) ? parseInt(v) : v;
     } else if (meta.type !== 'time_series' || k !== meta.timestampColumnName) {
-      extraFields.push(`${k}:${v}`);
+      extraFields.push([k, `${v}`]);
     }
   }
 
@@ -743,6 +745,7 @@ export const processAlert = async (
       scheduleStartAt: alert.scheduleStartAt,
     });
     if (scheduleStartAt != null && now < scheduleStartAt) {
+      alertEvaluationsCounter.add(1, { outcome: 'skipped_schedule' });
       logger.info(
         {
           alertId: alert.id,
@@ -779,6 +782,7 @@ export const processAlert = async (
 
     // Check if we should skip this alert check based on last evaluation time
     if (shouldSkipAlertCheck(details, hasGroupBy, nowInMinsRoundDown)) {
+      alertEvaluationsCounter.add(1, { outcome: 'skipped_window' });
       logger.info(
         {
           windowSizeInMins,
@@ -802,6 +806,7 @@ export const processAlert = async (
       scheduleStartAt,
     );
     if (dateRange[0].getTime() >= dateRange[1].getTime()) {
+      alertEvaluationsCounter.add(1, { outcome: 'skipped_anchor' });
       logger.info(
         {
           alertId: alert.id,
@@ -901,6 +906,7 @@ export const processAlert = async (
         querySettings: source?.querySettings,
       });
     } catch (e) {
+      alertQueryFailuresCounter.add(1);
       logger.error(
         {
           alertId: alert.id,
@@ -950,12 +956,35 @@ export const processAlert = async (
       totalCount,
       state,
       startTime = nowInMinsRoundDown,
+      attributes = {},
     }: {
       state: AlertState;
       totalCount: number;
       group: string;
       startTime?: Date;
+      attributes?: Record<string, string>;
     }) => {
+      // KNOWN LIMITATION: Alert data (including silenced state) is fetched when
+      // the task is queued via AlertProvider, not when it processes. If a user
+      // silences an alert after it's queued but before it processes, this
+      // execution may still send a notification. Subsequent alert checks will
+      // respect the silenced state. This trade-off maintains architectural
+      // separation from direct database access.
+      if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
+        alertEvaluationsCounter.add(1, { outcome: 'skipped_silenced' });
+        logger.info(
+          {
+            alertId: alert.id,
+            silenced: alert.silenced,
+          },
+          'Skipped firing alert due to silence',
+        );
+        return;
+      }
+
+      alertEvaluationsCounter.add(1, {
+        outcome: state === AlertState.ALERT ? 'fired' : 'resolved',
+      });
       logger.info(
         { alertId: alert.id, group, totalCount },
         state === AlertState.ALERT
@@ -971,7 +1000,7 @@ export const processAlert = async (
         await fireChannelEvent({
           alert,
           alertProvider,
-          attributes: {}, // FIXME: support attributes (logs + resources ?)
+          attributes,
           clickhouseClient,
           dashboard: (details as any).dashboard,
           startTime,
@@ -1090,6 +1119,7 @@ export const processAlert = async (
       // Handle case where no data is available for this bucket
       const bucketHasData = dataForBucket && dataForBucket.length > 0;
       if (!bucketHasData) {
+        alertEvaluationsCounter.add(1, { outcome: 'empty_bucket' });
         logger.info(
           { alertId: alert.id, bucketStart },
           'No data returned from ClickHouse for time bucket',
@@ -1132,8 +1162,10 @@ export const processAlert = async (
           continue;
         }
 
-        // Group key is the joined extraFields for group-by alerts, or empty string for non-grouped
-        const groupKey = hasGroupBy ? extraFields.join(', ') : '';
+        const groupKey = hasGroupBy
+          ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
+          : '';
+        const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
         const history = getOrCreateHistory(groupKey);
 
         if (doesExceedThreshold(alert, value)) {
@@ -1143,6 +1175,7 @@ export const processAlert = async (
             group: groupKey,
             totalCount: value,
             startTime: bucketStart,
+            attributes,
           });
 
           history.counts += 1;
@@ -1201,6 +1234,7 @@ export const processAlert = async (
   } catch (e) {
     // Uncomment this for better error messages locally
     // console.error(e);
+    alertProcessFailuresCounter.add(1);
     logger.error(
       {
         alertId: alert.id,
@@ -1344,6 +1378,7 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
         alertTask.conn.team.toString(),
       );
       span.setAttribute('hyperdx.alerts.connection.id', alertTask.conn.id);
+      span.setAttribute('hyperdx.alerts.batch.size', alertTask.alerts.length);
 
       try {
         const { alerts, conn } = alertTask;

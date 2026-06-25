@@ -1,4 +1,4 @@
-import type { McpKind } from '../harness/types';
+import type { McpKind } from '@/harness/types';
 
 export type ProgrammaticCheck = {
   id: string;

@@ -43,7 +43,7 @@ import { SessionEventList } from './SessionEventList';
 import { FormatTime } from './useFormatTime';
 import { formatmmss, useLocalStorage, usePrevious } from './utils';
 
-import styles from '../styles/SessionSubpanelV2.module.scss';
+import styles from '@styles/SessionSubpanelV2.module.scss';
 
 const MemoPlaybar = memo(Playbar);
 

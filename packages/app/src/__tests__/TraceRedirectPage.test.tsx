@@ -1,6 +1,7 @@
 import React from 'react';
 import { waitFor } from '@testing-library/react';
 
+// eslint-disable-next-line no-restricted-imports -- Next.js pages/ dir lives outside src, no @/ alias reaches it
 import { TraceRedirectPage } from '../../pages/trace/[traceId]';
 
 const mockReplace = jest.fn();

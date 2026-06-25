@@ -12,13 +12,13 @@ import {
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 
-import type { ChartEditorFormState } from '../types';
+import type { ChartEditorFormState } from '@/components/ChartEditor/types';
 import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
   validateChartForm,
-} from '../utils';
+} from '@/components/ChartEditor/utils';
 
 jest.mock('../../SearchInput', () => ({
   getStoredLanguage: jest.fn().mockReturnValue('lucene'),
@@ -122,15 +122,23 @@ describe('convertFormStateToSavedChartConfig', () => {
     });
   });
 
-  it('returns undefined for sql config with an unsupported displayType', () => {
+  it('returns markdown config even when configType is sql', () => {
     const form: ChartEditorFormState = {
       configType: 'sql',
       displayType: DisplayType.Markdown,
+      markdown: '## Note',
       sqlTemplate: 'SELECT 1',
       connection: 'conn-1',
       series: [],
     };
-    expect(convertFormStateToSavedChartConfig(form, undefined)).toBeUndefined();
+    const result = convertFormStateToSavedChartConfig(
+      form,
+      undefined,
+    ) as BuilderSavedChartConfig;
+    expect(result).toBeDefined();
+    expect(result.displayType).toBe(DisplayType.Markdown);
+    expect(result.markdown).toBe('## Note');
+    expect(result.select).toEqual([]);
   });
 
   it('uses sqlTemplate empty string as default when undefined', () => {
@@ -280,6 +288,41 @@ describe('convertFormStateToSavedChartConfig', () => {
       logSource,
     ) as BuilderSavedChartConfig;
     expect(result.where).toBe('');
+  });
+
+  it('returns config for Markdown displayType without a source', () => {
+    const form: ChartEditorFormState = {
+      displayType: DisplayType.Markdown,
+      markdown: '## Hello World',
+      source: '',
+      series: [],
+    };
+    const result = convertFormStateToSavedChartConfig(
+      form,
+      undefined,
+    ) as BuilderSavedChartConfig;
+    expect(result).toBeDefined();
+    expect(result.displayType).toBe(DisplayType.Markdown);
+    expect(result.markdown).toBe('## Hello World');
+    expect(result.source).toBe('');
+    expect(result.select).toEqual([]);
+    expect(result.where).toBe('');
+  });
+
+  it('returns config for Markdown displayType with a source', () => {
+    const form: ChartEditorFormState = {
+      displayType: DisplayType.Markdown,
+      markdown: '## With Source',
+      series: [],
+    };
+    const result = convertFormStateToSavedChartConfig(
+      form,
+      logSource,
+    ) as BuilderSavedChartConfig;
+    expect(result).toBeDefined();
+    expect(result.displayType).toBe(DisplayType.Markdown);
+    expect(result.source).toBe('source-log');
+    expect(result.markdown).toBe('## With Source');
   });
 });
 
