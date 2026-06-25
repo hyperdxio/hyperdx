@@ -389,36 +389,31 @@ export function ConnectionForm({
                   control={control}
                   name="isPrometheusEndpoint"
                   render={({ field: { value, onChange } }) => (
-                    <Switch
-                      data-testid="connection-prometheus-compatible-switch"
-                      checked={!!value}
-                      onChange={e => {
-                        onChange(e.currentTarget.checked);
-                        if (
-                          formState.isSubmitted ||
-                          formState.touchedFields.host
-                        ) {
-                          void trigger('host');
-                        }
-                      }}
-                      label={
-                        <Group gap="xs">
-                          <Text size="sm">Prometheus compatible</Text>
-                          <Tooltip
-                            label="Treat the Host as a Prometheus-compatible API endpoint (e.g. Thanos). PromQL queries are proxied here. ClickHouse-backed sources (logs, traces, OTel metrics) are not available on this connection."
-                            color="dark"
-                            c="white"
-                            multiline
-                            maw={400}
-                          >
-                            <IconHelpCircle
-                              size={16}
-                              className="cursor-pointer"
-                            />
-                          </Tooltip>
-                        </Group>
-                      }
-                    />
+                    <Group gap="xs">
+                      <Switch
+                        data-testid="connection-prometheus-compatible-switch"
+                        checked={!!value}
+                        onChange={e => {
+                          onChange(e.currentTarget.checked);
+                          if (
+                            formState.isSubmitted ||
+                            formState.touchedFields.host
+                          ) {
+                            void trigger('host');
+                          }
+                        }}
+                      />
+                      <Text size="sm">Prometheus compatible</Text>
+                      <Tooltip
+                        label="Treat the Host as a Prometheus-compatible API endpoint (e.g. Thanos). PromQL queries are proxied here. ClickHouse-backed sources (logs, traces, OTel metrics) are not available on this connection."
+                        color="dark"
+                        c="white"
+                        multiline
+                        maw={400}
+                      >
+                        <IconHelpCircle size={16} className="cursor-pointer" />
+                      </Tooltip>
+                    </Group>
                   )}
                 />
               </Box>
