@@ -1986,9 +1986,7 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
     }
 
     (async () => {
-      const tableNames = tablesData?.data?.map(
-        (t: { name: string }) => t.name,
-      );
+      const tableNames = tablesData?.data?.map((t: { name: string }) => t.name);
       if (!tableNames || tableNames.length === 0) return;
 
       const matched = matchMetricTables(
