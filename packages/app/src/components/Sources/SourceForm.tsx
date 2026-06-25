@@ -59,6 +59,7 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 
+import { useTablesDirect } from '@/clickhouse';
 import ConfirmDeleteMenu from '@/components/ConfirmDeleteMenu';
 import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
 import { DatabaseSelectControlled } from '@/components/DatabaseSelect';
@@ -95,6 +96,7 @@ import {
   MV_AGGREGATE_FUNCTIONS,
   MV_GRANULARITY_OPTIONS,
 } from '@/utils/materializedViews';
+import { matchMetricTables } from '@/utils/metricTableAutofill';
 import {
   getSourceConfigPairingWarnings,
   inferSourceFieldCandidates,
@@ -1954,6 +1956,35 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
       }
     })();
   }, [metricTables, databaseName, connectionId, metadata]);
+
+  // Auto-fill metric table dropdowns by matching table names to metric types
+  const { data: tablesData } = useTablesDirect(
+    { database: databaseName, connectionId: connectionId ?? '' },
+    { enabled: !!databaseName && !!connectionId },
+  );
+
+  useEffect(() => {
+    const tableNames = tablesData?.data?.map((t: { name: string }) => t.name);
+    if (!tableNames || tableNames.length === 0) return;
+
+    const matched = matchMetricTables(
+      tableNames,
+      (metricTables as Partial<Record<MetricsDataType, string>>) ?? {},
+    );
+
+    const entries = Object.entries(matched) as [MetricsDataType, string][];
+    for (const [metricType, tableName] of entries) {
+      setValue(`metricTables.${metricType}` as any, tableName);
+    }
+
+    if (entries.length > 0) {
+      notifications.show({
+        color: 'green',
+        message: 'Auto-detected metric tables from database.',
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tablesData, databaseName, connectionId]);
 
   return (
     <>
