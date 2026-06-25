@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import type { RequestHandler } from 'http-proxy-middleware';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
 const DEFAULT_SERVER_URL = `http://127.0.0.1:${process.env.HYPERDX_API_PORT}`;
 
@@ -16,26 +16,7 @@ export const config = {
 // we proxy `/api/*` to a separately-deployed API service as before.
 const isInlineApi = process.env.HDX_PREVIEW_INLINE_API === 'true';
 
-// http-proxy-middleware v4 is ESM-only. Use a dynamic import with a cached
-// promise so the module is loaded once and concurrent requests share the result.
-let _proxyPromise: Promise<RequestHandler> | undefined;
-
-function getProxy(): Promise<RequestHandler> {
-  if (!_proxyPromise) {
-    _proxyPromise = import('http-proxy-middleware').then(
-      ({ createProxyMiddleware }) =>
-        createProxyMiddleware({
-          changeOrigin: true,
-          pathRewrite: { '^/api': '' },
-          target: process.env.SERVER_URL || DEFAULT_SERVER_URL,
-          autoRewrite: true,
-        }),
-    );
-  }
-  return _proxyPromise;
-}
-
-export default async (req: NextApiRequest, res: NextApiResponse) => {
+export default (req: NextApiRequest, res: NextApiResponse) => {
   if (isInlineApi) {
     // Lazy require so non-preview production builds — where the webpack
     // externals hook in next.config.mjs marks @hyperdx/api as external —
@@ -46,7 +27,16 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     return handler(req, res);
   }
 
-  const proxy = await getProxy();
+  const proxy = createProxyMiddleware({
+    changeOrigin: true,
+    // logger: console, // DEBUG
+    pathRewrite: { '^/api': '' },
+    target: process.env.SERVER_URL || DEFAULT_SERVER_URL,
+    autoRewrite: true,
+    // ...(IS_DEV && {
+    //   logger: console,
+    // }),
+  });
   return proxy(req, res, error => {
     if (error) {
       console.error(error);
