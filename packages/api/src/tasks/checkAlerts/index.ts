@@ -927,14 +927,14 @@ export const processAlert = async (
         operation: 'alerts.query',
         outcome: 'success',
         durationMs: performance.now() - queryStartedAt,
-        attributes: { alert_source: alert.source },
+        attributes: { alert_source: alert.source ?? 'unknown' },
       });
     } catch (e) {
       recordOperationOutcome({
         operation: 'alerts.query',
         outcome: 'error',
         durationMs: performance.now() - queryStartedAt,
-        attributes: { alert_source: alert.source },
+        attributes: { alert_source: alert.source ?? 'unknown' },
       });
       evalOutcome = 'error';
       alertQueryFailuresCounter.add(1);
@@ -1302,7 +1302,7 @@ export const processAlert = async (
         operation: 'alerts.evaluate',
         outcome: evalOutcome,
         durationMs: performance.now() - evalStartedAt,
-        attributes: { alert_source: alert.source },
+        attributes: { alert_source: alert.source ?? 'unknown' },
       });
     }
   }

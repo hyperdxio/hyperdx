@@ -274,7 +274,6 @@ const proxyMiddleware: RequestHandler =
           outcome: statusCode < 400 ? 'success' : 'error',
           durationMs:
             typeof startedAt === 'number' ? performance.now() - startedAt : 0,
-          attributes: { status_code: statusCode },
         });
 
         // since clickhouse v24, the cors headers * will be attached to the response by default
@@ -303,7 +302,6 @@ const proxyMiddleware: RequestHandler =
           outcome: 'error',
           durationMs:
             typeof startedAt === 'number' ? performance.now() - startedAt : 0,
-          attributes: { status_code: 0 },
         });
         console.error('Proxy error:', err);
         (_res as Response).writeHead(500, {

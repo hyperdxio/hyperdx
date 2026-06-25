@@ -51,7 +51,7 @@ import * as slack from '@/utils/slack';
 // `service` and `outcome` are bounded enums (see agent_docs/observability.md).
 const webhookDeliveryCounter = getCounter('hyperdx.alerts.webhook_deliveries', {
   description:
-    'Count of alert webhook delivery attempts, labeled by service (slack, generic, incidentio) and outcome (success, failure).',
+    'Count of alert webhook delivery attempts, labeled by service (slack, generic, incidentio) and outcome (success, error).',
 });
 const webhookDeliveryDuration = getHistogram(
   'hyperdx.alerts.webhook_delivery.duration_ms',
@@ -304,7 +304,7 @@ export const handleSendSlackWebhook = async (
   } catch (e) {
     webhookDeliveryCounter.add(1, {
       service: WebhookService.Slack,
-      outcome: 'failure',
+      outcome: 'error',
     });
     throw e;
   } finally {
@@ -325,7 +325,7 @@ export const handleSendGenericWebhook = async (
     await sendGenericWebhook(webhook, message);
     webhookDeliveryCounter.add(1, { service, outcome: 'success' });
   } catch (e) {
-    webhookDeliveryCounter.add(1, { service, outcome: 'failure' });
+    webhookDeliveryCounter.add(1, { service, outcome: 'error' });
     throw e;
   } finally {
     webhookDeliveryDuration.record(performance.now() - startedAt, { service });
