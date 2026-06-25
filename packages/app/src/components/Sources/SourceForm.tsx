@@ -2054,10 +2054,13 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
 
       if (filledFields.size === 0) return;
 
+      // Merge with any previously auto-filled fields so a database switch
+      // clears all of them, not just the ones from the latest run.
+      const prevFields = autofillRef.current?.fields ?? new Set();
       autofillRef.current = {
         database: databaseName,
         connectionId,
-        fields: filledFields,
+        fields: new Set([...prevFields, ...filledFields]),
       };
 
       notifications.show({
@@ -2070,7 +2073,7 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tablesData, databaseName, connectionId]);
+  }, [tablesData, databaseName, connectionId, metadata]);
 
   return (
     <>
