@@ -1957,68 +1957,38 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
     })();
   }, [metricTables, databaseName, connectionId, metadata]);
 
-  // Auto-fill metric table dropdowns by matching table names to metric types
+  // Auto-fill metric table dropdowns by matching table names to metric types.
+  // One-shot per database+connection pair: runs once when tables load for a
+  // new db/connection, then never re-fires for that pair. No clearing of old
+  // values — switching databases naturally empties the dropdowns since the
+  // new table list won't contain the old names.
   const { data: tablesData } = useTablesDirect(
     { database: databaseName, connectionId: connectionId ?? '' },
     { enabled: !!databaseName && !!connectionId },
   );
 
-  // Track which fields we auto-filled and for which database/connection,
-  // so we can clear stale values when the user switches databases.
-  const autofillRef = useRef<{
-    database: string;
-    connectionId: string;
-    fields: Set<MetricsDataType>;
-  } | null>(null);
-
-  // Keep a live ref to metricTables so the async autofill can read
-  // current values without being a dependency that re-triggers it.
-  const metricTablesRef = useRef(metricTables);
-  metricTablesRef.current = metricTables;
+  const lastAutofillKeyRef = useRef('');
 
   useEffect(() => {
-    // When the database or connection changes, clear any previously
-    // auto-filled values so the new database's tables can take over.
-    const prev = autofillRef.current;
-    const clearedFields = new Set<MetricsDataType>();
-    if (
-      prev &&
-      (prev.database !== databaseName || prev.connectionId !== connectionId)
-    ) {
-      for (const metricType of prev.fields) {
-        setValue(`metricTables.${metricType}` as any, '');
-        clearedFields.add(metricType);
-      }
-      autofillRef.current = null;
-    }
+    const key = `${databaseName}:${connectionId}`;
+    if (key === lastAutofillKeyRef.current) return; // already ran for this db
 
-    // Abort in-flight validation if the database/connection switches
-    // before validation completes.
+    const tableNames = tablesData?.data?.map((t: { name: string }) => t.name);
+    if (!tableNames || tableNames.length === 0) return;
+
+    const matched = matchMetricTables(tableNames, {});
+
+    const entries = Object.entries(matched) as [MetricsDataType, string][];
+    if (entries.length === 0) return;
+
+    // Mark as done before async work so a rapid db switch doesn't double-fire.
+    lastAutofillKeyRef.current = key;
+
     let cancelled = false;
 
     (async () => {
-      const tableNames = tablesData?.data?.map((t: { name: string }) => t.name);
-      if (!tableNames || tableNames.length === 0) return;
-
-      // Build the current values snapshot, treating just-cleared fields as
-      // empty so matchMetricTables considers them eligible for autofill.
-      // The ref still holds stale values because React hasn't re-rendered yet.
-      const currentValues = {
-        ...((metricTablesRef.current as Partial<
-          Record<MetricsDataType, string>
-        >) ?? {}),
-      };
-      for (const field of clearedFields) {
-        currentValues[field] = '';
-      }
-
-      const matched = matchMetricTables(tableNames, currentValues);
-
-      const entries = Object.entries(matched) as [MetricsDataType, string][];
-      if (entries.length === 0) return;
-
       // Validate each candidate before setting it, so we never show a
-      // green "auto-detected" notification followed by red validation errors.
+      // green notification followed by red validation errors.
       const validated: [MetricsDataType, string][] = [];
       for (const [metricType, tableName] of entries) {
         if (cancelled) return;
@@ -2040,28 +2010,9 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
 
       if (cancelled || validated.length === 0) return;
 
-      // Re-read current values after the async gap to avoid overwriting
-      // fields the user edited while validation was in-flight.
-      const current =
-        (metricTablesRef.current as Partial<Record<MetricsDataType, string>>) ??
-        {};
-      const filledFields = new Set<MetricsDataType>();
       for (const [metricType, tableName] of validated) {
-        if (current[metricType]) continue; // user filled it during validation
         setValue(`metricTables.${metricType}` as any, tableName);
-        filledFields.add(metricType);
       }
-
-      if (filledFields.size === 0) return;
-
-      // Merge with any previously auto-filled fields so a database switch
-      // clears all of them, not just the ones from the latest run.
-      const prevFields = autofillRef.current?.fields ?? new Set();
-      autofillRef.current = {
-        database: databaseName,
-        connectionId,
-        fields: new Set([...prevFields, ...filledFields]),
-      };
 
       notifications.show({
         color: 'green',
