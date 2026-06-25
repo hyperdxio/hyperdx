@@ -1976,7 +1976,10 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
     const tableNames = tablesData?.data?.map((t: { name: string }) => t.name);
     if (!tableNames || tableNames.length === 0) return;
 
-    const matched = matchMetricTables(tableNames, {});
+    const matched = matchMetricTables(
+      tableNames,
+      (metricTables as Partial<Record<MetricsDataType, string>>) ?? {},
+    );
 
     const entries = Object.entries(matched) as [MetricsDataType, string][];
     if (entries.length === 0) return;
