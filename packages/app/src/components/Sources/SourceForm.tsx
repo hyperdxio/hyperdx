@@ -1980,12 +1980,14 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
     // When the database or connection changes, clear any previously
     // auto-filled values so the new database's tables can take over.
     const prev = autofillRef.current;
+    const clearedFields = new Set<MetricsDataType>();
     if (
       prev &&
       (prev.database !== databaseName || prev.connectionId !== connectionId)
     ) {
       for (const metricType of prev.fields) {
         setValue(`metricTables.${metricType}` as any, '');
+        clearedFields.add(metricType);
       }
       autofillRef.current = null;
     }
@@ -1998,11 +2000,19 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
       const tableNames = tablesData?.data?.map((t: { name: string }) => t.name);
       if (!tableNames || tableNames.length === 0) return;
 
-      const matched = matchMetricTables(
-        tableNames,
-        (metricTablesRef.current as Partial<Record<MetricsDataType, string>>) ??
-          {},
-      );
+      // Build the current values snapshot, treating just-cleared fields as
+      // empty so matchMetricTables considers them eligible for autofill.
+      // The ref still holds stale values because React hasn't re-rendered yet.
+      const currentValues = {
+        ...((metricTablesRef.current as Partial<
+          Record<MetricsDataType, string>
+        >) ?? {}),
+      };
+      for (const field of clearedFields) {
+        currentValues[field] = '';
+      }
+
+      const matched = matchMetricTables(tableNames, currentValues);
 
       const entries = Object.entries(matched) as [MetricsDataType, string][];
       if (entries.length === 0) return;
