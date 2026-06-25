@@ -12,7 +12,7 @@ import type {
   BaseResultSet,
   ClickHouseSettings,
   DataFormat,
-} from '@clickhouse/client-common';
+} from '@clickhouse/client';
 
 import {
   BaseClickhouseClient,

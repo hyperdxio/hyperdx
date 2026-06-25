@@ -1,8 +1,9 @@
 import type {
   BaseResultSet,
+  ClickHouseClient as WebClickHouseClient,
   ClickHouseSettings,
   DataFormat,
-} from '@clickhouse/client-common';
+} from '@clickhouse/client-web';
 import { createClient } from '@clickhouse/client-web';
 
 import {
@@ -72,6 +73,13 @@ export class ClickhouseClient extends BaseClickhouseClient {
     super(options);
   }
 
+  // This subclass always builds a web client, so narrow the base class's
+  // platform-agnostic client type to the web-specific one.
+  protected getClient(): WebClickHouseClient {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- subclass always builds a web client
+    return super.getClient() as WebClickHouseClient;
+  }
+
   private buildClient() {
     let url = this.host!;
     let myFetch: typeof fetch;
@@ -125,10 +133,12 @@ export class ClickhouseClient extends BaseClickhouseClient {
     let clickhouseSettings: ClickHouseSettings | undefined;
     // If this is the settings query, we must not process the clickhouse settings, or else we will infinitely recurse
     if (!shouldSkipApplySettings) {
-      clickhouseSettings = await this.processClickhouseSettings({
+      // The shared base class produces a platform-neutral settings object; the
+      // web client expects its own (now self-bundled) ClickHouseSettings type.
+      clickhouseSettings = (await this.processClickhouseSettings({
         connectionId,
         externalClickhouseSettings,
-      });
+      })) as ClickHouseSettings;
     }
 
     const httpHeaders: { [header: string]: string } = {

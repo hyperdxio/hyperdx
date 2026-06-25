@@ -129,6 +129,26 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         Palette token used to color a number tile. Tokens reflow across
  *         light and dark themes, so raw hex values are not accepted.
  *       example: "chart-red"
+ *     BackgroundChart:
+ *       type: object
+ *       required:
+ *         - type
+ *       description: >
+ *         Optional background trend sparkline drawn behind a number tile's
+ *         value, derived from a time-bucketed version of the tile's query.
+ *         Builder number tiles only (raw SQL number tiles have no time
+ *         dimension to bucket).
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [line, area]
+ *           description: Sparkline shape.
+ *           example: "line"
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: >
+ *             Optional palette-token override for the sparkline. When unset
+ *             the sparkline inherits the tile's static color.
  *     NumericColorCondition:
  *       type: object
  *       required:
@@ -755,6 +775,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             text color when no rule matches.
  *           items:
  *             $ref: '#/components/schemas/NumberTileColorCondition'
+ *         backgroundChart:
+ *           $ref: '#/components/schemas/BackgroundChart'
+ *           description: >
+ *             Optional background trend sparkline drawn behind the value.
  *
  *     PieBuilderChartConfig:
  *       type: object

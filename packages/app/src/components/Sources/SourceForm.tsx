@@ -59,6 +59,7 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 
+import { useTablesDirect } from '@/clickhouse';
 import ConfirmDeleteMenu from '@/components/ConfirmDeleteMenu';
 import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
 import { DatabaseSelectControlled } from '@/components/DatabaseSelect';
@@ -95,6 +96,7 @@ import {
   MV_AGGREGATE_FUNCTIONS,
   MV_GRANULARITY_OPTIONS,
 } from '@/utils/materializedViews';
+import { matchMetricTables } from '@/utils/metricTableAutofill';
 import {
   getSourceConfigPairingWarnings,
   inferSourceFieldCandidates,
@@ -1954,6 +1956,78 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
       }
     })();
   }, [metricTables, databaseName, connectionId, metadata]);
+
+  // Auto-fill metric table dropdowns by matching table names to metric types.
+  // One-shot per database+connection pair: runs once when tables load for a
+  // new db/connection, then never re-fires for that pair. No clearing of old
+  // values — switching databases naturally empties the dropdowns since the
+  // new table list won't contain the old names.
+  const { data: tablesData } = useTablesDirect(
+    { database: databaseName, connectionId: connectionId ?? '' },
+    { enabled: !!databaseName && !!connectionId },
+  );
+
+  const lastAutofillKeyRef = useRef('');
+
+  useEffect(() => {
+    const key = `${databaseName}:${connectionId}`;
+    if (key === lastAutofillKeyRef.current) return; // already ran for this db
+
+    const tableNames = tablesData?.data?.map((t: { name: string }) => t.name);
+    if (!tableNames || tableNames.length === 0) return;
+
+    const matched = matchMetricTables(
+      tableNames,
+      (metricTables as Partial<Record<MetricsDataType, string>>) ?? {},
+    );
+
+    const entries = Object.entries(matched) as [MetricsDataType, string][];
+    if (entries.length === 0) return;
+
+    // Mark as done before async work so a rapid db switch doesn't double-fire.
+    lastAutofillKeyRef.current = key;
+
+    let cancelled = false;
+
+    (async () => {
+      // Validate each candidate before setting it, so we never show a
+      // green notification followed by red validation errors.
+      const validated: [MetricsDataType, string][] = [];
+      for (const [metricType, tableName] of entries) {
+        if (cancelled) return;
+        try {
+          const valid = await isValidMetricTable({
+            databaseName,
+            tableName,
+            connectionId,
+            metricType,
+            metadata,
+          });
+          if (valid) {
+            validated.push([metricType, tableName]);
+          }
+        } catch {
+          // Skip tables that fail validation (e.g. network error)
+        }
+      }
+
+      if (cancelled || validated.length === 0) return;
+
+      for (const [metricType, tableName] of validated) {
+        setValue(`metricTables.${metricType}` as any, tableName);
+      }
+
+      notifications.show({
+        color: 'green',
+        message: 'Auto-detected metric tables from database.',
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tablesData, databaseName, connectionId, metadata]);
 
   return (
     <>
