@@ -141,6 +141,36 @@ Metric conventions:
 - **Define instruments at module scope** via `getCounter`/`getHistogram` so they
   are created once and reused.
 
+### SLOs (operation metrics)
+
+To make a piece of functionality SLO-able, wrap it with `withOperationMetrics`
+(or call `recordOperationOutcome` directly when timing is managed manually, e.g.
+a streaming proxy). Both emit a standard pair of SLI signals tagged with a
+stable, low-cardinality `operation` name and `outcome` (`success` | `error`):
+
+| Metric                          | Type      | Use as          |
+| ------------------------------- | --------- | --------------- |
+| `hyperdx.operation.requests`    | counter   | availability SLI |
+| `hyperdx.operation.duration_ms` | histogram | latency SLI     |
+
+```ts
+import { withOperationMetrics } from '@/utils/instrumentation';
+
+const chartConfig = await withOperationMetrics(
+  'ai.assistant',
+  () => generateChart(prompt),
+  { source_kind: source.kind },
+);
+```
+
+Because every operation reports through the same two metrics, an SLO is just a
+filter on `operation` — availability = `outcome:success` / total, latency =
+the duration histogram. Keep `operation` a constant (e.g. `ai.assistant`,
+`clickhouse_proxy.query`); never interpolate IDs or user input into it. Reach
+for this on functionality with real failure modes worth a target (external
+dependencies, query proxies, AI calls) — not on thin CRUD that the HTTP
+auto-instrumentation and error middleware already cover.
+
 ## Where to look for examples
 
 - Generic span + status handling: `packages/api/src/utils/instrumentation.ts`
@@ -153,3 +183,17 @@ Metric conventions:
 - Query duration + error metrics:
   `packages/api/src/routers/external-api/v2/search.ts` and `charts.ts`
 - Scheduled-task metrics pattern: `packages/api/src/tasks/metrics.ts`
+- Outcome counter + span on a non-HTTP entry point:
+  `packages/api/src/opamp/controllers/opampController.ts`
+- Duration + swallowed-error counters where errors never reach the error
+  middleware: `packages/api/src/routers/api/prometheus.ts`
+- Delivery attempt counter + duration around an outbound webhook:
+  `packages/api/src/tasks/checkAlerts/template.ts`
+- Connection lifecycle-event counter: `packages/api/src/models/index.ts`
+- SLO operation metrics (`withOperationMetrics`) on an external dependency:
+  `packages/api/src/routers/api/ai.ts`
+- SLO operation metrics (`recordOperationOutcome`) on a streaming proxy:
+  `packages/api/src/routers/api/clickhouseProxy.ts`
+- End-to-end + sub-operation SLO metrics on a background job (alert evaluation
+  and its data fetch): `packages/api/src/tasks/checkAlerts/index.ts`
+  (`alerts.evaluate`, `alerts.query`)

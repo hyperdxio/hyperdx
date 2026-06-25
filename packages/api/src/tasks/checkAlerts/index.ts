@@ -46,6 +46,7 @@ import { isString, pick } from 'lodash';
 import { ObjectId } from 'mongoose';
 import mongoose from 'mongoose';
 import ms from 'ms';
+import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
@@ -75,7 +76,11 @@ import {
   roundDownToXMinutes,
   unflattenObject,
 } from '@/tasks/util';
-import { getCounter } from '@/utils/instrumentation';
+import {
+  getCounter,
+  type OperationOutcome,
+  recordOperationOutcome,
+} from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
 // Outcome of a single alert evaluation. Kept low-cardinality (a fixed enum) so
@@ -738,6 +743,12 @@ export const processAlert = async (
   // Errors collected during this execution. Webhook errors accumulate here; query
   // and validation errors are recorded via recordAlertErrors before returning.
   const executionErrors: IAlertError[] = [];
+  // SLO signal for "alerts triggering". Defaults to success; flipped to
+  // 'skipped' on scheduling no-ops (excluded from the SLI) and to 'error' on
+  // any failure path. Recorded once in the finally below so the latency/
+  // availability SLIs cover every real evaluation regardless of exit point.
+  const evalStartedAt = performance.now();
+  let evalOutcome: OperationOutcome | 'skipped' = 'success';
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;
     const scheduleStartAt = normalizeScheduleStartAt({
@@ -745,6 +756,7 @@ export const processAlert = async (
       scheduleStartAt: alert.scheduleStartAt,
     });
     if (scheduleStartAt != null && now < scheduleStartAt) {
+      evalOutcome = 'skipped';
       alertEvaluationsCounter.add(1, { outcome: 'skipped_schedule' });
       logger.info(
         {
@@ -782,6 +794,7 @@ export const processAlert = async (
 
     // Check if we should skip this alert check based on last evaluation time
     if (shouldSkipAlertCheck(details, hasGroupBy, nowInMinsRoundDown)) {
+      evalOutcome = 'skipped';
       alertEvaluationsCounter.add(1, { outcome: 'skipped_window' });
       logger.info(
         {
@@ -806,6 +819,7 @@ export const processAlert = async (
       scheduleStartAt,
     );
     if (dateRange[0].getTime() >= dateRange[1].getTime()) {
+      evalOutcome = 'skipped';
       alertEvaluationsCounter.add(1, { outcome: 'skipped_anchor' });
       logger.info(
         {
@@ -827,6 +841,7 @@ export const processAlert = async (
     );
 
     if (chartConfig == null) {
+      evalOutcome = 'error';
       logger.error(
         {
           chartConfig,
@@ -898,6 +913,7 @@ export const processAlert = async (
     // Query for alert data. If the query fails, record the error and exit
     // without touching alert state or creating an AlertHistory.
     let checksData;
+    const queryStartedAt = performance.now();
     try {
       checksData = await clickhouseClient.queryChartConfig({
         config: optimizedChartConfig,
@@ -905,7 +921,22 @@ export const processAlert = async (
         opts: { clickhouse_settings: clickHouseSettings },
         querySettings: source?.querySettings,
       });
+      // SLO signal for alert data fetching (distinct from the end-to-end
+      // evaluation SLI): did ClickHouse serve the alert query, and how fast.
+      recordOperationOutcome({
+        operation: 'alerts.query',
+        outcome: 'success',
+        durationMs: performance.now() - queryStartedAt,
+        attributes: { alert_source: alert.source },
+      });
     } catch (e) {
+      recordOperationOutcome({
+        operation: 'alerts.query',
+        outcome: 'error',
+        durationMs: performance.now() - queryStartedAt,
+        attributes: { alert_source: alert.source },
+      });
+      evalOutcome = 'error';
       alertQueryFailuresCounter.add(1);
       logger.error(
         {
@@ -1048,6 +1079,7 @@ export const processAlert = async (
 
     const meta = getResponseMetadata(chartConfig, checksData);
     if (!meta) {
+      evalOutcome = 'error';
       logger.error({ alertId: alert.id }, 'Failed to get response metadata');
       return;
     }
@@ -1234,6 +1266,7 @@ export const processAlert = async (
   } catch (e) {
     // Uncomment this for better error messages locally
     // console.error(e);
+    evalOutcome = 'error';
     alertProcessFailuresCounter.add(1);
     logger.error(
       {
@@ -1260,6 +1293,17 @@ export const processAlert = async (
         },
         'Failed to persist alert execution error',
       );
+    }
+  } finally {
+    // Scheduling skips are successful no-ops, not evaluations — exclude them so
+    // the SLI denominator only counts evaluations that actually ran.
+    if (evalOutcome !== 'skipped') {
+      recordOperationOutcome({
+        operation: 'alerts.evaluate',
+        outcome: evalOutcome,
+        durationMs: performance.now() - evalStartedAt,
+        attributes: { alert_source: alert.source },
+      });
     }
   }
 };

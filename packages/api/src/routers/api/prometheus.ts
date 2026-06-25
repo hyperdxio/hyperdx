@@ -1,11 +1,32 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import express from 'express';
+import { performance } from 'perf_hooks';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
+import { getCounter, getHistogram } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
 const router = express.Router();
+
+// The proxy handlers catch their own errors and return Prometheus-shaped 4xx
+// bodies, so failures never reach the API error middleware. Track them here
+// instead. `endpoint` and `backend` are bounded enums (see
+// agent_docs/observability.md), never raw queries.
+type PrometheusBackend = 'prometheus' | 'clickhouse' | 'unknown';
+
+const prometheusQueryDuration = getHistogram(
+  'hyperdx.prometheus.query.duration_ms',
+  {
+    description:
+      'Duration of a Prometheus-compatible proxy request, labeled by endpoint and backend.',
+    unit: 'ms',
+  },
+);
+const prometheusQueryErrors = getCounter('hyperdx.prometheus.query_errors', {
+  description:
+    'Count of Prometheus-compatible proxy requests that failed, labeled by endpoint and backend.',
+});
 
 // Accept URL-encoded form bodies (Prometheus standard) and JSON
 router.use(express.urlencoded({ extended: true }));
@@ -160,6 +181,8 @@ async function proxyToPrometheus(
 // --------------------------
 
 const queryRangeHandler: express.RequestHandler = async (req, res) => {
+  const startedAt = performance.now();
+  let backend: PrometheusBackend = 'unknown';
   try {
     const { teamId } = getNonNullUserWithTeam(req);
     const params = getParams(req);
@@ -198,6 +221,7 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
 
     // If connection has a Prometheus endpoint, proxy directly
     if (connection.prometheusEndpoint) {
+      backend = 'prometheus';
       const result = await proxyToPrometheus(
         connection.prometheusEndpoint,
         '/api/v1/query_range',
@@ -207,6 +231,7 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
     }
 
     // Otherwise, use ClickHouse prometheusQuery()
+    backend = 'clickhouse';
     const start = parseTimestamp(params.start);
     const end = parseTimestamp(params.end);
     const step = parseDuration(params.step ?? '60s');
@@ -261,11 +286,17 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       },
     });
   } catch (e) {
+    prometheusQueryErrors.add(1, { endpoint: 'query_range', backend });
     logger.error(e, 'Prometheus query_range error');
     return res.status(400).json({
       status: 'error',
       errorType: 'bad_data',
       error: e instanceof Error ? e.message : String(e),
+    });
+  } finally {
+    prometheusQueryDuration.record(performance.now() - startedAt, {
+      endpoint: 'query_range',
+      backend,
     });
   }
 };
@@ -277,6 +308,8 @@ router.post('/query_range', queryRangeHandler);
 // --------------------------
 
 const queryHandler: express.RequestHandler = async (req, res) => {
+  const startedAt = performance.now();
+  let backend: PrometheusBackend = 'unknown';
   try {
     const { teamId } = getNonNullUserWithTeam(req);
     const params = getParams(req);
@@ -313,6 +346,7 @@ const queryHandler: express.RequestHandler = async (req, res) => {
     }
 
     if (connection.prometheusEndpoint) {
+      backend = 'prometheus';
       const result = await proxyToPrometheus(
         connection.prometheusEndpoint,
         '/api/v1/query',
@@ -321,6 +355,7 @@ const queryHandler: express.RequestHandler = async (req, res) => {
       return res.json(result);
     }
 
+    backend = 'clickhouse';
     const time = params.time ? parseTimestamp(params.time) : undefined;
     const database = params.database ?? 'default';
     const table = params.table ?? 'otel_metrics_ts';
@@ -356,11 +391,17 @@ const queryHandler: express.RequestHandler = async (req, res) => {
       },
     });
   } catch (e) {
+    prometheusQueryErrors.add(1, { endpoint: 'query', backend });
     logger.error(e, 'Prometheus query error');
     return res.status(400).json({
       status: 'error',
       errorType: 'bad_data',
       error: e instanceof Error ? e.message : String(e),
+    });
+  } finally {
+    prometheusQueryDuration.record(performance.now() - startedAt, {
+      endpoint: 'query',
+      backend,
     });
   }
 };
@@ -372,6 +413,8 @@ router.post('/query', queryHandler);
 // --------------------------
 
 router.get('/label/:name/values', async (req, res) => {
+  const startedAt = performance.now();
+  let backend: PrometheusBackend = 'unknown';
   try {
     const { teamId } = getNonNullUserWithTeam(req);
     const labelName = req.params.name;
@@ -401,6 +444,7 @@ router.get('/label/:name/values', async (req, res) => {
 
     // Proxy to Prometheus if endpoint is set
     if (connection.prometheusEndpoint) {
+      backend = 'prometheus';
       const result = await proxyToPrometheus(
         connection.prometheusEndpoint,
         `/api/v1/label/${labelName}/values`,
@@ -409,6 +453,7 @@ router.get('/label/:name/values', async (req, res) => {
       return res.json(result);
     }
 
+    backend = 'clickhouse';
     const database = params.database ?? 'default';
     const table = params.table ?? 'otel_metrics_ts';
 
@@ -439,11 +484,17 @@ router.get('/label/:name/values', async (req, res) => {
 
     return res.json({ status: 'success', data: values });
   } catch (e) {
+    prometheusQueryErrors.add(1, { endpoint: 'label_values', backend });
     logger.error(e, 'Prometheus label values error');
     return res.status(400).json({
       status: 'error',
       errorType: 'bad_data',
       error: e instanceof Error ? e.message : String(e),
+    });
+  } finally {
+    prometheusQueryDuration.record(performance.now() - startedAt, {
+      endpoint: 'label_values',
+      backend,
     });
   }
 });

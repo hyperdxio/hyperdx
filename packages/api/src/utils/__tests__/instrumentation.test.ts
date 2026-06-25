@@ -60,8 +60,10 @@ import {
   getHistogram,
   getStaticFeatureFlags,
   recordDuration,
+  recordOperationOutcome,
   setBusinessContext,
   SpanStatusCode,
+  withOperationMetrics,
   withSpan,
 } from '@/utils/instrumentation';
 
@@ -200,6 +202,73 @@ describe('instrumentation', () => {
         expect.any(Number),
         undefined,
       );
+    });
+  });
+
+  describe('recordOperationOutcome', () => {
+    it('emits the request counter and duration histogram with operation + outcome', () => {
+      recordOperationOutcome({
+        operation: 'test.op',
+        outcome: 'success',
+        durationMs: 12,
+        attributes: { extra: 'x' },
+      });
+
+      expect(mockCounter.add).toHaveBeenCalledWith(1, {
+        extra: 'x',
+        operation: 'test.op',
+        outcome: 'success',
+      });
+      expect(mockHistogram.record).toHaveBeenCalledWith(12, {
+        extra: 'x',
+        operation: 'test.op',
+        outcome: 'success',
+      });
+    });
+  });
+
+  describe('withOperationMetrics', () => {
+    it('records a success outcome and returns the result', async () => {
+      const result = await withOperationMetrics('test.op', async () => 'ok');
+
+      expect(result).toBe('ok');
+      expect(mockCounter.add).toHaveBeenCalledWith(1, {
+        operation: 'test.op',
+        outcome: 'success',
+      });
+      expect(mockHistogram.record).toHaveBeenCalledWith(expect.any(Number), {
+        operation: 'test.op',
+        outcome: 'success',
+      });
+    });
+
+    it('records an error outcome and rethrows', async () => {
+      await expect(
+        withOperationMetrics('test.op', async () => {
+          throw new Error('boom');
+        }),
+      ).rejects.toThrow('boom');
+
+      expect(mockCounter.add).toHaveBeenCalledWith(1, {
+        operation: 'test.op',
+        outcome: 'error',
+      });
+      expect(mockHistogram.record).toHaveBeenCalledWith(expect.any(Number), {
+        operation: 'test.op',
+        outcome: 'error',
+      });
+    });
+
+    it('merges extra attributes into both signals', async () => {
+      await withOperationMetrics('test.op', async () => undefined, {
+        provider: 'anthropic',
+      });
+
+      expect(mockCounter.add).toHaveBeenCalledWith(1, {
+        provider: 'anthropic',
+        operation: 'test.op',
+        outcome: 'success',
+      });
     });
   });
 });
