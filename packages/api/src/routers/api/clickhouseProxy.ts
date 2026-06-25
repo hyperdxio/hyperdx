@@ -290,8 +290,7 @@ const proxyMiddleware: RequestHandler =
         }
 
         if (_req.headers.origin) {
-          proxyRes.headers['access-control-allow-origin'] =
-            _req.headers.origin;
+          proxyRes.headers['access-control-allow-origin'] = _req.headers.origin;
           proxyRes.headers['access-control-allow-credentials'] = 'true';
         }
       },
