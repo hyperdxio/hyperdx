@@ -4,7 +4,7 @@ import {
   acceptCompletion,
   autocompletion,
   Completion,
-  CompletionResult,
+  CompletionSource,
   startCompletion,
 } from '@codemirror/autocomplete';
 import { Paper, useMantineColorScheme } from '@mantine/core';
@@ -47,6 +47,50 @@ const COMPLETION_LIMIT = 500;
 // any in-flight scan from a previous burst short-circuits and returns null.
 const COMPLETION_DEBOUNCE_MS = 150;
 
+const debounceAndPruneAutocompleteResults: (
+  metricNames: string[],
+) => CompletionSource = metricNames => {
+  return async context => {
+    const word = context.matchBefore(/[\w.:]+/);
+    if (!word && !context.explicit) return null;
+
+    if (!context.explicit) {
+      // debounce so we don't do this expensive operation on every keystroke
+      await new Promise(r => setTimeout(r, COMPLETION_DEBOUNCE_MS));
+      if (context.aborted) return null;
+    }
+
+    const prefix = (word?.text ?? '').toLowerCase();
+    // matches is a list with a max length of COMPLETION_LIMIT of search terms that match.
+    // For large metrics deployments, this is necessary
+    const matches: Completion[] = [];
+    if (prefix === '') {
+      for (
+        let i = 0;
+        i < metricNames.length && matches.length < COMPLETION_LIMIT;
+        i++
+      ) {
+        matches.push({ label: metricNames[i], type: 'variable' });
+      }
+    } else {
+      for (
+        let i = 0;
+        i < metricNames.length && matches.length < COMPLETION_LIMIT;
+        i++
+      ) {
+        if (metricNames[i].toLowerCase().startsWith(prefix)) {
+          matches.push({ label: metricNames[i], type: 'variable' });
+        }
+      }
+    }
+
+    return {
+      from: word?.from ?? context.pos,
+      options: matches,
+    };
+  };
+};
+
 export default function PromQLEditor({
   value,
   onChange,
@@ -61,51 +105,12 @@ export default function PromQLEditor({
 
   const updateAutocomplete = useCallback(
     (viewRef: EditorView) => {
-      const all = metricNames ?? [];
-      if (all.length === 0) return;
+      if (!metricNames || metricNames.length === 0) return;
 
       viewRef.dispatch({
         effects: compartmentRef.current.reconfigure(
           autocompletion({
-            override: [
-              async (context): Promise<CompletionResult | null> => {
-                const word = context.matchBefore(/[\w.:]+/);
-                if (!word && !context.explicit) return null;
-
-                if (!context.explicit) {
-                  // debounce so we don't do this expensive operation on every keystroke
-                  await new Promise(r => setTimeout(r, COMPLETION_DEBOUNCE_MS));
-                  if (context.aborted) return null;
-                }
-
-                const prefix = (word?.text ?? '').toLowerCase();
-                const matches: Completion[] = [];
-                if (prefix === '') {
-                  for (
-                    let i = 0;
-                    i < all.length && matches.length < COMPLETION_LIMIT;
-                    i++
-                  ) {
-                    matches.push({ label: all[i], type: 'variable' });
-                  }
-                } else {
-                  for (
-                    let i = 0;
-                    i < all.length && matches.length < COMPLETION_LIMIT;
-                    i++
-                  ) {
-                    if (all[i].toLowerCase().startsWith(prefix)) {
-                      matches.push({ label: all[i], type: 'variable' });
-                    }
-                  }
-                }
-
-                return {
-                  from: word?.from ?? context.pos,
-                  options: matches,
-                };
-              },
-            ],
+            override: [debounceAndPruneAutocompleteResults(metricNames)],
           }),
         ),
       });
