@@ -1,3 +1,4 @@
+import PQueue from '@esm2cjs/p-queue';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
@@ -7,6 +8,7 @@ import ms from 'ms';
 import { URLSearchParams } from 'url';
 
 import * as config from '@/config';
+import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
 import { LOCAL_APP_TEAM } from '@/controllers/team';
 import { connectDB, mongooseConnection, ObjectId } from '@/models';
 import Alert, {
@@ -23,6 +25,7 @@ import { type ISource, Source } from '@/models/source';
 import Webhook, { IWebhook } from '@/models/webhook';
 import {
   AggregatedAlertHistory,
+  getConsecutiveWindowHistories,
   getPreviousAlertHistories,
 } from '@/tasks/checkAlerts';
 import {
@@ -216,6 +219,7 @@ async function loadAlert(
   alert: IAlert,
   groupedTasks: Map<string, AlertTask>,
   previousAlerts: Map<string, AggregatedAlertHistory>,
+  recentHistoryMap: Map<string, AggregatedAlertHistory[]>,
   now: Date,
 ) {
   if (!alert.source) {
@@ -258,7 +262,11 @@ async function loadAlert(
   if (!v) {
     throw new Error(`provider did not set key ${conn.id} before appending`);
   }
-  v.alerts.push({ ...details, previousMap: previousAlerts });
+  v.alerts.push({
+    ...details,
+    previousMap: previousAlerts,
+    recentHistoryMap,
+  });
 }
 
 export default class DefaultAlertProvider implements AlertProvider {
@@ -276,11 +284,25 @@ export default class DefaultAlertProvider implements AlertProvider {
 
     const now = new Date();
     const alertIds = alerts.map(({ id }) => id);
-    const previousAlerts = await getPreviousAlertHistories(alertIds, now);
+    // Share a single queue across both history fetches so their combined
+    // in-flight per-alert queries stay within one global cap.
+    const historyQueryQueue = new PQueue({
+      concurrency: ALERT_HISTORY_QUERY_CONCURRENCY,
+    });
+    const [previousAlerts, recentHistoryMap] = await Promise.all([
+      getPreviousAlertHistories(alertIds, now, historyQueryQueue),
+      getConsecutiveWindowHistories(alerts, now, historyQueryQueue),
+    ]);
 
     for (const alert of alerts) {
       try {
-        await loadAlert(alert, groupedTasks, previousAlerts, now);
+        await loadAlert(
+          alert,
+          groupedTasks,
+          previousAlerts,
+          recentHistoryMap,
+          now,
+        );
       } catch (e) {
         logger.error({
           message: `failed to load alert: ${e}`,

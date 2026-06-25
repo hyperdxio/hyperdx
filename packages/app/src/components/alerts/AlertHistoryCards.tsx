@@ -75,12 +75,14 @@ function AlertHistoryCard({
     />
   );
 
+  const count = history.counts ?? 0;
+  const pending = history.state === AlertState.PENDING ? 'pending' : '';
+  const alert = `alert${count === 0 || count > 1 ? 's' : ''}`;
+  const time = formatRelative(start, today);
+  const label = `${count} ${pending} ${alert} ${time}`;
+
   return (
-    <Tooltip
-      label={`${history.counts ?? 0} alerts ${formatRelative(start, today)}`}
-      color="dark"
-      withArrow
-    >
+    <Tooltip label={label} color="dark" withArrow>
       {href ? (
         <a href={href} className={styles.historyCardLink}>
           {content}

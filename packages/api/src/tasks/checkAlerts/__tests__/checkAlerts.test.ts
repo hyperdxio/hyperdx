@@ -25,7 +25,7 @@ import {
   RAW_SQL_ALERT_TEMPLATE,
   RAW_SQL_NUMBER_ALERT_TEMPLATE,
 } from '@/fixtures';
-import Alert, { AlertSource } from '@/models/alert';
+import Alert, { AlertSource, IAlert } from '@/models/alert';
 import AlertHistory from '@/models/alertHistory';
 import Connection, { IConnection } from '@/models/connection';
 import Dashboard, { IDashboard } from '@/models/dashboard';
@@ -37,6 +37,7 @@ import * as checkAlert from '@/tasks/checkAlerts';
 import {
   alertHasGroupBy,
   doesExceedThreshold,
+  getConsecutiveWindowHistories,
   getPreviousAlertHistories,
   getScheduledWindowStart,
   parseAlertData,
@@ -2114,15 +2115,16 @@ describe('checkAlerts', () => {
       alertProvider: AlertProvider,
       teamWebhooksById: Map<string, IWebhook>,
     ) => {
-      const previousMap = await getPreviousAlertHistories(
-        [details.alert.id],
-        now,
-      );
+      const [previousMap, recentHistoryMap] = await Promise.all([
+        getPreviousAlertHistories([details.alert.id], now),
+        getConsecutiveWindowHistories([details.alert], now),
+      ]);
       await processAlert(
         now,
         {
           ...details,
           previousMap,
+          recentHistoryMap,
         },
         clickhouseClient,
         connection.id,
@@ -8773,6 +8775,110 @@ describe('checkAlerts', () => {
         expect(histories[1].fired).toBeFalsy();
         expect(histories[2].state).toBe('OK');
       });
+
+      it('tracks consecutive windows independently per group', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        jest
+          .spyOn(slack, 'postMessageToWebhook')
+          .mockResolvedValue(null as any);
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 0,
+            savedSearchId: savedSearch.id,
+            groupBy: 'ServiceName',
+            numConsecutiveWindows: 2,
+          },
+          { taskType: AlertTaskType.SAVED_SEARCH, savedSearch },
+        );
+
+        // Window 1: only service-a violates.
+        // Window 2: both service-a (2nd consecutive) and service-b (1st) violate.
+        await bulkInsertLogs([
+          {
+            ServiceName: 'service-a',
+            Timestamp: new Date('2024-01-01T00:05:00Z'),
+            SeverityText: 'error',
+            Body: 'err',
+          },
+          {
+            ServiceName: 'service-a',
+            Timestamp: new Date('2024-01-01T00:10:00Z'),
+            SeverityText: 'error',
+            Body: 'err',
+          },
+          {
+            ServiceName: 'service-b',
+            Timestamp: new Date('2024-01-01T00:10:00Z'),
+            SeverityText: 'error',
+            Body: 'err',
+          },
+        ]);
+
+        // Window 1: service-a has its first violation -> PENDING, no notification.
+        await processAlertAtTime(
+          new Date('2024-01-01T00:12:00Z'),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+        expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(0);
+
+        // Window 2: service-a hits 2 consecutive violations -> ALERT (fires);
+        // service-b is on its first violation -> PENDING (does not fire).
+        await processAlertAtTime(
+          new Date('2024-01-01T00:17:00Z'),
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // Exactly one notification: service-a's transition to ALERT.
+        expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+
+        const histories = await AlertHistory.find({
+          alert: details.alert.id,
+        }).sort({ createdAt: 1 });
+
+        const serviceAHistories = histories
+          .filter(h => h.group === 'ServiceName:service-a')
+          .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+        const serviceBHistories = histories.filter(
+          h => h.group === 'ServiceName:service-b',
+        );
+
+        // service-a: first window PENDING, second window ALERT (fired).
+        expect(serviceAHistories).toHaveLength(2);
+        expect(serviceAHistories[0].state).toBe('PENDING');
+        expect(serviceAHistories[0].fired).toBeFalsy();
+        expect(serviceAHistories[1].state).toBe('ALERT');
+        expect(serviceAHistories[1].fired).toBe(true);
+
+        // service-b: only one violation so far, so it must still be PENDING even
+        // though service-a fired in the same run.
+        expect(serviceBHistories).toHaveLength(1);
+        expect(serviceBHistories[0].state).toBe('PENDING');
+        expect(serviceBHistories[0].fired).toBeFalsy();
+      });
     });
   });
 
@@ -9329,6 +9435,117 @@ describe('checkAlerts', () => {
       expect(result.get(alert2Id.toString())!.createdAt).toEqual(
         new Date('2025-01-01T00:15:00Z'),
       );
+    });
+  });
+
+  describe('getConsecutiveWindowHistories', () => {
+    const server = getServer();
+
+    beforeAll(async () => {
+      await server.start();
+    });
+
+    afterEach(async () => {
+      await server.clearDBs();
+      jest.clearAllMocks();
+    });
+
+    afterAll(async () => {
+      await server.stop();
+    });
+
+    // getConsecutiveWindowHistories only reads scheduling/config fields off the
+    // alert (id, interval, numConsecutiveWindows, schedule*) and never loads the
+    // alert from the DB, so a lightweight stub is sufficient.
+    const makeAlert = (
+      id: mongoose.Types.ObjectId,
+      numConsecutiveWindows?: number,
+      interval = '5m',
+    ): IAlert =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      ({
+        id: id.toString(),
+        interval,
+        numConsecutiveWindows,
+      }) as unknown as IAlert;
+
+    const saveHistory = (
+      alertId: mongoose.Types.ObjectId,
+      createdAt: Date,
+      opts: { group?: string; state?: AlertState } = {},
+    ) =>
+      new AlertHistory({
+        alert: alertId,
+        createdAt,
+        state: opts.state ?? AlertState.ALERT,
+        group: opts.group,
+      }).save();
+
+    it('skips alerts with numConsecutiveWindows <= 1 (no query, empty map)', async () => {
+      const alertId = new mongoose.Types.ObjectId();
+      await saveHistory(alertId, new Date('2025-01-01T00:10:00Z'));
+
+      const aggregateSpy = jest.spyOn(AlertHistory, 'aggregate');
+
+      const result = await getConsecutiveWindowHistories(
+        [makeAlert(alertId, 1), makeAlert(new mongoose.Types.ObjectId())],
+        new Date('2025-01-01T00:17:00Z'),
+      );
+
+      expect(aggregateSpy).not.toHaveBeenCalled();
+      expect(result.size).toBe(0);
+    });
+
+    it('buckets recent histories per group, newest-first, within the lookback window', async () => {
+      const alertId = new mongoose.Types.ObjectId();
+      // now=00:17 -> windowStart=00:15; lookback = (3-1)*5m -> [00:05, 00:15)
+      await saveHistory(alertId, new Date('2025-01-01T00:00:00Z'), {
+        group: 'ServiceName:a',
+      }); // excluded: before earliestAllowedTime
+      await saveHistory(alertId, new Date('2025-01-01T00:05:00Z'), {
+        group: 'ServiceName:a',
+      });
+      await saveHistory(alertId, new Date('2025-01-01T00:10:00Z'), {
+        group: 'ServiceName:a',
+      });
+      await saveHistory(alertId, new Date('2025-01-01T00:15:00Z'), {
+        group: 'ServiceName:a',
+      }); // excluded: == windowStart (the current window being evaluated)
+      await saveHistory(alertId, new Date('2025-01-01T00:10:00Z'), {
+        group: 'ServiceName:b',
+      });
+
+      const result = await getConsecutiveWindowHistories(
+        [makeAlert(alertId, 3)],
+        new Date('2025-01-01T00:17:00Z'),
+      );
+
+      const aKey = `${alertId.toString()}||ServiceName:a`;
+      const bKey = `${alertId.toString()}||ServiceName:b`;
+
+      expect(result.get(aKey)!.map(h => h.createdAt)).toEqual([
+        new Date('2025-01-01T00:10:00Z'),
+        new Date('2025-01-01T00:05:00Z'),
+      ]);
+      expect(result.get(bKey)!.map(h => h.createdAt)).toEqual([
+        new Date('2025-01-01T00:10:00Z'),
+      ]);
+    });
+
+    it('keys ungrouped histories by the bare alert id', async () => {
+      const alertId = new mongoose.Types.ObjectId();
+      // now=00:17 -> windowStart=00:15; lookback = (2-1)*5m -> [00:10, 00:15)
+      await saveHistory(alertId, new Date('2025-01-01T00:10:00Z'));
+
+      const result = await getConsecutiveWindowHistories(
+        [makeAlert(alertId, 2)],
+        new Date('2025-01-01T00:17:00Z'),
+      );
+
+      expect(result.size).toBe(1);
+      expect(result.get(alertId.toString())!.map(h => h.state)).toEqual([
+        AlertState.ALERT,
+      ]);
     });
   });
 });

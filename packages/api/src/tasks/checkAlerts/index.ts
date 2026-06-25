@@ -319,6 +319,31 @@ export const getScheduledWindowStart = (
   return fns.addMinutes(roundedShiftedNow, scheduleOffsetMinutes);
 };
 
+/**
+ * Compute the scheduled window start ("now rounded down to the window") for an
+ * alert at the given time. This mirrors the computation inside processAlert so
+ * that history fetched up-front (see getConsecutiveWindowHistories) lines up
+ * exactly with the window processAlert evaluates.
+ */
+export const getAlertWindowStart = (alert: IAlert, now: Date): Date => {
+  const windowSizeInMins = ms(alert.interval) / 60000;
+  const scheduleStartAt = normalizeScheduleStartAt({
+    alertId: alert.id,
+    scheduleStartAt: alert.scheduleStartAt,
+  });
+  const scheduleOffsetMinutes = normalizeScheduleOffsetMinutes({
+    alertId: alert.id,
+    scheduleOffsetMinutes: alert.scheduleOffsetMinutes,
+    windowSizeInMins,
+  });
+  return getScheduledWindowStart(
+    now,
+    windowSizeInMins,
+    scheduleOffsetMinutes,
+    scheduleStartAt,
+  );
+};
+
 const fireChannelEvent = async ({
   alert,
   alertProvider,
@@ -733,7 +758,7 @@ export const processAlert = async (
   alertProvider: AlertProvider,
   teamWebhooksById: Map<string, IWebhook>,
 ) => {
-  const { alert, previousMap } = details;
+  const { alert, previousMap, recentHistoryMap } = details;
   const source = 'source' in details ? details.source : undefined;
   // Errors collected during this execution. Webhook errors accumulate here; query
   // and validation errors are recorded via recordAlertErrors before returning.
@@ -1026,37 +1051,24 @@ export const processAlert = async (
       }
     };
 
-    // Fire an alert when a condition is met in M consecutive time windows
-    const shouldFireBasedOnConsecutiveWindows = async (
-      groupKey?: string,
-    ): Promise<boolean> => {
-      const numWindowsToLookBack = alert.numConsecutiveWindows ?? 1;
+    const numWindowsToLookBack = alert.numConsecutiveWindows ?? 1;
 
+    const shouldFireBasedOnConsecutiveWindows = (
+      groupKey?: string,
+    ): boolean => {
       if (numWindowsToLookBack <= 1) {
         return true;
       }
 
-      const groupFilter = groupKey ? { group: groupKey } : { group: null };
-
-      // filters the alert history to only include the last M _eligible_ windows (plus a couple of)
-      // windows of buffer, in order to ensure that we don't fire in the case where e.g.
-      // there's an offending log line, then the service is down for a while, then it comes back and there's
-      // another offending log line and they look consecutive, but are not.
-      const earliestAllowedTime = new Date(
-        nowInMinsRoundDown.getTime() -
-          (numWindowsToLookBack - 1) * windowSizeInMins * 60_000,
-      );
-      const alertHistory = await AlertHistory.find({
-        alert: new mongoose.Types.ObjectId(alert.id),
-        ...groupFilter,
-        createdAt: { $gte: earliestAllowedTime, $lt: nowInMinsRoundDown },
-      })
-        .sort({ createdAt: -1 })
-        .limit(numWindowsToLookBack - 1);
+      // recentHistoryMap entries are pre-filtered to the lookback window and
+      // sorted newest-first, so take the most recent M-1 for this group.
+      const key = computeHistoryMapKey(alert.id, groupKey || '');
+      const groupHistories = recentHistoryMap?.get(key) ?? [];
+      const relevant = groupHistories.slice(0, numWindowsToLookBack - 1);
 
       return (
-        alertHistory.length === numWindowsToLookBack - 1 &&
-        alertHistory.every(
+        relevant.length === numWindowsToLookBack - 1 &&
+        relevant.every(
           h => h.state === AlertState.ALERT || h.state === AlertState.PENDING,
         )
       );
@@ -1108,7 +1120,7 @@ export const processAlert = async (
       const previous = previousMap.get(computeHistoryMapKey(alert.id, ''));
       if (doesExceedThreshold(alert, value)) {
         history.counts += 1;
-        if (await shouldFireBasedOnConsecutiveWindows()) {
+        if (shouldFireBasedOnConsecutiveWindows()) {
           history.state = AlertState.ALERT;
           history.fired = true;
           await trySendNotification({
@@ -1184,7 +1196,7 @@ export const processAlert = async (
           const history = getOrCreateHistory('');
           history.lastValues.push({ count: 0, startTime: bucketStart });
           history.counts += 1;
-          if (await shouldFireBasedOnConsecutiveWindows()) {
+          if (shouldFireBasedOnConsecutiveWindows()) {
             history.state = AlertState.ALERT;
             history.fired = true;
             await trySendNotification({
@@ -1228,7 +1240,7 @@ export const processAlert = async (
 
         if (doesExceedThreshold(alert, value)) {
           history.counts += 1;
-          if (await shouldFireBasedOnConsecutiveWindows(groupKey)) {
+          if (shouldFireBasedOnConsecutiveWindows(groupKey)) {
             history.state = AlertState.ALERT;
             history.fired = true;
             await trySendNotification({
@@ -1360,12 +1372,14 @@ export interface AggregatedAlertHistory {
 export const getPreviousAlertHistories = async (
   alertIds: string[],
   now: Date,
+  sharedQueue?: PQueue,
 ) => {
   const lookbackDate = new Date(now.getTime() - ms('7d'));
 
-  // Use a concurrency-limited queue to avoid overwhelming the connection pool
-  // when there are many alerts (e.g., 200+ alert IDs).
-  const queue = new PQueue({ concurrency: ALERT_HISTORY_QUERY_CONCURRENCY });
+  // Concurrency-limited per-alert queries to avoid overwhelming the connection
+  // pool when there are many alerts (e.g., 200+ alert IDs).
+  const queue =
+    sharedQueue ?? new PQueue({ concurrency: ALERT_HISTORY_QUERY_CONCURRENCY });
 
   const results = await Promise.all(
     alertIds.map(alertId =>
@@ -1424,6 +1438,90 @@ export const getPreviousAlertHistories = async (
         return [key, history];
       }),
   );
+};
+
+/**
+ * For alerts that use multi-window lookback (numConsecutiveWindows > 1),
+ * batch-fetch the per-group history needed to decide whether the alert condition
+ * has been met in M consecutive windows.
+ *
+ * Alerts with numConsecutiveWindows <= 1 are skipped entirely (no query is run).
+ *
+ * For each multi-window alert we fetch the AlertHistory records whose createdAt
+ * falls in [windowStart - (M-1)*window, windowStart), sorted newest-first, then
+ * bucket them by group. processAlert takes the most recent M-1 per group and
+ * requires every one of them to be ALERT/PENDING to fire. The window start is
+ * computed with getAlertWindowStart so it matches the window processAlert
+ * evaluates for the same `now`.
+ */
+export const getConsecutiveWindowHistories = async (
+  alerts: IAlert[],
+  now: Date,
+  sharedQueue?: PQueue,
+): Promise<Map<string, AggregatedAlertHistory[]>> => {
+  const map = new Map<string, AggregatedAlertHistory[]>();
+
+  const multiWindowAlerts = alerts.filter(
+    alert => (alert.numConsecutiveWindows ?? 1) > 1,
+  );
+  if (multiWindowAlerts.length === 0) {
+    return map;
+  }
+
+  // Concurrency-limited per-alert queries (same approach as getPreviousAlertHistories)
+  const queue =
+    sharedQueue ?? new PQueue({ concurrency: ALERT_HISTORY_QUERY_CONCURRENCY });
+
+  const results = await Promise.all(
+    multiWindowAlerts.map(alert =>
+      queue.add(async () => {
+        const numWindowsToLookBack = alert.numConsecutiveWindows ?? 1;
+        const windowSizeInMins = ms(alert.interval) / 60000;
+        const windowStart = getAlertWindowStart(alert, now);
+        const earliestAllowedTime = new Date(
+          windowStart.getTime() -
+            (numWindowsToLookBack - 1) * windowSizeInMins * 60_000,
+        );
+        const id = new mongoose.Types.ObjectId(alert.id);
+        const histories = await AlertHistory.aggregate<AggregatedAlertHistory>([
+          {
+            $match: {
+              alert: id,
+              createdAt: { $gte: earliestAllowedTime, $lt: windowStart },
+            },
+          },
+          { $sort: { alert: 1, group: 1, createdAt: -1 } },
+          {
+            $project: {
+              _id: '$alert',
+              createdAt: 1,
+              state: 1,
+              group: 1,
+              fired: 1,
+            },
+          },
+        ]);
+        return { alertId: alert.id, histories };
+      }),
+    ),
+  );
+
+  for (const result of results) {
+    if (!result) {
+      continue;
+    }
+    for (const history of result.histories) {
+      const key = computeHistoryMapKey(result.alertId, history.group || '');
+      const bucket = map.get(key);
+      if (bucket) {
+        bucket.push(history);
+      } else {
+        map.set(key, [history]);
+      }
+    }
+  }
+
+  return map;
 };
 
 export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
