@@ -1971,6 +1971,11 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
     fields: Set<MetricsDataType>;
   } | null>(null);
 
+  // Keep a live ref to metricTables so the async autofill can read
+  // current values without being a dependency that re-triggers it.
+  const metricTablesRef = useRef(metricTables);
+  metricTablesRef.current = metricTables;
+
   useEffect(() => {
     // When the database or connection changes, clear any previously
     // auto-filled values so the new database's tables can take over.
@@ -1985,13 +1990,18 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
       autofillRef.current = null;
     }
 
+    // Abort in-flight validation if the database/connection switches
+    // before validation completes.
+    let cancelled = false;
+
     (async () => {
       const tableNames = tablesData?.data?.map((t: { name: string }) => t.name);
       if (!tableNames || tableNames.length === 0) return;
 
       const matched = matchMetricTables(
         tableNames,
-        (metricTables as Partial<Record<MetricsDataType, string>>) ?? {},
+        (metricTablesRef.current as Partial<Record<MetricsDataType, string>>) ??
+          {},
       );
 
       const entries = Object.entries(matched) as [MetricsDataType, string][];
@@ -2001,6 +2011,7 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
       // green "auto-detected" notification followed by red validation errors.
       const validated: [MetricsDataType, string][] = [];
       for (const [metricType, tableName] of entries) {
+        if (cancelled) return;
         try {
           const valid = await isValidMetricTable({
             databaseName,
@@ -2017,13 +2028,21 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
         }
       }
 
-      if (validated.length === 0) return;
+      if (cancelled || validated.length === 0) return;
 
+      // Re-read current values after the async gap to avoid overwriting
+      // fields the user edited while validation was in-flight.
+      const current =
+        (metricTablesRef.current as Partial<Record<MetricsDataType, string>>) ??
+        {};
       const filledFields = new Set<MetricsDataType>();
       for (const [metricType, tableName] of validated) {
+        if (current[metricType]) continue; // user filled it during validation
         setValue(`metricTables.${metricType}` as any, tableName);
         filledFields.add(metricType);
       }
+
+      if (filledFields.size === 0) return;
 
       autofillRef.current = {
         database: databaseName,
@@ -2036,6 +2055,10 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
         message: 'Auto-detected metric tables from database.',
       });
     })();
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tablesData, databaseName, connectionId]);
 
