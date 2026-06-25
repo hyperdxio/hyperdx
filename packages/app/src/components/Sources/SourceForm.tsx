@@ -1963,26 +1963,81 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
     { enabled: !!databaseName && !!connectionId },
   );
 
+  // Track which fields we auto-filled and for which database/connection,
+  // so we can clear stale values when the user switches databases.
+  const autofillRef = useRef<{
+    database: string;
+    connectionId: string;
+    fields: Set<MetricsDataType>;
+  } | null>(null);
+
   useEffect(() => {
-    const tableNames = tablesData?.data?.map((t: { name: string }) => t.name);
-    if (!tableNames || tableNames.length === 0) return;
-
-    const matched = matchMetricTables(
-      tableNames,
-      (metricTables as Partial<Record<MetricsDataType, string>>) ?? {},
-    );
-
-    const entries = Object.entries(matched) as [MetricsDataType, string][];
-    for (const [metricType, tableName] of entries) {
-      setValue(`metricTables.${metricType}` as any, tableName);
+    // When the database or connection changes, clear any previously
+    // auto-filled values so the new database's tables can take over.
+    const prev = autofillRef.current;
+    if (
+      prev &&
+      (prev.database !== databaseName || prev.connectionId !== connectionId)
+    ) {
+      for (const metricType of prev.fields) {
+        setValue(`metricTables.${metricType}` as any, '');
+      }
+      autofillRef.current = null;
     }
 
-    if (entries.length > 0) {
+    (async () => {
+      const tableNames = tablesData?.data?.map(
+        (t: { name: string }) => t.name,
+      );
+      if (!tableNames || tableNames.length === 0) return;
+
+      const matched = matchMetricTables(
+        tableNames,
+        (metricTables as Partial<Record<MetricsDataType, string>>) ?? {},
+      );
+
+      const entries = Object.entries(matched) as [MetricsDataType, string][];
+      if (entries.length === 0) return;
+
+      // Validate each candidate before setting it, so we never show a
+      // green "auto-detected" notification followed by red validation errors.
+      const validated: [MetricsDataType, string][] = [];
+      for (const [metricType, tableName] of entries) {
+        try {
+          const valid = await isValidMetricTable({
+            databaseName,
+            tableName,
+            connectionId,
+            metricType,
+            metadata,
+          });
+          if (valid) {
+            validated.push([metricType, tableName]);
+          }
+        } catch {
+          // Skip tables that fail validation (e.g. network error)
+        }
+      }
+
+      if (validated.length === 0) return;
+
+      const filledFields = new Set<MetricsDataType>();
+      for (const [metricType, tableName] of validated) {
+        setValue(`metricTables.${metricType}` as any, tableName);
+        filledFields.add(metricType);
+      }
+
+      autofillRef.current = {
+        database: databaseName,
+        connectionId,
+        fields: filledFields,
+      };
+
       notifications.show({
         color: 'green',
         message: 'Auto-detected metric tables from database.',
       });
-    }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tablesData, databaseName, connectionId]);
 
