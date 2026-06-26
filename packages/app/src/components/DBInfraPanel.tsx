@@ -32,22 +32,22 @@ import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { IS_LOCAL_MODE } from '@/config';
 import { useSource } from '@/source';
 
-import {
-  K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-  K8S_FILESYSTEM_NUMBER_FORMAT,
-  K8S_MEM_NUMBER_FORMAT,
-} from '../ChartUtils';
-
 import { DBTimeChart } from './DBTimeChart';
+import {
+  getActiveInfraCorrelations,
+  InfraChartSpec,
+} from './infraCorrelations';
 import { KubeTimeline } from './KubeComponents';
 
 const InfraSubpanelGroup = ({
+  charts,
   fieldPrefix,
   metricSource,
   timestamp,
   title,
   where,
 }: {
+  charts: readonly InfraChartSpec[];
   fieldPrefix: string;
   metricSource: TMetricSource;
   timestamp: any;
@@ -115,96 +115,38 @@ const InfraSubpanelGroup = ({
         </Group>
       </Group>
       <SimpleGrid mt="md" cols={cols}>
-        <Card data-testid="cpu-usage-card">
-          <Card.Section py={8} px={8} h={height}>
-            <DBTimeChart
-              title="CPU Usage (%)"
-              config={convertV1ChartConfigToV2(
-                {
-                  dateRange,
-                  granularity,
-                  seriesReturnType: 'column',
-                  series: [
-                    {
-                      type: 'time',
-                      where,
-                      groupBy: [],
-                      aggFn: 'avg',
-                      field: `${fieldPrefix}cpu.utilization - Gauge`,
-                      table: 'metrics',
-                      numberFormat: K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
-                    },
-                  ],
-                },
-                {
-                  metric: metricSource,
-                },
-              )}
-              showDisplaySwitcher={false}
-              logReferenceTimestamp={timestamp / 1000}
-            />
-          </Card.Section>
-        </Card>
-        <Card data-testid="memory-usage-card">
-          <Card.Section py={8} px={8} h={height}>
-            <DBTimeChart
-              title="Memory Used"
-              config={convertV1ChartConfigToV2(
-                {
-                  dateRange,
-                  granularity,
-                  seriesReturnType: 'column',
-                  series: [
-                    {
-                      type: 'time',
-                      where,
-                      groupBy: [],
-                      aggFn: 'avg',
-                      field: `${fieldPrefix}memory.usage - Gauge`,
-                      table: 'metrics',
-                      numberFormat: K8S_MEM_NUMBER_FORMAT,
-                    },
-                  ],
-                },
-                {
-                  metric: metricSource,
-                },
-              )}
-              showDisplaySwitcher={false}
-              logReferenceTimestamp={timestamp / 1000}
-            />
-          </Card.Section>
-        </Card>
-        <Card data-testid="disk-usage-card">
-          <Card.Section py={8} px={8} h={height}>
-            <DBTimeChart
-              title="Disk Available"
-              config={convertV1ChartConfigToV2(
-                {
-                  dateRange,
-                  granularity,
-                  seriesReturnType: 'column',
-                  series: [
-                    {
-                      type: 'time',
-                      where,
-                      groupBy: [],
-                      aggFn: 'avg',
-                      field: `${fieldPrefix}filesystem.available - Gauge`,
-                      table: 'metrics',
-                      numberFormat: K8S_FILESYSTEM_NUMBER_FORMAT,
-                    },
-                  ],
-                },
-                {
-                  metric: metricSource,
-                },
-              )}
-              showDisplaySwitcher={false}
-              logReferenceTimestamp={timestamp / 1000}
-            />
-          </Card.Section>
-        </Card>
+        {charts.map(chart => (
+          <Card key={chart.cardTestId} data-testid={chart.cardTestId}>
+            <Card.Section py={8} px={8} h={height}>
+              <DBTimeChart
+                title={chart.title}
+                config={convertV1ChartConfigToV2(
+                  {
+                    dateRange,
+                    granularity,
+                    seriesReturnType: 'column',
+                    series: [
+                      {
+                        type: 'time',
+                        where,
+                        groupBy: [],
+                        aggFn: 'avg',
+                        field: `${fieldPrefix}${chart.field} - Gauge`,
+                        table: 'metrics',
+                        numberFormat: chart.numberFormat,
+                      },
+                    ],
+                  },
+                  {
+                    metric: metricSource,
+                  },
+                )}
+                showDisplaySwitcher={false}
+                logReferenceTimestamp={timestamp / 1000}
+              />
+            </Card.Section>
+          </Card>
+        ))}
       </SimpleGrid>
     </div>
   );
@@ -229,8 +171,11 @@ export default ({
     kinds: [SourceKind.Metric],
   });
 
-  const podUid = rowData?.__hdx_resource_attributes['k8s.pod.uid'];
-  const nodeName = rowData?.__hdx_resource_attributes['k8s.node.name'];
+  const resourceAttributes = rowData?.__hdx_resource_attributes;
+  const activeCorrelations = useMemo(
+    () => getActiveInfraCorrelations(resourceAttributes),
+    [resourceAttributes],
+  );
 
   const timestamp = new Date(rowData?.__hdx_timestamp).getTime();
 
@@ -269,57 +214,69 @@ export default ({
           )}
         </>
       )}
-      {podUid && (
-        <div>
-          {metricSource && (
-            <InfraSubpanelGroup
-              title="Pod"
-              where={`${metricSource.resourceAttributesExpression}.k8s.pod.uid:"${podUid}"`}
-              fieldPrefix="k8s.pod."
-              timestamp={timestamp}
-              metricSource={metricSource}
-            />
-          )}
-          {source && source.kind === SourceKind.Log && (
-            <Card p="md" mt="xl">
-              <Card.Section p="md" py="xs">
-                Pod Timeline
-              </Card.Section>
-              <Card.Section>
-                <ScrollArea
-                  viewportProps={{
-                    style: { maxHeight: 280 },
-                  }}
-                >
-                  <Box p="md" py="sm">
-                    <KubeTimeline
-                      logSource={source}
-                      q={`\`k8s.pod.uid\`:"${podUid}"`}
-                      dateRange={[
-                        sub(new Date(timestamp), { days: 1 }),
-                        add(new Date(timestamp), { days: 1 }),
-                      ]}
-                      anchorEvent={{
-                        label: <div className="text-brand">This Event</div>,
-                        timestamp: new Date(timestamp).toISOString(),
-                      }}
-                    />
-                  </Box>
-                </ScrollArea>
-              </Card.Section>
-            </Card>
-          )}
-        </div>
-      )}
-      {nodeName && metricSource && (
-        <InfraSubpanelGroup
-          metricSource={metricSource}
-          title="Node"
-          where={`${metricSource.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`}
-          fieldPrefix="k8s.node."
-          timestamp={timestamp}
-        />
-      )}
+      {activeCorrelations.map(correlation => {
+        const value = resourceAttributes?.[correlation.correlateAttribute];
+        // Truthiness guard, mirroring the previous Pod/Node render blocks
+        // (which gated on the attribute value with `&&`); the tab gate uses
+        // != null. detect and correlate are the same attribute for the
+        // built-in k8s descriptors, so this stays byte-identical. A future
+        // descriptor that splits the two decides here how an empty correlate
+        // value should render.
+        if (!value) {
+          return null;
+        }
+        const showTimeline =
+          correlation.timeline != null && source.kind === SourceKind.Log;
+        // Skip rendering an empty container when neither the metric group nor
+        // the timeline has anything to show (e.g. no metric source configured
+        // on a non-Log source).
+        if (!metricSource && !showTimeline) {
+          return null;
+        }
+        return (
+          <div key={correlation.title}>
+            {metricSource && (
+              <InfraSubpanelGroup
+                title={correlation.title}
+                where={`${metricSource.resourceAttributesExpression}.${correlation.correlateAttribute}:"${value}"`}
+                fieldPrefix={correlation.fieldPrefix}
+                charts={correlation.charts}
+                timestamp={timestamp}
+                metricSource={metricSource}
+              />
+            )}
+            {correlation.timeline && source.kind === SourceKind.Log && (
+              <Card p="md" mt="xl">
+                <Card.Section p="md" py="xs">
+                  {correlation.title} Timeline
+                </Card.Section>
+                <Card.Section>
+                  <ScrollArea
+                    viewportProps={{
+                      style: { maxHeight: 280 },
+                    }}
+                  >
+                    <Box p="md" py="sm">
+                      <KubeTimeline
+                        logSource={source}
+                        q={`\`${correlation.timeline.queryAttribute}\`:"${resourceAttributes?.[correlation.timeline.queryAttribute]}"`}
+                        dateRange={[
+                          sub(new Date(timestamp), { days: 1 }),
+                          add(new Date(timestamp), { days: 1 }),
+                        ]}
+                        anchorEvent={{
+                          label: <div className="text-brand">This Event</div>,
+                          timestamp: new Date(timestamp).toISOString(),
+                        }}
+                      />
+                    </Box>
+                  </ScrollArea>
+                </Card.Section>
+              </Card>
+            )}
+          </div>
+        );
+      })}
     </Stack>
   );
 };

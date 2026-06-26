@@ -1,10 +1,10 @@
-import type { OnClickDashboard, OnClickSearch } from '../../types';
 import {
   describeOnClick,
   renderOnClickDashboard,
   renderOnClickSearch,
   validateOnClickTemplate,
-} from '../linkUrlBuilder';
+} from '@/core/linkUrlBuilder';
+import type { OnClickDashboard, OnClickSearch } from '@/types';
 
 const dateRange: [Date, Date] = [
   new Date('2026-01-01T00:00:00Z'),

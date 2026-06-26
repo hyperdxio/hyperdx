@@ -2510,6 +2510,118 @@ describe('checkAlerts', () => {
       expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
     });
 
+    it('SAVED_SEARCH alert - applies a saved filter whose column needs backtick-quoting', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      // A table with a column whose name requires backtick-quoting. The default
+      // otel_logs schema has no such column, so create a dedicated one.
+      const nativeClient = await getTestFixtureClickHouseClient();
+      const ESCAPED_FILTER_TABLE = 'otel_logs_alert_escaped_filter';
+      await nativeClient.command({
+        query: `CREATE OR REPLACE TABLE ${DEFAULT_DATABASE}.${ESCAPED_FILTER_TABLE} (
+          Timestamp DateTime64(9),
+          \`service-name\` String,
+          Body String
+        ) ENGINE = MergeTree ORDER BY Timestamp`,
+        clickhouse_settings: { wait_end_of_query: 1 },
+      });
+
+      try {
+        const source = await Source.create({
+          kind: 'log',
+          team: team._id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: ESCAPED_FILTER_TABLE,
+          },
+          timestampValueExpression: 'Timestamp',
+          connection: connection.id,
+          name: 'Escaped Filter Logs',
+        });
+
+        // The condition is in the exact shape the UI saves to Mongo: the
+        // special-char column key is backtick-quoted in the persisted SQL.
+        const savedSearch = await new SavedSearch({
+          team: team._id,
+          name: 'Escaped Filter Search',
+          select: 'Body',
+          where: '',
+          whereLanguage: 'sql',
+          orderBy: 'Timestamp',
+          source: source.id,
+          tags: ['test'],
+          filters: [{ type: 'sql', condition: "`service-name` IN ('svc-a')" }],
+        }).save();
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        const now = new Date('2023-11-16T22:12:00.000Z');
+        const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+        // Two rows in the alert window; only the 'svc-a' row matches the
+        // saved filter, so a correctly-quoted query counts exactly one.
+        await bulkInsertData(`${DEFAULT_DATABASE}.${ESCAPED_FILTER_TABLE}`, [
+          {
+            Timestamp: eventMs,
+            'service-name': 'svc-a',
+            Body: 'matches the saved filter',
+          },
+          {
+            Timestamp: eventMs,
+            'service-name': 'svc-b',
+            Body: 'excluded by the saved filter',
+          },
+        ]);
+
+        const querySpy = jest.spyOn(clickhouseClient, 'queryChartConfig');
+
+        await processAlertAtTime(
+          now,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // The query ran (no SQL error from an unquoted key) ...
+        expect(querySpy).toHaveBeenCalledTimes(1);
+
+        // ... and counted exactly the one matching row — not two (filter
+        // dropped) and not zero (filter over-matched / errored).
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        const alertHistories = await AlertHistory.find({
+          alert: details.alert.id,
+        }).sort({ createdAt: 1 });
+        expect(alertHistories.length).toBe(1);
+        expect(alertHistories[0].state).toBe('ALERT');
+        expect(alertHistories[0].lastValues).toEqual([
+          expect.objectContaining({ count: 1 }),
+        ]);
+      } finally {
+        await nativeClient.command({
+          query: `DROP TABLE IF EXISTS ${DEFAULT_DATABASE}.${ESCAPED_FILTER_TABLE}`,
+          clickhouse_settings: { wait_end_of_query: 1 },
+        });
+      }
+    });
+
     it('TILE alert (events) - slack webhook', async () => {
       const {
         team,
@@ -5566,7 +5678,7 @@ describe('checkAlerts', () => {
 
       // Insert gauge metrics for two different services
       // Note: ResourceAttributes must differ per service so that
-      // AttributesHash (cityHash64 of mapConcat(ScopeAttributes, ResourceAttributes, Attributes))
+      // AttributesHash (variadic cityHash64(ScopeAttributes, ResourceAttributes, Attributes))
       // produces distinct hashes. Otherwise, the Bucketed CTE collapses all rows into one group.
       const gaugePoints = [
         // service-a: high CPU values (should trigger alert)

@@ -41,7 +41,9 @@ import {
 } from '@/components/InputControlled';
 import { MetricAttributeHelperPanel } from '@/components/MetricAttributeHelperPanel';
 import { MetricNameSelect } from '@/components/MetricNameSelect';
+import { FORMAT_ICONS } from '@/components/NumberFormat';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
+import SeriesNumberFormatDrawer from '@/components/SeriesNumberFormatDrawer';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
 import {
@@ -49,9 +51,6 @@ import {
   useFetchMetricResourceAttrs,
 } from '@/hooks/useFetchMetricResourceAttrs';
 import { getMetricTableName } from '@/utils';
-
-import { FORMAT_ICONS } from '../NumberFormat';
-import SeriesNumberFormatDrawer from '../SeriesNumberFormatDrawer';
 
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']

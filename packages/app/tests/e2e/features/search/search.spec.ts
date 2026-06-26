@@ -141,6 +141,29 @@ test.describe('Search', { tag: '@search' }, () => {
       });
     });
 
+    test('Infrastructure tab is hidden for non-Kubernetes rows', async () => {
+      await test.step('Open a non-Kubernetes log row', async () => {
+        // Regular logs set ResourceAttributes.service.name to a real service
+        // name; k8s logs set it to a pod name, so this matches only non-k8s rows.
+        await searchPage.performSearch(
+          'ResourceAttributes.service.name:"api-server"',
+        );
+        await expect(searchPage.table.firstRow).toBeVisible();
+        await searchPage.table.clickFirstRow();
+        await expect(searchPage.sidePanel.tabs).toBeVisible();
+      });
+
+      await test.step('Infrastructure tab is not offered', async () => {
+        // The tab bar rendered (an always-present tab is visible), but the gate
+        // omits Infrastructure because the row carries no k8s correlation
+        // attributes.
+        await expect(searchPage.sidePanel.getTab('trace')).toBeVisible();
+        await expect(searchPage.sidePanel.getTab('infrastructure')).toHaveCount(
+          0,
+        );
+      });
+    });
+
     test('Time Picker Integration with Search', async () => {
       await test.step('Interact with time picker', async () => {
         await expect(searchPage.timePicker.input).toBeVisible();

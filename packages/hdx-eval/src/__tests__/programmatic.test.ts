@@ -1,5 +1,5 @@
-import { runProgrammaticChecks } from '../grading/programmatic';
-import { loadScenarioRubric } from '../grading/rubric';
+import { runProgrammaticChecks } from '@/grading/programmatic';
+import { loadScenarioRubric } from '@/grading/rubric';
 
 describe('runProgrammaticChecks', () => {
   it('hits all checks when answer mentions every required fact', () => {

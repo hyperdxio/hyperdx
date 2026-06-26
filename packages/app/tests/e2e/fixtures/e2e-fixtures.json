@@ -182,6 +182,50 @@
       "spanIdExpression": "SpanId",
       "implicitColumnExpression": "Body",
       "displayedTimestampValueExpression": "Timestamp"
+    },
+    {
+      "id": "E2E Interesting Filter Keys",
+      "kind": "log",
+      "name": "E2E Interesting Filter Keys",
+      "connection": "local",
+      "from": {
+        "databaseName": "default",
+        "tableName": "otel_logs_interesting_filter_keys"
+      },
+      "timestampValueExpression": "Timestamp",
+      "defaultTableSelectExpression": "Timestamp, ServiceName, Body",
+      "serviceNameExpression": "ServiceName",
+      "severityTextExpression": "SeverityText",
+      "resourceAttributesExpression": "ResourceAttributes",
+      "traceIdExpression": "TraceId",
+      "spanIdExpression": "SpanId",
+      "implicitColumnExpression": "Body",
+      "displayedTimestampValueExpression": "Timestamp"
+    },
+    {
+      "id": "E2E Metadata MV Logs",
+      "kind": "log",
+      "name": "E2E Metadata MV Logs",
+      "connection": "local",
+      "from": {
+        "databaseName": "default",
+        "tableName": "e2e_otel_logs_metadata_mv"
+      },
+      "timestampValueExpression": "Timestamp",
+      "defaultTableSelectExpression": "Timestamp, ServiceName, SeverityText, Body",
+      "serviceNameExpression": "ServiceName",
+      "severityTextExpression": "SeverityText",
+      "eventAttributesExpression": "LogAttributes",
+      "resourceAttributesExpression": "ResourceAttributes",
+      "traceIdExpression": "TraceId",
+      "spanIdExpression": "SpanId",
+      "implicitColumnExpression": "Body",
+      "displayedTimestampValueExpression": "Timestamp",
+      "metadataMaterializedViews": {
+        "keyRollupTable": "e2e_otel_logs_key_rollup_15m",
+        "kvRollupTable": "e2e_otel_logs_kv_rollup_15m",
+        "granularity": "15 minute"
+      }
     }
   ]
 }

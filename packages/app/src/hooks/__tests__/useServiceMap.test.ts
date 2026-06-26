@@ -1,4 +1,7 @@
-import { aggregateServiceMapData, SpanAggregationRow } from '../useServiceMap';
+import {
+  aggregateServiceMapData,
+  SpanAggregationRow,
+} from '@/hooks/useServiceMap';
 
 // Convenience builders for the GROUPING SETS row shapes.
 function nodeRow(

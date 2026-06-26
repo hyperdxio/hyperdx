@@ -985,6 +985,28 @@
         "description": "Palette token used to color a number tile. Tokens reflow across light and dark themes, so raw hex values are not accepted.\n",
         "example": "chart-red"
       },
+      "BackgroundChart": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "description": "Optional background trend sparkline drawn behind a number tile's value, derived from a time-bucketed version of the tile's query. Builder number tiles only (raw SQL number tiles have no time dimension to bucket).\n",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "line",
+              "area"
+            ],
+            "description": "Sparkline shape.",
+            "example": "line"
+          },
+          "color": {
+            "$ref": "#/components/schemas/ChartPaletteToken",
+            "description": "Optional palette-token override for the sparkline. When unset the sparkline inherits the tile's static color.\n"
+          }
+        }
+      },
       "NumericColorCondition": {
         "type": "object",
         "required": [
@@ -1783,6 +1805,10 @@
             "items": {
               "$ref": "#/components/schemas/NumberTileColorCondition"
             }
+          },
+          "backgroundChart": {
+            "$ref": "#/components/schemas/BackgroundChart",
+            "description": "Optional background trend sparkline drawn behind the value.\n"
           }
         }
       },
@@ -5892,6 +5918,131 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v2/team": {
+      "get": {
+        "summary": "Get Team",
+        "description": "Retrieves the authenticated team's basic settings.",
+        "operationId": "getTeam",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved team"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/api/v2/team/members": {
+      "get": {
+        "summary": "List Team Members",
+        "description": "Retrieves the team's members.",
+        "operationId": "listTeamMembers",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved members"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitation": {
+      "post": {
+        "summary": "Invite Team Member",
+        "description": "Creates a pending invitation for a new email address.",
+        "operationId": "inviteTeamMember",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully created the invitation"
+          },
+          "400": {
+            "description": "User already exists"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitations": {
+      "get": {
+        "summary": "List Team Invitations",
+        "description": "Retrieves the team's pending invitations.",
+        "operationId": "listTeamInvitations",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved invitations"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitation/{id}": {
+      "delete": {
+        "summary": "Delete Team Invitation",
+        "description": "Deletes a pending team invitation.",
+        "operationId": "deleteTeamInvitation",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully deleted the invitation"
+          },
+          "404": {
+            "description": "Invitation not found"
+          }
+        }
+      }
+    },
+    "/api/v2/team/member/{id}": {
+      "delete": {
+        "summary": "Remove Team Member",
+        "description": "Removes a member from the team.",
+        "operationId": "removeTeamMember",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully removed the member"
+          },
+          "400": {
+            "description": "Cannot remove yourself from the team"
+          },
+          "404": {
+            "description": "Member not found"
           }
         }
       }

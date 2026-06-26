@@ -2,9 +2,10 @@ import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
-import { validateUserAccessKey } from '../middleware/auth';
-import logger from '../utils/logger';
-import rateLimiter, { rateLimiterKeyGenerator } from '../utils/rateLimiter';
+import { validateUserAccessKey } from '@/middleware/auth';
+import logger from '@/utils/logger';
+import rateLimiter, { rateLimiterKeyGenerator } from '@/utils/rateLimiter';
+
 import { createServer } from './mcpServer';
 import { McpContext } from './tools/types';
 

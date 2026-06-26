@@ -1,4 +1,4 @@
-import { buildInFilterCondition } from '../ServicesDashboardPage';
+import { buildInFilterCondition } from '@/ServicesDashboardPage';
 
 describe('buildInFilterCondition', () => {
   it.each([

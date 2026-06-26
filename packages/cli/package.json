@@ -40,7 +40,6 @@
   },
   "devDependencies": {
     "@clickhouse/client": "^1.12.1",
-    "@clickhouse/client-common": "^1.12.1",
     "@hyperdx/common-utils": "^0.20.0",
     "@jest/globals": "^30.2.0",
     "@types/crypto-js": "^4.2.2",
