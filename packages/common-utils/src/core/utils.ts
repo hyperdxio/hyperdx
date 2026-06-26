@@ -1201,6 +1201,14 @@ export function displayTypeSupportsBuilderAlerts(
   );
 }
 
+export function displayTypeSupportsPromQLAlerts(
+  displayType: DisplayType | undefined,
+): boolean {
+  // TODO: Support alerts for PromQL (HDX-4636)
+  // This looks funky, just doing it to satisfy knip
+  return displayType ? false : false;
+}
+
 export function validateRawSqlForAlert(chartConfig: RawSqlChartConfig): {
   errors: string[];
   warnings: string[];

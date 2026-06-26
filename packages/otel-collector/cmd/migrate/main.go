@@ -412,7 +412,7 @@ func removeCompatLogsSchema(tempDir string) error {
 
 // removePromqlSchema removes the experimental TimeSeries-engine schema from
 // the temp directory so it is only created when PromQL support is opted into
-// via ENABLE_PROMQL=true. Keeps the experimental engine and otel_metrics_ts
+// via ENABLE_PROMQL=true. Keeps the experimental engine and metrics_ts
 // table out of deployments that have not enabled the feature.
 func removePromqlSchema(tempDir string) error {
 	promqlPath := filepath.Join(tempDir, "00008_otel_metrics_timeseries.sql")

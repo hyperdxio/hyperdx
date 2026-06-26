@@ -133,7 +133,7 @@ describe('prometheus router', () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedClickHouseConnection(team._id);
 
-      // ClickHouse path: will likely fail with 400 because otel_metrics_ts
+      // ClickHouse path: will likely fail with 400 because metrics_ts
       // is not seeded in the test CH, but the routing decision is what we
       // care about — fetch must not be called.
       await agent.get('/v1/prometheus/query_range').query({

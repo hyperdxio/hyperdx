@@ -541,8 +541,8 @@ export const prometheusApi = {
     end: number;
     step: string;
     connectionId: string;
-    database: string;
-    table: string;
+    database?: string;
+    table?: string;
   }): Promise<PrometheusQueryRangeResponse> =>
     prometheusFetch('v1/prometheus/query_range', {
       query: params.query,
@@ -550,8 +550,8 @@ export const prometheusApi = {
       end: String(params.end),
       step: params.step,
       connectionId: params.connectionId,
-      database: params.database,
-      table: params.table,
+      ...(params.database ? { database: params.database } : {}),
+      ...(params.table ? { table: params.table } : {}),
     }),
 
   labelValues: (params: {

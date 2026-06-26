@@ -147,9 +147,15 @@ export const SQLIntervalSchema = z
   .string()
   .regex(/^\d+ (second|minute|hour|day)$/);
 export const SearchConditionSchema = z.string();
-export const SearchConditionLanguageSchema = z
-  .enum(['sql', 'lucene', 'promql'])
-  .optional();
+const SearchConditionRequiredLanguageSchema = z.enum([
+  'sql',
+  'lucene',
+  'promql',
+]);
+export const SearchConditionLanguageSchema =
+  SearchConditionRequiredLanguageSchema.optional();
+export const SearchConditionTrimmedLanguageSchema =
+  SearchConditionRequiredLanguageSchema.exclude(['promql']).optional();
 export const AggregateFunctionSchema = z.enum([
   'avg',
   'count',
@@ -1479,7 +1485,7 @@ export const DashboardFilterSchema = z.object({
   source: z.string().min(1),
   sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
   where: z.string().optional(),
-  whereLanguage: SearchConditionLanguageSchema,
+  whereLanguage: SearchConditionTrimmedLanguageSchema,
   // Sources this filter applies to. Undefined / missing means the filter
   // applies to all tiles.
   appliesToSourceIds: z.array(z.string().min(1)).optional(),
