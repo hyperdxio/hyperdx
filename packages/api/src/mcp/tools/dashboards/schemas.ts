@@ -315,18 +315,42 @@ const mcpOnClickDashboardSchema = z
       'high-level overview table down to a per-service or per-endpoint dashboard.',
   );
 
+const mcpOnClickExternalSchema = z
+  .object({
+    type: z
+      .literal('external')
+      .describe('Link to an arbitrary external URL (e.g. Grafana, Langfuse).'),
+    urlTemplate: z
+      .string()
+      .min(1)
+      .max(10000)
+      .describe(
+        'Handlebars-style template rendered against the clicked row, e.g. ' +
+          '"https://example.com/d/abc?var-service={{ServiceName}}". ' +
+          'The rendered value MUST be an absolute http(s) URL; relative URLs and ' +
+          'non-http(s) schemes (javascript:, data:, etc.) are rejected at click time. ' +
+          'This variant references no HyperDX source or dashboard.',
+      ),
+  })
+  .describe(
+    'Row-click handler that opens an external URL in a new tab. Use this to ' +
+      'link out to a third-party tool (Grafana, Langfuse, runbooks, etc.).',
+  );
+
 const mcpOnClickSchema = z
   .discriminatedUnion('type', [
     mcpOnClickSearchSchema,
     mcpOnClickDashboardSchema,
+    mcpOnClickExternalSchema,
   ])
   .describe(
     'Row-click navigation for tiles that render as tables (Table tiles always; ' +
       'SQL tiles only when displayType is "table"). ' +
       'type="search" links to the /search page for a log/trace source; ' +
-      'type="dashboard" links to another dashboard. ' +
-      'Both support Handlebars `{{column}}` templating against the clicked row ' +
-      'for the target, whereTemplate, and filter values.\n\n' +
+      'type="dashboard" links to another dashboard; ' +
+      'type="external" links to an arbitrary external http(s) URL. ' +
+      'All support Handlebars `{{column}}` templating against the clicked row ' +
+      'for the target/url, whereTemplate, and filter values.\n\n' +
       'Examples:\n' +
       '1. Drill into search for the clicked service: \n' +
       '   { "type": "search", "target": { "mode": "id", "id": "<trace-source-id>" }, ' +
@@ -340,7 +364,10 @@ const mcpOnClickSchema = z
       '"template": "{{ServiceName}}" }] }\n' +
       '3. Resolve the destination from the row (rare; prefer mode="id"): \n' +
       '   { "type": "dashboard", "target": { "mode": "template", "template": ' +
-      '"{{TargetDashboardName}}" }, "whereLanguage": "lucene" }',
+      '"{{TargetDashboardName}}" }, "whereLanguage": "lucene" }\n' +
+      '4. Link out to an external tool: \n' +
+      '   { "type": "external", "urlTemplate": ' +
+      '"https://grafana.example.com/d/abc?var-service={{ServiceName}}" }',
   );
 
 const mcpTileLayoutSchema = z.object({

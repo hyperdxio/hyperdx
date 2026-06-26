@@ -595,7 +595,8 @@ export function convertToDashboardTemplate(
   // OnClickTargetSchema requires id.min(1), so we can't emit an empty string.
   const convertOnClickTargetIdToName = (config: SavedChartConfig) => {
     const onClick = config.onClick;
-    if (!onClick || onClick.target.mode !== 'id') return;
+    if (!onClick || onClick.type === 'external' || onClick.target.mode !== 'id')
+      return;
     const targetId = onClick.target.id;
     const name =
       onClick.type === 'search'
