@@ -168,6 +168,11 @@ function ExternalOnClickFields({ control }: { control: DrawerControl }) {
     <Stack gap="xs">
       <Text size="xs" c="dimmed">
         {TEMPLATE_HELP_TEXT} The rendered value must be an absolute http(s) URL.
+        <br />
+        <br />
+        <b>Caution:</b> this may navigate to an external site and include
+        information from your data. Make sure the template does not contain any
+        sensitive information, and that the external site is trusted.
       </Text>
 
       <Box>
