@@ -24,8 +24,8 @@ services:
       dockerfile: docker/otel-collector/Dockerfile
       target: dev
       args:
-        OTEL_COLLECTOR_VERSION: ${OTEL_COLLECTOR_VERSION:-0.154.0}
-        OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION:-1.60.0}
+        OTEL_COLLECTOR_VERSION: ${OTEL_COLLECTOR_VERSION:-0.155.0}
+        OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION:-1.61.0}
     environment:
       - CLICKHOUSE_ENDPOINT=tcp://ch-server:9000?dial_timeout=10s
       - CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT=ch-server:9363
@@ -55,8 +55,8 @@ services:
       dockerfile: docker/otel-collector/Dockerfile
       target: dev
       args:
-        OTEL_COLLECTOR_VERSION: ${OTEL_COLLECTOR_VERSION:-0.154.0}
-        OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION:-1.60.0}
+        OTEL_COLLECTOR_VERSION: ${OTEL_COLLECTOR_VERSION:-0.155.0}
+        OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION:-1.61.0}
     environment:
       - CLICKHOUSE_ENDPOINT=tcp://ch-server:9000?dial_timeout=10s
       - CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT=ch-server:9363
@@ -86,8 +86,8 @@ services:
       dockerfile: docker/otel-collector/Dockerfile
       target: dev
       args:
-        OTEL_COLLECTOR_VERSION: ${OTEL_COLLECTOR_VERSION:-0.154.0}
-        OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION:-1.60.0}
+        OTEL_COLLECTOR_VERSION: ${OTEL_COLLECTOR_VERSION:-0.155.0}
+        OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION:-1.61.0}
     environment:
       - CLICKHOUSE_ENDPOINT=tcp://ch-server:9000?dial_timeout=10s
       - CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT=ch-server:9363
@@ -136,8 +136,8 @@ services:
       dockerfile: docker/otel-collector/Dockerfile
       target: dev
       args:
-        OTEL_COLLECTOR_VERSION: ${OTEL_COLLECTOR_VERSION:-0.154.0}
-        OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION:-1.60.0}
+        OTEL_COLLECTOR_VERSION: ${OTEL_COLLECTOR_VERSION:-0.155.0}
+        OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION:-1.61.0}
     environment:
       - CLICKHOUSE_ENDPOINT=tcp://ch-server-compat:9000?dial_timeout=10s
       - CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT=ch-server-compat:9363
