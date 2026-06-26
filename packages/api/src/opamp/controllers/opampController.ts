@@ -10,7 +10,25 @@ import {
   encodeServerToAgent,
   serverCapabilities,
 } from '@/opamp/utils/protobuf';
+import {
+  getCounter,
+  SpanKind,
+  SpanStatusCode,
+  withSpan,
+} from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+
+// OpAMP messages come from collector agents, not authenticated users, so there
+// is no team/user context to attach. We instead track delivery outcomes with a
+// low-cardinality `outcome` enum (see agent_docs/observability.md).
+const opampMessagesCounter = getCounter('hyperdx.opamp.messages', {
+  description:
+    'Count of OpAMP AgentToServer messages handled, labeled by outcome (processed, unsupported_media_type, error).',
+});
+const opampRemoteConfigsCounter = getCounter('hyperdx.opamp.remote_configs', {
+  description:
+    'Count of OpAMP remote collector configs sent back to agents in a ServerToAgent response.',
+});
 
 type CollectorConfig = {
   extensions: Record<string, any>;
@@ -332,73 +350,102 @@ export class OpampController {
    * Handle an OpAMP message from an agent
    */
   public async handleOpampMessage(req: Request, res: Response): Promise<void> {
-    try {
-      // Check content type
-      const contentType = req.get('Content-Type');
-      if (contentType !== 'application/x-protobuf') {
-        res
-          .status(415)
-          .send(
-            'Unsupported Media Type: Content-Type must be application/x-protobuf',
+    return withSpan(
+      'opamp.handle_message',
+      async span => {
+        try {
+          // Check content type
+          const contentType = req.get('Content-Type');
+          if (contentType !== 'application/x-protobuf') {
+            opampMessagesCounter.add(1, { outcome: 'unsupported_media_type' });
+            span.setStatus({ code: SpanStatusCode.OK });
+            res
+              .status(415)
+              .send(
+                'Unsupported Media Type: Content-Type must be application/x-protobuf',
+              );
+            return;
+          }
+
+          // Decode the AgentToServer message
+          const agentToServer = decodeAgentToServer(req.body);
+          logger.debug({ agentToServer }, 'agentToServer');
+          logger.debug(
+            // @ts-ignore
+            `Received message from agent: ${agentToServer.instanceUid?.toString(
+              'hex',
+            )}`,
           );
-        return;
-      }
 
-      // Decode the AgentToServer message
-      const agentToServer = decodeAgentToServer(req.body);
-      logger.debug({ agentToServer }, 'agentToServer');
-      logger.debug(
-        // @ts-ignore
-        `Received message from agent: ${agentToServer.instanceUid?.toString(
-          'hex',
-        )}`,
-      );
+          // Process the agent status
+          const agent = agentService.processAgentStatus(agentToServer);
 
-      // Process the agent status
-      const agent = agentService.processAgentStatus(agentToServer);
+          // Prepare the response
+          const serverToAgent: any = {
+            instanceUid: agent.instanceUid,
+            capabilities: serverCapabilities,
+          };
 
-      // Prepare the response
-      const serverToAgent: any = {
-        instanceUid: agent.instanceUid,
-        capabilities: serverCapabilities,
-      };
+          const acceptsRemoteConfig =
+            agentService.agentAcceptsRemoteConfig(agent);
+          span.setAttribute(
+            'opamp.agent.accepts_remote_config',
+            acceptsRemoteConfig,
+          );
 
-      // Check if we should send a remote configuration
-      if (agentService.agentAcceptsRemoteConfig(agent)) {
-        const teams = await getAllTeams([
-          'apiKey',
-          'collectorAuthenticationEnforced',
-        ]);
-        const otelCollectorConfig = buildOtelCollectorConfig(teams);
+          // Check if we should send a remote configuration
+          if (acceptsRemoteConfig) {
+            const teams = await getAllTeams([
+              'apiKey',
+              'collectorAuthenticationEnforced',
+            ]);
+            const otelCollectorConfig = buildOtelCollectorConfig(teams);
 
-        if (config.IS_DEV) {
-          logger.debug(JSON.stringify(otelCollectorConfig, null, 2));
+            if (config.IS_DEV) {
+              logger.debug(JSON.stringify(otelCollectorConfig, null, 2));
+            }
+
+            const remoteConfig = createRemoteConfig(
+              new Map([
+                [
+                  'config.json',
+                  Buffer.from(JSON.stringify(otelCollectorConfig)),
+                ],
+              ]),
+              'application/json',
+            );
+
+            serverToAgent.remoteConfig = remoteConfig;
+            opampRemoteConfigsCounter.add(1);
+            logger.debug(
+              `Sending remote config to agent: ${agent.instanceUid.toString(
+                'hex',
+              )}`,
+            );
+          }
+
+          // Encode and send the response
+          const encodedResponse = encodeServerToAgent(serverToAgent);
+
+          opampMessagesCounter.add(1, { outcome: 'processed' });
+          span.setStatus({ code: SpanStatusCode.OK });
+          res.setHeader('Content-Type', 'application/x-protobuf');
+          res.send(encodedResponse);
+        } catch (error) {
+          opampMessagesCounter.add(1, { outcome: 'error' });
+          span.recordException(
+            error instanceof Error ? error : new Error(String(error)),
+          );
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: error instanceof Error ? error.message : String(error),
+          });
+          logger.error({ err: error }, 'Error handling OpAMP message');
+          res.status(500).send('Internal Server Error');
         }
-
-        const remoteConfig = createRemoteConfig(
-          new Map([
-            ['config.json', Buffer.from(JSON.stringify(otelCollectorConfig))],
-          ]),
-          'application/json',
-        );
-
-        serverToAgent.remoteConfig = remoteConfig;
-        logger.debug(
-          `Sending remote config to agent: ${agent.instanceUid.toString(
-            'hex',
-          )}`,
-        );
-      }
-
-      // Encode and send the response
-      const encodedResponse = encodeServerToAgent(serverToAgent);
-
-      res.setHeader('Content-Type', 'application/x-protobuf');
-      res.send(encodedResponse);
-    } catch (error) {
-      logger.error({ err: error }, 'Error handling OpAMP message');
-      res.status(500).send('Internal Server Error');
-    }
+      },
+      { kind: SpanKind.INTERNAL, recordOkStatus: false },
+    );
   }
 }
 
