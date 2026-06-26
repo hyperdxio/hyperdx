@@ -1,8 +1,8 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import express from 'express';
+import { performance } from 'perf_hooks';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
-import { performance } from 'perf_hooks';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
