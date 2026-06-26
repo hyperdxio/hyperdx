@@ -272,9 +272,7 @@ const proxyMiddleware: RequestHandler =
           // itself worked; outcome reflects whether ClickHouse served it.
           outcome: statusCode < 400 ? 'success' : 'error',
           durationMs:
-            typeof startedAt === 'number'
-              ? performance.now() - startedAt
-              : 0,
+            typeof startedAt === 'number' ? performance.now() - startedAt : 0,
         });
 
         // since clickhouse v24, the cors headers * will be attached to the response by default
@@ -302,9 +300,7 @@ const proxyMiddleware: RequestHandler =
           // DNS failure, ...) — a hard availability failure for the proxy.
           outcome: 'error',
           durationMs:
-            typeof startedAt === 'number'
-              ? performance.now() - startedAt
-              : 0,
+            typeof startedAt === 'number' ? performance.now() - startedAt : 0,
         });
         console.error('Proxy error:', err);
         (_res as Response).writeHead(500, {
