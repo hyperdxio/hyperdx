@@ -1215,6 +1215,27 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           items:
  *             $ref: '#/components/schemas/OnClickFilterTemplate'
  *
+ *     OnClickExternal:
+ *       type: object
+ *       required: [type, urlTemplate]
+ *       description: >
+ *         Link-out that navigates to an arbitrary external URL (e.g. a Grafana
+ *         or Langfuse dashboard). The rendered URL must be an absolute http(s) URL.
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [external]
+ *           description: OnClick variant discriminator. Must be "external" for external link-outs.
+ *           example: "external"
+ *         urlTemplate:
+ *           type: string
+ *           minLength: 1
+ *           description: >
+ *             Handlebars template rendered against the clicked row; supports
+ *             `{{column}}` variables. The rendered value must be an absolute
+ *             http(s) URL.
+ *           example: "https://example.com/d/abc?var-service={{ServiceName}}"
+ *
  *     OnClick:
  *       description: >
  *         Link-out configuration applied when a user clicks a row of a table tile.
@@ -1224,11 +1245,13 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *       oneOf:
  *         - $ref: '#/components/schemas/OnClickSearch'
  *         - $ref: '#/components/schemas/OnClickDashboard'
+ *         - $ref: '#/components/schemas/OnClickExternal'
  *       discriminator:
  *         propertyName: type
  *         mapping:
  *           search: '#/components/schemas/OnClickSearch'
  *           dashboard: '#/components/schemas/OnClickDashboard'
+ *           external: '#/components/schemas/OnClickExternal'
  *
  *     TableChartConfig:
  *       description: >

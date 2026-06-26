@@ -183,6 +183,20 @@ export const Table = ({
                 // in the <tbody> loop below sees the same identity.
                 const action = getRowAction(row.original);
                 if (action.url) {
+                  if (action.external) {
+                    return (
+                      <a
+                        href={action.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={interactiveClassName}
+                        data-testid="dashboard-table-row-action"
+                        data-shape="external-link"
+                      >
+                        {formattedValue}
+                      </a>
+                    );
+                  }
                   // Use prefetch={false} so virtualization scroll doesn't
                   // trigger an N-row prefetch storm against /search? and
                   // /dashboards/ routes the user usually never opens.
@@ -451,16 +465,30 @@ export const Table = ({
                           closeDelay={100}
                           fz="xs"
                         >
-                          <Link
-                            href={actionUrl}
-                            prefetch={false}
-                            tabIndex={-1}
-                            aria-hidden="true"
-                            className={styles.rowActionHint}
-                            data-testid="row-action-hint"
-                          >
-                            <IconArrowUpRight size={14} />
-                          </Link>
+                          {rowAction.external ? (
+                            <a
+                              href={actionUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              tabIndex={-1}
+                              aria-hidden="true"
+                              className={styles.rowActionHint}
+                              data-testid="row-action-hint"
+                            >
+                              <IconArrowUpRight size={14} />
+                            </a>
+                          ) : (
+                            <Link
+                              href={actionUrl}
+                              prefetch={false}
+                              tabIndex={-1}
+                              aria-hidden="true"
+                              className={styles.rowActionHint}
+                              data-testid="row-action-hint"
+                            >
+                              <IconArrowUpRight size={14} />
+                            </Link>
+                          )}
                         </Tooltip>
                       )}
                     </td>

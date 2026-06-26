@@ -1100,6 +1100,20 @@ export class DashboardPage {
   }
 
   /**
+   * Return the first row's action element (anchor or button) of a table
+   * tile. Carries `data-testid="dashboard-table-row-action"`. Useful for
+   * asserting on rendered link attributes (href / target / rel / data-shape)
+   * without triggering navigation — e.g. external links open a new tab.
+   */
+  getFirstRowActionLink(tileIndex = 0): Locator {
+    return this.getTile(tileIndex)
+      .locator('table tbody tr')
+      .first()
+      .locator('[data-testid="dashboard-table-row-action"]')
+      .first();
+  }
+
+  /**
    * Return the first data row (<tr data-index>) of the table in the
    * given tile. Used for hover-based interactions (e.g. tooltip tests).
    */
