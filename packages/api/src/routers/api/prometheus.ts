@@ -296,7 +296,14 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
     const end = parseTimestamp(params.end);
     const step = parseDuration(params.step ?? '60s');
     const database = params.database ?? 'default';
-    const table = params.table ?? 'otel_metrics_ts';
+    const table = params.table;
+    if (!table) {
+      return res.status(400).json({
+        status: 'error',
+        errorType: 'bad_data',
+        error: `table parameter required for querying clickhouse via promql`,
+      });
+    }
 
     if (step <= 0 || (end - start) / step > PROMETHEUS_MAX_RESOLUTION) {
       return res.status(400).json({
@@ -414,7 +421,14 @@ const queryHandler: express.RequestHandler = async (req, res) => {
     backend = 'clickhouse';
     const time = params.time ? parseTimestamp(params.time) : undefined;
     const database = params.database ?? 'default';
-    const table = params.table ?? 'otel_metrics_ts';
+    const table = params.table;
+    if (!table) {
+      return res.status(400).json({
+        status: 'error',
+        errorType: 'bad_data',
+        error: `table parameter required for querying clickhouse via promql`,
+      });
+    }
 
     const client = new ClickhouseClient({
       host: connection.host,
@@ -525,7 +539,14 @@ router.get('/label/:name/values', async (req, res) => {
 
     backend = 'clickhouse';
     const database = params.database ?? 'default';
-    const table = params.table ?? 'otel_metrics_ts';
+    const table = params.table;
+    if (!table) {
+      return res.status(400).json({
+        status: 'error',
+        errorType: 'bad_data',
+        error: `table parameter required for querying clickhouse via promql`,
+      });
+    }
 
     const client = new ClickhouseClient({
       host: connection.host,

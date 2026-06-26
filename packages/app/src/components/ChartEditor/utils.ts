@@ -69,11 +69,25 @@ export const isRawSqlDisplayType = (
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Number;
 
+export const isPromqlDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is
+  | DisplayType.Table
+  | DisplayType.Line
+  | DisplayType.StackedBar
+  | DisplayType.Pie
+  | DisplayType.Number =>
+  displayType === DisplayType.Table ||
+  displayType === DisplayType.Line ||
+  displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.Pie ||
+  displayType === DisplayType.Number;
+
 export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,
   source: TSource | undefined,
 ): SavedChartConfig | undefined {
-  if (form.configType === 'promql') {
+  if (form.configType === 'promql' && isPromqlDisplayType(form.displayType)) {
     const promqlConfig: PromqlSavedChartConfig = {
       configType: 'promql',
       ...pick(form, [
@@ -85,8 +99,7 @@ export function convertFormStateToSavedChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
-        'alert',
-        'step',
+        // 'alert', // TODO: Support alerts on PromQL (HDX-4636)
       ]),
       promqlExpression: form.promqlExpression ?? '',
       connection: form.connection ?? '',
@@ -152,7 +165,7 @@ export function convertFormStateToChartConfig(
   dateRange: ChartConfigWithDateRange['dateRange'],
   source: TSource | undefined,
 ): ChartConfigWithDateRange | undefined {
-  if (form.configType === 'promql') {
+  if (form.configType === 'promql' && isPromqlDisplayType(form.displayType)) {
     const promqlConfig: PromqlChartConfig = {
       configType: 'promql',
       ...pick(form, [
@@ -163,7 +176,6 @@ export function convertFormStateToChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
-        'step',
       ]),
       promqlExpression: form.promqlExpression ?? '',
       connection: source?.connection ?? form.connection ?? '',

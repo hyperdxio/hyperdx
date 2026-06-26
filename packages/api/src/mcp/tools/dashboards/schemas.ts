@@ -11,7 +11,7 @@ import {
   DashboardFilterType,
   MetricsDataType,
   NumberTileColorConditionSchema,
-  SearchConditionLanguageSchema,
+  SearchConditionTrimmedLanguageSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
@@ -125,7 +125,8 @@ const mcpTileSelectItemSchema = z
       .optional()
       .default('')
       .describe('Filter in Lucene syntax. Example: "level:error"'),
-    whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
+    whereLanguage:
+      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
     alias: z
       .string()
       .optional()
@@ -255,7 +256,7 @@ const mcpOnClickSearchSchema = z
           'Use Lucene or SQL syntax matching `whereLanguage`. Prefer `filters` (below) ' +
           'for simple equality; filters merge nicely on the destination.',
       ),
-    whereLanguage: SearchConditionLanguageSchema.describe(
+    whereLanguage: SearchConditionTrimmedLanguageSchema.describe(
       'Filter language for `whereTemplate` and `filters` ("lucene" or "sql"). ' +
         'Optional, but set it explicitly so the destination knows how to parse rendered ' +
         'whereTemplate / filter values.',
@@ -290,7 +291,7 @@ const mcpOnClickDashboardSchema = z
           "dashboard's global filter. Useful when the target dashboard exposes a single " +
           'global scope rather than per-tile filters.',
       ),
-    whereLanguage: SearchConditionLanguageSchema.describe(
+    whereLanguage: SearchConditionTrimmedLanguageSchema.describe(
       'Filter language for `whereTemplate` and `filters` ("lucene" or "sql"). ' +
         'Optional, but set it explicitly so the destination knows how to parse rendered ' +
         'whereTemplate / filter values.',
@@ -621,7 +622,8 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
       .describe(
         'Row-level filter applied before bucketing. Example: "level:error"',
       ),
-    whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
+    whereLanguage:
+      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(
@@ -640,7 +642,8 @@ const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
       .optional()
       .default('')
       .describe('Filter in Lucene syntax. Example: "level:error"'),
-    whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
+    whereLanguage:
+      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
     select: z
       .string()
       .optional()
@@ -865,7 +868,7 @@ const mcpDashboardFilterSchema = z
       .describe(
         'Optional WHERE clause scoping the dropdown values (e.g. "level:error" in Lucene).',
       ),
-    whereLanguage: SearchConditionLanguageSchema.describe(
+    whereLanguage: SearchConditionTrimmedLanguageSchema.describe(
       'Filter language for `where` ("lucene" or "sql"). Optional, but set it explicitly.',
     ),
     appliesToSourceIds: z
