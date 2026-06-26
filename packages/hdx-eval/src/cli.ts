@@ -25,6 +25,7 @@ import {
   ensureAnchorTime,
   getMcpDefinition,
   readConfig,
+  writeConfig,
 } from './hyperdx/config';
 import { runCheck, runSetup } from './hyperdx/setup';
 import { columnKeyFor } from './reports/aggregate';
@@ -500,8 +501,15 @@ program
       // --anchor-time <iso>: override + save to config.
       // --live: ignore saved anchor, use wall-clock now (no FIXED CURRENT
       //         TIME in system prompt), and force reseed.
+      //
+      // Staleness: if the saved anchor is >12h old and the user didn't
+      // explicitly set --anchor-time, refresh to now and force reseed.
+      // This ensures describe_source's 24h lookback window can see the
+      // eval data (including distractor services in dashboard scenarios).
+      const ANCHOR_STALENESS_MS = 12 * 60 * 60 * 1000; // 12 hours
       let anchorTimeIso: string | undefined;
       let anchorMs: number;
+      let anchorStale = false;
       if (cmdOpts.live) {
         if (cmdOpts.anchorTime) {
           throw new Error('--live and --anchor-time are mutually exclusive.');
@@ -520,6 +528,22 @@ program
         const anchor = ensureAnchorTime(config, cmdOpts.anchorTime);
         anchorTimeIso = anchor.anchorTimeIso;
         anchorMs = anchor.anchorMs;
+
+        // Check staleness — if anchor is old and wasn't explicitly set,
+        // refresh to now so describe_source can see the data.
+        if (
+          !cmdOpts.anchorTime &&
+          Date.now() - anchorMs > ANCHOR_STALENESS_MS
+        ) {
+          anchorStale = true;
+          anchorMs = Date.now();
+          anchorTimeIso = new Date(anchorMs).toISOString();
+          config.anchorTime = anchorTimeIso;
+          writeConfig(config);
+          console.log(
+            `Anchor time was stale (>12h old) — refreshed to ${anchorTimeIso}`,
+          );
+        }
       }
 
       // ── Re-seed ───────────────────────────────────────────────────
@@ -527,7 +551,9 @@ program
       // run when scenario tables are empty or missing.
       // --reseed: force re-seed even if data exists.
       // --live: always reseed (data must match wall-clock now).
-      const forceReseed = cmdOpts.reseed === true || cmdOpts.live === true;
+      // Stale anchor: force reseed when anchor was refreshed.
+      const forceReseed =
+        cmdOpts.reseed === true || cmdOpts.live === true || anchorStale;
       let shouldReseed = forceReseed;
       if (!forceReseed) {
         const checkClient = buildClientFromConfig(config, opts);
