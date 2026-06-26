@@ -236,3 +236,83 @@ export async function recordDuration<T>(
     histogram.record(performance.now() - start, attributes);
   }
 }
+
+/**
+ * The outcome of one execution of an instrumented operation. Deliberately a
+ * two-value enum so it maps cleanly onto an SLO "good vs. total" split.
+ */
+export type OperationOutcome = 'success' | 'error';
+
+// Shared SLI instruments. Every instrumented operation reports through the same
+// two metrics, distinguished by the low-cardinality `operation` attribute, so
+// SLO dashboards/queries can be written generically (filter by `operation`)
+// rather than per-metric. See agent_docs/observability.md ("SLOs").
+const operationRequestsCounter = getCounter('hyperdx.operation.requests', {
+  description:
+    'Count of instrumented application operations, labeled by operation and outcome (success, error). Availability SLI for SLOs.',
+});
+const operationDurationHistogram = getHistogram(
+  'hyperdx.operation.duration_ms',
+  {
+    description:
+      'Wall-clock duration of instrumented application operations, labeled by operation and outcome. Latency SLI for SLOs.',
+    unit: 'ms',
+  },
+);
+
+/**
+ * Records the SLI signals for a single execution of a named operation: bumps
+ * `hyperdx.operation.requests` and records `hyperdx.operation.duration_ms`,
+ * both tagged with `operation` + `outcome` (plus any extra `attributes`).
+ *
+ * Prefer {@link withOperationMetrics} for the common async case. Use this
+ * directly only when timing is managed manually and there is no single async
+ * function to wrap (e.g. streaming proxies or event-callback APIs).
+ *
+ * `operation` is a metric attribute, so it must be a stable, low-cardinality
+ * constant (e.g. `ai.assistant`) — never interpolate IDs, queries, or user
+ * input into it.
+ */
+export function recordOperationOutcome(args: {
+  operation: string;
+  outcome: OperationOutcome;
+  durationMs: number;
+  attributes?: Attributes;
+}): void {
+  const { operation, outcome, durationMs, attributes } = args;
+  const attrs: Attributes = { ...attributes, operation, outcome };
+  operationRequestsCounter.add(1, attrs);
+  operationDurationHistogram.record(durationMs, attrs);
+}
+
+/**
+ * Wraps a unit of application functionality so it emits the request-count and
+ * duration SLIs needed to define an SLO. A resolved promise is recorded as
+ * `success`, a thrown error as `error`; the error is always re-raised
+ * unchanged.
+ *
+ * Build an availability SLO from `hyperdx.operation.requests`
+ * (good = `outcome:success`) and a latency SLO from
+ * `hyperdx.operation.duration_ms`, filtering both by the `operation` attribute.
+ */
+export async function withOperationMetrics<T>(
+  operation: string,
+  fn: () => Promise<T>,
+  attributes?: Attributes,
+): Promise<T> {
+  const start = performance.now();
+  let outcome: OperationOutcome = 'success';
+  try {
+    return await fn();
+  } catch (err) {
+    outcome = 'error';
+    throw err;
+  } finally {
+    recordOperationOutcome({
+      operation,
+      outcome,
+      durationMs: performance.now() - start,
+      attributes,
+    });
+  }
+}
