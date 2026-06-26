@@ -172,6 +172,7 @@ describe('prometheus router', () => {
           end: '1700000000',
           step: '1s',
           connectionId: conn._id.toString(),
+          table: 'metrics_ts',
         })
         .expect(400);
       expect(res.body).toMatchObject({
