@@ -414,12 +414,15 @@ export function DBRowJsonViewer({
       const isJsonColumn =
         keyPath.length > 0 && jsonColumns?.includes(keyPath[0]);
 
-      // Add to Filters action (strings only)
+      // Add to Filters action
       // FIXME: TOTAL HACK To disallow adding timestamp to filters
       if (
         onPropertyAddClick != null &&
-        typeof value === 'string' &&
-        value &&
+        (typeof value === 'string' ||
+          typeof value === 'number' ||
+          typeof value === 'boolean') &&
+        value !== '' &&
+        value != null &&
         fieldPath != 'Timestamp' &&
         fieldPath != 'TimestampTime'
       ) {
@@ -432,11 +435,19 @@ export function DBRowJsonViewer({
 
             // Handle parsed JSON from string columns using JSONExtractString
             if (isInParsedJson && parsedJsonRootPath) {
+              let jsonExtractFn: JSONExtractFn = 'JSONExtractString';
+
+              if (typeof value === 'number') {
+                jsonExtractFn = 'JSONExtractFloat';
+              } else if (typeof value === 'boolean') {
+                jsonExtractFn = 'JSONExtractBool';
+              }
+
               const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
                 jsonColumns,
-                'JSONExtractString',
+                jsonExtractFn,
                 mapColumns,
               );
               if (jsonQuery) {
@@ -454,10 +465,16 @@ export function DBRowJsonViewer({
                 : fieldPath;
             }
 
-            onPropertyAddClick(filterFieldPath, value);
+            onPropertyAddClick(
+              filterFieldPath,
+              (filterFieldPath.startsWith('toString(') ||
+              typeof value !== 'boolean'
+                ? String(value)
+                : value) as string,
+            );
             notifications.show({
               color: 'green',
-              message: `Added "${fieldPath} = ${value}" to filters`,
+              message: `Added "${fieldPath} = ${String(value)}" to filters`,
             });
           },
         });
