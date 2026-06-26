@@ -530,19 +530,55 @@ program
         anchorMs = anchor.anchorMs;
 
         // Check staleness — if anchor is old and wasn't explicitly set,
-        // refresh to now so describe_source can see the data.
+        // refresh to now so describe_source's 24h lookback can see the data.
+        // First check if ClickHouse data is already fresh (avoids needless
+        // re-seed when the config file is stale but the data isn't).
         if (
           !cmdOpts.anchorTime &&
           Date.now() - anchorMs > ANCHOR_STALENESS_MS
         ) {
-          anchorStale = true;
-          anchorMs = Date.now();
-          anchorTimeIso = new Date(anchorMs).toISOString();
-          config.anchorTime = anchorTimeIso;
-          writeConfig(config);
-          console.log(
-            `Anchor time was stale (>12h old) — refreshed to ${anchorTimeIso}`,
-          );
+          // Check if data in ClickHouse is already recent (within 12h)
+          let dataIsFresh = false;
+          const checkClient = buildClientFromConfig(config, opts);
+          try {
+            const tables = scenarioTables(scenario.name);
+            const result = await checkClient.query({
+              query: `SELECT max(Timestamp) AS latest FROM ${tables.traces}`,
+              format: 'JSON',
+            });
+            const rows = (await result.json()) as {
+              data: Array<{ latest: string }>;
+            };
+            if (rows.data?.[0]?.latest) {
+              const latestMs = Date.parse(rows.data[0].latest);
+              if (
+                Number.isFinite(latestMs) &&
+                Date.now() - latestMs < ANCHOR_STALENESS_MS
+              ) {
+                dataIsFresh = true;
+                // Data is fresh — just update the anchor to match the data
+                anchorMs = latestMs;
+                anchorTimeIso = new Date(anchorMs).toISOString();
+                config.anchorTime = anchorTimeIso;
+                writeConfig(config);
+              }
+            }
+          } catch {
+            // Can't check — fall through to reseed
+          } finally {
+            await checkClient.close();
+          }
+
+          if (!dataIsFresh) {
+            anchorStale = true;
+            anchorMs = Date.now();
+            anchorTimeIso = new Date(anchorMs).toISOString();
+            config.anchorTime = anchorTimeIso;
+            writeConfig(config);
+            console.log(
+              `Anchor time was stale (>12h old) — refreshed to ${anchorTimeIso}`,
+            );
+          }
         }
       }
 
