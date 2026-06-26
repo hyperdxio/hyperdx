@@ -757,9 +757,16 @@ export const OnClickDashboardSchema = z.object({
 });
 export type OnClickDashboard = z.infer<typeof OnClickDashboardSchema>;
 
+export const OnClickExternalSchema = z.object({
+  type: z.literal('external'),
+  urlTemplate: z.string().min(1).max(10000),
+});
+export type OnClickExternal = z.infer<typeof OnClickExternalSchema>;
+
 export const OnClickSchema = z.discriminatedUnion('type', [
   OnClickSearchSchema,
   OnClickDashboardSchema,
+  OnClickExternalSchema,
 ]);
 export type OnClick = z.infer<typeof OnClickSchema>;
 
@@ -1579,7 +1586,7 @@ export const ConnectionSchema = z.object({
     .regex(/^[a-z0-9_]+$/i)
     .optional()
     .nullable(),
-  prometheusEndpoint: z.string().url().optional(),
+  isPrometheusEndpoint: z.boolean().optional(),
 });
 
 export type Connection = z.infer<typeof ConnectionSchema>;

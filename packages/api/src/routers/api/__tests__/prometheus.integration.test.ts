@@ -6,6 +6,26 @@ import Connection from '@/models/connection';
 
 const mockFetch = global.fetch as jest.Mock;
 
+// The proxy now streams the upstream response straight through (no
+// `await resp.json()`), so test mocks must expose the fields the pipeline
+// actually reads: `status`, `headers.get()`, and a web `ReadableStream` body.
+function fakeUpstreamResponse(payload: unknown, status = 200) {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(JSON.stringify(payload)));
+      controller.close();
+    },
+  });
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: new Headers({ 'content-type': 'application/json' }),
+    body,
+    text: jest.fn().mockResolvedValue(JSON.stringify(payload)),
+    json: jest.fn().mockResolvedValue(payload),
+  };
+}
+
 describe('prometheus router', () => {
   const server = getServer();
 
@@ -16,11 +36,7 @@ describe('prometheus router', () => {
   afterEach(async () => {
     await server.clearDBs();
     mockFetch.mockReset();
-    mockFetch.mockResolvedValue({
-      ok: true,
-      text: jest.fn().mockResolvedValue(''),
-      json: jest.fn().mockResolvedValue({}),
-    } as any);
+    mockFetch.mockResolvedValue(fakeUpstreamResponse({}) as any);
   });
 
   afterAll(async () => {
@@ -31,10 +47,10 @@ describe('prometheus router', () => {
     return Connection.create({
       team: teamId,
       name: 'Prom',
-      host: 'http://ch-server:8123',
-      username: 'default',
+      host: 'http://prom.example.com',
+      username: '',
       password: '',
-      prometheusEndpoint: 'http://prom.example.com',
+      isPrometheusEndpoint: true,
     });
   };
 
@@ -95,7 +111,7 @@ describe('prometheus router', () => {
       });
     });
 
-    it('proxies to upstream Prometheus when connection has prometheusEndpoint', async () => {
+    it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(team._id);
 
@@ -103,11 +119,9 @@ describe('prometheus router', () => {
         status: 'success',
         data: { resultType: 'matrix', result: [] },
       };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: jest.fn().mockResolvedValue(''),
-        json: jest.fn().mockResolvedValue(promResponse),
-      } as any);
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse(promResponse) as any,
+      );
 
       const res = await agent
         .get('/v1/prometheus/query_range')
@@ -129,7 +143,7 @@ describe('prometheus router', () => {
       expect(calledUrl).not.toContain('connectionId');
     });
 
-    it('does NOT proxy to Prometheus when connection has no prometheusEndpoint', async () => {
+    it('does NOT proxy to Prometheus when connection is not isPrometheusEndpoint', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedClickHouseConnection(team._id);
 
@@ -197,7 +211,7 @@ describe('prometheus router', () => {
         .expect(404);
     });
 
-    it('proxies to upstream Prometheus when connection has prometheusEndpoint', async () => {
+    it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(team._id);
 
@@ -205,11 +219,9 @@ describe('prometheus router', () => {
         status: 'success',
         data: { resultType: 'vector', result: [] },
       };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: jest.fn().mockResolvedValue(''),
-        json: jest.fn().mockResolvedValue(promResponse),
-      } as any);
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse(promResponse) as any,
+      );
 
       const res = await agent
         .get('/v1/prometheus/query')
@@ -238,16 +250,14 @@ describe('prometheus router', () => {
         .expect(404);
     });
 
-    it('proxies to upstream Prometheus when connection has prometheusEndpoint', async () => {
+    it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedPrometheusConnection(team._id);
 
       const promResponse = { status: 'success', data: ['up', 'requests'] };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        text: jest.fn().mockResolvedValue(''),
-        json: jest.fn().mockResolvedValue(promResponse),
-      } as any);
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse(promResponse) as any,
+      );
 
       const res = await agent
         .get('/v1/prometheus/label/__name__/values')

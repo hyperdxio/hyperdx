@@ -3182,6 +3182,39 @@ describe('External API v2 Dashboards - new format', () => {
       });
     });
 
+    it('should accept and round-trip a table tile external onClick link', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with external onClick',
+          tiles: [
+            {
+              name: 'External Link Table',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'table',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count' }],
+                onClick: {
+                  type: 'external',
+                  urlTemplate:
+                    'https://grafana.example.com/d/abc?var-service={{ServiceName}}',
+                },
+              },
+            },
+          ],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config.onClick).toEqual({
+        type: 'external',
+        urlTemplate:
+          'https://grafana.example.com/d/abc?var-service={{ServiceName}}',
+      });
+    });
+
     it('should return 400 when a table tile onClick target.id is not a valid ObjectId', async () => {
       const response = await authRequest('post', BASE_URL)
         .send({
