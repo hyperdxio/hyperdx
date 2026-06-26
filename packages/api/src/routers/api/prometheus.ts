@@ -1,6 +1,8 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import express from 'express';
 import { performance } from 'perf_hooks';
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
@@ -140,40 +142,96 @@ export function formatVectorResponse(
 // Prometheus proxy (for real Prometheus backends)
 // --------------------------
 
-const PROMETHEUS_PROXY_TIMEOUT_MS = 30_000;
+const PROMETHEUS_PROXY_TIMEOUT_MS = 90_000;
 const PROMETHEUS_CH_TIMEOUT_MS = 30_000;
 const PROMETHEUS_MAX_EXECUTION_SEC = 30;
 const PROMETHEUS_MAX_RESULT_ROWS = '100000';
 const PROMETHEUS_MAX_RESOLUTION = 11_000;
 
+// Forwards the response straight from the upstream Prometheus to the
+// HyperDX client. The response can be multi-megabyte (e.g. `/label/__name__/
+// values` on a large Prometheus), so we avoid `await resp.json()` +
+// `res.json(...)` which would parse + re-serialize the whole body in memory.
+// Prometheus's native response shape (`{status, data}` / `{status, errorType,
+// error}`) is already what HyperDX clients expect, so we forward the status
+// code and content-type as-is.
 async function proxyToPrometheus(
-  prometheusEndpoint: string,
+  upstreamHost: string,
   path: string,
   params: Record<string, string>,
-): Promise<any> {
-  const url = new URL(path, prometheusEndpoint);
+  res: express.Response,
+): Promise<void> {
+  let url: URL;
+  try {
+    url = new URL(path, upstreamHost);
+  } catch {
+    res.status(400).json({
+      status: 'error',
+      errorType: 'bad_data',
+      error: `Connection host is not a valid URL: ${JSON.stringify(upstreamHost)}`,
+    });
+    return;
+  }
   for (const [k, v] of Object.entries(params)) {
     if (['connectionId', 'database', 'table'].includes(k)) continue;
     if (v != null) url.searchParams.set(k, v);
   }
-  let resp: Response;
+  const target = url.toString();
+
+  let upstreamResp: Response;
   try {
-    resp = await fetch(url.toString(), {
+    upstreamResp = await fetch(target, {
       signal: AbortSignal.timeout(PROMETHEUS_PROXY_TIMEOUT_MS),
     });
   } catch (err) {
     if (err instanceof Error && err.name === 'TimeoutError') {
-      throw new Error(
-        `Prometheus request timed out after ${PROMETHEUS_PROXY_TIMEOUT_MS}ms`,
-      );
+      res.status(504).json({
+        status: 'error',
+        errorType: 'timeout',
+        error: `Prometheus request to ${target} timed out after ${PROMETHEUS_PROXY_TIMEOUT_MS}ms`,
+      });
+      return;
     }
-    throw err;
+    // Node's fetch wraps the real network error (ECONNREFUSED, ENOTFOUND, TLS,
+    // …) in `.cause`. Without unwrapping it the client only sees a useless
+    // `"fetch failed"`.
+    const cause = err instanceof Error ? (err.cause ?? err) : err;
+    let detail: string;
+    if (cause && typeof cause === 'object' && 'code' in cause) {
+      const c = cause as { code: string; message?: string };
+      detail = c.message ? `${c.code}: ${c.message}` : c.code;
+    } else if (cause instanceof Error) {
+      detail = cause.message;
+    } else {
+      detail = String(cause);
+    }
+    res.status(502).json({
+      status: 'error',
+      errorType: 'unavailable',
+      error: `Failed to reach Prometheus at ${target} (${detail})`,
+    });
+    return;
   }
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Prometheus returned ${resp.status}: ${text}`);
+
+  res.status(upstreamResp.status);
+  const contentType = upstreamResp.headers.get('content-type');
+  if (contentType) res.setHeader('content-type', contentType);
+
+  if (!upstreamResp.body) {
+    res.end();
+    return;
   }
-  return resp.json();
+
+  try {
+    await pipeline(Readable.fromWeb(upstreamResp.body as any), res);
+  } catch (err) {
+    // Headers are already sent at this point — best we can do is destroy the
+    // socket so the client sees a truncated response instead of a hung
+    // connection.
+    if (!res.writableEnded) {
+      res.destroy(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
 }
 
 // --------------------------
@@ -219,15 +277,17 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
-    // If connection has a Prometheus endpoint, proxy directly
-    if (connection.prometheusEndpoint) {
+    // If the connection points at a Prometheus-compatible endpoint, proxy
+    // directly to connection.host instead of running a ClickHouse query.
+    if (connection.isPrometheusEndpoint) {
       backend = 'prometheus';
-      const result = await proxyToPrometheus(
-        connection.prometheusEndpoint,
+      await proxyToPrometheus(
+        connection.host,
         '/api/v1/query_range',
         params,
+        res,
       );
-      return res.json(result);
+      return;
     }
 
     // Otherwise, use ClickHouse prometheusQuery()
@@ -352,14 +412,10 @@ const queryHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
-    if (connection.prometheusEndpoint) {
+    if (connection.isPrometheusEndpoint) {
       backend = 'prometheus';
-      const result = await proxyToPrometheus(
-        connection.prometheusEndpoint,
-        '/api/v1/query',
-        params,
-      );
-      return res.json(result);
+      await proxyToPrometheus(connection.host, '/api/v1/query', params, res);
+      return;
     }
 
     backend = 'clickhouse';
@@ -426,12 +482,25 @@ router.post('/query', queryHandler);
 // GET /label/:name/values
 // --------------------------
 
+// Prometheus label-name grammar — used to reject anything that could
+// influence the upstream URL we're about to construct (e.g. embedded `?`,
+// `#`, or percent-encoded slashes that Express's param decoder lets through).
+// https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
+const PROMETHEUS_LABEL_NAME = /^[a-zA-Z_:][a-zA-Z0-9_:]*$/;
+
 router.get('/label/:name/values', async (req, res) => {
   const startedAt = performance.now();
   let backend: PrometheusBackend = 'unknown';
   try {
     const { teamId } = getNonNullUserWithTeam(req);
     const labelName = req.params.name;
+    if (!PROMETHEUS_LABEL_NAME.test(labelName)) {
+      return res.status(400).json({
+        status: 'error',
+        errorType: 'bad_data',
+        error: 'Invalid label name',
+      });
+    }
     const params = req.query as Record<string, string>;
 
     const connectionId = params.connectionId;
@@ -457,14 +526,15 @@ router.get('/label/:name/values', async (req, res) => {
     }
 
     // Proxy to Prometheus if endpoint is set
-    if (connection.prometheusEndpoint) {
+    if (connection.isPrometheusEndpoint) {
       backend = 'prometheus';
-      const result = await proxyToPrometheus(
-        connection.prometheusEndpoint,
+      await proxyToPrometheus(
+        connection.host,
         `/api/v1/label/${labelName}/values`,
         params,
+        res,
       );
-      return res.json(result);
+      return;
     }
 
     backend = 'clickhouse';
