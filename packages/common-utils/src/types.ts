@@ -1586,7 +1586,7 @@ export const ConnectionSchema = z.object({
     .regex(/^[a-z0-9_]+$/i)
     .optional()
     .nullable(),
-  prometheusEndpoint: z.string().url().optional(),
+  isPrometheusEndpoint: z.boolean().optional(),
 });
 
 export type Connection = z.infer<typeof ConnectionSchema>;

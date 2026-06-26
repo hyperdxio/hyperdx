@@ -620,11 +620,10 @@
             "nullable": true,
             "example": "hyperdx_"
           },
-          "prometheusEndpoint": {
-            "type": "string",
-            "description": "Optional Prometheus-compatible API endpoint. When set, PromQL queries are proxied to this endpoint.",
-            "nullable": true,
-            "example": "http://prometheus:9090"
+          "isPrometheusEndpoint": {
+            "type": "boolean",
+            "description": "Optional. When true, `host` is treated as a Prometheus-compatible API endpoint (e.g. Prometheus or Thanos) and PromQL queries are proxied to it. When false or omitted, `host` is a ClickHouse HTTP endpoint.",
+            "example": false
           },
           "createdAt": {
             "type": "string",
@@ -675,10 +674,10 @@
             "nullable": true,
             "example": "hyperdx_"
           },
-          "prometheusEndpoint": {
-            "type": "string",
-            "description": "Optional Prometheus-compatible API endpoint. When set, PromQL queries are proxied to this endpoint.",
-            "example": "http://prometheus:9090"
+          "isPrometheusEndpoint": {
+            "type": "boolean",
+            "description": "Optional. When true, `host` is treated as a Prometheus-compatible API endpoint (e.g. Prometheus or Thanos) and PromQL queries are proxied to it. When false or omitted, `host` is a ClickHouse HTTP endpoint.",
+            "example": false
           }
         }
       },
@@ -717,11 +716,10 @@
             "nullable": true,
             "example": "hyperdx_"
           },
-          "prometheusEndpoint": {
-            "type": "string",
-            "description": "Optional Prometheus-compatible API endpoint. Set to null to clear the existing value. If omitted, the existing value is kept.",
-            "nullable": true,
-            "example": "http://prometheus:9090"
+          "isPrometheusEndpoint": {
+            "type": "boolean",
+            "description": "Optional. When true, `host` is treated as a Prometheus-compatible API endpoint. When false or omitted, `host` is a ClickHouse HTTP endpoint. Omit to keep the existing value unchanged.",
+            "example": false
           }
         }
       },
