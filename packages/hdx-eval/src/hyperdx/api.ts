@@ -212,8 +212,6 @@ export class HyperdxApiClient {
   }
 
   async getDashboard(id: string): Promise<HyperdxDashboard> {
-    // The internal API returns dashboards via the list endpoint with full
-    // detail; individual fetch uses PATCH route path.
     const dashboards = await this.listDashboards();
     const found = dashboards.find(
       d => d._id === id || d.id === id,
@@ -222,6 +220,35 @@ export class HyperdxApiClient {
       throw new Error(`Dashboard ${id} not found`);
     }
     return found;
+  }
+
+  /**
+   * Fetch a dashboard via the External API v2 which returns a cleaner shape:
+   * - tile `name` is promoted to a top-level field (not buried in config)
+   * - config uses `sourceId` (not `source` ObjectId)
+   * - select items are restructured with clear field names
+   * Uses Bearer auth (accessKey), not cookie auth.
+   */
+  async getDashboardV2(
+    id: string,
+    accessKey: string,
+  ): Promise<HyperdxDashboard> {
+    const res = await fetch(this.url(`/api/v2/dashboards/${id}`), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessKey}`,
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(30_000),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(
+        `GET /api/v2/dashboards/${id} → ${res.status}: ${text.slice(0, 300)}`,
+      );
+    }
+    const parsed = JSON.parse(text);
+    return (parsed.data ?? parsed) as HyperdxDashboard;
   }
 
   async deleteDashboard(id: string): Promise<void> {

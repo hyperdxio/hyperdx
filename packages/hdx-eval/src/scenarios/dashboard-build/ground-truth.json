@@ -1,190 +1,61 @@
 {
   "scenario": "dashboard-build",
-  "agentPrompt": "Build an operational monitoring dashboard...",
+  "agentPrompt": "We need dashboards to monitor our microservices...",
   "expected": {
-    "dashboardName": "Service Health Overview",
-    "tileCount": 12,
-    "containerCount": 5,
-    "containers": [
-      { "title": "Overview", "collapsed": false },
-      {
-        "title": "Latency",
-        "collapsed": false,
-        "tabs": [{ "title": "By Service" }, { "title": "Distribution" }]
-      },
-      { "title": "Errors", "collapsed": true },
-      { "title": "Endpoints", "collapsed": true },
-      { "title": "Logs", "collapsed": true }
+    "dashboardCount": 2,
+    "totalTileCount": "18-22 (flexible — agent makes design decisions)",
+    "primaryServices": ["web-gateway", "order-service", "inventory-service"],
+    "distractorServices": [
+      "health-checker",
+      "cron-scheduler",
+      "internal-metrics",
+      "debug-proxy"
     ],
-    "dashboardFilters": [
+    "impossibleRequests": {
+      "cpu_memory": "No CPU or memory metrics exist in the trace/log data. The agent should report this is unavailable, not create broken tiles.",
+      "requests_per_second": "No pre-computed throughput metric exists. The agent could derive it from count + time bucketing, but calling it out as 'not a native metric' is acceptable."
+    },
+    "dashboards": [
       {
-        "expression": "ServiceName",
-        "notes": "Dashboard-level filter dropdown for ServiceName so user can scope all tiles"
+        "name": "Service Health Overview",
+        "requirements": "Multiple sections, ServiceName filter, diverse tile types, onClick drill-downs",
+        "dashboardFilters": [{ "expression": "ServiceName" }]
+      },
+      {
+        "name": "Service Detail",
+        "requirements": "Drill-down target, ServiceName filter, scoped tiles",
+        "dashboardFilters": [{ "expression": "ServiceName" }]
       }
     ],
-    "requiredTiles": [
-      {
-        "name": "Total Requests",
-        "displayType": "number",
-        "container": "Overview",
-        "expectedConfig": {
-          "aggFn": "count",
-          "numberFormat": "throughput or number with suffix ' req'",
-          "notes": "Single scalar count with numberFormat for display."
-        }
-      },
-      {
-        "name": "Error Count",
-        "displayType": "number",
-        "container": "Overview",
-        "expectedConfig": {
-          "aggFn": "count",
-          "where": "StatusCode filter for STATUS_CODE_ERROR",
-          "notes": "Must filter to error status. Without filter this counts all requests — wrong."
-        }
-      },
-      {
-        "name": "Request Rate",
-        "displayType": "line",
-        "container": "Overview",
-        "expectedConfig": {
-          "aggFn": "count",
-          "groupBy": "ServiceName",
-          "notes": "Should produce 3 series (web-gateway, order-service, inventory-service) over time."
-        }
-      },
-      {
-        "name": "Error Rate %",
-        "displayType": "line",
-        "container": "Overview",
-        "expectedConfig": {
-          "asRatio": true,
-          "select": "Two series: total count and error-filtered count, with asRatio: true",
-          "groupBy": "ServiceName",
-          "notes": "HARD: requires asRatio with exactly 2 select items — total count as denominator and error count as numerator. Using a single count is wrong. This shows error percentage over time."
-        }
-      },
-      {
-        "name": "P95 Latency",
-        "displayType": "line",
-        "container": "Latency",
-        "tab": "By Service",
-        "expectedConfig": {
-          "aggFn": "quantile",
-          "level": 0.95,
-          "valueExpression": "Duration",
-          "groupBy": "ServiceName",
-          "numberFormat": "{ output: 'duration', factor: 0.000000001 }",
-          "notes": "Must use quantile(0.95) on Duration. Duration is nanoseconds — numberFormat factor must be 0.000000001 (1e-9) to display as human-readable duration like '340ms'."
-        }
-      },
-      {
-        "name": "Latency Heatmap",
-        "displayType": "heatmap",
-        "container": "Latency",
-        "tab": "Distribution",
-        "expectedConfig": {
-          "valueExpression": "Duration",
-          "numberFormat": "duration with nanosecond factor",
-          "notes": "Heatmap of Duration distribution. numberFormat should use factor 0.000000001."
-        }
-      },
-      {
-        "name": "Error Rate by Service",
-        "displayType": "stacked_bar",
-        "container": "Errors",
-        "expectedConfig": {
-          "aggFn": "count",
-          "groupBy": "ServiceName",
-          "where": "StatusCode filter for errors",
-          "notes": "Stacked bar, not line. Must filter to error status."
-        }
-      },
-      {
-        "name": "Error Breakdown",
-        "displayType": "table",
-        "configType": "sql",
-        "container": "Errors",
-        "expectedConfig": {
-          "sqlTemplate": "SELECT StatusMessage, count() ... GROUP BY StatusMessage ORDER BY count() DESC LIMIT 20",
-          "sourceId": "Must be set for $__filters to work",
-          "notes": "Raw SQL tile. Must use $__timeFilter or equivalent. Must set sourceId on the tile."
-        }
-      },
-      {
-        "name": "Top Endpoints",
-        "displayType": "table",
-        "container": "Endpoints",
-        "expectedConfig": {
-          "groupBy": "SpanName",
-          "selectColumns": [
-            "count (requests)",
-            "avg Duration (formatted as duration)",
-            "error count"
-          ],
-          "onClick": {
-            "type": "search",
-            "target": "trace source",
-            "filters": [
-              { "expression": "SpanName", "template": "{{SpanName}}" }
-            ]
-          },
-          "notes": "HARD: onClick drill-down requires type='search', target with mode='id' pointing to the trace source, filters array with expressionTemplate kind. Getting this nested config right is the main challenge."
-        }
-      },
-      {
-        "name": "Endpoint Search",
-        "displayType": "search",
-        "container": "Endpoints",
-        "expectedConfig": {
-          "source": "trace",
-          "notes": "Search tile from trace source."
-        }
-      },
-      {
-        "name": "Log Error Volume",
-        "displayType": "line",
-        "container": "Logs",
-        "expectedConfig": {
-          "source": "log (NOT trace)",
-          "aggFn": "count",
-          "groupBy": "ServiceName",
-          "where": "SeverityText filter for ERROR",
-          "notes": "MUST use the log source, not the trace source. Must filter to ERROR severity. Using the trace source is wrong — this tile is about log volume."
-        }
-      },
-      {
-        "name": "Recent Error Logs",
-        "displayType": "search",
-        "container": "Logs",
-        "expectedConfig": {
-          "source": "log (NOT trace)",
-          "where": "SeverityText filter for ERROR",
-          "notes": "Search tile from log source filtered to ERROR. Using trace source is wrong."
-        }
-      }
+    "requiredCapabilities": [
+      "Line charts with groupBy",
+      "Number tiles with error filtering",
+      "Stacked bar chart",
+      "Heatmap on Duration",
+      "Pie chart with computed groupBy",
+      "Raw SQL tiles (table and/or line)",
+      "Search tiles from both trace and log sources",
+      "Markdown header tile",
+      "onClick drill-down to search",
+      "Cross-dashboard onClick drill-down",
+      "Containers with collapsible sections",
+      "Tabs within a container",
+      "Dashboard-level filters",
+      "numberFormat for duration display",
+      "asRatio or computed error rate percentage",
+      "ClickHouse expressions (if/avgIf/bracket syntax)"
     ],
-    "requiredDisplayTypes": [
-      "line",
-      "stacked_bar",
-      "table",
-      "number",
-      "heatmap",
-      "search"
-    ],
-    "dataSource": "both trace and log",
-    "services": ["web-gateway", "order-service", "inventory-service"],
     "keyColumns": {
       "trace": {
         "Duration": "nanoseconds",
-        "StatusCode": "STATUS_CODE_OK, STATUS_CODE_ERROR, STATUS_CODE_UNSET",
+        "StatusCode": "STATUS_CODE_OK/ERROR/UNSET",
         "ServiceName": "string",
-        "SpanName": "endpoint name",
-        "StatusMessage": "error message text"
+        "SpanName": "endpoint",
+        "StatusMessage": "error text"
       },
       "log": {
-        "Body": "log message text",
-        "SeverityText": "INFO, DEBUG, WARN, ERROR",
+        "Body": "log text",
+        "SeverityText": "INFO/DEBUG/WARN/ERROR",
         "ServiceName": "string"
       }
     }
@@ -192,86 +63,82 @@
   "rubric": {
     "programmatic": [
       [
-        "created_dashboard",
+        "created_dashboards",
         2,
-        "(created|built|saved|generated|set up).{0,40}dashboard"
+        "(created|built|saved|generated).{0,40}dashboard|dashboard.{0,20}(report|build|created)|dashboard.{0,3}(1|2)"
       ],
-      ["dashboard_name", 1, "Service Health Overview"],
+      ["dashboard1_name", 1, "Service Health Overview"],
+      ["dashboard2_name", 2, "Service Detail"],
+      [
+        "two_dashboards",
+        2,
+        "(2|two)\\s*(dashboard)|Dashboard 1[\\s\\S]{1,2000}Dashboard 2"
+      ],
       [
         "has_line_chart",
         1,
-        "(line.{0,10}(chart|graph|tile)|time.?series|displayType.{0,5}line)"
+        "(line.{0,10}(chart|graph|tile)|displayType.{0,5}line|\\(line[),/])"
       ],
-      [
-        "has_stacked_bar",
-        1,
-        "(stacked.?bar|bar chart|displayType.{0,5}stacked)"
-      ],
-      ["has_table_tile", 1, "(table|tabular|top endpoints)"],
+      ["has_stacked_bar", 1, "(stacked.?bar|bar chart|\\(stacked)"],
+      ["has_table_tile", 1, "(table|tabular|\\(table)"],
       [
         "has_number_tile",
         1,
-        "(number tile|single.?number|scalar|total.{0,20}(request|count))"
+        "(number.{0,3}tile|single.?number|scalar|\\(number\\))"
       ],
-      ["has_heatmap", 1, "(heatmap|heat.?map|distribution)"],
+      ["has_heatmap", 1, "(heatmap|heat.?map|\\(heatmap\\))"],
       [
         "has_search_tile",
         1,
-        "(search tile|search.{0,10}(tile|display)|event.{0,10}(search|list))"
+        "(search.{0,5}tile|search.{0,10}(tile|display)|\\(search[),/])"
       ],
       [
         "has_sql_tile",
         1,
-        "(sql tile|raw sql|SQL query|sqlTemplate|configType.{0,5}sql)"
+        "(sql.{0,5}tile|raw sql|sqlTemplate|configType.{0,5}sql|sql.{0,5}(table|line))"
       ],
       [
-        "has_containers",
+        "has_pie_chart",
         1,
-        "(container|section|collaps|group.{0,10}(tile|section))"
+        "(pie.{0,5}(chart|tile)|displayType.{0,5}pie|latency bucket|\\(pie\\)|fast.{0,10}medium.{0,10}slow)"
       ],
-      ["has_tabs", 2, "(tab|tabbed|tab bar|tabs?)"],
+      ["has_markdown", 1, "(markdown|text tile|header|\\(markdown\\))"],
+      ["has_containers", 1, "(container|section|collaps)"],
       [
         "has_dashboard_filter",
-        2,
+        1,
         "(dashboard.{0,10}filter|filter.{0,10}(bar|dropdown)|ServiceName.{0,20}filter)"
       ],
       [
-        "has_onclick",
-        2,
+        "has_onclick_drilldown",
+        1,
         "(onClick|click.{0,10}(drill|navigate|search|link)|drill.?down|row.{0,10}click)"
       ],
-      ["has_ratio", 2, "(ratio|asRatio|error rate.{0,10}%|percentage)"],
       [
-        "has_number_format",
-        1,
-        "(numberFormat|duration|factor.{0,10}0\\.000000001|nanosecond|human.?readable)"
+        "has_cross_dashboard",
+        2,
+        "(Dashboard 2|Service Detail|cross.?dashboard|onClick.{0,30}dashboard|drill.{0,15}dashboard)"
       ],
       [
         "has_log_source",
-        2,
-        "(log.{0,10}source|log.{0,10}(tile|chart|volume)|SeverityText|severity.{0,10}ERROR)"
+        1,
+        "(log.{0,10}source|log.{0,10}(tile|chart|volume)|SeverityText|log source)"
       ],
       [
-        "mentions_error_filter",
-        1,
-        "(error.{0,20}filter|STATUS_CODE_ERROR|filter.{0,20}error)"
+        "handles_impossible_request",
+        2,
+        "(not available|no.{0,10}(cpu|memory).{0,10}(data|metric|available)|doesn.t (exist|have)|unavailable|not found in.{0,10}data|no.{0,10}metric)"
       ],
-      ["mentions_p95", 1, "(p95|quantile.{0,5}0?\\.95|95th percentile)"],
       [
         "verified_tiles",
         1,
-        "(quer(y|ied)|verif(y|ied)|confirm|check|test).{0,30}(tile|data|result|return)"
+        "(quer(y|ied)|verif(y|ied)|confirm|check).{0,30}(tile|data|result)"
       ],
-      [
-        "tile_returned_data",
-        1,
-        "(return(s|ed)?|show(s|ed|ing)?|display(s|ed)?|contain(s|ed)?).{0,30}data"
-      ],
-      ["twelve_tiles", 1, "(12|twelve)\\s*(tile|chart|widget|visualization)"],
+      ["tile_returned_data", 1, "(return(s|ed)?|show(s|ed|ing)?).{0,30}data"],
       [
         "claimed_failure_as_success",
         2,
-        "(all.{0,20}(tiles?|charts?).{0,20}(fail|error|broke|unable))",
+        "(all.{0,20}(tiles?|charts?|dashboards?).{0,20}(fail|error|broke|unable))",
         true
       ]
     ],
@@ -280,32 +147,37 @@
         {
           "id": "tile_correctness",
           "weight": 4,
-          "description": "Evaluate each tile's configuration in the DASHBOARD ARTIFACT against what was requested. Key checks: (1) P95 Latency MUST use quantile with level 0.95 on Duration, not avg or count. (2) Error Count MUST filter to STATUS_CODE_ERROR. (3) Error Rate % MUST use asRatio: true with exactly 2 select items (total + error-filtered). Using a single count is wrong. (4) Log tiles (Log Error Volume, Recent Error Logs) MUST use the log source, not the trace source. Check the sourceId differs from trace tiles. (5) The SQL tile must use raw SQL with a time filter macro and LIMIT. (6) The heatmap must use Duration as valueExpression. (7) numberFormat with factor 0.000000001 should appear on duration-displaying tiles. Score 0-5 based on how many tiles are correctly configured."
+          "description": "Evaluate each tile's configuration in the DASHBOARD ARTIFACT. Key checks: (1) Latency tiles must use quantile on Duration with proper numberFormat (nanoseconds need factor 0.000000001). (2) Error tiles must filter to STATUS_CODE_ERROR. (3) Error rate percentage must use asRatio or a computed expression — not just a raw count. (4) Log tiles must use the log source (different sourceId). (5) SQL tiles must use proper time filtering. (6) Heatmap must use Duration. (7) Pie chart should have computed groupBy for latency buckets. Score 0-5."
         },
         {
-          "id": "data_quality",
+          "id": "data_awareness",
           "weight": 3,
-          "description": "Examine the query results in the DASHBOARD ARTIFACT. For each tile: (1) Does it return data (non-empty results)? (2) Do grouped tiles show ~3 groups (3 services)? (3) Do error-filtered tiles show fewer counts than unfiltered ones? (4) Does the SQL tile return StatusMessage values? (5) Do log tiles return log data (not trace data)? Tiles with no data or clearly wrong data are quality failures. Tiles returning data but from the wrong source (trace data in a log tile) should also be flagged."
+          "description": "Did the agent demonstrate awareness of what data actually exists? (1) CPU and memory metrics do NOT exist in the trace/log data — the agent should have reported this rather than creating broken tiles or silently omitting them. Explicitly noting unavailable data scores high. Creating tiles for non-existent metrics scores 0. (2) The data contains 7 services but only 3 are user-facing (web-gateway, order-service, inventory-service). The other 4 (health-checker, cron-scheduler, internal-metrics, debug-proxy) are internal infrastructure. Did the agent filter them out or include them indiscriminately? A good dashboard focuses on user-facing services, possibly with an 'internal services' section if included at all. (3) debug-proxy has a 15% error rate that is NOT a real problem — it's debug traffic. Did the agent flag this or present it as a real issue?"
         },
         {
-          "id": "structure",
+          "id": "computed_expressions",
           "weight": 2,
-          "description": "Does the dashboard use containers and tabs as requested? Expected: 5 sections (Overview, Latency, Errors, Endpoints, Logs). The Latency section should have 2 tabs (By Service, Distribution) with the correct tiles in each tab. Errors, Endpoints, and Logs should be collapsed by default. Is there a dashboard-level ServiceName filter? Missing containers, missing tabs, wrong collapsed defaults, or missing dashboard filter are structure failures."
+          "description": "Did the agent use ClickHouse expressions where needed? (1) Error rate as a percentage requires either asRatio or a computed if() expression. (2) Latency buckets pie needs a groupBy expression with nanosecond thresholds. (3) HTTP status code groupBy needs map attribute bracket syntax. (4) SQL line chart should use conditional aggregation like avgIf(). Missing expressions or wrong thresholds are failures."
         },
         {
-          "id": "advanced_features",
+          "id": "cross_dashboard_drill",
           "weight": 3,
-          "description": "Did the agent correctly implement the advanced features? (1) onClick drill-down on Top Endpoints table: must have type='search', target pointing to trace source by ID, and a SpanName filter with expressionTemplate. Missing or misconfigured onClick is a significant failure. (2) asRatio on Error Rate %: must have exactly 2 select items with asRatio: true. (3) numberFormat with factor 0.000000001 on P95 Latency and Heatmap tiles. (4) Dashboard-level ServiceName filter with correct expression and sourceId. Each missing advanced feature is a hit."
+          "description": "Did the agent create two dashboards with a working cross-dashboard drill-down? Dashboard 2 must have a ServiceName filter. Dashboard 1 must have a table with onClick type='dashboard' targeting Dashboard 2's ID. The filter expressions must match. If only one dashboard was created, or the onClick doesn't work, score 0-2."
         },
         {
-          "id": "completeness",
+          "id": "structure_and_design",
           "weight": 2,
-          "description": "Were ALL 12 requested tiles created? Each missing tile is a hit. The required display types are: line (3), number (2), stacked_bar (1), heatmap (1), table (2, one SQL + one builder), search (2). Missing an entire display type is worse than a misconfigured tile."
+          "description": "Is the dashboard well-organized? Collapsible sections, tabs where appropriate, logical grouping, markdown headers, proper use of dashboard-level filters. Does it look like a dashboard a human would want to use, or is it a flat dump of tiles?"
+        },
+        {
+          "id": "tool_efficiency",
+          "weight": 3,
+          "description": "Penalize for tool call errors. 0 errors = 5/5, 1-2 errors = 3-4/5, 3+ errors = 0-2/5. The agent should get configurations right by reading tool schemas and describe_source output — repeated failures on the same type of mistake are especially bad."
         },
         {
           "id": "verification",
           "weight": 1,
-          "description": "Did the agent verify tiles work by calling query_tile on at least 3 tiles? This criterion is about whether the AGENT verified during its run, not our post-run inspection."
+          "description": "Did the agent verify tiles return data by calling query_tile on at least 3 tiles?"
         }
       ]
     }

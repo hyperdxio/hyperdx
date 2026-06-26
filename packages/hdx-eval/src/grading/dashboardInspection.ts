@@ -3,14 +3,15 @@
  *
  * Collects evidence about dashboards created during a run:
  *   1. Extracts dashboard IDs from save_dashboard tool call outputs
- *   2. Fetches full dashboard config (tile configs, containers)
- *   3. Queries each tile to get actual data results (sample rows)
- *   4. Counts 0-shot creates vs patch retries
- *   5. Cleans up (deletes) dashboards after inspection
+ *   2. Extracts tile configs from the agent's save_dashboard input (intent)
+ *   3. Fetches the actual dashboard via the v2 API (ground truth)
+ *   4. Queries each tile to get actual data results (sample rows)
+ *   5. Counts 0-shot creates vs patch retries
+ *   6. Cleans up (deletes) dashboards after inspection
  *
- * The collected evidence is fed to the LLM judge alongside the ground truth
- * so the judge can evaluate whether tiles are correctly configured and
- * return relevant data — not just "some data."
+ * The collected evidence (both intended configs and actual query results) is
+ * fed to the LLM judge so it can evaluate whether tiles are correctly
+ * configured AND return relevant data.
  */
 import type { ToolCallRecord } from '../harness/types';
 import { HyperdxApiClient } from '../hyperdx/api';
@@ -23,18 +24,17 @@ export type TileEvidence = {
   tileName: string;
   displayType: string;
   containerId?: string;
-  /** The raw config object from the tile (select, groupBy, where, etc.) */
+  /** The tile config as returned by the v2 API. */
   config: Record<string, unknown>;
+  /** The tile config as sent by the agent in save_dashboard (intent). */
+  intendedConfig?: Record<string, unknown>;
   /** Result of querying the tile post-run. */
   queryResult: {
     success: boolean;
     hasData: boolean;
     error?: string;
-    /** Number of rows/data points returned. */
     rowCount?: number;
-    /** Number of distinct groups (for grouped tiles). */
     groupCount?: number;
-    /** First few rows of data for the judge to inspect. */
     sampleRows?: unknown[];
   };
 };
@@ -45,32 +45,21 @@ export type ContainerEvidence = {
   title: string;
   collapsed: boolean;
   tileCount: number;
+  tabs?: Array<{ id: string; title: string }>;
 };
 
 export type DashboardInspectionResult = {
-  /** Dashboard IDs extracted from save_dashboard tool calls. */
   dashboardIds: string[];
-  /** Number of save_dashboard calls (0-shot creates). */
   createCalls: number;
-  /** Number of save_dashboard calls that succeeded. */
   createSuccesses: number;
-  /** Number of patch_dashboard calls (fix attempts). */
   patchCalls: number;
-  /** Number of patch_dashboard calls that succeeded. */
   patchSuccesses: number;
-  /** Number of query_tile calls the agent made during the run. */
   agentQueryTileCalls: number;
-  /** Per-tile evidence for the LLM judge. */
   tileEvidence: TileEvidence[];
-  /** Container/section evidence. */
   containerEvidence: ContainerEvidence[];
-  /** Total tiles found on the dashboards. */
   totalTiles: number;
-  /** Tiles that returned data when queried. */
   tilesWithData: number;
-  /** Dashboards cleaned up (deleted) after inspection. */
   cleanedUp: string[];
-  /** Errors during inspection or cleanup. */
   errors: string[];
 };
 
@@ -82,9 +71,6 @@ const PATCH_DASHBOARD_PATTERN =
   /clickstack_patch_dashboard|hyperdx_patch_dashboard/;
 const QUERY_TILE_PATTERN = /clickstack_query_tile|hyperdx_query_tile/;
 
-/**
- * Extract dashboard IDs from save_dashboard tool call outputs.
- */
 function extractDashboardIds(toolCalls: ToolCallRecord[]): string[] {
   const ids = new Set<string>();
   for (const call of toolCalls) {
@@ -115,6 +101,32 @@ function extractDashboardIds(toolCalls: ToolCallRecord[]): string[] {
     }
   }
   return [...ids];
+}
+
+/**
+ * Extract the tile configs the agent intended to create from its
+ * save_dashboard tool call input. Returns a map of tile name → config.
+ */
+function extractIntendedTileConfigs(
+  toolCalls: ToolCallRecord[],
+): Map<string, Record<string, unknown>> {
+  const configs = new Map<string, Record<string, unknown>>();
+  for (const call of toolCalls) {
+    if (!SAVE_DASHBOARD_PATTERN.test(call.name)) continue;
+    const input = call.input as Record<string, unknown> | null;
+    if (!input) continue;
+    const tiles = input.tiles as
+      | Array<{ name?: string; config?: Record<string, unknown> }>
+      | undefined;
+    if (!Array.isArray(tiles)) continue;
+    for (const tile of tiles) {
+      const name = tile.name ?? (tile.config as Record<string, unknown>)?.name;
+      if (typeof name === 'string' && tile.config) {
+        configs.set(name, tile.config);
+      }
+    }
+  }
+  return configs;
 }
 
 function countToolCalls(
@@ -154,13 +166,12 @@ export async function inspectDashboards(args: {
 
   const errors: string[] = [];
 
-  // ── Analyze tool calls ────────────────────────────────────────────
   const dashboardIds = extractDashboardIds(toolCalls);
   const creates = countToolCalls(toolCalls, SAVE_DASHBOARD_PATTERN);
   const patches = countToolCalls(toolCalls, PATCH_DASHBOARD_PATTERN);
   const agentQueries = countToolCalls(toolCalls, QUERY_TILE_PATTERN);
+  const intendedConfigs = extractIntendedTileConfigs(toolCalls);
 
-  // ── Inspect dashboards via API ────────────────────────────────────
   const client = new HyperdxApiClient(apiUrl);
   await client.login(email, password);
 
@@ -174,10 +185,8 @@ export async function inspectDashboards(args: {
 
   for (const dashboardId of dashboardIds) {
     try {
-      const dashboards = await client.listDashboards();
-      const dashboard = dashboards.find(
-        d => d._id === dashboardId || d.id === dashboardId,
-      );
+      // Use v2 API for clean tile names + configs
+      const dashboard = await client.getDashboardV2(dashboardId, accessKey);
       if (!dashboard || !dashboard.tiles) {
         errors.push(`Dashboard ${dashboardId} not found or has no tiles`);
         continue;
@@ -190,6 +199,7 @@ export async function inspectDashboards(args: {
             id: string;
             title: string;
             collapsed: boolean;
+            tabs?: Array<{ id: string; title: string }>;
           }>
         | undefined;
       if (containers && Array.isArray(containers)) {
@@ -202,6 +212,7 @@ export async function inspectDashboards(args: {
             title: c.title,
             collapsed: c.collapsed,
             tileCount: tilesInContainer,
+            tabs: c.tabs,
           });
         }
       }
@@ -210,12 +221,18 @@ export async function inspectDashboards(args: {
       for (const tile of dashboard.tiles) {
         totalTiles++;
         const tileId = tile.id ?? tile._id;
+        const tileName =
+          tile.name ??
+          (tile.config as Record<string, unknown>)?.name ??
+          'unknown';
+
         if (!tileId) {
           tileEvidence.push({
             tileId: 'unknown',
-            tileName: tile.name,
+            tileName: String(tileName),
             displayType: String(tile.config?.displayType ?? 'unknown'),
             config: tile.config ?? {},
+            intendedConfig: intendedConfigs.get(String(tileName)),
             queryResult: {
               success: false,
               hasData: false,
@@ -229,11 +246,10 @@ export async function inspectDashboards(args: {
           | string
           | undefined;
 
-        // Skip markdown tiles
         if (tile.config?.displayType === 'markdown') {
           tileEvidence.push({
             tileId,
-            tileName: tile.name,
+            tileName: String(tileName),
             displayType: 'markdown',
             containerId,
             config: tile.config ?? {},
@@ -242,7 +258,6 @@ export async function inspectDashboards(args: {
           continue;
         }
 
-        // Query the tile and collect evidence
         try {
           const queryResult = await client.queryTileWithEvidence({
             accessKey,
@@ -253,19 +268,21 @@ export async function inspectDashboards(args: {
           });
           tileEvidence.push({
             tileId,
-            tileName: tile.name,
+            tileName: String(tileName),
             displayType: String(tile.config?.displayType ?? 'unknown'),
             containerId,
             config: tile.config ?? {},
+            intendedConfig: intendedConfigs.get(String(tileName)),
             queryResult,
           });
         } catch (err) {
           tileEvidence.push({
             tileId,
-            tileName: tile.name,
+            tileName: String(tileName),
             displayType: String(tile.config?.displayType ?? 'unknown'),
             containerId,
             config: tile.config ?? {},
+            intendedConfig: intendedConfigs.get(String(tileName)),
             queryResult: {
               success: false,
               hasData: false,
@@ -316,10 +333,6 @@ export async function inspectDashboards(args: {
 
 // ─── Evidence formatting for the LLM judge ──────────────────────────────────
 
-/**
- * Format the dashboard inspection evidence into a human-readable string
- * that gets appended to the judge prompt.
- */
 export function formatDashboardEvidence(
   result: DashboardInspectionResult,
 ): string {
@@ -340,10 +353,7 @@ export function formatDashboardEvidence(
 
   lines.push(`Dashboard IDs: ${result.dashboardIds.join(', ')}`);
   lines.push(
-    `Creation stats: ${result.createCalls} save_dashboard calls (${result.createSuccesses} succeeded), ${result.patchCalls} patch_dashboard calls (${result.patchSuccesses} succeeded)`,
-  );
-  lines.push(
-    `Agent ran ${result.agentQueryTileCalls} query_tile calls during the run.`,
+    `Creation stats: ${result.createCalls} save_dashboard (${result.createSuccesses} ok), ${result.patchCalls} patch_dashboard (${result.patchSuccesses} ok), ${result.agentQueryTileCalls} query_tile calls`,
   );
   lines.push('');
 
@@ -351,8 +361,12 @@ export function formatDashboardEvidence(
   if (result.containerEvidence.length > 0) {
     lines.push('Containers (sections):');
     for (const c of result.containerEvidence) {
+      const tabInfo =
+        c.tabs && c.tabs.length > 0
+          ? ` tabs: [${c.tabs.map(t => `"${t.title}"`).join(', ')}]`
+          : '';
       lines.push(
-        `  - "${c.title}" (collapsed=${c.collapsed}, ${c.tileCount} tiles)`,
+        `  - "${c.title}" (collapsed=${c.collapsed}, ${c.tileCount} tiles${tabInfo})`,
       );
     }
     lines.push('');
@@ -380,30 +394,46 @@ export function formatDashboardEvidence(
       lines.push(`  container: "${container?.title ?? tile.containerId}"`);
     }
 
-    // Show relevant config fields (not the full object)
-    const config = tile.config;
+    // Show the intended config from the agent's tool call (most accurate)
+    const configToShow = tile.intendedConfig ?? tile.config;
     const configLines: string[] = [];
-    if (config.select && Array.isArray(config.select)) {
-      for (const s of config.select as Array<Record<string, unknown>>) {
+    if (configToShow.select && Array.isArray(configToShow.select)) {
+      for (const s of configToShow.select as Array<Record<string, unknown>>) {
         const parts = [`aggFn=${s.aggFn}`];
         if (s.valueExpression)
           parts.push(`valueExpression=${s.valueExpression}`);
         if (s.level != null) parts.push(`level=${s.level}`);
         if (s.where) parts.push(`where="${s.where}"`);
         if (s.alias) parts.push(`alias="${s.alias}"`);
+        if (s.numberFormat)
+          parts.push(`numberFormat=${JSON.stringify(s.numberFormat)}`);
         configLines.push(`    select: { ${parts.join(', ')} }`);
       }
     }
-    if (config.groupBy) configLines.push(`    groupBy: ${config.groupBy}`);
-    if (config.sqlTemplate) {
-      const sql = String(config.sqlTemplate).replace(/\s+/g, ' ').trim();
+    if (configToShow.groupBy)
+      configLines.push(`    groupBy: ${configToShow.groupBy}`);
+    if (configToShow.asRatio) configLines.push(`    asRatio: true`);
+    if (configToShow.numberFormat)
+      configLines.push(
+        `    numberFormat: ${JSON.stringify(configToShow.numberFormat)}`,
+      );
+    if (configToShow.sqlTemplate) {
+      const sql = String(configToShow.sqlTemplate).replace(/\s+/g, ' ').trim();
       configLines.push(
         `    sqlTemplate: ${sql.length > 200 ? sql.slice(0, 200) + '...' : sql}`,
       );
     }
-    if (config.configType)
-      configLines.push(`    configType: ${config.configType}`);
-    if (config.where) configLines.push(`    where: "${config.where}"`);
+    if (configToShow.configType)
+      configLines.push(`    configType: ${configToShow.configType}`);
+    if (configToShow.where)
+      configLines.push(`    where: "${configToShow.where}"`);
+    if (configToShow.onClick) {
+      configLines.push(
+        `    onClick: ${JSON.stringify(configToShow.onClick).slice(0, 300)}`,
+      );
+    }
+    if (configToShow.sourceId)
+      configLines.push(`    sourceId: ${configToShow.sourceId}`);
     if (configLines.length > 0) {
       lines.push('  config:');
       lines.push(...configLines);

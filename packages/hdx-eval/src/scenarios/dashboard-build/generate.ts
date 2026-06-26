@@ -61,15 +61,28 @@ import groundTruth from './ground-truth.json';
 const TOTAL_TRACES = 2_000_000; // ~33K/min × 60 min
 const TOTAL_LOGS = 4_000_000; //  ~67K/min × 60 min
 
-// Service traffic distribution
+// Service traffic distribution — includes distractor services that generate
+// noise the agent must filter or ignore when building dashboards.
 const SERVICE_WEIGHTS = {
-  'web-gateway': 0.6,
-  'order-service': 0.25,
-  'inventory-service': 0.15,
+  'web-gateway': 0.4,
+  'order-service': 0.18,
+  'inventory-service': 0.1,
+  // Distractors — noisy internal services that clutter the data
+  'health-checker': 0.12, // high-volume health probes, all OK, very fast
+  'cron-scheduler': 0.08, // periodic batch jobs, bursty pattern
+  'internal-metrics': 0.07, // metrics collection, lots of spans, no real user traffic
+  'debug-proxy': 0.05, // debug/staging traffic, mixed status codes
 } as const;
 
 type ServiceName = keyof typeof SERVICE_WEIGHTS;
 const SERVICES = Object.keys(SERVICE_WEIGHTS) as ServiceName[];
+
+// Primary services — the ones that matter for a user-facing dashboard
+const PRIMARY_SERVICES: ServiceName[] = [
+  'web-gateway',
+  'order-service',
+  'inventory-service',
+];
 
 // Endpoints per service
 const ENDPOINTS: Record<ServiceName, string[]> = {
@@ -94,6 +107,19 @@ const ENDPOINTS: Record<ServiceName, string[]> = {
     'POST /inventory/release',
     'GET /inventory/levels',
   ],
+  // Distractor endpoints — noisy, not user-facing
+  'health-checker': ['GET /healthz', 'GET /readyz', 'GET /livez'],
+  'cron-scheduler': [
+    'POST /cron/sync-inventory',
+    'POST /cron/cleanup-sessions',
+    'POST /cron/aggregate-metrics',
+  ],
+  'internal-metrics': [
+    'POST /metrics/collect',
+    'POST /metrics/flush',
+    'GET /metrics/status',
+  ],
+  'debug-proxy': ['GET /debug/headers', 'POST /debug/echo', 'GET /debug/env'],
 };
 
 // ─── Timing windows ──────────────────────────────────────────────────────────
@@ -157,6 +183,19 @@ function* generateDashboardBuild(
       case 'inventory-service':
         baseDurationMs = rng.range(20, 150);
         break;
+      // Distractor services — distinctive latency profiles
+      case 'health-checker':
+        baseDurationMs = rng.range(1, 5); // very fast
+        break;
+      case 'cron-scheduler':
+        baseDurationMs = rng.range(500, 15000); // very slow (batch jobs)
+        break;
+      case 'internal-metrics':
+        baseDurationMs = rng.range(2, 20); // fast internal
+        break;
+      case 'debug-proxy':
+        baseDurationMs = rng.range(10, 500); // variable
+        break;
     }
 
     // Determine error status
@@ -180,9 +219,26 @@ function* generateDashboardBuild(
           'downstream service unavailable',
         ])}`;
         httpStatus = rng.pick(['400', '500', '503', '504']);
-        // Slow down error responses
         baseDurationMs *= rng.range(2, 5);
       }
+    }
+
+    // debug-proxy: high error rate (misleading — it's debug traffic, not real)
+    if (service === 'debug-proxy' && rng.next() < 0.15) {
+      statusCode = 'STATUS_CODE_ERROR';
+      statusMessage = rng.pick([
+        'debug endpoint not found',
+        'test assertion failed',
+        'mock service timeout',
+      ]);
+      httpStatus = rng.pick(['404', '500']);
+    }
+
+    // cron-scheduler: occasional timeouts (normal for batch jobs)
+    if (service === 'cron-scheduler' && rng.next() < 0.03) {
+      statusCode = 'STATUS_CODE_ERROR';
+      statusMessage = 'batch job exceeded time limit';
+      httpStatus = '504';
     }
 
     // Background 0.3% error rate for all services
@@ -216,6 +272,10 @@ function* generateDashboardBuild(
             'production',
             'staging',
           ]),
+          // Attributes that exist but aren't useful for dashboards
+          // (agents might try to use them and create misleading tiles)
+          'thread.id': String(rng.intRange(1, 200)),
+          'net.peer.port': String(rng.pick([80, 443, 8080, 8443, 3000])),
           ...(statusCode === 'STATUS_CODE_ERROR'
             ? { 'error.type': statusMessage.split(':')[0] }
             : {}),
@@ -325,51 +385,49 @@ function* generateDashboardBuild(
 
 export const dashboardBuildScenario: Scenario = {
   name: 'dashboard-build',
-  agentPrompt: `Build an operational monitoring dashboard for our microservices architecture.
+  agentPrompt: `We need dashboards to monitor our microservices. Here's what we're looking for:
 
-The dashboard should be named "Service Health Overview" and include:
+## Main Dashboard: "Service Health Overview"
 
-1. A **dashboard-level filter** for ServiceName so the user can scope all tiles to a single service from the filter bar.
+We want a single pane of glass for our services. It should have a filter to scope to individual services. Organize the tiles into logical collapsible sections.
 
-Organize tiles into collapsible sections using containers:
+Things we want to see:
 
-**Section 1: "Overview"** (not collapsed)
-1. **Total Requests** — A single number tile showing total request count. Format as throughput with suffix " req" (use numberFormat).
-2. **Error Count** — A single number tile showing total error count (filter to error status only).
-3. **Request Rate** — A line chart showing request count over time, grouped by service name.
-4. **Error Rate %** — A line chart showing error rate as a ratio: plot two series (total count and error count) with \`asRatio: true\` so it displays as a percentage over time, grouped by service.
+**At a glance:** Overall request volume, error counts, error rate as a percentage, and request trends over time broken down by service. Include a markdown header.
 
-**Section 2: "Latency"** (not collapsed, with two tabs: "By Service" and "Distribution")
-5. **P95 Latency** — (tab: "By Service") A line chart showing p95 latency over time, grouped by service name. Display values as human-readable duration using numberFormat with factor 0.000000001 (Duration is in nanoseconds).
-6. **Latency Heatmap** — (tab: "Distribution") A heatmap tile showing the distribution of Duration values over time. Format bucket values as duration with nanosecond factor.
+**Latency:** P95 latency trends by service (displayed as human-readable durations, not raw nanoseconds). A heatmap showing latency distribution. A pie chart bucketing requests into fast/medium/slow. Also a raw SQL chart showing both average overall latency and average error-only latency by service over time — we want to compare how much slower errors are vs normal requests.
 
-**Section 3: "Errors"** (collapsed by default)
-7. **Error Rate by Service** — A stacked bar chart showing error count over time, grouped by service name (filter to error status only).
-8. **Error Breakdown** — A raw SQL tile (configType "sql", displayType "table") showing the top 20 StatusMessage values by count. Use the trace table directly with a ClickHouse SQL query that includes a $__timeFilter macro and LIMIT clause. Set the sourceId on the SQL tile so $__filters works.
+**Errors:** Error volume over time by service as a stacked bar. Top error messages via raw SQL query.
 
-**Section 4: "Endpoints"** (collapsed by default)
-9. **Top Endpoints** — A table grouped by SpanName showing request count, avg duration (formatted as duration in nanoseconds), and error count. When a user clicks a row, it should drill into the trace search page pre-filtered to that endpoint's SpanName. Configure the onClick with type "search" targeting the trace source, and use a filter with expression "SpanName" and template "{{SpanName}}".
-10. **Endpoint Search** — A search tile showing recent trace events.
+**Endpoints:** A table of top endpoints with traffic, latency, and error counts — clicking a row should let you drill into the traces for that endpoint. Also show request breakdown by HTTP status code. And a search view for recent traces.
 
-**Section 5: "Logs"** (collapsed by default)
-11. **Log Error Volume** — A line chart from the **log source** (not traces) showing count over time, filtered to ERROR severity, grouped by ServiceName.
-12. **Recent Error Logs** — A search tile from the **log source** filtered to ERROR severity.
+**Per-service drill-down:** A table of services that lets you click through to a detail dashboard for that service.
 
-Use BOTH the trace and log data sources — discover them via list_sources and describe_source. After creating the dashboard, verify that tiles return data by querying at least 3 of them.
+**Logs:** Error log trends over time by service, plus a search for recent error logs. Use the log data source for these, not traces.
 
-Report what you created: the dashboard name, how many tiles, which tile types, which sections, and whether the tiles returned data when queried.`,
+**Also if possible:** CPU and memory usage per service, and request throughput in requests/second. Include these if the data supports it.
+
+## Detail Dashboard: "Service Detail"
+
+When someone clicks a service in the main dashboard, they should land on this dashboard scoped to that service. Show:
+
+- Request rate over time
+- P99 latency trend
+- Recent error logs
+- Top error messages by count
+
+After creating both dashboards, verify tiles return data and report what you built. If any requested metrics aren't available in the data, note that too.`,
   description:
-    'Dashboard creation eval — agent must build a multi-source dashboard with ' +
-    'containers (collapsible sections with tabs), dashboard-level filters, ' +
-    'onClick drill-downs, computed ratio tiles, numberFormat, diverse tile types ' +
-    '(line, stacked_bar, number, table, heatmap, search, raw SQL), and log-source ' +
-    'tiles. Tests the full dashboard API surface at production complexity.',
+    'Dashboard creation eval — two dashboards with cross-dashboard onClick ' +
+    'drill-down, ClickHouse expressions (if/bracket syntax/avgIf), containers ' +
+    'with tabs, dashboard filters, asRatio, numberFormat, multi-source ' +
+    '(trace+log), diverse tile types (line, stacked_bar, number, table, pie, ' +
+    'heatmap, search, markdown, raw SQL as table + line). 22 tiles total.',
   generate: generateDashboardBuild,
   groundTruth,
 
   // ─── Hooks ───────────────────────────────────────────────────────
 
-  /** Unblock dashboard tools that are normally denied. */
   allowedToolPatterns: [
     'delete_dashboard',
     'get_dashboard',
@@ -380,19 +438,17 @@ Report what you created: the dashboard name, how many tiles, which tile types, w
     'search_dashboards',
   ],
 
-  /** Custom system prompt for dashboard building. */
   buildSystemPrompt: (ctx: SystemPromptContext) =>
     buildDashboardSystemPrompt(ctx),
 
-  /** Custom judge preamble that tells the judge to evaluate the artifact. */
   judgeSystemPreamble: `You are evaluating a dashboard-building task. You will receive:
 - the scenario question (what the candidate was asked to build)
 - the ground-truth facts (the expected dashboard structure, tile configs, and data)
 - a rubric with weighted criteria
 - the candidate's final answer (their text description of what they built)
-- a DASHBOARD ARTIFACT section showing the ACTUAL dashboard that was created, inspected post-run by the eval harness — this includes the real tile configs and query results
+- a DASHBOARD ARTIFACT section showing the ACTUAL dashboards created, inspected post-run by the eval harness — this includes the real tile configs and query results
 
-IMPORTANT: Score based on the DASHBOARD ARTIFACT (the actual created dashboard), not just the candidate's text claims. The artifact shows exactly what tiles were configured and what data they returned. A candidate who claims success but whose tiles are misconfigured should score poorly. A candidate who is modest but built correct tiles should score well.
+IMPORTANT: Score based on the DASHBOARD ARTIFACT (the actual created dashboards), not just the candidate's text claims. The artifact shows exactly what tiles were configured and what data they returned. A candidate who claims success but whose tiles are misconfigured should score poorly. A candidate who is modest but built correct tiles should score well.
 
 For each rubric criterion, output an integer score from 0 to 5 plus a one-sentence rationale.
 
@@ -400,7 +456,6 @@ Return STRICT JSON of shape:
 { "scores": { "<criterion_id>": { "score": N, "rationale": "..." } } }
 No prose outside the JSON. Include every criterion id from the rubric.`,
 
-  /** Post-run inspection: fetch dashboards, query tiles, collect evidence, cleanup. */
   postRunInspection: async (
     ctx: PostRunInspectionContext,
   ): Promise<PostRunInspectionResult> => {
@@ -409,6 +464,25 @@ No prose outside the JSON. Include every criterion id from the rubric.`,
 
     const totalTiles = result.totalTiles;
     const tilesWithData = result.tilesWithData;
+
+    // Check cross-dashboard onClick validity: does any tile's onClick
+    // target one of the other dashboard IDs we found?
+    let crossDashboardOnClickValid = false;
+    if (result.dashboardIds.length >= 2) {
+      const idSet = new Set(result.dashboardIds);
+      for (const tile of result.tileEvidence) {
+        const onClick =
+          (tile.intendedConfig?.onClick as Record<string, unknown>) ??
+          (tile.config?.onClick as Record<string, unknown>);
+        if (!onClick) continue;
+        const target = onClick.target as Record<string, unknown> | undefined;
+        if (target?.mode === 'id' && typeof target.id === 'string') {
+          if (idSet.has(target.id)) {
+            crossDashboardOnClickValid = true;
+          }
+        }
+      }
+    }
 
     return {
       evidence,
@@ -423,6 +497,7 @@ No prose outside the JSON. Include every criterion id from the rubric.`,
         patchSuccesses: result.patchSuccesses,
         agentQueryTileCalls: result.agentQueryTileCalls,
         cleanedUp: result.cleanedUp.length,
+        crossDashboardOnClickValid,
         tileDetails: result.tileEvidence.map(t => ({
           tileName: t.tileName,
           displayType: t.displayType,
@@ -441,91 +516,19 @@ No prose outside the JSON. Include every criterion id from the rubric.`,
   },
 };
 
-// ─── Dashboard system prompt ─────────────────────────────────────────────────
+// ─── Dashboard system prompt (minimal — agent learns from tool schemas) ──────
 
 function buildDashboardSystemPrompt(ctx: SystemPromptContext): string {
-  const { traces, logs } = ctx.tables;
-
   const anchorBlock = ctx.anchorTimeIso
-    ? `\nFIXED CURRENT TIME: ${ctx.anchorTimeIso}
-All "now", "recently", "in the last N minutes/hours" references in the user's
-prompt are anchored to this timestamp. When you create dashboard tiles, use
-absolute ISO timestamps relative to this anchor — do NOT use today's
-wall-clock date.\n`
+    ? `\nFIXED CURRENT TIME: ${ctx.anchorTimeIso}\nUse this as "now" for any time-based queries or filters. Do NOT use today's date.\n`
     : '';
 
-  return `You are building observability dashboards using MCP tools.
-The OpenTelemetry data lives in ClickHouse:
-
-- Traces table: default.${traces}
-- Logs table:   default.${logs}
+  return `You are building observability dashboards.
 ${anchorBlock}
-CRITICAL WORKFLOW — follow these steps in order:
+ENVIRONMENT: Only MCP tools and the Read tool are available.
+No Bash, Write, Edit, Glob, or Grep.
 
-1. DISCOVER SOURCES: Call clickstack_list_sources to find available source
-   IDs. You MUST use real source IDs from the API — do not invent them.
-   The trace source and log source have different IDs.
+TURN BUDGET: ~${ctx.maxTurns ?? 30} tool calls. Plan carefully.
 
-2. DESCRIBE SOURCE: Call clickstack_describe_source on the source you plan
-   to use. This reveals the exact column names, attribute keys, and sampled
-   values. Column names are PascalCase (e.g., Duration, ServiceName,
-   StatusCode, SpanName). Map attributes use bracket syntax:
-   SpanAttributes['http.method'], ResourceAttributes['service.name'].
-   Getting column names wrong is the #1 cause of tile failures.
-
-3. CREATE DASHBOARD: Use clickstack_save_dashboard to create the dashboard
-   with all tiles. Each tile needs a config with displayType, sourceId, and
-   select array. Key rules:
-   - displayType: "line", "stacked_bar", "table", "number", "pie", "heatmap", "search"
-   - For "count" aggFn: no valueExpression needed
-   - For "avg", "sum", "min", "max": valueExpression is required (e.g., "Duration")
-   - For "quantile": valueExpression + level (0.5, 0.9, 0.95, 0.99) required
-   - groupBy uses column names: "ServiceName", "SpanName", etc.
-   - Error filtering: use where with StatusCode filter
-   - Always set a human-readable alias on each select item
-   - MULTI-SOURCE: Different tiles can use different sourceIds — log tiles
-     use the log source, trace tiles use the trace source. Get both IDs
-     from list_sources.
-   - RAW SQL tiles: use configType "sql", set connectionId AND sourceId,
-     include $__timeFilter macro and LIMIT clause
-   - CONTAINERS: Use the containers array to group tiles into collapsible
-     sections. Each container has { id, title, collapsed }. Tiles reference
-     containerId. For tabs, add a tabs array to the container and set tabId.
-   - DASHBOARD FILTERS: Use the filters array on save_dashboard to add
-     filter dropdowns. Each filter needs type "QUERY_EXPRESSION", name,
-     expression (column name), and sourceId.
-   - onClick: Table tiles can have onClick for row-click drill-downs.
-     Use type "search" with target { mode: "id", id: "<sourceId>" } and
-     filters with kind "expressionTemplate".
-   - asRatio: Set asRatio: true on a line chart with exactly 2 select
-     items to show a ratio (e.g., error rate percentage).
-   - numberFormat: Use { output: "duration", factor: 0.000000001 } on
-     tiles showing Duration values (nanoseconds → human-readable).
-
-4. VERIFY TILES: After creating the dashboard, call clickstack_query_tile
-   on at least 2 tiles to confirm they return data. Tiles can be created
-   with invalid configs that silently return empty results.
-
-5. FIX ERRORS: If a tile fails or returns no data, use
-   clickstack_patch_dashboard to fix it — you don't need to recreate the
-   whole dashboard. Check the error message for clues (wrong column name,
-   missing field, bad filter syntax).
-
-TOOL ENVIRONMENT: MCP query tools, dashboard tools, and the Read tool are
-available. There are NO shell, write, or search tools (Bash, Write, Edit,
-Glob, Grep, etc.). The Read tool is restricted to your working directory.
-
-TURN BUDGET: You have ~${ctx.maxTurns ?? 25} tool calls. Plan efficiently:
-- list_sources = 1 call (required — discover both trace and log source IDs)
-- describe_source = 1-2 calls (learn column names for each source)
-- save_dashboard = 1 call (creates ALL tiles, containers, filters at once)
-- query_tile = 1 call per tile verified (verify at least 3)
-- patch_dashboard = 1 call per fix
-Budget for ~3-5 verification + fix cycles after initial creation.
-
-In your final answer, report:
-- The dashboard name and ID
-- How many tiles were created and their types
-- Which tiles were verified and whether they returned data
-- Any errors encountered and how they were resolved`;
+Report your results in the final answer.`;
 }

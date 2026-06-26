@@ -55,38 +55,51 @@ describe('dashboard-build scenario', () => {
   });
 
   describe('service distribution', () => {
-    it('has all three services', () => {
+    it('has all seven services (3 primary + 4 distractors)', () => {
       const services = new Set(result.traces.map(t => t.serviceName));
       expect(services).toContain('web-gateway');
       expect(services).toContain('order-service');
       expect(services).toContain('inventory-service');
+      expect(services).toContain('health-checker');
+      expect(services).toContain('cron-scheduler');
+      expect(services).toContain('internal-metrics');
+      expect(services).toContain('debug-proxy');
+      expect(services.size).toBe(7);
     });
 
-    it('web-gateway has the most traffic (~60%)', () => {
+    it('web-gateway has the most traffic (~40%)', () => {
       const webGateway = result.traces.filter(
         t => t.serviceName === 'web-gateway',
       ).length;
       const ratio = webGateway / result.traces.length;
-      expect(ratio).toBeGreaterThan(0.5);
-      expect(ratio).toBeLessThan(0.7);
+      expect(ratio).toBeGreaterThan(0.33);
+      expect(ratio).toBeLessThan(0.47);
     });
 
-    it('order-service has mid traffic (~25%)', () => {
-      const orderService = result.traces.filter(
-        t => t.serviceName === 'order-service',
+    it('distractor services collectively have ~32% of traffic', () => {
+      const distractors = result.traces.filter(t =>
+        [
+          'health-checker',
+          'cron-scheduler',
+          'internal-metrics',
+          'debug-proxy',
+        ].includes(t.serviceName),
       ).length;
-      const ratio = orderService / result.traces.length;
-      expect(ratio).toBeGreaterThan(0.18);
-      expect(ratio).toBeLessThan(0.32);
+      const ratio = distractors / result.traces.length;
+      expect(ratio).toBeGreaterThan(0.25);
+      expect(ratio).toBeLessThan(0.4);
     });
 
-    it('inventory-service has low traffic (~15%)', () => {
-      const inventoryService = result.traces.filter(
-        t => t.serviceName === 'inventory-service',
+    it('debug-proxy has elevated error rate (~15%)', () => {
+      const debugTraces = result.traces.filter(
+        t => t.serviceName === 'debug-proxy',
+      );
+      const debugErrors = debugTraces.filter(
+        t => t.statusCode === 'STATUS_CODE_ERROR',
       ).length;
-      const ratio = inventoryService / result.traces.length;
-      expect(ratio).toBeGreaterThan(0.1);
-      expect(ratio).toBeLessThan(0.22);
+      const rate = debugErrors / debugTraces.length;
+      expect(rate).toBeGreaterThan(0.1);
+      expect(rate).toBeLessThan(0.22);
     });
   });
 
@@ -168,15 +181,18 @@ describe('dashboard-build scenario', () => {
       expect(dashboardBuildScenario.postRunInspection).toBeDefined();
     });
 
-    it('has a ground truth with rubric', () => {
+    it('has a ground truth with rubric and 2-dashboard spec', () => {
       const gt = dashboardBuildScenario.groundTruth as {
+        expected?: { totalTileCount?: number; dashboardCount?: number };
         rubric?: { programmatic?: unknown[]; judge?: { criteria?: unknown[] } };
       };
+      expect(gt.expected?.dashboardCount).toBe(2);
+      expect(gt.expected?.dashboardCount).toBe(2);
       expect(gt.rubric).toBeDefined();
       expect(gt.rubric?.programmatic).toBeDefined();
       expect(gt.rubric?.judge?.criteria).toBeDefined();
-      expect(gt.rubric!.programmatic!.length).toBeGreaterThan(10);
-      expect(gt.rubric!.judge!.criteria!.length).toBeGreaterThan(0);
+      expect(gt.rubric!.programmatic!.length).toBeGreaterThan(15);
+      expect(gt.rubric!.judge!.criteria!.length).toBeGreaterThanOrEqual(7);
     });
   });
 });
