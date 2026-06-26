@@ -127,6 +127,14 @@ import {
   useDashboards,
   useDeleteDashboard,
 } from '@/dashboard';
+import {
+  buildConstantExpressionSet,
+  mergeConstantFiltersForSave,
+  normalizeExpression,
+  removeSavedDefaultForExpression,
+  stripConstantsFromUrl,
+  upsertSavedDefault,
+} from '@/dashboardFilterUtils';
 import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
@@ -1415,18 +1423,25 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
   const filters = dashboard?.filters ?? [];
+  const dashboardReady =
+    !!dashboard?.id &&
+    router.isReady &&
+    (isLocalDashboard || !isFetchingDashboard);
   const {
     filterValues,
     setFilterValue,
     setFilterQueries,
     ignoredFilterExpressions,
     getFilterQueriesForSource,
-  } = useDashboardFilters(filters);
-
-  const dashboardReady =
-    !!dashboard?.id &&
-    router.isReady &&
-    (isLocalDashboard || !isFetchingDashboard);
+  } = useDashboardFilters(filters, {
+    savedFilterValues: dashboard?.savedFilterValues,
+    // Gate the overlay until the dashboard has finished loading.
+    // While `dashboardReady` is false, the hook can't tell whether a
+    // URL entry collides with an as-yet-unknown `constant: true`
+    // filter, so it returns empty values/queries and tiles wait for
+    // the dashboard to hydrate before issuing scoped queries.
+    enabled: dashboardReady,
+  });
 
   // Warn when the URL has filter values that don't correspond to any declared
   // dashboard filter — they'd otherwise be silently dropped, and users who
@@ -1451,7 +1466,10 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard?.id, dashboardReady]);
 
-  const handleSaveFilter = (filter: DashboardFilter) => {
+  const handleSaveFilter = (
+    filter: DashboardFilter,
+    options?: { defaultValues?: string[] },
+  ) => {
     if (!dashboard) return;
 
     setDashboard(
@@ -1459,9 +1477,50 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         const filterIndex =
           draft.filters?.findIndex(p => p.id === filter.id) ?? -1;
         if (draft.filters && filterIndex !== -1) {
+          const oldExpression = draft.filters[filterIndex].expression;
+          // Renaming a filter's expression must take the old saved
+          // entry with it: otherwise an entry keyed by the previous
+          // expression stays in `savedFilterValues`, the renamed
+          // filter resolves to undefined (its new expression has no
+          // match), and any future "lock to default" on the same id
+          // would silently re-bind to the orphaned value. Skip the
+          // strip if another sibling still references the old
+          // expression (two-source locked filters legitimately share
+          // a saved entry).
+          if (
+            oldExpression !== filter.expression &&
+            normalizeExpression(oldExpression) !==
+              normalizeExpression(filter.expression)
+          ) {
+            const siblingStillUsesOld = draft.filters.some(
+              (p, i) =>
+                i !== filterIndex &&
+                normalizeExpression(p.expression) ===
+                  normalizeExpression(oldExpression),
+            );
+            if (!siblingStillUsesOld) {
+              draft.savedFilterValues = removeSavedDefaultForExpression(
+                draft.savedFilterValues,
+                oldExpression,
+              );
+            }
+          }
           draft.filters[filterIndex] = filter;
         } else {
           draft.filters = [...(draft.filters ?? []), filter];
+        }
+
+        // When the editor sets a default value (currently used to seed
+        // locked filters; the chip + "Save default" flow handles editable
+        // filters), upsert that value into savedFilterValues keyed by the
+        // filter expression. An empty array means "clear the saved default
+        // for this expression."
+        if (options?.defaultValues !== undefined) {
+          draft.savedFilterValues = upsertSavedDefault(
+            draft.savedFilterValues,
+            filter.expression,
+            options.defaultValues,
+          );
         }
       }),
     );
@@ -1470,9 +1529,39 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const handleRemoveFilter = (id: string) => {
     if (!dashboard) return;
 
+    // Strip the matching savedFilterValues entry alongside the filter
+    // delete so a later recreate-on-the-same-expression doesn't silently
+    // re-lock to the orphaned saved value.
+    //
+    // Two `constant: true` siblings on the same expression are
+    // schema-legal when `appliesToSourceIds` differs (one scoped to
+    // logs, one scoped to traces, both locked to the same value). In
+    // that case, deleting just one sibling must NOT prune the shared
+    // saved entry: the surviving sibling would then render with a lock
+    // icon but no value and apply no WHERE scoping. Only prune when no
+    // remaining filter references the same normalized expression.
+    const removed = dashboard.filters?.find(p => p.id === id);
+    const remainingFilters = dashboard.filters?.filter(p => p.id !== id) ?? [];
+    const removedExpression = removed?.expression;
+    const removedNormalized = removedExpression
+      ? normalizeExpression(removedExpression)
+      : null;
+    const siblingStillUsesExpression =
+      removedNormalized != null &&
+      remainingFilters.some(
+        p => normalizeExpression(p.expression) === removedNormalized,
+      );
+    const cleanedSavedValues =
+      removedExpression && !siblingStillUsesExpression
+        ? removeSavedDefaultForExpression(
+            dashboard.savedFilterValues,
+            removedExpression,
+          )
+        : dashboard.savedFilterValues;
     setDashboard({
       ...dashboard,
-      filters: dashboard.filters?.filter(p => p.id !== id) ?? [],
+      filters: remainingFilters,
+      savedFilterValues: cleanedSavedValues,
     });
   };
 
@@ -1572,15 +1661,34 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
 
     // Filter defaults: URL filters override saved defaults. If switching to a
     // dashboard without defaults, clear selected filters.
+    //
+    // Constant filters are excluded from the URL push: their value is
+    // sourced from savedFilterValues directly by the hook on every read,
+    // so writing them into the URL would (a) leak the locked scope into
+    // shared links and (b) duplicate the value across two sources of
+    // truth.
     if (!hasFiltersInUrl) {
       if (dashboard.savedFilterValues) {
-        setFilterQueries(dashboard.savedFilterValues);
+        const constantExpressions = buildConstantExpressionSet(
+          dashboard.filters,
+        );
+        setFilterQueries(
+          stripConstantsFromUrl(
+            dashboard.savedFilterValues,
+            constantExpressions,
+          ),
+        );
       } else if (isSwitchingDashboards) {
         setFilterQueries(null);
       }
     }
 
     initializedDashboard.current = dashboard.id;
+    // dashboard?.filters is read indirectly via the constant-expression
+    // helper but the `initializedDashboard.current === dashboard.id`
+    // guard above already prevents re-runs for the same dashboard, so
+    // we don't list it here to keep the effect surface stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     dashboard?.id,
     dashboard?.savedQuery,
@@ -1619,9 +1727,18 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     const currentWhereLanguage = currentWhere
       ? formValues.whereLanguage || 'lucene'
       : null;
-    const currentFilterValues = rawFilterQueries?.length
-      ? rawFilterQueries
-      : [];
+    // Constant filter values are intentionally absent from the URL (the
+    // hook overlays them from savedFilterValues directly), so saving the
+    // bare URL state would clobber them. Preserve constant entries from
+    // the existing savedFilterValues array; everything else comes from
+    // the current URL state.
+    const constantExpressions = buildConstantExpressionSet(dashboard.filters);
+    const urlFilterValues = rawFilterQueries?.length ? rawFilterQueries : [];
+    const currentFilterValues: Filter[] = mergeConstantFiltersForSave(
+      dashboard.savedFilterValues,
+      urlFilterValues,
+      constantExpressions,
+    );
 
     setDashboard(
       produce(dashboard, draft => {
@@ -1654,7 +1771,22 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       produce(dashboard, draft => {
         draft.savedQuery = null;
         draft.savedQueryLanguage = null;
-        draft.savedFilterValues = [];
+        // Preserve any savedFilterValues entry whose normalized
+        // expression matches a `constant: true` filter. The user
+        // intent here is "remove the editor's saved default query +
+        // editable defaults", not "unlock every locked scope filter":
+        // a clone-and-flip template with `constant: true` filters
+        // would otherwise render its lock chip but apply no WHERE
+        // scoping, exactly the failure mode `constant` exists to
+        // prevent. Mirror `mergeConstantFiltersForSave` with an empty
+        // URL input so editable saved entries fall away and constant
+        // entries stay.
+        const constantExpressions = buildConstantExpressionSet(draft.filters);
+        draft.savedFilterValues = mergeConstantFiltersForSave(
+          draft.savedFilterValues,
+          [],
+          constantExpressions,
+        );
       }),
       () => {
         notifications.show({
@@ -2804,6 +2936,9 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         opened={showFiltersModal}
         onClose={() => setShowFiltersModal(false)}
         filters={filters}
+        savedFilterValues={dashboard?.savedFilterValues}
+        dateRange={searchedTimeRange}
+        supportsConstantFilters
         onSaveFilter={handleSaveFilter}
         onRemoveFilter={handleRemoveFilter}
         isLoading={isSavingDashboard || isFetchingDashboard}

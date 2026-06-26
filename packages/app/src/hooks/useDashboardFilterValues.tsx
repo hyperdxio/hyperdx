@@ -41,7 +41,18 @@ const filterFromKey = (key: string): FilterSourceKey =>
   JSON.parse(key) as FilterSourceKey;
 
 type EnrichedCall = GetKeyValueCall<BuilderChartConfigWithDateRange> & {
-  /** filterIds[i] = array of filter IDs whose values come from keys[i] */
+  /**
+   * filterIds[i] = array of filter IDs whose values come from keys[i].
+   *
+   * NOTE: these are NOT stored in the React Query cache. They are derived
+   * from the caller's current `filters` prop at read time (see
+   * useOptimizedKeyValuesCalls return value). Storing them in the queryFn
+   * result would pollute the shared cache: the DashboardFiltersModal fires
+   * the same queries (same source/expression/dateRange) with a temporary
+   * 'new' filter ID. If that cached result were used by the DashboardFilters
+   * chips (which have real UUIDs), filterValuesById.get(realId) would
+   * return undefined and the chip would stay disabled indefinitely.
+   */
   filterIds: string[][];
 };
 
@@ -70,7 +81,19 @@ function useOptimizedKeyValuesCalls({
     return filtersByGroupKey;
   }, [filters]);
 
-  const results: UseQueryResult<EnrichedCall[]>[] = useQueries({
+  // Keep a stable reference to the current filtersInGroup per query so
+  // filterIds can be recomputed at read time (see comment on EnrichedCall).
+  const filtersByQueryIndex = useMemo(() => {
+    return Array.from(filtersByGroupKey.entries())
+      .filter(([key]) =>
+        sources?.some(s => s.id === filterFromKey(key).sourceId),
+      )
+      .map(([, filtersInGroup]) => filtersInGroup);
+  }, [filtersByGroupKey, sources]);
+
+  const results: UseQueryResult<
+    GetKeyValueCall<BuilderChartConfigWithDateRange>[]
+  >[] = useQueries({
     queries: Array.from(filtersByGroupKey.entries())
       .filter(([key]) =>
         sources?.some(s => s.id === filterFromKey(key).sourceId),
@@ -119,31 +142,40 @@ function useOptimizedKeyValuesCalls({
           ],
           enabled: !isLoadingSources,
           staleTime: 1000 * 60 * 5, // Cache every 5 min
-          queryFn: async ({ signal }) => {
-            const calls = await optimizeGetKeyValuesCalls({
+          queryFn: async ({ signal }) =>
+            optimizeGetKeyValuesCalls({
               chartConfig,
               source,
               clickhouseClient,
               metadata,
               keys: keyExpressions,
               signal,
-            });
-            // Enrich each call with the filter IDs that correspond to each key expression
-            return calls.map(call => ({
-              ...call,
-              filterIds: call.keys.map(expression =>
-                filtersInGroup
-                  .filter(f => f.expression === expression)
-                  .map(f => f.id),
-              ),
-            }));
-          },
+            }),
         };
       }),
   });
 
+  // Enrich each call with the filter IDs for the *current* caller's filters.
+  // This is intentionally computed outside queryFn so it is not stored in
+  // the React Query cache (see comment on EnrichedCall above).
+  const enrichedData: EnrichedCall[] = useMemo(
+    () =>
+      results.flatMap((r, queryIndex) => {
+        const filtersInGroup = filtersByQueryIndex[queryIndex] ?? [];
+        return (r.data ?? []).map(call => ({
+          ...call,
+          filterIds: call.keys.map(expression =>
+            filtersInGroup
+              .filter(f => f.expression === expression)
+              .map(f => f.id),
+          ),
+        }));
+      }),
+    [results, filtersByQueryIndex],
+  );
+
   return {
-    data: results.map(r => r.data ?? []).flat(),
+    data: enrichedData,
     isFetching: isLoadingSources || results.some(r => r.isFetching),
     isLoading: isLoadingSources || results.every(r => r.isLoading),
   };

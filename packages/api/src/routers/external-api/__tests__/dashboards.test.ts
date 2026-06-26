@@ -920,6 +920,306 @@ describe('External API v2 Dashboards - old format', () => {
       expect(getResponse.body.data.filters).toEqual(response.body.data.filters);
     });
 
+    it('should round-trip constant and renderMode on filters (HDX-4404)', async () => {
+      const dashboardPayload = {
+        name: 'Dashboard with locked filters',
+        tiles: [makeExternalChart({ sourceId: traceSource._id.toString() })],
+        tags: TEST_TAGS,
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Service (locked, read-only)',
+            expression: 'ServiceName',
+            sourceId: traceSource._id.toString(),
+            constant: true,
+            renderMode: 'readonly' as const,
+          },
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Environment (hidden)',
+            expression: 'environment',
+            sourceId: traceSource._id.toString(),
+            constant: true,
+            renderMode: 'hidden' as const,
+          },
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Region (default editable)',
+            expression: 'region',
+            sourceId: traceSource._id.toString(),
+            // constant + renderMode omitted -> default editable behavior.
+          },
+        ],
+        // Constant filters require a matching savedFilterValues entry
+        // (Lucene-keyed by expression). Without this, the filter renders
+        // locked but applies no WHERE clause, which the schema-level
+        // refinement rejects at the boundary.
+        savedFilterValues: [
+          {
+            type: 'sql' as const,
+            condition: "ServiceName IN ('hdx-private-api')",
+          },
+          {
+            type: 'sql' as const,
+            condition: "environment IN ('production')",
+          },
+        ],
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send(dashboardPayload)
+        .expect(200);
+
+      expect(response.body.data.filters).toHaveLength(3);
+      // Use toEqual on the full filter object so extra fields (which would
+      // indicate schema drift) fail the assertion. The bot deep-review at
+      // dashboards.test.ts:961 flagged toMatchObject for letting unexpected
+      // fields slip through silently.
+      //
+      // whereLanguage is intentionally absent from these expectations: the
+      // input payload omits it, the Zod schema is optional with no default,
+      // so the round-trip is undefined-in / undefined-out. Adding the field
+      // here would make the test fail by asserting a wire-format default
+      // the schema never emits.
+      expect(response.body.data.filters[0]).toEqual({
+        id: response.body.data.filters[0].id,
+        type: 'QUERY_EXPRESSION',
+        name: 'Service (locked, read-only)',
+        expression: 'ServiceName',
+        sourceId: traceSource._id.toString(),
+        constant: true,
+        renderMode: 'readonly',
+      });
+      expect(response.body.data.filters[1]).toEqual({
+        id: response.body.data.filters[1].id,
+        type: 'QUERY_EXPRESSION',
+        name: 'Environment (hidden)',
+        expression: 'environment',
+        sourceId: traceSource._id.toString(),
+        constant: true,
+        renderMode: 'hidden',
+      });
+      // Filter 2 omitted the new fields. They must NOT be materialized as
+      // defaults on read; the absence is meaningful (default behavior
+      // matches today's editable, non-locked filter).
+      expect(response.body.data.filters[2]).toEqual({
+        id: response.body.data.filters[2].id,
+        type: 'QUERY_EXPRESSION',
+        name: 'Region (default editable)',
+        expression: 'region',
+        sourceId: traceSource._id.toString(),
+      });
+
+      // GET round-trip.
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${response.body.data.id}`,
+      ).expect(200);
+      expect(getResponse.body.data.filters).toEqual(response.body.data.filters);
+
+      // PUT: flip filter 2 to readonly, drop filter 1, keep filter 0.
+      // Both surviving constant filters need a matching savedFilterValues
+      // entry so the schema-level coherence rule (constant: true must have
+      // a locked value to apply) is satisfied.
+      const updatePayload = {
+        name: 'Dashboard with locked filters',
+        tiles: [makeExternalChart({ sourceId: traceSource._id.toString() })],
+        tags: TEST_TAGS,
+        filters: [
+          {
+            id: response.body.data.filters[0].id,
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Service (locked, read-only)',
+            expression: 'ServiceName',
+            sourceId: traceSource._id.toString(),
+            constant: true,
+            renderMode: 'readonly' as const,
+          },
+          {
+            id: response.body.data.filters[2].id,
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Region (now read-only)',
+            expression: 'region',
+            sourceId: traceSource._id.toString(),
+            constant: true,
+            renderMode: 'readonly' as const,
+          },
+        ],
+        savedFilterValues: [
+          {
+            type: 'sql' as const,
+            condition: "ServiceName IN ('hdx-private-api')",
+          },
+          {
+            type: 'sql' as const,
+            condition: "region IN ('us-east-2')",
+          },
+        ],
+      };
+      const updateResponse = await authRequest(
+        'put',
+        `${BASE_URL}/${response.body.data.id}`,
+      )
+        .send(updatePayload)
+        .expect(200);
+
+      expect(updateResponse.body.data.filters).toHaveLength(2);
+      expect(updateResponse.body.data.filters[1]).toEqual({
+        id: response.body.data.filters[2].id,
+        type: 'QUERY_EXPRESSION',
+        name: 'Region (now read-only)',
+        expression: 'region',
+        sourceId: traceSource._id.toString(),
+        constant: true,
+        renderMode: 'readonly',
+      });
+    });
+
+    it('should reject an unknown renderMode value (HDX-4404)', async () => {
+      const dashboardPayload = {
+        name: 'Bad renderMode',
+        tiles: [makeExternalChart({ sourceId: traceSource._id.toString() })],
+        tags: TEST_TAGS,
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId: traceSource._id.toString(),
+            renderMode: 'invisible',
+          },
+        ],
+      };
+
+      await authRequest('post', BASE_URL).send(dashboardPayload).expect(400);
+    });
+
+    it('should reject renderMode without constant: true (HDX-4404)', async () => {
+      const dashboardPayload = {
+        name: 'Locked-chip-but-no-lock',
+        tiles: [makeExternalChart({ sourceId: traceSource._id.toString() })],
+        tags: TEST_TAGS,
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId: traceSource._id.toString(),
+            // renderMode 'readonly' without constant: true would render
+            // a locked chip that the hook never overlays (no WHERE
+            // clause ever applies). Reject at the boundary.
+            renderMode: 'readonly' as const,
+          },
+        ],
+      };
+
+      await authRequest('post', BASE_URL).send(dashboardPayload).expect(400);
+    });
+
+    it('should reject mixed constant + editable siblings on the same expression (HDX-4404)', async () => {
+      const dashboardPayload = {
+        name: 'Mixed siblings',
+        tiles: [makeExternalChart({ sourceId: traceSource._id.toString() })],
+        tags: TEST_TAGS,
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Service (locked)',
+            expression: 'ServiceName',
+            sourceId: traceSource._id.toString(),
+            constant: true,
+            renderMode: 'readonly' as const,
+          },
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Service (editable, same expression)',
+            expression: 'ServiceName',
+            sourceId: traceSource._id.toString(),
+            // No constant -> editable. Sharing an expression with a
+            // constant sibling is incoherent: the runtime overlay would
+            // let the editable side's URL value clobber the constant's
+            // locked value while setFilterValue still no-ops the writes.
+          },
+        ],
+        savedFilterValues: [
+          {
+            type: 'sql' as const,
+            condition: "ServiceName IN ('hdx-private-api')",
+          },
+        ],
+      };
+
+      await authRequest('post', BASE_URL).send(dashboardPayload).expect(400);
+    });
+
+    it('should reject constant: true with no matching savedFilterValues entry (HDX-4404)', async () => {
+      const dashboardPayload = {
+        name: 'Locked-no-saved-value',
+        tiles: [makeExternalChart({ sourceId: traceSource._id.toString() })],
+        tags: TEST_TAGS,
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId: traceSource._id.toString(),
+            constant: true,
+            renderMode: 'readonly' as const,
+          },
+        ],
+        // No savedFilterValues -> the locked chip would render with a
+        // lock icon but apply no WHERE clause. Reject so the
+        // clone-and-flip template path can't ship a misconfigured
+        // dashboard.
+        savedFilterValues: [],
+      };
+
+      await authRequest('post', BASE_URL).send(dashboardPayload).expect(400);
+    });
+
+    it('should accept constant: true with a matching savedFilterValues entry on the same expression (HDX-4404)', async () => {
+      const dashboardPayload = {
+        name: 'Locked with matching saved value',
+        tiles: [makeExternalChart({ sourceId: traceSource._id.toString() })],
+        tags: TEST_TAGS,
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION' as const,
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId: traceSource._id.toString(),
+            constant: true,
+            renderMode: 'readonly' as const,
+          },
+        ],
+        savedFilterValues: [
+          {
+            type: 'sql' as const,
+            condition: "ServiceName IN ('hdx-private-api')",
+          },
+        ],
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send(dashboardPayload)
+        .expect(200);
+
+      expect(response.body.data.filters).toHaveLength(1);
+      expect(response.body.data.filters[0]).toEqual({
+        id: response.body.data.filters[0].id,
+        type: 'QUERY_EXPRESSION',
+        name: 'Service',
+        expression: 'ServiceName',
+        sourceId: traceSource._id.toString(),
+        constant: true,
+        renderMode: 'readonly',
+      });
+      // savedFilterValues survives the round-trip.
+      expect(response.body.data.savedFilterValues).toEqual([
+        { type: 'sql', condition: "ServiceName IN ('hdx-private-api')" },
+      ]);
+    });
+
     it('should return 400 when filter source ID does not exist', async () => {
       const nonExistentSourceId = new ObjectId().toString();
       const dashboardPayload = {
@@ -1004,7 +1304,7 @@ describe('External API v2 Dashboards - old format', () => {
         savedQueryLanguage: 'lucene',
         savedFilterValues: [
           {
-            type: 'lucene',
+            type: 'sql',
             condition: 'env:prod',
           },
         ],

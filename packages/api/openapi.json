@@ -814,16 +814,17 @@
           "type": {
             "type": "string",
             "enum": [
-              "sql"
+              "sql",
+              "lucene"
             ],
             "default": "sql",
-            "description": "Filter type. Currently only \"sql\" is supported.",
-            "example": "sql"
+            "description": "Language of the `condition` expression. Use `lucene` for the\nLucene-style key:value syntax that round-trips through the\nUI's \"Save default\" flow (e.g. `ServiceName:\"hdx-private-api\"`)\nand pairs with a dashboard filter that has `constant: true`.\nUse `sql` for a raw SQL fragment evaluated as a WHERE clause\non the matching source.\n",
+            "example": "lucene"
           },
           "condition": {
             "type": "string",
-            "description": "SQL filter condition. For example use expressions in the form \"column IN ('value')\".",
-            "example": "ServiceName IN ('hdx-oss-dev-api')"
+            "description": "Filter condition. For `type: sql`, a raw SQL expression in\nthe form `column IN ('value')`. For `type: lucene`, a\nLucene-style `key:value` string keyed by a dashboard\nfilter's `expression`; this is the shape the UI writes\nwhen an author clicks \"Save default\" on a chip and the\nshape constant filters consume.\n",
+            "example": "ServiceName:\"hdx-oss-dev-api\""
           }
         }
       },
@@ -2765,6 +2766,21 @@
             "example": [
               "65f5e4a3b9e77c001a111111"
             ]
+          },
+          "constant": {
+            "type": "boolean",
+            "description": "When true, the value from the dashboard's savedFilterValues matched\nby this filter's expression is applied automatically on every tile\nthis filter scopes, and viewers cannot change it. Use this to lock\na dashboard template to a single scope (clone the dashboard, save a\ndifferent default per copy). Pairs with renderMode to control how\nthe locked filter shows in the filter bar. Omit (or send false)\nfor an ordinary editable filter (the implicit default behavior).\nTwo filters that share the same expression on the same dashboard\nmust agree on `constant`: mixing one locked sibling and one\neditable sibling on the same expression is rejected.\n",
+            "example": true
+          },
+          "renderMode": {
+            "type": "string",
+            "enum": [
+              "editable",
+              "readonly",
+              "hidden"
+            ],
+            "description": "Controls how this filter renders in the dashboard filter bar.\nOmit for the implicit \"editable\" behavior (normal dropdown the\nviewer can change). \"readonly\" shows a disabled chip with a lock\nicon; the viewer sees the locked value but cannot edit it.\n\"hidden\" omits the chip entirely; the locked value still scopes\nevery matching tile. \"readonly\" and \"hidden\" require constant: true.\n",
+            "example": "readonly"
           }
         }
       },
@@ -2914,7 +2930,7 @@
           },
           "savedFilterValues": {
             "type": "array",
-            "description": "Optional default dashboard filter values to persist on the dashboard.",
+            "description": "Optional default dashboard filter values to persist on the dashboard.\nDrop any entries whose expression does not match a filter you are\nkeeping in the `filters` array, otherwise they remain as orphaned\nsaved values invisible to the UI editor.\n",
             "items": {
               "$ref": "#/components/schemas/SavedFilterValue"
             }
@@ -2985,7 +3001,7 @@
           },
           "savedFilterValues": {
             "type": "array",
-            "description": "Optional default dashboard filter values to persist on the dashboard.",
+            "description": "Optional default dashboard filter values to persist on the dashboard.\nOn update, this array is overwritten as a whole. Drop any entries\nwhose expression does not match a filter you kept in `filters` so\nthey do not remain as orphaned scope locks.\n",
             "items": {
               "$ref": "#/components/schemas/SavedFilterValue"
             }

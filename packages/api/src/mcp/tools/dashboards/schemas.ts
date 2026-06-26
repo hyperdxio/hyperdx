@@ -8,9 +8,12 @@ import {
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_CONTAINERS,
   DashboardContainerSchema,
+  DashboardFilter,
   DashboardFilterType,
   MetricsDataType,
   NumberTileColorConditionSchema,
+  refineDashboardFilterCoherence,
+  refineDashboardFiltersConstantSiblings,
   SearchConditionLanguageSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
@@ -853,16 +856,58 @@ const mcpDashboardFilterSchema = z
           'Useful on mixed-source dashboards where a column (e.g. SpanName) only exists on ' +
           'a subset of sources.',
       ),
+    constant: z
+      .boolean()
+      .optional()
+      .describe(
+        'Optional. When true, the dashboard "scope" filter pattern: the value from the dashboard\'s ' +
+          "savedFilterValues matched by this filter's `expression` is applied automatically on " +
+          'every matching tile, and viewers cannot change it. Use this to lock a dashboard template ' +
+          'to a specific scope so it can be cloned and re-pointed by saving a different default ' +
+          'value per copy. Pair with `renderMode` to control how the locked filter shows in the bar.',
+      ),
+    renderMode: z
+      .enum(['editable', 'readonly', 'hidden'])
+      .optional()
+      .describe(
+        'Optional. Controls how this filter renders in the dashboard filter bar. ' +
+          '"editable" (default) shows a normal dropdown the viewer can change. ' +
+          '"readonly" shows a disabled chip with a lock icon; the viewer sees the locked value ' +
+          'but cannot edit it. ' +
+          '"hidden" omits the chip entirely; the locked value still scopes every matching tile. ' +
+          'Typically used together with `constant: true`; setting renderMode to "readonly" or ' +
+          '"hidden" WITHOUT constant: true is rejected because the chip is locked but no value ' +
+          'applies.',
+      ),
   })
+  // Surface the coherence rule (constant + renderMode interlock) on the
+  // schema itself so an MCP caller hits the same boundary the external
+  // API enforces, instead of learning the rule only via a downstream
+  // server-side rejection.
+  .superRefine(refineDashboardFilterCoherence)
   .describe(
     'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
       'Each filter binds a label/name to a column expression on a source. ' +
       "Filters are also the contract for row-click navigation: a table tile's " +
-      'onClick.filters[i].expression must match a filter declared here for the value to land.',
+      'onClick.filters[i].expression must match a filter declared here for the value to land. ' +
+      'Two filters that share the same expression on the same dashboard must agree on `constant`: ' +
+      'mixing one locked sibling and one editable sibling is rejected because the runtime ' +
+      "would let the editable side's URL value clobber the constant's locked value.",
   );
 
 export const mcpFiltersParam = z
   .array(mcpDashboardFilterSchema)
+  // Mirror the array-level refinement the external API runs in
+  // `buildDashboardBodySchema`: reject mixing constant: true + editable
+  // siblings on the same expression so an MCP caller gets the same
+  // boundary error the v2 HTTP path returns, instead of a downstream
+  // server-side rejection wrapped in a Validation error response.
+  .superRefine((filters, ctx) =>
+    refineDashboardFiltersConstantSiblings(
+      filters as unknown as DashboardFilter[],
+      ctx,
+    ),
+  )
   .describe(
     'Optional dashboard-level filters. These define the dropdowns in the dashboard filter ' +
       'bar AND the expressions that table-tile row-click navigation can populate. ' +
@@ -871,8 +916,15 @@ export const mcpFiltersParam = z
       'dropped on arrival and the destination opens unfiltered.\n\n' +
       'By default a filter applies to every tile on the dashboard. On mixed-source dashboards, ' +
       'use the optional `appliesToSourceIds` field to restrict a filter to only the tiles whose ' +
-      'source carries the referenced column — leave `appliesToSourceIds` omitted to keep the ' +
+      'source carries the referenced column; leave `appliesToSourceIds` omitted to keep the ' +
       'broadcast-to-all-tiles default.\n\n' +
+      'For dashboards meant as cloneable templates, set `constant: true` on a filter to lock ' +
+      "its value to the dashboard's saved default (matched by `expression`); pair with " +
+      '`renderMode: "readonly"` to show a disabled chip or `"hidden"` to drop the chip ' +
+      'entirely while keeping the WHERE clause active. Locked filters cannot be cleared by ' +
+      'the viewer. The locked value comes from the dashboard-level `savedFilterValues` ' +
+      "array (matched by this filter's `expression`); set both together in the same " +
+      '`hyperdx_save_dashboard` call.\n\n' +
       'Example (broadcast to every tile):\n' +
       '[\n' +
       '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
@@ -883,7 +935,18 @@ export const mcpFiltersParam = z
       '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "SpanName",\n' +
       '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
       '    "appliesToSourceIds": ["<trace-source-id>"] }\n' +
-      ']',
+      ']\n\n' +
+      'Example (locked scope-filter template) - pair with the top-level ' +
+      'savedFilterValues array on the dashboard call so the constant filter ' +
+      'has a value to apply:\n' +
+      '[\n' +
+      '  { "type": "QUERY_EXPRESSION", "name": "Service", "expression": "ServiceName",\n' +
+      '    "sourceId": "<trace-source-id>", "whereLanguage": "sql",\n' +
+      '    "constant": true, "renderMode": "readonly" }\n' +
+      ']\n' +
+      'plus on the dashboard call body:\n' +
+      '  "savedFilterValues": [ { "type": "lucene",\n' +
+      '    "condition": "ServiceName:\\"hdx-private-api\\"" } ]',
   );
 
 export const mcpPatchDashboardSchema = z.object({

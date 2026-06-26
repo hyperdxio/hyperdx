@@ -1,7 +1,13 @@
+import { useMemo } from 'react';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { Group, Stack, Text, Tooltip } from '@mantine/core';
-import { IconAlertTriangle, IconHelp, IconRefresh } from '@tabler/icons-react';
+import {
+  IconAlertTriangle,
+  IconHelp,
+  IconLock,
+  IconRefresh,
+} from '@tabler/icons-react';
 
 import { VirtualMultiSelect } from './components/VirtualMultiSelect/VirtualMultiSelect';
 import { useDashboardFilterValues } from './hooks/useDashboardFilterValues';
@@ -31,6 +37,13 @@ const DashboardFilterSelect = ({
 }: DashboardFilterSelectProps) => {
   const sortedValues = values?.toSorted() || [];
   const tooltipText = getAppliesToTooltip(filter);
+  // The chip is rendered locked when either `constant: true` is set
+  // (the value comes from savedFilterValues and the viewer cannot
+  // override it) or `renderMode === 'readonly'` is set explicitly.
+  // The `renderMode === 'hidden'` case is handled one level up at
+  // `visibleFilters`, which drops the chip from the bar entirely; that
+  // branch never reaches this component.
+  const isLocked = filter.renderMode === 'readonly' || !!filter.constant;
 
   return (
     <Stack gap={2}>
@@ -38,6 +51,18 @@ const DashboardFilterSelect = ({
         <Text size="xs" c="dimmed">
           {filter.name}
         </Text>
+        {isLocked && (
+          <Tooltip
+            label="This filter is locked to the saved default value"
+            withinPortal
+          >
+            <IconLock
+              size={12}
+              color="var(--color-text-muted)"
+              data-testid={`dashboard-filter-lock-${filter.name}`}
+            />
+          </Tooltip>
+        )}
         <Tooltip label={tooltipText} withinPortal>
           <IconHelp
             size={12}
@@ -63,10 +88,11 @@ const DashboardFilterSelect = ({
           placeholder={value.length === 0 ? filter.name : undefined}
           values={value}
           data={sortedValues}
-          // Disable only while values are genuinely loading. A completed query
-          // that returned no rows (or failed) must stay interactive so the user
-          // can still clear/adjust the selection instead of being stuck.
-          disabled={isLoading}
+          // Locked filters (constant / readonly) stay disabled. Otherwise
+          // disable only while values are genuinely loading: a completed
+          // query that returned no rows (or failed) must stay interactive
+          // so the user can still clear/adjust the selection.
+          disabled={isLoading || isLocked}
           onChange={onChange}
           data-testid={`dashboard-filter-select-${filter.name}`}
         />
@@ -88,18 +114,27 @@ const DashboardFilters = ({
   filterValues,
   onSetFilterValue,
 }: DashboardFilterProps) => {
+  // Filters with renderMode === 'hidden' still apply to tile WHERE clauses
+  // (via the hook) but are not rendered in the filter bar. Memoize so the
+  // downstream useDashboardFilterValues sees a stable reference and its
+  // useQueries doesn't churn isLoading on every parent re-render.
+  const visibleFilters = useMemo(
+    () => filters.filter(f => f.renderMode !== 'hidden'),
+    [filters],
+  );
+
   const {
     data: filterValuesById,
     erroredFilterIds,
     isFetching,
   } = useDashboardFilterValues({
-    filters,
+    filters: visibleFilters,
     dateRange,
   });
 
   return (
     <Group align="start">
-      {Object.values(filters).map(filter => {
+      {visibleFilters.map(filter => {
         const queriedFilterValues = filterValuesById?.get(filter.id);
         const included = filterValues[filter.expression]?.included;
         const selectedValues = included

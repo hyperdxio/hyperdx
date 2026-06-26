@@ -20,6 +20,7 @@ import {
   DASHBOARD_MAX_CONTAINERS,
   DashboardContainer,
   DashboardContainerSchema,
+  DashboardFilter,
   DisplayType,
   isLogSource,
   isOnClickDashboardById,
@@ -28,6 +29,7 @@ import {
   NumberTileColorCondition,
   NumberTileColorConditionSchema,
   RawSqlSavedChartConfig,
+  refineDashboardFiltersConstantSiblings,
   resolveChartPaletteToken,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
@@ -1345,6 +1347,57 @@ function buildDashboardBodySchema(filterSchema: z.ZodTypeAny): z.ZodEffects<
       // (otherwise a tile that references a real preserved container
       // would be rejected against an empty `data.containers ?? []`).
       validateDashboardContainersStructure(data.containers ?? [], ctx);
+
+      // Cross-filter check: reject mixing constant: true with editable
+      // siblings on the same expression. The filter-array element type
+      // is `unknown` from Zod's perspective here, so cast through the
+      // shared shape. Filters are already individually validated by the
+      // `filterSchema` arg, so the cast is safe.
+      if (data.filters && data.filters.length > 0) {
+        refineDashboardFiltersConstantSiblings(
+          data.filters as unknown as DashboardFilter[],
+          ctx,
+        );
+
+        // Cross-schema coherence: a filter with `constant: true` only
+        // applies a WHERE clause if its expression resolves to a value
+        // in `savedFilterValues`. Without this check the clone-and-flip
+        // template path silently ships a "locked" dashboard with no
+        // scope: the chip renders with a lock icon, `setFilterValue`
+        // no-ops, but every tile runs unfiltered. Reject at the
+        // boundary so MCP / external-API callers see the error.
+        //
+        // SQL conditions are opaque strings the server does not parse
+        // here, so coverage is best-effort: a constant filter is treated
+        // as covered when there is any savedFilterValues entry to lock
+        // to. An empty savedFilterValues is the broken case this guards
+        // against (a locked chip whose WHERE clause never applies).
+        const constantFilters = (
+          data.filters as unknown as DashboardFilter[]
+        ).filter(f => f.constant);
+        if (
+          constantFilters.length > 0 &&
+          (data.savedFilterValues ?? []).length === 0
+        ) {
+          for (const f of constantFilters) {
+            const filterIndex = (
+              data.filters as unknown as DashboardFilter[]
+            ).indexOf(f);
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['filters', filterIndex],
+              message:
+                `Filter "${f.name}" has constant: true but no ` +
+                'savedFilterValues entry to lock to. Add a savedFilterValues ' +
+                'entry whose condition references ' +
+                `"${f.expression}" (e.g. ` +
+                `{ "type": "sql", "condition": "${f.expression} IN ('<value>')" }), ` +
+                'or remove constant: true. Without a saved value the filter ' +
+                'renders as locked but applies no WHERE clause.',
+            });
+          }
+        }
+      }
     });
 }
 
