@@ -87,7 +87,7 @@ export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,
   source: TSource | undefined,
 ): SavedChartConfig | undefined {
-  if (form.configType === 'promql' && isRawSqlDisplayType(form.displayType)) {
+  if (form.configType === 'promql' && isPromqlDisplayType(form.displayType)) {
     const promqlConfig: PromqlSavedChartConfig = {
       configType: 'promql',
       ...pick(form, [
@@ -165,7 +165,7 @@ export function convertFormStateToChartConfig(
   dateRange: ChartConfigWithDateRange['dateRange'],
   source: TSource | undefined,
 ): ChartConfigWithDateRange | undefined {
-  if (form.configType === 'promql' && isRawSqlDisplayType(form.displayType)) {
+  if (form.configType === 'promql' && isPromqlDisplayType(form.displayType)) {
     const promqlConfig: PromqlChartConfig = {
       configType: 'promql',
       ...pick(form, [
@@ -176,7 +176,6 @@ export function convertFormStateToChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
-        'step',
       ]),
       promqlExpression: form.promqlExpression ?? '',
       connection: source?.connection ?? form.connection ?? '',
