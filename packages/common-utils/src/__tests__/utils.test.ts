@@ -1360,6 +1360,23 @@ describe('utils', () => {
         });
       });
 
+      it('leaves an external onClick untouched (no source mapping)', () => {
+        const dashboard = makeDashboard({
+          type: 'external',
+          urlTemplate: 'https://grafana.example.com/d/abc?svc={{ServiceName}}',
+        });
+
+        const template = convertToDashboardTemplate(dashboard, [source]);
+
+        expect(template.tiles[0].config).toMatchObject({
+          onClick: {
+            type: 'external',
+            urlTemplate:
+              'https://grafana.example.com/d/abc?svc={{ServiceName}}',
+          },
+        });
+      });
+
       it('drops a search onClick whose source was deleted', () => {
         const dashboard = makeDashboard({
           type: 'search',

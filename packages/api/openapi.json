@@ -2389,6 +2389,30 @@
           }
         }
       },
+      "OnClickExternal": {
+        "type": "object",
+        "required": [
+          "type",
+          "urlTemplate"
+        ],
+        "description": "Link-out that navigates to an arbitrary external URL (e.g. a Grafana or Langfuse dashboard). The rendered URL must be an absolute http(s) URL.\n",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "external"
+            ],
+            "description": "OnClick variant discriminator. Must be \"external\" for external link-outs.",
+            "example": "external"
+          },
+          "urlTemplate": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Handlebars template rendered against the clicked row; supports `{{column}}` variables. The rendered value must be an absolute http(s) URL.\n",
+            "example": "https://example.com/d/abc?var-service={{ServiceName}}"
+          }
+        }
+      },
       "OnClick": {
         "description": "Link-out configuration applied when a user clicks a row of a table tile. Only table tiles (builder or raw SQL) currently support onClick. When target.mode is \"id\", the referenced source (type=search) or dashboard (type=dashboard) must already exist for the team.\n",
         "oneOf": [
@@ -2397,13 +2421,17 @@
           },
           {
             "$ref": "#/components/schemas/OnClickDashboard"
+          },
+          {
+            "$ref": "#/components/schemas/OnClickExternal"
           }
         ],
         "discriminator": {
           "propertyName": "type",
           "mapping": {
             "search": "#/components/schemas/OnClickSearch",
-            "dashboard": "#/components/schemas/OnClickDashboard"
+            "dashboard": "#/components/schemas/OnClickDashboard",
+            "external": "#/components/schemas/OnClickExternal"
           }
         }
       },
