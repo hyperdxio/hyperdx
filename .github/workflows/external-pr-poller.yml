@@ -1,0 +1,124 @@
+name: External PR Slack alerts (org-wide poller)
+
+# Polls the org's public repos and pings #oss-prs when an EXTERNAL contributor
+# opens a PR. "External" == the PR's head repo is a fork (internal contributors
+# branch inside the repo; outsiders must fork). Lives in this one repo only — no
+# per-repo workflow files, and new public repos are picked up automatically.
+# Requires secrets OSS_PR_WATCH_APP_ID / OSS_PR_WATCH_APP_PRIVATE_KEY (a read-only
+# GitHub App on the org with Pull requests: Read) and SLACK_WEBHOOK_OSS_PRS.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *' # every 10 min UTC; GitHub may delay scheduled runs under load
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Log matches instead of posting to Slack'
+        type: boolean
+        default: false
+      lookback_minutes:
+        description: 'How far back to scan for new PRs'
+        default: '30'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: external-pr-poller
+  cancel-in-progress: false # don't let a new tick kill an in-flight notify
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    env:
+      # secrets aren't allowed in `if:` directly, so surface "is it configured?" as env.
+      HAS_CONFIG:
+        ${{ secrets.OSS_PR_WATCH_APP_ID != '' && secrets.SLACK_WEBHOOK_OSS_PRS
+        != '' }}
+    steps:
+      - name: Warn if not configured
+        if: env.HAS_CONFIG != 'true'
+        run:
+          echo "::warning::External PR poller is not configured — set
+          OSS_PR_WATCH_APP_ID, OSS_PR_WATCH_APP_PRIVATE_KEY and
+          SLACK_WEBHOOK_OSS_PRS. Skipping."
+
+      - name: Mint org-scoped read token
+        id: app
+        if: env.HAS_CONFIG == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.OSS_PR_WATCH_APP_ID }}
+          private-key: ${{ secrets.OSS_PR_WATCH_APP_PRIVATE_KEY }}
+          owner: hyperdxio # token spans every repo the App is installed on
+
+      - name: Restore notified-PR state
+        if: env.HAS_CONFIG == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: notified.json
+          key: external-pr-notified-
+          restore-keys: external-pr-notified-
+
+      - name: Find & notify new external PRs
+        if: env.HAS_CONFIG == 'true'
+        uses: actions/github-script@v9
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_OSS_PRS }}
+          LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '30' }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        with:
+          github-token: ${{ steps.app.outputs.token }}
+          script: |
+            const fs = require('fs');
+            const dryRun = process.env.DRY_RUN === 'true';
+            const since = new Date(Date.now() - Number(process.env.LOOKBACK_MINUTES) * 60_000);
+
+            let notified = [];
+            try { notified = JSON.parse(fs.readFileSync('notified.json', 'utf8')).notified ?? []; } catch {}
+            const seen = new Set(notified);
+
+            // Public, non-archived repos in the org (auto-covers future repos).
+            const repos = (await github.paginate(github.rest.repos.listForOrg,
+              { org: 'hyperdxio', type: 'public', per_page: 100 }))
+              .filter(r => !r.archived && !r.fork && !r.disabled);
+
+            const fresh = [];
+            for (const repo of repos) {
+              const pulls = await github.rest.pulls.list({
+                owner: repo.owner.login, repo: repo.name,
+                state: 'open', sort: 'created', direction: 'desc', per_page: 30,
+              });
+              for (const pr of pulls.data) {
+                if (new Date(pr.created_at) < since) break;          // sorted desc → stop early
+                if (pr.draft) continue;                              // skip drafts
+                if (pr.user?.type === 'Bot') continue;               // skip bots (belt + suspenders)
+                if (pr.head.repo?.fork !== true) continue;           // EXTERNAL == from a fork
+                if (seen.has(pr.node_id)) continue;                  // already alerted
+                fresh.push({ repo: repo.full_name, pr });
+              }
+            }
+
+            for (const { repo, pr } of fresh) {
+              const text = `:sparkles: *New external PR* in \`${repo}\`\n`
+                + `<${pr.html_url}|#${pr.number}: ${pr.title}>\n`
+                + `by \`${pr.user.login}\` (fork: \`${pr.head.repo.full_name}\`)`;
+              if (dryRun) { core.info(`[dry-run] ${repo}#${pr.number} — ${pr.title}`); seen.add(pr.node_id); continue; }
+              // JSON.stringify safely escapes the attacker-controlled PR title.
+              const res = await fetch(process.env.SLACK_WEBHOOK, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] }),
+              });
+              if (!res.ok) { core.warning(`Slack post failed for ${repo}#${pr.number}: ${res.status}`); continue; }
+              seen.add(pr.node_id);
+            }
+
+            fs.writeFileSync('notified.json', JSON.stringify({ notified: [...seen].slice(-1000) }));
+            core.info(`Scanned ${repos.length} repos, alerted ${fresh.length} new external PR(s)${dryRun ? ' (dry-run)' : ''}.`);
+
+      - name: Save notified-PR state
+        if: always() && env.HAS_CONFIG == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: notified.json
+          key: external-pr-notified-${{ github.run_id }}
