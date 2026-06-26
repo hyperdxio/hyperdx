@@ -210,31 +210,6 @@ export function TileAlertEditor({
               )}
             />
             <Text size="sm" opacity={0.7}>
-              for
-            </Text>
-            <Controller
-              control={control}
-              name="alert.numConsecutiveWindows"
-              render={({ field }) => (
-                <NumberInput
-                  {...field}
-                  value={field.value ?? 1}
-                  onChange={v => {
-                    const num = typeof v === 'number' ? v : 1;
-                    field.onChange(num > 1 ? num : undefined);
-                  }}
-                  min={1}
-                  size="xs"
-                  w={70}
-                />
-              )}
-            />
-            <Text size="sm" opacity={0.7}>
-              {(alertnumConsecutiveWindows ?? 1) === 1
-                ? 'window'
-                : 'consecutive windows'}
-            </Text>
-            <Text size="sm" opacity={0.7}>
               via
             </Text>
             <Controller
@@ -266,6 +241,8 @@ export function TileAlertEditor({
                 ? `from each ${alertIntervalLabel} window`
                 : 'from each alert window'
             }
+            numConsecutiveWindowsName="alert.numConsecutiveWindows"
+            numConsecutiveWindows={alertnumConsecutiveWindows ?? undefined}
           />
           <Text size="xxs" opacity={0.5} mb={4} mt="sm">
             Send to

@@ -247,31 +247,6 @@ const AlertForm = ({
               )}
             />
             <Text size="sm" opacity={0.7}>
-              for
-            </Text>
-            <Controller
-              control={control}
-              name="numConsecutiveWindows"
-              render={({ field }) => (
-                <NumberInput
-                  {...field}
-                  value={field.value ?? 1}
-                  onChange={v => {
-                    const num = typeof v === 'number' ? v : 1;
-                    field.onChange(num > 1 ? num : undefined);
-                  }}
-                  min={1}
-                  size="xs"
-                  w={70}
-                />
-              )}
-            />
-            <Text size="sm" opacity={0.7}>
-              {(numConsecutiveWindows ?? 1) === 1
-                ? 'window'
-                : 'consecutive windows'}
-            </Text>
-            <Text size="sm" opacity={0.7}>
               via
             </Text>
             <Controller
@@ -294,6 +269,8 @@ const AlertForm = ({
             scheduleOffsetMinutes={scheduleOffsetMinutes}
             maxScheduleOffsetMinutes={maxScheduleOffsetMinutes}
             offsetWindowLabel={`from each ${intervalLabel} window`}
+            numConsecutiveWindowsName="numConsecutiveWindows"
+            numConsecutiveWindows={numConsecutiveWindows ?? undefined}
           />
           <Text size="xxs" opacity={0.5} mb={4} mt="xs">
             grouped by
