@@ -10,7 +10,7 @@ import {
   getRequestsPerSecond,
   navigateToTraceSearch,
   rawDurationToMs,
-} from '../utils';
+} from '@/components/ServiceMap/utils';
 
 // Mock next/router
 jest.mock('next/router', () => ({

@@ -1,6 +1,6 @@
-import type { GradeRecord } from '../grading/types';
-import type { McpKind, RunRecord } from '../harness/types';
-import { modelDirName } from '../runs/path';
+import type { GradeRecord } from '@/grading/types';
+import type { McpKind, RunRecord } from '@/harness/types';
+import { modelDirName } from '@/runs/path';
 
 /**
  * A column key uniquely identifies a (mcp, model) combination in reports.

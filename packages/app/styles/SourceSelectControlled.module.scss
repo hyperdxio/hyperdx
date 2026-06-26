@@ -89,3 +89,12 @@
 .sourceMenuButton {
   flex-shrink: 0;
 }
+
+/* Grouped dropdown decoupled from the compact picker (comboboxProps
+ * width="max-content", floored wider, capped to the viewport, pinned left
+ * via position="bottom-start"). The input keeps its own width.
+ */
+.sourceSelectDropdown {
+  min-width: 22rem;
+  max-width: min(32rem, calc(100vw - 2rem));
+}

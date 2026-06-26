@@ -620,11 +620,10 @@
             "nullable": true,
             "example": "hyperdx_"
           },
-          "prometheusEndpoint": {
-            "type": "string",
-            "description": "Optional Prometheus-compatible API endpoint. When set, PromQL queries are proxied to this endpoint.",
-            "nullable": true,
-            "example": "http://prometheus:9090"
+          "isPrometheusEndpoint": {
+            "type": "boolean",
+            "description": "Optional. When true, `host` is treated as a Prometheus-compatible API endpoint (e.g. Prometheus or Thanos) and PromQL queries are proxied to it. When false or omitted, `host` is a ClickHouse HTTP endpoint.",
+            "example": false
           },
           "createdAt": {
             "type": "string",
@@ -675,10 +674,10 @@
             "nullable": true,
             "example": "hyperdx_"
           },
-          "prometheusEndpoint": {
-            "type": "string",
-            "description": "Optional Prometheus-compatible API endpoint. When set, PromQL queries are proxied to this endpoint.",
-            "example": "http://prometheus:9090"
+          "isPrometheusEndpoint": {
+            "type": "boolean",
+            "description": "Optional. When true, `host` is treated as a Prometheus-compatible API endpoint (e.g. Prometheus or Thanos) and PromQL queries are proxied to it. When false or omitted, `host` is a ClickHouse HTTP endpoint.",
+            "example": false
           }
         }
       },
@@ -717,11 +716,10 @@
             "nullable": true,
             "example": "hyperdx_"
           },
-          "prometheusEndpoint": {
-            "type": "string",
-            "description": "Optional Prometheus-compatible API endpoint. Set to null to clear the existing value. If omitted, the existing value is kept.",
-            "nullable": true,
-            "example": "http://prometheus:9090"
+          "isPrometheusEndpoint": {
+            "type": "boolean",
+            "description": "Optional. When true, `host` is treated as a Prometheus-compatible API endpoint. When false or omitted, `host` is a ClickHouse HTTP endpoint. Omit to keep the existing value unchanged.",
+            "example": false
           }
         }
       },
@@ -984,6 +982,28 @@
         ],
         "description": "Palette token used to color a number tile. Tokens reflow across light and dark themes, so raw hex values are not accepted.\n",
         "example": "chart-red"
+      },
+      "BackgroundChart": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "description": "Optional background trend sparkline drawn behind a number tile's value, derived from a time-bucketed version of the tile's query. Builder number tiles only (raw SQL number tiles have no time dimension to bucket).\n",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "line",
+              "area"
+            ],
+            "description": "Sparkline shape.",
+            "example": "line"
+          },
+          "color": {
+            "$ref": "#/components/schemas/ChartPaletteToken",
+            "description": "Optional palette-token override for the sparkline. When unset the sparkline inherits the tile's static color.\n"
+          }
+        }
       },
       "NumericColorCondition": {
         "type": "object",
@@ -1783,6 +1803,10 @@
             "items": {
               "$ref": "#/components/schemas/NumberTileColorCondition"
             }
+          },
+          "backgroundChart": {
+            "$ref": "#/components/schemas/BackgroundChart",
+            "description": "Optional background trend sparkline drawn behind the value.\n"
           }
         }
       },
@@ -2365,6 +2389,30 @@
           }
         }
       },
+      "OnClickExternal": {
+        "type": "object",
+        "required": [
+          "type",
+          "urlTemplate"
+        ],
+        "description": "Link-out that navigates to an arbitrary external URL (e.g. a Grafana or Langfuse dashboard). The rendered URL must be an absolute http(s) URL.\n",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "external"
+            ],
+            "description": "OnClick variant discriminator. Must be \"external\" for external link-outs.",
+            "example": "external"
+          },
+          "urlTemplate": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Handlebars template rendered against the clicked row; supports `{{column}}` variables. The rendered value must be an absolute http(s) URL.\n",
+            "example": "https://example.com/d/abc?var-service={{ServiceName}}"
+          }
+        }
+      },
       "OnClick": {
         "description": "Link-out configuration applied when a user clicks a row of a table tile. Only table tiles (builder or raw SQL) currently support onClick. When target.mode is \"id\", the referenced source (type=search) or dashboard (type=dashboard) must already exist for the team.\n",
         "oneOf": [
@@ -2373,13 +2421,17 @@
           },
           {
             "$ref": "#/components/schemas/OnClickDashboard"
+          },
+          {
+            "$ref": "#/components/schemas/OnClickExternal"
           }
         ],
         "discriminator": {
           "propertyName": "type",
           "mapping": {
             "search": "#/components/schemas/OnClickSearch",
-            "dashboard": "#/components/schemas/OnClickDashboard"
+            "dashboard": "#/components/schemas/OnClickDashboard",
+            "external": "#/components/schemas/OnClickExternal"
           }
         }
       },
@@ -5892,6 +5944,131 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v2/team": {
+      "get": {
+        "summary": "Get Team",
+        "description": "Retrieves the authenticated team's basic settings.",
+        "operationId": "getTeam",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved team"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/api/v2/team/members": {
+      "get": {
+        "summary": "List Team Members",
+        "description": "Retrieves the team's members.",
+        "operationId": "listTeamMembers",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved members"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitation": {
+      "post": {
+        "summary": "Invite Team Member",
+        "description": "Creates a pending invitation for a new email address.",
+        "operationId": "inviteTeamMember",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully created the invitation"
+          },
+          "400": {
+            "description": "User already exists"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitations": {
+      "get": {
+        "summary": "List Team Invitations",
+        "description": "Retrieves the team's pending invitations.",
+        "operationId": "listTeamInvitations",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved invitations"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitation/{id}": {
+      "delete": {
+        "summary": "Delete Team Invitation",
+        "description": "Deletes a pending team invitation.",
+        "operationId": "deleteTeamInvitation",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully deleted the invitation"
+          },
+          "404": {
+            "description": "Invitation not found"
+          }
+        }
+      }
+    },
+    "/api/v2/team/member/{id}": {
+      "delete": {
+        "summary": "Remove Team Member",
+        "description": "Removes a member from the team.",
+        "operationId": "removeTeamMember",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully removed the member"
+          },
+          "400": {
+            "description": "Cannot remove yourself from the team"
+          },
+          "404": {
+            "description": "Member not found"
           }
         }
       }

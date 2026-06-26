@@ -1,6 +1,6 @@
 import { renderHook } from '@testing-library/react';
 
-import { useSqlSuggestions } from '../useSqlSuggestions';
+import { useSqlSuggestions } from '@/hooks/useSqlSuggestions';
 
 describe('useSqlSuggestions', () => {
   it('should return null when enabled is false', () => {

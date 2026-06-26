@@ -2,11 +2,11 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { escapeRegExp } from 'lodash';
 
 import * as config from '@/config';
+import type { McpContext } from '@/mcp/tools/types';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import Dashboard from '@/models/dashboard';
 import logger from '@/utils/logger';
 
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 import { mcpSearchDashboardsSchema } from './schemas';
 
 const SEARCH_RESULTS_LIMIT = 100;

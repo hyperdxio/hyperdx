@@ -18,7 +18,7 @@ import {
   safeLocalStorageSet,
   THEME_STORAGE_KEY,
   themes,
-} from '../index';
+} from '@/theme/index';
 
 describe('theme/index', () => {
   beforeEach(() => {

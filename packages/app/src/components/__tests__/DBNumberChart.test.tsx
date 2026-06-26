@@ -1,15 +1,15 @@
 import React from 'react';
 import { act, screen } from '@testing-library/react';
 
+import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
+import DBNumberChart from '@/components/DBNumberChart';
+import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
+import NumberTileBackgroundChart from '@/components/NumberTileBackgroundChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
+import { NumberFormat } from '@/types';
 import { formatNumber, getColorFromCSSToken } from '@/utils';
-
-import { NumberFormat } from '../../types';
-import DateRangeIndicator from '../charts/DateRangeIndicator';
-import DBNumberChart from '../DBNumberChart';
-import MVOptimizationIndicator from '../MaterializedViews/MVOptimizationIndicator';
 
 // Mock dependencies
 jest.mock('@/hooks/useChartConfig', () => ({
@@ -52,6 +52,13 @@ jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
 );
 
 jest.mock('../charts/DateRangeIndicator', () => jest.fn(() => null));
+
+// Stub the sparkline so these tests assert only the wiring (when it mounts
+// and what props it receives); its data path is covered by its own test.
+jest.mock('../NumberTileBackgroundChart', () => ({
+  __esModule: true,
+  default: jest.fn(() => <div data-testid="number-tile-background-chart" />),
+}));
 
 describe('DBNumberChart', () => {
   const mockUseQueriedChartConfig = useQueriedChartConfig as jest.Mock;
@@ -664,6 +671,42 @@ describe('DBNumberChart', () => {
         containerSpy.mockRestore();
         errSpy.mockRestore();
       }
+    });
+  });
+
+  describe('background chart', () => {
+    const mockBackgroundChart =
+      NumberTileBackgroundChart as unknown as jest.Mock;
+
+    it('renders the background sparkline when backgroundChart is configured', () => {
+      const config = {
+        ...baseTestConfig,
+        backgroundChart: { type: 'area' as const },
+      };
+
+      renderWithMantine(<DBNumberChart config={config} />);
+
+      expect(
+        screen.getByTestId('number-tile-background-chart'),
+      ).toBeInTheDocument();
+      // The renderer hands the tile config and the backgroundChart settings
+      // straight through to the sparkline.
+      expect(mockBackgroundChart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config,
+          backgroundChart: { type: 'area' },
+        }),
+        undefined,
+      );
+    });
+
+    it('does not render the background sparkline when backgroundChart is unset', () => {
+      renderWithMantine(<DBNumberChart config={baseTestConfig} />);
+
+      expect(
+        screen.queryByTestId('number-tile-background-chart'),
+      ).not.toBeInTheDocument();
+      expect(mockBackgroundChart).not.toHaveBeenCalled();
     });
   });
 });

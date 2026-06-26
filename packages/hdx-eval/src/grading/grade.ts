@@ -2,10 +2,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 
-import type { RunRecord } from '../harness/types';
-import { isModelSubdir, isRunJson, runsRoot, safeReaddir } from '../runs/path';
-import { readRun } from '../runs/store';
-import { getScenario, SCENARIO_NAMES } from '../scenarios';
+import type { RunRecord } from '@/harness/types';
+import { isModelSubdir, isRunJson, runsRoot, safeReaddir } from '@/runs/path';
+import { readRun } from '@/runs/store';
+import { getScenario, SCENARIO_NAMES } from '@/scenarios';
+
 import type { BlindingEntry } from './blind';
 import { judgeTrajectory } from './judge';
 import { runProgrammaticChecks } from './programmatic';

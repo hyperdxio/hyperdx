@@ -1,4 +1,5 @@
-import type { SeededRng } from '../rng/seeded';
+import type { SeededRng } from '@/rng/seeded';
+
 import type { TraceRow } from './types';
 
 export function newTraceId(rng: SeededRng): string {

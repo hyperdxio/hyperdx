@@ -11,10 +11,9 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
+import { useDashboardFilterValues } from '@/hooks/useDashboardFilterValues';
+import * as useMetadataModule from '@/hooks/useMetadata';
 import * as sourceModule from '@/source';
-
-import { useDashboardFilterValues } from '../useDashboardFilterValues';
-import * as useMetadataModule from '../useMetadata';
 
 // Mock modules
 jest.mock('@/source');

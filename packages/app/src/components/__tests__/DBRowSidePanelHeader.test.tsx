@@ -1,7 +1,7 @@
 import React from 'react';
 import { screen } from '@testing-library/react';
 
-import DBRowSidePanelHeader from '../DBRowSidePanelHeader';
+import DBRowSidePanelHeader from '@/components/DBRowSidePanelHeader';
 
 // Stub modules that touch user preferences, AI APIs, or DOM observers; the
 // behavior under test is the body-paper visibility logic, not those deps.

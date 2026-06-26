@@ -4,11 +4,13 @@
 // readability. Reformatting all separators is out of scope here.
 import {
   AggregateFunctionSchema,
+  ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_CONTAINERS,
   DashboardContainerSchema,
   DashboardFilterType,
   MetricsDataType,
+  NumberTileColorConditionSchema,
   SearchConditionLanguageSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
@@ -27,6 +29,26 @@ const tileLevelNumberFormatDescription =
   'Controls how the number value(s) are formatted for display. Applies to series or numbers without a series-level numberFormat. ' +
   'Most useful: { output: "duration", factor: 0.000000001 } to auto-format nanosecond durations, ' +
   'or { output: "number", mantissa: 2, thousandSeparated: true } for clean counts.';
+
+const numberTileColorDescription =
+  'Static color for the displayed number, as a palette token such as ' +
+  '"chart-blue", "chart-green", or "chart-success" (see the enum for the ' +
+  'full set). Applied unless a colorRules entry matches the value.';
+
+const numberTileColorRulesDescription =
+  'Conditional colors for the number, evaluated in array order with the ' +
+  'last matching rule winning; falls back to color (then the default text ' +
+  'color) when none match. Up to 10 rules. Each rule is ' +
+  '{ operator, value, color, label? }: operator gt | gte | lt | lte with a ' +
+  'number value, between with a [min, max] value, or eq | neq with a number ' +
+  'or string value. color is a palette token. Example: ' +
+  '[{ operator: "gte", value: 500, color: "chart-error", label: "Critical" }].';
+
+const rawSqlNumberTileColorDescription =
+  'Static color for the displayed number, as a palette token such as ' +
+  '"chart-blue" or "chart-success". Valid only when displayType is ' +
+  '"number", ignored otherwise. Raw SQL number tiles do not support ' +
+  'conditional colorRules.';
 
 const mcpNumberFormatSchema = z.object({
   output: z
@@ -292,18 +314,42 @@ const mcpOnClickDashboardSchema = z
       'high-level overview table down to a per-service or per-endpoint dashboard.',
   );
 
+const mcpOnClickExternalSchema = z
+  .object({
+    type: z
+      .literal('external')
+      .describe('Link to an arbitrary external URL (e.g. Grafana, Langfuse).'),
+    urlTemplate: z
+      .string()
+      .min(1)
+      .max(10000)
+      .describe(
+        'Handlebars-style template rendered against the clicked row, e.g. ' +
+          '"https://example.com/d/abc?var-service={{ServiceName}}". ' +
+          'The rendered value MUST be an absolute http(s) URL; relative URLs and ' +
+          'non-http(s) schemes (javascript:, data:, etc.) are rejected at click time. ' +
+          'This variant references no HyperDX source or dashboard.',
+      ),
+  })
+  .describe(
+    'Row-click handler that opens an external URL in a new tab. Use this to ' +
+      'link out to a third-party tool (Grafana, Langfuse, runbooks, etc.).',
+  );
+
 const mcpOnClickSchema = z
   .discriminatedUnion('type', [
     mcpOnClickSearchSchema,
     mcpOnClickDashboardSchema,
+    mcpOnClickExternalSchema,
   ])
   .describe(
     'Row-click navigation for tiles that render as tables (Table tiles always; ' +
       'SQL tiles only when displayType is "table"). ' +
       'type="search" links to the /search page for a log/trace source; ' +
-      'type="dashboard" links to another dashboard. ' +
-      'Both support Handlebars `{{column}}` templating against the clicked row ' +
-      'for the target, whereTemplate, and filter values.\n\n' +
+      'type="dashboard" links to another dashboard; ' +
+      'type="external" links to an arbitrary external http(s) URL. ' +
+      'All support Handlebars `{{column}}` templating against the clicked row ' +
+      'for the target/url, whereTemplate, and filter values.\n\n' +
       'Examples:\n' +
       '1. Drill into search for the clicked service: \n' +
       '   { "type": "search", "target": { "mode": "id", "id": "<trace-source-id>" }, ' +
@@ -317,7 +363,10 @@ const mcpOnClickSchema = z
       '"template": "{{ServiceName}}" }] }\n' +
       '3. Resolve the destination from the row (rare; prefer mode="id"): \n' +
       '   { "type": "dashboard", "target": { "mode": "template", "template": ' +
-      '"{{TargetDashboardName}}" }, "whereLanguage": "lucene" }',
+      '"{{TargetDashboardName}}" }, "whereLanguage": "lucene" }\n' +
+      '4. Link out to an external tool: \n' +
+      '   { "type": "external", "urlTemplate": ' +
+      '"https://grafana.example.com/d/abc?var-service={{ServiceName}}" }',
   );
 
 const mcpTileLayoutSchema = z.object({
@@ -490,6 +539,14 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(tileLevelNumberFormatDescription),
+    color: ChartPaletteTokenSchema.optional().describe(
+      numberTileColorDescription,
+    ),
+    colorRules: z
+      .array(NumberTileColorConditionSchema)
+      .max(10)
+      .optional()
+      .describe(numberTileColorRulesDescription),
   }),
 });
 
@@ -627,21 +684,34 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
           'sourceId is REQUIRED by two macros: $__filters and $__sourceTable. ' +
           'The sourceId must belong to the same connection as connectionId.',
       ),
-    sqlTemplate: z
-      .string()
-      .describe(
-        'Raw ClickHouse SQL query. Always include a LIMIT clause to avoid excessive data.\n' +
-          'Use query parameters: {startDateMilliseconds:Int64}, {endDateMilliseconds:Int64}, ' +
-          '{intervalSeconds:Int64}, {intervalMilliseconds:Int64}.\n' +
-          'Or use macros: $__timeFilter(col), $__timeFilter_ms(col), $__dateFilter(col), ' +
-          '$__fromTime, $__toTime, $__fromTime_ms, $__toTime_ms, ' +
-          '$__timeInterval(col), $__timeInterval_ms(col), $__interval_s, $__filters, $__sourceTable.\n' +
-          'IMPORTANT: $__filters and $__sourceTable both require sourceId to be set on this tile. ' +
-          'Prefer including "AND $__filters" in the WHERE clause so dashboard filters apply.\n' +
-          'Example: "SELECT $__timeInterval(TimestampTime) AS ts, ServiceName, count() ' +
-          'FROM otel_logs WHERE $__timeFilter(TimestampTime) AND $__filters ' +
-          'GROUP BY ServiceName, ts ORDER BY ts"',
-      ),
+    sqlTemplate: z.string().describe(`
+Raw ClickHouse SQL query. SQL guidelines:
+
+1. ALWAYS include a LIMIT clause to avoid excessive data.
+2. ALWAYS include a date/time filter in the WHERE clause using either macros or raw parameters to ensure the chart responds to user selected time range.
+    - $__timeFilter(col) expands to col >= toDateTime(fromUnixTimestamp64Milli({startDateMilliseconds:Int64})) AND col <= toDateTime(fromUnixTimestamp64Milli({endDateMilliseconds:Int64}))
+    - $__timeFilter_ms(col) is the same but should be used when col has millisecond precision (DateTime64 type)
+    - $__dateFilter(col) is the same but should be used when col has Day granularity (Date type)
+    - $__dateTimeFilter(dateCol, dateTimeCol) should be used when there are both Date and DateTime columns that should be filtered on.
+    - NEVER hardcode a fixed time range unless the user specifically asks for it.
+    - $__fromTime and $__toTime can be expanded to {startDateMilliseconds:Int64} and {endDateMilliseconds:Int64}, but prefer the full filter macros for readability.
+3. ALWAYS include a granularity macro or parameter for time series (line or bar charts) to ensure the chart's granularity responds to user selected time bucket size.
+    - $__timeInterval(col) expands to toStartOfInterval(TimestampTime, INTERVAL {intervalSeconds:Int64} second)
+    - $__interval_s expands to {intervalSeconds:Int64}
+    - These macros are only available for time-series charts; do not use them for other display types.
+4. STRONGLY RECOMMENDED: use the $__filters and $__sourceTable macros to ensure the tile reacts to dashboard-level filters and source selectors.
+    - $__filters and $__sourceTable both require sourceId to be set on this tile.
+
+Example:
+
+SELECT
+  $__timeInterval(TimestampTime) AS ts,
+  count()
+FROM $__sourceTable
+WHERE $__timeFilter(TimestampTime)
+  AND $__filters
+GROUP BY ServiceName, ts
+`),
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
     numberFormat: mcpNumberFormatSchema
@@ -661,6 +731,9 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
         'Scale the y-axis to the data range instead of starting at zero. ' +
           'Valid only when displayType is "line", ignored otherwise.',
       ),
+    color: ChartPaletteTokenSchema.optional().describe(
+      rawSqlNumberTileColorDescription,
+    ),
     onClick: mcpOnClickSchema.optional(),
   }),
 });

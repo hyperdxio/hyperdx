@@ -14,9 +14,8 @@ import {
 import { IconUpload } from '@tabler/icons-react';
 
 import { DASHBOARD_TEMPLATES } from '@/dashboardTemplates';
+import { withAppNav } from '@/layout';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-
-import { withAppNav } from '../../layout';
 
 export default function DashboardTemplatesPage() {
   const brandName = useBrandDisplayName();

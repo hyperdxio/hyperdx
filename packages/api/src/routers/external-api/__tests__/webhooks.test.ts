@@ -2,10 +2,10 @@ import { WebhookService } from '@hyperdx/common-utils/dist/types';
 import { ObjectId } from 'mongodb';
 import request, { SuperAgentTest } from 'supertest';
 
-import { getLoggedInAgent, getServer } from '../../../fixtures';
-import { ITeam } from '../../../models/team';
-import { IUser } from '../../../models/user';
-import Webhook from '../../../models/webhook';
+import { getLoggedInAgent, getServer } from '@/fixtures';
+import { ITeam } from '@/models/team';
+import { IUser } from '@/models/user';
+import Webhook from '@/models/webhook';
 
 const WEBHOOKS_BASE_URL = '/api/v2/webhooks';
 

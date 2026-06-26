@@ -1,13 +1,14 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
+import type { McpContext } from '@/mcp/tools/types';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
 import { objectIdSchema } from '@/utils/zod';
 
-import { withToolTracing } from '../../utils/tracing';
-import { parseTimeRange, runConfigTile } from '../query/helpers';
-import type { McpContext } from '../types';
+import { getRawSqlTileMacroWarnings } from './validation';
 
 export function registerQueryTile(
   server: McpServer,
@@ -83,7 +84,32 @@ export function registerQueryTile(
           };
         }
 
-        return runConfigTile(teamId.toString(), tile, startDate, endDate);
+        const result = await runConfigTile(
+          teamId.toString(),
+          tile,
+          startDate,
+          endDate,
+        );
+
+        // Surface non-blocking missing macro warnings alongside
+        // the successful result so the agent can spot a tile that runs but
+        // ignores dashboard controls.
+        const macroWarnings = getRawSqlTileMacroWarnings([tile]);
+        if (
+          macroWarnings.length > 0 &&
+          !('isError' in result && result.isError) &&
+          result.content?.[0]?.type === 'text'
+        ) {
+          try {
+            const parsed = JSON.parse(result.content[0].text);
+            parsed.warnings = macroWarnings;
+            result.content[0].text = JSON.stringify(parsed, null, 2);
+          } catch {
+            // leave result unmodified
+          }
+        }
+
+        return result;
       },
     ),
   );

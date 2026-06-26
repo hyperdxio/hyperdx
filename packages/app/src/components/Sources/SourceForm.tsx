@@ -59,6 +59,17 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 
+import { useTablesDirect } from '@/clickhouse';
+import ConfirmDeleteMenu from '@/components/ConfirmDeleteMenu';
+import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
+import { DatabaseSelectControlled } from '@/components/DatabaseSelect';
+import { DBTableSelectControlled } from '@/components/DBTableSelect';
+import { ErrorCollapse } from '@/components/Error/ErrorCollapse';
+import {
+  AutocompleteControlled,
+  InputControlled,
+} from '@/components/InputControlled';
+import SelectControlled from '@/components/SelectControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import {
@@ -85,6 +96,7 @@ import {
   MV_AGGREGATE_FUNCTIONS,
   MV_GRANULARITY_OPTIONS,
 } from '@/utils/materializedViews';
+import { matchMetricTables } from '@/utils/metricTableAutofill';
 import {
   getSourceConfigPairingWarnings,
   inferSourceFieldCandidates,
@@ -92,16 +104,9 @@ import {
   SourceFieldKind,
 } from '@/utils/sourceFieldSuggestions';
 
-import ConfirmDeleteMenu from '../ConfirmDeleteMenu';
-import { ConnectionSelectControlled } from '../ConnectionSelect';
-import { DatabaseSelectControlled } from '../DatabaseSelect';
-import { DBTableSelectControlled } from '../DBTableSelect';
-import { ErrorCollapse } from '../Error/ErrorCollapse';
-import { InputControlled } from '../InputControlled';
-import SelectControlled from '../SelectControlled';
-
 import { ExpressionValidationStatus } from './ExpressionValidationStatus';
 import { SourceFieldCandidateHint } from './SourceFieldCandidateHint';
+import { distinctSections } from './sourceFormUtils';
 
 type CorrelationField =
   | 'logSourceId'
@@ -174,6 +179,10 @@ function setCorrelationFieldValue(
 }
 
 const DEFAULT_DATABASE = 'default';
+
+// Placeholder written into from.databaseName / from.tableName when the
+// selected connection is Prometheus-only.
+const PROMETHEUS_PLACEHOLDER = 'prometheus';
 
 const MV_AGGREGATE_FUNCTION_OPTIONS = MV_AGGREGATE_FUNCTIONS.map(fn => ({
   value: fn,
@@ -1952,6 +1961,78 @@ function MetricTableModelForm({ control, setValue }: TableModelProps) {
     })();
   }, [metricTables, databaseName, connectionId, metadata]);
 
+  // Auto-fill metric table dropdowns by matching table names to metric types.
+  // One-shot per database+connection pair: runs once when tables load for a
+  // new db/connection, then never re-fires for that pair. No clearing of old
+  // values — switching databases naturally empties the dropdowns since the
+  // new table list won't contain the old names.
+  const { data: tablesData } = useTablesDirect(
+    { database: databaseName, connectionId: connectionId ?? '' },
+    { enabled: !!databaseName && !!connectionId },
+  );
+
+  const lastAutofillKeyRef = useRef('');
+
+  useEffect(() => {
+    const key = `${databaseName}:${connectionId}`;
+    if (key === lastAutofillKeyRef.current) return; // already ran for this db
+
+    const tableNames = tablesData?.data?.map((t: { name: string }) => t.name);
+    if (!tableNames || tableNames.length === 0) return;
+
+    const matched = matchMetricTables(
+      tableNames,
+      (metricTables as Partial<Record<MetricsDataType, string>>) ?? {},
+    );
+
+    const entries = Object.entries(matched) as [MetricsDataType, string][];
+    if (entries.length === 0) return;
+
+    // Mark as done before async work so a rapid db switch doesn't double-fire.
+    lastAutofillKeyRef.current = key;
+
+    let cancelled = false;
+
+    (async () => {
+      // Validate each candidate before setting it, so we never show a
+      // green notification followed by red validation errors.
+      const validated: [MetricsDataType, string][] = [];
+      for (const [metricType, tableName] of entries) {
+        if (cancelled) return;
+        try {
+          const valid = await isValidMetricTable({
+            databaseName,
+            tableName,
+            connectionId,
+            metricType,
+            metadata,
+          });
+          if (valid) {
+            validated.push([metricType, tableName]);
+          }
+        } catch {
+          // Skip tables that fail validation (e.g. network error)
+        }
+      }
+
+      if (cancelled || validated.length === 0) return;
+
+      for (const [metricType, tableName] of validated) {
+        setValue(`metricTables.${metricType}` as any, tableName);
+      }
+
+      notifications.show({
+        color: 'green',
+        message: 'Auto-detected metric tables from database.',
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tablesData, databaseName, connectionId, metadata]);
+
   return (
     <>
       <Stack gap="sm">
@@ -2080,6 +2161,33 @@ export function TableSourceForm({
   });
   const prevTableNameRef = useRef(watchedTableName);
 
+  const selectedConnection = useMemo(
+    () => connections?.find(c => c.id === watchedConnection),
+    [connections, watchedConnection],
+  );
+  const isPrometheusOnlyConnection = Boolean(
+    selectedConnection?.isPrometheusEndpoint,
+  );
+
+  useEffect(() => {
+    if (!isPrometheusOnlyConnection) return;
+    if (watchedDatabaseName !== PROMETHEUS_PLACEHOLDER) {
+      setValue('from.databaseName', PROMETHEUS_PLACEHOLDER, {
+        shouldDirty: true,
+      });
+    }
+    if (watchedTableName !== PROMETHEUS_PLACEHOLDER) {
+      setValue('from.tableName', PROMETHEUS_PLACEHOLDER, {
+        shouldDirty: true,
+      });
+    }
+  }, [
+    isPrometheusOnlyConnection,
+    setValue,
+    watchedDatabaseName,
+    watchedTableName,
+  ]);
+
   const metadata = useMetadataWithSettings();
 
   useEffect(() => {
@@ -2087,6 +2195,10 @@ export function TableSourceForm({
       try {
         if (watchedTableName !== prevTableNameRef.current) {
           prevTableNameRef.current = watchedTableName;
+
+          if (isPrometheusOnlyConnection) {
+            return;
+          }
 
           if (
             watchedConnection != null &&
@@ -2132,6 +2244,7 @@ export function TableSourceForm({
     resetField,
     metadata,
     setValue,
+    isPrometheusOnlyConnection,
   ]);
 
   // Sets the default connection field to the first connection after the
@@ -2152,6 +2265,11 @@ export function TableSourceForm({
 
   // Bidirectional source linking
   const { data: sources } = useSources();
+  // Existing section names, offered as Section autocomplete suggestions.
+  const sectionSuggestions = useMemo(
+    () => distinctSections(sources),
+    [sources],
+  );
   const currentSourceId = useWatch({ control, name: 'id' });
 
   // Watch all potential correlation fields
@@ -2520,9 +2638,10 @@ export function TableSourceForm({
           />
         </FormRow>
         <FormRow label={'Section'}>
-          <InputControlled
+          <AutocompleteControlled
             control={control}
             name="section"
+            data={sectionSuggestions}
             placeholder="Optional group, e.g. Billing or Control Plane Prod"
             maxLength={256}
           />
@@ -2557,23 +2676,27 @@ export function TableSourceForm({
         <FormRow label={'Server Connection'}>
           <ConnectionSelectControlled control={control} name={`connection`} />
         </FormRow>
-        <FormRow label={'Database'}>
-          <DatabaseSelectControlled
-            control={control}
-            name={`from.databaseName`}
-            connectionId={connectionId}
-          />
-        </FormRow>
-        {kind !== SourceKind.Metric && (
-          <FormRow label={'Table'}>
-            <DBTableSelectControlled
-              database={databaseName}
-              control={control}
-              name={`from.tableName`}
-              connectionId={connectionId}
-              rules={{ required: 'Table is required' }}
-            />
-          </FormRow>
+        {!isPrometheusOnlyConnection && (
+          <>
+            <FormRow label={'Database'}>
+              <DatabaseSelectControlled
+                control={control}
+                name={`from.databaseName`}
+                connectionId={connectionId}
+              />
+            </FormRow>
+            {kind !== SourceKind.Metric && (
+              <FormRow label={'Table'}>
+                <DBTableSelectControlled
+                  database={databaseName}
+                  control={control}
+                  name={`from.tableName`}
+                  connectionId={connectionId}
+                  rules={{ required: 'Table is required' }}
+                />
+              </FormRow>
+            )}
+          </>
         )}
         <FormRow
           label={

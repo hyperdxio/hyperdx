@@ -5,9 +5,8 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
+import DBDeltaChart from '@/components/DBDeltaChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-
-import DBDeltaChart from '../DBDeltaChart';
 
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),

@@ -4,7 +4,7 @@ import { IconCaretDownFilled, IconCaretUpFilled } from '@tabler/icons-react';
 import type { NumberFormat } from '@/types';
 import { formatNumber, truncateMiddle } from '@/utils';
 
-import styles from '../../../styles/HDXLineChart.module.scss';
+import styles from '@styles/HDXLineChart.module.scss';
 
 const percentFormatter = new Intl.NumberFormat('en-US', {
   style: 'percent',
@@ -50,6 +50,8 @@ export const ChartTooltipItem = memo(
     strokeDasharray,
     opacity,
     previous,
+    highlighted,
+    dimmed,
   }: {
     color: string;
     name: string;
@@ -59,9 +61,21 @@ export const ChartTooltipItem = memo(
     strokeDasharray?: string;
     opacity?: number;
     previous?: number;
+    highlighted?: boolean;
+    dimmed?: boolean;
   }) => {
     return (
-      <div className="d-flex gap-2 items-center justify-center">
+      <div
+        className="d-flex gap-2 items-center justify-center"
+        style={
+          highlighted || dimmed
+            ? {
+                ...(highlighted ? { fontWeight: 600 } : null),
+                ...(dimmed ? { opacity: 0.5 } : null),
+              }
+            : undefined
+        }
+      >
         <div>
           {indicator === 'square' ? (
             <svg width="12" height="12">

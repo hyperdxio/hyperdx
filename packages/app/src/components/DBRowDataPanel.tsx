@@ -15,6 +15,7 @@ import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
 import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
 
 import { DBRowJsonViewer } from './DBRowJsonViewer';
+import { getActiveInfraCorrelations } from './infraCorrelations';
 
 export enum ROW_DATA_ALIASES {
   TIMESTAMP = '__hdx_timestamp',
@@ -190,9 +191,12 @@ export function useRowData({
   };
 }
 
-// Detects whether a normalized row carries Kubernetes resource attributes, used
-// to conditionally surface the Infrastructure tab/panel. Requires the source to
-// expose resource attributes; returns false (rather than throwing) on any gap.
+// Detects whether a normalized row carries resource attributes that match a
+// built-in infrastructure correlation (Kubernetes Pod or Node today), used to
+// conditionally surface the Infrastructure tab/panel. Delegates to the same
+// descriptor list the panel renders from, so the gate and the render never
+// drift apart. Requires the source to expose resource attributes; returns
+// false (rather than throwing) on any gap.
 export function rowHasK8sContext(
   source: TSource | null | undefined,
   normalizedRow: Record<string, any> | null | undefined,
@@ -208,10 +212,7 @@ export function rowHasK8sContext(
     }
 
     const resourceAttrs = normalizedRow[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES];
-    return (
-      resourceAttrs?.['k8s.pod.uid'] != null ||
-      resourceAttrs?.['k8s.node.name'] != null
-    );
+    return getActiveInfraCorrelations(resourceAttrs).length > 0;
   } catch (e) {
     console.error(e);
     return false;

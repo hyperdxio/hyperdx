@@ -30,7 +30,7 @@ import { FormatTime } from './useFormatTime';
 import { useSourceMappedFrame } from './useSourceMappedFrame';
 import { useLocalStorage } from './utils';
 
-import styles from '../styles/LogSidePanel.module.scss';
+import styles from '@styles/LogSidePanel.module.scss';
 
 export const CollapsibleSection = ({
   title,

@@ -1,16 +1,5 @@
 import { z } from 'zod';
 
-import { isBuilderSavedChartConfig } from '@/guards';
-import {
-  BuilderChartConfigWithDateRange,
-  Connection,
-  DashboardSchema,
-  DashboardTemplateSchema,
-  MetricsDataType,
-  SourceKind,
-  TSource,
-} from '@/types';
-
 import {
   aliasMapToWithClauses,
   convertToDashboardDocument,
@@ -33,7 +22,17 @@ import {
   replaceJsonExpressions,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
-} from '../core/utils';
+} from '@/core/utils';
+import { isBuilderSavedChartConfig } from '@/guards';
+import {
+  BuilderChartConfigWithDateRange,
+  Connection,
+  DashboardSchema,
+  DashboardTemplateSchema,
+  MetricsDataType,
+  SourceKind,
+  TSource,
+} from '@/types';
 
 describe('utils', () => {
   // Suppress expected console.error noise from invalid text index types,
@@ -1357,6 +1356,23 @@ describe('utils', () => {
             type: 'search',
             target: { mode: 'template', template: '{{Src}}' },
             whereLanguage: 'sql',
+          },
+        });
+      });
+
+      it('leaves an external onClick untouched (no source mapping)', () => {
+        const dashboard = makeDashboard({
+          type: 'external',
+          urlTemplate: 'https://grafana.example.com/d/abc?svc={{ServiceName}}',
+        });
+
+        const template = convertToDashboardTemplate(dashboard, [source]);
+
+        expect(template.tiles[0].config).toMatchObject({
+          onClick: {
+            type: 'external',
+            urlTemplate:
+              'https://grafana.example.com/d/abc?svc={{ServiceName}}',
           },
         });
       });
