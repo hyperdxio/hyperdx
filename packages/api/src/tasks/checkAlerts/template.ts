@@ -42,6 +42,7 @@ import {
 import { escapeJsonString, unflattenObject } from '@/tasks/util';
 import { truncateString } from '@/utils/common';
 import logger from '@/utils/logger';
+import { withRetry } from '@/utils/retry';
 import * as slack from '@/utils/slack';
 
 const describeThresholdViolation = (
@@ -336,17 +337,22 @@ export const handleSendGenericWebhook = async (
   }
 
   try {
-    // TODO: retries/backoff etc -> switch to request-error-tolerant api client
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: headers as Record<string, string>,
-      body,
-    });
+    const response = await withRetry(async () => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: headers as Record<string, string>,
+        body,
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText);
-    }
+      if (!res.ok) {
+        const errorText = await res.text();
+        const err = new Error(errorText) as any;
+        err.status = res.status;
+        throw err;
+      }
+
+      return res;
+    });
   } catch (e) {
     logger.error(
       {
