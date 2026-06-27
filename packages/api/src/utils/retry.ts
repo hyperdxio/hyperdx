@@ -8,6 +8,7 @@ export interface RetryOptions {
   maxDelayMs?: number;
   backoffFactor?: number;
   jitter?: boolean;
+  retryOnlyOnStatus?: number[];
 }
 
 /**
@@ -39,13 +40,25 @@ export const withRetry = async <T>(
         throw error;
       }
 
-      // Extract status code if available (e.g., from fetch wrapper or axios)
-      const status = error?.status ?? error?.response?.status ?? error?.code;
+      // Extract status code if available (e.g., from fetch wrapper or axios/slack SDK)
+      const status =
+        error?.status ??
+        error?.response?.status ??
+        error?.original?.response?.status ??
+        error?.original?.status ??
+        error?.code;
       const isStatusNumber = typeof status === 'number';
 
-      // Do not retry 4xx errors (except 429 Too Many Requests)
-      if (isStatusNumber && status >= 400 && status < 500 && status !== 429) {
-        throw error;
+      if (options.retryOnlyOnStatus && options.retryOnlyOnStatus.length > 0) {
+        // If an explicit whitelist of retryable statuses is provided, ONLY retry those.
+        if (!isStatusNumber || !options.retryOnlyOnStatus.includes(status)) {
+          throw error;
+        }
+      } else {
+        // Default behavior: Do not retry 4xx errors (except 429 Too Many Requests)
+        if (isStatusNumber && status >= 400 && status < 500 && status !== 429) {
+          throw error;
+        }
       }
 
       const jitterMs = jitter ? Math.random() * 500 : 0;

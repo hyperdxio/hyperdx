@@ -1,4 +1,4 @@
-import { withRetry } from '../retry';
+import { withRetry } from '@/utils/retry';
 
 describe('withRetry', () => {
   it('should return successfully if function succeeds on first try', async () => {
@@ -74,5 +74,40 @@ describe('withRetry', () => {
     });
     expect(result).toBe('success');
     expect(fn500).toHaveBeenCalledTimes(2);
+  });
+
+  it('should strictly obey retryOnlyOnStatus if provided', async () => {
+    const error500 = new Error('internal server error') as any;
+    error500.status = 500;
+
+    const error429 = new Error('rate limited') as any;
+    error429.status = 429;
+
+    const fn = jest
+      .fn()
+      .mockRejectedValueOnce(error500) // Should throw immediately since not in retryOnlyOnStatus
+      .mockResolvedValueOnce('success');
+
+    await expect(
+      withRetry(fn, {
+        initialDelayMs: 10,
+        jitter: false,
+        retryOnlyOnStatus: [429], // Only retry 429s
+      }),
+    ).rejects.toThrow('internal server error');
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    const fn2 = jest
+      .fn()
+      .mockRejectedValueOnce(error429) // Should retry
+      .mockResolvedValueOnce('success2');
+
+    const result = await withRetry(fn2, {
+      initialDelayMs: 10,
+      jitter: false,
+      retryOnlyOnStatus: [429],
+    });
+    expect(result).toBe('success2');
+    expect(fn2).toHaveBeenCalledTimes(2);
   });
 });
