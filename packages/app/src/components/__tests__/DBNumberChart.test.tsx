@@ -1,16 +1,15 @@
 import React from 'react';
 import { act, screen } from '@testing-library/react';
 
+import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
+import DBNumberChart from '@/components/DBNumberChart';
+import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
+import NumberTileBackgroundChart from '@/components/NumberTileBackgroundChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
+import { NumberFormat } from '@/types';
 import { formatNumber, getColorFromCSSToken } from '@/utils';
-
-import { NumberFormat } from '../../types';
-import DateRangeIndicator from '../charts/DateRangeIndicator';
-import DBNumberChart from '../DBNumberChart';
-import MVOptimizationIndicator from '../MaterializedViews/MVOptimizationIndicator';
-import NumberTileBackgroundChart from '../NumberTileBackgroundChart';
 
 // Mock dependencies
 jest.mock('@/hooks/useChartConfig', () => ({

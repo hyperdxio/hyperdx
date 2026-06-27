@@ -46,6 +46,7 @@ import { isString, pick } from 'lodash';
 import { ObjectId } from 'mongoose';
 import mongoose from 'mongoose';
 import ms from 'ms';
+import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
@@ -75,7 +76,30 @@ import {
   roundDownToXMinutes,
   unflattenObject,
 } from '@/tasks/util';
+import {
+  getCounter,
+  type OperationOutcome,
+  recordOperationOutcome,
+} from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+
+// Outcome of a single alert evaluation. Kept low-cardinality (a fixed enum) so
+// it is safe to use as a metric attribute (see agent_docs/observability.md).
+const alertEvaluationsCounter = getCounter('hyperdx.alerts.evaluations', {
+  description:
+    'Count of alert evaluations, labeled by outcome (fired, resolved, or the reason it was skipped).',
+});
+const alertQueryFailuresCounter = getCounter('hyperdx.alerts.query_failures', {
+  description:
+    'Count of alert evaluations where the ClickHouse query failed, skipping the state/history update.',
+});
+const alertProcessFailuresCounter = getCounter(
+  'hyperdx.alerts.process_failures',
+  {
+    description:
+      'Count of alert evaluations that threw an unexpected error during processing.',
+  },
+);
 
 /**
  * Determine if an alert has group-by behavior.
@@ -338,22 +362,6 @@ const fireChannelEvent = async ({
   const team = alert.team;
   if (team == null) {
     throw new Error('Team not found');
-  }
-
-  // KNOWN LIMITATION: Alert data (including silenced state) is fetched when the
-  // task is queued via AlertProvider, not when it processes. If a user silences
-  // an alert after it's queued but before it processes, this execution may still
-  // send a notification. Subsequent alert checks will respect the silenced state.
-  // This trade-off maintains architectural separation from direct database access.
-  if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
-    logger.info(
-      {
-        alertId: alert.id,
-        silenced: alert.silenced,
-      },
-      'Skipped firing alert due to silence',
-    );
-    return;
   }
 
   const attributesNested = unflattenObject(attributes);
@@ -735,6 +743,12 @@ export const processAlert = async (
   // Errors collected during this execution. Webhook errors accumulate here; query
   // and validation errors are recorded via recordAlertErrors before returning.
   const executionErrors: IAlertError[] = [];
+  // SLO signal for "alerts triggering". Defaults to success; flipped to
+  // 'skipped' on scheduling no-ops (excluded from the SLI) and to 'error' on
+  // any failure path. Recorded once in the finally below so the latency/
+  // availability SLIs cover every real evaluation regardless of exit point.
+  const evalStartedAt = performance.now();
+  let evalOutcome: OperationOutcome | 'skipped' = 'success';
   try {
     const windowSizeInMins = ms(alert.interval) / 60000;
     const scheduleStartAt = normalizeScheduleStartAt({
@@ -742,6 +756,8 @@ export const processAlert = async (
       scheduleStartAt: alert.scheduleStartAt,
     });
     if (scheduleStartAt != null && now < scheduleStartAt) {
+      evalOutcome = 'skipped';
+      alertEvaluationsCounter.add(1, { outcome: 'skipped_schedule' });
       logger.info(
         {
           alertId: alert.id,
@@ -778,6 +794,8 @@ export const processAlert = async (
 
     // Check if we should skip this alert check based on last evaluation time
     if (shouldSkipAlertCheck(details, hasGroupBy, nowInMinsRoundDown)) {
+      evalOutcome = 'skipped';
+      alertEvaluationsCounter.add(1, { outcome: 'skipped_window' });
       logger.info(
         {
           windowSizeInMins,
@@ -801,6 +819,8 @@ export const processAlert = async (
       scheduleStartAt,
     );
     if (dateRange[0].getTime() >= dateRange[1].getTime()) {
+      evalOutcome = 'skipped';
+      alertEvaluationsCounter.add(1, { outcome: 'skipped_anchor' });
       logger.info(
         {
           alertId: alert.id,
@@ -821,6 +841,7 @@ export const processAlert = async (
     );
 
     if (chartConfig == null) {
+      evalOutcome = 'error';
       logger.error(
         {
           chartConfig,
@@ -892,6 +913,7 @@ export const processAlert = async (
     // Query for alert data. If the query fails, record the error and exit
     // without touching alert state or creating an AlertHistory.
     let checksData;
+    const queryStartedAt = performance.now();
     try {
       checksData = await clickhouseClient.queryChartConfig({
         config: optimizedChartConfig,
@@ -899,7 +921,23 @@ export const processAlert = async (
         opts: { clickhouse_settings: clickHouseSettings },
         querySettings: source?.querySettings,
       });
+      // SLO signal for alert data fetching (distinct from the end-to-end
+      // evaluation SLI): did ClickHouse serve the alert query, and how fast.
+      recordOperationOutcome({
+        operation: 'alerts.query',
+        outcome: 'success',
+        durationMs: performance.now() - queryStartedAt,
+        attributes: { alert_source: alert.source ?? 'unknown' },
+      });
     } catch (e) {
+      recordOperationOutcome({
+        operation: 'alerts.query',
+        outcome: 'error',
+        durationMs: performance.now() - queryStartedAt,
+        attributes: { alert_source: alert.source ?? 'unknown' },
+      });
+      evalOutcome = 'error';
+      alertQueryFailuresCounter.add(1);
       logger.error(
         {
           alertId: alert.id,
@@ -957,6 +995,27 @@ export const processAlert = async (
       startTime?: Date;
       attributes?: Record<string, string>;
     }) => {
+      // KNOWN LIMITATION: Alert data (including silenced state) is fetched when
+      // the task is queued via AlertProvider, not when it processes. If a user
+      // silences an alert after it's queued but before it processes, this
+      // execution may still send a notification. Subsequent alert checks will
+      // respect the silenced state. This trade-off maintains architectural
+      // separation from direct database access.
+      if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
+        alertEvaluationsCounter.add(1, { outcome: 'skipped_silenced' });
+        logger.info(
+          {
+            alertId: alert.id,
+            silenced: alert.silenced,
+          },
+          'Skipped firing alert due to silence',
+        );
+        return;
+      }
+
+      alertEvaluationsCounter.add(1, {
+        outcome: state === AlertState.ALERT ? 'fired' : 'resolved',
+      });
       logger.info(
         { alertId: alert.id, group, totalCount },
         state === AlertState.ALERT
@@ -1020,6 +1079,7 @@ export const processAlert = async (
 
     const meta = getResponseMetadata(chartConfig, checksData);
     if (!meta) {
+      evalOutcome = 'error';
       logger.error({ alertId: alert.id }, 'Failed to get response metadata');
       return;
     }
@@ -1091,6 +1151,7 @@ export const processAlert = async (
       // Handle case where no data is available for this bucket
       const bucketHasData = dataForBucket && dataForBucket.length > 0;
       if (!bucketHasData) {
+        alertEvaluationsCounter.add(1, { outcome: 'empty_bucket' });
         logger.info(
           { alertId: alert.id, bucketStart },
           'No data returned from ClickHouse for time bucket',
@@ -1205,6 +1266,8 @@ export const processAlert = async (
   } catch (e) {
     // Uncomment this for better error messages locally
     // console.error(e);
+    evalOutcome = 'error';
+    alertProcessFailuresCounter.add(1);
     logger.error(
       {
         alertId: alert.id,
@@ -1230,6 +1293,17 @@ export const processAlert = async (
         },
         'Failed to persist alert execution error',
       );
+    }
+  } finally {
+    // Scheduling skips are successful no-ops, not evaluations — exclude them so
+    // the SLI denominator only counts evaluations that actually ran.
+    if (evalOutcome !== 'skipped') {
+      recordOperationOutcome({
+        operation: 'alerts.evaluate',
+        outcome: evalOutcome,
+        durationMs: performance.now() - evalStartedAt,
+        attributes: { alert_source: alert.source ?? 'unknown' },
+      });
     }
   }
 };
@@ -1348,6 +1422,7 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
         alertTask.conn.team.toString(),
       );
       span.setAttribute('hyperdx.alerts.connection.id', alertTask.conn.id);
+      span.setAttribute('hyperdx.alerts.batch.size', alertTask.alerts.length);
 
       try {
         const { alerts, conn } = alertTask;

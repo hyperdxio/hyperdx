@@ -1,8 +1,9 @@
 import type {
   BaseResultSet,
+  ClickHouseClient as WebClickHouseClient,
   ClickHouseSettings,
   DataFormat,
-} from '@clickhouse/client-common';
+} from '@clickhouse/client-web';
 import { createClient } from '@clickhouse/client-web';
 
 import {
@@ -72,6 +73,13 @@ export class ClickhouseClient extends BaseClickhouseClient {
     super(options);
   }
 
+  // This subclass always builds a web client, so narrow the base class's
+  // platform-agnostic client type to the web-specific one.
+  protected getClient(): WebClickHouseClient {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- subclass always builds a web client
+    return super.getClient() as WebClickHouseClient;
+  }
+
   private buildClient() {
     let url = this.host!;
     let myFetch: typeof fetch;
@@ -125,10 +133,16 @@ export class ClickhouseClient extends BaseClickhouseClient {
     let clickhouseSettings: ClickHouseSettings | undefined;
     // If this is the settings query, we must not process the clickhouse settings, or else we will infinitely recurse
     if (!shouldSkipApplySettings) {
-      clickhouseSettings = await this.processClickhouseSettings({
+      const neutralSettings = await this.processClickhouseSettings({
         connectionId,
         externalClickhouseSettings,
       });
+      // processClickhouseSettings produces @clickhouse/client-common's
+      // ClickHouseSettings. It is structurally identical to the web client's
+      // own (self-bundled, since 1.23) ClickHouseSettings, but the two packages'
+      // copies are distinct nominal types, so bridge explicitly.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- client library type mismatch
+      clickhouseSettings = neutralSettings as ClickHouseSettings;
     }
 
     const httpHeaders: { [header: string]: string } = {

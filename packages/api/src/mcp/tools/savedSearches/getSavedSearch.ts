@@ -3,11 +3,10 @@ import { z } from 'zod';
 
 import * as config from '@/config';
 import { getSavedSearch } from '@/controllers/savedSearch';
+import type { McpContext } from '@/mcp/tools/types';
+import { validateObjectId } from '@/mcp/utils/errors';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import { SavedSearch } from '@/models/savedSearch';
-
-import { validateObjectId } from '../../utils/errors';
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 
 export function registerGetSavedSearch(
   server: McpServer,

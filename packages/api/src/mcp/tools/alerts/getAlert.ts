@@ -7,14 +7,13 @@ import { z } from 'zod';
 import * as config from '@/config';
 import { getRecentAlertHistories } from '@/controllers/alertHistory';
 import { getAlertById } from '@/controllers/alerts';
+import type { McpContext } from '@/mcp/tools/types';
+import { validateObjectId } from '@/mcp/utils/errors';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import Alert from '@/models/alert';
 import type { IDashboard } from '@/models/dashboard';
 import type { ISavedSearch } from '@/models/savedSearch';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
-
-import { validateObjectId } from '../../utils/errors';
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 
 function deriveAlertName(alert: {
   name?: string | null;

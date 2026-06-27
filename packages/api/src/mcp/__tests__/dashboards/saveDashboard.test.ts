@@ -2,11 +2,11 @@ import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
 import { DEFAULT_DATABASE } from '@/fixtures';
+import { callTool, getFirstText } from '@/mcp/__tests__/mcpTestUtils';
 import Dashboard from '@/models/dashboard';
 import { Source } from '@/models/source';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
-import { callTool, getFirstText } from '../mcpTestUtils';
 import { setupDashboardTests } from './setup';
 
 describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
@@ -2091,6 +2091,53 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
           },
         ],
       });
+    });
+
+    it('should round-trip a table tile with an external onClick link', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'OnClick external link',
+        tiles: [
+          {
+            name: 'Top Services',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 6,
+            config: {
+              displayType: 'table',
+              sourceId,
+              groupBy: "ResourceAttributes['service.name']",
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'external',
+                urlTemplate:
+                  'https://grafana.example.com/d/abc?var-service={{ServiceName}}',
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.tiles[0].config.onClick).toEqual({
+        type: 'external',
+        urlTemplate:
+          'https://grafana.example.com/d/abc?var-service={{ServiceName}}',
+      });
+
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        {
+          id: output.id,
+        },
+      );
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.tiles[0].config.onClick).toEqual(
+        output.tiles[0].config.onClick,
+      );
     });
 
     it('should round-trip a templated dashboard onClick (mode=template)', async () => {

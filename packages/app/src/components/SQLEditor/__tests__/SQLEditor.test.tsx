@@ -1,4 +1,4 @@
-import { createRunQueryKeyBinding } from '../SQLEditor';
+import { createRunQueryKeyBinding } from '@/components/SQLEditor/SQLEditor';
 
 jest.mock('@/hooks/useMetadata', () => ({
   useMultipleAllFields: jest.fn().mockReturnValue({ data: [] }),

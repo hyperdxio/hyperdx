@@ -117,7 +117,13 @@ export default function ChartDisplaySettingsDrawer({
     [settings, defaultNumberFormat],
   );
 
-  const { control, handleSubmit, reset, setValue } = useForm<DrawerFormValues>({
+  const {
+    control,
+    handleSubmit,
+    reset,
+    setValue,
+    formState: { dirtyFields },
+  } = useForm<DrawerFormValues>({
     defaultValues: appliedDefaults,
   });
 
@@ -137,13 +143,23 @@ export default function ChartDisplaySettingsDrawer({
     handleSubmit(formValues => {
       // Strip client-side localIds before passing rules to the config.
       const { colorRules, ...rest } = formValues;
+      // Persist numberFormat only when the user actually chose one: either the
+      // tile already had an explicit override (settings.numberFormat) or the
+      // user changed the format control in this session (dirtyFields). Otherwise
+      // emit undefined so the datasource-derived format keeps driving render
+      // instead of freezing the drawer's inferred fallback into the config.
+      const numberFormatExplicit =
+        settings.numberFormat != null || dirtyFields.numberFormat != null;
       onChange({
         ...rest,
+        numberFormat: numberFormatExplicit
+          ? formValues.numberFormat
+          : undefined,
         colorRules: colorRules ? stripLocalIds(colorRules) : undefined,
       });
     })();
     onClose();
-  }, [onChange, handleSubmit, onClose]);
+  }, [onChange, handleSubmit, onClose, settings.numberFormat, dirtyFields]);
 
   const resetToDefaults = useCallback(() => {
     reset(
@@ -159,7 +175,8 @@ export default function ChartDisplaySettingsDrawer({
 
   // The series-limit CTE is only emitted for builder group-by time charts;
   // raw SQL configs author their own LIMIT logic directly.
-  const showSeriesLimit = isTimeChart && configType !== 'sql';
+  const showSeriesLimit =
+    isTimeChart && configType !== 'sql' && configType !== 'promql';
 
   // Group By column ordering only applies to builder table charts; raw SQL
   // configs let the user author whatever column order they want directly.

@@ -59,7 +59,7 @@
                 <handler>
                     <type>remote_write</type>
                     <database>default</database>
-                    <table>otel_metrics_ts</table>
+                    <table>metrics_ts</table>
                 </handler>
             </remote_write_handler>
             <remote_read_handler>
@@ -67,7 +67,7 @@
                 <handler>
                     <type>remote_read</type>
                     <database>default</database>
-                    <table>otel_metrics_ts</table>
+                    <table>metrics_ts</table>
                 </handler>
             </remote_read_handler>
         </handlers>

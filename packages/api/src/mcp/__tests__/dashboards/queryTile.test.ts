@@ -1,4 +1,5 @@
-import { callTool, getFirstText } from '../mcpTestUtils';
+import { callTool, getFirstText } from '@/mcp/__tests__/mcpTestUtils';
+
 import { setupDashboardTests } from './setup';
 
 describe('MCP Dashboard Tools - clickstack_query_tile', () => {

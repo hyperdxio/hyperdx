@@ -43,42 +43,26 @@ describe('connections router', () => {
     expect(res.body[0].name).toBe('My Team Connection');
   });
 
-  it('persists prometheusEndpoint through POST /connections', async () => {
+  it('persists isPrometheusEndpoint through POST /connections', async () => {
     const { agent } = await getLoggedInAgent(server);
 
     const res = await agent
       .post('/connections')
       .send({
         name: 'Prom-enabled',
-        host: config.CLICKHOUSE_HOST,
-        username: 'default',
+        host: 'http://thanos:10902',
+        username: '',
         password: '',
-        prometheusEndpoint: 'http://prom.example.com',
+        isPrometheusEndpoint: true,
       })
       .expect(200);
 
-    const stored = await Connection.findById(res.body.id).select(
-      '+prometheusEndpoint',
-    );
-    expect(stored?.prometheusEndpoint).toBe('http://prom.example.com');
+    const stored = await Connection.findById(res.body.id);
+    expect(stored?.host).toBe('http://thanos:10902');
+    expect(stored?.isPrometheusEndpoint).toBe(true);
   });
 
-  it('rejects invalid prometheusEndpoint URLs with 400', async () => {
-    const { agent } = await getLoggedInAgent(server);
-
-    await agent
-      .post('/connections')
-      .send({
-        name: 'Bad-URL',
-        host: config.CLICKHOUSE_HOST,
-        username: 'default',
-        password: '',
-        prometheusEndpoint: 'not-a-url',
-      })
-      .expect(400);
-  });
-
-  it('persists prometheusEndpoint through PUT /connections/:id', async () => {
+  it('persists isPrometheusEndpoint through PUT /connections/:id', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 
     const created = await Connection.create({
@@ -94,16 +78,44 @@ describe('connections router', () => {
       .send({
         id: created._id.toString(),
         name: 'No-prom',
-        host: config.CLICKHOUSE_HOST,
-        username: 'default',
+        host: 'http://thanos:10902',
+        username: '',
         password: '',
-        prometheusEndpoint: 'http://prom-new.example.com',
+        isPrometheusEndpoint: true,
       })
       .expect(200);
 
-    const stored = await Connection.findById(created._id).select(
-      '+prometheusEndpoint',
-    );
-    expect(stored?.prometheusEndpoint).toBe('http://prom-new.example.com');
+    const stored = await Connection.findById(created._id);
+    expect(stored?.host).toBe('http://thanos:10902');
+    expect(stored?.isPrometheusEndpoint).toBe(true);
+  });
+
+  it('toggles isPrometheusEndpoint back to false through PUT', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    const created = await Connection.create({
+      team: team._id,
+      name: 'Prom',
+      host: 'http://thanos:10902',
+      username: '',
+      password: '',
+      isPrometheusEndpoint: true,
+    });
+
+    await agent
+      .put(`/connections/${created._id.toString()}`)
+      .send({
+        id: created._id.toString(),
+        name: 'Prom',
+        host: config.CLICKHOUSE_HOST,
+        username: 'default',
+        password: '',
+        isPrometheusEndpoint: false,
+      })
+      .expect(200);
+
+    const stored = await Connection.findById(created._id);
+    expect(stored?.host).toBe(config.CLICKHOUSE_HOST);
+    expect(stored?.isPrometheusEndpoint).toBe(false);
   });
 });

@@ -2,7 +2,7 @@ import React from 'react';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import SourceSchemaPreview from '../SourceSchemaPreview';
+import SourceSchemaPreview from '@/components/SourceSchemaPreview';
 
 jest.mock('@/hooks/useMetadata', () => ({
   useTableMetadata: () => ({ data: undefined, isLoading: false }),

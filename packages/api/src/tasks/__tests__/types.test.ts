@@ -1,4 +1,4 @@
-import { asTaskArgs } from '../types';
+import { asTaskArgs } from '@/tasks/types';
 
 describe('asTaskArgs', () => {
   describe('invalid inputs', () => {

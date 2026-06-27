@@ -1,4 +1,5 @@
-import { getScenario } from '../scenarios';
+import { getScenario } from '@/scenarios';
+
 import type { ProgrammaticCheck, Rubric } from './types';
 
 export function loadScenarioRubric(scenarioName: string): Rubric {

@@ -1,10 +1,10 @@
 import { ObjectId } from 'mongodb';
 import request, { SuperAgentTest } from 'supertest';
 
-import { getLoggedInAgent, getServer } from '../../../fixtures';
-import Connection from '../../../models/connection';
-import { ITeam } from '../../../models/team';
-import { IUser } from '../../../models/user';
+import { getLoggedInAgent, getServer } from '@/fixtures';
+import Connection from '@/models/connection';
+import { ITeam } from '@/models/team';
+import { IUser } from '@/models/user';
 
 const CONNECTIONS_BASE_URL = '/api/v2/connections';
 
@@ -193,13 +193,11 @@ describe('External API v2 Connections', () => {
         .send({
           ...MOCK_CONNECTION,
           hyperdxSettingPrefix: 'hyperdx_',
-          prometheusEndpoint: 'http://prometheus:9090',
         })
         .expect(200);
 
       expect(response.body.data).toMatchObject({
         hyperdxSettingPrefix: 'hyperdx_',
-        prometheusEndpoint: 'http://prometheus:9090',
       });
     });
 
@@ -209,10 +207,22 @@ describe('External API v2 Connections', () => {
         .expect(400);
     });
 
-    it('should reject an invalid prometheusEndpoint', async () => {
-      await authRequest('post', CONNECTIONS_BASE_URL)
-        .send({ ...MOCK_CONNECTION, prometheusEndpoint: 'not-a-url' })
-        .expect(400);
+    it('should create a Prometheus-compatible connection', async () => {
+      const response = await authRequest('post', CONNECTIONS_BASE_URL)
+        .send({
+          name: 'Thanos',
+          host: 'http://thanos:10902',
+          username: '',
+          password: '',
+          isPrometheusEndpoint: true,
+        })
+        .expect(200);
+
+      expect(response.body.data).toMatchObject({
+        name: 'Thanos',
+        host: 'http://thanos:10902',
+        isPrometheusEndpoint: true,
+      });
     });
 
     it('should require authentication', async () => {
@@ -316,26 +326,29 @@ describe('External API v2 Connections', () => {
       expect(stored?.hyperdxSettingPrefix).toBeUndefined();
     });
 
-    it('should clear prometheusEndpoint when set to null', async () => {
+    it('should toggle isPrometheusEndpoint', async () => {
       const connection = await Connection.create({
         ...MOCK_CONNECTION,
-        prometheusEndpoint: 'http://prometheus:9090',
         team: team._id,
       });
 
       await authRequest('put', `${CONNECTIONS_BASE_URL}/${connection._id}`)
-        .send({ ...MOCK_CONNECTION, prometheusEndpoint: null })
+        .send({
+          ...MOCK_CONNECTION,
+          host: 'http://thanos:10902',
+          isPrometheusEndpoint: true,
+        })
         .expect(200);
 
       const stored = await Connection.findById(connection._id);
-      expect(stored?.prometheusEndpoint).toBeUndefined();
+      expect(stored?.host).toBe('http://thanos:10902');
+      expect(stored?.isPrometheusEndpoint).toBe(true);
     });
 
-    it('should keep optional fields unchanged when omitted', async () => {
+    it('should keep hyperdxSettingPrefix unchanged when omitted', async () => {
       const connection = await Connection.create({
         ...MOCK_CONNECTION,
         hyperdxSettingPrefix: 'hyperdx_',
-        prometheusEndpoint: 'http://prometheus:9090',
         team: team._id,
       });
 
@@ -349,7 +362,6 @@ describe('External API v2 Connections', () => {
 
       const stored = await Connection.findById(connection._id);
       expect(stored?.hyperdxSettingPrefix).toBe('hyperdx_');
-      expect(stored?.prometheusEndpoint).toBe('http://prometheus:9090');
     });
 
     it('should return 404 for a non-existent connection', async () => {
