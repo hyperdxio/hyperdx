@@ -358,6 +358,7 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
 
   const headers = {
     'Content-Type': 'application/json', // default, will be overwritten if user has set otherwise
+    'Idempotency-Key': `${message.eventId}-${message.startTime}-${message.state}`,
     ...(webhook.headers?.toJSON() ?? {}),
   };
   // BODY
