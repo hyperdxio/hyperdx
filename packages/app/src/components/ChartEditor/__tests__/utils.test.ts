@@ -1036,12 +1036,13 @@ describe('validateChartForm', () => {
 
   // ── Number / Pie single-series validation ────────────────────────────
 
-  it('allows a Number chart with two series (ratio mode)', () => {
+  it('allows a Number chart with two series in ratio mode', () => {
     const setError = jest.fn();
     const errors = validateChartForm(
       makeForm({
         displayType: DisplayType.Number,
         source: 'source-log',
+        seriesReturnType: 'ratio',
         series: [seriesItem, seriesItem],
       }),
       logSource,
@@ -1052,12 +1053,54 @@ describe('validateChartForm', () => {
     );
   });
 
-  it('errors when Number chart has more than two series', () => {
+  it('errors when Number chart has two series without ratio mode', () => {
     const setError = jest.fn();
     const errors = validateChartForm(
       makeForm({
         displayType: DisplayType.Number,
         source: 'source-log',
+        seriesReturnType: 'column',
+        series: [seriesItem, seriesItem],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        path: 'series',
+        message:
+          'Number charts support a single series unless ratio mode (As Ratio) is enabled',
+      }),
+    );
+  });
+
+  it('errors when Number chart has two series and seriesReturnType is unset', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Number,
+        source: 'source-log',
+        series: [seriesItem, seriesItem],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        path: 'series',
+        message:
+          'Number charts support a single series unless ratio mode (As Ratio) is enabled',
+      }),
+    );
+  });
+
+  it('errors when Number chart has more than two series in ratio mode', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Number,
+        source: 'source-log',
+        seriesReturnType: 'ratio',
         series: [seriesItem, seriesItem, seriesItem],
       }),
       logSource,

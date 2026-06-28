@@ -402,11 +402,14 @@ export const validateChartForm = (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
     form.displayType === DisplayType.Number &&
-    form.series.length > 2
+    form.series.length > (form.seriesReturnType === 'ratio' ? 2 : 1)
   ) {
     errors.push({
       path: `series`,
-      message: 'Number charts support at most two series (ratio mode)',
+      message:
+        form.seriesReturnType === 'ratio'
+          ? 'Number charts support at most two series (ratio mode)'
+          : 'Number charts support a single series unless ratio mode (As Ratio) is enabled',
     });
   }
 
