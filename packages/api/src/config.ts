@@ -71,3 +71,9 @@ export const AI_REQUEST_HEADERS = env.AI_REQUEST_HEADERS as string;
 
 // Legacy Anthropic-specific configuration (backward compatibility)
 export const ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY as string;
+
+// Managed Agents (in-product Claude Managed Agents provisioning).
+// Gated off by default; requires HDX_ENCRYPTION_KEY to store the team's
+// Anthropic key encrypted at rest (see utils/encryption.ts).
+export const IS_MANAGED_AGENTS_ENABLED =
+  env.HDX_MANAGED_AGENTS_ENABLED === 'true';

@@ -17,6 +17,7 @@ import { notifications } from '@mantine/notifications';
 import { IconPencil } from '@tabler/icons-react';
 
 import { PageHeader } from './components/PageHeader';
+import AgentsSection from './components/TeamSettings/AgentsSection';
 import ApiKeysSection from './components/TeamSettings/ApiKeysSection';
 import ConnectionsSection from './components/TeamSettings/ConnectionsSection';
 import IntegrationsSection from './components/TeamSettings/IntegrationsSection';
@@ -143,6 +144,10 @@ export default function TeamPage() {
         {
           id: 'team-api-agents-mcp-server',
           content: <McpServerSection />,
+        },
+        {
+          id: 'team-api-agents-managed-agents',
+          content: <AgentsSection />,
         },
       ],
     },

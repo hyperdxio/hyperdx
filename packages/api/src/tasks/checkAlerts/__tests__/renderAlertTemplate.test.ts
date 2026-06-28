@@ -2,6 +2,7 @@ import {
   AlertState,
   AlertThresholdType,
   SourceKind,
+  WebhookService,
 } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
@@ -395,6 +396,103 @@ describe('renderAlertTemplate', () => {
         expect(result).toMatchSnapshot();
       });
     });
+  });
+});
+
+describe('enriched webhook payload (Claude Managed Agents)', () => {
+  let fetchSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue({ ok: true, text: async () => '' } as any);
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it('substitutes enriched fields into the webhook body', async () => {
+    const webhookId = 'wh-claude-1';
+    const view = makeSearchView({
+      thresholdType: AlertThresholdType.ABOVE,
+      threshold: 5,
+      value: 10,
+    });
+    view.alert.id = 'alert-xyz';
+    view.alert.note = 'Runbook: https://wiki.example.com/runbook';
+    view.alert.channel = { type: 'webhook', webhookId };
+
+    const webhook = {
+      _id: new mongoose.Types.ObjectId(),
+      name: 'claude-receiver',
+      service: WebhookService.Claude,
+      url: 'https://receiver.example.com/hook',
+      body: JSON.stringify({
+        alert_id: '{{alertId}}',
+        status: '{{status}}',
+        type: '{{alertType}}',
+        comparator: '{{comparator}}',
+        threshold: '{{threshold}}',
+        current_value: '{{value}}',
+        team_id: '{{teamId}}',
+        source_query: '{{sourceQuery}}',
+        runbook: '{{note}}',
+      }),
+    } as any;
+
+    await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template: null,
+      title: 'Test Alert Title',
+      view,
+      teamWebhooksById: new Map([[webhookId, webhook]]),
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const sentBody = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
+    expect(sentBody).toMatchObject({
+      alert_id: 'alert-xyz',
+      status: 'firing',
+      type: 'search',
+      comparator: '>=',
+      threshold: '5',
+      current_value: '10',
+      team_id: 'team-123',
+      source_query: 'Body: "error"', // quotes survived JSON escaping
+      runbook: 'Runbook: https://wiki.example.com/runbook',
+    });
+  });
+
+  it('maps resolved state to status "resolved"', async () => {
+    const webhookId = 'wh-claude-2';
+    const view = makeSearchView({ value: 3 });
+    view.alert.channel = { type: 'webhook', webhookId };
+
+    const webhook = {
+      _id: new mongoose.Types.ObjectId(),
+      name: 'claude-receiver',
+      service: WebhookService.Claude,
+      url: 'https://receiver.example.com/hook',
+      body: JSON.stringify({ status: '{{status}}' }),
+    } as any;
+
+    await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.OK,
+      template: null,
+      title: 'Test Alert Title',
+      view,
+      teamWebhooksById: new Map([[webhookId, webhook]]),
+    });
+
+    const sentBody = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
+    expect(sentBody.status).toBe('resolved');
   });
 });
 

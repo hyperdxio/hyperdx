@@ -81,6 +81,7 @@ export default function WebhooksSection() {
     WebhookService.Slack,
     WebhookService.Generic,
     WebhookService.IncidentIO,
+    WebhookService.Claude,
   ]);
 
   const [editedWebhookId, setEditedWebhookId] = useState<string | null>(null);

@@ -363,6 +363,9 @@ export enum WebhookService {
   Slack = 'slack',
   Generic = 'generic',
   IncidentIO = 'incidentio',
+  // Claude Managed Agents: posts an enriched, agent-ready JSON payload to a
+  // thin receiver that starts an agent session. Sent identically to Generic.
+  Claude = 'claude',
 }
 
 /**

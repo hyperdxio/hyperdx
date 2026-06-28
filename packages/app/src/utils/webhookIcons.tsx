@@ -3,7 +3,7 @@ import {
   WebhookApiData,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
-import { IconBrandSlack, IconLink } from '@tabler/icons-react';
+import { IconBrandSlack, IconLink, IconRobot } from '@tabler/icons-react';
 
 import { IncidentIOIcon } from '@/SVGIcons';
 
@@ -30,6 +30,11 @@ const WEBHOOK_SERVICE_CONFIG: Record<WebhookService, ServiceConfig> = {
     icon: <IconLink size={16} />,
     order: 5,
   },
+  [WebhookService.Claude]: {
+    name: 'Claude Managed Agents',
+    icon: <IconRobot size={16} />,
+    order: 3,
+  },
 } as const;
 
 // Channel icons for alert display (smaller sizes)
@@ -37,6 +42,7 @@ const CHANNEL_ICONS: Record<WebhookService, React.ReactElement> = {
   [WebhookService.Generic]: <IconLink size={16} />,
   [WebhookService.Slack]: <IconBrandSlack size={16} />,
   [WebhookService.IncidentIO]: <IncidentIOIcon width={16} />,
+  [WebhookService.Claude]: <IconRobot size={16} />,
 } as const;
 
 /**

@@ -457,13 +457,24 @@ router.post(
         endTime: Date.now(),
         state: AlertState.INSUFFICIENT_DATA,
         eventId: 'test-event-id',
+        // Sample enriched fields so agent-ready templates (Claude) render valid JSON.
+        alertId: 'test-alert-id',
+        status: 'no_data',
+        alertType: 'search',
+        comparator: '>=',
+        threshold: 5,
+        value: 0,
+        groupKey: '',
+        sourceQuery: '',
+        teamId: 'test-team-id',
       };
 
       if (service === WebhookService.Slack) {
         await handleSendSlackWebhook(testWebhook, testMessage);
       } else if (
         service === WebhookService.Generic ||
-        service === WebhookService.IncidentIO
+        service === WebhookService.IncidentIO ||
+        service === WebhookService.Claude
       ) {
         await handleSendGenericWebhook(testWebhook, testMessage);
       } else {

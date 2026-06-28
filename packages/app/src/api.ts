@@ -38,6 +38,18 @@ type ServicesResponse = {
   >;
 };
 
+export type ManagedAgentData = {
+  _id: string;
+  name: string;
+  model: string;
+  anthropicAgentId: string;
+  vaultId: string;
+  environmentId: string;
+  mcpServerUrl: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 function loginHook(request: Request, options: any, response: Response) {
   // marketing pages
   const WHITELIST_PATHS = [
@@ -444,6 +456,56 @@ const api = {
         hdxServer(`webhooks/${id}`, {
           method: 'DELETE',
         }).json(),
+    });
+  },
+  useManagedAgents() {
+    return useQuery<{ data: ManagedAgentData[] }, Error>({
+      queryKey: ['managed-agents'],
+      queryFn: () => hdxServer('managed-agents').json(),
+    });
+  },
+  useCreateManagedAgent() {
+    return useMutation<
+      { data: ManagedAgentData },
+      Error | HTTPError,
+      { name: string; model: string }
+    >({
+      mutationFn: async ({ name, model }) =>
+        hdxServer('managed-agents', {
+          method: 'POST',
+          json: { name, model },
+        }).json(),
+    });
+  },
+  useDeleteManagedAgent() {
+    return useMutation<unknown, Error | HTTPError, { id: string }>({
+      mutationFn: async ({ id }) =>
+        hdxServer(`managed-agents/${id}`, { method: 'DELETE' }).json(),
+    });
+  },
+  useAnthropicKey() {
+    return useQuery<{ exists: boolean; keyHint: string | null }, Error>({
+      queryKey: ['managed-agents', 'anthropic-key'],
+      queryFn: () => hdxServer('managed-agents/anthropic-key').json(),
+    });
+  },
+  useSaveAnthropicKey() {
+    return useMutation<
+      { exists: boolean; keyHint: string },
+      Error | HTTPError,
+      { apiKey: string }
+    >({
+      mutationFn: async ({ apiKey }) =>
+        hdxServer('managed-agents/anthropic-key', {
+          method: 'PUT',
+          json: { apiKey },
+        }).json(),
+    });
+  },
+  useDeleteAnthropicKey() {
+    return useMutation<unknown, Error | HTTPError, void>({
+      mutationFn: async () =>
+        hdxServer('managed-agents/anthropic-key', { method: 'DELETE' }).json(),
     });
   },
   useTestWebhook() {

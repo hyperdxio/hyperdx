@@ -1,0 +1,691 @@
+{
+  "version": "0.1.0",
+  "name": "API Capability SLOs",
+  "description": "Availability (success/total ratio) and latency SLIs for instrumented HyperDX API capabilities, grouped by service. Built on hyperdx.operation.requests and hyperdx.operation.duration_ms. SLO targets are not configured — use these panels to establish baselines before setting objectives.",
+  "tags": ["HyperDX API", "SLO", "Instrumentation"],
+  "containers": [
+    { "id": "overview", "title": "Overview", "collapsed": false },
+    { "id": "ai-assistant", "title": "AI Assistant", "collapsed": false },
+    {
+      "id": "clickhouse-proxy",
+      "title": "ClickHouse Proxy",
+      "collapsed": false,
+      "tabs": [
+        { "id": "connection-test", "title": "Connection Test" },
+        { "id": "query", "title": "Query Proxy" }
+      ]
+    },
+    {
+      "id": "alert-evaluation",
+      "title": "Alert Evaluation",
+      "collapsed": false
+    },
+    { "id": "alert-query", "title": "Alert Data Fetch", "collapsed": false }
+  ],
+  "tiles": [
+    {
+      "id": "ov001a",
+      "containerId": "overview",
+      "x": 0,
+      "y": 0,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Availability by Service & Capability",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "seriesReturnType": "ratio",
+        "select": [
+          {
+            "aggFn": "sum",
+            "aggCondition": "Attributes['outcome'] = 'success'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "Success",
+            "metricType": "sum",
+            "metricName": "hyperdx.operation.requests"
+          },
+          {
+            "aggFn": "sum",
+            "aggCondition": "",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "Total",
+            "metricType": "sum",
+            "metricName": "hyperdx.operation.requests"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name'], Attributes['operation']",
+        "numberFormat": { "output": "percent" }
+      }
+    },
+    {
+      "id": "ov001b",
+      "containerId": "overview",
+      "x": 0,
+      "y": 8,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Availability by Service & Capability (table)",
+        "source": "Metrics",
+        "displayType": "table",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "seriesReturnType": "ratio",
+        "select": [
+          {
+            "aggFn": "sum",
+            "aggCondition": "Attributes['outcome'] = 'success'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "Availability",
+            "metricType": "sum",
+            "metricName": "hyperdx.operation.requests"
+          },
+          {
+            "aggFn": "sum",
+            "aggCondition": "",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "Total",
+            "metricType": "sum",
+            "metricName": "hyperdx.operation.requests"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name'], Attributes['operation']",
+        "groupByColumnsOnLeft": true,
+        "numberFormat": { "output": "percent" }
+      }
+    },
+    {
+      "id": "ov001c",
+      "containerId": "overview",
+      "x": 0,
+      "y": 16,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Latency p95 by Service & Capability",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.95,
+            "aggCondition": "",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p95",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name'], Attributes['operation']",
+        "numberFormat": { "output": "duration", "factor": 0.001 }
+      }
+    },
+    {
+      "id": "ai001a",
+      "containerId": "ai-assistant",
+      "x": 0,
+      "y": 0,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Availability by Service",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "seriesReturnType": "ratio",
+        "select": [
+          {
+            "aggFn": "sum",
+            "aggCondition": "Attributes['operation'] = 'ai.assistant' AND Attributes['outcome'] = 'success'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "Success",
+            "metricType": "sum",
+            "metricName": "hyperdx.operation.requests"
+          },
+          {
+            "aggFn": "sum",
+            "aggCondition": "Attributes['operation'] = 'ai.assistant'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "Total",
+            "metricType": "sum",
+            "metricName": "hyperdx.operation.requests"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name']",
+        "numberFormat": { "output": "percent" }
+      }
+    },
+    {
+      "id": "ai001b",
+      "containerId": "ai-assistant",
+      "x": 0,
+      "y": 8,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Latency p50 / p95 / p99 by Service",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.5,
+            "aggCondition": "Attributes['operation'] = 'ai.assistant'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p50",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          },
+          {
+            "aggFn": "quantile",
+            "level": 0.95,
+            "aggCondition": "Attributes['operation'] = 'ai.assistant'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p95",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          },
+          {
+            "aggFn": "quantile",
+            "level": 0.99,
+            "aggCondition": "Attributes['operation'] = 'ai.assistant'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p99",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name']",
+        "numberFormat": { "output": "duration", "factor": 0.001 }
+      }
+    },
+    {
+      "id": "ai001c",
+      "containerId": "ai-assistant",
+      "x": 0,
+      "y": 16,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Latency p95 by Service & Source Kind",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.95,
+            "aggCondition": "Attributes['operation'] = 'ai.assistant'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p95",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name'], Attributes['source_kind']",
+        "numberFormat": { "output": "duration", "factor": 0.001 }
+      }
+    },
+    {
+      "id": "ch001a",
+      "containerId": "clickhouse-proxy",
+      "tabId": "connection-test",
+      "x": 0,
+      "y": 0,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Availability by Service",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "seriesReturnType": "ratio",
+        "select": [
+          {
+            "aggFn": "sum",
+            "aggCondition": "Attributes['operation'] = 'clickhouse_proxy.connection_test' AND Attributes['outcome'] = 'success'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "Success",
+            "metricType": "sum",
+            "metricName": "hyperdx.operation.requests"
+          },
+          {
+            "aggFn": "sum",
+            "aggCondition": "Attributes['operation'] = 'clickhouse_proxy.connection_test'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "Total",
+            "metricType": "sum",
+            "metricName": "hyperdx.operation.requests"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name']",
+        "numberFormat": { "output": "percent" }
+      }
+    },
+    {
+      "id": "ch001b",
+      "containerId": "clickhouse-proxy",
+      "tabId": "connection-test",
+      "x": 0,
+      "y": 8,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Latency p50 / p95 / p99 by Service",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.5,
+            "aggCondition": "Attributes['operation'] = 'clickhouse_proxy.connection_test'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p50",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          },
+          {
+            "aggFn": "quantile",
+            "level": 0.95,
+            "aggCondition": "Attributes['operation'] = 'clickhouse_proxy.connection_test'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p95",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          },
+          {
+            "aggFn": "quantile",
+            "level": 0.99,
+            "aggCondition": "Attributes['operation'] = 'clickhouse_proxy.connection_test'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p99",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name']",
+        "numberFormat": { "output": "duration", "factor": 0.001 }
+      }
+    },
+    {
+      "id": "ch002a",
+      "containerId": "clickhouse-proxy",
+      "tabId": "query",
+      "x": 0,
+      "y": 0,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Availability by Service",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "seriesReturnType": "ratio",
+        "select": [
+          {
+            "aggFn": "sum",
+            "aggCondition": "Attributes['operation'] = 'clickhouse_proxy.query' AND Attributes['outcome'] = 'success'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "Success",
+            "metricType": "sum",
+            "metricName": "hyperdx.operation.requests"
+          },
+          {
+            "aggFn": "sum",
+            "aggCondition": "Attributes['operation'] = 'clickhouse_proxy.query'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "Total",
+            "metricType": "sum",
+            "metricName": "hyperdx.operation.requests"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name']",
+        "numberFormat": { "output": "percent" }
+      }
+    },
+    {
+      "id": "ch002b",
+      "containerId": "clickhouse-proxy",
+      "tabId": "query",
+      "x": 0,
+      "y": 8,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Latency p50 / p95 / p99 by Service",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.5,
+            "aggCondition": "Attributes['operation'] = 'clickhouse_proxy.query'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p50",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          },
+          {
+            "aggFn": "quantile",
+            "level": 0.95,
+            "aggCondition": "Attributes['operation'] = 'clickhouse_proxy.query'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p95",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          },
+          {
+            "aggFn": "quantile",
+            "level": 0.99,
+            "aggCondition": "Attributes['operation'] = 'clickhouse_proxy.query'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p99",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name']",
+        "numberFormat": { "output": "duration", "factor": 0.001 }
+      }
+    },
+    {
+      "id": "ae001a",
+      "containerId": "alert-evaluation",
+      "x": 0,
+      "y": 0,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Availability by Service",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "seriesReturnType": "ratio",
+        "select": [
+          {
+            "aggFn": "sum",
+            "aggCondition": "Attributes['operation'] = 'alerts.evaluate' AND Attributes['outcome'] = 'success'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "Success",
+            "metricType": "sum",
+            "metricName": "hyperdx.operation.requests"
+          },
+          {
+            "aggFn": "sum",
+            "aggCondition": "Attributes['operation'] = 'alerts.evaluate'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "Total",
+            "metricType": "sum",
+            "metricName": "hyperdx.operation.requests"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name']",
+        "numberFormat": { "output": "percent" }
+      }
+    },
+    {
+      "id": "ae001b",
+      "containerId": "alert-evaluation",
+      "x": 0,
+      "y": 8,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Latency p50 / p95 / p99 by Service",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.5,
+            "aggCondition": "Attributes['operation'] = 'alerts.evaluate'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p50",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          },
+          {
+            "aggFn": "quantile",
+            "level": 0.95,
+            "aggCondition": "Attributes['operation'] = 'alerts.evaluate'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p95",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          },
+          {
+            "aggFn": "quantile",
+            "level": 0.99,
+            "aggCondition": "Attributes['operation'] = 'alerts.evaluate'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p99",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name']",
+        "numberFormat": { "output": "duration", "factor": 0.001 }
+      }
+    },
+    {
+      "id": "ae001c",
+      "containerId": "alert-evaluation",
+      "x": 0,
+      "y": 16,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Latency p95 by Service & Alert Source",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.95,
+            "aggCondition": "Attributes['operation'] = 'alerts.evaluate'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p95",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name'], Attributes['alert_source']",
+        "numberFormat": { "output": "duration", "factor": 0.001 }
+      }
+    },
+    {
+      "id": "aq001a",
+      "containerId": "alert-query",
+      "x": 0,
+      "y": 0,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Availability by Service",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "seriesReturnType": "ratio",
+        "select": [
+          {
+            "aggFn": "sum",
+            "aggCondition": "Attributes['operation'] = 'alerts.query' AND Attributes['outcome'] = 'success'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "Success",
+            "metricType": "sum",
+            "metricName": "hyperdx.operation.requests"
+          },
+          {
+            "aggFn": "sum",
+            "aggCondition": "Attributes['operation'] = 'alerts.query'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "Total",
+            "metricType": "sum",
+            "metricName": "hyperdx.operation.requests"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name']",
+        "numberFormat": { "output": "percent" }
+      }
+    },
+    {
+      "id": "aq001b",
+      "containerId": "alert-query",
+      "x": 0,
+      "y": 8,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Latency p50 / p95 / p99 by Service",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.5,
+            "aggCondition": "Attributes['operation'] = 'alerts.query'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p50",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          },
+          {
+            "aggFn": "quantile",
+            "level": 0.95,
+            "aggCondition": "Attributes['operation'] = 'alerts.query'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p95",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          },
+          {
+            "aggFn": "quantile",
+            "level": 0.99,
+            "aggCondition": "Attributes['operation'] = 'alerts.query'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p99",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name']",
+        "numberFormat": { "output": "duration", "factor": 0.001 }
+      }
+    },
+    {
+      "id": "aq001c",
+      "containerId": "alert-query",
+      "x": 0,
+      "y": 16,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Latency p95 by Service & Alert Source",
+        "source": "Metrics",
+        "displayType": "line",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.95,
+            "aggCondition": "Attributes['operation'] = 'alerts.query'",
+            "aggConditionLanguage": "sql",
+            "valueExpression": "Value",
+            "alias": "p95",
+            "metricType": "histogram",
+            "metricName": "hyperdx.operation.duration_ms"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "sql",
+        "groupBy": "ResourceAttributes['service.name'], Attributes['alert_source']",
+        "numberFormat": { "output": "duration", "factor": 0.001 }
+      }
+    }
+  ]
+}

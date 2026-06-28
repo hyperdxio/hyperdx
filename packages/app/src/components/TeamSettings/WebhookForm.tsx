@@ -27,6 +27,7 @@ import ReactCodeMirror, {
 } from '@uiw/react-codemirror';
 
 import api from '@/api';
+import { IS_MANAGED_AGENTS_ENABLED } from '@/config';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { isValidUrl } from '@/utils';
 
@@ -41,6 +42,57 @@ const DEFAULT_GENERIC_WEBHOOK_BODY = [
 ];
 const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
   DEFAULT_GENERIC_WEBHOOK_BODY.join(' | ');
+
+// Enriched variables available to webhook bodies (in addition to the defaults
+// above). Useful for routing/dedup and for agent-ready payloads.
+const ENRICHED_TEMPLATE_VARIABLES = [
+  '{{alertId}}',
+  '{{status}}',
+  '{{alertType}}',
+  '{{comparator}}',
+  '{{threshold}}',
+  '{{value}}',
+  '{{groupKey}}',
+  '{{sourceQuery}}',
+  '{{teamId}}',
+  '{{note}}',
+];
+const ALL_TEMPLATE_VARIABLES = [
+  ...DEFAULT_GENERIC_WEBHOOK_BODY,
+  ...ENRICHED_TEMPLATE_VARIABLES,
+];
+
+// Pre-built body for Claude Managed Agents: an enriched, agent-ready JSON
+// payload of alert context. The agent reaches ClickStack via its pre-configured
+// MCP server (declared on the agent + credentials in a vault) — so no MCP URL or
+// auth is ever sent over the wire. All placeholders are quoted so the body stays
+// valid JSON in the editor.
+const CLAUDE_WEBHOOK_BODY = `{
+  "source": "clickstack",
+  "schema_version": "1",
+  "prompt": "A ClickStack alert fired. Investigate the root cause using your pre-configured ClickStack MCP server (logs, traces, metrics, and alert history). Reconstruct and re-run the alert source_query over the time_range, inspect related logs, traces, and metrics, follow the runbook in context.runbook if present, check recent deploys, then post a structured root-cause summary to Slack and leave the session open for the on-call engineer to continue.",
+  "alert": {
+    "id": "{{alertId}}",
+    "event_id": "{{eventId}}",
+    "status": "{{status}}",
+    "type": "{{alertType}}",
+    "title": "{{title}}",
+    "body": "{{body}}",
+    "link": "{{link}}"
+  },
+  "condition": {
+    "comparator": "{{comparator}}",
+    "threshold": "{{threshold}}",
+    "current_value": "{{value}}"
+  },
+  "context": {
+    "group_key": "{{groupKey}}",
+    "source_query": "{{sourceQuery}}",
+    "runbook": "{{note}}",
+    "team_id": "{{teamId}}",
+    "time_range": { "start": "{{startTime}}", "end": "{{endTime}}" }
+  }
+}`;
 
 const jsonLinterWithEmptyCheck = () => (editorView: EditorView) => {
   const text = editorView.state.doc.toString().trim();
@@ -135,6 +187,8 @@ export function WebhookForm({
   "status": "{{#if (eq state "${AlertState.ALERT}")}}firing{{else}}resolved{{/if}}",
   "source_url": "{{link}}"
 }`;
+      } else if (service === WebhookService.Claude) {
+        defaultBody = CLAUDE_WEBHOOK_BODY;
       }
     }
 
@@ -289,11 +343,28 @@ export function WebhookForm({
           label="Service Type"
           required
           value={service}
-          onChange={value => form.setValue('service', value as WebhookService)}
+          onChange={value => {
+            form.setValue('service', value as WebhookService);
+            // Prefill the rich Claude payload so the agent-ready body is visible
+            // and editable. Only when empty so we never clobber existing edits.
+            if (
+              value === WebhookService.Claude &&
+              !form.getValues('body')?.trim()
+            ) {
+              form.setValue('body', CLAUDE_WEBHOOK_BODY);
+            }
+          }}
         >
           <Group mt="xs">
             <Radio value={WebhookService.Slack} label="Slack" />
             <Radio value={WebhookService.IncidentIO} label="incident.io" />
+            {(IS_MANAGED_AGENTS_ENABLED ||
+              service === WebhookService.Claude) && (
+              <Radio
+                value={WebhookService.Claude}
+                label="Claude Managed Agents"
+              />
+            )}
             <Radio value={WebhookService.Generic} label="Generic" />
           </Group>
         </Radio.Group>
@@ -340,7 +411,8 @@ export function WebhookForm({
           error={form.formState.errors.description?.message}
           {...form.register('description')}
         />
-        {service === WebhookService.Generic && [
+        {(service === WebhookService.Generic ||
+          service === WebhookService.Claude) && [
           <label className=".mantine-TextInput-label" key="1">
             Webhook Headers (optional)
           </label>,
@@ -407,10 +479,10 @@ export function WebhookForm({
             </span>
             <br />
             <span>
-              {DEFAULT_GENERIC_WEBHOOK_BODY.map((body, index) => (
+              {ALL_TEMPLATE_VARIABLES.map((body, index) => (
                 <span key={index}>
                   <code>{body}</code>
-                  {index < DEFAULT_GENERIC_WEBHOOK_BODY.length - 1 && ', '}
+                  {index < ALL_TEMPLATE_VARIABLES.length - 1 && ', '}
                 </span>
               ))}
             </span>

@@ -34,6 +34,7 @@ const WebhookChannelForm = <T extends FieldValues>({
     WebhookService.Slack,
     WebhookService.Generic,
     WebhookService.IncidentIO,
+    WebhookService.Claude,
   ]);
   const [opened, { open, close }] = useDisclosure(false);
 

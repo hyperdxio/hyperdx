@@ -115,6 +115,32 @@ const describeThreshold = (alert: AlertInput): string => {
     : `${alert.threshold}`;
 };
 
+// Enriched webhook payload mappings (e.g. Claude Managed Agents). These turn
+// internal enums into the stable, agent-friendly strings documented in the
+// webhook contract.
+const ALERT_STATUS_BY_STATE: Record<AlertState, string> = {
+  [AlertState.ALERT]: 'firing',
+  [AlertState.OK]: 'resolved',
+  [AlertState.INSUFFICIENT_DATA]: 'no_data',
+  [AlertState.DISABLED]: 'no_data',
+};
+
+const COMPARATOR_BY_THRESHOLD_TYPE: Record<AlertThresholdType, string> = {
+  [AlertThresholdType.ABOVE]: '>=',
+  [AlertThresholdType.ABOVE_EXCLUSIVE]: '>',
+  [AlertThresholdType.BELOW]: '<',
+  [AlertThresholdType.BELOW_OR_EQUAL]: '<=',
+  [AlertThresholdType.EQUAL]: '=',
+  [AlertThresholdType.NOT_EQUAL]: '!=',
+  [AlertThresholdType.BETWEEN]: 'between',
+  [AlertThresholdType.NOT_BETWEEN]: 'outside',
+};
+
+const ALERT_TYPE_BY_SOURCE: Record<AlertSource, string> = {
+  [AlertSource.SAVED_SEARCH]: 'search',
+  [AlertSource.TILE]: 'dashboard_chart',
+};
+
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
@@ -160,6 +186,18 @@ interface Message {
   startTime: number;
   endTime: number;
   eventId: string;
+  // Enriched fields for agent-ready payloads (Claude Managed Agents, etc).
+  // Optional so existing callers/tests and non-enriched templates are unaffected.
+  alertId?: string;
+  status?: string; // firing | resolved | no_data
+  alertType?: string; // search | dashboard_chart
+  comparator?: string; // >=, >, <=, <, =, !=, between, outside
+  threshold?: number;
+  value?: number; // the value that triggered/resolved the alert
+  groupKey?: string;
+  sourceQuery?: string; // the search expr / SQL that defines the alert
+  teamId?: string;
+  note?: string; // freeform alert note (markdown); commonly holds a runbook link
 }
 
 export const isAlertResolved = (state?: AlertState): boolean => {
@@ -208,7 +246,8 @@ const notifyChannel = async ({
         await handleSendSlackWebhook(webhook, message);
       } else if (
         webhook.service === WebhookService.Generic ||
-        webhook.service === WebhookService.IncidentIO
+        webhook.service === WebhookService.IncidentIO ||
+        webhook.service === WebhookService.Claude
       ) {
         await handleSendGenericWebhook(webhook, message);
       }
@@ -382,6 +421,18 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
       startTime: message.startTime,
       state: message.state,
       title: escapeJsonString(message.title),
+      // Enriched fields (used by agent-ready templates e.g. Claude Managed Agents).
+      // Strings are JSON-escaped; numbers are emitted raw for unquoted JSON slots.
+      alertId: escapeJsonString(message.alertId ?? ''),
+      alertType: escapeJsonString(message.alertType ?? ''),
+      comparator: escapeJsonString(message.comparator ?? ''),
+      groupKey: escapeJsonString(message.groupKey ?? ''),
+      note: escapeJsonString(message.note ?? ''),
+      sourceQuery: escapeJsonString(message.sourceQuery ?? ''),
+      status: escapeJsonString(message.status ?? ''),
+      teamId: escapeJsonString(message.teamId ?? ''),
+      threshold: message.threshold,
+      value: message.value,
     });
   } catch (e) {
     logger.error(
@@ -682,6 +733,17 @@ export const renderAlertTemplate = async ({
             startTime,
             endTime,
             eventId,
+            // Enriched fields for agent-ready payloads (Claude, etc).
+            alertId: alert.id ?? '',
+            status: ALERT_STATUS_BY_STATE[state],
+            alertType: alert.source ? ALERT_TYPE_BY_SOURCE[alert.source] : '',
+            comparator: COMPARATOR_BY_THRESHOLD_TYPE[alert.thresholdType],
+            threshold: alert.threshold,
+            value,
+            groupKey: group ?? '',
+            sourceQuery: savedSearch?.where ?? '',
+            teamId: (source?.team ?? dashboard?.team)?.toString() ?? '',
+            note: alert.note ?? '',
           },
         });
       }
