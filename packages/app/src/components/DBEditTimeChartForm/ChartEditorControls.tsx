@@ -267,25 +267,25 @@ export function ChartEditorControls({
                   Add Series
                 </Button>
               )}
-              {fields.length === 2 &&
-                (displayType === DisplayType.Line ||
-                  displayType === DisplayType.StackedBar ||
-                  displayType === DisplayType.Number) && (
-                  <Switch
-                    label="As Ratio"
-                    size="sm"
-                    color="gray"
-                    variant="subtle"
-                    onClick={() => {
-                      setValue(
-                        'seriesReturnType',
-                        seriesReturnType === 'ratio' ? 'column' : 'ratio',
-                      );
-                      onSubmit();
-                    }}
-                    checked={seriesReturnType === 'ratio'}
-                  />
-                )}
+              {/* Ratio merges exactly two series via divide(); only
+                  Line/StackedBar/Table/Number can reach two series, so gating
+                  on the count alone covers them all (Number included). */}
+              {fields.length === 2 && (
+                <Switch
+                  label="As Ratio"
+                  size="sm"
+                  color="gray"
+                  variant="subtle"
+                  onClick={() => {
+                    setValue(
+                      'seriesReturnType',
+                      seriesReturnType === 'ratio' ? 'column' : 'ratio',
+                    );
+                    onSubmit();
+                  }}
+                  checked={seriesReturnType === 'ratio'}
+                />
+              )}
               {(displayType === DisplayType.Line ||
                 displayType === DisplayType.StackedBar ||
                 displayType === DisplayType.Number) &&
