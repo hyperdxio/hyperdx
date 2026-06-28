@@ -97,9 +97,11 @@ export function ChartEditorControls({
   openHeatmapSettings,
 }: ChartEditorControlsProps) {
   const canAddSeries =
-    displayType !== DisplayType.Number &&
     displayType !== DisplayType.Pie &&
-    displayType !== DisplayType.Heatmap;
+    displayType !== DisplayType.Heatmap &&
+    // Number tiles support up to two series (numerator + denominator for
+    // ratio mode); Line/Table types remain unbounded.
+    !(displayType === DisplayType.Number && fields.length >= 2);
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
@@ -265,22 +267,25 @@ export function ChartEditorControls({
                   Add Series
                 </Button>
               )}
-              {fields.length == 2 && displayType !== DisplayType.Number && (
-                <Switch
-                  label="As Ratio"
-                  size="sm"
-                  color="gray"
-                  variant="subtle"
-                  onClick={() => {
-                    setValue(
-                      'seriesReturnType',
-                      seriesReturnType === 'ratio' ? 'column' : 'ratio',
-                    );
-                    onSubmit();
-                  }}
-                  checked={seriesReturnType === 'ratio'}
-                />
-              )}
+              {fields.length === 2 &&
+                (displayType === DisplayType.Line ||
+                  displayType === DisplayType.StackedBar ||
+                  displayType === DisplayType.Number) && (
+                  <Switch
+                    label="As Ratio"
+                    size="sm"
+                    color="gray"
+                    variant="subtle"
+                    onClick={() => {
+                      setValue(
+                        'seriesReturnType',
+                        seriesReturnType === 'ratio' ? 'column' : 'ratio',
+                      );
+                      onSubmit();
+                    }}
+                    checked={seriesReturnType === 'ratio'}
+                  />
+                )}
               {(displayType === DisplayType.Line ||
                 displayType === DisplayType.StackedBar ||
                 displayType === DisplayType.Number) &&
