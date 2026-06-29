@@ -213,6 +213,58 @@ describe('Metadata', () => {
       expect(result!.partition_key).toEqual('column1');
     });
 
+    it('does not set isPointerTable for tables that hold their own data', async () => {
+      const mockTableMetadata = {
+        database: 'test_db',
+        name: 'test_table',
+        engine: 'MergeTree',
+        engine_full: 'MergeTree() ORDER BY id',
+        partition_key: 'column1',
+        sorting_key: 'column2',
+        primary_key: 'column3',
+      };
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [mockTableMetadata],
+        }),
+      });
+
+      const result = await metadata.getTableMetadata({
+        databaseName: 'test_db',
+        tableName: 'test_table',
+        connectionId: 'test_connection',
+      });
+
+      expect(result!.isPointerTable).toBeFalsy();
+    });
+
+    it('sets isPointerTable for a Merge table', async () => {
+      const mockTableMetadata = {
+        database: 'test_db',
+        name: 'merge_table',
+        engine: 'Merge',
+        engine_full: "Merge('test_db', '^events_')",
+        partition_key: '',
+        sorting_key: '',
+        primary_key: '',
+      };
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [mockTableMetadata],
+        }),
+      });
+
+      const result = await metadata.getTableMetadata({
+        databaseName: 'test_db',
+        tableName: 'merge_table',
+        connectionId: 'test_connection',
+      });
+
+      expect(result!.isPointerTable).toBe(true);
+    });
+
     it('should query via cluster() for Distributed table underlying metadata', async () => {
       const distributedMetadata = {
         database: 'test_db',

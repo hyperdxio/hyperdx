@@ -154,6 +154,12 @@ export type TableMetadata = {
   create_table_query: string;
   /** DDL for the local (non-distributed) table, when the table is Distributed */
   create_local_table_query?: string;
+  /**
+   * True when the queried table routes to other tables rather than holding its
+   * own data — i.e. a Distributed or Merge table (whose underlying target
+   * tables may declare differing column sets).
+   **/
+  isPointerTable?: boolean;
   /** Note: This will contain the engine_full of the local table, when the table is Distributed */
   engine_full: string;
   as_select: string;
@@ -979,6 +985,7 @@ export class Metadata {
 
     // For Distributed tables, fetch metadata of the underlying local table to get correct partition key, sorting key, etc.
     if (tableMetadata?.engine === 'Distributed') {
+      tableMetadata.isPointerTable = true;
       try {
         const { cluster, database, table } =
           getDistributedTableArgs(tableMetadata) ?? {};
@@ -1026,6 +1033,12 @@ export class Metadata {
           e,
         );
       }
+    }
+
+    // Merge tables (including a Distributed table whose local table is a Merge
+    // table) also route to other tables rather than holding their own data.
+    if (tableMetadata?.engine === 'Merge') {
+      tableMetadata.isPointerTable = true;
     }
 
     // partition_key which includes parenthesis, unlike other keys such as 'primary_key' or 'sorting_key'
