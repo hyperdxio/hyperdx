@@ -25,7 +25,6 @@ import {
   ensureAnchorTime,
   getMcpDefinition,
   readConfig,
-  writeConfig,
 } from './hyperdx/config';
 import { runCheck, runSetup } from './hyperdx/setup';
 import { columnKeyFor } from './reports/aggregate';
@@ -482,15 +481,8 @@ program
       // --anchor-time <iso>: override + save to config.
       // --live: ignore saved anchor, use wall-clock now (no FIXED CURRENT
       //         TIME in system prompt), and force reseed.
-      //
-      // Staleness: if the saved anchor is >12h old and the user didn't
-      // explicitly set --anchor-time, refresh to now and force reseed.
-      // This ensures describe_source's 24h lookback window can see the
-      // eval data (including distractor services in dashboard scenarios).
-      const ANCHOR_STALENESS_MS = 12 * 60 * 60 * 1000; // 12 hours
       let anchorTimeIso: string | undefined;
       let anchorMs: number;
-      let anchorStale = false;
       if (cmdOpts.live) {
         if (cmdOpts.anchorTime) {
           throw new Error('--live and --anchor-time are mutually exclusive.');
@@ -509,58 +501,6 @@ program
         const anchor = ensureAnchorTime(config, cmdOpts.anchorTime);
         anchorTimeIso = anchor.anchorTimeIso;
         anchorMs = anchor.anchorMs;
-
-        // Check staleness — if anchor is old and wasn't explicitly set,
-        // refresh to now so describe_source's 24h lookback can see the data.
-        // First check if ClickHouse data is already fresh (avoids needless
-        // re-seed when the config file is stale but the data isn't).
-        if (
-          !cmdOpts.anchorTime &&
-          Date.now() - anchorMs > ANCHOR_STALENESS_MS
-        ) {
-          // Check if data in ClickHouse is already recent (within 12h)
-          let dataIsFresh = false;
-          const checkClient = buildClientFromConfig(config, opts);
-          try {
-            const tables = scenarioTables(scenario.name);
-            const result = await checkClient.query({
-              query: `SELECT max(Timestamp) AS latest FROM ${tables.traces}`,
-              format: 'JSON',
-            });
-            const rows = (await result.json()) as {
-              data: Array<{ latest: string }>;
-            };
-            if (rows.data?.[0]?.latest) {
-              const latestMs = Date.parse(rows.data[0].latest);
-              if (
-                Number.isFinite(latestMs) &&
-                Date.now() - latestMs < ANCHOR_STALENESS_MS
-              ) {
-                dataIsFresh = true;
-                // Data is fresh — just update the anchor to match the data
-                anchorMs = latestMs;
-                anchorTimeIso = new Date(anchorMs).toISOString();
-                config.anchorTime = anchorTimeIso;
-                writeConfig(config);
-              }
-            }
-          } catch {
-            // Can't check — fall through to reseed
-          } finally {
-            await checkClient.close();
-          }
-
-          if (!dataIsFresh) {
-            anchorStale = true;
-            anchorMs = Date.now();
-            anchorTimeIso = new Date(anchorMs).toISOString();
-            config.anchorTime = anchorTimeIso;
-            writeConfig(config);
-            console.log(
-              `Anchor time was stale (>12h old) — refreshed to ${anchorTimeIso}`,
-            );
-          }
-        }
       }
 
       // ── Re-seed ───────────────────────────────────────────────────
@@ -568,9 +508,7 @@ program
       // run when scenario tables are empty or missing.
       // --reseed: force re-seed even if data exists.
       // --live: always reseed (data must match wall-clock now).
-      // Stale anchor: force reseed when anchor was refreshed.
-      const forceReseed =
-        cmdOpts.reseed === true || cmdOpts.live === true || anchorStale;
+      const forceReseed = cmdOpts.reseed === true || cmdOpts.live === true;
       let shouldReseed = forceReseed;
       if (!forceReseed) {
         const checkClient = buildClientFromConfig(config, opts);
