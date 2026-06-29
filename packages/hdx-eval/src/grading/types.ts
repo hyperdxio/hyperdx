@@ -88,6 +88,12 @@ export type GradeRecord = {
    */
   inspectionSummary?: Record<string, unknown>;
   /**
+   * Human-readable inspection evidence that was passed to the LLM judge.
+   * Persisted so re-grades (e.g. --rerun-judge) can reuse the evidence
+   * without re-running the inspection hook (artifacts may be cleaned up).
+   */
+  inspectionEvidence?: string;
+  /**
    * combinedScore = clamp01(
    *   PROGRAMMATIC_WEIGHT * programmatic + JUDGE_WEIGHT * judge
    *     - toolErrors.penalty

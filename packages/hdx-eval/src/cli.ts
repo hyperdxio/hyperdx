@@ -100,6 +100,25 @@ function defaultApiUrl(): string {
 const DEFAULT_EVAL_EMAIL = 'eval@local.test';
 const DEFAULT_EVAL_PASSWORD = 'EvalPass123!#';
 
+/** Build the inspection config from an eval config + CLI credentials. */
+function buildInspectionConfig(
+  config: import('./hyperdx/config').EvalConfig,
+  creds: { email: string; password: string },
+  anchorTimeIso?: string,
+):
+  | NonNullable<import('./grading/grade').GradeBatchOptions['inspectionConfig']>
+  | undefined {
+  if (!config.hyperdxApi) return undefined;
+  return {
+    apiUrl: config.hyperdxApi.apiUrl,
+    accessKey: config.hyperdxApi.accessKey,
+    email: creds.email,
+    password: creds.password,
+    anchorTimeIso,
+    cleanup: true,
+  };
+}
+
 const program = new Command();
 
 program
@@ -678,17 +697,9 @@ program
         );
         // Build inspection config when the scenario has a postRunInspection
         // hook and the HyperDX API config is available.
-        const inspectionConfig =
-          scenario.postRunInspection && config.hyperdxApi
-            ? {
-                apiUrl: config.hyperdxApi.apiUrl,
-                accessKey: config.hyperdxApi.accessKey,
-                email: cmdOpts.email,
-                password: cmdOpts.password,
-                anchorTimeIso,
-                cleanup: true,
-              }
-            : undefined;
+        const inspectionConfig = scenario.postRunInspection
+          ? buildInspectionConfig(config, cmdOpts, anchorTimeIso)
+          : undefined;
         const gradeOpts: GradeBatchOptions = {
           judgeModel: cmdOpts.judgeModel,
           skipJudge: cmdOpts.judge === false,
@@ -866,16 +877,11 @@ program
       if (configExists()) {
         try {
           const cfg = readConfig();
-          if (cfg.hyperdxApi) {
-            inspectionConfig = {
-              apiUrl: cfg.hyperdxApi.apiUrl,
-              accessKey: cfg.hyperdxApi.accessKey,
-              email: cmdOpts.email,
-              password: cmdOpts.password,
-              anchorTimeIso: cfg.anchorTime,
-              cleanup: true,
-            };
-          }
+          inspectionConfig = buildInspectionConfig(
+            cfg,
+            cmdOpts,
+            cfg.anchorTime,
+          );
         } catch {
           // Config may be stale — grade without inspection.
         }

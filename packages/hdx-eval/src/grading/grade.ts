@@ -213,9 +213,20 @@ async function gradeOne(args: {
 
   // ── Post-run inspection (scenario hook) ──────────────────────────
   // Runs BEFORE the judge so evidence can be passed to the judge prompt.
+  // On re-grade, reuse the cached inspectionSummary from the existing
+  // grade record — the artifacts were likely cleaned up on the first pass,
+  // so re-running the hook would fail or produce empty evidence.
   let inspectionResult: PostRunInspectionResult | undefined;
 
-  if (scenario.postRunInspection && opts.inspectionConfig) {
+  if (existing?.inspectionSummary) {
+    // Reuse cached inspection from previous grading pass. The artifacts
+    // were likely cleaned up, so re-running the hook would fail. The
+    // persisted evidence string lets --rerun-judge work without re-inspection.
+    inspectionResult = {
+      evidence: existing.inspectionEvidence ?? '',
+      summary: existing.inspectionSummary,
+    };
+  } else if (scenario.postRunInspection && opts.inspectionConfig) {
     try {
       inspectionResult = await scenario.postRunInspection({
         toolCalls: record.toolCalls,
@@ -273,6 +284,7 @@ async function gradeOne(args: {
     judge,
     toolErrors,
     inspectionSummary: inspectionResult?.summary,
+    inspectionEvidence: inspectionResult?.evidence || undefined,
     combinedScore,
     gradedAt: new Date().toISOString(),
     judgeModel: judge?.model ?? opts.judgeModel ?? 'skipped',
