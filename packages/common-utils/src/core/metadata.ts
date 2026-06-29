@@ -70,22 +70,27 @@ const quoteIdentifierIfNeeded = (identifier: string): string => {
     : quoteJsonPathSegment(unquoted);
 };
 
+const JSON_STRING_TYPE_SUFFIX = '.:String';
+
 const renderJsonStringSubcolumn = (
   column: string,
   jsonPath: string,
+  options: { preserveStringTypeSuffix?: boolean } = {},
 ): string => {
   const columnIdentifier = quoteIdentifierIfNeeded(column);
-  if (jsonPath.includes('.:')) {
-    return `${columnIdentifier}.${jsonPath}`;
-  }
+  const untypedJsonPath =
+    options.preserveStringTypeSuffix &&
+    jsonPath.endsWith(JSON_STRING_TYPE_SUFFIX)
+      ? jsonPath.slice(0, -JSON_STRING_TYPE_SUFFIX.length)
+      : jsonPath;
 
-  const path = jsonPath
+  const path = untypedJsonPath
     .split('.')
     .filter(Boolean)
     .map(quoteJsonPathSegment)
     .join('.');
 
-  return `${columnIdentifier}.${path}.:String`;
+  return `${columnIdentifier}.${path}${JSON_STRING_TYPE_SUFFIX}`;
 };
 
 export class MetadataCache {
@@ -259,7 +264,9 @@ export class Metadata {
     });
 
     if (convertCHDataTypeToJSType(columnMeta?.type ?? '') === JSDataType.JSON) {
-      return renderJsonStringSubcolumn(column, jsonPath);
+      return renderJsonStringSubcolumn(column, jsonPath, {
+        preserveStringTypeSuffix: true,
+      });
     }
 
     return keyExpression;

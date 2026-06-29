@@ -670,6 +670,40 @@ describe('Metadata', () => {
       });
     });
 
+    it('quotes typed-looking bracket JSON keys instead of passing them through', async () => {
+      jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
+        Promise.resolve(
+          column === 'ResourceAttributes'
+            ? ({
+                name: 'ResourceAttributes',
+                type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+              } as any)
+            : undefined,
+        ),
+      );
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getKeyValues({
+        chartConfig: mockChartConfig,
+        keys: ["ResourceAttributes['foo.:String, count() AS injected']"],
+        limit: 10,
+        source,
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls[0][0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
+      expect(actualConfig.with?.[0]).toMatchObject({
+        chartConfig: {
+          select:
+            'ResourceAttributes.`foo`.`:String, count() AS injected`.:String as param0',
+        },
+      });
+    });
+
     it('keeps map attribute keys in bracket form', async () => {
       jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
         Promise.resolve(
@@ -874,6 +908,36 @@ describe('Metadata', () => {
         'ResourceAttributes.`k8s`.`namespace`.`name`.:String AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
       );
       expect(actualConfig.groupBy).toBe('__hdx_value');
+    });
+
+    it('normalizes typed dot-form JSON distribution keys safely', async () => {
+      jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
+        Promise.resolve(
+          column === 'ResourceAttributes'
+            ? ({
+                name: 'ResourceAttributes',
+                type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+              } as any)
+            : undefined,
+        ),
+      );
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getValuesDistribution({
+        chartConfig: mockChartConfig,
+        key: 'ResourceAttributes.k8s.namespace.name.:String',
+        source,
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls[0][0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
+      expect(actualConfig.select).toBe(
+        'ResourceAttributes.`k8s`.`namespace`.`name`.:String AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
+      );
     });
   });
 
