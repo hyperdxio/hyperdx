@@ -99,6 +99,8 @@ export function convertFormStateToSavedChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'enableExemplars',
+        'exemplarTraceSourceId',
         // 'alert', // TODO: Support alerts on PromQL (HDX-4636)
       ]),
       promqlExpression: form.promqlExpression ?? '',
@@ -176,6 +178,8 @@ export function convertFormStateToChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'enableExemplars',
+        'exemplarTraceSourceId',
       ]),
       promqlExpression: form.promqlExpression ?? '',
       connection: source?.connection ?? form.connection ?? '',

@@ -5,6 +5,7 @@ import {
   FieldErrors,
   UseFormClearErrors,
   UseFormSetValue,
+  useWatch,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -14,6 +15,7 @@ import {
 import {
   ChartConfigWithOptTimestamp,
   DisplayType,
+  MetricsDataType,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -38,6 +40,16 @@ import { OnClickFormButton } from './OnClickForm/OnClickFormButton';
 import { ChartSeriesEditor } from './ChartSeriesEditor';
 import { HeatmapSeriesEditor } from './HeatmapSeriesEditor';
 import { TileAlertEditor } from './TileAlertEditor';
+
+// The builder editor runs ClickHouse metadata/autocomplete against the source's
+// connection, so PromQL sources (Prometheus connections, no ClickHouse tables)
+// are excluded here — they're selected inside PromqlChartEditor instead.
+const BUILDER_ALLOWED_SOURCE_KINDS = [
+  SourceKind.Log,
+  SourceKind.Trace,
+  SourceKind.Session,
+  SourceKind.Metric,
+];
 
 type ChartEditorControlsProps = {
   control: Control<ChartEditorFormState>;
@@ -103,6 +115,25 @@ export function ChartEditorControls({
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
+  // Exemplars overlay (trace links) is available on metric sources for the
+  // time-series display types. Toggling persists `enableExemplars` on the chart
+  // config; charts render the overlay from that flag (no runtime toggle). PromQL
+  // charts use PromqlChartEditor, which has its own exemplars toggle.
+  // Exemplars mark a single series' raw measurement (e.g. latency), so they're
+  // only meaningful on a single, non-ratio series — not on ratio/multi-series.
+  const enableExemplars = useWatch({ control, name: 'enableExemplars' });
+  const series = useWatch({ control, name: 'series' });
+  const canShowExemplars =
+    (displayType === DisplayType.Line ||
+      displayType === DisplayType.StackedBar) &&
+    tableSource?.kind === SourceKind.Metric &&
+    fields.length === 1 &&
+    seriesReturnType !== 'ratio' &&
+    // Latency-only for now: exemplar values are durations, which only share the
+    // y-axis unit on a histogram metric.
+    Array.isArray(series) &&
+    series[0]?.metricType === MetricsDataType.Histogram;
+
   return (
     <>
       <Flex mb="md" align="center" justify="space-between">
@@ -118,7 +149,7 @@ export function ChartEditorControls({
             allowedSourceKinds={
               displayType === DisplayType.Heatmap
                 ? [...HEATMAP_ALLOWED_SOURCE_KINDS]
-                : undefined
+                : BUILDER_ALLOWED_SOURCE_KINDS
             }
             onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
             isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(tableSource)}
@@ -280,6 +311,32 @@ export function ChartEditorControls({
                   }}
                   checked={seriesReturnType === 'ratio'}
                 />
+              )}
+              {canShowExemplars && (
+                <Switch
+                  label="Exemplars"
+                  size="sm"
+                  color="gray"
+                  variant="subtle"
+                  onClick={() => {
+                    setValue('enableExemplars', enableExemplars !== true);
+                    onSubmit();
+                  }}
+                  checked={enableExemplars === true}
+                />
+              )}
+              {canShowExemplars && enableExemplars === true && (
+                <Group gap={4} wrap="nowrap">
+                  <Text size="xs" c="dimmed">
+                    Trace source
+                  </Text>
+                  <SourceSelectControlled
+                    size="xs"
+                    control={control}
+                    name="exemplarTraceSourceId"
+                    allowedSourceKinds={[SourceKind.Trace]}
+                  />
+                </Group>
               )}
               {(displayType === DisplayType.Line ||
                 displayType === DisplayType.StackedBar ||

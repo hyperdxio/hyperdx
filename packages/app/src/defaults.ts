@@ -6,6 +6,8 @@ export const DEFAULT_QUERY_TIMEOUT = 60; // max_execution_time, seconds
 export const DEFAULT_FILTER_KEYS_FETCH_LIMIT = 20;
 export const DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS = 100;
 export const DEFAULT_SERIES_LIMIT = 100;
+// Target number of exemplar markers shown per chart (0 = unlimited).
+export const DEFAULT_MAX_EXEMPLARS = 12;
 
 export function searchChartConfigDefaults(
   team: any | undefined | null,

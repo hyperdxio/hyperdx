@@ -1,5 +1,14 @@
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import Link from 'next/link';
+import Router from 'next/router';
 import { add, differenceInSeconds } from 'date-fns';
 import {
   convertGranularityToSeconds,
@@ -14,10 +23,13 @@ import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
+  Exemplar,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  Button,
   Divider,
   Group,
+  Paper,
   Popover,
   Portal,
   Stack,
@@ -38,8 +50,14 @@ import {
   shouldFillNullsWithZero,
   useTimeChartSettings,
 } from '@/ChartUtils';
+import { DEFAULT_MAX_EXEMPLARS } from '@/defaults';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  ExemplarTraceMeta,
+  useExemplars,
+  useExemplarTraceMeta,
+} from '@/hooks/useExemplars';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useChartNumberFormats, useSource } from '@/source';
 
@@ -59,6 +77,119 @@ type ActiveClickPayload = {
   yPerc: number;
   activePayload?: { value?: number; dataKey?: string; name?: string }[];
 };
+
+// Floating card shown when hovering an exemplar marker: trace metadata (from the
+// configured exemplar trace source) plus a button to open the trace directly.
+function ExemplarHoverCard({
+  hovered,
+  meta,
+  isLoading,
+  traceSourceConfigured,
+  onInspect,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  hovered: { exemplar: Exemplar; x: number; y: number } | null;
+  meta?: ExemplarTraceMeta;
+  isLoading: boolean;
+  traceSourceConfigured: boolean;
+  onInspect: (exemplar: Exemplar) => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+
+  // Position the card next to the marker, but flip to the left / clamp upward
+  // when it would overflow the chart container, so it's never cut off. Measured
+  // after render (size depends on the async-loaded metadata).
+  useLayoutEffect(() => {
+    if (!hovered || !ref.current) {
+      setPos(null);
+      return;
+    }
+    const el = ref.current;
+    const parent = el.offsetParent as HTMLElement | null;
+    const pW = parent?.clientWidth ?? window.innerWidth;
+    const pH = parent?.clientHeight ?? window.innerHeight;
+    const cardW = el.offsetWidth;
+    const cardH = el.offsetHeight;
+    const margin = 12;
+
+    let left = hovered.x + margin;
+    if (left + cardW > pW) left = hovered.x - margin - cardW; // flip left
+    left = Math.max(4, Math.min(left, pW - cardW - 4));
+
+    let top = hovered.y - margin;
+    if (top + cardH > pH) top = pH - cardH - 4; // shift up to stay in view
+    top = Math.max(4, top);
+
+    setPos({ left, top });
+  }, [hovered, meta, isLoading, traceSourceConfigured]);
+
+  if (!hovered) return null;
+  const { exemplar } = hovered;
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: 'absolute',
+        left: pos?.left ?? hovered.x + 12,
+        top: pos?.top ?? Math.max(0, hovered.y - 12),
+        zIndex: 5,
+        // Avoid a one-frame flash at the unflipped position before measuring.
+        visibility: pos ? 'visible' : 'hidden',
+      }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
+      <Paper shadow="md" p="xs" withBorder maw={280}>
+        <Stack gap={6}>
+          <Group gap="xs" justify="space-between" wrap="nowrap">
+            <Text size="xs" c="dimmed">
+              Exemplar
+            </Text>
+            <Text size="xs" ff="monospace" truncate>
+              {exemplar.traceId.slice(0, 16)}…
+            </Text>
+          </Group>
+          {!traceSourceConfigured ? (
+            <Text size="xs" c="dimmed">
+              Set an exemplar trace source in the chart editor to see trace
+              details.
+            </Text>
+          ) : isLoading ? (
+            <Text size="xs" c="dimmed">
+              Loading trace…
+            </Text>
+          ) : meta ? (
+            <Stack gap={2}>
+              {meta.service && <Text size="xs">Service: {meta.service}</Text>}
+              {meta.spanName && <Text size="xs">Span: {meta.spanName}</Text>}
+              {meta.durationMs != null && (
+                <Text size="xs">Duration: {meta.durationMs.toFixed(1)} ms</Text>
+              )}
+              {meta.statusCode && (
+                <Text size="xs">Status: {meta.statusCode}</Text>
+              )}
+            </Stack>
+          ) : (
+            <Text size="xs" c="dimmed">
+              Trace not found in source.
+            </Text>
+          )}
+          <Button
+            size="compact-xs"
+            variant="secondary"
+            onClick={() => onInspect(exemplar)}
+          >
+            Inspect trace
+          </Button>
+        </Stack>
+      </Paper>
+    </div>
+  );
+}
 
 function ActiveTimeTooltip({
   activeClickPayload,
@@ -366,6 +497,69 @@ function DBTimeChartComponent({
   const { data: source } = useSource({
     id: sourceId || config.source,
   });
+
+  // Exemplar overlay is configured per-chart via `enableExemplars` (set in the
+  // chart editor next to "As Ratio"), not a runtime toolbar toggle. The hook is
+  // a no-op unless the flag is set and the source kind supports exemplars.
+  const { exemplars } = useExemplars(queriedConfig, source);
+
+  // Trace source an exemplar resolves against: the chart's explicit
+  // `exemplarTraceSourceId`, else the chart source's linked trace source.
+  const exemplarTraceSourceId =
+    queriedConfig.exemplarTraceSourceId ||
+    (source as { traceSourceId?: string } | undefined)?.traceSourceId;
+  const { data: exemplarTraceSource } = useSource({
+    id: exemplarTraceSourceId,
+  });
+
+  // Hover card state. A short close delay lets the cursor travel from the SVG
+  // marker into the HTML card without it closing.
+  const [hoveredExemplar, setHoveredExemplar] = useState<{
+    exemplar: Exemplar;
+    x: number;
+    y: number;
+  } | null>(null);
+  const exemplarCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openExemplarCard = useCallback(
+    (exemplar: Exemplar, x: number, y: number) => {
+      if (exemplarCloseTimer.current) clearTimeout(exemplarCloseTimer.current);
+      setHoveredExemplar({ exemplar, x, y });
+    },
+    [],
+  );
+  const scheduleCloseExemplarCard = useCallback(() => {
+    if (exemplarCloseTimer.current) clearTimeout(exemplarCloseTimer.current);
+    exemplarCloseTimer.current = setTimeout(
+      () => setHoveredExemplar(null),
+      150,
+    );
+  }, []);
+  useEffect(
+    () => () => {
+      if (exemplarCloseTimer.current) clearTimeout(exemplarCloseTimer.current);
+    },
+    [],
+  );
+
+  const { data: hoveredTraceMeta, isLoading: isHoveredTraceMetaLoading } =
+    useExemplarTraceMeta(
+      hoveredExemplar?.exemplar.traceId,
+      exemplarTraceSource,
+    );
+
+  const navigateToExemplarTrace = useCallback(
+    (exemplar: Exemplar) => {
+      if (exemplarTraceSourceId) {
+        const params = new URLSearchParams();
+        params.set('source', exemplarTraceSourceId);
+        params.set('traceId', exemplar.traceId);
+        Router.push(`/search?${params.toString()}`);
+      } else {
+        Router.push(`/trace/${encodeURIComponent(exemplar.traceId)}`);
+      }
+    },
+    [exemplarTraceSourceId],
+  );
 
   const { formatByColumn, chartFormat: axisNumberFormat } =
     useChartNumberFormats(queriedConfig, data?.meta);
@@ -720,6 +914,18 @@ function DBTimeChartComponent({
             buildSearchUrl={buildSearchUrl}
             onDismiss={() => setActiveClickPayload(undefined)}
           />
+          <ExemplarHoverCard
+            hovered={hoveredExemplar}
+            meta={hoveredTraceMeta ?? undefined}
+            isLoading={isHoveredTraceMetaLoading}
+            traceSourceConfigured={!!exemplarTraceSource}
+            onInspect={navigateToExemplarTrace}
+            onMouseEnter={() => {
+              if (exemplarCloseTimer.current)
+                clearTimeout(exemplarCloseTimer.current);
+            }}
+            onMouseLeave={scheduleCloseExemplarCard}
+          />
           <MemoChart
             dateRange={dateRange}
             displayType={displayType}
@@ -742,6 +948,10 @@ function DBTimeChartComponent({
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
+            exemplars={exemplars}
+            maxExemplars={me?.team?.maxExemplars ?? DEFAULT_MAX_EXEMPLARS}
+            onExemplarHover={openExemplarCard}
+            onExemplarHoverEnd={scheduleCloseExemplarCard}
           />
         </>
       )}

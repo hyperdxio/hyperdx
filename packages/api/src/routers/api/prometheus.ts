@@ -479,6 +479,86 @@ router.get('/query', queryHandler);
 router.post('/query', queryHandler);
 
 // --------------------------
+// GET|POST /query_exemplars
+// --------------------------
+
+// Native Prometheus exposes exemplars via /api/v1/query_exemplars. We proxy
+// straight through for Prometheus-backed connections. ClickHouse-backed metric
+// exemplars are read directly from the OTel metric tables' `Exemplars.*`
+// columns in the app (via renderMetricExemplarsChartConfig), so there is no
+// ClickHouse table function to call here — return an empty result instead.
+const queryExemplarsHandler: express.RequestHandler = async (req, res) => {
+  const startedAt = performance.now();
+  let backend: PrometheusBackend = 'unknown';
+  try {
+    const { teamId } = getNonNullUserWithTeam(req);
+    const params = getParams(req);
+
+    const query = params.query;
+    if (!query) {
+      return res.status(400).json({
+        status: 'error',
+        errorType: 'bad_data',
+        error: 'missing required parameter: query',
+      });
+    }
+
+    const connectionId = params.connectionId;
+    if (!connectionId) {
+      return res.status(400).json({
+        status: 'error',
+        errorType: 'bad_data',
+        error: 'missing required parameter: connectionId',
+      });
+    }
+
+    const connection = await getConnectionById(
+      teamId.toString(),
+      connectionId,
+      true,
+    );
+    if (!connection) {
+      return res.status(404).json({
+        status: 'error',
+        errorType: 'bad_data',
+        error: 'Connection not found',
+      });
+    }
+
+    if (connection.isPrometheusEndpoint) {
+      backend = 'prometheus';
+      await proxyToPrometheus(
+        connection.host,
+        '/api/v1/query_exemplars',
+        params,
+        res,
+      );
+      return;
+    }
+
+    // ClickHouse-backed PromQL: no native exemplar table function. Exemplars
+    // for structured metric charts are fetched app-side from the metric table.
+    backend = 'clickhouse';
+    return res.json({ status: 'success', data: [] });
+  } catch (e) {
+    prometheusQueryErrors.add(1, { endpoint: 'query_exemplars', backend });
+    logger.error(e, 'Prometheus query_exemplars error');
+    return res.status(400).json({
+      status: 'error',
+      errorType: 'bad_data',
+      error: e instanceof Error ? e.message : String(e),
+    });
+  } finally {
+    prometheusQueryDuration.record(performance.now() - startedAt, {
+      endpoint: 'query_exemplars',
+      backend,
+    });
+  }
+};
+router.get('/query_exemplars', queryExemplarsHandler);
+router.post('/query_exemplars', queryExemplarsHandler);
+
+// --------------------------
 // GET /label/:name/values
 // --------------------------
 

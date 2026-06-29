@@ -51,6 +51,17 @@ export const DEFAULT_SOURCES = env.DEFAULT_SOURCES;
 
 export const IS_PROMQL_ENABLED = env.ENABLE_PROMQL === 'true';
 
+// Opt-in: have the collector derive request metrics (with trace exemplars) from
+// spans via the spanmetrics connector. Off by default; enabled in dev so the
+// telemetry-generator's traces produce coherent metric exemplars end-to-end.
+export const IS_SPAN_METRICS_ENABLED = env.ENABLE_SPAN_METRICS === 'true';
+
+// Opt-in: also remote-write the span-derived metrics (with exemplars) to a
+// Prometheus endpoint (SPAN_METRICS_PROM_RW_ENDPOINT on the collector) so the
+// native Prometheus query_exemplars path can be tested against real data.
+export const IS_SPAN_METRICS_PROM_RW_ENABLED =
+  env.ENABLE_SPAN_METRICS_PROM_RW === 'true';
+
 // FOR CI ONLY
 export const CLICKHOUSE_HOST = env.CLICKHOUSE_HOST as string;
 export const CLICKHOUSE_USER = env.CLICKHOUSE_USER as string;
