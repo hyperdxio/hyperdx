@@ -115,7 +115,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     const created = JSON.parse(getFirstText(createResult));
     const tileId = created.tiles[0].id;
 
-    // Patch without specifying layout — layout should be preserved
+    // Patch without specifying layout; layout should be preserved
     const patchResult = await callTool(
       ctx.client!,
       'clickstack_patch_dashboard',
@@ -464,7 +464,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     );
     expect(patchResult.isError).toBeFalsy();
 
-    // Read raw DB tiles again — tiles B and C should be byte-identical
+    // Read raw DB tiles again; tiles B and C should be byte-identical
     const afterPatch = await Dashboard.findById(dashboardId).lean();
     const tilesAfterPatch = (afterPatch as any).tiles;
 
@@ -498,7 +498,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     const created = JSON.parse(getFirstText(createResult));
     const tileId = created.tiles[0].id;
 
-    // Patch config only — no name field at all
+    // Patch config only; no name field at all
     const patchResult = await callTool(
       ctx.client!,
       'clickstack_patch_dashboard',
@@ -566,7 +566,7 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
       $pull: { tiles: { id: tileAId } },
     });
 
-    // Now try to patch tile A — it no longer exists in the array.
+    // Now try to patch tile A; it no longer exists in the array.
     const patchResult = await callTool(
       ctx.client!,
       'clickstack_patch_dashboard',
@@ -623,6 +623,8 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
           displayType: 'number',
           sourceId,
           select: [{ aggFn: 'avg', valueExpression: 'Duration' }],
+          color: 'chart-blue',
+          colorRules: [{ operator: 'gte', value: 500, color: 'chart-error' }],
         },
       },
     });
@@ -643,5 +645,120 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     expect(tile.name).toBe('Patched');
     expect(tile.config.displayType).toBe('number');
     expect(tile.config.select[0].aggFn).toBe('avg');
+    expect(tile.config.color).toBe('chart-blue');
+    expect(tile.config.colorRules).toEqual([
+      { operator: 'gte', value: 500, color: 'chart-error' },
+    ]);
+  });
+
+  describe('raw SQL macro warnings', () => {
+    // Patching a tile to a macro-less raw SQL config succeeds (non-blocking)
+    // but surfaces an advisory `warnings` array on the response.
+    it('returns a non-blocking warning when a patched tile omits macros', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const connectionId = ctx.connection._id.toString();
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Patch to static SQL',
+          tiles: [
+            {
+              name: 'Builder Tile',
+              config: {
+                displayType: 'number',
+                sourceId,
+                select: [{ aggFn: 'count' }],
+              },
+            },
+          ],
+        },
+      );
+      const created = JSON.parse(getFirstText(createResult));
+      const tileId = created.tiles[0].id;
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: created.id,
+          tileId,
+          tile: {
+            name: 'Static SQL',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sqlTemplate: 'SELECT 1 AS value LIMIT 1',
+            },
+          },
+        },
+      );
+
+      // Non-blocking: the patch applies and the tile is persisted.
+      expect(patchResult.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(patchResult));
+      expect(output.patchedTile.name).toBe('Static SQL');
+      const dashboard = await Dashboard.findById(created.id);
+      const persistedConfig = dashboard?.tiles?.[0]?.config as {
+        sqlTemplate?: string;
+      };
+      expect(persistedConfig?.sqlTemplate).toBe('SELECT 1 AS value LIMIT 1');
+
+      expect(Array.isArray(output.warnings)).toBe(true);
+      expect(output.warnings).toHaveLength(1);
+      expect(output.warnings[0]).toContain('Static SQL');
+      expect(output.warnings[0]).toContain('$__timeFilter');
+      expect(output.warnings[0]).toContain('strongly recommended');
+    });
+
+    it('omits warnings when a patched raw SQL tile uses all recommended macros', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const connectionId = ctx.connection._id.toString();
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Patch to macro SQL',
+          tiles: [
+            {
+              name: 'Builder Tile',
+              config: {
+                displayType: 'number',
+                sourceId,
+                select: [{ aggFn: 'count' }],
+              },
+            },
+          ],
+        },
+      );
+      const created = JSON.parse(getFirstText(createResult));
+      const tileId = created.tiles[0].id;
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: created.id,
+          tileId,
+          tile: {
+            name: 'Macro SQL',
+            config: {
+              configType: 'sql',
+              displayType: 'table',
+              connectionId,
+              sourceId,
+              sqlTemplate:
+                'SELECT ServiceName, count() AS c FROM $__sourceTable ' +
+                'WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY ServiceName LIMIT 10',
+            },
+          },
+        },
+      );
+
+      expect(patchResult.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(patchResult));
+      expect(output.warnings).toBeUndefined();
+    });
   });
 });

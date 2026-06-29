@@ -16,9 +16,41 @@ const escapeString = (s: string) => {
   return s.replace(/\\/g, '\\\\').replace(/'/g, "''");
 };
 
+// Wrap a quoted string literal in a ClickHouse expression whose result type
+// matches the date column's type.
+const dateTimeValueExpr = (chType: string, quotedValue: string): string => {
+  const dt64 = chType.match(/DateTime64\((\d+)/);
+
+  if (dt64) {
+    return `parseDateTime64BestEffort(${quotedValue}, ${dt64[1]})`;
+  }
+
+  if (/\bDateTime\b/.test(chType)) {
+    return `parseDateTimeBestEffort(${quotedValue})`;
+  }
+
+  if (/\bDate32\b/.test(chType)) {
+    return `toDate32(${quotedValue})`;
+  }
+
+  if (/\bDate\b/.test(chType)) {
+    return `toDate(${quotedValue})`;
+  }
+
+  // Fallback for an unexpected type; DateTime64(9) covers the widest range.
+  return `parseDateTime64BestEffort(${quotedValue}, 9)`;
+};
+
 export const filtersToQuery = (
   filters: FilterState,
-  { stringifyKeys = false }: { stringifyKeys?: boolean } = {},
+  {
+    stringifyKeys = false,
+    dateTimeColumns,
+  }: {
+    stringifyKeys?: boolean;
+    /** Map of DateTime/Date column name → its ClickHouse type. */
+    dateTimeColumns?: ReadonlyMap<string, string>;
+  } = {},
 ): Filter[] => {
   return Object.entries(filters)
     .filter(
@@ -31,11 +63,22 @@ export const filtersToQuery = (
       const conditions: Filter[] = [];
       const actualKey = stringifyKeys ? `toString(${key})` : key;
 
+      // DateTime/DateTime64 columns can't be compared against a bare string
+      // literal in ClickHouse, so wrap each value in a parse/convert expression whose
+      // result type matches the column type.
+      const chType = stringifyKeys ? undefined : dateTimeColumns?.get(key);
+      const formatValue = (v: string | boolean): string | boolean =>
+        typeof v !== 'string'
+          ? v
+          : chType != null
+            ? dateTimeValueExpr(chType, `'${escapeString(v)}'`)
+            : `'${escapeString(v)}'`;
+
       if (values.included.size > 0) {
         conditions.push({
           type: 'sql' as const,
           condition: `${actualKey} IN (${Array.from(values.included)
-            .map(v => (typeof v === 'string' ? `'${escapeString(v)}'` : v))
+            .map(formatValue)
             .join(', ')})`,
         });
       }
@@ -43,7 +86,7 @@ export const filtersToQuery = (
         conditions.push({
           type: 'sql' as const,
           condition: `${actualKey} NOT IN (${Array.from(values.excluded)
-            .map(v => (typeof v === 'string' ? `'${escapeString(v)}'` : v))
+            .map(formatValue)
             .join(', ')})`,
         });
       }

@@ -69,7 +69,7 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { useHotkeys } from '@mantine/hooks';
+import { useDebouncedValue, useHotkeys, useInViewport } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconAlertTriangle,
@@ -191,6 +191,7 @@ function HeatmapTile({
   queriedConfig,
   source,
   dateRange,
+  enabled = true,
 }: {
   keyPrefix: string;
   chartId: string;
@@ -199,6 +200,7 @@ function HeatmapTile({
   queriedConfig: BuilderChartConfigWithDateRange;
   source: TSource | undefined;
   dateRange: [Date, Date];
+  enabled?: boolean;
 }) {
   const { heatmapConfig, scaleType } = toHeatmapChartConfig(queriedConfig);
 
@@ -243,6 +245,7 @@ function HeatmapTile({
         toolbarPrefix={toolbar}
         config={heatmapConfig}
         scaleType={scaleType}
+        enabled={enabled}
         showLegend
       />
       {clickPos != null && eventDeltasUrl != null && (
@@ -394,6 +397,26 @@ const Tile = forwardRef(
   ) => {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [isFocused, setIsFocused] = useState(false);
+
+    // Lazy loading: only fetch a tile's data once it has scrolled into the
+    // browser viewport. React Grid Layout mounts every tile up front, so
+    // without this gating each tile would issue its ClickHouse query
+    // immediately, regardless of whether it is visible. We debounce the
+    // viewport signal (RGL briefly renders all tiles before the layout
+    // settles) and make visibility "sticky" so that a tile keeps its data
+    // once loaded instead of refetching every time it scrolls back into view.
+    const { ref: inViewportRef, inViewport } = useInViewport();
+    const [debouncedInViewport] = useDebouncedValue(inViewport, 200);
+    // Latch to true the first time the tile becomes visible and never flip
+    // back, so a loaded tile keeps its data instead of refetching every time
+    // it scrolls out of and back into view. Adjusting state during render (the
+    // React-recommended pattern for deriving state from changing inputs) is
+    // cheaper than an effect and only fires once, since the condition is false
+    // after the first visible render.
+    const [hasBeenVisible, setHasBeenVisible] = useState(false);
+    if (debouncedInViewport && !hasBeenVisible) {
+      setHasBeenVisible(true);
+    }
 
     const {
       userPreferences: { isUTC },
@@ -804,6 +827,10 @@ const Tile = forwardRef(
           : [hoverToolbar, filterWarning];
         const keyPrefix = isFullscreenView ? 'fullscreen' : 'tile';
 
+        // The fullscreen view is always visible, so it should always load.
+        // In the tile (grid) view, gate data fetching on viewport visibility.
+        const chartEnabled = isFullscreenView ? true : hasBeenVisible;
+
         // Use the fullscreen-local date range and granularity when rendering
         // inside the fullscreen modal so that changing them does not affect
         // the dashboard.
@@ -862,6 +889,7 @@ const Tile = forwardRef(
                     toolbarPrefix={toolbar}
                     sourceId={chart.config.source}
                     showDisplaySwitcher={true}
+                    enabled={chartEnabled}
                     config={effectiveQueriedConfig}
                     onTimeRangeSelect={
                       isFullscreenView
@@ -885,6 +913,7 @@ const Tile = forwardRef(
                       key={`${keyPrefix}-${chart.id}`}
                       title={title}
                       toolbarPrefix={toolbar}
+                      enabled={chartEnabled}
                       config={effectiveQueriedConfig}
                       variant="muted"
                       getRowSearchLink={
@@ -906,6 +935,7 @@ const Tile = forwardRef(
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
                     toolbarPrefix={toolbar}
+                    enabled={chartEnabled}
                     config={effectiveQueriedConfig}
                   />
                 )}
@@ -914,6 +944,7 @@ const Tile = forwardRef(
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
                     toolbarPrefix={toolbar}
+                    enabled={chartEnabled}
                     config={effectiveQueriedConfig}
                   />
                 )}
@@ -924,6 +955,7 @@ const Tile = forwardRef(
                       chartId={chart.id}
                       title={title}
                       toolbar={toolbar}
+                      enabled={chartEnabled}
                       queriedConfig={effectiveQueriedConfig}
                       source={source}
                       dateRange={effectiveDateRange}
@@ -949,7 +981,7 @@ const Tile = forwardRef(
                     >
                       <DBSqlRowTableWithSideBar
                         key={`${keyPrefix}-${chart.id}`}
-                        enabled
+                        enabled={chartEnabled}
                         sourceId={chart.config.source}
                         config={{
                           ...effectiveQueriedConfig,
@@ -998,6 +1030,7 @@ const Tile = forwardRef(
         filterWarning,
         isSourceMissing,
         isSourceUnset,
+        hasBeenVisible,
       ],
     );
 
@@ -1055,6 +1088,7 @@ const Tile = forwardRef(
             />
           )}
           <div
+            ref={inViewportRef}
             className="fs-7 text-muted flex-grow-1 overflow-hidden cursor-default"
             onMouseDown={e => e.stopPropagation()}
           >

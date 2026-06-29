@@ -549,6 +549,35 @@ describe('MCP Source Tools', () => {
       expect(output.metrics).toEqual([]);
       expect(output.hint).toMatch(/widening|removing|omitting/);
     });
+
+    it('surfaces partialFailure instead of the empty hint when a kind fetch fails', async () => {
+      // Point the gauge kind at the logs table: it exists (so source
+      // resolution succeeds) but has no MetricName/TimeUnix columns, so
+      // the per-kind listing query throws.
+      const brokenSource = await Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: DEFAULT_LOGS_TABLE,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection._id,
+        name: 'BrokenMetrics',
+      });
+      const result = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: brokenSource._id.toString(),
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.metrics).toEqual([]);
+      expect(output.partialFailure).toHaveLength(1);
+      expect(output.partialFailure[0].kind).toBe('gauge');
+      expect(output.partialFailure[0].error).toBeTruthy();
+      // The misleading "No metrics matched … widen the window" hint must
+      // NOT appear — the agent should retry, not widen.
+      expect(output.hint).not.toMatch(/No metrics matched/);
+    });
   });
 
   // ── clickstack_describe_metric ───────────────────────────────────────────
@@ -605,6 +634,38 @@ describe('MCP Source Tools', () => {
       expect(output.kinds[0].kind).toBe('gauge');
       expect(output.kinds[0].attributeKeys).toEqual({});
       expect(output.hint).toMatch(/No data found/);
+      expect(output.partialFailure).toBeUndefined();
+    });
+
+    it('surfaces partialFailure instead of the no-data hint when discovery fails', async () => {
+      // Point the gauge kind at the logs table: it exists (so getColumns
+      // succeeds) but lacks MetricName/TimeUnix columns, so the
+      // attribute-keys discovery query throws.
+      const brokenSource = await Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.Gauge.toLowerCase()]: DEFAULT_LOGS_TABLE,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection._id,
+        name: 'BrokenMetrics',
+      });
+      const result = await callTool(client, 'clickstack_describe_metric', {
+        sourceId: brokenSource._id.toString(),
+        metricName: 'whatever',
+        kind: 'gauge',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.partialFailure).toBeDefined();
+      expect(
+        output.partialFailure.map((f: { stage: string }) => f.stage),
+      ).toContain('attributeKeys');
+      // The misleading "No data found … widen startTime/endTime" hint
+      // must NOT appear — the fetch failed; widening would not help.
+      expect(output.hint).not.toMatch(/No data found/);
     });
 
     it('returns attribute keys for a gauge metric when kind is specified', async () => {
@@ -642,6 +703,72 @@ describe('MCP Source Tools', () => {
       expect(detail.attributeValues).toBeDefined();
       // nextSteps.query carries a worked example matching the requested kind.
       expect(output.nextSteps.query).toContain('metricType: "gauge"');
+    });
+
+    it('reports sampledKeys and truncatedKeys so unsampled keys are distinguishable', async () => {
+      // 15 attribute keys > MAX_ATTR_KEYS_TO_SAMPLE (12): the overflow
+      // must land in truncatedKeys so the agent knows those keys were
+      // never queried (vs. sampled-but-empty).
+      const metricSource = await createMetricSource();
+      const manyAttrs: Record<string, string> = {};
+      for (let i = 0; i < 15; i++) {
+        manyAttrs[`attr.key.${String(i).padStart(2, '0')}`] = `value-${i}`;
+      }
+      await bulkInsertMetricsGauge([
+        {
+          MetricName: 'many.attrs.metric',
+          ResourceAttributes: manyAttrs,
+          ServiceName: 'many-attrs-svc',
+          TimeUnix: new Date(),
+          Value: 1,
+        },
+      ]);
+
+      const result = await callTool(client, 'clickstack_describe_metric', {
+        sourceId: metricSource._id.toString(),
+        metricName: 'many.attrs.metric',
+        kind: 'gauge',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      const detail = output.kinds[0];
+      const meta = detail.attributeValuesMeta;
+      expect(meta).toBeDefined();
+      expect(meta.sampledKeys).toHaveLength(12);
+      expect(meta.truncatedKeys).toHaveLength(3);
+      // Sampled and truncated sets are disjoint and cover all 15 keys.
+      expect(new Set([...meta.sampledKeys, ...meta.truncatedKeys]).size).toBe(
+        15,
+      );
+      // Every key with values must have been sampled.
+      for (const key of Object.keys(detail.attributeValues ?? {})) {
+        expect(meta.sampledKeys).toContain(key);
+      }
+    });
+
+    it('reports empty truncatedKeys when all attribute keys fit the cap', async () => {
+      const metricSource = await createMetricSource();
+      await bulkInsertMetricsGauge([
+        {
+          MetricName: 'few.attrs.metric',
+          ResourceAttributes: { 'service.name': 'few-attrs-svc' },
+          ServiceName: 'few-attrs-svc',
+          TimeUnix: new Date(),
+          Value: 1,
+        },
+      ]);
+
+      const result = await callTool(client, 'clickstack_describe_metric', {
+        sourceId: metricSource._id.toString(),
+        metricName: 'few.attrs.metric',
+        kind: 'gauge',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      const meta = output.kinds[0].attributeValuesMeta;
+      expect(meta).toBeDefined();
+      expect(meta.truncatedKeys).toEqual([]);
+      expect(meta.sampledKeys).toContain("ResourceAttributes['service.name']");
     });
 
     it('skips value sampling when sampleValues is false', async () => {

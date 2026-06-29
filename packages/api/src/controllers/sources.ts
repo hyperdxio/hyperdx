@@ -37,9 +37,9 @@ export function getSources(team: string) {
 }
 
 export async function getSource(team: string, sourceId: string) {
-  // Pre-check the sourceId shape so a non-ObjectId input from the MCP
-  // surface returns null (and the caller's "not found" branch) instead
-  // of bubbling a Mongoose CastError through to the agent.
+  // Pre-check the sourceId shape so a non-ObjectId input returns null
+  // (the caller's "not found" branch) instead of bubbling a Mongoose
+  // CastError.
   if (!mongoose.Types.ObjectId.isValid(sourceId)) {
     return null;
   }
@@ -47,8 +47,8 @@ export async function getSource(team: string, sourceId: string) {
     return await Source.findOne({ _id: sourceId, team });
   } catch {
     // Defense-in-depth: if Mongoose still throws (e.g. a future cast
-    // path), treat it as "not found" so the MCP tools surface a clean
-    // error message rather than a raw stack.
+    // path), treat it as "not found" so the caller can surface a clean
+    // error.
     return null;
   }
 }

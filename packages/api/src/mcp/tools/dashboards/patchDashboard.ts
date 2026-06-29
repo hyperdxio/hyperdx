@@ -16,7 +16,10 @@ import { mcpError } from '../../utils/errors';
 import { withToolTracing } from '../../utils/tracing';
 import type { McpContext } from '../types';
 import { mcpPatchDashboardSchema } from './schemas';
-import { getRawSqlMissingSourceError } from './validation';
+import {
+  getRawSqlMissingSourceError,
+  getRawSqlTileMacroWarnings,
+} from './validation';
 
 export function registerPatchDashboard(
   server: McpServer,
@@ -273,6 +276,10 @@ export function registerPatchDashboard(
           output.patchedTile = patchedTile;
           output.hint =
             'Use clickstack_query_tile to test the patched tile query.';
+          const macroWarnings = getRawSqlTileMacroWarnings([patchedTile]);
+          if (macroWarnings.length > 0) {
+            output.warnings = macroWarnings;
+          }
         }
 
         return {

@@ -902,6 +902,20 @@ describe('MCP Query Tools', () => {
       expect(result.isError).toBeFalsy();
       // No "Both table name and UUID are empty" error from the renderer.
       expect(getFirstText(result)).not.toMatch(/UUID are empty/);
+
+      // Granularity must survive into the renderer: the result is bucketed
+      // over time (the __hdx_time_bucket column is present) rather than
+      // collapsed into a single per-group aggregate. Regression guard for
+      // the granularity-stripping bug.
+      const output = JSON.parse(getFirstText(result));
+      const metaNames = (output.result?.meta ?? []).map(
+        (m: { name: string }) => m.name,
+      );
+      expect(metaNames).toContain('__hdx_time_bucket');
+      // Since the result IS bucketed, the "not bucketed over time" hint
+      // must never fire (it would be wrong advice).
+      const hints: string[] = output.hints ?? [];
+      expect(hints.some(h => /not bucketed over time/.test(h))).toBe(false);
     });
 
     it('runs clickstack_table aggFn:"increase" against a sum metric source', async () => {

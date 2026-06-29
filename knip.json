@@ -32,7 +32,11 @@
       "ignoreDependencies": ["tsx"]
     }
   },
-  "ignore": ["scripts/dev-portal/**", ".github/scripts/**"],
+  "ignore": [
+    "scripts/dev-portal/**",
+    ".github/scripts/**",
+    "docker/hyperdx/**"
+  ],
   "ignoreBinaries": ["make", "migrate", "playwright"],
   "ignoreDependencies": [
     "@dotenvx/dotenvx",

@@ -74,6 +74,37 @@ const AGG_FN_NAMES: ReadonlySet<string> = new Set(
   MCP_AGG_FN_OPTIONS.filter(fn => fn !== 'none' && fn !== 'increase'),
 );
 
+/** A bare ClickHouse identifier: a letter or underscore followed by word chars.
+ *  Anything outside this shape (spaces, punctuation, leading digit) must be
+ *  quoted to be valid in ORDER BY. */
+const BARE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** Strip one layer of surrounding double-quote or backtick quoting, if present. */
+function stripIdentifierQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith('`') && trimmed.endsWith('`')))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+/**
+ * Quote an alias for use in ORDER BY when it is not a bare identifier.
+ * Aliases are emitted into SELECT as `AS "alias"`, so we mirror that with
+ * double-quote identifier quoting (escaping embedded double quotes). Bare
+ * identifiers are returned unquoted to keep the common case readable.
+ */
+function quoteAliasForOrderBy(alias: string): string {
+  if (BARE_IDENTIFIER.test(alias)) {
+    return alias;
+  }
+  return `"${alias.replace(/"/g, '""')}"`;
+}
+
 /**
  * Resolve an orderBy value that matches a bare aggregation function name
  * (e.g. "count") to something ClickHouse can resolve in ORDER BY.
@@ -85,9 +116,11 @@ const AGG_FN_NAMES: ReadonlySet<string> = new Set(
  * the ClickHouse expression (e.g. `count()`) when no alias is set.
  *
  * Resolution order:
- *   1. If orderBy matches a select item's alias exactly → keep as-is
- *   2. If orderBy matches an aggFn name → use that item's alias if set,
- *      otherwise synthesize the ClickHouse expression (e.g. `count()`)
+ *   1. If orderBy matches a select item's alias → emit the canonical alias,
+ *      quoting it when it is not a bare identifier (e.g. `"P95 Latency"`)
+ *   2. If orderBy matches an aggFn name → use that item's alias if set
+ *      (quoted as needed), otherwise synthesize the ClickHouse expression
+ *      (e.g. `count()`)
  *   3. Otherwise → pass through unchanged
  */
 /** @internal Exported for testing only. */
@@ -108,15 +141,20 @@ export function resolveOrderBy(
   const identifier = dirMatch ? dirMatch[1] : orderBy;
   const direction = dirMatch ? ` ${dirMatch[2].toUpperCase()}` : '';
 
-  const lower = identifier.toLowerCase();
+  // Agents may pass the alias already quoted (per the orderBy docs) or bare.
+  // Strip any surrounding quotes before matching so both forms resolve, then
+  // re-quote on output based on the canonical alias.
+  const lower = stripIdentifierQuotes(identifier).toLowerCase();
 
   // Already matches an alias? Return the canonical alias case so
   // ClickHouse's case-sensitive identifier resolution works correctly.
+  // Multi-word / special-character aliases are quoted so the emitted
+  // ORDER BY is valid SQL even when the agent passed the alias unquoted.
   const aliasMatch = selectItems.find(
     s => s.alias && s.alias.toLowerCase() === lower,
   );
-  if (aliasMatch) {
-    return `${aliasMatch.alias}${direction}`;
+  if (aliasMatch && aliasMatch.alias) {
+    return `${quoteAliasForOrderBy(aliasMatch.alias)}${direction}`;
   }
 
   // Matches an aggFn name? Resolve to that item's alias or synthesize.
@@ -125,7 +163,7 @@ export function resolveOrderBy(
     if (match) {
       // Prefer the explicit alias if set
       if (match.alias) {
-        return `${match.alias}${direction}`;
+        return `${quoteAliasForOrderBy(match.alias)}${direction}`;
       }
 
       // Synthesize the ClickHouse expression so ORDER BY works

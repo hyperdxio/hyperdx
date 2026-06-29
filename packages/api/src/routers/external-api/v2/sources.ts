@@ -274,6 +274,11 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           description: Display name for the source.
  *           example: Logs
+ *         section:
+ *           type: string
+ *           maxLength: 256
+ *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
+ *           example: Billing
  *         kind:
  *           type: string
  *           enum: [log]
@@ -421,6 +426,11 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           description: Display name for the source.
  *           example: Traces
+ *         section:
+ *           type: string
+ *           maxLength: 256
+ *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
+ *           example: Billing
  *         kind:
  *           type: string
  *           enum: [trace]
@@ -589,6 +599,11 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           description: Display name for the source.
  *           example: Metrics
+ *         section:
+ *           type: string
+ *           maxLength: 256
+ *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
+ *           example: Billing
  *         kind:
  *           type: string
  *           enum: [metric]
@@ -641,6 +656,11 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           description: Display name for the source.
  *           example: Sessions
+ *         section:
+ *           type: string
+ *           maxLength: 256
+ *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
+ *           example: Billing
  *         kind:
  *           type: string
  *           enum: [session]

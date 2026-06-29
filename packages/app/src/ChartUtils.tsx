@@ -108,9 +108,14 @@ export const MAX_TIME_CHART_SERIES = DEFAULT_SERIES_LIMIT;
 
 export function convertToTimeChartConfig(
   config: ChartConfigWithDateRange,
-  teamSeriesLimit?: number,
 ): ChartConfigWithDateRange {
-  const seriesLimit = Math.max(1, teamSeriesLimit ?? MAX_TIME_CHART_SERIES);
+  // Series capping is opt-in per tile via the chart's Display Settings; when
+  // unset, no __hdx_series_limit CTE is emitted and every series is fetched.
+  const seriesLimit = isBuilderChartConfig(config)
+    ? config.seriesLimit != null
+      ? Math.max(1, config.seriesLimit)
+      : undefined
+    : undefined;
 
   const granularity = getTimeChartGranularity(
     config.granularity,
@@ -125,8 +130,8 @@ export function convertToTimeChartConfig(
 
   // When the range is bucket-aligned, the end is the start of the next bucket,
   // so end-exclusive is required to avoid double-counting boundary events.
-  // When alignment is off the end is the user's exact selection — fall back to
-  // the caller's setting, if there is one.
+  // When alignment is off the end is the user's exact selection, so fall back
+  // to the caller's setting, if there is one.
   const isAligned = config.alignDateRangeToGranularity !== false;
   const dateRangeEndInclusive = isAligned
     ? false
@@ -139,6 +144,8 @@ export function convertToTimeChartConfig(
         dateRangeEndInclusive,
         granularity,
         limit: { limit: 100000 },
+        // Overwrite (not conditionally spread) so a cleared `null` from the
+        // source config is normalized to undefined rather than carried over.
         seriesLimit,
       }
     : {
@@ -464,6 +471,48 @@ export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {
     new Date(start.getTime() - offsetSeconds * 1000),
     new Date(end.getTime() - offsetSeconds * 1000),
   ];
+}
+
+/**
+ * Find the series whose active-point pixel Y is closest to the cursor.
+ *
+ * `seriesYByKey` maps each series' dataKey to the pixel Y of its
+ * active point (captured from the chart's active dots), and `pointerY`
+ * is the cursor's pixel Y. Both live in the same chart pixel space, so
+ * the nearest series is the one with the smallest vertical distance.
+ * Returns that series' dataKey, or `undefined` when the pointer is
+ * farther than `maxDistancePx` from every line (so nothing is
+ * highlighted in empty space). Candidates not present in the map are
+ * skipped, and ties resolve to the first candidate in `candidateKeys`.
+ */
+export function findNearestSeriesKey(
+  seriesYByKey: Map<string, number> | undefined,
+  candidateKeys: string[],
+  pointerY: number | undefined,
+  maxDistancePx: number,
+): string | undefined {
+  if (seriesYByKey == null || pointerY == null) {
+    return undefined;
+  }
+
+  let nearestKey: string | undefined;
+  let nearestDistance = Infinity;
+  for (const key of candidateKeys) {
+    const seriesY = seriesYByKey.get(key);
+    if (seriesY == null) {
+      continue;
+    }
+    const distance = Math.abs(seriesY - pointerY);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestKey = key;
+    }
+  }
+
+  if (nearestKey == null || nearestDistance > maxDistancePx) {
+    return undefined;
+  }
+  return nearestKey;
 }
 
 export interface LineData {

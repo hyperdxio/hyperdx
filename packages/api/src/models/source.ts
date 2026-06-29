@@ -91,6 +91,7 @@ const sourceBaseSchema = new Schema<MongooseSourceBase>(
       ref: 'Connection',
     },
     name: String,
+    section: String,
     disabled: {
       type: Boolean,
       default: false,
