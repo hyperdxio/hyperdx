@@ -1,12 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { escapeRegExp } from 'lodash';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  FilterState,
+  filtersToQuery,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
   TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Group, Select } from '@mantine/core';
 
+import { FilterLinkToggle } from '@/components/FilterLinkToggle';
 import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 
@@ -17,44 +23,84 @@ type KubernetesFiltersProps = {
   setSearchQuery: (query: string) => void;
 };
 
+// The bundled Kubernetes filter dropdowns, in display order.
+const K8S_FILTER_FIELDS = [
+  {
+    field: 'k8s.pod.name',
+    placeholder: 'Pod',
+    dataTestId: 'pod-filter-select',
+  },
+  {
+    field: 'k8s.deployment.name',
+    placeholder: 'Deployment',
+    dataTestId: 'deployment-filter-select',
+  },
+  {
+    field: 'k8s.node.name',
+    placeholder: 'Node',
+    dataTestId: 'node-filter-select',
+  },
+  {
+    field: 'k8s.namespace.name',
+    placeholder: 'Namespace',
+    dataTestId: 'namespace-filter-select',
+  },
+  {
+    field: 'k8s.cluster.name',
+    placeholder: 'Cluster',
+    dataTestId: 'cluster-filter-select',
+  },
+] as const;
+
 type FilterSelectProps = {
-  metricSource: TMetricSource;
   placeholder: string;
-  fieldName: string;
   value: string | null;
   onChange: (value: string | null) => void;
-  chartConfig: BuilderChartConfigWithDateRange;
+  options: string[];
+  loading?: boolean;
   dataTestId?: string;
 };
 
+// Removes a single field's `resourceAttr.field:"..."` clause from a Lucene
+// query string, leaving every other clause (and free-text search) intact. Used
+// both to rewrite the query when a dropdown changes and to build the faceted
+// free-text `where` for the dropdown value lookup.
+export const stripFieldClause = (
+  query: string,
+  resourceAttr: string,
+  field: string,
+): string => {
+  const fullAttribute = `${resourceAttr}.${field}`;
+  const regex = new RegExp(`${escapeRegExp(fullAttribute)}:"[^"]*"`, 'g');
+  // Replace with a space and collapse runs of whitespace so removing a clause
+  // from the middle of the query doesn't leave a double space.
+  return query.replace(regex, ' ').replace(/\s+/g, ' ').trim();
+};
+
 const FilterSelect: React.FC<FilterSelectProps> = ({
-  metricSource,
   placeholder,
-  fieldName,
   value,
   onChange,
-  chartConfig,
+  options,
+  loading,
   dataTestId,
 }) => {
-  const { data, isLoading } = useGetKeyValues({
-    chartConfig,
-    keys: [`${metricSource.resourceAttributesExpression}['${fieldName}']`],
-    disableRowLimit: true,
-    limit: 1000000,
-  });
-
-  const options = useMemo(
-    () =>
-      data?.[0]?.value
-        .map(value => ({ value, label: value }))
-        .sort((a, b) => a.value.localeCompare(b.value)) || [], // Sort alphabetically for better search results
-    [data],
-  );
+  const data = useMemo(() => {
+    const opts = options
+      .map(v => ({ value: v, label: v }))
+      .sort((a, b) => a.value.localeCompare(b.value)); // Sort alphabetically for better search results
+    // Keep the current selection visible even when it isn't in the (faceted)
+    // value list, so the control still reflects what's applied.
+    if (value && !opts.some(o => o.value === value)) {
+      opts.unshift({ value, label: value });
+    }
+    return opts;
+  }, [options, value]);
 
   return (
     <Select
-      placeholder={placeholder + (isLoading ? ' (loading...)' : '')}
-      data={options}
+      placeholder={placeholder + (loading ? ' (loading...)' : '')}
+      data={data}
       value={value}
       onChange={onChange}
       searchable
@@ -62,7 +108,6 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
       allowDeselect
       size="xs"
       maxDropdownHeight={280}
-      disabled={isLoading}
       variant="filled"
       w={200}
       limit={100} // Show up to 100 search results
@@ -83,6 +128,27 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
   const [nodeName, setNodeName] = useState<string | null>(null);
   const [namespaceName, setNamespaceName] = useState<string | null>(null);
   const [clusterName, setClusterName] = useState<string | null>(null);
+
+  // "Link" mode (opt-in, off by default): narrow each dropdown's values by the
+  // other selections + the free-text search. Off by default because contingent
+  // value lookups can't use the cheap per-key rollups and cost far more at scale.
+  const [linked, setLinked] = useState(false);
+
+  const resourceAttr = metricSource.resourceAttributesExpression;
+  const valueByField: Record<string, string | null> = {
+    'k8s.pod.name': podName,
+    'k8s.deployment.name': deploymentName,
+    'k8s.node.name': nodeName,
+    'k8s.namespace.name': namespaceName,
+    'k8s.cluster.name': clusterName,
+  };
+  const setterByField: Record<string, (value: string | null) => void> = {
+    'k8s.pod.name': setPodName,
+    'k8s.deployment.name': setDeploymentName,
+    'k8s.node.name': setNodeName,
+    'k8s.namespace.name': setNamespaceName,
+    'k8s.cluster.name': setClusterName,
+  };
 
   const { control, setValue } = useForm({
     defaultValues: {
@@ -115,8 +181,9 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
     resourceAttr: string = '',
     attribute: string,
   ) => {
+    const fullAttribute = `${resourceAttr}.${attribute}`;
     const match = searchQuery.match(
-      new RegExp(`${resourceAttr}\\.${attribute}:"([^"]+)"`, 'i'),
+      new RegExp(`${escapeRegExp(fullAttribute)}:"([^"]+)"`, 'i'),
     );
     return match ? match[1] : null;
   };
@@ -124,51 +191,102 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
   // Initialize filter values from search query
   useEffect(() => {
     if (searchQuery) {
-      const resourceAttr = metricSource.resourceAttributesExpression;
-
-      setPodName(
-        extractValueFromSearchQuery(searchQuery, resourceAttr, 'k8s.pod.name'),
-      );
-      setDeploymentName(
-        extractValueFromSearchQuery(
-          searchQuery,
-          resourceAttr,
-          'k8s.deployment.name',
-        ),
-      );
-      setNodeName(
-        extractValueFromSearchQuery(searchQuery, resourceAttr, 'k8s.node.name'),
-      );
-      setNamespaceName(
-        extractValueFromSearchQuery(
-          searchQuery,
-          resourceAttr,
-          'k8s.namespace.name',
-        ),
-      );
-      setClusterName(
-        extractValueFromSearchQuery(
-          searchQuery,
-          resourceAttr,
-          'k8s.cluster.name',
-        ),
-      );
+      for (const { field } of K8S_FILTER_FIELDS) {
+        setterByField[field](
+          extractValueFromSearchQuery(searchQuery, resourceAttr, field),
+        );
+      }
     }
-  }, [searchQuery, metricSource.resourceAttributesExpression]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, resourceAttr]);
 
-  // Create chart config for fetching key values
-  const chartConfig: BuilderChartConfigWithDateRange = {
-    from: {
-      databaseName: metricSource.from.databaseName,
-      tableName: metricSource.metricTables?.gauge || '',
-    },
-    where: '',
-    whereLanguage: 'sql',
-    select: '',
-    timestampValueExpression: metricSource.timestampValueExpression || '',
-    connection: metricSource.connection,
-    dateRange,
-  };
+  const keys = useMemo(
+    () => K8S_FILTER_FIELDS.map(({ field }) => `${resourceAttr}['${field}']`),
+    [resourceAttr],
+  );
+
+  // Faceted (linked) lookups: build a per-field SQL predicate from the OTHER
+  // selected fields (exclude-self) so all five value lists are computed in a
+  // single `groupUniqArrayIf` scan. The free-text search is applied as a shared
+  // WHERE. When unlinked there are no constraints and every dropdown lists all
+  // values (still a single batched query).
+  const keyConditions = useMemo(() => {
+    if (!linked) return undefined;
+    return K8S_FILTER_FIELDS.map(({ field }) => {
+      const others: FilterState = {};
+      for (const { field: otherField } of K8S_FILTER_FIELDS) {
+        const value = valueByField[otherField];
+        if (otherField !== field && value) {
+          others[`${resourceAttr}['${otherField}']`] = {
+            included: new Set([value]),
+            excluded: new Set(),
+          };
+        }
+      }
+      // filtersToQuery only emits `sql` filters (which carry `condition`); the
+      // `in` guard narrows away the `sql_ast` member of the Filter union.
+      const predicates = filtersToQuery(others, {
+        stringifyKeys: false,
+      }).flatMap(f => ('condition' in f ? [f.condition] : []));
+      return predicates.length
+        ? predicates.map(c => `(${c})`).join(' AND ')
+        : undefined;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    linked,
+    resourceAttr,
+    podName,
+    deploymentName,
+    nodeName,
+    namespaceName,
+    clusterName,
+  ]);
+
+  // Free-text portion of the search (everything except the structured field
+  // clauses), applied as a shared WHERE so the dropdowns honor it when linked.
+  const facetWhere = useMemo(
+    () =>
+      linked
+        ? K8S_FILTER_FIELDS.reduce(
+            (query, { field }) => stripFieldClause(query, resourceAttr, field),
+            searchQuery,
+          )
+        : '',
+    [linked, resourceAttr, searchQuery],
+  );
+
+  const chartConfig: BuilderChartConfigWithDateRange = useMemo(
+    () => ({
+      from: {
+        databaseName: metricSource.from.databaseName,
+        tableName: metricSource.metricTables?.gauge || '',
+      },
+      where: facetWhere,
+      whereLanguage: 'lucene',
+      select: '',
+      timestampValueExpression: metricSource.timestampValueExpression || '',
+      connection: metricSource.connection,
+      dateRange,
+    }),
+    [metricSource, facetWhere, dateRange],
+  );
+
+  const { data, isLoading } = useGetKeyValues({
+    chartConfig,
+    keys,
+    keyConditions,
+    disableRowLimit: true,
+    limit: 1000000,
+  });
+
+  const valuesByKey = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const entry of data ?? []) {
+      map.set(entry.key, entry.value as string[]);
+    }
+    return map;
+  }, [data]);
 
   // Helper function to update search query
   const updateSearchQuery = (
@@ -178,13 +296,10 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
   ) => {
     setter(value);
 
-    const resourceAttr = metricSource.resourceAttributesExpression;
     const fullAttribute = `${resourceAttr}.${attribute}`;
 
     // Remove existing filter for this attribute if it exists
-    let newQuery = searchQuery;
-    const regex = new RegExp(`${fullAttribute}:"[^"]*"`, 'g');
-    newQuery = newQuery.replace(regex, '').trim();
+    let newQuery = stripFieldClause(searchQuery, resourceAttr, attribute);
 
     // Add new filter if value is not null
     if (value) {
@@ -196,62 +311,23 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
 
   return (
     <Group mt="md" mb="xs" wrap="wrap" gap="xxs">
-      <FilterSelect
-        metricSource={metricSource}
-        placeholder="Pod"
-        fieldName="k8s.pod.name"
-        value={podName}
-        onChange={value => updateSearchQuery('k8s.pod.name', value, setPodName)}
-        chartConfig={chartConfig}
-        dataTestId="pod-filter-select"
-      />
-
-      <FilterSelect
-        metricSource={metricSource}
-        placeholder="Deployment"
-        fieldName="k8s.deployment.name"
-        value={deploymentName}
-        onChange={value =>
-          updateSearchQuery('k8s.deployment.name', value, setDeploymentName)
-        }
-        chartConfig={chartConfig}
-        dataTestId="deployment-filter-select"
-      />
-
-      <FilterSelect
-        metricSource={metricSource}
-        placeholder="Node"
-        fieldName="k8s.node.name"
-        value={nodeName}
-        onChange={value =>
-          updateSearchQuery('k8s.node.name', value, setNodeName)
-        }
-        chartConfig={chartConfig}
-        dataTestId="node-filter-select"
-      />
-
-      <FilterSelect
-        metricSource={metricSource}
-        placeholder="Namespace"
-        fieldName="k8s.namespace.name"
-        value={namespaceName}
-        onChange={value =>
-          updateSearchQuery('k8s.namespace.name', value, setNamespaceName)
-        }
-        chartConfig={chartConfig}
-        dataTestId="namespace-filter-select"
-      />
-
-      <FilterSelect
-        metricSource={metricSource}
-        placeholder="Cluster"
-        fieldName="k8s.cluster.name"
-        value={clusterName}
-        onChange={value =>
-          updateSearchQuery('k8s.cluster.name', value, setClusterName)
-        }
-        chartConfig={chartConfig}
-        dataTestId="cluster-filter-select"
+      {K8S_FILTER_FIELDS.map(({ field, placeholder, dataTestId }) => (
+        <FilterSelect
+          key={field}
+          placeholder={placeholder}
+          value={valueByField[field]}
+          onChange={value =>
+            updateSearchQuery(field, value, setterByField[field])
+          }
+          options={valuesByKey.get(`${resourceAttr}['${field}']`) ?? []}
+          loading={isLoading}
+          dataTestId={dataTestId}
+        />
+      ))}
+      <FilterLinkToggle
+        linked={linked}
+        onChange={setLinked}
+        data-testid="k8s-filters-link-toggle"
       />
       <Box style={{ flex: 1, minWidth: 200 }}>
         <SearchInputV2

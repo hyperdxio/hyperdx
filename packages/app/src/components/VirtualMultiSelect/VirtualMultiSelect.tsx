@@ -21,6 +21,8 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 type VirtualMultiSelectProps = {
   data: string[];
   disabled?: boolean;
+  /** Show a "Loading…" empty state while values are being fetched. */
+  loading?: boolean;
   placeholder?: string;
   values: string[];
   onChange: (values: string[]) => void;
@@ -30,6 +32,7 @@ type VirtualMultiSelectProps = {
 export function VirtualMultiSelect({
   data,
   disabled,
+  loading,
   placeholder,
   values,
   onChange,
@@ -188,7 +191,9 @@ export function VirtualMultiSelect({
               </div>
             </ScrollArea.Autosize>
           ) : (
-            <Combobox.Empty>Nothing found...</Combobox.Empty>
+            <Combobox.Empty>
+              {loading ? 'Loading…' : 'Nothing found...'}
+            </Combobox.Empty>
           )}
         </Combobox.Options>
       </Combobox.Dropdown>

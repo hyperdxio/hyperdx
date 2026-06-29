@@ -2,6 +2,7 @@ import { ColumnMeta } from '@/clickhouse';
 import { ClickhouseClient } from '@/clickhouse/node';
 import {
   isUnsupportedCountFunction,
+  optimizeFacetedKeyValuesConfig,
   optimizeGetKeyValuesCalls,
   tryConvertConfigToMaterializedViewSelect,
   tryOptimizeConfigWithMaterializedView,
@@ -2542,6 +2543,115 @@ describe('materializedViews', () => {
 
       // Keys should be from the MV
       expect(result[0].keys).toEqual(['environment', 'service']);
+    });
+  });
+
+  describe('optimizeFacetedKeyValuesConfig', () => {
+    const mockClickHouseClient = {
+      testChartConfigValidity: jest.fn(),
+    } as unknown as jest.Mocked<ClickhouseClient>;
+
+    const facetedChartConfig: ChartConfigWithOptDateRange = {
+      from: { databaseName: 'default', tableName: 'otel_spans' },
+      select: '',
+      where: '',
+      connection: 'test-connection',
+    };
+
+    const facetedSource = {
+      kind: SourceKind.Log,
+      from: { databaseName: 'default', tableName: 'otel_spans' },
+      materializedViews: [MV_CONFIG_METRIC_ROLLUP_1M],
+    } as TLogSource;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockClickHouseClient.testChartConfigValidity.mockResolvedValue({
+        isValid: true,
+        rowEstimate: 1000,
+        error: undefined,
+      });
+    });
+
+    it('routes to a covering MV and EXPLAINs the faceted select', async () => {
+      const result = await optimizeFacetedKeyValuesConfig({
+        chartConfig: facetedChartConfig,
+        keys: ['ServiceName', 'StatusCode'],
+        keyConditions: [undefined, "(ServiceName IN ('x'))"],
+        source: facetedSource,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      // The faceted query runs against the rollup, using its timestamp column.
+      expect(result.from).toEqual({
+        databaseName: 'default',
+        tableName: 'metrics_rollup_1m',
+      });
+      expect(result.timestampValueExpression).toBe('Timestamp');
+      // Validation used groupUniqArrayIf only for the constrained key.
+      expect(mockClickHouseClient.testChartConfigValidity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            from: { databaseName: 'default', tableName: 'metrics_rollup_1m' },
+            select:
+              "groupUniqArray(1)(ServiceName) AS param0, groupUniqArrayIf(1)(StatusCode, (ServiceName IN ('x'))) AS param1",
+          }),
+        }),
+      );
+    });
+
+    it('falls back to the raw table when a key is not an MV dimension', async () => {
+      const result = await optimizeFacetedKeyValuesConfig({
+        chartConfig: facetedChartConfig,
+        keys: ['ServiceName', 'NotADimension'],
+        keyConditions: [undefined, "(ServiceName IN ('x'))"],
+        source: facetedSource,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toBe(facetedChartConfig);
+      expect(
+        mockClickHouseClient.testChartConfigValidity,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the raw table when the MV EXPLAIN is invalid', async () => {
+      mockClickHouseClient.testChartConfigValidity.mockResolvedValue({
+        isValid: false,
+        error: '',
+      });
+
+      const result = await optimizeFacetedKeyValuesConfig({
+        chartConfig: facetedChartConfig,
+        keys: ['ServiceName', 'StatusCode'],
+        keyConditions: [undefined, "(ServiceName IN ('x'))"],
+        source: facetedSource,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toBe(facetedChartConfig);
+    });
+
+    it('returns the raw table for a source without materialized views', async () => {
+      const result = await optimizeFacetedKeyValuesConfig({
+        chartConfig: facetedChartConfig,
+        keys: ['ServiceName'],
+        keyConditions: [undefined],
+        source: {
+          kind: SourceKind.Log,
+          from: { databaseName: 'default', tableName: 'otel_spans' },
+        } as TLogSource,
+        clickhouseClient: mockClickHouseClient,
+        metadata,
+      });
+
+      expect(result).toBe(facetedChartConfig);
+      expect(
+        mockClickHouseClient.testChartConfigValidity,
+      ).not.toHaveBeenCalled();
     });
   });
 });

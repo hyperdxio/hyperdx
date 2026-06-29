@@ -315,6 +315,7 @@ export function useMultipleGetKeyValues(
   {
     chartConfigs,
     keys,
+    keyConditions,
     limit,
     disableRowLimit,
     mode = 'exact',
@@ -324,6 +325,8 @@ export function useMultipleGetKeyValues(
       | BuilderChartConfigWithDateRange
       | BuilderChartConfigWithDateRange[];
     keys: string[];
+    /** Per-key SQL predicates for faceted ('exact' mode) value lookups. */
+    keyConditions?: (string | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
     mode?: 'all' | 'exact';
@@ -349,6 +352,7 @@ export function useMultipleGetKeyValues(
       metadataMVsOverride,
       ...chartConfigsArr.map(cc => ({ ...cc })),
       ...keys,
+      keyConditions,
       disableRowLimit,
       maxKeys,
     ],
@@ -394,6 +398,7 @@ export function useMultipleGetKeyValues(
             return metadata.getKeyValuesWithMVs({
               chartConfig,
               keys: keys.slice(0, maxKeys),
+              keyConditions: keyConditions?.slice(0, maxKeys),
               limit,
               disableRowLimit,
               source,
@@ -454,6 +459,7 @@ export function useGetKeyValues(
   {
     chartConfig,
     keys,
+    keyConditions,
     limit,
     disableRowLimit,
     mode,
@@ -461,6 +467,8 @@ export function useGetKeyValues(
   }: {
     chartConfig?: BuilderChartConfigWithDateRange;
     keys: string[];
+    /** Per-key SQL predicates for faceted value lookups (groupUniqArrayIf). */
+    keyConditions?: (string | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
     mode?: 'all' | 'exact';
@@ -472,6 +480,7 @@ export function useGetKeyValues(
     {
       chartConfigs: chartConfig ? [chartConfig] : [],
       keys,
+      keyConditions,
       limit,
       disableRowLimit,
       mode,

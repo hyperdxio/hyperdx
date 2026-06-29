@@ -562,6 +562,34 @@ describe('Metadata', () => {
       );
     });
 
+    it('uses groupUniqArrayIf for keys that have a condition (faceted lookup)', async () => {
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getKeyValues({
+        chartConfig: mockChartConfig,
+        keys: ['colA', 'colB'],
+        keyConditions: [undefined, "(colA IN ('x'))"],
+        limit: 10,
+        disableRowLimit: true,
+        source,
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls.at(-1)![0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
+      // No condition → plain groupUniqArray; condition → groupUniqArrayIf so
+      // both facets resolve in a single scan.
+      expect(actualConfig.select).toContain(
+        'groupUniqArray(10)(colA) AS param0',
+      );
+      expect(actualConfig.select).toContain(
+        "groupUniqArrayIf(10)(colB, (colA IN ('x'))) AS param1",
+      );
+    });
+
     it('should apply row limit by default when disableRowLimit is not specified', async () => {
       await metadata.getKeyValues({
         chartConfig: mockChartConfig,

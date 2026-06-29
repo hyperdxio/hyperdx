@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { Group, Stack, Text, Tooltip } from '@mantine/core';
 import { IconAlertTriangle, IconHelp, IconRefresh } from '@tabler/icons-react';
 
+import { FilterLinkToggle } from './components/FilterLinkToggle';
 import { VirtualMultiSelect } from './components/VirtualMultiSelect/VirtualMultiSelect';
 import { useDashboardFilterValues } from './hooks/useDashboardFilterValues';
 
@@ -63,10 +65,10 @@ const DashboardFilterSelect = ({
           placeholder={value.length === 0 ? filter.name : undefined}
           values={value}
           data={sortedValues}
-          // Disable only while values are genuinely loading. A completed query
-          // that returned no rows (or failed) must stay interactive so the user
-          // can still clear/adjust the selection instead of being stuck.
-          disabled={isLoading}
+          // Surface loading as a dropdown hint rather than disabling the control,
+          // so a completed/empty/failed query stays interactive and the user can
+          // still clear or adjust the selection.
+          loading={isLoading}
           onChange={onChange}
           data-testid={`dashboard-filter-select-${filter.name}`}
         />
@@ -88,6 +90,12 @@ const DashboardFilters = ({
   filterValues,
   onSetFilterValue,
 }: DashboardFilterProps) => {
+  // "Link" mode (opt-in, off by default): each dropdown's values are narrowed by
+  // the others' selections. Off by default because contingent value lookups
+  // can't use the cheap per-key rollups and are more expensive at scale. When
+  // on, all of a source's facets are computed in a single groupUniqArrayIf scan.
+  const [linked, setLinked] = useState(false);
+
   const {
     data: filterValuesById,
     erroredFilterIds,
@@ -95,6 +103,8 @@ const DashboardFilters = ({
   } = useDashboardFilterValues({
     filters,
     dateRange,
+    // Only narrow by sibling selections when linked.
+    filterValues: linked ? filterValues : {},
   });
 
   return (
@@ -107,7 +117,7 @@ const DashboardFilters = ({
           : [];
         // Fall back to the hook-level fetching state only until this filter's
         // query has produced an entry; once it has (even with empty values),
-        // honor its own loading flag so a finished query never stays disabled.
+        // honor its own loading flag.
         const isLoadingValues = queriedFilterValues
           ? queriedFilterValues.isLoading
           : isFetching;
@@ -123,6 +133,19 @@ const DashboardFilters = ({
           />
         );
       })}
+      {filters.length >= 2 && (
+        <Stack gap={2} justify="flex-end">
+          {/* Spacer to align the toggle with the inputs (filters have a label row above). */}
+          <Text size="xs" c="transparent" aria-hidden>
+            &nbsp;
+          </Text>
+          <FilterLinkToggle
+            linked={linked}
+            onChange={setLinked}
+            data-testid="dashboard-filters-link-toggle"
+          />
+        </Stack>
+      )}
       {isFetching && <IconRefresh className="spin-animate" size={12} />}
     </Group>
   );
