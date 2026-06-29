@@ -1,0 +1,88 @@
+name: Alert on external contributions
+
+# Posts to Slack when an EXTERNAL contributor (author is not OWNER/MEMBER/
+# COLLABORATOR) opens an issue or PR, and adds an `external` label for triage.
+#
+# Why post directly instead of via the GitHub->Slack app's label subscription:
+# that app only notifies on open/close/reopen and does NOT fire when a label is
+# added after open — so a label-then-subscribe approach never alerts. Posting
+# from the workflow itself is reliable and real-time.
+#
+# Drop-in per-repo workflow. Needs a SLACK_WEBHOOK_OSS_PRS secret — an org-level
+# secret scoped to your OSS repos covers all of them at once. Uses
+# pull_request_target so the token/secret are available for fork PRs; safe
+# because it never checks out the PR's code (reads event metadata only).
+
+on:
+  issues:
+    types: [opened, reopened]
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group:
+    external-contrib-${{ github.event.issue.number ||
+    github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_OSS_PRS }}
+        with:
+          script: |
+            const LABEL = 'external';
+            const item = context.payload.issue ?? context.payload.pull_request;
+            if (!item) return;
+
+            // Skip draft PRs — they re-trigger via ready_for_review. (Issues have no draft.)
+            if (item.draft) { core.info(`Skipping draft PR #${item.number}`); return; }
+            // Skip bots (Dependabot, etc.).
+            if (item.user?.type === 'Bot') { core.info(`Skipping bot ${item.user?.login}`); return; }
+            // External == author has no write association with the repo.
+            const INTERNAL = ['OWNER', 'MEMBER', 'COLLABORATOR'];
+            if (INTERNAL.includes(item.author_association)) {
+              core.info(`#${item.number} by ${item.user?.login} is internal (${item.author_association}); skipping.`);
+              return;
+            }
+            // The `external` label doubles as our "already alerted" marker, so a
+            // reopen (label persists) won't post to Slack twice.
+            if (item.labels?.some(l => l.name === LABEL)) { core.info(`#${item.number} already handled.`); return; }
+
+            const { owner, repo } = context.repo;
+
+            // Ensure the label exists, tolerating the race where a concurrent (or
+            // prior) run already created it — createLabel then returns 422.
+            try {
+              await github.rest.issues.createLabel({
+                owner, repo, name: LABEL, color: 'D4C5F9',
+                description: 'Opened by an external contributor',
+              });
+              core.info(`Created '${LABEL}' label.`);
+            } catch (e) {
+              if (e.status !== 422) throw e; // 422 = already exists; anything else is real
+            }
+            await github.rest.issues.addLabels({ owner, repo, issue_number: item.number, labels: [LABEL] });
+            core.info(`Labeled #${item.number} (${item.author_association}).`);
+
+            // Notify Slack directly (the GitHub->Slack app does not fire on label-add).
+            const webhook = process.env.SLACK_WEBHOOK;
+            if (!webhook) { core.warning('SLACK_WEBHOOK_OSS_PRS not set — labeled only, no alert sent.'); return; }
+            const kind = context.payload.pull_request ? 'PR' : 'issue';
+            const text = `:sparkles: *New external ${kind}* in \`${owner}/${repo}\`\n`
+              + `<${item.html_url}|#${item.number}: ${item.title}>\n`
+              + `by \`${item.user.login}\` (${item.author_association})`;
+            // JSON.stringify safely escapes the attacker-controlled title.
+            const res = await fetch(webhook, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] }),
+            });
+            if (!res.ok) core.warning(`Slack post failed: ${res.status}`);
+            else core.info(`Alerted Slack for #${item.number}.`);
