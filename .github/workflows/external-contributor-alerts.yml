@@ -1,0 +1,101 @@
+name: Alert on external contributions
+
+# Posts to Slack when an EXTERNAL contributor (author is not OWNER/MEMBER/
+# COLLABORATOR) opens an issue or PR, and adds an `external` label for triage.
+#
+# Why post directly instead of via the GitHub->Slack app's label subscription:
+# that app only notifies on open/close/reopen and does NOT fire when a label is
+# added after open — so a label-then-subscribe approach never alerts. Posting
+# from the workflow itself is reliable and real-time.
+#
+# Drop-in per-repo workflow. Needs a SLACK_WEBHOOK_OSS_PRS secret — an org-level
+# secret scoped to your OSS repos covers all of them at once. Uses
+# pull_request_target so the token/secret are available for fork PRs; safe
+# because it never checks out the PR's code (reads event metadata only).
+
+on:
+  issues:
+    types: [opened, reopened]
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group:
+    external-contrib-${{ github.event.issue.number ||
+    github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        env:
+          SLACK_WEBHOOK_OSS_PRS: ${{ secrets.SLACK_WEBHOOK_OSS_PRS }}
+        with:
+          script: |
+            const LABEL = 'external';
+            const item = context.payload.issue ?? context.payload.pull_request;
+            if (!item) return;
+
+            // Skip draft PRs — they re-trigger via ready_for_review. (Issues have no draft.)
+            if (item.draft) { core.info(`Skipping draft PR #${item.number}`); return; }
+            // Skip bots (Dependabot, etc.).
+            if (item.user?.type === 'Bot') { core.info(`Skipping bot ${item.user?.login}`); return; }
+            // External == author has no write association with the repo.
+            const INTERNAL = ['OWNER', 'MEMBER', 'COLLABORATOR'];
+            if (INTERNAL.includes(item.author_association)) {
+              core.info(`#${item.number} by ${item.user?.login} is internal (${item.author_association}); skipping.`);
+              return;
+            }
+            // The `external` label doubles as our "already alerted" marker, so a
+            // reopen (label persists) won't post to Slack twice.
+            if (item.labels?.some(l => l.name === LABEL)) { core.info(`#${item.number} already handled.`); return; }
+
+            const { owner, repo } = context.repo;
+
+            // Deliver the alert FIRST. We only mark the item handled (label it)
+            // after a confirmed send, so an unset/failing webhook leaves it
+            // unlabeled and a later event (reopen / ready_for_review) retries,
+            // rather than silently swallowing the required alert.
+            const webhook = process.env.SLACK_WEBHOOK_OSS_PRS;
+            if (!webhook) {
+              core.warning('SLACK_WEBHOOK_OSS_PRS not set — no alert sent and not labeled (will retry on next event).');
+              return;
+            }
+            const kind = context.payload.pull_request ? 'PR' : 'issue';
+            const text = `:sparkles: *New external ${kind}* in \`${owner}/${repo}\`\n`
+              + `<${item.html_url}|#${item.number}: ${item.title}>\n`
+              + `by \`${item.user.login}\` (${item.author_association})`;
+            // JSON.stringify safely escapes the attacker-controlled title.
+            let delivered = false;
+            try {
+              const res = await fetch(webhook, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] }),
+              });
+              delivered = res.ok;
+              if (!delivered) core.setFailed(`Slack post failed (${res.status}); leaving #${item.number} unlabeled to retry.`);
+            } catch (e) {
+              core.setFailed(`Slack post errored (${e.message}); leaving #${item.number} unlabeled to retry.`);
+            }
+            if (!delivered) return;
+
+            // Delivered — mark handled by labeling (race-safe). The label also
+            // dedupes reopens via the guard above. A label failure here at worst
+            // risks one duplicate alert on a future reopen, never a lost alert.
+            try {
+              await github.rest.issues.createLabel({
+                owner, repo, name: LABEL, color: 'D4C5F9',
+                description: 'Opened by an external contributor',
+              });
+              core.info(`Created '${LABEL}' label.`);
+            } catch (e) {
+              if (e.status !== 422) throw e; // 422 = already exists; anything else is real
+            }
+            await github.rest.issues.addLabels({ owner, repo, issue_number: item.number, labels: [LABEL] });
+            core.info(`Alerted Slack and labeled #${item.number} (${item.author_association}).`);
