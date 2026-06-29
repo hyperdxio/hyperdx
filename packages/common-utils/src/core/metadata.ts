@@ -48,6 +48,46 @@ const inlineNonNegativeInt = (value: number, label: string): string => {
   return String(value);
 };
 
+const unquoteIdentifier = (identifier: string): string => {
+  if (
+    (identifier.startsWith('`') && identifier.endsWith('`')) ||
+    (identifier.startsWith('"') && identifier.endsWith('"'))
+  ) {
+    return identifier.slice(1, -1);
+  }
+  return identifier;
+};
+
+const quoteJsonPathSegment = (segment: string): string => {
+  const unquoted = unquoteIdentifier(segment);
+  return `\`${unquoted.replace(/`/g, '``')}\``;
+};
+
+const quoteIdentifierIfNeeded = (identifier: string): string => {
+  const unquoted = unquoteIdentifier(identifier);
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(unquoted)
+    ? unquoted
+    : quoteJsonPathSegment(unquoted);
+};
+
+const renderJsonStringSubcolumn = (
+  column: string,
+  jsonPath: string,
+): string => {
+  const columnIdentifier = quoteIdentifierIfNeeded(column);
+  if (jsonPath.includes('.:')) {
+    return `${columnIdentifier}.${jsonPath}`;
+  }
+
+  const path = jsonPath
+    .split('.')
+    .filter(Boolean)
+    .map(quoteJsonPathSegment)
+    .join('.');
+
+  return `${columnIdentifier}.${path}.:String`;
+};
+
 export class MetadataCache {
   private cache = new Map<string, any>();
   private pendingQueries = new Map<string, Promise<any>>();
@@ -162,6 +202,67 @@ export class Metadata {
     const currentSettings = this.getClickHouseSettings();
     const updatedSettings = { ...currentSettings, ...settings };
     this.cache.set('clickhouse-settings', updatedSettings);
+  }
+
+  private async renderMetadataKeyExpression({
+    databaseName,
+    tableName,
+    connectionId,
+    keyExpression,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    keyExpression: string;
+  }): Promise<string> {
+    const directColumn = await this.getColumn({
+      databaseName,
+      tableName,
+      column: unquoteIdentifier(keyExpression),
+      connectionId,
+    });
+    if (directColumn != null) {
+      return quoteIdentifierIfNeeded(keyExpression);
+    }
+
+    const bracketPath = parseKeyPath(keyExpression);
+    if (bracketPath.length >= 2) {
+      const column = unquoteIdentifier(bracketPath[0]);
+      const columnMeta = await this.getColumn({
+        databaseName,
+        tableName,
+        column,
+        connectionId,
+      });
+
+      if (
+        convertCHDataTypeToJSType(columnMeta?.type ?? '') === JSDataType.JSON
+      ) {
+        return renderJsonStringSubcolumn(column, bracketPath[1]);
+      }
+
+      return keyExpression;
+    }
+
+    const dotIdx = keyExpression.indexOf('.');
+    if (dotIdx === -1 || keyExpression.includes('(')) {
+      return keyExpression;
+    }
+
+    const column = unquoteIdentifier(keyExpression.slice(0, dotIdx));
+    const jsonPath = keyExpression.slice(dotIdx + 1);
+    const columnMeta = await this.getColumn({
+      databaseName,
+      tableName,
+      column,
+      connectionId,
+    });
+
+    if (convertCHDataTypeToJSType(columnMeta?.type ?? '') === JSDataType.JSON) {
+      return renderJsonStringSubcolumn(column, jsonPath);
+    }
+
+    return keyExpression;
   }
 
   private async queryTableMetadata({
@@ -700,8 +801,33 @@ export class Metadata {
     ];
     const where = chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`;
 
-    const sql = key
-      ? chSql`
+    const colMeta = key
+      ? await this.getColumn({
+          databaseName,
+          tableName,
+          column,
+          connectionId,
+        })
+      : undefined;
+    const jsonValueExpression =
+      key && convertCHDataTypeToJSType(colMeta?.type ?? '') === JSDataType.JSON
+        ? renderJsonStringSubcolumn(column, key)
+        : undefined;
+
+    let sql: ChSql;
+    if (jsonValueExpression) {
+      sql = chSql`
+      SELECT DISTINCT ${{
+        UNSAFE_RAW_SQL: jsonValueExpression,
+      }} as value
+      FROM ${tableExpr({ database: databaseName, table: tableName })}
+      ${where}
+      LIMIT ${{
+        Int32: maxValues,
+      }}
+    `;
+    } else if (key) {
+      sql = chSql`
       SELECT DISTINCT ${{
         Identifier: column,
       }}[${{ String: key }}] as value
@@ -710,8 +836,9 @@ export class Metadata {
       LIMIT ${{
         Int32: maxValues,
       }}
-    `
-      : chSql`
+    `;
+    } else {
+      sql = chSql`
       SELECT DISTINCT ${{
         Identifier: column,
       }} as value
@@ -721,6 +848,7 @@ export class Metadata {
         Int32: maxValues,
       }}
     `;
+    }
 
     return this.cache.getOrFetch<string[]>(cacheKey, async () => {
       const values = await this.clickhouseClient
@@ -1312,6 +1440,12 @@ export class Metadata {
     return this.cache.getOrFetch(
       `${objectHash(cacheKeyConfig)}.${key}.valuesDistribution`,
       async () => {
+        const renderedKey = await this.renderMetadataKeyExpression({
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+          keyExpression: key,
+        });
         const config: BuilderChartConfigWithDateRange = {
           ...chartConfig,
           with: [
@@ -1334,7 +1468,7 @@ export class Metadata {
               condition: `cityHash64(${chartConfig.timestampValueExpression}, rand()) % (SELECT sample_factor FROM tableStats) = 0`,
             },
           ],
-          select: `${key} AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage`,
+          select: `${renderedKey} AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage`,
           orderBy: '__hdx_percentage DESC',
           groupBy: `__hdx_value`,
           limit: { limit },
@@ -1668,12 +1802,23 @@ export class Metadata {
       async () => {
         if (keys.length === 0) return [];
 
+        const renderedKeys = await Promise.all(
+          keys.map(key =>
+            this.renderMetadataKeyExpression({
+              databaseName: chartConfig.from.databaseName,
+              tableName: chartConfig.from.tableName,
+              connectionId: chartConfig.connection,
+              keyExpression: key,
+            }),
+          ),
+        );
+
         // When disableRowLimit is true, query directly without CTE
         // Otherwise, use CTE with row limits for sampling
         const sqlConfig = disableRowLimit
           ? {
               ...chartConfig,
-              select: keys
+              select: renderedKeys
                 .map((k, i) => `groupUniqArray(${limit})(${k}) AS param${i}`)
                 .join(', '),
             }
@@ -1683,7 +1828,8 @@ export class Metadata {
               // than selecting just the JSON paths corresponding to the given keys.
               // paramN aliases are used to avoid issues with special characters or complex expressions in keys.
               const selectExpr =
-                keys.map((k, i) => `${k} as param${i}`).join(', ') || '*';
+                renderedKeys.map((k, i) => `${k} as param${i}`).join(', ') ||
+                '*';
 
               return {
                 with: [
