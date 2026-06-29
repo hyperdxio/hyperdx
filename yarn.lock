@@ -3118,28 +3118,24 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@clickhouse/client-common@npm:1.12.1, @clickhouse/client-common@npm:^1.12.1":
-  version: 1.12.1
-  resolution: "@clickhouse/client-common@npm:1.12.1"
-  checksum: 10c0/9f475c8517b164c3676a969b60c8165a4b0558906917dbe97ae35f69f2702a6fc198cbdb2e6d2ec3543c627ec04a7e2fccb41f3114452bf7f4818152c0f98a5d
+"@clickhouse/client-common@npm:1.23.0-head.fae5998.1":
+  version: 1.23.0-head.fae5998.1
+  resolution: "@clickhouse/client-common@npm:1.23.0-head.fae5998.1"
+  checksum: 10c0/8fa132376daa46cb046e7a50c2ef53c61456034aecd36363e2d60bc948265f08e1a521f7835935fb067a0673c70081eed64462709f64c5a10e1249155bc189c9
   languageName: node
   linkType: hard
 
-"@clickhouse/client-web@npm:^1.12.1":
-  version: 1.12.1
-  resolution: "@clickhouse/client-web@npm:1.12.1"
-  dependencies:
-    "@clickhouse/client-common": "npm:1.12.1"
-  checksum: 10c0/3e374288a2e0e4ced37220638629612dc8d6ced66490c2bdac136ddb887d5e108b9992b26d57911d6007bd47eaf7a754caa48e3afdfdb44cbd4f07bec7900995
+"@clickhouse/client-web@npm:1.23.0-head.fae5998.1":
+  version: 1.23.0-head.fae5998.1
+  resolution: "@clickhouse/client-web@npm:1.23.0-head.fae5998.1"
+  checksum: 10c0/15ca088a6ea2d6e568bda7f68dc74a0216520127859e2dc46c8868135712efdbae409ccf8bc201d730da62d2e9831b124e0310fae8f7e7ea8cb19ca73224b256
   languageName: node
   linkType: hard
 
-"@clickhouse/client@npm:^1.12.1":
-  version: 1.12.1
-  resolution: "@clickhouse/client@npm:1.12.1"
-  dependencies:
-    "@clickhouse/client-common": "npm:1.12.1"
-  checksum: 10c0/4d715accad5ba74248c63fab83469ebeffc16d7cc5050ee7e5f9e7dd48d0e7c4b79517bf5917f2a60599960aee997e5d8341c480d056286f5d9a86530623211f
+"@clickhouse/client@npm:1.23.0-head.fae5998.1":
+  version: 1.23.0-head.fae5998.1
+  resolution: "@clickhouse/client@npm:1.23.0-head.fae5998.1"
+  checksum: 10c0/a13e1c8d350b59bb42882b7b83a1299675e3fa5bcc2b9786b12506e920f9a592edb74ad5de62cceddab95ed12d21e5e4276bc1e0030e6bc2e0d7fd42d65b7c59
   languageName: node
   linkType: hard
 
@@ -4481,7 +4477,7 @@ __metadata:
     pino-http: "npm:^11.0.0"
     pino-pretty: "npm:^13.1.1"
     promised-handlebars: "npm:^2.0.1"
-    protobufjs: "npm:^7.5.8"
+    protobufjs: "npm:^7.6.3"
     rimraf: "npm:^4.4.1"
     serialize-error: "npm:^8.1.0"
     supertest: "npm:^6.3.1"
@@ -4643,7 +4639,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hyperdx/cli@workspace:packages/cli"
   dependencies:
-    "@clickhouse/client": "npm:^1.12.1"
+    "@clickhouse/client": "npm:1.23.0-head.fae5998.1"
     "@hyperdx/common-utils": "npm:^0.20.0"
     "@jest/globals": "npm:^30.2.0"
     "@types/crypto-js": "npm:^4.2.2"
@@ -4674,9 +4670,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:
-    "@clickhouse/client": "npm:^1.12.1"
-    "@clickhouse/client-common": "npm:^1.12.1"
-    "@clickhouse/client-web": "npm:^1.12.1"
+    "@clickhouse/client": "npm:1.23.0-head.fae5998.1"
+    "@clickhouse/client-common": "npm:1.23.0-head.fae5998.1"
+    "@clickhouse/client-web": "npm:1.23.0-head.fae5998.1"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@types/hyperdx__lucene": "npm:@types/lucene@*"
     "@types/jest": "npm:^29.5.14"
@@ -4706,7 +4702,7 @@ __metadata:
   resolution: "@hyperdx/hdx-eval@workspace:packages/hdx-eval"
   dependencies:
     "@anthropic-ai/sdk": "npm:^0.92.0"
-    "@clickhouse/client": "npm:^1.12.1"
+    "@clickhouse/client": "npm:1.23.0-head.fae5998.1"
     "@dotenvx/dotenvx": "npm:^1.51.1"
     "@types/jest": "npm:^29.5.14"
     "@types/ms": "npm:^0.7.31"
@@ -23706,7 +23702,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"protobufjs@npm:^7.3.0, protobufjs@npm:^7.5.8":
+"protobufjs@npm:^7.3.0":
   version: 7.5.8
   resolution: "protobufjs@npm:7.5.8"
   dependencies:
@@ -23743,6 +23739,26 @@ __metadata:
     "@types/node": "npm:>=13.7.0"
     long: "npm:^5.3.2"
   checksum: 10c0/3c552dfe3cbcfad2d6c312a76cd189cf5be9fb36b203f6292f79c6020d675f7f33d5531ce312441c42ae75deb24ced32760e64fe4aa3d5b3c2295fd67cea270c
+  languageName: node
+  linkType: hard
+
+"protobufjs@npm:^7.6.3":
+  version: 7.6.3
+  resolution: "protobufjs@npm:7.6.3"
+  dependencies:
+    "@protobufjs/aspromise": "npm:^1.1.2"
+    "@protobufjs/base64": "npm:^1.1.2"
+    "@protobufjs/codegen": "npm:^2.0.5"
+    "@protobufjs/eventemitter": "npm:^1.1.1"
+    "@protobufjs/fetch": "npm:^1.1.1"
+    "@protobufjs/float": "npm:^1.0.2"
+    "@protobufjs/inquire": "npm:^1.1.2"
+    "@protobufjs/path": "npm:^1.1.2"
+    "@protobufjs/pool": "npm:^1.1.0"
+    "@protobufjs/utf8": "npm:^1.1.1"
+    "@types/node": "npm:>=13.7.0"
+    long: "npm:^5.3.2"
+  checksum: 10c0/e1132b1ff82684280041550d720398568763ff40928def03e8bb409eaed6edd222e63372e3f52d7c19e5a8e9975333480e26950759086eb5a1f5b5c118da7bf8
   languageName: node
   linkType: hard
 

@@ -175,7 +175,8 @@ export default function ChartDisplaySettingsDrawer({
 
   // The series-limit CTE is only emitted for builder group-by time charts;
   // raw SQL configs author their own LIMIT logic directly.
-  const showSeriesLimit = isTimeChart && configType !== 'sql';
+  const showSeriesLimit =
+    isTimeChart && configType !== 'sql' && configType !== 'promql';
 
   // Group By column ordering only applies to builder table charts; raw SQL
   // configs let the user author whatever column order they want directly.

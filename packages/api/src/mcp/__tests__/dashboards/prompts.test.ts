@@ -81,9 +81,11 @@ describe('MCP Dashboard Prompts', () => {
       const next = prompt.indexOf('\n== ', idx + 1);
       const section = prompt.slice(idx, next === -1 ? prompt.length : next);
 
-      // Both destination types are mentioned.
+      // All destination types are mentioned.
       expect(section).toContain('type: "search"');
       expect(section).toContain('type: "dashboard"');
+      expect(section).toContain('type: "external"');
+      expect(section).toContain('urlTemplate');
       // Both target modes are mentioned.
       expect(section).toContain('mode: "id"');
       expect(section).toContain('mode: "template"');

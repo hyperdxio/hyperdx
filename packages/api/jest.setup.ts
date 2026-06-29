@@ -1,5 +1,11 @@
 jest.retryTimes(1, { logErrorsBeforeRetry: true });
 
+// http-proxy-middleware v4 is ESM-only and Jest's CJS module loader cannot
+// load ESM packages. Auto-mock since no test exercises the proxy directly.
+jest.mock('http-proxy-middleware', () => ({
+  createProxyMiddleware: jest.fn(() => jest.fn()),
+}));
+
 // Suppress noisy console output during test runs.
 // - debug/info: ClickHouse query logging, server startup messages
 // - warn: expected column-not-found warnings from renderChartConfig on CTE tables
