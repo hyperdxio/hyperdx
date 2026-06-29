@@ -58,8 +58,36 @@ jobs:
 
             const { owner, repo } = context.repo;
 
-            // Ensure the label exists, tolerating the race where a concurrent (or
-            // prior) run already created it — createLabel then returns 422.
+            // Deliver the alert FIRST. We only mark the item handled (label it)
+            // after a confirmed send, so an unset/failing webhook leaves it
+            // unlabeled and a later event (reopen / ready_for_review) retries,
+            // rather than silently swallowing the required alert.
+            const webhook = process.env.SLACK_WEBHOOK_OSS_PRS;
+            if (!webhook) {
+              core.warning('SLACK_WEBHOOK_OSS_PRS not set — no alert sent and not labeled (will retry on next event).');
+              return;
+            }
+            const kind = context.payload.pull_request ? 'PR' : 'issue';
+            const text = `:sparkles: *New external ${kind}* in \`${owner}/${repo}\`\n`
+              + `<${item.html_url}|#${item.number}: ${item.title}>\n`
+              + `by \`${item.user.login}\` (${item.author_association})`;
+            // JSON.stringify safely escapes the attacker-controlled title.
+            let delivered = false;
+            try {
+              const res = await fetch(webhook, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] }),
+              });
+              delivered = res.ok;
+              if (!delivered) core.setFailed(`Slack post failed (${res.status}); leaving #${item.number} unlabeled to retry.`);
+            } catch (e) {
+              core.setFailed(`Slack post errored (${e.message}); leaving #${item.number} unlabeled to retry.`);
+            }
+            if (!delivered) return;
+
+            // Delivered — mark handled by labeling (race-safe). The label also
+            // dedupes reopens via the guard above. A label failure here at worst
+            // risks one duplicate alert on a future reopen, never a lost alert.
             try {
               await github.rest.issues.createLabel({
                 owner, repo, name: LABEL, color: 'D4C5F9',
@@ -70,19 +98,4 @@ jobs:
               if (e.status !== 422) throw e; // 422 = already exists; anything else is real
             }
             await github.rest.issues.addLabels({ owner, repo, issue_number: item.number, labels: [LABEL] });
-            core.info(`Labeled #${item.number} (${item.author_association}).`);
-
-            // Notify Slack directly (the GitHub->Slack app does not fire on label-add).
-            const webhook = process.env.SLACK_WEBHOOK_OSS_PRS;
-            if (!webhook) { core.warning('SLACK_WEBHOOK_OSS_PRS not set — labeled only, no alert sent.'); return; }
-            const kind = context.payload.pull_request ? 'PR' : 'issue';
-            const text = `:sparkles: *New external ${kind}* in \`${owner}/${repo}\`\n`
-              + `<${item.html_url}|#${item.number}: ${item.title}>\n`
-              + `by \`${item.user.login}\` (${item.author_association})`;
-            // JSON.stringify safely escapes the attacker-controlled title.
-            const res = await fetch(webhook, {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] }),
-            });
-            if (!res.ok) core.warning(`Slack post failed: ${res.status}`);
-            else core.info(`Alerted Slack for #${item.number}.`);
+            core.info(`Alerted Slack and labeled #${item.number} (${item.author_association}).`);
