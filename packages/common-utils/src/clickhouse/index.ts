@@ -419,7 +419,12 @@ export const computeResultSetRatio = (resultSet: ResponseJSON<any>) => {
     timestampColumn ? String(row[timestampColumn.name]) : '__all__';
   const totalDenominatorByBucket = new Map<string, number>();
   for (const row of _data) {
-    const denom = castToNumber(row[denominator.name]);
+    const denominatorValue = row[denominator.name];
+    // A group missing from the denominator split has an undefined value;
+    // castToNumber returns it as-is and Number.isNaN(undefined) is false, so
+    // guard explicitly or it would poison the whole bucket total with NaN.
+    const denom =
+      denominatorValue == null ? NaN : castToNumber(denominatorValue);
     if (!Number.isNaN(denom)) {
       const key = bucketKey(row);
       totalDenominatorByBucket.set(

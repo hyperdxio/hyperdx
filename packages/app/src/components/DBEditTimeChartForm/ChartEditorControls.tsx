@@ -7,7 +7,10 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  TableConnection,
+  TableConnectionChoice,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   HEATMAP_ALLOWED_SOURCE_KINDS,
   isBuilderChartConfig,
@@ -111,25 +114,39 @@ export function ChartEditorControls({
 
   // Metric sources have no single `from.tableName` (they fan out to per-type
   // metric tables), so the default tableConnection can't drive attribute
-  // autocomplete for the chart-level Group By. Point it at the selected
-  // metric's table + name so the editor can look up `Attributes` keys while
-  // typing, matching the per-series inputs.
+  // autocomplete for the chart-level Group By. Build one connection per series'
+  // metric table + name so the editor unions `Attributes` keys across every
+  // series (a ratio can mix metric types), matching the per-series inputs.
   const series = useWatch({ control, name: 'series' });
-  const groupByTableConnection = useMemo<TableConnection>(() => {
-    if (tableSource?.kind === SourceKind.Metric && Array.isArray(series)) {
-      const metric = series.find(s => s?.metricType && s?.metricName);
-      const metricTable = getMetricTableName(tableSource, metric?.metricType);
-      if (metricTable) {
-        return {
-          databaseName: tableSource.from.databaseName,
-          tableName: metricTable,
-          connectionId: tableSource.connection,
-          metricName: metric?.metricName,
-        };
-      }
+  const groupByTableConnections = useMemo<TableConnection[] | undefined>(() => {
+    if (tableSource?.kind !== SourceKind.Metric || !Array.isArray(series)) {
+      return undefined;
     }
-    return tableConnection;
-  }, [tableSource, series, tableConnection]);
+    const seen = new Set<string>();
+    const connections: TableConnection[] = [];
+    for (const s of series) {
+      if (!s?.metricType || !s?.metricName) continue;
+      const metricTable = getMetricTableName(tableSource, s.metricType);
+      if (!metricTable) continue;
+      const key = `${metricTable}::${s.metricName}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      connections.push({
+        databaseName: tableSource.from.databaseName,
+        tableName: metricTable,
+        connectionId: tableSource.connection,
+        metricName: s.metricName,
+      });
+    }
+    return connections.length > 0 ? connections : undefined;
+  }, [tableSource, series]);
+
+  // tableConnection / tableConnections are mutually exclusive (XOR union), so
+  // pick one: union of per-series metric tables when available, else the
+  // source's single connection.
+  const groupByConnectionProps: TableConnectionChoice = groupByTableConnections
+    ? { tableConnections: groupByTableConnections }
+    : { tableConnection };
 
   return (
     <>
@@ -272,7 +289,7 @@ export function ChartEditorControls({
                 </div>
                 <div>
                   <SQLInlineEditorControlled
-                    tableConnection={groupByTableConnection}
+                    {...groupByConnectionProps}
                     control={control}
                     name={`groupBy`}
                     placeholder="SQL Columns"
