@@ -440,6 +440,69 @@ describe('computeResultSetRatio', () => {
       /Unable to compute ratio/,
     );
   });
+
+  it('computes a grouped ratio as each group share of the per-bucket total (lines sum to the overall)', () => {
+    // Joined meta seeds the two value columns first, then the group + timestamp
+    // columns (mirrors queryChartConfig's merge output).
+    const mockResultSet: ResponseJSON<any> = {
+      meta: [
+        { name: 'errors', type: 'UInt64' },
+        { name: 'total', type: 'UInt64' },
+        { name: 'tenant', type: 'String' },
+        { name: 'timestamp', type: 'DateTime' },
+      ],
+      data: [
+        { errors: '20', total: '100', tenant: 'acme', timestamp: 't0' },
+        { errors: '30', total: '100', tenant: 'globex', timestamp: 't0' },
+        { errors: '10', total: '100', tenant: 'acme', timestamp: 't1' },
+      ],
+      rows: 3,
+      statistics: { elapsed: 0.1, rows_read: 3, bytes_read: 100 },
+    };
+
+    const result = computeResultSetRatio(mockResultSet);
+
+    // ratio column + carried-through group + timestamp
+    expect(result.meta.map(m => m.name)).toEqual([
+      'errors/total',
+      'tenant',
+      'timestamp',
+    ]);
+    // Denominator is the per-bucket total across all groups (t0: 200, t1: 100),
+    // so each group is its contribution to the overall rate.
+    expect(result.data).toEqual([
+      { 'errors/total': 0.1, tenant: 'acme', timestamp: 't0' }, // 20/200
+      { 'errors/total': 0.15, tenant: 'globex', timestamp: 't0' }, // 30/200
+      { 'errors/total': 0.1, tenant: 'acme', timestamp: 't1' }, // 10/100
+    ]);
+    // t0 contributions sum to the overall error rate for that bucket (50/200).
+    const t0 = result.data.filter(r => r.timestamp === 't0');
+    expect(t0.reduce((s, r) => s + r['errors/total'], 0)).toBeCloseTo(0.25);
+  });
+
+  it('renders a zero-error group as 0% (missing numerator), not N/A', () => {
+    const mockResultSet: ResponseJSON<any> = {
+      meta: [
+        { name: 'errors', type: 'UInt64' },
+        { name: 'total', type: 'UInt64' },
+        { name: 'tenant', type: 'String' },
+        { name: 'timestamp', type: 'DateTime' },
+      ],
+      data: [
+        // has errors -> contributes 20/200
+        { errors: '20', total: '100', tenant: 'acme', timestamp: 't0' },
+        // denominator only (no rows in the error-filtered numerator query) -> 0%
+        { total: '100', tenant: 'globex', timestamp: 't0' },
+      ],
+      rows: 2,
+      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
+    };
+
+    const result = computeResultSetRatio(mockResultSet);
+
+    expect(result.data[0]['errors/total']).toBe(0.1); // 20 / (100+100)
+    expect(result.data[1]['errors/total']).toBe(0); // 0 / 200
+  });
 });
 
 describe('processClickhouseSettings - optimization settings', () => {
