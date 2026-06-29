@@ -1776,6 +1776,7 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   traceIdExpression: z.string().optional(),
   spanIdExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
+  knownColumnsListExpression: z.string().optional(),
   /**
    * @deprecated Application-side SQL predicate AND'd into every query against
    * the source. Not a security boundary; bypassable by direct table SELECT.
@@ -1826,6 +1827,7 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
+  knownColumnsListExpression: z.string().optional(),
   displayedTimestampValueExpression: z.string().optional(),
   highlightedTraceAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),

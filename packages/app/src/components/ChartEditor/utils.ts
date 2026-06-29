@@ -385,18 +385,35 @@ export const validateChartForm = (
     }
   }
 
-  // Validate number, pie, and heatmap charts only have one series
+  // Validate pie and heatmap charts only have one series
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
-    (form.displayType === DisplayType.Number ||
-      form.displayType === DisplayType.Pie ||
+    (form.displayType === DisplayType.Pie ||
       form.displayType === DisplayType.Heatmap) &&
     form.series.length > 1
   ) {
     errors.push({
       path: `series`,
       message: `Only one series is allowed for ${form.displayType} charts`,
+    });
+  }
+
+  // Number charts allow a second series only for ratio mode (numerator /
+  // denominator, which can be shown as a percentage via the number format);
+  // otherwise they show a single value.
+  if (
+    !isRawSqlChart &&
+    Array.isArray(form.series) &&
+    form.displayType === DisplayType.Number &&
+    form.series.length > (form.seriesReturnType === 'ratio' ? 2 : 1)
+  ) {
+    errors.push({
+      path: `series`,
+      message:
+        form.seriesReturnType === 'ratio'
+          ? 'Number charts support at most two series (ratio mode)'
+          : 'Number charts support a single series unless ratio mode (As Ratio) is enabled',
     });
   }
 

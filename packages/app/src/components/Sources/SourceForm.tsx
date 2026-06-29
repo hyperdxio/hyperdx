@@ -179,6 +179,8 @@ function setCorrelationFieldValue(
 }
 
 const DEFAULT_DATABASE = 'default';
+const KNOWN_COLUMNS_EXPRESSION_HELP_TEXT =
+  'For Distributed table sources whose target tables have non-matching column sets. Provide a list of columns supported across all target tables; it is used instead of SELECT * when fetching full row data (e.g. the row side panel). Leave blank to select all columns. This should be a comma-separated list of column names - do not include non-column expressions or aliases.';
 
 // Placeholder written into from.databaseName / from.tableName when the
 // selected connection is Prometheus-only.
@@ -1458,6 +1460,22 @@ function LogTableModelForm(props: TableModelProps) {
           sourceKind={SourceKind.Log}
           tableConnection={tableConnection}
         />
+        <FormRow
+          label={'Known Columns List'}
+          helpText={KNOWN_COLUMNS_EXPRESSION_HELP_TEXT}
+        >
+          <SQLInlineEditorControlled
+            tableConnection={{
+              databaseName,
+              tableName,
+              connectionId,
+            }}
+            control={control}
+            name="knownColumnsListExpression"
+            placeholder="Timestamp, Body, ServiceName"
+            disableKeywordAutocomplete
+          />
+        </FormRow>
         <UseTextIndexFormRow control={control} />
         <Divider />
         <HighlightedAttributeExpressionsFormRow
@@ -1801,6 +1819,22 @@ function TraceTableModelForm(props: TableModelProps) {
         sourceKind={SourceKind.Trace}
         tableConnection={tableConnection}
       />
+      <FormRow
+        label={'Known Columns List'}
+        helpText={KNOWN_COLUMNS_EXPRESSION_HELP_TEXT}
+      >
+        <SQLInlineEditorControlled
+          tableConnection={{
+            databaseName,
+            tableName,
+            connectionId,
+          }}
+          control={control}
+          name="knownColumnsListExpression"
+          placeholder="Timestamp, Body, ServiceName"
+          disableKeywordAutocomplete
+        />
+      </FormRow>
       <UseTextIndexFormRow control={control} />
       <FormRow
         label={'Displayed Timestamp Column'}
