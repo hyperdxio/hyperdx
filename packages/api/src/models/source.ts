@@ -144,6 +144,7 @@ export const LogSource = Source.discriminator<ILogSource>(
     traceIdExpression: String,
     spanIdExpression: String,
     implicitColumnExpression: String,
+    knownColumnsListExpression: String,
     useTextIndexForImplicitColumn: {
       type: String,
       enum: Object.values(UseTextIndex),
@@ -197,6 +198,7 @@ export const TraceSource = Source.discriminator<ITraceSource>(
     eventAttributesExpression: String,
     spanEventsValueExpression: String,
     implicitColumnExpression: String,
+    knownColumnsListExpression: String,
     useTextIndexForImplicitColumn: {
       type: String,
       enum: Object.values(UseTextIndex),
