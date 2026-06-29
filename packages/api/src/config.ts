@@ -57,13 +57,14 @@ export const IS_PROMQL_ENABLED = env.ENABLE_PROMQL === 'true';
 export const IS_SPAN_METRICS_ENABLED = env.ENABLE_SPAN_METRICS === 'true';
 
 // Opt-in: also remote-write the span-derived metrics (with exemplars) to a
-// Prometheus endpoint (SPAN_METRICS_PROM_RW_ENDPOINT on the collector) so the
-// native Prometheus query_exemplars path can be tested against real data.
-// Requires the endpoint to be set; without it the generated collector config
-// would fail to resolve ${env:SPAN_METRICS_PROM_RW_ENDPOINT} and not start.
+// Prometheus endpoint so the native Prometheus query_exemplars path can be
+// tested against real data. The endpoint is resolved here (API side) and
+// inlined into the generated collector config, so the collector container does
+// not need SPAN_METRICS_PROM_RW_ENDPOINT in its own environment. Requires the
+// endpoint to be set; without it the feature stays disabled.
+export const SPAN_METRICS_PROM_RW_ENDPOINT = env.SPAN_METRICS_PROM_RW_ENDPOINT;
 export const IS_SPAN_METRICS_PROM_RW_ENABLED =
-  env.ENABLE_SPAN_METRICS_PROM_RW === 'true' &&
-  !!env.SPAN_METRICS_PROM_RW_ENDPOINT;
+  env.ENABLE_SPAN_METRICS_PROM_RW === 'true' && !!SPAN_METRICS_PROM_RW_ENDPOINT;
 
 // FOR CI ONLY
 export const CLICKHOUSE_HOST = env.CLICKHOUSE_HOST as string;

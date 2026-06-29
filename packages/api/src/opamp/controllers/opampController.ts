@@ -387,7 +387,8 @@ export const buildOtelCollectorConfig = (
       // be exercised against the same real, generated data.
       if (config.IS_SPAN_METRICS_PROM_RW_ENABLED) {
         otelCollectorConfig.exporters['prometheusremotewrite/spanmetrics'] = {
-          endpoint: '${env:SPAN_METRICS_PROM_RW_ENDPOINT}',
+          // Guaranteed set by IS_SPAN_METRICS_PROM_RW_ENABLED above.
+          endpoint: config.SPAN_METRICS_PROM_RW_ENDPOINT!,
           tls: { insecure: true },
           resource_to_telemetry_conversion: { enabled: true },
         };
