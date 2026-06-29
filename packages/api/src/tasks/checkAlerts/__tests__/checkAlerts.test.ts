@@ -8971,10 +8971,8 @@ describe('checkAlerts', () => {
       }).save();
     };
 
-    const toLookups = (
-      ids: string[],
-      interval: AlertInterval = '5m',
-    ) => ids.map(id => ({ id, interval }));
+    const toLookups = (ids: string[], interval: AlertInterval = '5m') =>
+      ids.map(id => ({ id, interval }));
 
     it('computes interval-based lookback with a floor and max cap', () => {
       expect(computeAlertHistoryLookbackMs('1m')).toBe(ms('1h'));
