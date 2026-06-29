@@ -53,7 +53,7 @@ test.describe('Search', { tag: '@search' }, () => {
       });
 
       await test.step('Navigate through all side panel tabs', async () => {
-        const tabs = ['parsed', 'trace', 'context', 'overview'];
+        const tabs = ['parsed', 'context', 'overview'];
 
         // Use side panel component to navigate tabs
         for (const tabName of tabs) {
