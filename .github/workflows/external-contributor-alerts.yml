@@ -46,17 +46,33 @@ jobs:
             if (item.draft) { core.info(`Skipping draft PR #${item.number}`); return; }
             // Skip bots (Dependabot, etc.).
             if (item.user?.type === 'Bot') { core.info(`Skipping bot ${item.user?.login}`); return; }
-            // External == author has no write association with the repo.
-            const INTERNAL = ['OWNER', 'MEMBER', 'COLLABORATOR'];
-            if (INTERNAL.includes(item.author_association)) {
-              core.info(`#${item.number} by ${item.user?.login} is internal (${item.author_association}); skipping.`);
+            // External == author has no write access to the repo.
+            const { owner, repo } = context.repo;
+            // Fast path (free): public members & direct collaborators.
+            let internal = ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(item.author_association);
+            // Slow path: catches PRIVATE org members via their granted repo access.
+            // author_association only reports MEMBER for *public* members, so a
+            // member with concealed membership would otherwise be misflagged as
+            // external. Public repos grant everyone implicit 'read', so require
+            // triage+ (not permission != 'none').
+            if (!internal) {
+              try {
+                const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner, repo, username: item.user.login,
+                });
+                const p = data.user?.permissions ?? {};
+                internal = !!(p.admin || p.maintain || p.push || p.triage);
+              } catch (e) {
+                if (e.status !== 404) throw e; // 404 = not a collaborator => external
+              }
+            }
+            if (internal) {
+              core.info(`#${item.number} by ${item.user?.login} is internal; skipping.`);
               return;
             }
             // The `external` label doubles as our "already alerted" marker, so a
             // reopen (label persists) won't post to Slack twice.
             if (item.labels?.some(l => l.name === LABEL)) { core.info(`#${item.number} already handled.`); return; }
-
-            const { owner, repo } = context.repo;
 
             // Deliver the alert FIRST. We only mark the item handled (label it)
             // after a confirmed send, so an unset/failing webhook leaves it
