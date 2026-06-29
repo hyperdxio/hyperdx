@@ -2,6 +2,7 @@ import express from 'express';
 import { z } from 'zod';
 
 import { SavedSearch } from '@/models/savedSearch';
+import { Source } from '@/models/source';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { objectIdSchema } from '@/utils/zod';
 
@@ -119,6 +120,12 @@ router.post(
 
       const { name, sourceId, where, whereLanguage, select, orderBy, tags } =
         req.body;
+
+      const source = await Source.findOne({ _id: sourceId, team: teamId });
+      if (source == null) {
+        return res.status(400).json({ error: 'sourceId not found' });
+      }
+
       const doc = await new SavedSearch({
         team: teamId,
         source: sourceId,
@@ -179,6 +186,12 @@ router.put(
 
       const { name, sourceId, where, whereLanguage, select, orderBy, tags } =
         req.body;
+
+      const source = await Source.findOne({ _id: sourceId, team: teamId });
+      if (source == null) {
+        return res.status(400).json({ error: 'sourceId not found' });
+      }
+
       const doc = await SavedSearch.findOneAndUpdate(
         { _id: req.params.id, team: teamId },
         {

@@ -3,7 +3,7 @@ import request, { SuperAgentTest } from 'supertest';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import { SavedSearch } from '@/models/savedSearch';
-import Source from '@/models/source';
+import { Source } from '@/models/source';
 import { ITeam } from '@/models/team';
 import { IUser } from '@/models/user';
 
@@ -186,6 +186,26 @@ describe('External API v2 Saved Searches', () => {
       await authRequest('post', BASE_URL).send({ sourceId }).expect(400);
     });
 
+    it('rejects a sourceId belonging to another team', async () => {
+      const otherSource = await Source.create({
+        team: new ObjectId(),
+        name: 'Other Team Source',
+        kind: 'log',
+        connection: new ObjectId(),
+        from: { databaseName: 'otel', tableName: 'otel_logs' },
+        timestampValueExpression: 'Timestamp',
+      });
+      await authRequest('post', BASE_URL)
+        .send({ name: 'Cross team', sourceId: otherSource._id.toString() })
+        .expect(400);
+    });
+
+    it('rejects a non-existent sourceId', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ name: 'Bad source', sourceId: new ObjectId().toString() })
+        .expect(400);
+    });
+
     it('requires authentication', async () => {
       await request(server.getHttpServer())
         .post(BASE_URL)
@@ -239,6 +259,25 @@ describe('External API v2 Saved Searches', () => {
       });
       await authRequest('put', `${BASE_URL}/${doc._id}`)
         .send({ name: 'No source' })
+        .expect(400);
+    });
+
+    it('rejects a sourceId belonging to another team', async () => {
+      const doc = await SavedSearch.create({
+        team: team._id,
+        source: new ObjectId(sourceId),
+        name: 'My Search',
+      });
+      const otherSource = await Source.create({
+        team: new ObjectId(),
+        name: 'Other Team Source',
+        kind: 'log',
+        connection: new ObjectId(),
+        from: { databaseName: 'otel', tableName: 'otel_logs' },
+        timestampValueExpression: 'Timestamp',
+      });
+      await authRequest('put', `${BASE_URL}/${doc._id}`)
+        .send({ name: 'Updated', sourceId: otherSource._id.toString() })
         .expect(400);
     });
 
