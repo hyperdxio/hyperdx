@@ -1,8 +1,47 @@
 import {
+  ClickHouseQueryError,
   convertCHDataTypeToJSType,
   extractColumnReferencesFromKey,
+  isMissingColumnError,
   JSDataType,
 } from '@/clickhouse';
+
+describe('isMissingColumnError', () => {
+  it.each([
+    'Code: 47. DB::Exception: Unknown identifier: foo',
+    'DB::Exception: Unknown expression identifier `bar`',
+    'UNKNOWN_IDENTIFIER',
+    'Missing columns: baz while processing query',
+    'Code: 16. NO_SUCH_COLUMN_IN_TABLE',
+    'There is no column with name qux',
+    'There is no column with name qux',
+    "Identifier '__table1.skip_indices' cannot be resolved from table with name __table1.",
+  ])('returns true for missing-column error: %s', msg => {
+    expect(isMissingColumnError(new Error(msg))).toBe(true);
+  });
+
+  it('detects the error via a ClickHouseQueryError instance', () => {
+    expect(
+      isMissingColumnError(
+        new ClickHouseQueryError('Missing columns: foo', 'SELECT * FROM t'),
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    'Code: 60. DB::Exception: Table default.foo does not exist',
+    'Syntax error: failed at position 10',
+    'Timeout exceeded',
+    '',
+  ])('returns false for unrelated error: %s', msg => {
+    expect(isMissingColumnError(new Error(msg))).toBe(false);
+  });
+
+  it('handles non-Error inputs', () => {
+    expect(isMissingColumnError(undefined)).toBe(false);
+    expect(isMissingColumnError('Unknown identifier: x')).toBe(true);
+  });
+});
 
 describe('extractColumnReferencesFromKey', () => {
   // Suppress expected console.error from parse failures in edge-case tests
