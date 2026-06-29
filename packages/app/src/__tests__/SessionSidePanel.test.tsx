@@ -13,6 +13,17 @@ jest.mock('../SessionSubpanel', () => ({
   default: () => <div data-testid="session-subpanel-mock" />,
 }));
 
+jest.mock('nuqs', () => {
+  const actual = jest.requireActual('nuqs');
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  const noop = () => {};
+  return {
+    ...actual,
+    // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
+    useQueryState: () => [null, noop],
+  };
+});
+
 jest.mock('../utils/clipboard', () => ({
   __esModule: true,
   CLIPBOARD_ERROR_MESSAGE:
