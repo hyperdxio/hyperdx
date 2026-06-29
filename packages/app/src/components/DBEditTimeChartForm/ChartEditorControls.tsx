@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Control,
   FieldArrayWithId,
   FieldErrors,
   UseFormClearErrors,
   UseFormSetValue,
+  useWatch,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -32,6 +33,7 @@ import SourceSchemaPreview, {
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { IS_LOCAL_MODE } from '@/config';
+import { getMetricTableName } from '@/utils';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { OnClickFormButton } from './OnClickForm/OnClickFormButton';
@@ -104,6 +106,28 @@ export function ChartEditorControls({
     !(displayType === DisplayType.Number && fields.length >= 2);
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
+
+  // Metric sources have no single `from.tableName` (they fan out to per-type
+  // metric tables), so the default tableConnection can't drive attribute
+  // autocomplete for the chart-level Group By. Point it at the selected
+  // metric's table + name so the editor can look up `Attributes` keys while
+  // typing, matching the per-series inputs.
+  const series = useWatch({ control, name: 'series' });
+  const groupByTableConnection = useMemo<TableConnection>(() => {
+    if (tableSource?.kind === SourceKind.Metric && Array.isArray(series)) {
+      const metric = series.find(s => s?.metricType && s?.metricName);
+      const metricTable = getMetricTableName(tableSource, metric?.metricType);
+      if (metricTable) {
+        return {
+          databaseName: tableSource.from.databaseName,
+          tableName: metricTable,
+          connectionId: tableSource.connection,
+          metricName: metric?.metricName,
+        };
+      }
+    }
+    return tableConnection;
+  }, [tableSource, series, tableConnection]);
 
   return (
     <>
@@ -211,7 +235,7 @@ export function ChartEditorControls({
                 </div>
                 <div>
                   <SQLInlineEditorControlled
-                    tableConnection={tableConnection}
+                    tableConnection={groupByTableConnection}
                     control={control}
                     name={`groupBy`}
                     placeholder="SQL Columns"
