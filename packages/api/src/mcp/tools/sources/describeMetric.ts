@@ -182,7 +182,12 @@ async function fetchUnitAndDescription({
   signal: AbortSignal;
 }): Promise<{ unit?: string; description?: string }> {
   if (!hasUnit && !hasDescription) return {};
-  const projections = [
+
+  const innerProjections = [
+    ...(hasUnit ? [chSql`${{ Identifier: 'MetricUnit' }}`] : []),
+    ...(hasDescription ? [chSql`${{ Identifier: 'MetricDescription' }}`] : []),
+  ];
+  const outerProjections = [
     ...(hasUnit
       ? [chSql`anyLast(${{ Identifier: 'MetricUnit' }}) AS MetricUnit`]
       : []),
@@ -192,12 +197,21 @@ async function fetchUnitAndDescription({
         ]
       : []),
   ];
+
+  // Wrap in a bounded subquery so ClickHouse stops scanning once it
+  // has enough rows — unit and description are typically constant per
+  // metric, so a small sample is sufficient. Mirrors the bounding
+  // pattern used by fetchAttributeKeys / sampleAttributeValues.
   const sql = chSql`
-    SELECT ${concatChSql(', ', projections)}
-    FROM ${tableExpr({ database: databaseName, table: tableName })}
-    WHERE MetricName = ${{ String: metricName }}
-      AND TimeUnix >= fromUnixTimestamp64Milli(${{ Int64: startDate.getTime() }})
-      AND TimeUnix <= fromUnixTimestamp64Milli(${{ Int64: endDate.getTime() }})
+    SELECT ${concatChSql(', ', outerProjections)}
+    FROM (
+      SELECT ${concatChSql(', ', innerProjections)}
+      FROM ${tableExpr({ database: databaseName, table: tableName })}
+      WHERE MetricName = ${{ String: metricName }}
+        AND TimeUnix >= fromUnixTimestamp64Milli(${{ Int64: startDate.getTime() }})
+        AND TimeUnix <= fromUnixTimestamp64Milli(${{ Int64: endDate.getTime() }})
+      LIMIT ${{ Int32: METRIC_ATTR_KEYS_SAMPLE_SIZE }}
+    )
   `;
   try {
     const response = await clickhouseClient.query<'JSON'>({
@@ -205,6 +219,10 @@ async function fetchUnitAndDescription({
       query_params: sql.params,
       format: 'JSON',
       connectionId,
+      clickhouse_settings: {
+        max_execution_time: METRIC_ATTR_KEYS_MAX_EXEC_SECONDS,
+        timeout_overflow_mode: 'break',
+      },
       abort_signal: signal,
     });
     const result = (await response.json()) as {
