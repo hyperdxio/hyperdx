@@ -63,12 +63,21 @@ export function useRowData({
         )
       : [];
 
+  // `SELECT *` can fail against a Distributed/Merge table whose underlying
+  // target tables declare different column sets. When the source declares a
+  // "known columns" list (columns known to exist across all target tables) we
+  // select that instead of `*` when fetching full row data.
+  const knownColumns =
+    isLogSource(source) || isTraceSource(source)
+      ? source.knownColumnsListExpression?.trim()
+      : undefined;
+
   const queryResult = useQueriedChartConfig(
     {
       connection: source.connection,
       select: [
         {
-          valueExpression: '*',
+          valueExpression: knownColumns || '*',
         },
         {
           valueExpression: getDisplayedTimestampValueExpression(source),

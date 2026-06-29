@@ -300,6 +300,19 @@ export class ClickHouseQueryError extends Error {
 }
 
 /**
+ * Heuristically detects whether a query error is a ClickHouse "missing/unknown
+ * column" error. Useful for surfacing actionable hints (e.g. when a `SELECT *`
+ * against a Distributed/Merge table references a column absent from some target
+ * tables).
+ */
+export function isMissingColumnError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error ?? '');
+  return /Unknown (expression|identifier)|UNKNOWN_IDENTIFIER|Missing columns|NO_SUCH_COLUMN_IN_TABLE|There is no column|cannot be resolved/i.test(
+    msg,
+  );
+}
+
+/**
  * Returns columns referenced in given expression, where the expression is a comma-separated list of SQL expressions
  * E.g. "id, toStartOfInterval(timestamp, toIntervalDay(3)), user_id, json.a.b".
  */
