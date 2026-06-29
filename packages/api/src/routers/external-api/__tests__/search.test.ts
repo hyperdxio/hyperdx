@@ -2,18 +2,18 @@ import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import request from 'supertest';
 
-import * as config from '../../../config';
+import * as config from '@/config';
 import {
   bulkInsertLogs,
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
   getLoggedInAgent,
   getServer,
-} from '../../../fixtures';
-import Connection from '../../../models/connection';
-import type { ISource } from '../../../models/source';
-import { Source } from '../../../models/source';
-import type { IUser } from '../../../models/user';
+} from '@/fixtures';
+import Connection from '@/models/connection';
+import type { ISource } from '@/models/source';
+import { Source } from '@/models/source';
+import type { IUser } from '@/models/user';
 
 const DEFAULT_END_TIME = Math.floor(Date.now() / 60000) * 60000;
 const DEFAULT_START_TIME = DEFAULT_END_TIME - 3600 * 1000;

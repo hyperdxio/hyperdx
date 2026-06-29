@@ -12,11 +12,11 @@ import {
   getLoggedInAgent,
   getServer,
 } from '@/fixtures';
+import { McpContext } from '@/mcp/tools/types';
 import Connection from '@/models/connection';
 import { Source } from '@/models/source';
 import Team from '@/models/team';
 
-import { McpContext } from '../tools/types';
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
 describe('MCP Source Tools', () => {

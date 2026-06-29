@@ -13,13 +13,13 @@ import {
   INCREASE_TOP_N_CAP,
   mergeWhereIntoSelectItems,
   parseTimeRange,
-} from '../tools/query/helpers';
+} from '@/mcp/tools/query/helpers';
 import {
   applyMetricSelectDefaults,
   getMetricSelectIssues,
   validateMetricSelectItems,
-} from '../tools/query/schemas';
-import { resolveOrderBy } from '../tools/query/table';
+} from '@/mcp/tools/query/schemas';
+import { resolveOrderBy } from '@/mcp/tools/query/table';
 
 describe('parseTimeRange', () => {
   it('should return default range (last 15 minutes) when no arguments provided', () => {

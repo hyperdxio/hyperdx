@@ -25,9 +25,9 @@ const externalConnectionSchema = ConnectionSchema.omit({
 
 const createConnectionBodySchema = ConnectionSchema.omit({ id: true });
 
-// On update, hyperdxSettingPrefix additionally accepts '' and
-// prometheusEndpoint additionally accepts null, both meaning "clear the
-// existing value". The base ConnectionSchema rejects both.
+// On update, hyperdxSettingPrefix additionally accepts '' meaning "clear the
+// existing value". The base ConnectionSchema rejects '' because the prefix
+// regex requires 1+ chars.
 const updateConnectionBodySchema = ConnectionSchema.omit({ id: true }).extend({
   hyperdxSettingPrefix: z
     .string()
@@ -35,7 +35,6 @@ const updateConnectionBodySchema = ConnectionSchema.omit({ id: true }).extend({
     .or(z.literal(''))
     .optional()
     .nullable(),
-  prometheusEndpoint: z.string().url().optional().nullable(),
 });
 
 function formatExternalConnection(connection: ConnectionDocument) {
@@ -94,11 +93,10 @@ function formatExternalConnection(connection: ConnectionDocument) {
  *           description: Optional prefix for HyperDX-specific ClickHouse settings. Must only contain alphanumeric characters and underscores.
  *           nullable: true
  *           example: hyperdx_
- *         prometheusEndpoint:
- *           type: string
- *           description: Optional Prometheus-compatible API endpoint. When set, PromQL queries are proxied to this endpoint.
- *           nullable: true
- *           example: http://prometheus:9090
+ *         isPrometheusEndpoint:
+ *           type: boolean
+ *           description: Optional. When true, `host` is treated as a Prometheus-compatible API endpoint (e.g. Prometheus or Thanos) and PromQL queries are proxied to it. When false or omitted, `host` is a ClickHouse HTTP endpoint.
+ *           example: false
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -138,10 +136,10 @@ function formatExternalConnection(connection: ConnectionDocument) {
  *           description: Optional prefix for HyperDX-specific ClickHouse settings. Must only contain alphanumeric characters and underscores.
  *           nullable: true
  *           example: hyperdx_
- *         prometheusEndpoint:
- *           type: string
- *           description: Optional Prometheus-compatible API endpoint. When set, PromQL queries are proxied to this endpoint.
- *           example: http://prometheus:9090
+ *         isPrometheusEndpoint:
+ *           type: boolean
+ *           description: Optional. When true, `host` is treated as a Prometheus-compatible API endpoint (e.g. Prometheus or Thanos) and PromQL queries are proxied to it. When false or omitted, `host` is a ClickHouse HTTP endpoint.
+ *           example: false
  *     UpdateConnectionRequest:
  *       type: object
  *       required:
@@ -171,11 +169,10 @@ function formatExternalConnection(connection: ConnectionDocument) {
  *           description: Optional prefix for HyperDX-specific ClickHouse settings. Set to null or an empty string to clear the existing value. If omitted, the existing value is kept.
  *           nullable: true
  *           example: hyperdx_
- *         prometheusEndpoint:
- *           type: string
- *           description: Optional Prometheus-compatible API endpoint. Set to null to clear the existing value. If omitted, the existing value is kept.
- *           nullable: true
- *           example: http://prometheus:9090
+ *         isPrometheusEndpoint:
+ *           type: boolean
+ *           description: Optional. When true, `host` is treated as a Prometheus-compatible API endpoint. When false or omitted, `host` is a ClickHouse HTTP endpoint. Omit to keep the existing value unchanged.
+ *           example: false
  *     ConnectionResponseEnvelope:
  *       type: object
  *       properties:
@@ -504,15 +501,11 @@ router.put(
         return res.sendStatus(404);
       }
 
-      const { hyperdxSettingPrefix, prometheusEndpoint, ...restBody } =
-        req.body;
+      const { hyperdxSettingPrefix, ...restBody } = req.body;
 
       const unsetFields: string[] = [];
       if (hyperdxSettingPrefix === null || hyperdxSettingPrefix === '') {
         unsetFields.push('hyperdxSettingPrefix');
-      }
-      if (prometheusEndpoint === null) {
-        unsetFields.push('prometheusEndpoint');
       }
 
       const updatedConnection = await updateConnection(
@@ -526,7 +519,6 @@ router.put(
             ? req.body.password
             : existingConnection.password,
           ...(hyperdxSettingPrefix ? { hyperdxSettingPrefix } : {}),
-          ...(prometheusEndpoint ? { prometheusEndpoint } : {}),
         },
         unsetFields,
       );

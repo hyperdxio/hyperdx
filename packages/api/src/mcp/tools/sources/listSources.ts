@@ -4,9 +4,9 @@ import { z } from 'zod';
 
 import { getConnectionsByTeam } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';
+import type { McpContext } from '@/mcp/tools/types';
+import { withToolTracing } from '@/mcp/utils/tracing';
 
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 import { sanitizeMetricTables } from './metricKinds';
 
 export function registerListSources(

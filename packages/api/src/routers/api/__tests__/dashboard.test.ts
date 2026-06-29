@@ -8,20 +8,19 @@ import {
 import { omit } from 'lodash';
 import mongoose, { Types } from 'mongoose';
 
-import PresetDashboardFilter from '@/models/presetDashboardFilter';
-import { Source } from '@/models/source';
-import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
-
 import {
   getLoggedInAgent,
   getServer,
   makeAlertInput,
   makeRawSqlTile,
   makeTile,
-} from '../../../fixtures';
-import Alert from '../../../models/alert';
-import Dashboard from '../../../models/dashboard';
-import User from '../../../models/user';
+} from '@/fixtures';
+import Alert from '@/models/alert';
+import Dashboard from '@/models/dashboard';
+import PresetDashboardFilter from '@/models/presetDashboardFilter';
+import { Source } from '@/models/source';
+import User from '@/models/user';
+import Webhook, { WebhookDocument, WebhookService } from '@/models/webhook';
 
 const MOCK_DASHBOARD = {
   name: 'Test Dashboard',

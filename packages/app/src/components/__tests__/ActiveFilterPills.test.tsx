@@ -2,11 +2,10 @@ import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist
 import { act, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import type { FilterStateHook } from '@/searchFilters';
 import { copyTextToClipboard } from '@/utils/clipboard';
-
-import { ActiveFilterPills } from '../ActiveFilterPills';
 
 jest.mock('@/utils/clipboard', () => ({
   __esModule: true,

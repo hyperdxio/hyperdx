@@ -2,7 +2,8 @@ import {
   convertDateRangeToGranularityString,
   timeBucketByGranularity,
   toStartOfInterval,
-} from '../core/utils';
+} from '@/core/utils';
+
 import { TemplateMinerConfig } from './config';
 import { TemplateMiner } from './template-miner';
 

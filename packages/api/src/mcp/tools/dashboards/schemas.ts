@@ -11,14 +11,13 @@ import {
   DashboardFilterType,
   MetricsDataType,
   NumberTileColorConditionSchema,
-  SearchConditionLanguageSchema,
+  SearchConditionTrimmedLanguageSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
+import { getMetricSelectIssues } from '@/mcp/tools/query/schemas';
+import { QUERYABLE_METRIC_KINDS } from '@/mcp/tools/sources/metricKinds';
 import { externalQuantileLevelSchema, objectIdSchema } from '@/utils/zod';
-
-import { getMetricSelectIssues } from '../query/schemas';
-import { QUERYABLE_METRIC_KINDS } from '../sources/metricKinds';
 
 /**
  * Metric type values exposed on dashboard tile select items. Restricted to
@@ -141,7 +140,8 @@ const mcpTileSelectItemSchema = z
       .optional()
       .default('')
       .describe('Filter in Lucene syntax. Example: "level:error"'),
-    whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
+    whereLanguage:
+      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
     alias: z
       .string()
       .optional()
@@ -295,7 +295,7 @@ const mcpOnClickSearchSchema = z
           'Use Lucene or SQL syntax matching `whereLanguage`. Prefer `filters` (below) ' +
           'for simple equality; filters merge nicely on the destination.',
       ),
-    whereLanguage: SearchConditionLanguageSchema.describe(
+    whereLanguage: SearchConditionTrimmedLanguageSchema.describe(
       'Filter language for `whereTemplate` and `filters` ("lucene" or "sql"). ' +
         'Optional, but set it explicitly so the destination knows how to parse rendered ' +
         'whereTemplate / filter values.',
@@ -330,7 +330,7 @@ const mcpOnClickDashboardSchema = z
           "dashboard's global filter. Useful when the target dashboard exposes a single " +
           'global scope rather than per-tile filters.',
       ),
-    whereLanguage: SearchConditionLanguageSchema.describe(
+    whereLanguage: SearchConditionTrimmedLanguageSchema.describe(
       'Filter language for `whereTemplate` and `filters` ("lucene" or "sql"). ' +
         'Optional, but set it explicitly so the destination knows how to parse rendered ' +
         'whereTemplate / filter values.',
@@ -354,18 +354,42 @@ const mcpOnClickDashboardSchema = z
       'high-level overview table down to a per-service or per-endpoint dashboard.',
   );
 
+const mcpOnClickExternalSchema = z
+  .object({
+    type: z
+      .literal('external')
+      .describe('Link to an arbitrary external URL (e.g. Grafana, Langfuse).'),
+    urlTemplate: z
+      .string()
+      .min(1)
+      .max(10000)
+      .describe(
+        'Handlebars-style template rendered against the clicked row, e.g. ' +
+          '"https://example.com/d/abc?var-service={{ServiceName}}". ' +
+          'The rendered value MUST be an absolute http(s) URL; relative URLs and ' +
+          'non-http(s) schemes (javascript:, data:, etc.) are rejected at click time. ' +
+          'This variant references no HyperDX source or dashboard.',
+      ),
+  })
+  .describe(
+    'Row-click handler that opens an external URL in a new tab. Use this to ' +
+      'link out to a third-party tool (Grafana, Langfuse, runbooks, etc.).',
+  );
+
 const mcpOnClickSchema = z
   .discriminatedUnion('type', [
     mcpOnClickSearchSchema,
     mcpOnClickDashboardSchema,
+    mcpOnClickExternalSchema,
   ])
   .describe(
     'Row-click navigation for tiles that render as tables (Table tiles always; ' +
       'SQL tiles only when displayType is "table"). ' +
       'type="search" links to the /search page for a log/trace source; ' +
-      'type="dashboard" links to another dashboard. ' +
-      'Both support Handlebars `{{column}}` templating against the clicked row ' +
-      'for the target, whereTemplate, and filter values.\n\n' +
+      'type="dashboard" links to another dashboard; ' +
+      'type="external" links to an arbitrary external http(s) URL. ' +
+      'All support Handlebars `{{column}}` templating against the clicked row ' +
+      'for the target/url, whereTemplate, and filter values.\n\n' +
       'Examples:\n' +
       '1. Drill into search for the clicked service: \n' +
       '   { "type": "search", "target": { "mode": "id", "id": "<trace-source-id>" }, ' +
@@ -379,7 +403,10 @@ const mcpOnClickSchema = z
       '"template": "{{ServiceName}}" }] }\n' +
       '3. Resolve the destination from the row (rare; prefer mode="id"): \n' +
       '   { "type": "dashboard", "target": { "mode": "template", "template": ' +
-      '"{{TargetDashboardName}}" }, "whereLanguage": "lucene" }',
+      '"{{TargetDashboardName}}" }, "whereLanguage": "lucene" }\n' +
+      '4. Link out to an external tool: \n' +
+      '   { "type": "external", "urlTemplate": ' +
+      '"https://grafana.example.com/d/abc?var-service={{ServiceName}}" }',
   );
 
 const mcpTileLayoutSchema = z.object({
@@ -634,7 +661,8 @@ const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
       .describe(
         'Row-level filter applied before bucketing. Example: "level:error"',
       ),
-    whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
+    whereLanguage:
+      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(
@@ -653,7 +681,8 @@ const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
       .optional()
       .default('')
       .describe('Filter in Lucene syntax. Example: "level:error"'),
-    whereLanguage: SearchConditionLanguageSchema.optional().default('lucene'),
+    whereLanguage:
+      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
     select: z
       .string()
       .optional()
@@ -878,7 +907,7 @@ const mcpDashboardFilterSchema = z
       .describe(
         'Optional WHERE clause scoping the dropdown values (e.g. "level:error" in Lucene).',
       ),
-    whereLanguage: SearchConditionLanguageSchema.describe(
+    whereLanguage: SearchConditionTrimmedLanguageSchema.describe(
       'Filter language for `where` ("lucene" or "sql"). Optional, but set it explicitly.',
     ),
     appliesToSourceIds: z

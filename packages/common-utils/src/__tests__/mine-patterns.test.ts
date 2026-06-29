@@ -1,4 +1,4 @@
-import { flattenBody, minePatterns } from '../drain/mine-patterns';
+import { flattenBody, minePatterns } from '@/drain/mine-patterns';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

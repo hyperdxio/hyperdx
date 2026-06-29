@@ -1,4 +1,4 @@
-import { buildPatternColumnExpression } from '../PatternColumnSelector';
+import { buildPatternColumnExpression } from '@/components/Patterns/PatternColumnSelector';
 
 describe('buildPatternColumnExpression', () => {
   const fallback = 'Body';

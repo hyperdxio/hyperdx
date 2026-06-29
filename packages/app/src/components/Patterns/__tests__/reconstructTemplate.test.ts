@@ -1,4 +1,4 @@
-import { reconstructTemplate } from '../reconstructTemplate';
+import { reconstructTemplate } from '@/components/Patterns/reconstructTemplate';
 
 describe('reconstructTemplate', () => {
   it('returns the original log when the template is empty', () => {

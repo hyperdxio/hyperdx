@@ -2,11 +2,11 @@ import { MantineProvider } from '@mantine/core';
 import { Notifications, notifications } from '@mantine/notifications';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-import SessionSidePanel from '../SessionSidePanel';
+import SessionSidePanel from '@/SessionSidePanel';
 import {
   CLIPBOARD_ERROR_MESSAGE,
   copyTextToClipboard,
-} from '../utils/clipboard';
+} from '@/utils/clipboard';
 
 jest.mock('../SessionSubpanel', () => ({
   __esModule: true,

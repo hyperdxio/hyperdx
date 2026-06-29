@@ -1078,6 +1078,8 @@ Destination types:
     Opens the /search page for a log or trace source. Metric and session sources are rejected by the server (the /search page does not render those kinds).
   { type: "dashboard", target, whereLanguage, whereTemplate?, filters? }
     Opens another ClickStack dashboard owned by the same team.
+  { type: "external",  urlTemplate }
+    Opens an arbitrary external URL in a new tab (e.g. a Grafana or Langfuse dashboard, a runbook). The urlTemplate is rendered against the clicked row and the rendered value must be an absolute http(s) URL. It takes no target, whereLanguage, whereTemplate, or filters, and references no ClickStack source or dashboard.
 
 Target shape, how the destination is identified:
   target: { mode: "id", id: "<object-id>" }
@@ -1137,6 +1139,12 @@ Example, destination chosen by the clicked row (rare; prefer mode="id"):
     "type": "dashboard",
     "target": { "mode": "template", "template": "{{TargetDashboardName}}" },
     "whereLanguage": "lucene"
+  }
+
+Example, link out to an external tool:
+  "onClick": {
+    "type": "external",
+    "urlTemplate": "https://grafana.example.com/d/abc?var-service={{ServiceName}}"
   }
 
 Validation rules the server enforces:

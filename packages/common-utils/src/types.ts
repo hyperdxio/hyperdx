@@ -147,9 +147,15 @@ export const SQLIntervalSchema = z
   .string()
   .regex(/^\d+ (second|minute|hour|day)$/);
 export const SearchConditionSchema = z.string();
-export const SearchConditionLanguageSchema = z
-  .enum(['sql', 'lucene', 'promql'])
-  .optional();
+const SearchConditionRequiredLanguageSchema = z.enum([
+  'sql',
+  'lucene',
+  'promql',
+]);
+export const SearchConditionLanguageSchema =
+  SearchConditionRequiredLanguageSchema.optional();
+export const SearchConditionTrimmedLanguageSchema =
+  SearchConditionRequiredLanguageSchema.exclude(['promql']).optional();
 export const AggregateFunctionSchema = z.enum([
   'avg',
   'count',
@@ -757,9 +763,16 @@ export const OnClickDashboardSchema = z.object({
 });
 export type OnClickDashboard = z.infer<typeof OnClickDashboardSchema>;
 
+export const OnClickExternalSchema = z.object({
+  type: z.literal('external'),
+  urlTemplate: z.string().min(1).max(10000),
+});
+export type OnClickExternal = z.infer<typeof OnClickExternalSchema>;
+
 export const OnClickSchema = z.discriminatedUnion('type', [
   OnClickSearchSchema,
   OnClickDashboardSchema,
+  OnClickExternalSchema,
 ]);
 export type OnClick = z.infer<typeof OnClickSchema>;
 
@@ -1479,7 +1492,7 @@ export const DashboardFilterSchema = z.object({
   source: z.string().min(1),
   sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
   where: z.string().optional(),
-  whereLanguage: SearchConditionLanguageSchema,
+  whereLanguage: SearchConditionTrimmedLanguageSchema,
   // Sources this filter applies to. Undefined / missing means the filter
   // applies to all tiles.
   appliesToSourceIds: z.array(z.string().min(1)).optional(),
@@ -1579,7 +1592,7 @@ export const ConnectionSchema = z.object({
     .regex(/^[a-z0-9_]+$/i)
     .optional()
     .nullable(),
-  prometheusEndpoint: z.string().url().optional(),
+  isPrometheusEndpoint: z.boolean().optional(),
 });
 
 export type Connection = z.infer<typeof ConnectionSchema>;

@@ -3,7 +3,7 @@ import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';
 
-import * as config from '../../../config';
+import * as config from '@/config';
 import {
   bulkInsertLogs,
   bulkInsertMetricsGauge,
@@ -13,9 +13,9 @@ import {
   DEFAULT_LOGS_TABLE,
   getLoggedInAgent,
   getServer,
-} from '../../../fixtures';
-import Connection from '../../../models/connection';
-import { ISource, Source } from '../../../models/source';
+} from '@/fixtures';
+import Connection from '@/models/connection';
+import { ISource, Source } from '@/models/source';
 
 // Default time range for tests (1 hour)
 // Floor to minute so all derived timestamps (including test data inserted at
