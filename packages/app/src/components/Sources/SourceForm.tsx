@@ -179,6 +179,8 @@ function setCorrelationFieldValue(
 }
 
 const DEFAULT_DATABASE = 'default';
+const KNOWN_COLUMNS_EXPRESSION_HELP_TEXT =
+  'For Distributed table sources whose target tables have non-matching column sets. Provide a list of columns supported across all target tables; it is used instead of SELECT * when fetching full row data (e.g. the row side panel). Leave blank to select all columns. This should be a comma-separated list of column names - do not include non-column expressions or aliases.';
 
 // Placeholder written into from.databaseName / from.tableName when the
 // selected connection is Prometheus-only.
@@ -1460,7 +1462,7 @@ function LogTableModelForm(props: TableModelProps) {
         />
         <FormRow
           label={'Known Columns List'}
-          helpText="For Distributed table sources whose target tables have non-matching column sets. Provide a list of columns supported across all target tables; it is used instead of SELECT * when fetching full row data (e.g. the row side panel). Leave blank to select all columns. This should be a comma-separated list of column names - do not include non-column expressions or aliases."
+          helpText={KNOWN_COLUMNS_EXPRESSION_HELP_TEXT}
         >
           <SQLInlineEditorControlled
             tableConnection={{
@@ -1819,7 +1821,7 @@ function TraceTableModelForm(props: TableModelProps) {
       />
       <FormRow
         label={'Known Columns List'}
-        helpText="For Distributed table sources whose target tables have non-matching column sets. Provide a list of columns supported across all target tables; it is used instead of SELECT * when fetching full row data (e.g. the row side panel). Leave blank to select all columns. This should be a comma-separated list of column names - do not include non-column expressions or aliases."
+        helpText={KNOWN_COLUMNS_EXPRESSION_HELP_TEXT}
       >
         <SQLInlineEditorControlled
           tableConnection={{
