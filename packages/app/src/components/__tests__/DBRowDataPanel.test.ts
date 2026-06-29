@@ -1,9 +1,46 @@
+import { SourceKind, TLogSource } from '@hyperdx/common-utils/dist/types';
+import { renderHook } from '@testing-library/react';
+
 import {
   getJSONColumnNames,
   getMapColumnNames,
+  useRowData,
 } from '@/components/DBRowDataPanel';
+import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+
+jest.mock('@/hooks/useChartConfig', () => ({
+  useQueriedChartConfig: jest.fn(),
+}));
+
+const mockUseQueriedChartConfig = useQueriedChartConfig as jest.Mock;
 
 describe('DBRowDataPanel', () => {
+  const source: TLogSource = {
+    id: 'source-id',
+    kind: SourceKind.Log,
+    name: 'logs',
+    connection: 'conn-id',
+    from: { databaseName: 'default', tableName: 'logs' },
+    timestampValueExpression: 'Timestamp',
+    defaultTableSelectExpression: 'Timestamp, Body',
+    bodyExpression: 'Body',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseQueriedChartConfig.mockReturnValue({
+      data: {
+        data: [],
+        meta: [],
+        rows: 0,
+        isComplete: true,
+      },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    });
+  });
+
   describe('getJSONColumnNames', () => {
     it('should return JSON column names', () => {
       const meta = [
@@ -14,6 +51,30 @@ describe('DBRowDataPanel', () => {
       const result = getJSONColumnNames(meta);
       expect(result).toEqual(['col2', 'col3']);
     });
+  });
+
+  it('selects `*` when the source has no Known Columns List', () => {
+    renderHook(() => useRowData({ source, rowId: "id='abc123'" }));
+
+    const [config] = mockUseQueriedChartConfig.mock.calls[0];
+    expect(config.select[0]).toEqual({ valueExpression: '*' });
+  });
+
+  it('selects the Known Columns List instead of `*` when set', () => {
+    const sourceWithKnownColumns: TLogSource = {
+      ...source,
+      knownColumnsListExpression: 'Timestamp, Body, ServiceName',
+    };
+
+    renderHook(() =>
+      useRowData({ source: sourceWithKnownColumns, rowId: "id='abc123'" }),
+    );
+
+    const [config] = mockUseQueriedChartConfig.mock.calls[0];
+    expect(config.select[0]).toEqual({
+      valueExpression: 'Timestamp, Body, ServiceName',
+    });
+    expect(config.select).not.toContainEqual({ valueExpression: '*' });
   });
 
   // Regression test for the OSS #2357 conflict-resolution merge. The

@@ -123,6 +123,10 @@ export class SearchPage {
     }
   }
 
+  async saveSourceForm() {
+    await this.page.getByRole('button', { name: 'Save Source' }).click();
+  }
+
   /**
    * Perform a search with the given query
    */
