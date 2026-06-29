@@ -97,6 +97,10 @@ function defaultApiUrl(): string {
   return 'http://localhost:8000';
 }
 
+// Default eval account credentials — used by setup-hyperdx, run, and grade.
+const DEFAULT_EVAL_EMAIL = 'eval@local.test';
+const DEFAULT_EVAL_PASSWORD = 'EvalPass123!#';
+
 const program = new Command();
 
 program
@@ -216,8 +220,8 @@ program
     'One-time setup: register/login + create Connection + per-scenario Sources',
   )
   .option('--api-url <url>', 'HyperDX API URL', defaultApiUrl())
-  .option('--email <email>', 'Account email', 'eval@local.test')
-  .option('--password <pw>', 'Account password', 'EvalPass123!#')
+  .option('--email <email>', 'Account email', DEFAULT_EVAL_EMAIL)
+  .option('--password <pw>', 'Account password', DEFAULT_EVAL_PASSWORD)
   .option(
     '--creds-file <path>',
     'JSON file with {"email":..., "password":...} (overrides --email/--password)',
@@ -381,13 +385,13 @@ program
   )
   .option(
     '--email <email>',
-    'HyperDX account email for post-run inspection (default: eval@local.test)',
-    'eval@local.test',
+    `HyperDX account email for post-run inspection (default: ${DEFAULT_EVAL_EMAIL})`,
+    DEFAULT_EVAL_EMAIL,
   )
   .option(
     '--password <pw>',
-    'HyperDX account password for post-run inspection (default: EvalPass123!#)',
-    'EvalPass123!#',
+    `HyperDX account password for post-run inspection (default: ${DEFAULT_EVAL_PASSWORD})`,
+    DEFAULT_EVAL_PASSWORD,
   )
   .action(
     async (
@@ -884,12 +888,12 @@ program
   .option(
     '--email <email>',
     'HyperDX account email for post-run inspection',
-    'eval@local.test',
+    DEFAULT_EVAL_EMAIL,
   )
   .option(
     '--password <pw>',
     'HyperDX account password for post-run inspection',
-    'EvalPass123!#',
+    DEFAULT_EVAL_PASSWORD,
   )
   .action(
     async (
