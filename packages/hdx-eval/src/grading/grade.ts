@@ -6,6 +6,7 @@ import type { RunRecord } from '@/harness/types';
 import { isModelSubdir, isRunJson, runsRoot, safeReaddir } from '@/runs/path';
 import { readRun } from '@/runs/store';
 import { getScenario, SCENARIO_NAMES } from '@/scenarios';
+import type { PostRunInspectionResult } from '@/scenarios/types';
 
 import type { BlindingEntry } from './blind';
 import { judgeTrajectory } from './judge';
@@ -42,9 +43,6 @@ function isInfraError(text: string): boolean {
 function computeToolErrorStats(record: RunRecord): ToolErrorStats {
   const total = record.toolCalls.length;
   const errored = record.toolCalls.filter(c => c.isError);
-  // Separate agent-attributable errors from infrastructure failures (rate
-  // limits, server-side bugs, transient 5xx). Only agent errors feed the
-  // penalty — the agent has no control over server hiccups.
   const agentErrored = errored.filter(c => {
     const text =
       typeof c.output === 'string' ? c.output : JSON.stringify(c.output ?? '');
@@ -52,11 +50,6 @@ function computeToolErrorStats(record: RunRecord): ToolErrorStats {
   });
   const errors = agentErrored.length;
   const rate = total > 0 ? errors / total : 0;
-  // Linear penalty up to MAX_ERROR_PENALTY when ALL tool calls fail.
-  // Mathematically: penalty = min(rate, MAX_ERROR_PENALTY).
-  // We intentionally use rate (not errors/maxTurns) so a run that calls
-  // 1 tool which fails (rate=1.0) is penalized as harshly as a run that
-  // fails 20 of 20 tool calls — both are equally broken sessions.
   const penalty = Math.min(rate, MAX_ERROR_PENALTY);
   const samples = agentErrored.slice(0, 3).map(c => {
     const text =
@@ -76,6 +69,19 @@ export type GradeBatchOptions = {
   apiKey?: string;
   /** Blinding entries for anonymizing MCP identity during judging. */
   blindingEntries?: BlindingEntry[];
+  /**
+   * API config for post-run inspection hooks. When provided, scenarios
+   * with a `postRunInspection` hook will receive this config so they
+   * can call the HyperDX API to inspect artifacts.
+   */
+  inspectionConfig?: {
+    apiUrl: string;
+    accessKey: string;
+    email: string;
+    password: string;
+    anchorTimeIso?: string;
+    cleanup?: boolean;
+  };
 };
 
 export type GradeBatchSummary = {
@@ -94,8 +100,6 @@ export async function gradeBatch(
   }
   const runFiles = listRunFiles(resolved);
 
-  // Decide whether we'll actually need the judge: skipJudge wins, otherwise
-  // we need it if any run is missing a cached judge OR rerun was requested.
   const needsJudge =
     !opts.skipJudge &&
     runFiles.some(p => {
@@ -142,12 +146,16 @@ export async function gradeBatch(
             ? ` (-${(grade.toolErrors.penalty * 100).toFixed(0)}pp)`
             : '')
         : '';
+      // Show inspection summary if present.
+      const inspBit = grade.inspectionSummary
+        ? formatInspectionLogBit(grade.inspectionSummary)
+        : '';
       console.log(
         `  ${grade.scenario}/${grade.mcp}/${grade.runId.split('-').slice(-1)[0]}  prog=${(
           grade.programmatic.score * 100
         ).toFixed(
           0,
-        )}%  ${judgeBit}  combined=${(grade.combinedScore * 100).toFixed(0)}%${errBit}`,
+        )}%  ${judgeBit}  combined=${(grade.combinedScore * 100).toFixed(0)}%${errBit}${inspBit}`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -157,6 +165,23 @@ export async function gradeBatch(
   }
 
   return { batchDir: resolved, graded, errors };
+}
+
+function formatInspectionLogBit(summary: Record<string, unknown>): string {
+  const parts: string[] = [];
+  if (
+    typeof summary.totalTiles === 'number' &&
+    typeof summary.tilesWithData === 'number'
+  ) {
+    parts.push(`tiles=${summary.tilesWithData}/${summary.totalTiles}`);
+  }
+  if (typeof summary.createCalls === 'number') {
+    parts.push(`creates=${summary.createCalls}`);
+  }
+  if (typeof summary.patchCalls === 'number') {
+    parts.push(`patches=${summary.patchCalls}`);
+  }
+  return parts.length > 0 ? `  ${parts.join('  ')}` : '';
 }
 
 async function gradeOne(args: {
@@ -174,6 +199,31 @@ async function gradeOne(args: {
     rubric.programmatic,
   );
 
+  const toolErrors = computeToolErrorStats(record);
+
+  // ── Post-run inspection (scenario hook) ──────────────────────────
+  // Runs BEFORE the judge so evidence can be passed to the judge prompt.
+  let inspectionResult: PostRunInspectionResult | undefined;
+
+  if (scenario.postRunInspection && opts.inspectionConfig) {
+    try {
+      inspectionResult = await scenario.postRunInspection({
+        toolCalls: record.toolCalls,
+        apiUrl: opts.inspectionConfig.apiUrl,
+        accessKey: opts.inspectionConfig.accessKey,
+        email: opts.inspectionConfig.email,
+        password: opts.inspectionConfig.password,
+        anchorTimeIso: opts.inspectionConfig.anchorTimeIso,
+        cleanup: opts.inspectionConfig.cleanup ?? true,
+      });
+    } catch (err) {
+      console.warn(
+        `  post-run inspection failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  // ── LLM Judge ────────────────────────────────────────────────────
   let judge: JudgeResult | null = existing?.judge ?? null;
   if (!opts.skipJudge && client && (!judge || opts.rerunJudge)) {
     judge = await judgeTrajectory({
@@ -185,9 +235,12 @@ async function gradeOne(args: {
       judgeModel: opts.judgeModel,
       client,
       blindingEntries: opts.blindingEntries,
+      judgeSystemPreamble: scenario.judgeSystemPreamble,
+      inspectionEvidence: inspectionResult?.evidence,
     });
   }
 
+  // ── Combined score ───────────────────────────────────────────────
   const judgeError = judge && 'error' in judge && judge.error;
   const judgeScore = judge?.weightedScore ?? 0;
   const rawCombined =
@@ -195,8 +248,7 @@ async function gradeOne(args: {
       ? COMBINED_SCORE_PROGRAMMATIC_WEIGHT * programmatic.score +
         COMBINED_SCORE_JUDGE_WEIGHT * judgeScore
       : programmatic.score;
-  const toolErrors = computeToolErrorStats(record);
-  // Apply the tool-error penalty AFTER scoring the answer. Clamp to [0,1].
+
   const combinedScore = Math.max(
     0,
     Math.min(1, rawCombined - toolErrors.penalty),
@@ -210,6 +262,7 @@ async function gradeOne(args: {
     programmatic,
     judge,
     toolErrors,
+    inspectionSummary: inspectionResult?.summary,
     combinedScore,
     gradedAt: new Date().toISOString(),
     judgeModel: judge?.model ?? opts.judgeModel ?? 'skipped',
@@ -263,11 +316,9 @@ function gradeFilePath(runPath: string): string {
 }
 
 export function resolveBatchDir(input: string): string {
-  // Accept absolute path, relative path, or just a batch basename.
   if (existsSync(input)) return input;
   const root = runsRoot();
   const candidate = join(root, input);
   if (existsSync(candidate)) return candidate;
-  // Allow user to drop the bare basename even if not yet present.
   return dirname(input) === '.' ? candidate : input;
 }

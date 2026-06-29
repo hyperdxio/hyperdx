@@ -25,6 +25,7 @@ import {
   ensureAnchorTime,
   getMcpDefinition,
   readConfig,
+  writeConfig,
 } from './hyperdx/config';
 import { runCheck, runSetup } from './hyperdx/setup';
 import { columnKeyFor } from './reports/aggregate';
@@ -378,6 +379,16 @@ program
     '--no-judge',
     'Run programmatic checks only during auto-grading (skip LLM judge)',
   )
+  .option(
+    '--email <email>',
+    'HyperDX account email for post-run inspection (default: eval@local.test)',
+    'eval@local.test',
+  )
+  .option(
+    '--password <pw>',
+    'HyperDX account password for post-run inspection (default: EvalPass123!#)',
+    'EvalPass123!#',
+  )
   .action(
     async (
       scenarioName: string,
@@ -398,6 +409,8 @@ program
         report: boolean;
         judgeModel: string;
         judge: boolean;
+        email: string;
+        password: string;
       },
     ) => {
       const opts = program.opts<GlobalOpts>();
@@ -465,8 +478,15 @@ program
       // --anchor-time <iso>: override + save to config.
       // --live: ignore saved anchor, use wall-clock now (no FIXED CURRENT
       //         TIME in system prompt), and force reseed.
+      //
+      // Staleness: if the saved anchor is >12h old and the user didn't
+      // explicitly set --anchor-time, refresh to now and force reseed.
+      // This ensures describe_source's 24h lookback window can see the
+      // eval data (including distractor services in dashboard scenarios).
+      const ANCHOR_STALENESS_MS = 12 * 60 * 60 * 1000; // 12 hours
       let anchorTimeIso: string | undefined;
       let anchorMs: number;
+      let anchorStale = false;
       if (cmdOpts.live) {
         if (cmdOpts.anchorTime) {
           throw new Error('--live and --anchor-time are mutually exclusive.');
@@ -485,6 +505,58 @@ program
         const anchor = ensureAnchorTime(config, cmdOpts.anchorTime);
         anchorTimeIso = anchor.anchorTimeIso;
         anchorMs = anchor.anchorMs;
+
+        // Check staleness — if anchor is old and wasn't explicitly set,
+        // refresh to now so describe_source's 24h lookback can see the data.
+        // First check if ClickHouse data is already fresh (avoids needless
+        // re-seed when the config file is stale but the data isn't).
+        if (
+          !cmdOpts.anchorTime &&
+          Date.now() - anchorMs > ANCHOR_STALENESS_MS
+        ) {
+          // Check if data in ClickHouse is already recent (within 12h)
+          let dataIsFresh = false;
+          const checkClient = buildClientFromConfig(config, opts);
+          try {
+            const tables = scenarioTables(scenario.name);
+            const result = await checkClient.query({
+              query: `SELECT max(Timestamp) AS latest FROM ${tables.traces}`,
+              format: 'JSON',
+            });
+            const rows = (await result.json()) as {
+              data: Array<{ latest: string }>;
+            };
+            if (rows.data?.[0]?.latest) {
+              const latestMs = Date.parse(rows.data[0].latest);
+              if (
+                Number.isFinite(latestMs) &&
+                Date.now() - latestMs < ANCHOR_STALENESS_MS
+              ) {
+                dataIsFresh = true;
+                // Data is fresh — just update the anchor to match the data
+                anchorMs = latestMs;
+                anchorTimeIso = new Date(anchorMs).toISOString();
+                config.anchorTime = anchorTimeIso;
+                writeConfig(config);
+              }
+            }
+          } catch {
+            // Can't check — fall through to reseed
+          } finally {
+            await checkClient.close();
+          }
+
+          if (!dataIsFresh) {
+            anchorStale = true;
+            anchorMs = Date.now();
+            anchorTimeIso = new Date(anchorMs).toISOString();
+            config.anchorTime = anchorTimeIso;
+            writeConfig(config);
+            console.log(
+              `Anchor time was stale (>12h old) — refreshed to ${anchorTimeIso}`,
+            );
+          }
+        }
       }
 
       // ── Re-seed ───────────────────────────────────────────────────
@@ -492,7 +564,9 @@ program
       // run when scenario tables are empty or missing.
       // --reseed: force re-seed even if data exists.
       // --live: always reseed (data must match wall-clock now).
-      const forceReseed = cmdOpts.reseed === true || cmdOpts.live === true;
+      // Stale anchor: force reseed when anchor was refreshed.
+      const forceReseed =
+        cmdOpts.reseed === true || cmdOpts.live === true || anchorStale;
       let shouldReseed = forceReseed;
       if (!forceReseed) {
         const checkClient = buildClientFromConfig(config, opts);
@@ -582,7 +656,7 @@ program
             const startedMs = Date.now();
             const record = await runCell({
               config,
-              scenario: scenario.name,
+              scenario,
               agentPrompt: scenario.agentPrompt,
               mcp,
               model,
@@ -660,10 +734,24 @@ program
             def: getMcpDefinition(config, k),
           })),
         );
+        // Build inspection config when the scenario has a postRunInspection
+        // hook and the HyperDX API config is available.
+        const inspectionConfig =
+          scenario.postRunInspection && config.hyperdxApi
+            ? {
+                apiUrl: config.hyperdxApi.apiUrl,
+                accessKey: config.hyperdxApi.accessKey,
+                email: cmdOpts.email,
+                password: cmdOpts.password,
+                anchorTimeIso,
+                cleanup: true,
+              }
+            : undefined;
         const gradeOpts: GradeBatchOptions = {
           judgeModel: cmdOpts.judgeModel,
           skipJudge: cmdOpts.judge === false,
           blindingEntries,
+          inspectionConfig,
         };
         const gradeResult = await gradeBatch(batchDir, gradeOpts);
         console.log(
@@ -793,10 +881,26 @@ program
   .option('--judge-model <id>', 'Judge model ID', 'claude-opus-4-7')
   .option('--rerun-judge', 'Re-call judge even if a grade JSON already exists')
   .option('--no-judge', 'Run programmatic checks only (cheap regrade)')
+  .option(
+    '--email <email>',
+    'HyperDX account email for post-run inspection',
+    'eval@local.test',
+  )
+  .option(
+    '--password <pw>',
+    'HyperDX account password for post-run inspection',
+    'EvalPass123!#',
+  )
   .action(
     async (
       batch: string,
-      cmdOpts: { judgeModel: string; rerunJudge?: boolean; judge: boolean },
+      cmdOpts: {
+        judgeModel: string;
+        rerunJudge?: boolean;
+        judge: boolean;
+        email: string;
+        password: string;
+      },
     ) => {
       const dir = resolveBatchDir(batch);
       console.log(`Grading batch at ${dir}`);
@@ -815,11 +919,30 @@ program
           // Config may be stale — grade without blinding.
         }
       }
+      // Build inspection config from eval config if available.
+      let inspectionConfig;
+      if (configExists()) {
+        try {
+          const cfg = readConfig();
+          if (cfg.hyperdxApi) {
+            inspectionConfig = {
+              apiUrl: cfg.hyperdxApi.apiUrl,
+              accessKey: cfg.hyperdxApi.accessKey,
+              email: cmdOpts.email,
+              password: cmdOpts.password,
+              cleanup: true,
+            };
+          }
+        } catch {
+          // Config may be stale — grade without inspection.
+        }
+      }
       const summary = await gradeBatch(dir, {
         judgeModel: cmdOpts.judgeModel,
         rerunJudge: cmdOpts.rerunJudge ?? false,
         skipJudge: cmdOpts.judge === false,
         blindingEntries,
+        inspectionConfig,
       });
       console.log(
         `\nGraded ${summary.graded.length} run${summary.graded.length === 1 ? '' : 's'}; ${summary.errors.length} error${summary.errors.length === 1 ? '' : 's'}.`,
