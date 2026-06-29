@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { QUERYABLE_METRIC_KINDS } from '../sources/metricKinds';
+import { QUERYABLE_METRIC_KINDS } from '@/mcp/tools/sources/metricKinds';
 
 // ─── Shared description fragments ────────────────────────────────────────────
 

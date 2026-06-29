@@ -1,4 +1,4 @@
-import { sanitizeMetricTables } from '../tools/sources/metricKinds';
+import { sanitizeMetricTables } from '@/mcp/tools/sources/metricKinds';
 
 describe('sanitizeMetricTables', () => {
   it('returns undefined for null / undefined input', () => {

@@ -6,7 +6,7 @@ jest.mock('@/utils/trimToolResponse', () => ({
   trimToolResponse: (data: unknown) => ({ data, isTrimmed: false }),
 }));
 
-import { decodeCursor, encodeCursor } from '../tools/sources/listMetrics';
+import { decodeCursor, encodeCursor } from '@/mcp/tools/sources/listMetrics';
 
 describe('listMetrics cursor', () => {
   describe('encodeCursor / decodeCursor round-trip', () => {
