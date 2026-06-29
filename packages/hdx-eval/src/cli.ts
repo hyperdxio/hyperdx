@@ -934,6 +934,7 @@ program
               accessKey: cfg.hyperdxApi.accessKey,
               email: cmdOpts.email,
               password: cmdOpts.password,
+              anchorTimeIso: cfg.anchorTime,
               cleanup: true,
             };
           }

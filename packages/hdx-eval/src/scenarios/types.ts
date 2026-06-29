@@ -1,5 +1,5 @@
 import type { LogRow, TraceRow } from '@/generators/types';
-import type { ToolCallRecord } from '@/harness/types';
+import type { PromptVariant, ToolCallRecord } from '@/harness/types';
 import type { SeededRng } from '@/rng/seeded';
 
 export type GenerateContext = {
@@ -39,6 +39,8 @@ export type SystemPromptContext = {
   anchorTimeIso?: string;
   /** Max tool turns for the run. */
   maxTurns?: number;
+  /** Prompt variant — 'hypothesis' enables multi-hypothesis guidance. */
+  variant?: PromptVariant;
 };
 
 /**
@@ -51,7 +53,9 @@ export type PostRunInspectionResult = {
   evidence: string;
   /** Structured summary persisted in the grade record. */
   summary: Record<string, unknown>;
-  /** Dashboard (or other artifact) IDs to clean up after grading. */
+  /** Dashboard (or other artifact) IDs that were cleaned up by the hook.
+   *  Informational only — the hook handles cleanup itself via the `cleanup`
+   *  flag in PostRunInspectionContext. */
   cleanupIds?: string[];
 };
 
@@ -116,7 +120,9 @@ export type Scenario = {
    * When this hook is provided AND returns evidence, the grading pipeline:
    *  1. Passes the evidence string to the LLM judge prompt
    *  2. Persists the summary in the grade record
-   *  3. Cleans up artifacts listed in cleanupIds
+   *
+   * Cleanup is the hook's responsibility — use the `cleanup` flag in
+   * PostRunInspectionContext to decide whether to delete artifacts.
    */
   postRunInspection?: (
     ctx: PostRunInspectionContext,

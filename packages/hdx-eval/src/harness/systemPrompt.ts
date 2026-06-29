@@ -23,6 +23,7 @@ export function buildSystemPrompt(
       tables,
       anchorTimeIso,
       maxTurns,
+      variant,
     });
   }
 
@@ -43,7 +44,18 @@ function buildInvestigationSystemPrompt(
 ): string {
   const { traces, logs } = scenarioTables(scenarioName);
   const sharedSchema = '';
+  //   `These follow the standard OpenTelemetry ClickHouse schema:
+  // - traces have Timestamp DateTime64(9), TraceId, SpanId, ParentSpanId,
+  //   ServiceName, SpanName, SpanKind, Duration (nanoseconds), StatusCode,
+  //   StatusMessage, plus Map(String,String) columns ResourceAttributes and
+  //   SpanAttributes.
+  // - logs have Timestamp DateTime64(9), TraceId, SpanId, ServiceName,
+  //   SeverityText, SeverityNumber, Body, plus Map(String,String) columns
+  //   ResourceAttributes and LogAttributes.`;
 
+  // When the harness anchors a run to a fixed past time, the agent must use
+  // that anchor as "now" for any relative window in the user's prompt. Without
+  // this, the model uses today's date and queries an empty future window.
   const anchorBlock = anchorTimeIso
     ? `\nFIXED CURRENT TIME: ${anchorTimeIso}
 All "now", "recently", "in the last N minutes/hours" references in the user's
@@ -51,6 +63,11 @@ prompt are anchored to this timestamp. When you query, use absolute ISO
 timestamps relative to this anchor — do NOT use today's wall-clock date.\n`
     : '';
 
+  // Hypothesis-variant playbook — encourages hypothesis enumeration and
+  // (optionally) parallel subagent investigation. Goal: break the
+  // "commit to the first thing you see" anchoring failure we observe on
+  // incident scenarios, without paying the subagent overhead when a
+  // straightforward investigation will do.
   const playbookBlock =
     variant === 'hypothesis'
       ? `
