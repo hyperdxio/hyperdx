@@ -3514,6 +3514,30 @@ describe('renderMetricExemplarsChartConfig', () => {
     expect(sql).toContain(`LIMIT ${EXEMPLAR_QUERY_LIMIT}`);
   });
 
+  it("scopes exemplars to the series' aggCondition so markers match the plotted line", async () => {
+    const filteredConfig = {
+      ...histogramConfig,
+      select: [
+        {
+          aggFn: 'quantile',
+          level: 0.95,
+          valueExpression: 'Value',
+          metricName: 'http.server.duration',
+          metricType: MetricsDataType.Histogram,
+          aggCondition: "ServiceName = 'api'",
+          aggConditionLanguage: 'sql',
+        },
+      ],
+    } as ChartConfigWithOptDateRange;
+    const generated = await renderMetricExemplarsChartConfig(
+      filteredConfig,
+      mockMetadata,
+    );
+    expect(generated).not.toBeNull();
+    const sql = parameterizedQueryToSql(generated!);
+    expect(sql).toContain("ServiceName = 'api'");
+  });
+
   it('returns null for a ratio config (exemplars are meaningless on a ratio axis)', async () => {
     const ratioConfig = {
       ...histogramConfig,

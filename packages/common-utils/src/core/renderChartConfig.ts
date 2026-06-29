@@ -2232,8 +2232,9 @@ export async function renderMetricExemplarsChartConfig(
     from: { ...chartConfig.from, tableName: table },
     timestampValueExpression:
       chartConfig.timestampValueExpression || DEFAULT_METRIC_TABLE_TIME_COLUMN,
-    // Drop the metric select so renderWhere doesn't push aggCondition predicates.
-    select: [],
+    // Keep the original select so renderWhere applies the series' aggCondition —
+    // otherwise the exemplar scan would surface traces from other series (e.g.
+    // other services/routes/tenants) that share the same metric name.
     filters: [
       ...(chartConfig.filters ?? []),
       {

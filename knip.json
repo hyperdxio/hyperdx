@@ -35,7 +35,8 @@
   "ignore": [
     "scripts/dev-portal/**",
     ".github/scripts/**",
-    "docker/hyperdx/**"
+    "docker/hyperdx/**",
+    "telemetry-generator/**"
   ],
   "ignoreBinaries": ["make", "migrate", "playwright"],
   "ignoreDependencies": [
