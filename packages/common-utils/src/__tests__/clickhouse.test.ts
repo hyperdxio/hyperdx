@@ -503,6 +503,32 @@ describe('computeResultSetRatio', () => {
     expect(result.data[0]['errors/total']).toBe(0.1); // 20 / (100+100)
     expect(result.data[1]['errors/total']).toBe(0); // 0 / 200
   });
+
+  it('does not let a group missing the denominator poison the bucket total', () => {
+    const mockResultSet: ResponseJSON<any> = {
+      meta: [
+        { name: 'errors', type: 'UInt64' },
+        { name: 'total', type: 'UInt64' },
+        { name: 'tenant', type: 'String' },
+        { name: 'timestamp', type: 'DateTime' },
+      ],
+      data: [
+        // present in both numerator and denominator
+        { errors: '20', total: '100', tenant: 'acme', timestamp: 't0' },
+        // numerator only (no matching denominator row) -> total is undefined.
+        // Must not turn the bucket total into NaN for the other groups.
+        { errors: '5', tenant: 'globex', timestamp: 't0' },
+      ],
+      rows: 2,
+      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
+    };
+
+    const result = computeResultSetRatio(mockResultSet);
+
+    // Bucket total is 100 (only acme contributes a denominator), so acme's
+    // share is still well-defined rather than NaN.
+    expect(result.data[0]['errors/total']).toBe(0.2); // 20 / 100
+  });
 });
 
 describe('processClickhouseSettings - optimization settings', () => {
