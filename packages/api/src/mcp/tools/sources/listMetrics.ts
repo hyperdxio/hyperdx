@@ -24,6 +24,13 @@ const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
+// Hard timeout for the entire list operation (ms).
+const LIST_TIMEOUT_MS = 10_000;
+
+// Server-side ClickHouse execution cap per query. Matches the bounds
+// used by describeMetric's fetchAttributeKeys / sampleAttributeValues.
+const MAX_EXEC_SECONDS = 8;
+
 // ─── Cursor ──────────────────────────────────────────────────────────────────
 
 export type ListMetricsCursorPayload = {
@@ -151,6 +158,7 @@ async function fetchMetricsForKind({
   namePattern,
   afterName,
   limit,
+  signal,
 }: {
   clickhouseClient: ClickhouseClient;
   metadata: ReturnType<typeof getMetadata>;
@@ -163,6 +171,7 @@ async function fetchMetricsForKind({
   namePattern: string | undefined;
   afterName: string | undefined;
   limit: number;
+  signal: AbortSignal;
 }): Promise<MetricEntry[]> {
   // Defensive column-presence check so we don't reference MetricUnit /
   // MetricDescription on non-OTel-default schemas.
@@ -218,6 +227,11 @@ async function fetchMetricsForKind({
     query_params: sql.params,
     format: 'JSON',
     connectionId,
+    clickhouse_settings: {
+      max_execution_time: MAX_EXEC_SECONDS,
+      timeout_overflow_mode: 'break',
+    },
+    abort_signal: signal,
   });
   const result = (await response.json()) as { data: Row[] };
   return result.data.map(row => {
@@ -258,188 +272,233 @@ export function registerListMetrics(
       // the typed shape we need for downstream calls.
       const input: z.infer<typeof listMetricsSchema> =
         listMetricsSchema.parse(rawInput);
-      const source = await getSource(teamId.toString(), input.sourceId);
-      if (!source) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Source "${input.sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
-            },
-          ],
-        };
-      }
-      if (source.kind !== SourceKind.Metric) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Source "${input.sourceId}" is a "${source.kind}" source, not a metric source. clickstack_list_metrics only works on metric sources — call clickstack_list_sources to find one whose kind is "metric".`,
-            },
-          ],
-        };
-      }
 
-      const timeRange = parseTimeRange(input.startTime, input.endTime);
-      if ('error' in timeRange) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: timeRange.error }],
-        };
-      }
-      const { startDate, endDate } = timeRange;
-
-      // Decode cursor; reject silently and start over if malformed so a
-      // truncated or tampered cursor does not surface internals.
-      const cursor = input.cursor ? decodeCursor(input.cursor) : null;
-      if (input.cursor && !cursor) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: 'Invalid cursor. Omit cursor to start over, or pass the exact `nextCursor` value returned by a previous call.',
-            },
-          ],
-        };
-      }
-
-      // Resolve which kinds to scan, in order. When a cursor is set,
-      // skip kinds before the cursor's kind (already returned) and start
-      // the cursor's kind at the lastName-exclusive position.
-      const requestedKinds: QueryableMetricKind[] = input.kind
-        ? [input.kind]
-        : QUERYABLE_METRIC_KINDS.filter(k => Boolean(source.metricTables[k]));
-      const startKindIdx = cursor ? requestedKinds.indexOf(cursor.kind) : 0;
-      if (startKindIdx < 0) {
-        // Cursor points at a kind that's not in scope for this call —
-        // safer to error than silently skip.
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Cursor references kind "${cursor!.kind}" but that kind is not in scope for this call. Drop the kind filter or pass a matching cursor.`,
-            },
-          ],
-        };
-      }
-
-      const connection = await getConnectionById(
-        teamId.toString(),
-        source.connection.toString(),
-        true,
-      );
-      if (!connection) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Connection not found for source "${input.sourceId}".`,
-            },
-          ],
-        };
-      }
-
-      const clickhouseClient = new ClickhouseClient({
-        host: connection.host,
-        username: connection.username,
-        password: connection.password,
+      const controller = new AbortController();
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          controller.abort();
+          reject(new Error('LIST_METRICS_TIMEOUT'));
+        }, LIST_TIMEOUT_MS);
       });
-      const metadata = getMetadata(clickhouseClient);
 
-      const limit = input.limit ?? DEFAULT_LIMIT;
-      const databaseName = source.from.databaseName;
-
-      const metrics: MetricEntry[] = [];
-      // Per-kind fetch failures, surfaced on the response so the agent
-      // can distinguish "kind genuinely has no metrics" from "the fetch
-      // for that kind failed" — the two need different recovery steps.
-      const partialFailure: { kind: string; error: string }[] = [];
-      let nextCursor: string | undefined;
-      for (let i = startKindIdx; i < requestedKinds.length; i++) {
-        const kind = requestedKinds[i];
-        const tableName = source.metricTables[kind];
-        if (!tableName) continue;
-        const afterName =
-          cursor && cursor.kind === kind && i === startKindIdx
-            ? cursor.lastName
-            : undefined;
-        const remaining = limit - metrics.length;
-        if (remaining <= 0) break;
-        // Fetch one extra row so we can detect more-data-available.
-        let kindMetrics: MetricEntry[];
-        try {
-          kindMetrics = await fetchMetricsForKind({
-            clickhouseClient,
-            metadata,
-            kind,
-            databaseName,
-            tableName,
-            connectionId: source.connection.toString(),
-            startDate,
-            endDate,
-            namePattern: input.namePattern,
-            afterName,
-            limit: remaining + 1,
-          });
-        } catch (e) {
-          const message = e instanceof Error ? e.message : String(e);
+      try {
+        return await Promise.race([
+          listMetricsImpl(teamId.toString(), input, controller.signal),
+          timeoutPromise,
+        ]);
+      } catch (e) {
+        if (e instanceof Error && e.message === 'LIST_METRICS_TIMEOUT') {
           logger.warn(
-            { sourceId: input.sourceId, kind, error: message },
-            'Failed to list metrics for kind',
+            { teamId, sourceId: input.sourceId },
+            'clickstack_list_metrics timed out',
           );
-          partialFailure.push({
-            kind,
-            error: message.replace(/\s+/g, ' ').trim().slice(0, 200),
-          });
-          continue;
+          return {
+            isError: true as const,
+            content: [
+              {
+                type: 'text' as const,
+                text:
+                  'clickstack_list_metrics timed out. Try narrowing the time window ' +
+                  '(startTime/endTime), pinning a single `kind`, or adding a namePattern filter.',
+              },
+            ],
+          };
         }
-        if (kindMetrics.length > remaining) {
-          // We hit the cap for this kind; emit cursor pointing at the
-          // last returned name and stop iterating further kinds.
-          const truncated = kindMetrics.slice(0, remaining);
-          metrics.push(...truncated);
-          nextCursor = encodeCursor({
-            kind,
-            lastName: truncated[truncated.length - 1].name,
-          });
-          break;
-        }
-        metrics.push(...kindMetrics);
+        throw e;
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      const responseObj: Record<string, unknown> = {
-        metrics,
-        ...(nextCursor && { nextCursor }),
-        ...(partialFailure.length > 0 && {
-          partialFailure,
-          hint:
-            'Listing failed for some metric kinds — results may be incomplete. ' +
-            'Retry the call; if the failure persists, narrow startTime/endTime or pin a single `kind`.',
-        }),
-        ...(metrics.length === 0 &&
-          partialFailure.length === 0 && {
-            hint:
-              'No metrics matched. Try widening the time window (startTime/endTime), ' +
-              'removing the namePattern filter, or omitting `kind` to scan every populated metric table.',
-          }),
-        usage:
-          'Pass `metricType` + `metricName` from each entry to clickstack_timeseries / clickstack_table. ' +
-          'For per-metric attribute keys and sampled values, call clickstack_describe_metric.',
-      };
-
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: JSON.stringify(responseObj, null, 2),
-          },
-        ],
-      };
     }),
   );
+}
+
+async function listMetricsImpl(
+  teamId: string,
+  input: z.infer<typeof listMetricsSchema>,
+  signal: AbortSignal,
+) {
+  const source = await getSource(teamId, input.sourceId);
+  if (!source) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Source "${input.sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
+        },
+      ],
+    };
+  }
+  if (source.kind !== SourceKind.Metric) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Source "${input.sourceId}" is a "${source.kind}" source, not a metric source. clickstack_list_metrics only works on metric sources — call clickstack_list_sources to find one whose kind is "metric".`,
+        },
+      ],
+    };
+  }
+
+  const timeRange = parseTimeRange(input.startTime, input.endTime);
+  if ('error' in timeRange) {
+    return {
+      isError: true,
+      content: [{ type: 'text' as const, text: timeRange.error }],
+    };
+  }
+  const { startDate, endDate } = timeRange;
+
+  // Decode cursor; reject silently and start over if malformed so a
+  // truncated or tampered cursor does not surface internals.
+  const cursor = input.cursor ? decodeCursor(input.cursor) : null;
+  if (input.cursor && !cursor) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: 'Invalid cursor. Omit cursor to start over, or pass the exact `nextCursor` value returned by a previous call.',
+        },
+      ],
+    };
+  }
+
+  // Resolve which kinds to scan, in order. When a cursor is set,
+  // skip kinds before the cursor's kind (already returned) and start
+  // the cursor's kind at the lastName-exclusive position.
+  const requestedKinds: QueryableMetricKind[] = input.kind
+    ? [input.kind]
+    : QUERYABLE_METRIC_KINDS.filter(k => Boolean(source.metricTables[k]));
+  const startKindIdx = cursor ? requestedKinds.indexOf(cursor.kind) : 0;
+  if (startKindIdx < 0) {
+    // Cursor points at a kind that's not in scope for this call —
+    // safer to error than silently skip.
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Cursor references kind "${cursor!.kind}" but that kind is not in scope for this call. Drop the kind filter or pass a matching cursor.`,
+        },
+      ],
+    };
+  }
+
+  const connection = await getConnectionById(
+    teamId,
+    source.connection.toString(),
+    true,
+  );
+  if (!connection) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: 'text' as const,
+          text: `Connection not found for source "${input.sourceId}".`,
+        },
+      ],
+    };
+  }
+
+  const clickhouseClient = new ClickhouseClient({
+    host: connection.host,
+    username: connection.username,
+    password: connection.password,
+  });
+  const metadata = getMetadata(clickhouseClient);
+
+  const limit = input.limit ?? DEFAULT_LIMIT;
+  const databaseName = source.from.databaseName;
+
+  const metrics: MetricEntry[] = [];
+  // Per-kind fetch failures, surfaced on the response so the agent
+  // can distinguish "kind genuinely has no metrics" from "the fetch
+  // for that kind failed" — the two need different recovery steps.
+  const partialFailure: { kind: string; error: string }[] = [];
+  let nextCursor: string | undefined;
+  for (let i = startKindIdx; i < requestedKinds.length; i++) {
+    const kind = requestedKinds[i];
+    const tableName = source.metricTables[kind];
+    if (!tableName) continue;
+    const afterName =
+      cursor && cursor.kind === kind && i === startKindIdx
+        ? cursor.lastName
+        : undefined;
+    const remaining = limit - metrics.length;
+    if (remaining <= 0) break;
+    // Fetch one extra row so we can detect more-data-available.
+    let kindMetrics: MetricEntry[];
+    try {
+      kindMetrics = await fetchMetricsForKind({
+        clickhouseClient,
+        metadata,
+        kind,
+        databaseName,
+        tableName,
+        connectionId: source.connection.toString(),
+        startDate,
+        endDate,
+        namePattern: input.namePattern,
+        afterName,
+        limit: remaining + 1,
+        signal,
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      logger.warn(
+        { sourceId: input.sourceId, kind, error: message },
+        'Failed to list metrics for kind',
+      );
+      partialFailure.push({
+        kind,
+        error: message.replace(/\s+/g, ' ').trim().slice(0, 200),
+      });
+      continue;
+    }
+    if (kindMetrics.length > remaining) {
+      // We hit the cap for this kind; emit cursor pointing at the
+      // last returned name and stop iterating further kinds.
+      const truncated = kindMetrics.slice(0, remaining);
+      metrics.push(...truncated);
+      nextCursor = encodeCursor({
+        kind,
+        lastName: truncated[truncated.length - 1].name,
+      });
+      break;
+    }
+    metrics.push(...kindMetrics);
+  }
+
+  const responseObj: Record<string, unknown> = {
+    metrics,
+    ...(nextCursor && { nextCursor }),
+    ...(partialFailure.length > 0 && {
+      partialFailure,
+      hint:
+        'Listing failed for some metric kinds — results may be incomplete. ' +
+        'Retry the call; if the failure persists, narrow startTime/endTime or pin a single `kind`.',
+    }),
+    ...(metrics.length === 0 &&
+      partialFailure.length === 0 && {
+        hint:
+          'No metrics matched. Try widening the time window (startTime/endTime), ' +
+          'removing the namePattern filter, or omitting `kind` to scan every populated metric table.',
+      }),
+    usage:
+      'Pass `metricType` + `metricName` from each entry to clickstack_timeseries / clickstack_table. ' +
+      'For per-metric attribute keys and sampled values, call clickstack_describe_metric.',
+  };
+
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(responseObj, null, 2),
+      },
+    ],
+  };
 }
