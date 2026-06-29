@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/github-script@v9
         env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_OSS_PRS }}
+          SLACK_WEBHOOK_OSS_PRS: ${{ secrets.SLACK_WEBHOOK_OSS_PRS }}
         with:
           script: |
             const LABEL = 'external';
@@ -73,7 +73,7 @@ jobs:
             core.info(`Labeled #${item.number} (${item.author_association}).`);
 
             // Notify Slack directly (the GitHub->Slack app does not fire on label-add).
-            const webhook = process.env.SLACK_WEBHOOK;
+            const webhook = process.env.SLACK_WEBHOOK_OSS_PRS;
             if (!webhook) { core.warning('SLACK_WEBHOOK_OSS_PRS not set — labeled only, no alert sent.'); return; }
             const kind = context.payload.pull_request ? 'PR' : 'issue';
             const text = `:sparkles: *New external ${kind}* in \`${owner}/${repo}\`\n`
