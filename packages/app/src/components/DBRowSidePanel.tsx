@@ -448,13 +448,13 @@ export const DBRowSidePanelInner = ({
   }, [sourceStack, navStack, setQueryTab, sourceIsTrace, hasOverviewPanel]);
 
   // Reset to the default tab and clear drilldowns when a *different* root event
-  // is opened. Skipped on first mount so URL-restored state survives.
-  const prevInitialRowIdRef = useRef<string | undefined | null>(undefined);
+  // is opened. Seeded with the first-render rowId so a genuine deep-link (rowId
+  // + stacks both restored from the URL) is preserved, while a later change of
+  // the *root* rowId (e.g. undefined → clicked row, or switching to a different
+  // event) clears stale drilldown stacks.
+  const prevInitialRowIdRef = useRef<string | undefined | null>(initialRowId);
   useEffect(() => {
-    if (
-      prevInitialRowIdRef.current !== undefined &&
-      initialRowId !== prevInitialRowIdRef.current
-    ) {
+    if (initialRowId !== prevInitialRowIdRef.current) {
       setSourceStack([]);
       setNavStack([]);
       setQueryTab(null);
@@ -573,6 +573,11 @@ export const DBRowSidePanelInner = ({
   const { data: traceSourceData } = useSource({ id: traceSourceId });
 
   const spanId = normalizedRow?.['__hdx_span_id'];
+  const traceIdExpression =
+    traceSourceData?.kind === SourceKind.Log ||
+    traceSourceData?.kind === SourceKind.Trace
+      ? traceSourceData.traceIdExpression
+      : undefined;
   const spanIdExpression =
     traceSourceData?.kind === SourceKind.Log ||
     traceSourceData?.kind === SourceKind.Trace
@@ -580,9 +585,19 @@ export const DBRowSidePanelInner = ({
       : undefined;
 
   const traceSpanRowId = useMemo(() => {
-    if (!spanIdExpression || !spanId) return undefined;
-    return SqlString.format('?=?', [SqlString.raw(spanIdExpression), spanId]);
-  }, [spanIdExpression, spanId]);
+    const clauses: string[] = [];
+    if (traceIdExpression && traceId) {
+      clauses.push(
+        SqlString.format('?=?', [SqlString.raw(traceIdExpression), traceId]),
+      );
+    }
+    if (spanIdExpression && spanId) {
+      clauses.push(
+        SqlString.format('?=?', [SqlString.raw(spanIdExpression), spanId]),
+      );
+    }
+    return clauses.length > 0 ? clauses.join(' AND ') : undefined;
+  }, [traceIdExpression, traceId, spanIdExpression, spanId]);
 
   const handleSessionEventNavigate = useCallback(
     (rowId: string, aliasWith: WithClause[]) => {
