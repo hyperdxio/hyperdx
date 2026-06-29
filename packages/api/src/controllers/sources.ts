@@ -61,8 +61,8 @@ export async function updateSource(
 
   // Same kind: simple update through the discriminator model
   if (existing.kind === source.kind) {
-    // @ts-expect-error The findOneAndUpdate method has incompatible type signatures but is actually safe
-    return getModelForKind(source.kind)?.findOneAndUpdate(
+    // @ts-expect-error The findOneAndReplace method has incompatible type signatures but is actually safe
+    return getModelForKind(source.kind)?.findOneAndReplace(
       { _id: sourceId, team },
       source,
       { new: true },
