@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from 'react';
 import SqlString from 'sqlstring';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { TSource } from '@hyperdx/common-utils/dist/types';
@@ -24,24 +25,26 @@ export default function useFieldExpressionGenerator(
     tcFromSource(source),
   );
 
-  if (source && !isLoadingJsonColumns) {
-    return {
-      isLoading: false,
-      getFieldExpression: (
-        column: string,
-        key: string,
-        convertFn: string = 'toString',
-      ) => {
-        const isJson = jsonColumns?.includes(column);
-        return isJson
-          ? SqlString.format(`${convertFn}(??.??)`, [column, key])
-          : SqlString.format('??[?]', [column, key]);
-      },
-    };
-  } else {
-    return {
-      isLoading: isLoadingJsonColumns,
-      getFieldExpression: undefined,
-    };
-  }
+  // Memoize the generator so it has a stable reference across renders when
+  // its inputs haven't changed. Several call sites pass the returned function
+  // into `useMemo` / `useEffect` dependency arrays, and a fresh closure on
+  // every render previously caused expensive recomputation cascades that
+  // amplified render-loop bugs when the underlying schema query failed.
+  const getFieldExpression = useCallback<FieldExpressionGenerator>(
+    (column, key, convertFn = 'toString') => {
+      const isJson = jsonColumns?.includes(column);
+      return isJson
+        ? SqlString.format(`${convertFn}(??.??)`, [column, key])
+        : SqlString.format('??[?]', [column, key]);
+    },
+    [jsonColumns],
+  );
+
+  return useMemo(
+    () =>
+      source && !isLoadingJsonColumns
+        ? { isLoading: false, getFieldExpression }
+        : { isLoading: isLoadingJsonColumns, getFieldExpression: undefined },
+    [source, isLoadingJsonColumns, getFieldExpression],
+  );
 }

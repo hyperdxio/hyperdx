@@ -75,6 +75,13 @@ export function useMetadataWithSettings() {
   return metadata;
 }
 
+// Schema-discovery queries (DESCRIBE / system.tables) deterministically fail
+// when the source's database or table doesn't exist on the current ClickHouse
+// server. There's nothing useful to gain from retrying those failures, and the
+// retries amplify spurious re-renders that have caused render-loop crashes
+// (e.g. "Maximum update depth exceeded") in pages that observe these hooks.
+const SCHEMA_QUERY_RETRY = 0;
+
 export function useColumns(
   {
     databaseName,
@@ -97,6 +104,7 @@ export function useColumns(
         connectionId,
       });
     },
+    retry: SCHEMA_QUERY_RETRY,
     enabled: !!databaseName && !!tableName && !!connectionId,
     ...options,
   });
@@ -176,8 +184,9 @@ export function useJsonColumns(
         ) ?? []
       );
     },
+    retry: SCHEMA_QUERY_RETRY,
     enabled:
-      tableConnection &&
+      !!tableConnection &&
       !!tableConnection.databaseName &&
       !!tableConnection.tableName &&
       !!tableConnection.connectionId,
@@ -296,15 +305,24 @@ export function useTableMetadata(
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
   const metadata = useMetadataWithSettings();
-  return useQuery<TableMetadata | undefined>({
+  return useQuery<TableMetadata | null>({
     queryKey: ['useMetadata.useTableMetadata', { databaseName, tableName }],
     queryFn: async () => {
-      return await metadata.getTableMetadata({
+      // `getTableMetadata` resolves to `undefined` when the table doesn't
+      // exist (e.g. the source points at a database that's missing on the
+      // current ClickHouse server). React Query v5 forbids `undefined` query
+      // results and throws "Query data cannot be undefined", which previously
+      // surfaced as a hard render-loop crash from consumers of this hook.
+      // Normalize the missing case to `null` so the absence is still
+      // observable but the query resolves cleanly.
+      const tableMetadata = await metadata.getTableMetadata({
         databaseName,
         tableName,
         connectionId,
       });
+      return tableMetadata ?? null;
     },
+    retry: SCHEMA_QUERY_RETRY,
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     enabled: !!databaseName && !!tableName && !!connectionId,
     ...options,

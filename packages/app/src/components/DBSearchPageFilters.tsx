@@ -2152,7 +2152,10 @@ const DBSearchPageFiltersComponent = ({
   );
 };
 
-function isFieldPrimary(tableMetadata: TableMetadata | undefined, key: string) {
+function isFieldPrimary(
+  tableMetadata: TableMetadata | null | undefined,
+  key: string,
+) {
   return tableMetadata?.primary_key?.includes(key);
 }
 export const DBSearchPageFilters = memo(DBSearchPageFiltersComponent);
