@@ -82,6 +82,13 @@ type CollectorConfig = {
         pipelines: string[];
       }>;
     };
+    span_metrics?: {
+      histogram: { unit: string; explicit: { buckets: string[] } };
+      dimensions: Array<{ name: string }>;
+      exemplars: { enabled: boolean };
+      metrics_flush_interval: string;
+      namespace?: string;
+    };
   };
   exporters?: {
     nop?: null;
@@ -124,6 +131,15 @@ type CollectorConfig = {
       };
     };
     prometheusremotewrite?: {
+      endpoint: string;
+      tls: {
+        insecure: boolean;
+      };
+      resource_to_telemetry_conversion: {
+        enabled: boolean;
+      };
+    };
+    'prometheusremotewrite/spanmetrics'?: {
       endpoint: string;
       tls: {
         insecure: boolean;
@@ -319,6 +335,68 @@ export const buildOtelCollectorConfig = (
         receivers: ['otlp/hyperdx'],
         processors: ['memory_limiter', 'batch'],
         exporters: ['prometheusremotewrite'],
+      };
+    }
+
+    if (
+      config.IS_SPAN_METRICS_ENABLED &&
+      otelCollectorConfig.connectors &&
+      otelCollectorConfig.exporters
+    ) {
+      // Derive request metrics (with trace exemplars) from spans. The connector
+      // consumes the traces pipeline and feeds a dedicated metrics pipeline, so
+      // the resulting `traces.span.metrics.*` land in ClickHouse with
+      // `Exemplars.*` pointing back at the spans they were measured from.
+      otelCollectorConfig.connectors.span_metrics = {
+        histogram: {
+          unit: 'ms',
+          explicit: {
+            buckets: [
+              '2ms',
+              '5ms',
+              '10ms',
+              '25ms',
+              '50ms',
+              '100ms',
+              '250ms',
+              '500ms',
+              '1s',
+              '2.5s',
+              '5s',
+              '10s',
+            ],
+          },
+        },
+        dimensions: [
+          { name: 'http.route' },
+          { name: 'http.method' },
+          { name: 'host.region' },
+          { name: 'app.tenant_id' },
+          { name: 'http.status_code' },
+        ],
+        exemplars: { enabled: true },
+        metrics_flush_interval: '15s',
+      };
+      otelCollectorConfig.service.pipelines.traces.exporters.push(
+        'span_metrics',
+      );
+
+      const spanMetricsExporters = ['clickhouse'];
+      // Optionally also remote-write the derived metrics (with exemplars) to a
+      // Prometheus endpoint, so the native Prometheus `query_exemplars` path can
+      // be exercised against the same real, generated data.
+      if (config.IS_SPAN_METRICS_PROM_RW_ENABLED) {
+        otelCollectorConfig.exporters['prometheusremotewrite/spanmetrics'] = {
+          endpoint: '${env:SPAN_METRICS_PROM_RW_ENDPOINT}',
+          tls: { insecure: true },
+          resource_to_telemetry_conversion: { enabled: true },
+        };
+        spanMetricsExporters.push('prometheusremotewrite/spanmetrics');
+      }
+      otelCollectorConfig.service.pipelines['metrics/spanmetrics'] = {
+        receivers: ['span_metrics'],
+        processors: ['memory_limiter', 'batch'],
+        exporters: spanMetricsExporters,
       };
     }
 
