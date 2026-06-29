@@ -13,8 +13,9 @@
  * fed to the LLM judge so it can evaluate whether tiles are correctly
  * configured AND return relevant data.
  */
-import type { ToolCallRecord } from '../harness/types';
-import { HyperdxApiClient } from '../hyperdx/api';
+import type { ToolCallRecord } from '@/harness/types';
+import type { ApiError } from '@/hyperdx/api';
+import { HyperdxApiClient } from '@/hyperdx/api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,9 @@ export type DashboardInspectionResult = {
 
 // ─── Tool call analysis ──────────────────────────────────────────────────────
 
+/** Matches ObjectIds (24 hex), UUIDs, and other alphanumeric IDs. */
+const ID_REGEX = /"id"\s*:\s*"([a-f0-9-]{24,36})"/;
+
 const SAVE_DASHBOARD_PATTERN =
   /clickstack_save_dashboard|hyperdx_save_dashboard/;
 const PATCH_DASHBOARD_PATTERN =
@@ -89,14 +93,14 @@ function extractDashboardIds(toolCalls: ToolCallRecord[]): string[] {
               const inner = JSON.parse(block.text);
               if (inner?.id) ids.add(inner.id);
             } catch {
-              const match = block.text.match(/"id"\s*:\s*"([a-f0-9]{24})"/);
+              const match = block.text.match(ID_REGEX);
               if (match) ids.add(match[1]);
             }
           }
         }
       }
     } catch {
-      const match = call.output.match(/"id"\s*:\s*"([a-f0-9]{24})"/);
+      const match = call.output.match(ID_REGEX);
       if (match) ids.add(match[1]);
     }
   }
@@ -292,9 +296,12 @@ export async function inspectDashboards(args: {
         }
       }
     } catch (err) {
-      errors.push(
-        `Failed to inspect dashboard ${dashboardId}: ${err instanceof Error ? err.message : err}`,
-      );
+      const status = (err as ApiError).status;
+      const prefix =
+        status === 404
+          ? `Dashboard ${dashboardId} not found (404)`
+          : `Failed to inspect dashboard ${dashboardId}`;
+      errors.push(`${prefix}: ${err instanceof Error ? err.message : err}`);
     }
   }
 
@@ -332,6 +339,120 @@ export async function inspectDashboards(args: {
 }
 
 // ─── Evidence formatting for the LLM judge ──────────────────────────────────
+
+// ─── Distractor / misleading-data awareness analysis ──────────────────────────
+//
+// The dashboard-build scenario plants several "real world is messy" traps:
+//   - 4 internal/distractor services (health-checker, cron-scheduler,
+//     internal-metrics, debug-proxy) mixed in with 3 user-facing ones
+//   - debug-proxy's 15% error rate is debug traffic, not a real incident
+//   - inventory-service's high P99 is one slow admin endpoint
+//     (`/inventory/levels`), not the user paths
+//   - log SeverityText is stored verbatim with mixed case + aliases
+//     (`error`/`ERROR`/`fatal`), so naive exact-match ERROR filters under-count
+//   - `staging` traffic is blended into `production`
+//
+// These signals are heuristic (text scan of every tile config) and are surfaced
+// to the LLM judge as explicit hints — turning a fuzzy "did the agent notice?"
+// judgment into concrete evidence the judge can cite.
+
+const DISTRACTOR_SERVICES = [
+  'health-checker',
+  'cron-scheduler',
+  'internal-metrics',
+  'debug-proxy',
+] as const;
+
+const USER_FACING_SERVICES = [
+  'web-gateway',
+  'order-service',
+  'inventory-service',
+] as const;
+
+export type DistractorAwarenessSignals = {
+  /** Any tile config text references a distractor service by name. */
+  mentionsDistractorServices: boolean;
+  /** Any tile filters/excludes distractor services (NOT IN / != / excludes). */
+  filtersOutDistractors: boolean;
+  /** Any tile scopes explicitly to the user-facing services (IN allow-list). */
+  scopesToUserFacing: boolean;
+  /** Any tile addresses the messy severity (lower(SeverityText), IN-list, etc.) */
+  handlesMessySeverity: boolean;
+  /** Any latency tile breaks down by endpoint/SpanName (sees the red herring). */
+  latencyBrokenDownByEndpoint: boolean;
+  /** Any tile filters by deployment environment (production vs staging). */
+  filtersByEnvironment: boolean;
+};
+
+/** Concatenate every tile's intended + actual config into one searchable blob. */
+function tileConfigText(result: DashboardInspectionResult): string {
+  const blobs: string[] = [];
+  for (const tile of result.tileEvidence) {
+    if (tile.intendedConfig) blobs.push(JSON.stringify(tile.intendedConfig));
+    if (tile.config) blobs.push(JSON.stringify(tile.config));
+  }
+  return blobs.join('\n');
+}
+
+export function analyzeDistractorAwareness(
+  result: DashboardInspectionResult,
+): DistractorAwarenessSignals {
+  const text = tileConfigText(result);
+  const lower = text.toLowerCase();
+
+  const mentionsDistractorServices = DISTRACTOR_SERVICES.some(s =>
+    lower.includes(s),
+  );
+
+  // Heuristic: a distractor name appears near an exclusion/allow-list operator.
+  const exclusionNearDistractor = DISTRACTOR_SERVICES.some(svc => {
+    const idx = lower.indexOf(svc);
+    if (idx === -1) return false;
+    // Look at a window around the mention for exclusion / IN-list operators.
+    const window = lower.slice(Math.max(0, idx - 60), idx + svc.length + 10);
+    return (
+      window.includes('not in') ||
+      window.includes('!=') ||
+      window.includes('not like') ||
+      window.includes('notlike') ||
+      window.includes('exclud')
+    );
+  });
+  const filtersOutDistractors = exclusionNearDistractor;
+
+  // Allow-list: an `IN (...)` (or multiple equality ORs) referencing the
+  // user-facing services without the distractors.
+  const userFacingInList =
+    /\bin\s*\(\s*'?(web-gateway|order-service|inventory-service)/.test(lower) &&
+    USER_FACING_SERVICES.every(s => lower.includes(s)) &&
+    !DISTRACTOR_SERVICES.some(s => lower.includes(s));
+  const scopesToUserFacing = userFacingInList;
+
+  const handlesMessySeverity =
+    lower.includes('lower(severitytext') ||
+    lower.includes('upper(severitytext') ||
+    /severitytext\s+in\s*\(/.test(lower) ||
+    lower.includes("'fatal'") ||
+    /severitytext.{0,20}(ilike|like)/.test(lower);
+
+  const latencyBrokenDownByEndpoint =
+    lower.includes('spanname') &&
+    (lower.includes('quantile') || lower.includes('duration'));
+
+  const filtersByEnvironment =
+    lower.includes('deployment.environment') ||
+    lower.includes("'staging'") ||
+    lower.includes("'production'");
+
+  return {
+    mentionsDistractorServices,
+    filtersOutDistractors,
+    scopesToUserFacing,
+    handlesMessySeverity,
+    latencyBrokenDownByEndpoint,
+    filtersByEnvironment,
+  };
+}
 
 export function formatDashboardEvidence(
   result: DashboardInspectionResult,
@@ -458,6 +579,38 @@ export function formatDashboardEvidence(
     }
     lines.push('');
   }
+
+  // ── Misleading-data / distractor-awareness signals ──────────────────
+  const signals = analyzeDistractorAwareness(result);
+  lines.push('MISLEADING-DATA AWARENESS (heuristic scan of tile configs):');
+  lines.push(
+    `  - distractor services referenced in any tile: ${signals.mentionsDistractorServices}`,
+  );
+  lines.push(
+    `  - any tile filters OUT distractor services (NOT IN / != / exclude): ${signals.filtersOutDistractors}`,
+  );
+  lines.push(
+    `  - any tile scopes to the 3 user-facing services (allow-list): ${signals.scopesToUserFacing}`,
+  );
+  lines.push(
+    `  - latency broken down by endpoint/SpanName (sees the inventory red herring): ${signals.latencyBrokenDownByEndpoint}`,
+  );
+  lines.push(
+    `  - handles messy SeverityText casing/aliases (lower()/IN-list/fatal): ${signals.handlesMessySeverity}`,
+  );
+  lines.push(
+    `  - filters by deployment environment (production vs staging): ${signals.filtersByEnvironment}`,
+  );
+  lines.push(
+    '  NOTE for judge: if distractor services are referenced but NOT filtered out, ' +
+      'and no tile scopes to user-facing services, the dashboard blends internal ' +
+      'infrastructure traffic with real user traffic — this is the primary ' +
+      'data_awareness failure mode. A naive service-level latency tile that is ' +
+      'NOT broken down by endpoint presents inventory-service as unhealthy when ' +
+      "it is one slow admin export. A SeverityText='ERROR' exact-match filter " +
+      'under-counts errors because the data stores mixed-case + `fatal` variants.',
+  );
+  lines.push('');
 
   return lines.join('\n');
 }

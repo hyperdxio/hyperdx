@@ -7,10 +7,25 @@
  * return data.
  *
  * Dataset spans 1 hour ending at `nowMs`:
- *   - 3 services: `web-gateway`, `order-service`, `inventory-service`
- *   - `web-gateway`:      high-traffic entry point, ~60% of traces
+ *   - 3 user-facing services: `web-gateway`, `order-service`, `inventory-service`
+ *   - 4 internal/distractor services the agent should NOT surface as if they
+ *     were user traffic: `health-checker`, `cron-scheduler`,
+ *     `internal-metrics`, `debug-proxy`
+ *   - `web-gateway`:      high-traffic entry point, ~40% of traces
  *   - `order-service`:    mid-traffic, has an error spike in last 15 min
- *   - `inventory-service`: low-traffic, consistent latency
+ *   - `inventory-service`: low-traffic; its aggregate P95/P99 looks alarming
+ *                          but that is entirely a slow admin export endpoint
+ *                          (`GET /inventory/levels`), not the user paths
+ *
+ * Misleading-data traps (the eval's "real world is messy" surface):
+ *   - Messy log severity: SeverityText is stored verbatim with mixed case and
+ *     aliases (`error`/`ERROR`/`fatal`, `warn`/`warning`, `info`/`INFO`/
+ *     `information`). A naive `SeverityText = 'ERROR'` filter misses ~30% of
+ *     real errors; a groupBy SeverityText splits one level into many buckets.
+ *   - Red-herring latency: inventory-service's high P99 is one admin endpoint.
+ *   - Misleading distractor errors: debug-proxy's 15% error rate is debug
+ *     traffic, not a real incident. cron-scheduler timeouts are normal batch.
+ *   - Mixed environments: `staging` traffic is blended into `production`.
  *
  * The agent must:
  *   1. Discover available sources using list_sources / describe_source
@@ -29,23 +44,26 @@
  *   - Error rate from tool failures (wrong schemas, missing fields) directly
  *     penalizes the score via the tool-error penalty mechanism
  */
-import { makeLog } from '../../generators/logs';
+import { makeLog } from '@/generators/logs';
 import {
   buildResourcePool,
   pickResource,
+  pickSeverityIn,
   uuidv4,
-} from '../../generators/templates';
+} from '@/generators/templates';
 import {
   makeSpan,
   msToNs,
   newSpanId,
   newTraceId,
-} from '../../generators/traces';
-import type { LogRow, TraceRow } from '../../generators/types';
+} from '@/generators/traces';
+import type { LogRow, TraceRow } from '@/generators/types';
 import {
+  analyzeDistractorAwareness,
   formatDashboardEvidence,
   inspectDashboards,
-} from '../../grading/dashboardInspection';
+} from '@/grading/dashboardInspection';
+import { SAMPLING_CAVEAT_BLOCK } from '@/harness/systemPrompt';
 import type {
   GenerateContext,
   PostRunInspectionContext,
@@ -53,7 +71,7 @@ import type {
   Scenario,
   ScenarioBatch,
   SystemPromptContext,
-} from '../types';
+} from '@/scenarios/types';
 import groundTruth from './ground-truth.json';
 
 // ─── Volumes ─────────────────────────────────────────────────────────────────
@@ -77,12 +95,16 @@ const SERVICE_WEIGHTS = {
 type ServiceName = keyof typeof SERVICE_WEIGHTS;
 const SERVICES = Object.keys(SERVICE_WEIGHTS) as ServiceName[];
 
-// Primary services — the ones that matter for a user-facing dashboard
-const PRIMARY_SERVICES: ServiceName[] = [
-  'web-gateway',
-  'order-service',
-  'inventory-service',
-];
+/** Pick a service using the cumulative weight distribution. */
+function pickService(rng: { next(): number }): ServiceName {
+  const roll = rng.next();
+  let cumWeight = 0;
+  for (const [svc, weight] of Object.entries(SERVICE_WEIGHTS)) {
+    cumWeight += weight;
+    if (roll < cumWeight) return svc as ServiceName;
+  }
+  return 'web-gateway';
+}
 
 // Endpoints per service
 const ENDPOINTS: Record<ServiceName, string[]> = {
@@ -151,17 +173,7 @@ function* generateDashboardBuild(
 
   // ─── Generate traces ─────────────────────────────────────────────
   for (let i = 0; i < traceCount; i++) {
-    // Pick service by weight
-    const serviceRoll = rng.next();
-    let cumWeight = 0;
-    let service: ServiceName = 'web-gateway';
-    for (const [svc, weight] of Object.entries(SERVICE_WEIGHTS)) {
-      cumWeight += weight;
-      if (serviceRoll < cumWeight) {
-        service = svc as ServiceName;
-        break;
-      }
-    }
+    const service = pickService(rng);
 
     const endpoint = rng.pick(ENDPOINTS[service]);
     const method = endpoint.split(' ')[0];
@@ -196,6 +208,19 @@ function* generateDashboardBuild(
       case 'debug-proxy':
         baseDurationMs = rng.range(10, 500); // variable
         break;
+    }
+
+    // Red-herring latency: the `GET /inventory/levels` endpoint is a
+    // low-traffic admin/export call that scans the full catalog and is
+    // expected to be slow (2-8s). It drags inventory-service's *aggregate*
+    // P95/P99 way up, making the service look unhealthy at a glance — but
+    // the user-facing paths (`/inventory/check`, `/inventory/reserve`,
+    // `/inventory/release`) are all fast and fine. A good agent that
+    // groups latency by endpoint (or excludes admin traffic) sees through
+    // this; a naive service-level P99 tile presents a non-problem as a
+    // problem.
+    if (service === 'inventory-service' && path === '/inventory/levels') {
+      baseDurationMs = rng.range(2000, 8000);
     }
 
     // Determine error status
@@ -291,28 +316,25 @@ function* generateDashboardBuild(
 
   // ─── Generate logs ────────────────────────────────────────────────
   for (let i = 0; i < logCount; i++) {
-    const serviceRoll = rng.next();
-    let cumWeight = 0;
-    let service: ServiceName = 'web-gateway';
-    for (const [svc, weight] of Object.entries(SERVICE_WEIGHTS)) {
-      cumWeight += weight;
-      if (serviceRoll < cumWeight) {
-        service = svc as ServiceName;
-        break;
-      }
-    }
+    const service = pickService(rng);
 
     const ts = Math.floor(rng.range(windowStartMs, nowMs));
     const resource = pickResource(rng, resourcePool, service);
     const reqId = uuidv4(rng);
 
-    // Severity distribution
-    let severity: LogRow['severityText'];
+    // Severity band drives the body template. The actual stored SeverityText
+    // is intentionally MESSY — real OTel collectors aggregate logs from many
+    // runtimes and emit inconsistent casing/aliases (info/INFO/information,
+    // warn/warning, error/ERROR/fatal). This is a deliberate trap: a naive
+    // `SeverityText = 'ERROR'` exact-match filter silently misses ~30% of
+    // error rows (the lowercase `error` + `fatal` variants), and a groupBy
+    // SeverityText splits one logical level into several buckets.
+    let band: 'info' | 'debug' | 'warn' | 'error';
     let body: string;
 
     const sevRoll = rng.next();
     if (sevRoll < 0.5) {
-      severity = 'INFO';
+      band = 'info';
       body = rng.pick([
         `[${service}] request completed successfully reqId=${reqId} duration=${rng.intRange(10, 500)}ms`,
         `[${service}] cache hit for key=product:${rng.hex(4)} ttl=${rng.intRange(60, 3600)}s`,
@@ -321,7 +343,7 @@ function* generateDashboardBuild(
         `[${service}] rate limiter: bucket=${rng.pick(['default', 'premium', 'internal'])} remaining=${rng.intRange(100, 10000)}`,
       ]);
     } else if (sevRoll < 0.75) {
-      severity = 'DEBUG';
+      band = 'debug';
       body = rng.pick([
         `[${service}] SQL query executed: SELECT * FROM ${rng.pick(['orders', 'products', 'inventory', 'users'])} WHERE id = '${rng.hex(8)}' duration=${rng.intRange(1, 100)}ms rows=${rng.intRange(0, 100)}`,
         `[${service}] serializing response payload size=${rng.intRange(100, 50000)}bytes format=json`,
@@ -329,7 +351,7 @@ function* generateDashboardBuild(
         `[${service}] feature flag evaluation: flag=${rng.pick(['new_checkout', 'dark_mode', 'beta_api'])} result=${rng.pick(['true', 'false'])} context=user:${rng.hex(6)}`,
       ]);
     } else if (sevRoll < 0.9) {
-      severity = 'WARN';
+      band = 'warn';
       body = rng.pick([
         `[${service}] slow query detected: table=${rng.pick(['orders', 'products', 'inventory'])} duration=${rng.intRange(500, 3000)}ms threshold=500ms`,
         `[${service}] circuit breaker half-open: target=${rng.pick(['inventory-service', 'payment-service', 'search-service'])} failures=${rng.intRange(3, 10)}`,
@@ -337,7 +359,7 @@ function* generateDashboardBuild(
         `[${service}] connection pool near capacity: active=${rng.intRange(40, 50)}/50 waiting=${rng.intRange(5, 15)}`,
       ]);
     } else {
-      severity = 'ERROR';
+      band = 'error';
       // During error spike window, order-service produces more errors
       if (service === 'order-service' && ts >= errorSpikeStartMs) {
         body = rng.pick([
@@ -355,11 +377,15 @@ function* generateDashboardBuild(
       }
     }
 
+    // Derive the messy, verbatim severity text + number from the band.
+    const sev = pickSeverityIn(rng, band);
+
     logs.push(
       makeLog({
         timestampMs: ts,
         serviceName: service,
-        severityText: severity,
+        severityText: sev.text,
+        severityNumber: sev.number,
         body,
         traceId: rng.next() < 0.7 ? newTraceId(rng) : undefined,
         spanId: rng.next() < 0.5 ? newSpanId(rng) : undefined,
@@ -438,8 +464,7 @@ After creating both dashboards, verify tiles return data and report what you bui
     'search_dashboards',
   ],
 
-  buildSystemPrompt: (ctx: SystemPromptContext) =>
-    buildDashboardSystemPrompt(ctx),
+  buildSystemPrompt: buildDashboardSystemPrompt,
 
   judgeSystemPreamble: `You are evaluating a dashboard-building task. You will receive:
 - the scenario question (what the candidate was asked to build)
@@ -461,6 +486,7 @@ No prose outside the JSON. Include every criterion id from the rubric.`,
   ): Promise<PostRunInspectionResult> => {
     const result = await inspectDashboards(ctx);
     const evidence = formatDashboardEvidence(result);
+    const distractorAwareness = analyzeDistractorAwareness(result);
 
     const totalTiles = result.totalTiles;
     const tilesWithData = result.tilesWithData;
@@ -498,6 +524,7 @@ No prose outside the JSON. Include every criterion id from the rubric.`,
         agentQueryTileCalls: result.agentQueryTileCalls,
         cleanedUp: result.cleanedUp.length,
         crossDashboardOnClickValid,
+        distractorAwareness,
         tileDetails: result.tileEvidence.map(t => ({
           tileName: t.tileName,
           displayType: t.displayType,
@@ -520,7 +547,7 @@ No prose outside the JSON. Include every criterion id from the rubric.`,
 
 function buildDashboardSystemPrompt(ctx: SystemPromptContext): string {
   const anchorBlock = ctx.anchorTimeIso
-    ? `\nFIXED CURRENT TIME: ${ctx.anchorTimeIso}\nUse this as "now" for any time-based queries or filters. Do NOT use today's date.\n`
+    ? `\nFIXED CURRENT TIME: ${ctx.anchorTimeIso}\nUse this as "now" for any time-based queries or filters. Do NOT use today's date.\n${SAMPLING_CAVEAT_BLOCK}`
     : '';
 
   return `You are building observability dashboards.

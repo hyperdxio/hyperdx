@@ -1,3 +1,6 @@
+/** Error with an HTTP status code attached for callers to distinguish 404 from other failures. */
+export type ApiError = Error & { status?: number };
+
 type CookieJar = Map<string, string>;
 
 type HyperdxConnection = {
@@ -201,27 +204,6 @@ export class HyperdxApiClient {
     await this.request<unknown>('DELETE', `/sources/${id}`);
   }
 
-  // ─── Dashboard methods ──────────────────────────────────────────────────
-
-  async listDashboards(): Promise<HyperdxDashboardSummary[]> {
-    const { body } = await this.request<HyperdxDashboardSummary[]>(
-      'GET',
-      '/dashboards',
-    );
-    return body;
-  }
-
-  async getDashboard(id: string): Promise<HyperdxDashboard> {
-    const dashboards = await this.listDashboards();
-    const found = dashboards.find(
-      d => d._id === id || d.id === id,
-    ) as unknown as HyperdxDashboard | undefined;
-    if (!found) {
-      throw new Error(`Dashboard ${id} not found`);
-    }
-    return found;
-  }
-
   /**
    * Fetch a dashboard via the External API v2 which returns a cleaner shape:
    * - tile `name` is promoted to a top-level field (not buried in config)
@@ -243,9 +225,11 @@ export class HyperdxApiClient {
     });
     const text = await res.text();
     if (!res.ok) {
-      throw new Error(
+      const err = new Error(
         `GET /api/v2/dashboards/${id} → ${res.status}: ${text.slice(0, 300)}`,
       );
+      (err as ApiError).status = res.status;
+      throw err;
     }
     const parsed = JSON.parse(text);
     return (parsed.data ?? parsed) as HyperdxDashboard;
@@ -253,130 +237,6 @@ export class HyperdxApiClient {
 
   async deleteDashboard(id: string): Promise<void> {
     await this.request<unknown>('DELETE', `/dashboards/${id}`);
-  }
-
-  /**
-   * Query a single tile on a dashboard using the MCP endpoint.
-   * Uses Bearer auth (accessKey) rather than cookie auth.
-   */
-  async queryTile(args: {
-    accessKey: string;
-    dashboardId: string;
-    tileId: string;
-    startTime: string;
-    endTime: string;
-  }): Promise<TileQueryResult> {
-    const mcpUrl = `${this.apiUrl.replace(/\/$/, '')}/mcp`;
-
-    // JSON-RPC call to the MCP server
-    const rpcBody = {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'tools/call',
-      params: {
-        name: 'clickstack_query_tile',
-        arguments: {
-          dashboardId: args.dashboardId,
-          tileId: args.tileId,
-          startTime: args.startTime,
-          endTime: args.endTime,
-        },
-      },
-    };
-
-    const res = await fetch(mcpUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${args.accessKey}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json, text/event-stream',
-      },
-      body: JSON.stringify(rpcBody),
-      signal: AbortSignal.timeout(60_000),
-    });
-
-    const text = await res.text();
-
-    if (!res.ok) {
-      return {
-        success: false,
-        error: `HTTP ${res.status}: ${text.slice(0, 200)}`,
-        hasData: false,
-      };
-    }
-
-    // MCP responses may be SSE or JSON-RPC
-    try {
-      // Try JSON-RPC response first
-      const parsed = JSON.parse(text);
-      const result = parsed?.result;
-      if (!result) {
-        return {
-          success: false,
-          error: 'No result in MCP response',
-          hasData: false,
-        };
-      }
-      const isError = result.isError === true;
-      const content = result.content?.[0]?.text ?? '';
-
-      if (isError) {
-        return { success: false, error: content.slice(0, 300), hasData: false };
-      }
-
-      // Check if the result contains actual data
-      try {
-        const inner = JSON.parse(content);
-        const hasData =
-          inner.result != null &&
-          (Array.isArray(inner.result)
-            ? inner.result.length > 0
-            : typeof inner.result === 'object' &&
-              Object.keys(inner.result).length > 0);
-        return { success: true, error: undefined, hasData };
-      } catch {
-        // Non-JSON content (e.g. markdown tile)
-        return { success: true, error: undefined, hasData: content.length > 0 };
-      }
-    } catch {
-      // Try SSE parsing
-      const lines = text.split('\n').filter(l => l.startsWith('data: '));
-      for (const line of lines) {
-        try {
-          const data = JSON.parse(line.slice(6));
-          const result = data?.result;
-          if (result) {
-            const isError = result.isError === true;
-            const content = result.content?.[0]?.text ?? '';
-            if (isError) {
-              return {
-                success: false,
-                error: content.slice(0, 300),
-                hasData: false,
-              };
-            }
-            try {
-              const inner = JSON.parse(content);
-              const hasData = inner.result != null;
-              return { success: true, error: undefined, hasData };
-            } catch {
-              return {
-                success: true,
-                error: undefined,
-                hasData: content.length > 0,
-              };
-            }
-          }
-        } catch {
-          continue;
-        }
-      }
-      return {
-        success: false,
-        error: `Could not parse MCP response: ${text.slice(0, 200)}`,
-        hasData: false,
-      };
-    }
   }
 
   /**
@@ -529,20 +389,11 @@ function extractMcpContent(
   return null;
 }
 
-export type HyperdxDashboardSummary = {
+export type HyperdxDashboard = {
   _id: string;
   id?: string;
   name: string;
   tags?: string[];
-  tiles?: Array<{
-    id?: string;
-    _id?: string;
-    name: string;
-    config: Record<string, unknown>;
-  }>;
-};
-
-export type HyperdxDashboard = HyperdxDashboardSummary & {
   tiles: Array<{
     id?: string;
     _id?: string;
@@ -555,13 +406,7 @@ export type HyperdxDashboard = HyperdxDashboardSummary & {
   }>;
 };
 
-export type TileQueryResult = {
-  success: boolean;
-  error?: string;
-  hasData: boolean;
-};
-
-/** Extended query result with sample rows for LLM judge evaluation. */
+/** Query result with sample rows for LLM judge evaluation. */
 export type TileQueryEvidence = {
   success: boolean;
   hasData: boolean;

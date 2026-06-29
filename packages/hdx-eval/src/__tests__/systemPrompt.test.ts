@@ -37,6 +37,30 @@ describe('buildSystemPrompt', () => {
     expect(p).toContain('2026-01-15T10:00:00.000Z');
   });
 
+  it('warns that describe_source value samples may be stale (with anchor)', () => {
+    const p = buildSystemPrompt(
+      getScenario('error-root-cause'),
+      '2026-01-15T10:00:00.000Z',
+    );
+    expect(p).toContain('DATA DISCOVERY CAVEAT');
+    expect(p).toContain('clickstack_describe_source');
+    expect(p).toContain('lowCardinalityValues');
+  });
+
+  it('omits the sampling caveat when no anchor is provided', () => {
+    const p = buildSystemPrompt(getScenario('error-root-cause'));
+    expect(p).not.toContain('DATA DISCOVERY CAVEAT');
+  });
+
+  it('includes the sampling caveat in the dashboard prompt when anchored', () => {
+    const p = buildSystemPrompt(
+      getScenario('dashboard-build'),
+      '2026-01-15T10:00:00.000Z',
+    );
+    expect(p).toContain('DATA DISCOVERY CAVEAT');
+    expect(p).toContain('lowCardinalityValues');
+  });
+
   it('includes hypothesis playbook when variant is hypothesis', () => {
     const p = buildSystemPrompt(
       getScenario('error-root-cause'),

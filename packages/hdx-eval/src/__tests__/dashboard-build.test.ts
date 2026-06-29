@@ -1,6 +1,7 @@
-import { mulberry32 } from '../rng/seeded';
-import { dashboardBuildScenario } from '../scenarios/dashboard-build/generate';
-import { collectScenario } from '../scenarios/types';
+import { normalizeSeverityText } from '@/generators/templates';
+import { mulberry32 } from '@/rng/seeded';
+import { dashboardBuildScenario } from '@/scenarios/dashboard-build/generate';
+import { collectScenario } from '@/scenarios/types';
 
 const NOW_MS = Date.parse('2026-05-10T20:00:00.000Z');
 
@@ -152,21 +153,102 @@ describe('dashboard-build scenario', () => {
   });
 
   describe('log distribution', () => {
-    it('has all severity levels', () => {
-      const severities = new Set(result.logs.map(l => l.severityText));
-      expect(severities).toContain('INFO');
-      expect(severities).toContain('DEBUG');
-      expect(severities).toContain('WARN');
-      expect(severities).toContain('ERROR');
+    it('covers all severity families once normalized', () => {
+      const families = new Set(
+        result.logs.map(l => normalizeSeverityText(l.severityText)),
+      );
+      expect(families).toContain('INFO');
+      expect(families).toContain('DEBUG');
+      expect(families).toContain('WARN');
+      expect(families).toContain('ERROR');
     });
 
-    it('INFO is the most common severity (~50%)', () => {
+    it('INFO family is the most common (~50%) once normalized', () => {
       const infoLogs = result.logs.filter(
-        l => l.severityText === 'INFO',
+        l => normalizeSeverityText(l.severityText) === 'INFO',
       ).length;
       const ratio = infoLogs / result.logs.length;
       expect(ratio).toBeGreaterThan(0.4);
       expect(ratio).toBeLessThan(0.6);
+    });
+
+    // ── Misleading-data trap: messy severity casing/aliases ──────────
+    it('stores SeverityText with mixed case + OTel aliases (verbatim)', () => {
+      const raw = new Set(result.logs.map(l => l.severityText));
+      // Lowercase variants must be present (naive ERROR exact-match misses these)
+      expect(raw).toContain('error');
+      expect(raw).toContain('info');
+      // The canonical uppercase variants also appear (collector inconsistency)
+      expect([...raw].some(s => s === 'ERROR')).toBe(true);
+      // Aliases like `fatal`/`warning`/`information` appear in the error/warn/info families
+      const hasAlias = [...raw].some(s =>
+        ['fatal', 'warning', 'information'].includes(s),
+      );
+      expect(hasAlias).toBe(true);
+    });
+
+    it('a naive exact-match SeverityText=ERROR under-counts error rows', () => {
+      const errorFamily = result.logs.filter(
+        l => normalizeSeverityText(l.severityText) === 'ERROR',
+      ).length;
+      const exactUppercaseOnly = result.logs.filter(
+        l => l.severityText === 'ERROR',
+      ).length;
+      // Exact uppercase match should miss a meaningful fraction of real errors.
+      expect(exactUppercaseOnly).toBeLessThan(errorFamily);
+      expect(exactUppercaseOnly / errorFamily).toBeLessThan(0.6);
+    });
+
+    it('severityNumber is the true OTel number for the (messy) text', () => {
+      // Each variant carries its real OTel severity number — including
+      // `fatal` (21), which normalizes to the ERROR text family but keeps a
+      // distinct number. This is exactly the kind of inconsistency a robust
+      // dashboard must tolerate.
+      const expectedByText: Record<string, number> = {
+        trace: 1,
+        TRACE: 1,
+        debug: 5,
+        DEBUG: 5,
+        info: 9,
+        INFO: 9,
+        information: 9,
+        warn: 13,
+        WARN: 13,
+        warning: 13,
+        error: 17,
+        ERROR: 17,
+        fatal: 21,
+        FATAL: 21,
+      };
+      for (const l of result.logs.slice(0, 500)) {
+        expect(l.severityNumber).toBe(expectedByText[l.severityText]);
+      }
+    });
+  });
+
+  describe('latency red herring', () => {
+    it('inventory-service aggregate P95 is dominated by the admin endpoint', () => {
+      const inv = result.traces.filter(
+        t => t.serviceName === 'inventory-service',
+      );
+      const levels = inv.filter(t => t.spanName === 'GET /inventory/levels');
+      const userPaths = inv.filter(t => t.spanName !== 'GET /inventory/levels');
+
+      const p95 = (rows: typeof inv) => {
+        const sorted = rows.map(t => t.durationNs).sort((a, b) => a - b);
+        return sorted[Math.floor(sorted.length * 0.95)] ?? 0;
+      };
+
+      // The admin endpoint is much slower than the user-facing paths.
+      expect(levels.length).toBeGreaterThan(0);
+      const levelsP95 = p95(levels);
+      const userP95 = p95(userPaths);
+      // Admin export P95 is in the multi-second range (>= ~2s in ns).
+      expect(levelsP95).toBeGreaterThan(2_000_000_000);
+      // User paths stay sub-second.
+      expect(userP95).toBeLessThan(1_000_000_000);
+      // Aggregate P95 is pulled up well above the user-path P95.
+      expect(p95(inv)).toBeGreaterThan(userP95);
     });
   });
 
@@ -186,7 +268,6 @@ describe('dashboard-build scenario', () => {
         expected?: { totalTileCount?: number; dashboardCount?: number };
         rubric?: { programmatic?: unknown[]; judge?: { criteria?: unknown[] } };
       };
-      expect(gt.expected?.dashboardCount).toBe(2);
       expect(gt.expected?.dashboardCount).toBe(2);
       expect(gt.rubric).toBeDefined();
       expect(gt.rubric?.programmatic).toBeDefined();

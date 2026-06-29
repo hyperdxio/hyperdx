@@ -15,6 +15,13 @@
       "cpu_memory": "No CPU or memory metrics exist in the trace/log data. The agent should report this is unavailable, not create broken tiles.",
       "requests_per_second": "No pre-computed throughput metric exists. The agent could derive it from count + time bucketing, but calling it out as 'not a native metric' is acceptable."
     },
+    "dataTraps": {
+      "distractor_services": "4 of the 7 services (health-checker, cron-scheduler, internal-metrics, debug-proxy) are internal infrastructure, NOT user traffic. A good dashboard scopes its headline tiles to the 3 user-facing services or clearly segregates internal ones. Blending all 7 indiscriminately is the #1 failure mode.",
+      "debug_proxy_fake_errors": "debug-proxy has a ~15% error rate ('debug endpoint not found', 'test assertion failed'). This is debug/staging traffic, not a real incident. Surfacing it as a top error without a caveat is a failure.",
+      "inventory_latency_red_herring": "inventory-service's aggregate P95/P99 is dominated by ONE slow admin endpoint, 'GET /inventory/levels' (2-8s catalog export). The user-facing paths are fast. A service-level latency tile that is NOT broken down by endpoint presents a non-problem as a problem.",
+      "messy_severity": "Log SeverityText is stored verbatim with mixed case and OTel aliases (error/ERROR/fatal, warn/warning, info/INFO/information). A naive SeverityText = 'ERROR' exact-match filter under-counts errors by ~30%; a groupBy SeverityText fragments one level into many buckets. Robust handling uses lower()/upper(), an IN-list, or SeverityNumber >= 17.",
+      "mixed_environments": "Both 'production' and 'staging' traffic exist on the deployment.environment attribute. Production dashboards should typically scope to production."
+    },
     "dashboards": [
       {
         "name": "Service Health Overview",
@@ -130,6 +137,16 @@
         "(not available|no.{0,10}(cpu|memory).{0,10}(data|metric|available)|doesn.t (exist|have)|unavailable|not found in.{0,10}data|no.{0,10}metric)"
       ],
       [
+        "flags_internal_services",
+        2,
+        "(internal.{0,15}(service|infra|traffic)|not user.?facing|distractor|health-checker|cron-scheduler|internal-metrics|debug-proxy|user.?facing services|exclud.{0,20}(service|internal))"
+      ],
+      [
+        "flags_misleading_data",
+        2,
+        "(red herring|misleading|not (a )?real (problem|issue|incident)|debug traffic|admin (endpoint|export)|inventory/levels|mixed.case|case.?insensitiv|fatal|staging traffic|data quality|caveat)"
+      ],
+      [
         "verified_tiles",
         1,
         "(quer(y|ied)|verif(y|ied)|confirm|check).{0,30}(tile|data|result)"
@@ -151,8 +168,8 @@
         },
         {
           "id": "data_awareness",
-          "weight": 3,
-          "description": "Did the agent demonstrate awareness of what data actually exists? (1) CPU and memory metrics do NOT exist in the trace/log data — the agent should have reported this rather than creating broken tiles or silently omitting them. Explicitly noting unavailable data scores high. Creating tiles for non-existent metrics scores 0. (2) The data contains 7 services but only 3 are user-facing (web-gateway, order-service, inventory-service). The other 4 (health-checker, cron-scheduler, internal-metrics, debug-proxy) are internal infrastructure. Did the agent filter them out or include them indiscriminately? A good dashboard focuses on user-facing services, possibly with an 'internal services' section if included at all. (3) debug-proxy has a 15% error rate that is NOT a real problem — it's debug traffic. Did the agent flag this or present it as a real issue?"
+          "weight": 4,
+          "description": "Did the agent see through the misleading data? This is the hardest part of the eval. Use the MISLEADING-DATA AWARENESS signals in the artifact. Score 5 only if the agent handled MULTIPLE traps; score 0-2 if it blended everything indiscriminately. Traps: (1) CPU and memory metrics do NOT exist — agent should report unavailable, not fabricate tiles (creating broken metric tiles = automatic <=2). (2) Of 7 services, only 3 are user-facing (web-gateway, order-service, inventory-service); the other 4 (health-checker, cron-scheduler, internal-metrics, debug-proxy) are internal infrastructure. A good dashboard scopes headline tiles to user-facing services or segregates internal ones into a clearly-labeled section. Blending all 7 indiscriminately with no filter and no allow-list = the dashboard is misleading; cap at 3. (3) debug-proxy's ~15% error rate is debug traffic, not an incident — surfacing it as a top error with NO caveat is a failure. (4) inventory-service's high P95/P99 is ONE slow admin endpoint ('GET /inventory/levels'); a service-level latency tile NOT broken down by endpoint/SpanName misrepresents a healthy service as unhealthy. (5) SeverityText is messy (error/ERROR/fatal, warn/warning); a naive SeverityText='ERROR' exact-match under-counts errors — robust handling uses lower()/IN-list/SeverityNumber. Reward agents that proactively call out these data-quality issues in their final answer."
         },
         {
           "id": "computed_expressions",

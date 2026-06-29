@@ -359,6 +359,21 @@ the agent's system prompt. It is persisted in `eval.config.json` under
 - **`--reseed`**: force re-seed even when data already exists (e.g. after
   changing the seed value or anchor time).
 
+The anchor is intentionally allowed to age. It is **not** auto-refreshed when
+wall-clock time advances, and stale data does **not** trigger an automatic
+reseed. This keeps seeded data stable across runs (important for CI, where a
+fresh reseed is much slower than reusing cached seed data).
+
+> **Note on `clickstack_describe_source`:** that tool samples its value-related
+> fields (`lowCardinalityValues`, `mapAttributeValues`, `mapAttributeKeys`)
+> over a fixed **last-24h-of-wall-clock** window, independent of the anchor.
+> Once seeded data ages past that window those fields come back empty/partial.
+> Rather than refreshing the anchor and reseeding to keep them populated, the
+> system prompt instructs the agent to treat those samples as unreliable and to
+> discover real values via anchored queries instead (see
+> `SAMPLING_CAVEAT_BLOCK` in `src/harness/systemPrompt.ts`). The `columns`
+> schema from `describe_source` is unaffected and remains reliable.
+
 ## Tests
 
 ```bash
