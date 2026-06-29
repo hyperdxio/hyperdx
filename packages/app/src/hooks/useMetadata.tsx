@@ -102,6 +102,46 @@ export function useColumns(
   });
 }
 
+export function useMetricNamesViaIndex(
+  {
+    databaseName,
+    tableName,
+    connectionId,
+    limit,
+  }: {
+    databaseName: string;
+    tableName: string | undefined;
+    connectionId: string;
+    limit?: number;
+  },
+  options?: Partial<UseQueryOptions<string[]>>,
+) {
+  const { enabled = true } = options || {};
+  const metadata = useMetadataWithSettings();
+  return useQuery<string[]>({
+    queryKey: [
+      'useMetadata.useMetricNamesViaIndex',
+      connectionId,
+      databaseName,
+      tableName,
+      limit,
+    ],
+    queryFn: async ({ signal }) => {
+      if (!tableName) return [];
+      return metadata.getMetricNamesFromIndex({
+        databaseName,
+        tableName,
+        connectionId,
+        limit,
+        signal,
+      });
+    },
+    staleTime: 1000 * 60 * 5,
+    ...options,
+    enabled: !!enabled && !!databaseName && !!tableName && !!connectionId,
+  });
+}
+
 // Derives a map of DateTime/Date column name → ClickHouse type.
 export function useDateTimeColumns(
   columns: ColumnMetaType[] | undefined,

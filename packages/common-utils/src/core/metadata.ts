@@ -1817,6 +1817,38 @@ export class Metadata {
       },
     );
   }
+
+  async getMetricNamesFromIndex({
+    databaseName,
+    tableName,
+    connectionId,
+    limit = 10000,
+    signal,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    limit?: number;
+    signal?: AbortSignal;
+  }): Promise<string[]> {
+    return this.cache.getOrFetch<string[]>(
+      `${connectionId}.${databaseName}.${tableName}.${limit}.metricNamesFromIndex`,
+      async () => {
+        const sql = chSql`SELECT DISTINCT MetricName FROM mergeTreeIndex(${{ Identifier: databaseName }}, ${{ Identifier: tableName }}) LIMIT ${{ Int32: limit }}`;
+        const names = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: this.getClickHouseSettings(),
+            abort_signal: signal,
+          })
+          .then(res => res.json<{ MetricName: string }>())
+          .then(d => d.data.map(row => row.MetricName).filter(Boolean));
+        return names;
+      },
+    );
+  }
 }
 
 export type Field = {

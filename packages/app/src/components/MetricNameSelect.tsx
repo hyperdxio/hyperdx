@@ -7,7 +7,8 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
-import { useGetKeyValues } from '@/hooks/useMetadata';
+import api from '@/api';
+import { useGetKeyValues, useMetricNamesViaIndex } from '@/hooks/useMetadata';
 import { capitalizeFirstLetter } from '@/utils';
 
 const MAX_METRIC_NAME_OPTIONS = 3000;
@@ -60,6 +61,9 @@ function useMetricNames(
   metricSource: TMetricSource,
   dateRange?: DateRange['dateRange'],
 ) {
+  const { data: me } = api.useMe();
+  const useIndex = !!me?.team?.useMetricIndexQuery;
+
   const { gaugeConfig, histogramConfig, sumConfig } = useMemo(() => {
     return {
       gaugeConfig: chartConfigByMetricType({
@@ -80,30 +84,70 @@ function useMetricNames(
     };
   }, [metricSource, dateRange]);
 
-  const { data: gaugeMetrics } = useGetKeyValues({
-    chartConfig: gaugeConfig,
-    keys: ['MetricName'],
-    limit: MAX_METRIC_NAME_OPTIONS,
-    disableRowLimit: true,
-  });
-  const { data: histogramMetrics } = useGetKeyValues({
-    chartConfig: histogramConfig,
-    keys: ['MetricName'],
-    limit: MAX_METRIC_NAME_OPTIONS,
-    disableRowLimit: true,
-  });
-  const { data: sumMetrics } = useGetKeyValues({
-    chartConfig: sumConfig,
-    keys: ['MetricName'],
-    limit: MAX_METRIC_NAME_OPTIONS,
-    disableRowLimit: true,
-  });
+  const { data: gaugeMetrics } = useGetKeyValues(
+    {
+      chartConfig: gaugeConfig,
+      keys: ['MetricName'],
+      limit: MAX_METRIC_NAME_OPTIONS,
+      disableRowLimit: true,
+    },
+    { enabled: !useIndex },
+  );
+  const { data: histogramMetrics } = useGetKeyValues(
+    {
+      chartConfig: histogramConfig,
+      keys: ['MetricName'],
+      limit: MAX_METRIC_NAME_OPTIONS,
+      disableRowLimit: true,
+    },
+    { enabled: !useIndex },
+  );
+  const { data: sumMetrics } = useGetKeyValues(
+    {
+      chartConfig: sumConfig,
+      keys: ['MetricName'],
+      limit: MAX_METRIC_NAME_OPTIONS,
+      disableRowLimit: true,
+    },
+    { enabled: !useIndex },
+  );
 
-  return {
-    gaugeMetrics: gaugeMetrics?.[0].value,
-    histogramMetrics: histogramMetrics?.[0].value,
-    sumMetrics: sumMetrics?.[0].value,
-  };
+  const { data: gaugeIdx } = useMetricNamesViaIndex(
+    {
+      databaseName: metricSource.from.databaseName,
+      tableName: metricSource.metricTables?.[MetricsDataType.Gauge],
+      connectionId: metricSource.connection,
+    },
+    { enabled: useIndex },
+  );
+  const { data: histogramIdx } = useMetricNamesViaIndex(
+    {
+      databaseName: metricSource.from.databaseName,
+      tableName: metricSource.metricTables?.[MetricsDataType.Histogram],
+      connectionId: metricSource.connection,
+    },
+    { enabled: useIndex },
+  );
+  const { data: sumIdx } = useMetricNamesViaIndex(
+    {
+      databaseName: metricSource.from.databaseName,
+      tableName: metricSource.metricTables?.[MetricsDataType.Sum],
+      connectionId: metricSource.connection,
+    },
+    { enabled: useIndex },
+  );
+
+  return useIndex
+    ? {
+        gaugeMetrics: gaugeIdx,
+        histogramMetrics: histogramIdx,
+        sumMetrics: sumIdx,
+      }
+    : {
+        gaugeMetrics: gaugeMetrics?.[0].value,
+        histogramMetrics: histogramMetrics?.[0].value,
+        sumMetrics: sumMetrics?.[0].value,
+      };
 }
 
 export function getMetricOptions(

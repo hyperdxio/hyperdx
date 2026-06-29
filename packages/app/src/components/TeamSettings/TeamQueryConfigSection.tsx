@@ -343,6 +343,13 @@ export default function TeamQueryConfigSection() {
             type="boolean"
             displayValue={value => (value ? 'Enabled' : 'Disabled')}
           />
+          <ClickhouseSettingForm
+            settingKey="useMetricIndexQuery"
+            label="Use Metric Index for Metric Name Lookup"
+            tooltip="When enabled, metric names are read from the MergeTree primary index (mergeTreeIndex) instead of scanning the table. Much faster on large metric tables, but requires MetricName to be in the table's ORDER BY."
+            type="boolean"
+            displayValue={value => (value ? 'Enabled' : 'Disabled')}
+          />
         </Stack>
       </Card>
     </Box>
