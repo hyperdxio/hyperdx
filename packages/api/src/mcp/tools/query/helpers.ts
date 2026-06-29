@@ -78,6 +78,90 @@ const MCP_CLICKHOUSE_SETTINGS = {
  */
 const MCP_REQUEST_TIMEOUT = 32_000; // 30s query limit + 2s buffer
 
+// ─── Increase top-N cap hint ────────────────────────────────────────────────
+
+/**
+ * Group limit applied by the metric renderer when `aggFn:"increase"` is
+ * combined with `groupBy`. Mirrors `INCREASE_MAX_NUM_GROUPS` in
+ * `packages/common-utils/src/core/renderChartConfig.ts`. Surfaced to MCP
+ * callers as a hint so they can reason about why high-cardinality groupBys
+ * may be truncated.
+ */
+export const INCREASE_TOP_N_CAP = 20;
+
+/**
+ * Append a hint message onto a parsed tool response body. All hint
+ * writers share `hints: string[]` so multiple advisories can coexist
+ * (e.g. the increase top-N cap and the single-bucket collapse hint can
+ * legitimately both apply to the same result).
+ */
+export function appendHint(parsed: Record<string, unknown>, hint: string) {
+  const existing = Array.isArray(parsed.hints) ? parsed.hints : [];
+  parsed.hints = [...existing, hint];
+}
+
+/**
+ * Count the distinct groupBy combinations present in a result set.
+ * Resolves each comma-separated groupBy segment against the row keys
+ * (the renderer aliases group columns by their literal expression).
+ * Returns null when no segment matches any row key — the caller should
+ * treat that as "count unknown".
+ */
+function countDistinctGroups(
+  data: Array<Record<string, unknown>>,
+  groupBy: string,
+): number | null {
+  const segments = splitAndTrimWithBracket(groupBy);
+  const sample = data[0];
+  if (!sample || typeof sample !== 'object') return null;
+  const resolvable = segments.filter(seg => seg in sample);
+  if (resolvable.length === 0) return null;
+  const seen = new Set<string>();
+  for (const row of data) {
+    seen.add(JSON.stringify(resolvable.map(seg => row[seg])));
+  }
+  return seen.size;
+}
+
+/**
+ * Mutates a successful tool result envelope in place to add a neutral
+ * informational hint when the renderer's increase+groupBy top-N cap
+ * likely applied. Safe to call unconditionally — does nothing for empty
+ * results, error results, queries that don't combine `aggFn:"increase"`
+ * with a non-empty `groupBy`, or results whose distinct group count is
+ * below the cap (no truncation possible).
+ */
+export function annotateIncreaseTopNHint(
+  result: { content?: { type: string; text?: string }[]; isError?: boolean },
+  selectItems: ReadonlyArray<{ aggFn?: string }>,
+  groupBy: string | undefined,
+): void {
+  if (result.isError) return;
+  const first = result.content?.[0];
+  if (first?.type !== 'text' || typeof first.text !== 'string') return;
+  if (!groupBy || groupBy.trim() === '') return;
+  if (!selectItems.some(s => s.aggFn === 'increase')) return;
+  try {
+    const parsed = JSON.parse(first.text);
+    const data = parsed?.result?.data;
+    if (!Array.isArray(data) || data.length === 0) return;
+    // Only warn when the result actually carries enough distinct groups
+    // to have hit the renderer cap. When the group column cannot be
+    // resolved from the rows, skip the hint rather than crying wolf.
+    const distinctGroups = countDistinctGroups(data, groupBy);
+    if (distinctGroups === null || distinctGroups < INCREASE_TOP_N_CAP) return;
+    appendHint(
+      parsed,
+      `aggFn:"increase" combined with groupBy is capped at the top ${INCREASE_TOP_N_CAP} ` +
+        `groups by max bucket sum at the renderer layer. ` +
+        `Results may not include every group present in the underlying data.`,
+    );
+    first.text = JSON.stringify(parsed, null, 2);
+  } catch {
+    // leave result unmodified on parse failure
+  }
+}
+
 // ─── Where merging ───────────────────────────────────────────────────────────
 
 export interface MergeWhereResult<T> {
@@ -210,7 +294,9 @@ function formatQueryResult(result: unknown) {
               : {}),
             ...(empty
               ? {
-                  hint: 'No data found in the queried time range. Try setting startTime to a wider window (e.g. 24 hours ago) or check that filters match existing data.',
+                  hints: [
+                    'No data found in the queried time range. Try setting startTime to a wider window (e.g. 24 hours ago) or check that filters match existing data.',
+                  ],
                 }
               : {}),
           },
@@ -222,6 +308,80 @@ function formatQueryResult(result: unknown) {
   };
 }
 
+// ─── Source-kind / select-shape guardrail ────────────────────────────────────
+
+type SelectItemForKindCheck = { metricType?: unknown };
+
+/**
+ * Reject builder-config queries where the select items' metric annotations
+ * don't match the source kind:
+ *   - Non-metric source with any select item carrying `metricType` would
+ *     fall through to SQL generation that references the metric `Value`
+ *     column and fail with a cryptic ClickHouse error.
+ *   - Metric source with no select item carrying `metricType` would also
+ *     reach the renderer in a broken state.
+ *
+ * Catching both up-front gives the agent a clear next action that mirrors
+ * the wording on `clickstack_list_metrics` / `clickstack_describe_metric`.
+ *
+ * Returns an error envelope on mismatch, or `null` when the select shape
+ * is consistent with the source kind (or the select is a raw string that
+ * the caller already parsed by hand).
+ */
+export function assertSourceKindMatchesSelect(
+  source: { kind: string },
+  select: unknown,
+): { isError: true; content: [{ type: 'text'; text: string }] } | null {
+  // Raw-string select (rare on the builder path) — the renderer handles
+  // it; no metric annotations to inspect.
+  if (typeof select === 'string') return null;
+  if (!Array.isArray(select)) return null;
+
+  const metricItemCount = (select as SelectItemForKindCheck[]).filter(
+    item =>
+      typeof item === 'object' &&
+      item !== null &&
+      typeof item.metricType === 'string' &&
+      item.metricType.length > 0,
+  ).length;
+
+  const isMetricSource = source.kind === SourceKind.Metric;
+
+  if (isMetricSource && metricItemCount === 0) {
+    return {
+      isError: true as const,
+      content: [
+        {
+          type: 'text' as const,
+          text:
+            'Source kind is "metric", but no select item specifies metricType + metricName. ' +
+            'Each select item on a metric source must set metricType ("gauge" | "sum" | "histogram") ' +
+            'and metricName (e.g. metricName:"system.cpu.utilization"). Call ' +
+            'clickstack_describe_source or clickstack_list_metrics to discover available metric names.',
+        },
+      ],
+    };
+  }
+
+  if (!isMetricSource && metricItemCount > 0) {
+    return {
+      isError: true as const,
+      content: [
+        {
+          type: 'text' as const,
+          text:
+            `Source kind is "${source.kind}", not metric — but ${metricItemCount} select item(s) ` +
+            'set metricType. metricType + metricName only work on metric sources. ' +
+            'Drop the metric fields to query this source, or call clickstack_list_sources to find a ' +
+            'source whose kind is "metric".',
+        },
+      ],
+    };
+  }
+
+  return null;
+}
+
 // ─── Tile execution ──────────────────────────────────────────────────────────
 
 export async function runConfigTile(
@@ -229,7 +389,7 @@ export async function runConfigTile(
   tile: ExternalDashboardTileWithId,
   startDate: Date,
   endDate: Date,
-  options?: { maxResults?: number },
+  options?: { maxResults?: number; granularity?: string },
 ) {
   if (!isConfigTile(tile)) {
     return {
@@ -273,6 +433,14 @@ export async function runConfigTile(
       };
     }
 
+    // Reject metric-style select against a non-metric source (and vice
+    // versa) before the renderer composes SQL against the wrong table.
+    const kindMismatch = assertSourceKindMatchesSelect(
+      source,
+      builderConfig.select,
+    );
+    if (kindMismatch) return kindMismatch;
+
     const connection = await getConnectionById(
       teamId,
       source.connection.toString(),
@@ -298,6 +466,7 @@ export async function runConfigTile(
     });
 
     const isSearch = builderConfig.displayType === DisplayType.Search;
+    const isMetricSource = source.kind === SourceKind.Metric;
     const defaultTableSelect =
       'defaultTableSelectExpression' in source
         ? source.defaultTableSelectExpression
@@ -327,13 +496,54 @@ export async function runConfigTile(
         }
       : {};
 
+    // Metric sources need three adjustments before the renderer can
+    // translate the query:
+    //   1. `from.tableName` is blank — the renderer picks the correct
+    //      per-kind ClickHouse table from `metricTables` at render time.
+    //   2. `metricTables` must be threaded onto the chart config (mirrors
+    //      packages/api/src/routers/external-api/v2/charts.ts:261-267).
+    //   3. Each select item's `valueExpression` defaults to "Value" (the
+    //      metric value column) when missing — agents normally omit it.
+    const metricSelectOverrides =
+      isMetricSource && Array.isArray(builderConfig.select)
+        ? {
+            select: builderConfig.select.map(item =>
+              typeof item === 'string'
+                ? item
+                : {
+                    ...item,
+                    valueExpression: item.valueExpression ?? 'Value',
+                  },
+            ),
+          }
+        : {};
+
+    // Re-inject granularity for time charts. The MCP tool input carries
+    // it, but buildTile parses through externalDashboardTileSchemaWithId,
+    // whose line/stacked_bar schemas don't declare `granularity`, so Zod
+    // strips it. Without this the renderer's `granularity != null` guard
+    // fails and no __hdx_time_bucket is emitted — every timeseries call
+    // collapses to one row per group. Default to "auto" so the renderer
+    // picks a bucket, mirroring the REST charts path
+    // (packages/api/src/routers/external-api/v2/charts.ts:289).
+    // Search tiles intentionally have no granularity (handled above).
+    const granularityOverride =
+      !isSearch &&
+      (builderConfig.displayType === DisplayType.Line ||
+        builderConfig.displayType === DisplayType.StackedBar)
+        ? { granularity: options?.granularity ?? 'auto' }
+        : {};
+
     const chartConfig = {
       ...builderConfig,
       ...searchOverrides,
+      ...metricSelectOverrides,
+      ...granularityOverride,
       from: {
         databaseName: source.from.databaseName,
-        tableName: source.from.tableName,
+        tableName: isMetricSource ? '' : source.from.tableName,
       },
+      ...(isMetricSource && { metricTables: source.metricTables }),
       connection: source.connection.toString(),
       timestampValueExpression: source.timestampValueExpression,
       implicitColumnExpression: implicitColumn,
