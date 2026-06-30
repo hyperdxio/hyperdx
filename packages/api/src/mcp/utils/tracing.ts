@@ -1,6 +1,6 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
-import type { McpContext } from '@/mcp/tools/types';
+import type { McpContext, ToolResult } from '@/mcp/tools/types';
 import {
   getCounter,
   getHistogram,
@@ -8,18 +8,6 @@ import {
   withSpan,
 } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
-
-/**
- * The result shape every MCP tool handler should return.
- *
- * Intersects the SDK's `CallToolResult` (which carries an index signature
- * from the `$loose` Zod modifier) with a narrower `content` array so tool
- * handlers are constrained to text-only content blocks. The intersection
- * keeps the type assignable to `CallToolResult` in both directions.
- */
-export type ToolResult = CallToolResult & {
-  content: { type: 'text'; text: string }[];
-};
 
 const toolDurationHistogram = getHistogram('hyperdx.mcp.tool.duration_ms', {
   description: 'Wall-clock duration of an MCP tool invocation.',

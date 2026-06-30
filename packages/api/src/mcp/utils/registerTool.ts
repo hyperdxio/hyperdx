@@ -2,31 +2,11 @@ import type {
   McpServer,
   ToolCallback,
 } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import type { AnyZodObject } from 'zod';
 
-import type { McpContext } from '@/mcp/tools/types';
+import type { McpContext, RegisterToolFn } from '@/mcp/tools/types';
 
-import type { ToolResult } from './tracing';
 import { withToolTracing } from './tracing';
-
-/**
- * A simplified tool registration function that wraps `server.registerTool`
- * with automatic tracing. Eliminates the need to:
- * - Pass the tool name twice (once to registerTool, once to withToolTracing)
- * - Import and manually wire up withToolTracing in every tool file
- * - Import McpServer type in every tool file
- */
-export type RegisterToolFn = <TSchema extends AnyZodObject>(
-  name: string,
-  config: {
-    title: string;
-    description: string;
-    inputSchema: TSchema;
-    annotations?: ToolAnnotations;
-  },
-  handler: (args: TSchema['_output']) => Promise<ToolResult>,
-) => void;
 
 /**
  * Creates a `registerTool` function bound to a specific server and context.
