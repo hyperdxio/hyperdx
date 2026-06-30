@@ -9,8 +9,18 @@ import {
   isTraceSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Badge, Flex, Group, SegmentedControl } from '@mantine/core';
+import {
+  ActionIcon,
+  Badge,
+  Flex,
+  Group,
+  ScrollArea,
+  SegmentedControl,
+  Text,
+  Tooltip,
+} from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
+import { IconPlus, IconX } from '@tabler/icons-react';
 
 import SearchWhereInput, {
   getStoredLanguage,
@@ -44,6 +54,155 @@ interface ContextSubpanelProps {
   rowId: string | undefined;
   breadcrumbPath?: BreadcrumbPath;
   onBreadcrumbClick?: BreadcrumbNavigationCallback;
+}
+
+interface QuickFilterItem {
+  id: string;
+  label: string;
+  value: string;
+  generateWhere: (isSql: boolean) => string;
+}
+
+function formatColumnEquals(
+  column: string,
+  value: string,
+  isSql: boolean,
+): string {
+  if (isSql) {
+    return `${column} = '${value.replace(/'/g, "''")}'`;
+  }
+  return `${column}:"${value.replace(/"/g, '\\"')}"`;
+}
+
+function extractQuickFilters(
+  rowData: Record<string, any>,
+  source: TSource,
+): QuickFilterItem[] {
+  const filters: QuickFilterItem[] = [];
+  const skipAliases = new Set<string>(Object.values(ROW_DATA_ALIASES));
+
+  const serviceNameExpr =
+    isLogSource(source) || isTraceSource(source)
+      ? source.serviceNameExpression
+      : undefined;
+  const resourceAttrExpr =
+    'resourceAttributesExpression' in source
+      ? source.resourceAttributesExpression
+      : undefined;
+  const eventAttrExpr =
+    isLogSource(source) || isTraceSource(source)
+      ? source.eventAttributesExpression
+      : undefined;
+
+  const resourceAttrs = rowData[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES];
+  if (resourceAttrs && typeof resourceAttrs === 'object' && resourceAttrExpr) {
+    for (const [key, val] of Object.entries(resourceAttrs)) {
+      if (typeof val !== 'string' || !val || val.length > 200) continue;
+      if (key === 'service.name' && serviceNameExpr) continue;
+      filters.push({
+        id: `ra:${key}`,
+        label: key,
+        value: String(val),
+        generateWhere: isSql =>
+          formatAttributeClause(resourceAttrExpr, key, String(val), isSql),
+      });
+    }
+  }
+
+  const eventAttrs = rowData[ROW_DATA_ALIASES.EVENT_ATTRIBUTES];
+  if (eventAttrs && typeof eventAttrs === 'object' && eventAttrExpr) {
+    for (const [key, val] of Object.entries(eventAttrs)) {
+      if (typeof val !== 'string' || !val || val.length > 200) continue;
+      filters.push({
+        id: `ea:${key}`,
+        label: key,
+        value: String(val),
+        generateWhere: isSql =>
+          formatAttributeClause(eventAttrExpr, key, String(val), isSql),
+      });
+    }
+  }
+
+  for (const [key, val] of Object.entries(rowData)) {
+    if (skipAliases.has(key) || key.startsWith('__hdx_')) continue;
+    if (typeof val !== 'string' || !val || val.length > 200) continue;
+    if (/timestamp|ttl/i.test(key)) continue;
+    if (serviceNameExpr && key === serviceNameExpr) continue;
+
+    filters.push({
+      id: `col:${key}`,
+      label: key,
+      value: String(val),
+      generateWhere: isSql => formatColumnEquals(key, String(val), isSql),
+    });
+  }
+
+  return filters;
+}
+
+const quickFilterPillStyle = {
+  display: 'inline-flex',
+  alignItems: 'center' as const,
+  gap: 4,
+  padding: '1px 6px',
+  borderRadius: 3,
+  fontSize: 11,
+  lineHeight: '18px',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap' as const,
+  maxWidth: 260,
+  overflow: 'hidden',
+};
+
+function QuickFilterPill({
+  filter,
+  isSelected,
+  onToggle,
+}: {
+  filter: QuickFilterItem;
+  isSelected: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Tooltip
+      label={`${isSelected ? 'Remove' : 'Add'} filter: ${filter.label} = ${filter.value}`}
+      openDelay={300}
+    >
+      <span
+        data-testid={`quick-filter-${filter.id}`}
+        onClick={onToggle}
+        style={{
+          ...quickFilterPillStyle,
+          backgroundColor: isSelected ? 'var(--color-bg-hover)' : 'transparent',
+          border: isSelected
+            ? '1px solid var(--color-border-emphasis)'
+            : '1px dashed var(--color-border)',
+        }}
+      >
+        <Text
+          span
+          size="xxs"
+          c="dimmed"
+          fw={500}
+          style={{ flexShrink: 0, maxWidth: 100 }}
+          truncate="start"
+        >
+          {filter.label}
+        </Text>
+        <Text span size="xxs" c="dimmed">
+          {' = '}
+        </Text>
+        <Text span size="xxs" fw={500} truncate>
+          {filter.value}
+        </Text>
+        {isSelected ? (
+          <IconX size={9} style={{ flexShrink: 0, marginLeft: 2 }} />
+        ) : (
+          <IconPlus size={9} style={{ flexShrink: 0, marginLeft: 2 }} />
+        )}
+      </span>
+    </Tooltip>
+  );
 }
 
 // Custom hook to manage nested panel state
@@ -142,17 +301,44 @@ export default function ContextSubpanel({
     [date, range],
   );
 
-  /* Functions to help generate WHERE clause based on
-     which Context the user chooses (All, Host, Node, etc...).
-     Since we support lucene and sql, we need to format the condition 
-     based on the language
-  */
+  // Extract source-specific expressions
+  const serviceNameExpr =
+    isLogSource(source) || isTraceSource(source)
+      ? source.serviceNameExpression
+      : undefined;
+  const serviceName = rowData[ROW_DATA_ALIASES.SERVICE_NAME] as
+    | string
+    | undefined;
+  const resourceAttrExpr =
+    'resourceAttributesExpression' in source
+      ? source.resourceAttributesExpression
+      : undefined;
+
   const {
     'k8s.node.name': k8sNodeName,
     'k8s.pod.name': k8sPodName,
     'host.name': host,
     'service.name': service,
   } = rowData[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES] ?? {};
+
+  // Resolve effective service name: prefer serviceNameExpression, fall back to
+  // resource attribute
+  const effectiveServiceName = serviceName || service;
+
+  // Quick filter state
+  const [selectedFilterIds, setSelectedFilterIds] = useState<string[]>([]);
+  const [showQuickFilters, setShowQuickFilters] = useState(false);
+
+  const availableQuickFilters = useMemo(
+    () => extractQuickFilters(rowData, source),
+    [rowData, source],
+  );
+
+  const toggleQuickFilter = useCallback((id: string) => {
+    setSelectedFilterIds(prev =>
+      prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id],
+    );
+  }, []);
 
   const CONTEXT_MAPPING = useMemo(
     () =>
@@ -167,7 +353,7 @@ export default function ContextSubpanel({
         },
         [ContextBy.Service]: {
           field: 'service.name',
-          value: service,
+          value: effectiveServiceName,
         },
         [ContextBy.Host]: {
           field: 'host.name',
@@ -182,38 +368,75 @@ export default function ContextSubpanel({
           value: k8sNodeName,
         },
       }) as const,
-    [k8sNodeName, k8sPodName, host, service, debouncedWhere],
+    [k8sNodeName, k8sPodName, host, effectiveServiceName, debouncedWhere],
   );
 
-  // Main function to generate WHERE clause based on context
   const getWhereClause = useCallback(
     (contextBy: ContextBy): string => {
       const isSql = originalLanguage === 'sql';
-      const mapping = CONTEXT_MAPPING[contextBy];
-
-      if (contextBy === ContextBy.All) {
-        return mapping.value;
-      }
+      const clauses: string[] = [];
 
       if (contextBy === ContextBy.Custom) {
-        return mapping.value.trim();
+        const customWhere = CONTEXT_MAPPING[contextBy].value.trim();
+        if (customWhere) {
+          clauses.push(customWhere);
+        }
+      } else if (contextBy === ContextBy.Service) {
+        if (serviceNameExpr && serviceName) {
+          clauses.push(formatColumnEquals(serviceNameExpr, serviceName, isSql));
+        } else if (service) {
+          clauses.push(
+            formatAttributeClause(
+              resourceAttrExpr || 'ResourceAttributes',
+              'service.name',
+              service,
+              isSql,
+            ),
+          );
+        }
+      } else if (contextBy !== ContextBy.All) {
+        const mapping = CONTEXT_MAPPING[contextBy];
+        if (mapping.value) {
+          clauses.push(
+            formatAttributeClause(
+              resourceAttrExpr || 'ResourceAttributes',
+              mapping.field,
+              mapping.value,
+              isSql,
+            ),
+          );
+        }
       }
 
-      const attributeClause = formatAttributeClause(
-        'ResourceAttributes',
-        mapping.field,
-        mapping.value,
-        isSql,
-      );
-      return attributeClause;
+      for (const filterId of selectedFilterIds) {
+        const filter = availableQuickFilters.find(f => f.id === filterId);
+        if (filter) {
+          clauses.push(filter.generateWhere(isSql));
+        }
+      }
+
+      if (clauses.length === 0) return '';
+      if (clauses.length === 1) return clauses[0];
+      return clauses.map(c => `(${c})`).join(' AND ');
     },
-    [CONTEXT_MAPPING, originalLanguage],
+    [
+      CONTEXT_MAPPING,
+      originalLanguage,
+      serviceNameExpr,
+      serviceName,
+      service,
+      resourceAttrExpr,
+      selectedFilterIds,
+      availableQuickFilters,
+    ],
   );
 
   function generateSegmentedControlData() {
     return [
       { label: 'All', value: ContextBy.All },
-      ...(service ? [{ label: 'Service', value: ContextBy.Service }] : []),
+      ...(effectiveServiceName
+        ? [{ label: 'Service', value: ContextBy.Service }]
+        : []),
       ...(host ? [{ label: 'Host', value: ContextBy.Host }] : []),
       ...(k8sPodName ? [{ label: 'Pod', value: ContextBy.Pod }] : []),
       ...(k8sNodeName ? [{ label: 'Node', value: ContextBy.Node }] : []),
@@ -223,7 +446,6 @@ export default function ContextSubpanel({
 
   const config = useMemo(() => {
     const whereClause = getWhereClause(contextBy);
-    // missing query info, build config from source with default value
     if (!dbSqlRowTableConfig)
       return {
         connection: source.connection,
@@ -255,6 +477,13 @@ export default function ContextSubpanel({
     contextBy,
     source,
   ]);
+
+  const activeQuickFilterLabels = selectedFilterIds
+    .map(id => {
+      const filter = availableQuickFilters.find(f => f.id === id);
+      return filter ? `${filter.label}=${filter.value}` : null;
+    })
+    .filter(Boolean);
 
   return (
     <>
@@ -292,18 +521,79 @@ export default function ContextSubpanel({
               onChange={value => setRange(Number(value))}
             />
           </Group>
-          <Group p="sm">
+          <Group px="sm" pb="xs" gap="xs">
             <div>
-              {contextBy !== ContextBy.All && (
-                <Badge size="md" variant="default">
-                  {contextBy}:{CONTEXT_MAPPING[contextBy].value}
+              {contextBy !== ContextBy.All &&
+                contextBy !== ContextBy.Custom && (
+                  <Badge size="md" variant="default" mr={4}>
+                    {contextBy}:{CONTEXT_MAPPING[contextBy].value}
+                  </Badge>
+                )}
+              {contextBy === ContextBy.Custom && debouncedWhere && (
+                <Badge size="md" variant="default" mr={4}>
+                  custom query
                 </Badge>
               )}
+              {activeQuickFilterLabels.map(label => (
+                <Badge key={label} size="md" variant="default" mr={4}>
+                  {label}
+                </Badge>
+              ))}
               <Badge size="md" variant="default">
                 Time range: ±{ms(range / 2)}
               </Badge>
             </div>
           </Group>
+          {availableQuickFilters.length > 0 && (
+            <Group px="sm" pb="xs" gap="xs" align="center">
+              <ActionIcon
+                size="xs"
+                variant="subtle"
+                onClick={() => setShowQuickFilters(v => !v)}
+                title={
+                  showQuickFilters ? 'Hide event filters' : 'Show event filters'
+                }
+              >
+                <IconPlus
+                  size={12}
+                  style={{
+                    transform: showQuickFilters
+                      ? 'rotate(45deg)'
+                      : 'rotate(0deg)',
+                    transition: 'transform 150ms',
+                  }}
+                />
+              </ActionIcon>
+              <Text size="xxs" c="dimmed">
+                Event Filters
+              </Text>
+              {selectedFilterIds.length > 0 && (
+                <Text
+                  size="xxs"
+                  c="dimmed"
+                  style={{ cursor: 'pointer' }}
+                  td="underline"
+                  onClick={() => setSelectedFilterIds([])}
+                >
+                  Clear all
+                </Text>
+              )}
+            </Group>
+          )}
+          {showQuickFilters && availableQuickFilters.length > 0 && (
+            <ScrollArea px="sm" pb="xs" type="auto" offsetScrollbars>
+              <Flex gap={4} wrap="wrap">
+                {availableQuickFilters.map(filter => (
+                  <QuickFilterPill
+                    key={filter.id}
+                    filter={filter}
+                    isSelected={selectedFilterIds.includes(filter.id)}
+                    onToggle={() => toggleQuickFilter(filter.id)}
+                  />
+                ))}
+              </Flex>
+            </ScrollArea>
+          )}
           <div style={{ height: '100%', overflow: 'auto' }}>
             <DBSqlRowTable
               sourceId={source.id}
