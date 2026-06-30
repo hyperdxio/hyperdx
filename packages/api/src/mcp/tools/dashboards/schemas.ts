@@ -444,8 +444,8 @@ const mcpTileLayoutSchema = z.object({
     .describe(
       'Height in grid rows. Default 4. ' +
         'Match the height to the displayType so content is not clipped: number 3-4, ' +
-        'line / stacked_bar / pie 4-6, heatmap 5-6, table 6-10 (taller when more rows are expected), ' +
-        'search 6-8, markdown 2-3 for a short note (h: 1 clips the text).',
+        'line / stacked_bar / pie 4-6, heatmap 5-6, table / search 6-10 (taller when more rows are expected), ' +
+        'markdown 2-3 for a short note (h: 1 clips the text).',
     ),
   id: z
     .string()
