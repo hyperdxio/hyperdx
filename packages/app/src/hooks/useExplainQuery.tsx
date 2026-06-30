@@ -1,10 +1,6 @@
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
-import {
-  keepPreviousData,
-  useQuery,
-  UseQueryOptions,
-} from '@tanstack/react-query';
+import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { useClickhouseClient } from '@/clickhouse';
 import { useSource } from '@/source';
@@ -15,6 +11,8 @@ export function useExplainQuery(
   _config: ChartConfigWithOptDateRange,
   options?: Omit<UseQueryOptions<any>, 'queryKey' | 'queryFn'>,
 ) {
+  const { enabled, ...restOptions } = options ?? {};
+
   const config = {
     ..._config,
     with: undefined,
@@ -46,11 +44,7 @@ export function useExplainQuery(
     },
     retry: false,
     staleTime: 1000 * 60,
-    // Keep the previous row count on screen while a new EXPLAIN runs so the
-    // "Scanned Rows" value doesn't flash a loading state on every live-tail
-    // poll (each poll changes the dateRange, and thus the query key).
-    placeholderData: keepPreviousData,
-    enabled: !isSourceLoading,
-    ...options,
+    enabled: enabled && !isSourceLoading,
+    ...restOptions,
   });
 }

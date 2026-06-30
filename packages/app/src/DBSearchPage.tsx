@@ -80,7 +80,7 @@ import {
   IconTags,
   IconX,
 } from '@tabler/icons-react';
-import { useIsFetching } from '@tanstack/react-query';
+import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
@@ -354,7 +354,13 @@ export function SearchNumRows({
 }) {
   const [statsOpened, { open: openStats, close: closeStats }] =
     useDisclosure(false);
-  const { data, isLoading, error } = useExplainQuery(config, { enabled });
+  const { data, isLoading, error } = useExplainQuery(config, {
+    enabled,
+    // Keep the previous row count on screen while a new EXPLAIN runs so the
+    // "Scanned Rows" value doesn't flash a loading state on every live-tail
+    // poll (each poll changes the dateRange, and thus the query key).
+    placeholderData: keepPreviousData,
+  });
 
   if (!enabled) {
     return null;
