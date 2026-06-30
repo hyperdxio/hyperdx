@@ -89,7 +89,10 @@ export function useColumns(
 ) {
   const metadata = useMetadataWithSettings();
   return useQuery<ColumnMeta[]>({
-    queryKey: ['useMetadata.useColumns', { databaseName, tableName }],
+    queryKey: [
+      'useMetadata.useColumns',
+      { connectionId, databaseName, tableName },
+    ],
     queryFn: async () => {
       return metadata.getColumns({
         databaseName,
@@ -297,7 +300,10 @@ export function useTableMetadata(
 ) {
   const metadata = useMetadataWithSettings();
   return useQuery<TableMetadata | undefined>({
-    queryKey: ['useMetadata.useTableMetadata', { databaseName, tableName }],
+    queryKey: [
+      'useMetadata.useTableMetadata',
+      { connectionId, databaseName, tableName },
+    ],
     queryFn: async () => {
       return await metadata.getTableMetadata({
         databaseName,

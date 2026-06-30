@@ -7,6 +7,8 @@ import { getSources } from '@/controllers/sources';
 import type { McpContext } from '@/mcp/tools/types';
 import { withToolTracing } from '@/mcp/utils/tracing';
 
+import { sanitizeMetricTables } from './metricKinds';
+
 export function registerListSources(
   server: McpServer,
   context: McpContext,
@@ -71,7 +73,13 @@ export function registerListSources(
             traceId: s.traceIdExpression,
           };
         } else if (s.kind === SourceKind.Metric) {
-          meta.metricTables = s.metricTables;
+          // Filter out implementation-detail keys (e.g. a stray Mongoose
+          // `_id` on the metricTables subdoc) so the agent only sees
+          // valid metric kinds.
+          const tables = sanitizeMetricTables(
+            s.metricTables as Record<string, unknown> | undefined,
+          );
+          if (tables) meta.metricTables = tables;
         }
 
         return meta;

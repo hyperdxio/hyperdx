@@ -4,6 +4,7 @@ import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
 import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 import { Button, Paper, Text, useMantineColorScheme } from '@mantine/core';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
+import { keepPreviousData } from '@tanstack/react-query';
 import CodeMirror, { EditorView } from '@uiw/react-codemirror';
 
 import { useRenderedSqlChartConfig } from '@/hooks/useChartConfig';
@@ -101,7 +102,7 @@ export default function ChartSQLPreview({
     // Keep the previously rendered SQL visible while a new one is generated so
     // the preview doesn't flicker when the config changes (e.g. live tail
     // refreshes the dateRange each poll).
-    placeholderData: prev => prev ?? '',
+    placeholderData: keepPreviousData,
   });
 
   return (
