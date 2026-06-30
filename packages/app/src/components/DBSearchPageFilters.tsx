@@ -4,10 +4,7 @@ import {
   TableMetadata,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  FilterState,
-  filtersToQuery,
-} from '@hyperdx/common-utils/dist/filters';
+import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
   SourceKind,
@@ -54,16 +51,13 @@ import {
 import { IS_CLICKHOUSE_BUILD } from '@/config';
 import {
   useColumns,
-  useDateTimeColumns,
   useGetValuesDistribution,
   useJsonColumns,
   useTableMetadata,
 } from '@/hooks/useMetadata';
-import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { usePinnedFiltersApi } from '@/pinnedFilters';
 import {
-  escapeFilterStateKeys,
   FilterStateHook,
   IS_ROOT_SPAN_COLUMN_NAME,
   usePinnedFilters,
@@ -87,9 +81,6 @@ import {
 
 import resizeStyles from '@styles/ResizablePanel.module.scss';
 import classes from '@styles/SearchPage.module.scss';
-
-/* The maximum number of values per filter to load when "Load More" is clicked */
-const LOAD_MORE_LOAD_LIMIT = 10000;
 
 /* The initial number of values per filter to render */
 const INITIAL_MAX_VALUES_DISPLAYED = 10;
@@ -1143,10 +1134,6 @@ const DBSearchPageFiltersComponent = ({
   const { data: source } = useSource({ id: sourceId });
   const sourceTableConnection = tcFromSource(source);
   const { data: jsonColumns } = useJsonColumns(sourceTableConnection);
-  const filterMode = showAllValues ? ('all' as const) : ('exact' as const);
-
-  const hasMVs = !!sourceTableConnection.metadataMVs;
-  const useExactPipeline = !hasMVs || filterMode === 'exact';
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
@@ -1159,21 +1146,14 @@ const DBSearchPageFiltersComponent = ({
     connectionId: chartConfig.connection,
   });
 
-  const dateTimeColumns = useDateTimeColumns(columns);
-
   const { data: tableMetadata } = useTableMetadata(sourceTableConnection);
 
   useEffect(() => {
     if (!isLive) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDateRange(chartConfig.dateRange);
-      setExtraFacets({});
     }
   }, [chartConfig.dateRange, isLive]);
-
-  // Clear extra facets (from "load more") when switching sources
-  useEffect(() => {
-    setExtraFacets({});
-  }, [sourceId]);
 
   const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
 
@@ -1191,11 +1171,14 @@ const DBSearchPageFiltersComponent = ({
     isLoading: isFacetsLoading,
     isFetching: isFacetsFetching,
     error,
+    loadMoreFacetsForKey,
+    loadMoreLoadingKeys,
+    extraFacetKeys,
   } = useFetchFacets({
     chartConfig,
     sourceId: sourceId ?? null,
     dateRange,
-    mode: filterMode,
+    mode: showAllValues ? 'all' : 'exact',
     filterState,
     showMoreFields,
   });
@@ -1231,93 +1214,6 @@ const DBSearchPageFiltersComponent = ({
       return { key, value: Array.from(mergedValues) };
     });
   }, [facets, pinnedFilters, getPinnedFields]);
-
-  const metadata = useMetadataWithSettings();
-  const [extraFacets, setExtraFacets] = useState<Record<string, string[]>>({});
-  const [loadMoreLoadingKeys, setLoadMoreLoadingKeys] = useState<Set<string>>(
-    new Set(),
-  );
-  const loadMoreFilterValuesForKey = useCallback(
-    async (key: string) => {
-      setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
-      try {
-        // Coerce dot-form Map sub-keys (LogAttributes.foo) into bracket form
-        // (LogAttributes['foo']) and conditionally backtick-quote special-char
-        // identifiers before handing them to ClickHouse. `getKeyValues` no
-        // longer escapes, so the caller must pass a valid SQL key; dot form ends
-        // up in filterState after setFilterValue's parseKeyPath().join('.')
-        // normalization or after a Lucene URL round-trip, and ClickHouse
-        // cannot resolve it as map access.
-        const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
-        let newValues: string[];
-        if (!useExactPipeline) {
-          const results = await metadata.getAllKeyValues({
-            databaseName: chartConfig.from.databaseName,
-            tableName: chartConfig.from.tableName,
-            connectionId: chartConfig.connection,
-            keyExpressions: [sqlKey],
-            maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
-            metadataMVs: sourceTableConnection.metadataMVs,
-            dateRange,
-            timestampValueExpression: chartConfig.timestampValueExpression,
-          });
-          newValues = results[0] ? results[0].value : [];
-        } else {
-          // Drop this key's own filter from the WHERE clause so "Load more"
-          // can surface alternative values when the dropdown has self-restricted
-          // to the user's current selection (exact filter mode, with selections
-          // on this key). Other dimensions' filters and the free-text where
-          // stay applied so counts remain search-aware for unrelated fields.
-          // Strip under both bracket and dot forms since filterState may carry
-          // either depending on how the filter was authored.
-          const strippedFilterState: FilterState = { ...filterState };
-          delete strippedFilterState[key];
-          if (sqlKey !== key) delete strippedFilterState[sqlKey];
-          const newKeyVals = await metadata.getKeyValuesWithMVs({
-            chartConfig: {
-              ...chartConfig,
-              dateRange,
-              filters: filtersToQuery(
-                escapeFilterStateKeys(strippedFilterState, knownColumns),
-                { dateTimeColumns },
-              ),
-            },
-            keys: [sqlKey],
-            limit: LOAD_MORE_LOAD_LIMIT,
-            disableRowLimit: true,
-            source,
-          });
-          newValues = newKeyVals[0].value?.map(val => val.toString()) ?? [];
-        }
-        if (newValues.length > 0) {
-          setExtraFacets(prev => ({
-            ...prev,
-            [key]: [...(prev[key] || []), ...newValues],
-          }));
-        }
-      } catch (error) {
-        console.error('failed to fetch more keys', error);
-      } finally {
-        setLoadMoreLoadingKeys(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(key);
-          return newSet;
-        });
-      }
-    },
-    [
-      chartConfig,
-      setExtraFacets,
-      dateRange,
-      dateTimeColumns,
-      filterState,
-      metadata,
-      source,
-      useExactPipeline,
-      sourceTableConnection.metadataMVs,
-      knownColumns,
-    ],
-  );
 
   // Build the set of team-pinned fields for the Shared Filters section,
   // so we can avoid duplicating them in the regular Filters list below.
@@ -1355,24 +1251,9 @@ const DBSearchPageFiltersComponent = ({
         merged = [...dynamicValues];
       }
 
-      // Merge in extra values loaded via "Load more"
-      const extraValues = extraFacets[key];
-      if (extraValues && extraValues.length > 0) {
-        for (const v of extraValues) {
-          if (!merged.includes(v)) {
-            merged.push(v);
-          }
-        }
-      }
-
       return { key, value: merged };
     });
-  }, [
-    sharedFilterKeys,
-    facetsWithPinnedValues,
-    pinnedFiltersApiData,
-    extraFacets,
-  ]);
+  }, [sharedFilterKeys, facetsWithPinnedValues, pinnedFiltersApiData]);
 
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: (string | boolean)[] }[] = [];
@@ -1393,21 +1274,7 @@ const DBSearchPageFiltersComponent = ({
         filter && (filter.included.size > 0 || filter.excluded.size > 0);
       const isPinned = isFieldPinned(facet.key);
       if (facet.value?.length > 0 || hasSelectedValues || isPinned) {
-        const extraValues = extraFacets[facet.key];
-        if (extraValues && extraValues.length > 0) {
-          const allValues = facet.value.slice();
-          for (const extraValue of extraValues) {
-            if (!allValues.includes(extraValue)) {
-              allValues.push(extraValue);
-            }
-          }
-          _facets.push({
-            key: facet.key,
-            value: allValues,
-          });
-        } else {
-          _facets.push(facet);
-        }
+        _facets.push(facet);
       }
     }
     // get remaining filterState that are not in _facets
@@ -1464,7 +1331,6 @@ const DBSearchPageFiltersComponent = ({
     facetsWithPinnedValues,
     filterState,
     tableMetadata,
-    extraFacets,
     isFieldPinned,
     isSharedFieldPinned,
     jsonColumns,
@@ -1618,7 +1484,7 @@ const DBSearchPageFiltersComponent = ({
               showFilterCounts={showFilterCounts}
               onColumnToggle={onColumnToggle}
               displayedColumns={displayedColumns}
-              onLoadMore={loadMoreFilterValuesForKey}
+              onLoadMore={loadMoreFacetsForKey}
               loadMoreLoading={group.children.reduce(
                 (acc, child) => {
                   acc[child.key] = loadMoreLoadingKeys.has(child.key);
@@ -1628,7 +1494,7 @@ const DBSearchPageFiltersComponent = ({
               )}
               hasLoadedMore={group.children.reduce(
                 (acc, child) => {
-                  acc[child.key] = Boolean(extraFacets[child.key]);
+                  acc[child.key] = extraFacetKeys.has(child.key);
                   return acc;
                 },
                 {} as Record<string, boolean>,
@@ -1684,9 +1550,9 @@ const DBSearchPageFiltersComponent = ({
                   onColumnToggle ? () => onColumnToggle(facetSqlKey) : undefined
                 }
                 isColumnDisplayed={displayedColumns?.includes(facetSqlKey)}
-                onLoadMore={loadMoreFilterValuesForKey}
+                onLoadMore={loadMoreFacetsForKey}
                 loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
-                hasLoadedMore={Boolean(extraFacets[facet.key])}
+                hasLoadedMore={extraFacetKeys.has(facet.key)}
                 isDefaultExpanded={(() => {
                   const entry = getFilterStateEntry(filterState, facet.key);
                   return (
@@ -1723,9 +1589,8 @@ const DBSearchPageFiltersComponent = ({
       isSharedFieldPinned,
       onColumnToggle,
       displayedColumns,
-      loadMoreFilterValuesForKey,
+      loadMoreFacetsForKey,
       loadMoreLoadingKeys,
-      extraFacets,
       showFilterCounts,
       isFacetsLoading,
       chartConfig,
@@ -1733,6 +1598,7 @@ const DBSearchPageFiltersComponent = ({
       setFilterRange,
       tableMetadata,
       knownColumns,
+      extraFacetKeys,
     ],
   );
 

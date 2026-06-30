@@ -32,6 +32,8 @@ import { getMetadata } from '@/metadata';
 import { useSource, useSources } from '@/source';
 import { toArray } from '@/utils';
 
+export type Facet = { key: string; value: string[] };
+
 // Hook to get metadata with proper settings applied
 export function useMetadataWithSettings() {
   const [metadata, setMetadata] = useState(getMetadata());
@@ -348,7 +350,7 @@ export function useMultipleGetKeyValues(
   const maxKeys =
     me?.team?.filterKeysFetchLimit ?? DEFAULT_FILTER_KEYS_FETCH_LIMIT;
 
-  const query = useQuery<{ key: string; value: string[] }[]>({
+  const query = useQuery<Facet[]>({
     queryKey: [
       'useMetadata.useGetKeyValues',
       mode,
@@ -517,7 +519,7 @@ export function useAllFieldsAndValues(
   const { enabled = true } = options || {};
   const fieldMetadataDisabled = !!me?.team?.fieldMetadataDisabled;
 
-  return useQuery<{ key: string; value: string[] }[]>({
+  return useQuery<Facet[]>({
     queryKey: [
       'useMetadata.useAllFieldsAndValues',
       databaseName,
