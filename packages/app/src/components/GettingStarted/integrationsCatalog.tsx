@@ -286,19 +286,15 @@ export function hasGuide(id: string) {
  * key so the inline snippets are copy-paste ready. Also normalizes a couple of
  * upstream markdown artifacts (e.g. `**KEY**`).
  */
+/** Matches any OTLP collector URL placeholder (`http(s)://<host>:4318[/path]`). */
+const ENDPOINT_PLACEHOLDER_RE = /https?:\/\/[\w.-]+:4318(?:\/[\w./-]*)?/g;
+
 export function applyGuideTokens(
   code: string,
   endpoint: string,
   apiKey: string,
 ) {
-  let out = code;
-  for (const ep of [
-    'https://your-otel-collector:4318',
-    'http://your-otel-collector:4318',
-    'http://localhost:4318',
-  ]) {
-    out = out.split(ep).join(endpoint);
-  }
+  let out = code.replace(ENDPOINT_PLACEHOLDER_RE, endpoint);
   for (const key of [
     '***YOUR_INGESTION_API_KEY***',
     '<YOUR_INGESTION_API_KEY>',
@@ -306,6 +302,13 @@ export function applyGuideTokens(
     'YOUR_INGESTION_API_KEY',
   ]) {
     out = out.split(key).join(apiKey);
+  }
+  if (process.env.NODE_ENV !== 'production' && /:4318\b/.test(out)) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[integrationsCatalog] Unsubstituted collector endpoint placeholder ' +
+        'remains in guide snippet; applyGuideTokens may need updating.',
+    );
   }
   return out;
 }
