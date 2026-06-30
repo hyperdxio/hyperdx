@@ -276,6 +276,14 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
     return () => element.removeEventListener('scroll', onScroll);
   }, [notifyViewport]);
 
+  // Re-notify subscribers when the label column is resized, because the
+  // events-area width fraction changes even though scale and scrollLeft don't.
+  // Without this the minimap viewport rect keeps stale offset/width fractions
+  // until the next scroll or wheel-zoom.
+  useEffect(() => {
+    notifyViewport();
+  }, [labelWidth, notifyViewport]);
+
   useEffect(() => {
     return () => {
       if (notifyRafRef.current != null) {

@@ -285,34 +285,35 @@ export const TimelineMinimap = memo(function ({
         </div>
       ))}
 
-      {rows.map((row, rowIdx) =>
-        row.events.map(event => {
-          const left = (event.start / maxVal) * 100;
-          const width = Math.max(
-            ((event.end - event.start) / maxVal) * 100,
-            0.15,
-          );
-          return (
-            <div
-              key={event.id}
-              className={styles.bar}
-              style={{
-                left: `${left}%`,
-                width: `${width}%`,
-                top:
-                  TICK_HEIGHT +
-                  2 +
-                  Math.round(
-                    (rowIdx / Math.max(rows.length, 1)) *
-                      (BAR_AREA_HEIGHT - BAR_HEIGHT - 4),
-                  ),
-                height: BAR_HEIGHT,
-                backgroundColor: event.backgroundColor,
-              }}
-            />
-          );
-        }),
-      )}
+      {maxVal > 0 &&
+        rows.map((row, rowIdx) =>
+          row.events.map(event => {
+            const left = (event.start / maxVal) * 100;
+            const width = Math.max(
+              ((event.end - event.start) / maxVal) * 100,
+              0.15,
+            );
+            return (
+              <div
+                key={event.id}
+                className={styles.bar}
+                style={{
+                  left: `${left}%`,
+                  width: `${width}%`,
+                  top:
+                    TICK_HEIGHT +
+                    2 +
+                    Math.round(
+                      (rowIdx / Math.max(rows.length, 1)) *
+                        (BAR_AREA_HEIGHT - BAR_HEIGHT - 4),
+                    ),
+                  height: BAR_HEIGHT,
+                  backgroundColor: event.backgroundColor,
+                }}
+              />
+            );
+          }),
+        )}
 
       {isZoomed && (
         <>
