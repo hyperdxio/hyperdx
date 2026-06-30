@@ -18,6 +18,7 @@ import {
   TimelineChartRowEvents,
   type TTimelineEvent,
 } from './TimelineChartRowEvents';
+import { getMaxEventValue } from './utils';
 
 import styles from './TimelineChart.module.scss';
 import resizeStyles from '@styles/ResizablePanel.module.scss';
@@ -30,6 +31,37 @@ type Row = {
   type?: string;
 };
 
+/**
+ * Imperative bridge between the scroll-based zoom/pan model owned by
+ * TimelineChart and the TimelineMinimap (which renders above the controls row,
+ * outside this component). The minimap reads the current viewport via
+ * getState(), reflects live scroll/zoom changes via subscribe(), and drives
+ * zoom/pan through zoomToRange/panToOffset/reset.
+ *
+ * All fractions are in [0, 1] over the events timeline (the label column is
+ * excluded from the events area, matching how spans are positioned).
+ */
+export type TimelineViewportState = {
+  // Current zoom scale (>= 1; 1 = fully zoomed out).
+  scale: number;
+  // Fraction of the timeline scrolled past the left edge of the events area.
+  offsetFrac: number;
+  // Fraction of the timeline currently visible in the events area.
+  viewportWidthFrac: number;
+};
+
+export type TimelineViewportController = {
+  getState: () => TimelineViewportState;
+  // Subscribe to scroll/zoom changes (rAF-throttled). Returns an unsubscribe.
+  subscribe: (cb: () => void) => () => void;
+  // Zoom so the events area shows exactly [startFrac, endFrac].
+  zoomToRange: (startFrac: number, endFrac: number) => void;
+  // Pan (at the current scale) so the events area's left edge is at offsetFrac.
+  panToOffset: (offsetFrac: number) => void;
+  // Return to the fully zoomed-out view.
+  reset: () => void;
+};
+
 type TimelineChartProps = {
   initialScrollRowIndex: number;
   labelWidth: number;
@@ -37,7 +69,12 @@ type TimelineChartProps = {
   rowHeight: number;
   rows: Row[];
   onEventClick: (e: Row) => void;
+  onReady?: (controller: TimelineViewportController) => void;
 };
+
+// Smallest selectable viewport width as a timeline fraction. Guards against
+// divide-by-zero / runaway scale when brushing or resizing to a tiny range.
+const MIN_VIEWPORT_FRAC = 0.02;
 
 const axisHeight = 24;
 const rowsMarginTop = 32;
@@ -51,6 +88,7 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
     rowHeight,
     rows,
     onEventClick,
+    onReady,
   } = props;
 
   const initialWidthPercent = (initialLabelWidth / window.innerWidth) * 100;
@@ -127,17 +165,125 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
     }
   }, [initialScrollRowIndex, rowVirtualizer]);
 
-  const maxVal = useMemo(() => {
-    let max = 0;
+  const maxVal = useMemo(() => getMaxEventValue(rows), [rows]);
 
-    for (const row of rows) {
-      for (const event of row.events) {
-        max = Math.max(max, event.end);
-      }
+  // Subscribers (the minimap) notified on scroll/zoom so they can re-read the
+  // viewport. rAF-throttled so native scroll bursts collapse to one read.
+  const subscribersRef = useRef<Set<() => void>>(new Set());
+  const notifyRafRef = useRef<number | null>(null);
+
+  const notifyViewport = useStableCallback(() => {
+    if (notifyRafRef.current != null) return;
+    notifyRafRef.current = requestAnimationFrame(() => {
+      notifyRafRef.current = null;
+      subscribersRef.current.forEach(cb => cb());
+    });
+  });
+
+  // Low-level commit shared by wheel-zoom and the minimap: set the scale, the
+  // scroller width, and the scroll position, then re-layout the axis/cursor and
+  // notify viewport subscribers. The browser clamps scrollLeft to a valid range.
+  const commitViewport = useStableCallback(
+    (newScale: number, newScrollLeft: number) => {
+      const container = timelineRef.current;
+      const scroller = timelineScrollerRef.current;
+      if (!container || !scroller) return;
+
+      const clamped = Math.min(Math.max(newScale, 1), maxScale);
+      scaleRef.current = clamped;
+      scroller.style.width = `${100 * clamped}%`;
+      container.scrollLeft = newScrollLeft;
+
+      xAxisHandleRef.current?.recompute();
+      mouseCursorHandleRef.current?.recompute();
+      notifyViewport();
+    },
+  );
+
+  const getViewportState = useStableCallback((): TimelineViewportState => {
+    const container = timelineRef.current;
+    const scale = scaleRef.current;
+    const clientW = container?.clientWidth ?? 1;
+    const labelW = labelWidthRef.current;
+    // Events area width at the current scale; matches the geometry used by
+    // flushWheel (scroller width is 100*scale% of the container).
+    const eventsW = Math.max(1, clientW * scale - labelW);
+    const offsetFrac = container ? container.scrollLeft / eventsW : 0;
+    const viewportWidthFrac = Math.min(1, (clientW - labelW) / eventsW);
+    return { scale, offsetFrac, viewportWidthFrac };
+  });
+
+  const zoomToRange = useStableCallback(
+    (startFrac: number, endFrac: number) => {
+      const container = timelineRef.current;
+      if (!container) return;
+      const clientW = container.clientWidth;
+      const labelW = labelWidthRef.current;
+      const widthFrac = Math.max(endFrac - startFrac, MIN_VIEWPORT_FRAC);
+      // Invert viewportWidthFrac = (W - labelW) / (W*scale - labelW).
+      const newScale = (labelW + (clientW - labelW) / widthFrac) / clientW;
+      const clamped = Math.min(Math.max(newScale, 1), maxScale);
+      const eventsWNew = Math.max(1, clientW * clamped - labelW);
+      commitViewport(clamped, startFrac * eventsWNew);
+    },
+  );
+
+  const panToOffset = useStableCallback((offsetFrac: number) => {
+    const container = timelineRef.current;
+    if (!container) return;
+    const clientW = container.clientWidth;
+    const labelW = labelWidthRef.current;
+    const eventsW = Math.max(1, clientW * scaleRef.current - labelW);
+    commitViewport(scaleRef.current, offsetFrac * eventsW);
+  });
+
+  const resetViewport = useStableCallback(() => {
+    commitViewport(1, 0);
+  });
+
+  const subscribeViewport = useStableCallback((cb: () => void) => {
+    subscribersRef.current.add(cb);
+    return () => {
+      subscribersRef.current.delete(cb);
+    };
+  });
+
+  // Stable controller object created once; methods are stable (useStableCallback).
+  const controllerRef = useRef<TimelineViewportController | null>(null);
+  if (controllerRef.current == null) {
+    controllerRef.current = {
+      getState: getViewportState,
+      subscribe: subscribeViewport,
+      zoomToRange,
+      panToOffset,
+      reset: resetViewport,
+    };
+  }
+
+  useEffect(() => {
+    if (controllerRef.current != null) {
+      onReady?.(controllerRef.current);
     }
+  }, [onReady]);
 
-    return max * 1.1;
-  }, [rows]);
+  // Native horizontal scroll (trackpad / scrollbar) pans the events area; keep
+  // the minimap viewport rectangle in sync.
+  useEffect(() => {
+    const element = timelineRef.current;
+    if (element == null) return;
+    const onScroll = () => notifyViewport();
+    element.addEventListener('scroll', onScroll, { passive: true });
+    return () => element.removeEventListener('scroll', onScroll);
+  }, [notifyViewport]);
+
+  useEffect(() => {
+    return () => {
+      if (notifyRafRef.current != null) {
+        cancelAnimationFrame(notifyRafRef.current);
+        notifyRafRef.current = null;
+      }
+    };
+  }, []);
 
   // Wheel deltas accumulate into a pending state and the zoom commit runs
   // once per frame via rAF, so a fast scroll in one frame collapses to a
@@ -191,12 +337,8 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
 
     const fraction = (container.scrollLeft + cursorPx) / eventsWOld;
 
-    scaleRef.current = newScale;
-    scroller.style.width = `${100 * newScale}%`;
-    container.scrollLeft = fraction * eventsWNew - cursorPx;
-
-    xAxisHandleRef.current?.recompute();
-    mouseCursorHandleRef.current?.recompute();
+    // Keep the cursor anchored to the same timeline fraction across the zoom.
+    commitViewport(newScale, fraction * eventsWNew - cursorPx);
   });
 
   const onWheel = useStableCallback((e: WheelEvent) => {
