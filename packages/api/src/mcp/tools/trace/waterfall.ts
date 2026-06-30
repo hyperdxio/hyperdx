@@ -11,10 +11,9 @@ import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-
-import { withToolTracing } from '../../utils/tracing';
-import { parseTimeRange } from '../query/helpers';
-import type { McpContext } from '../types';
+import { parseTimeRange } from '@/mcp/tools/query/helpers';
+import type { McpContext } from '@/mcp/tools/types';
+import { withToolTracing } from '@/mcp/utils/tracing';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -23,7 +22,7 @@ const traceSchema = z.object({
     .string()
     .describe(
       'Trace source ID. Must be a source of kind "trace". ' +
-        'Call hyperdx_list_sources to find available sources.',
+        'Call clickstack_list_sources to find available sources.',
     ),
   traceId: z
     .string()
@@ -169,7 +168,7 @@ export function registerTraceWaterfall(server: McpServer, context: McpContext) {
   const { teamId } = context;
 
   server.registerTool(
-    'hyperdx_trace_waterfall',
+    'clickstack_trace_waterfall',
     {
       title: 'Trace Waterfall (single trace)',
       description:
@@ -179,7 +178,7 @@ export function registerTraceWaterfall(server: McpServer, context: McpContext) {
         'the cascade for you instead of forcing the model to write self-JOINs in raw SQL.\n\n' +
         'NOT THE RIGHT TOOL when the question is "where does the time go across MANY ' +
         'slow traces of operation X" — that is the aggregate question, and the answer ' +
-        'is hyperdx_trace_top_time_consuming_operations (called per affected ' +
+        'is clickstack_trace_top_time_consuming_operations (called per affected ' +
         '(service, operation) with `minParentDurationMs`). Use this tool only when you ' +
         'want a single concrete example to inspect, or after the aggregate breakdown ' +
         'has already identified a suspicious operation.\n\n' +
@@ -199,7 +198,7 @@ export function registerTraceWaterfall(server: McpServer, context: McpContext) {
         "Prefer this over running raw SQL with JOINs on TraceId — it uses the source's " +
         'configured traceIdExpression / parentSpanIdExpression / spanIdExpression so ' +
         'attribute extraction stays consistent with the rest of the platform.\n\n' +
-        'PAIR TOOL: hyperdx_trace_top_time_consuming_operations is the aggregate ' +
+        'PAIR TOOL: clickstack_trace_top_time_consuming_operations is the aggregate ' +
         'counterpart — given a parent-span filter, it ranks child operations by total ' +
         'time across MANY matching traces. Use that when the question is "where does ' +
         'time go in slow X" (aggregate), and use THIS tool when the question is "show ' +
@@ -207,7 +206,7 @@ export function registerTraceWaterfall(server: McpServer, context: McpContext) {
       inputSchema: traceSchema,
     },
     withToolTracing(
-      'hyperdx_trace_waterfall',
+      'clickstack_trace_waterfall',
       context,
       async (rawInput: TraceInput) => {
         const input = traceSchema.parse(rawInput);
@@ -227,7 +226,7 @@ export function registerTraceWaterfall(server: McpServer, context: McpContext) {
             content: [
               {
                 type: 'text' as const,
-                text: `Source not found: ${input.sourceId}. Call hyperdx_list_sources to find available source IDs.`,
+                text: `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
               },
             ],
           };
@@ -238,7 +237,7 @@ export function registerTraceWaterfall(server: McpServer, context: McpContext) {
             content: [
               {
                 type: 'text' as const,
-                text: `Source ${input.sourceId} is kind="${source.kind}". hyperdx_trace_waterfall requires a source of kind="trace".`,
+                text: `Source ${input.sourceId} is kind="${source.kind}". clickstack_trace_waterfall requires a source of kind="trace".`,
               },
             ],
           };

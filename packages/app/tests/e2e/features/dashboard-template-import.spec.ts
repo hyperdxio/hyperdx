@@ -306,14 +306,23 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
         );
         await onClickRow.getByPlaceholder('Select a source').click();
         await expect(
-          page.getByRole('option', { name: DEFAULT_LOGS_SOURCE_NAME }),
+          page.getByRole('option', {
+            name: DEFAULT_LOGS_SOURCE_NAME,
+            exact: true,
+          }),
         ).toBeVisible();
         await expect(
-          page.getByRole('option', { name: DEFAULT_TRACES_SOURCE_NAME }),
+          page.getByRole('option', {
+            name: DEFAULT_TRACES_SOURCE_NAME,
+            exact: true,
+          }),
         ).toBeVisible();
         // Metric / session sources must not appear in the onClick search list.
         await expect(
-          page.getByRole('option', { name: DEFAULT_METRICS_SOURCE_NAME }),
+          page.getByRole('option', {
+            name: DEFAULT_METRICS_SOURCE_NAME,
+            exact: true,
+          }),
         ).toBeHidden();
         await page.keyboard.press('Escape');
       });
@@ -595,6 +604,250 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
         expect(dashboard.filters).toHaveLength(1);
         expect(dashboard.filters[0].source).toBe(logsSourceId);
         expect(dashboard.filters[0].appliesToSourceIds).toEqual([logsSourceId]);
+      });
+    },
+  );
+
+  test(
+    'should round-trip a dashboard through export and re-import',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Export Import ${ts}`;
+      const tileName = `Logs Count ${ts}`;
+      const filterName = `Service ${ts}`;
+
+      await test.step('Create a dashboard with a tile and a filter', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.editDashboardName(dashboardName);
+        await dashboardPage.addTileWithSource(
+          tileName,
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addFilterToDashboard(
+          filterName,
+          DEFAULT_LOGS_SOURCE_NAME,
+          'ServiceName',
+        );
+        await expect(
+          dashboardPage.getFilterItemByName(filterName),
+        ).toBeVisible();
+        await dashboardPage.closeFiltersModal();
+        // Export reads the in-memory dashboard state (not the persisted doc),
+        // so the tile + filter we just added are already present — no need to
+        // wait for the fire-and-forget PATCH to land.
+      });
+
+      let exported: Record<string, any> = {};
+      await test.step('Export the dashboard and verify the downloaded template', async () => {
+        exported = await dashboardPage.exportDashboard();
+        expect(exported.name).toBe(dashboardName);
+        expect(exported.tiles).toHaveLength(1);
+        expect(exported.tiles[0].config.source).toBe(DEFAULT_LOGS_SOURCE_NAME);
+        expect(exported.filters).toHaveLength(1);
+        expect(exported.filters[0]).toMatchObject({
+          name: filterName,
+          expression: 'ServiceName',
+          source: DEFAULT_LOGS_SOURCE_NAME,
+        });
+      });
+
+      await test.step('Re-import the exported template and finish (auto-resolved mappings)', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadDashboardFile(JSON.stringify(exported));
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+        await expect(dashboardImportPage.dashboardNameInput).toHaveValue(
+          dashboardName,
+        );
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify the re-imported dashboard matches the original', async () => {
+        const logSources = await getSources(page, 'log');
+        const logsSourceId = logSources.find(
+          (s: { name: string }) => s.name === DEFAULT_LOGS_SOURCE_NAME,
+        ).id;
+
+        const importedId = dashboardPage.getCurrentDashboardId();
+        const imported = await fetchDashboardById(page, importedId);
+        expect(imported.name).toBe(dashboardName);
+        expect(imported.tiles).toHaveLength(1);
+        expect(imported.tiles[0].config.source).toBe(logsSourceId);
+        expect(imported.filters).toHaveLength(1);
+        expect(imported.filters[0]).toMatchObject({
+          name: filterName,
+          expression: 'ServiceName',
+          source: logsSourceId,
+        });
+      });
+    },
+  );
+
+  test(
+    'should warn about invalid saved filter values and saved query without blocking import',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Import Invalid Saved Values ${ts}`;
+      const tileName = `Logs Count ${ts}`;
+      const invalidFilterCondition = 'ServiceName = = =';
+      const invalidSavedQuery = 'ServiceName:((("broken';
+
+      // Tile uses the workspace logs source so its mapping auto-resolves and
+      // the import can be finished without manual mapping. The saved filter
+      // value and saved query carry deliberately malformed conditions.
+      const dashboardFile = {
+        version: '0.1.0',
+        name: dashboardName,
+        tiles: [
+          {
+            id: 'tile-1',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: tileName,
+              source: DEFAULT_LOGS_SOURCE_NAME,
+              displayType: 'number',
+              granularity: 'auto',
+              select: [{ aggFn: 'count', valueExpression: '' }],
+              where: '',
+              whereLanguage: 'sql',
+            },
+          },
+        ],
+        savedFilterValues: [{ type: 'sql', condition: invalidFilterCondition }],
+        savedQuery: invalidSavedQuery,
+        savedQueryLanguage: 'lucene',
+      };
+
+      await test.step('Upload the dashboard file and reach the mapping step', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadDashboardFile(
+          JSON.stringify(dashboardFile),
+        );
+        // Warnings are non-blocking: the mapping step is still reached.
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+        await expect(dashboardImportPage.dashboardNameInput).toHaveValue(
+          dashboardName,
+        );
+      });
+
+      await test.step('Verify the invalid saved filter value warning is shown and lists the bad condition', async () => {
+        const warning = dashboardImportPage.getSavedFilterValuesWarning();
+        await expect(warning).toBeVisible();
+        await expect(
+          warning.getByText(
+            '1 saved filter value has an invalid condition and will not be applied.',
+          ),
+        ).toBeVisible();
+        await dashboardImportPage.showDetails(warning);
+        await expect(
+          warning.getByText(`Invalid sql condition: ${invalidFilterCondition}`),
+        ).toBeVisible();
+      });
+
+      await test.step('Verify the invalid saved query warning is shown and lists the bad query', async () => {
+        const warning = dashboardImportPage.getSavedQueryWarning();
+        await expect(warning).toBeVisible();
+        await expect(
+          warning.getByText(
+            "The dashboard's saved query has an invalid condition and will not be applied.",
+          ),
+        ).toBeVisible();
+        await dashboardImportPage.showDetails(warning);
+        await expect(
+          warning.getByText(`Invalid lucene query: ${invalidSavedQuery}`),
+        ).toBeVisible();
+      });
+
+      await test.step('Finish the import despite the warnings and verify success', async () => {
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify the imported dashboard retained its name and tile', async () => {
+        const dashboardId = dashboardPage.getCurrentDashboardId();
+        const dashboard = await fetchDashboardById(page, dashboardId);
+        expect(dashboard.name).toBe(dashboardName);
+        expect(dashboard.tiles).toHaveLength(1);
+      });
+    },
+  );
+
+  test(
+    'should preserve an external onClick through import with no source mapping',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Import OnClick External ${ts}`;
+      const tileName = `External Link Tile ${ts}`;
+      const urlTemplate =
+        'https://grafana.example.com/d/abc?var-service={{ServiceName}}';
+
+      const templatePath = writeTempTemplate(
+        makeTemplateWithOnClick({
+          dashboardName,
+          tileName,
+          // Use the workspace logs source name so the tile source mapping
+          // auto-resolves and the import can finish without manual mapping.
+          tileSourceName: DEFAULT_LOGS_SOURCE_NAME,
+          onClick: {
+            type: 'external',
+            urlTemplate,
+          },
+        }),
+      );
+
+      await test.step('Upload the template and wait for mapping step', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadTemplateFile(templatePath);
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+        await expect(dashboardImportPage.dashboardNameInput).toHaveValue(
+          dashboardName,
+        );
+      });
+
+      await test.step('Verify no onClick mapping rows are rendered (external has none)', async () => {
+        await expect(
+          dashboardImportPage.getMappingRow(
+            tileName,
+            'On Click - Search Source',
+          ),
+        ).toBeHidden();
+        await expect(
+          dashboardImportPage.getMappingRow(tileName, 'On Click - Dashboard'),
+        ).toBeHidden();
+      });
+
+      await test.step('Finish import (tile source auto-resolves)', async () => {
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify the external onClick survived import unchanged', async () => {
+        const dashboardId = dashboardPage.getCurrentDashboardId();
+        const dashboard = await fetchDashboardById(page, dashboardId);
+        expect(dashboard.name).toBe(dashboardName);
+        expect(dashboard.tiles).toHaveLength(1);
+        expect(dashboard.tiles[0].config.onClick).toEqual({
+          type: 'external',
+          urlTemplate,
+        });
       });
     },
   );

@@ -1,5 +1,6 @@
 // Utility functions for parsing and grouping map-like field names
 
+import SqlString from 'sqlstring';
 import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
@@ -150,6 +151,12 @@ export function getFilterStateEntry(
 // caller (e.g. "Load more" via metadata.getKeyValues), since `setFilterValue`
 // normalizes Map sub-keys to dot form which ClickHouse cannot resolve as map
 // access.
+//
+// `parseMapFieldName` already guarantees `parsed.baseName` is a Map (its only
+// callers are the dot-form facet keys that originate from Map columns), so
+// `mergePath` must treat it as one. Without the third argument, a numeric-
+// looking sub-key like `LogAttributes.1` collapses into the Array branch and
+// emits the illegal `LogAttributes[2]`. HDX-4369.
 export function toClickHouseKeyExpression(key: string): string {
   if (
     key.includes("['") ||
@@ -161,5 +168,56 @@ export function toClickHouseKeyExpression(key: string): string {
   }
   const parsed = parseMapFieldName(key);
   if (!parsed) return key;
-  return mergePath([parsed.baseName, parsed.propertyPath]);
+  return mergePath(
+    [parsed.baseName, parsed.propertyPath],
+    [],
+    [parsed.baseName],
+  );
+}
+
+/**
+ * Quote a single identifier if it isn't already a valid bare ClickHouse identifier.
+ * @param id - The identifier to quote
+ * @returns The quoted identifier if needed, otherwise the original identifier
+ */
+function quoteIdentifierIfNeeded(id: string): string {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(id)
+    ? id
+    : SqlString.escapeId(id, true);
+}
+
+/**
+ * Coerce a filterState key into a ClickHouse expression suitable for raw SQL,
+ * backtick-quoting identifiers with special characters.
+ *
+ * `knownColumns` is the set of real top-level column names on the table. Only
+ * keys matching a known column or accessing a map key of a known column will
+ * be quoted.
+ */
+export function toQuotedClickHouseKeyExpression(
+  key: string,
+  knownColumns: Set<string>,
+): string {
+  // A whole-key match against a real column wins: quote the entire name as one
+  // identifier (handles flat columns whose name contains dots/hyphens/etc.).
+  if (knownColumns.has(key)) {
+    return quoteIdentifierIfNeeded(key);
+  }
+
+  // Normalize dot-form (ResourceAttributes.host.name) to map access form (ResourceAttributes['host.name'])
+  const expr = toClickHouseKeyExpression(key);
+
+  // Already quoted: leave untouched
+  if (expr.startsWith('`') || expr.startsWith('"')) {
+    return expr;
+  }
+
+  // Quote a map column name and leave the property path untouched, e.g. `LogAttributes`['host.name'].
+  const path = parseKeyPath(expr);
+  if (path.length >= 2 && knownColumns.has(path[0])) {
+    const bracketStart = expr.indexOf('[');
+    return `${quoteIdentifierIfNeeded(path[0])}${expr.slice(bracketStart)}`;
+  }
+
+  return expr;
 }

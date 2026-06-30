@@ -7,11 +7,19 @@ jest.mock('@/utils/trimToolResponse', () => ({
 }));
 
 import {
+  annotateIncreaseTopNHint,
+  assertSourceKindMatchesSelect,
   errorHint,
+  INCREASE_TOP_N_CAP,
   mergeWhereIntoSelectItems,
   parseTimeRange,
-} from '../tools/query/helpers';
-import { resolveOrderBy } from '../tools/query/table';
+} from '@/mcp/tools/query/helpers';
+import {
+  applyMetricSelectDefaults,
+  getMetricSelectIssues,
+  validateMetricSelectItems,
+} from '@/mcp/tools/query/schemas';
+import { resolveOrderBy } from '@/mcp/tools/query/table';
 
 describe('parseTimeRange', () => {
   it('should return default range (last 15 minutes) when no arguments provided', () => {
@@ -188,7 +196,7 @@ describe('errorHint', () => {
       "Cannot convert string '2025-01-01T00:00:00Z' to type DateTime64(9)",
     );
     expect(hint).not.toBeNull();
-    expect(hint).toContain('toDateTime64');
+    expect(hint).toContain('parseDateTime64BestEffort');
   });
 
   it('should match DateTime64 parse errors', () => {
@@ -196,7 +204,7 @@ describe('errorHint', () => {
       "Cannot parse string '2025-01-01' as type DateTime64",
     );
     expect(hint).not.toBeNull();
-    expect(hint).toContain('toDateTime64');
+    expect(hint).toContain('parseDateTime64BestEffort');
   });
 
   it('should match AS alias syntax errors with word boundary', () => {
@@ -223,6 +231,28 @@ describe('errorHint', () => {
     );
     expect(hint).not.toBeNull();
     expect(hint).toContain('LIMIT');
+  });
+
+  it('should match RESULT_IS_TOO_LARGE errors', () => {
+    const hint = errorHint('Code: 396. DB::Exception: RESULT_IS_TOO_LARGE');
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('too many rows');
+    expect(hint).toContain('LIMIT');
+  });
+
+  it('should match TOO_MANY_ROWS_OR_BYTES errors', () => {
+    const hint = errorHint('Code: 396. DB::Exception: TOO_MANY_ROWS_OR_BYTES');
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('too many rows');
+  });
+
+  it('should match SETTING_CONSTRAINT_VIOLATION errors', () => {
+    const hint = errorHint(
+      "Setting max_result_rows shouldn't be greater than 1000. (SETTING_CONSTRAINT_VIOLATION)",
+    );
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('profile');
+    expect(hint).toContain('constraint');
   });
 
   it('should return null for unrecognized errors', () => {
@@ -276,9 +306,69 @@ describe('resolveOrderBy', () => {
   });
 
   it('should prefer alias over synthesized expression', () => {
+    expect(resolveOrderBy('count', [{ aggFn: 'count', alias: 'Total' }])).toBe(
+      'Total',
+    );
+  });
+
+  it('should quote a multi-word alias resolved from an aggFn match', () => {
     expect(
       resolveOrderBy('count', [{ aggFn: 'count', alias: 'Total Rows' }]),
-    ).toBe('Total Rows');
+    ).toBe('"Total Rows"');
+  });
+
+  it('should quote a multi-word alias matched directly', () => {
+    expect(
+      resolveOrderBy('P95 Latency', [
+        {
+          aggFn: 'quantile',
+          valueExpression: 'Duration',
+          alias: 'P95 Latency',
+        },
+      ]),
+    ).toBe('"P95 Latency"');
+  });
+
+  it('should quote a multi-word alias and preserve direction', () => {
+    expect(
+      resolveOrderBy('p95 latency DESC', [
+        {
+          aggFn: 'quantile',
+          valueExpression: 'Duration',
+          alias: 'P95 Latency',
+        },
+      ]),
+    ).toBe('"P95 Latency" DESC');
+  });
+
+  it('should accept an already-quoted multi-word alias without double-quoting', () => {
+    expect(
+      resolveOrderBy('"P95 Latency" DESC', [
+        {
+          aggFn: 'quantile',
+          valueExpression: 'Duration',
+          alias: 'P95 Latency',
+        },
+      ]),
+    ).toBe('"P95 Latency" DESC');
+  });
+
+  it('should normalize a backtick-quoted alias to double quotes', () => {
+    expect(
+      resolveOrderBy('`P95 Latency`', [
+        {
+          aggFn: 'quantile',
+          valueExpression: 'Duration',
+          alias: 'P95 Latency',
+        },
+      ]),
+    ).toBe('"P95 Latency"');
+  });
+
+  it('should leave a bare single-word alias unquoted', () => {
+    expect(resolveOrderBy('Total', [{ aggFn: 'count', alias: 'Total' }])).toBe(
+      'Total',
+    );
   });
 
   it('should be case-insensitive for aggFn matching', () => {
@@ -329,5 +419,484 @@ describe('resolveOrderBy', () => {
         { aggFn: 'quantile', valueExpression: 'Duration' },
       ]),
     ).toBe('quantile');
+  });
+
+  it('should NOT synthesize for "increase" aggFn (metric-only marker)', () => {
+    // increase compiles to a multi-CTE sum(Rate) pipeline in the renderer,
+    // not a standalone SQL function. resolveOrderBy must leave bare
+    // "increase" alone so the renderer-assigned alias can take over.
+    expect(
+      resolveOrderBy('increase', [
+        { aggFn: 'increase', valueExpression: 'Value' },
+      ]),
+    ).toBe('increase');
+  });
+});
+
+// ─── getMetricSelectIssues ───────────────────────────────────────────────────
+
+describe('getMetricSelectIssues', () => {
+  it('returns no issues for a plain non-metric count', () => {
+    expect(getMetricSelectIssues({ aggFn: 'count' })).toEqual([]);
+  });
+
+  it('returns no issues for a plain non-metric avg with valueExpression', () => {
+    expect(
+      getMetricSelectIssues({ aggFn: 'avg', valueExpression: 'Duration' }),
+    ).toEqual([]);
+  });
+
+  it('requires valueExpression for non-count non-metric aggregations', () => {
+    const issues = getMetricSelectIssues({ aggFn: 'avg' });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['valueExpression']);
+    expect(issues[0].message).toContain('required for non-count');
+  });
+
+  it('does NOT require valueExpression when metricType is set', () => {
+    // valueExpression defaults to "Value" for metric sources
+    expect(
+      getMetricSelectIssues({
+        aggFn: 'avg',
+        metricType: 'gauge',
+        metricName: 'system.cpu.utilization',
+      }),
+    ).toEqual([]);
+  });
+
+  it('rejects valueExpression on aggFn:"count"', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'count',
+      valueExpression: 'Duration',
+    });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['valueExpression']);
+  });
+
+  it('rejects metricType without metricName', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'avg',
+      metricType: 'gauge',
+    });
+    expect(issues.find(i => i.path[0] === 'metricName')).toBeDefined();
+  });
+
+  it('rejects metricName without metricType', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'avg',
+      metricName: 'system.cpu.utilization',
+    });
+    expect(issues.find(i => i.path[0] === 'metricType')).toBeDefined();
+  });
+
+  it('rejects aggFn:"increase" on a gauge metric', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'increase',
+      metricType: 'gauge',
+      metricName: 'system.cpu.utilization',
+    });
+    expect(issues.find(i => i.path[0] === 'aggFn')).toBeDefined();
+  });
+
+  it('accepts aggFn:"increase" on a sum metric', () => {
+    expect(
+      getMetricSelectIssues({
+        aggFn: 'increase',
+        metricType: 'sum',
+        metricName: 'http.server.request.count',
+      }),
+    ).toEqual([]);
+  });
+
+  it('rejects aggFn:"avg" on a histogram metric', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'avg',
+      metricType: 'histogram',
+      metricName: 'http.server.request.duration',
+    });
+    expect(issues.find(i => i.path[0] === 'aggFn')).toBeDefined();
+  });
+
+  it('accepts aggFn:"count" on a histogram metric (no level required)', () => {
+    expect(
+      getMetricSelectIssues({
+        aggFn: 'count',
+        metricType: 'histogram',
+        metricName: 'http.server.request.duration',
+      }),
+    ).toEqual([]);
+  });
+
+  it('requires level for aggFn:"quantile" on a histogram metric', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'quantile',
+      metricType: 'histogram',
+      metricName: 'http.server.request.duration',
+    });
+    expect(issues.find(i => i.path[0] === 'level')).toBeDefined();
+  });
+
+  it('accepts aggFn:"quantile" with level on a histogram metric', () => {
+    expect(
+      getMetricSelectIssues({
+        aggFn: 'quantile',
+        level: 0.95,
+        metricType: 'histogram',
+        metricName: 'http.server.request.duration',
+      }),
+    ).toEqual([]);
+  });
+
+  it('rejects isDelta on a non-gauge metric', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'sum',
+      metricType: 'sum',
+      metricName: 'http.request.count',
+      isDelta: true,
+    });
+    expect(issues.find(i => i.path[0] === 'isDelta')).toBeDefined();
+  });
+
+  it('accepts isDelta on a gauge metric', () => {
+    expect(
+      getMetricSelectIssues({
+        aggFn: 'avg',
+        metricType: 'gauge',
+        metricName: 'system.cpu.utilization',
+        isDelta: true,
+      }),
+    ).toEqual([]);
+  });
+
+  it('rejects level when aggFn is not quantile', () => {
+    const issues = getMetricSelectIssues({
+      aggFn: 'avg',
+      valueExpression: 'Duration',
+      level: 0.95,
+    });
+    expect(issues.find(i => i.path[0] === 'level')).toBeDefined();
+  });
+});
+
+// ─── validateMetricSelectItems ───────────────────────────────────────────────
+
+describe('validateMetricSelectItems', () => {
+  it('returns null for a valid items array', () => {
+    expect(
+      validateMetricSelectItems([
+        { aggFn: 'count' },
+        { aggFn: 'avg', valueExpression: 'Duration' },
+      ]),
+    ).toBeNull();
+  });
+
+  it('returns an error envelope and labels each item by index', () => {
+    const result = validateMetricSelectItems([
+      { aggFn: 'avg' }, // missing valueExpression
+      { aggFn: 'increase', metricType: 'gauge', metricName: 'x' }, // increase requires sum
+    ]);
+    expect(result).not.toBeNull();
+    if (!result) return;
+    expect(result.isError).toBe(true);
+    expect(result.content[0].type).toBe('text');
+    const text = result.content[0].text;
+    expect(text).toContain('select[0].valueExpression');
+    expect(text).toContain('select[1].aggFn');
+  });
+
+  it('returns an error envelope for a single bad item', () => {
+    const result = validateMetricSelectItems([
+      {
+        aggFn: 'quantile',
+        metricType: 'histogram',
+        metricName: 'http.server.request.duration',
+      }, // missing level
+    ]);
+    expect(result).not.toBeNull();
+    if (!result) return;
+    expect(result.content[0].text).toContain('select[0].level');
+  });
+});
+
+// ─── applyMetricSelectDefaults ───────────────────────────────────────────────
+
+// Typed as McpSelectItem so the inferred generic preserves the
+// optional valueExpression field. Otherwise structural inference
+// narrows away `valueExpression` and the assertions below stop
+// type-checking.
+type SelectItem = {
+  aggFn: string;
+  metricType?: 'gauge' | 'sum' | 'histogram';
+  metricName?: string;
+  valueExpression?: string;
+};
+
+describe('applyMetricSelectDefaults', () => {
+  it('defaults valueExpression to "Value" when metricType is set', () => {
+    const input: SelectItem[] = [
+      {
+        aggFn: 'avg',
+        metricType: 'gauge',
+        metricName: 'system.cpu.utilization',
+      },
+    ];
+    const out = applyMetricSelectDefaults(input);
+    expect(out[0].valueExpression).toBe('Value');
+  });
+
+  it('preserves an explicit valueExpression on metric items', () => {
+    const input: SelectItem[] = [
+      {
+        aggFn: 'avg',
+        metricType: 'gauge',
+        metricName: 'x',
+        valueExpression: 'Value * 100',
+      },
+    ];
+    const out = applyMetricSelectDefaults(input);
+    expect(out[0].valueExpression).toBe('Value * 100');
+  });
+
+  it('leaves non-metric items untouched', () => {
+    const input: SelectItem[] = [{ aggFn: 'count' }];
+    const out = applyMetricSelectDefaults(input);
+    expect(out[0]).toEqual({ aggFn: 'count' });
+    expect(out[0].valueExpression).toBeUndefined();
+  });
+
+  it('returns new objects only for the items it mutates', () => {
+    const input: SelectItem[] = [
+      { aggFn: 'count' },
+      { aggFn: 'avg', metricType: 'gauge', metricName: 'x' },
+    ];
+    const out = applyMetricSelectDefaults(input);
+    expect(out[0]).toBe(input[0]); // unchanged item is the same reference
+    expect(out[1]).not.toBe(input[1]); // mutated item is a new object
+  });
+});
+
+// ─── annotateIncreaseTopNHint ────────────────────────────────────────────────
+
+function buildResult(data: unknown[]) {
+  return {
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify({ result: { data } }),
+      },
+    ],
+    isError: false,
+  };
+}
+
+/** Rows with `count` distinct ServiceName group values. */
+function buildGroupedRows(count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    ServiceName: `svc-${i}`,
+    Series: i,
+  }));
+}
+
+describe('annotateIncreaseTopNHint', () => {
+  it('exposes the renderer cap as a constant', () => {
+    expect(INCREASE_TOP_N_CAP).toBe(20);
+  });
+
+  it('appends a hint when the distinct group count reaches the cap', () => {
+    const result = buildResult(buildGroupedRows(INCREASE_TOP_N_CAP));
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toHaveLength(1);
+    expect(parsed.hints[0]).toContain('top 20');
+    expect(parsed.hints[0]).toContain('aggFn:"increase"');
+  });
+
+  it('does NOT annotate when the distinct group count is below the cap', () => {
+    const result = buildResult(buildGroupedRows(INCREASE_TOP_N_CAP - 1));
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toBeUndefined();
+  });
+
+  it('counts distinct groups across repeated time buckets, not raw rows', () => {
+    // 3 groups × 10 buckets = 30 rows but only 3 distinct groups.
+    const rows = Array.from({ length: 30 }, (_, i) => ({
+      ServiceName: `svc-${i % 3}`,
+      bucket: i,
+    }));
+    const result = buildResult(rows);
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toBeUndefined();
+  });
+
+  it('does NOT annotate when the groupBy column cannot be resolved from rows', () => {
+    const result = buildResult([{ x: 1 }, { x: 2 }]);
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toBeUndefined();
+  });
+
+  it('supports multi-column groupBy by counting distinct combinations', () => {
+    // 4 ServiceName values × 5 SpanName values = 20 distinct combos.
+    const rows = Array.from({ length: 20 }, (_, i) => ({
+      ServiceName: `svc-${i % 4}`,
+      SpanName: `op-${Math.floor(i / 4)}`,
+    }));
+    const result = buildResult(rows);
+    annotateIncreaseTopNHint(
+      result,
+      [{ aggFn: 'increase' }],
+      'ServiceName, SpanName',
+    );
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toHaveLength(1);
+  });
+
+  it('appends alongside an existing hint instead of overwriting', () => {
+    const result = {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            result: { data: buildGroupedRows(INCREASE_TOP_N_CAP) },
+            hints: ['previous hint from another writer'],
+          }),
+        },
+      ],
+      isError: false,
+    };
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toHaveLength(2);
+    expect(parsed.hints[0]).toBe('previous hint from another writer');
+    expect(parsed.hints[1]).toContain('top 20');
+  });
+
+  it('does NOT annotate when increase is used WITHOUT a groupBy', () => {
+    const result = buildResult(buildGroupedRows(INCREASE_TOP_N_CAP));
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], undefined);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toBeUndefined();
+  });
+
+  it('does NOT annotate when groupBy is an empty string', () => {
+    const result = buildResult(buildGroupedRows(INCREASE_TOP_N_CAP));
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], '   ');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toBeUndefined();
+  });
+
+  it('does NOT annotate when no select item uses increase', () => {
+    const result = buildResult(buildGroupedRows(INCREASE_TOP_N_CAP));
+    annotateIncreaseTopNHint(
+      result,
+      [{ aggFn: 'sum' }, { aggFn: 'avg' }],
+      'ServiceName',
+    );
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toBeUndefined();
+  });
+
+  it('does NOT annotate empty results (already labelled by formatQueryResult)', () => {
+    const result = buildResult([]);
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.hints).toBeUndefined();
+  });
+
+  it('does NOT annotate error results', () => {
+    const result = {
+      content: [{ type: 'text', text: 'an error message' }],
+      isError: true,
+    };
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    expect(result.content[0].text).toBe('an error message');
+  });
+
+  it('leaves unparseable text content unchanged', () => {
+    const result = {
+      content: [{ type: 'text', text: 'not json' }],
+      isError: false,
+    };
+    annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName');
+    expect(result.content[0].text).toBe('not json');
+  });
+
+  it('is a no-op when content is missing', () => {
+    const result = {} as Parameters<typeof annotateIncreaseTopNHint>[0];
+    expect(() =>
+      annotateIncreaseTopNHint(result, [{ aggFn: 'increase' }], 'ServiceName'),
+    ).not.toThrow();
+  });
+});
+
+describe('assertSourceKindMatchesSelect', () => {
+  it('returns null when metric select runs against a metric source', () => {
+    const source = { kind: 'metric' };
+    const select = [
+      {
+        aggFn: 'avg',
+        metricType: 'gauge',
+        metricName: 'system.cpu.utilization',
+      },
+    ];
+    expect(assertSourceKindMatchesSelect(source, select)).toBeNull();
+  });
+
+  it('returns null when non-metric select runs against a trace source', () => {
+    const source = { kind: 'trace' };
+    const select = [{ aggFn: 'count' }];
+    expect(assertSourceKindMatchesSelect(source, select)).toBeNull();
+  });
+
+  it('errors when metric params target a non-metric source', () => {
+    const source = { kind: 'trace' };
+    const select = [
+      {
+        aggFn: 'avg',
+        metricType: 'gauge',
+        metricName: 'system.cpu.utilization',
+      },
+    ];
+    const result = assertSourceKindMatchesSelect(source, select);
+    expect(result?.isError).toBe(true);
+    expect(result?.content[0].text).toMatch(/not metric/);
+    expect(result?.content[0].text).toMatch(/clickstack_list_sources/);
+  });
+
+  it('errors when a metric source receives select items without metricType', () => {
+    const source = { kind: 'metric' };
+    const select = [{ aggFn: 'avg', valueExpression: 'Value' }];
+    const result = assertSourceKindMatchesSelect(source, select);
+    expect(result?.isError).toBe(true);
+    expect(result?.content[0].text).toMatch(/metricType \+ metricName/);
+    expect(result?.content[0].text).toMatch(/clickstack_describe_source/);
+  });
+
+  it('counts only items whose metricType is a non-empty string', () => {
+    const source = { kind: 'trace' };
+    // Items with empty/missing metricType should not trip the check
+    expect(
+      assertSourceKindMatchesSelect(source, [
+        { aggFn: 'count' },
+        { aggFn: 'avg', valueExpression: 'Duration', metricType: '' },
+      ]),
+    ).toBeNull();
+  });
+
+  it('returns null for a raw string select', () => {
+    // Raw-string selects bypass the metric-annotation check; the
+    // renderer handles them directly.
+    expect(
+      assertSourceKindMatchesSelect({ kind: 'metric' }, 'count()'),
+    ).toBeNull();
+  });
+
+  it('returns null when select is not an array', () => {
+    expect(
+      assertSourceKindMatchesSelect({ kind: 'trace' }, undefined),
+    ).toBeNull();
+    expect(assertSourceKindMatchesSelect({ kind: 'trace' }, null)).toBeNull();
   });
 });

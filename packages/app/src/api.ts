@@ -21,15 +21,10 @@ import type {
   WebhookTestApiResponse,
   WebhookUpdateApiResponse,
 } from '@hyperdx/common-utils/dist/types';
-import type { UseQueryOptions } from '@tanstack/react-query';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from './config';
-import {
-  Dashboard,
-  fetchLocalDashboards,
-  getLocalDashboardTags,
-} from './dashboard';
+import { getLocalDashboardTags } from './dashboard';
 type ServicesResponse = {
   data: Record<
     string,
@@ -122,64 +117,6 @@ const api = {
     return useMutation<void, Error, string>({
       mutationFn: async (alertId: string) => {
         await server(`alerts/${alertId}/silenced`, {
-          method: 'DELETE',
-        });
-      },
-    });
-  },
-  useDashboards(options?: UseQueryOptions<Dashboard[] | null, Error>) {
-    return useQuery({
-      queryKey: [`dashboards`],
-      queryFn: IS_LOCAL_MODE
-        ? async () => fetchLocalDashboards()
-        : () => hdxServer(`dashboards`, { method: 'GET' }).json<Dashboard[]>(),
-      ...options,
-    });
-  },
-  useCreateDashboard() {
-    return useMutation({
-      mutationFn: async ({
-        name,
-        charts,
-        query,
-        tags,
-      }: {
-        name: string;
-        charts: Dashboard['tiles'];
-        query: string;
-        tags: string[];
-      }) =>
-        hdxServer(`dashboards`, {
-          method: 'POST',
-          json: { name, charts, query, tags },
-        }).json<Dashboard>(),
-    });
-  },
-  useUpdateDashboard() {
-    return useMutation({
-      mutationFn: async ({
-        id,
-        name,
-        charts,
-        query,
-        tags,
-      }: {
-        id: string;
-        name: string;
-        charts: Dashboard['tiles'];
-        query: string;
-        tags: string[];
-      }) =>
-        hdxServer(`dashboards/${id}`, {
-          method: 'PUT',
-          json: { name, charts, query, tags },
-        }).json<Dashboard>(),
-    });
-  },
-  useDeleteDashboard() {
-    return useMutation({
-      mutationFn: async ({ id }: { id: string }) => {
-        await hdxServer(`dashboards/${id}`, {
           method: 'DELETE',
         });
       },
@@ -604,8 +541,8 @@ export const prometheusApi = {
     end: number;
     step: string;
     connectionId: string;
-    database: string;
-    table: string;
+    database?: string;
+    table?: string;
   }): Promise<PrometheusQueryRangeResponse> =>
     prometheusFetch('v1/prometheus/query_range', {
       query: params.query,
@@ -613,8 +550,8 @@ export const prometheusApi = {
       end: String(params.end),
       step: params.step,
       connectionId: params.connectionId,
-      database: params.database,
-      table: params.table,
+      ...(params.database ? { database: params.database } : {}),
+      ...(params.table ? { table: params.table } : {}),
     }),
 
   labelValues: (params: {

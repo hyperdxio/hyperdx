@@ -1,5 +1,5 @@
-import { replaceMacros } from '../macros';
-import type { MetricTable } from '../types';
+import { hasMacro, replaceMacros } from '@/macros';
+import type { MetricTable } from '@/types';
 
 const ALL_METRIC_TABLES: MetricTable = {
   gauge: 'otel_metrics_gauge',
@@ -8,6 +8,24 @@ const ALL_METRIC_TABLES: MetricTable = {
   summary: 'otel_metrics_summary',
   'exponential histogram': 'otel_metrics_exponential_histogram',
 };
+
+describe('hasMacro', () => {
+  it('detects a $__filters macro', () => {
+    expect(hasMacro('SELECT * WHERE $__filters', 'filters')).toBe(true);
+  });
+
+  it('returns false when the macro is absent', () => {
+    expect(hasMacro('SELECT * WHERE $__timeFilter(ts)', 'filters')).toBe(false);
+  });
+
+  it('matches on a word boundary (does not match a longer token)', () => {
+    expect(hasMacro('SELECT $__filtersExtra', 'filters')).toBe(false);
+  });
+
+  it('detects macros that take arguments', () => {
+    expect(hasMacro('WHERE $__timeFilter(ts)', 'timeFilter')).toBe(true);
+  });
+});
 
 describe('replaceMacros', () => {
   it('should replace $__fromTime with seconds-precision DateTime', () => {

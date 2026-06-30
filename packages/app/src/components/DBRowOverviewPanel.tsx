@@ -8,7 +8,11 @@ import { WithClause } from '@/hooks/useRowWhere';
 import { getEventBody } from '@/source';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 
-import { getJSONColumnNames, useRowData } from './DBRowDataPanel';
+import {
+  getJSONColumnNames,
+  getMapColumnNames,
+  useRowData,
+} from './DBRowDataPanel';
 import { DBRowJsonViewer } from './DBRowJsonViewer';
 import { RowSidePanelContext } from './DBRowSidePanel';
 import DBRowSidePanelHeader from './DBRowSidePanelHeader';
@@ -52,6 +56,7 @@ export function RowOverviewPanel({
   }, [source, data]);
 
   const jsonColumns = getJSONColumnNames(data?.meta);
+  const mapColumns = getMapColumnNames(data?.meta);
 
   const eventAttributesExpr =
     source.kind === SourceKind.Log || source.kind === SourceKind.Trace
@@ -282,6 +287,7 @@ export function RowOverviewPanel({
                 <DBRowJsonViewer
                   data={topLevelAttributes}
                   jsonColumns={jsonColumns}
+                  mapColumns={mapColumns}
                 />
               </Box>
             </Accordion.Panel>
@@ -300,6 +306,7 @@ export function RowOverviewPanel({
                 <DBRowJsonViewer
                   data={filteredEventAttributes}
                   jsonColumns={jsonColumns}
+                  mapColumns={mapColumns}
                 />
               </Box>
             </Accordion.Panel>

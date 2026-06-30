@@ -7,13 +7,13 @@ import { z } from 'zod';
 import * as config from '@/config';
 import { getRecentAlertHistories } from '@/controllers/alertHistory';
 import { getAlertById } from '@/controllers/alerts';
+import type { McpContext } from '@/mcp/tools/types';
+import { validateObjectId } from '@/mcp/utils/errors';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import Alert from '@/models/alert';
 import type { IDashboard } from '@/models/dashboard';
 import type { ISavedSearch } from '@/models/savedSearch';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
-
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 
 function deriveAlertName(alert: {
   name?: string | null;
@@ -50,7 +50,7 @@ export function registerGetAlert(server: McpServer, context: McpContext): void {
   const frontendUrl = config.FRONTEND_URL;
 
   server.registerTool(
-    'hyperdx_get_alert',
+    'clickstack_get_alert',
     {
       title: 'Get Alert(s)',
       description:
@@ -75,7 +75,7 @@ export function registerGetAlert(server: McpServer, context: McpContext): void {
           ),
       }),
     },
-    withToolTracing('hyperdx_get_alert', context, async ({ id, state }) => {
+    withToolTracing('clickstack_get_alert', context, async ({ id, state }) => {
       // ── List all alerts (slim summary) ──
       if (!id) {
         const query: Record<string, unknown> = {
@@ -108,12 +108,8 @@ export function registerGetAlert(server: McpServer, context: McpContext): void {
       }
 
       // ── Get single alert (full detail) ──
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Invalid alert ID' }],
-        };
-      }
+      const idError = validateObjectId(id, 'alert ID');
+      if (idError) return idError;
 
       const alert = await getAlertById(id, teamId);
       if (!alert) {

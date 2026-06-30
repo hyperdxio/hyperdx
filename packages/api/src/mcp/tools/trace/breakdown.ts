@@ -1,7 +1,7 @@
 /**
- * hyperdx_trace_top_time_consuming_operations
+ * clickstack_trace_top_time_consuming_operations
  *
- * Aggregate counterpart to hyperdx_trace_waterfall. Given a parent-span
+ * Aggregate counterpart to clickstack_trace_waterfall. Given a parent-span
  * filter (a service + operation, optionally constrained to slow durations),
  * return the child operations consuming the most cumulative time across all
  * traces matching the parent filter — ranked by total_time_ms DESC.
@@ -22,10 +22,9 @@ import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-
-import { withToolTracing } from '../../utils/tracing';
-import { parseTimeRange } from '../query/helpers';
-import type { McpContext } from '../types';
+import { parseTimeRange } from '@/mcp/tools/query/helpers';
+import type { McpContext } from '@/mcp/tools/types';
+import { withToolTracing } from '@/mcp/utils/tracing';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -34,7 +33,7 @@ const traceBreakdownSchema = z.object({
     .string()
     .describe(
       'Trace source ID. Must be a source of kind="trace". ' +
-        'Call hyperdx_list_sources to find available sources.',
+        'Call clickstack_list_sources to find available sources.',
     ),
   parentFilter: z
     .string()
@@ -102,7 +101,7 @@ export function registerTraceBreakdown(server: McpServer, context: McpContext) {
   const { teamId } = context;
 
   server.registerTool(
-    'hyperdx_trace_top_time_consuming_operations',
+    'clickstack_trace_top_time_consuming_operations',
     {
       title: 'Top Time-Consuming Operations Across Matching Traces',
       description:
@@ -138,7 +137,7 @@ export function registerTraceBreakdown(server: McpServer, context: McpContext) {
         'contained at least one such span), `p50_ms`, `p99_ms`. Plus a ' +
         '`summary` block with the matched-parent count.\n\n' +
         'NEXT STEP after this tool: once a dominant slow child operation is ' +
-        'identified, the canonical follow-up is hyperdx_event_deltas with ' +
+        'identified, the canonical follow-up is clickstack_event_deltas with ' +
         'slow-vs-fast spans of THAT child operation as target/baseline ' +
         "(target = {where: SpanName='<slow-child>' AND Duration > X}, " +
         "baseline = {where: SpanName='<slow-child>' AND Duration <= Y}). " +
@@ -147,13 +146,13 @@ export function registerTraceBreakdown(server: McpServer, context: McpContext) {
         'CROSS-SERVICE BREAKDOWN: this tool does NOT scope children to the ' +
         "parent's service. Slow cross-service calls (database, cache, " +
         'upstream HTTP) surface naturally — useful for triage.\n\n' +
-        'PAIR TOOL: hyperdx_trace_waterfall returns ONE concrete trace as a ' +
+        'PAIR TOOL: clickstack_trace_waterfall returns ONE concrete trace as a ' +
         "parent/child tree. Use it for an example after this tool's " +
         'aggregate breakdown has pointed you at the slow downstream operation.',
       inputSchema: traceBreakdownSchema,
     },
     withToolTracing(
-      'hyperdx_trace_top_time_consuming_operations',
+      'clickstack_trace_top_time_consuming_operations',
       context,
       async (rawInput: TraceBreakdownInput) => {
         const input = traceBreakdownSchema.parse(rawInput);
@@ -174,7 +173,7 @@ export function registerTraceBreakdown(server: McpServer, context: McpContext) {
             content: [
               {
                 type: 'text' as const,
-                text: `Source not found: ${input.sourceId}. Call hyperdx_list_sources to find available source IDs.`,
+                text: `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
               },
             ],
           };
@@ -185,7 +184,7 @@ export function registerTraceBreakdown(server: McpServer, context: McpContext) {
             content: [
               {
                 type: 'text' as const,
-                text: `Source ${input.sourceId} is kind="${source.kind}". hyperdx_trace_top_time_consuming_operations requires a source of kind="trace".`,
+                text: `Source ${input.sourceId} is kind="${source.kind}". clickstack_trace_top_time_consuming_operations requires a source of kind="trace".`,
               },
             ],
           };

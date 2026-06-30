@@ -4,11 +4,11 @@ import { z } from 'zod';
 
 import * as config from '@/config';
 import { getDashboards } from '@/controllers/dashboard';
+import type { McpContext } from '@/mcp/tools/types';
+import { validateObjectId } from '@/mcp/utils/errors';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
-
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 
 export function registerGetDashboard(
   server: McpServer,
@@ -18,7 +18,7 @@ export function registerGetDashboard(
   const frontendUrl = config.FRONTEND_URL;
 
   server.registerTool(
-    'hyperdx_get_dashboard',
+    'clickstack_get_dashboard',
     {
       title: 'Get Dashboard(s)',
       description:
@@ -33,7 +33,7 @@ export function registerGetDashboard(
           ),
       }),
     },
-    withToolTracing('hyperdx_get_dashboard', context, async ({ id }) => {
+    withToolTracing('clickstack_get_dashboard', context, async ({ id }) => {
       if (!id) {
         const dashboards = await getDashboards(
           new mongoose.Types.ObjectId(teamId),
@@ -51,12 +51,8 @@ export function registerGetDashboard(
         };
       }
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Invalid dashboard ID' }],
-        };
-      }
+      const idError = validateObjectId(id, 'dashboard ID');
+      if (idError) return idError;
 
       const dashboard = await Dashboard.findOne({ _id: id, team: teamId });
       if (!dashboard) {

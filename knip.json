@@ -26,9 +26,17 @@
     "packages/common-utils": {
       "entry": ["src/**/*.ts", "!src/__tests__/**", "!src/**/*.test.*"],
       "project": ["src/**/*.ts"]
+    },
+    "packages/hdx-eval": {
+      "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["tsx"]
     }
   },
-  "ignore": ["scripts/dev-portal/**", ".github/scripts/**"],
+  "ignore": [
+    "scripts/dev-portal/**",
+    ".github/scripts/**",
+    "docker/hyperdx/**"
+  ],
   "ignoreBinaries": ["make", "migrate", "playwright"],
   "ignoreDependencies": [
     "@dotenvx/dotenvx",

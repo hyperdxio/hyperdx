@@ -55,6 +55,7 @@ import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
+  isPromqlDisplayType,
   isRawSqlDisplayType,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
@@ -151,6 +152,7 @@ export default function EditTimeChartForm({
   const {
     control,
     setValue,
+    getValues,
     handleSubmit,
     register,
     setError,
@@ -165,6 +167,7 @@ export default function EditTimeChartForm({
   const {
     fields,
     append,
+    insert: insertSeries,
     remove: removeSeries,
     swap: swapSeries,
   } = useFieldArray({
@@ -172,11 +175,29 @@ export default function EditTimeChartForm({
     name: 'series',
   });
 
+  // Insert a copy of an existing series directly below it so a near-identical
+  // variant (e.g. avg + p95 of the same column) does not have to be re-entered.
+  // structuredClone keeps the copy independent of the source row. The alias is
+  // cleared on the copy: a non-empty alias renders as `AS "<alias>"`, so two
+  // rows sharing one alias produce duplicate column names and ClickHouse rejects
+  // the query. An empty alias renders without `AS`, giving each row a distinct
+  // auto-generated name.
+  const duplicateSeries = useCallback(
+    (index: number) => {
+      insertSeries(index + 1, {
+        ...structuredClone(getValues(`series.${index}`)),
+        alias: '',
+      });
+    },
+    [insertSeries, getValues],
+  );
+
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
 
   const select = useWatch({ control, name: 'select' });
+  const series = useWatch({ control, name: 'series' });
   const sourceId = useWatch({ control, name: 'source' });
   const alert = useWatch({ control, name: 'alert' });
   const seriesReturnType = useWatch({ control, name: 'seriesReturnType' });
@@ -190,7 +211,8 @@ export default function EditTimeChartForm({
   const chartConfigAlert = chartConfig.alert;
   const isRawSqlInput =
     configType === 'sql' && isRawSqlDisplayType(displayType);
-  const isPromqlInput = configType === 'promql';
+  const isPromqlInput =
+    configType === 'promql' && isPromqlDisplayType(displayType);
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
@@ -221,28 +243,41 @@ export default function EditTimeChartForm({
     alignDateRangeToGranularity,
     fillNulls,
     compareToPreviousPeriod,
+    fitYAxisToData,
     numberFormat,
     groupByColumnsOnLeft,
+    seriesLimit,
     color,
+    colorRules,
+    backgroundChart,
   ] = useWatch({
     control,
     name: [
       'alignDateRangeToGranularity',
       'fillNulls',
       'compareToPreviousPeriod',
+      'fitYAxisToData',
       'numberFormat',
       'groupByColumnsOnLeft',
+      'seriesLimit',
       'color',
+      'colorRules',
+      'backgroundChart',
     ],
   });
 
+  // Format auto-detected purely from the datasource (e.g. duration for a trace
+  // Duration column), used as the drawer's fallback when no explicit
+  // numberFormat is set. Reads the live `series`, the field the builder edits;
+  // `select` is only synced from `series` on submit and on display-type / source
+  // resets, so it goes stale after an aggregation edit and resolves undefined.
+  // The drawer prioritizes an explicit `numberFormat` over this fallback.
   const autoDetectedNumberFormat = useMemo(
     () =>
-      numberFormat ??
-      (Array.isArray(select)
-        ? getFirstSeriesNumberFormat(select, tableSource)
-        : undefined),
-    [numberFormat, select, tableSource],
+      Array.isArray(series)
+        ? getFirstSeriesNumberFormat(series, tableSource)
+        : undefined,
+    [series, tableSource],
   );
 
   const displaySettings: ChartConfigDisplaySettings = useMemo(
@@ -250,17 +285,25 @@ export default function EditTimeChartForm({
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      seriesLimit,
       color,
+      colorRules,
+      backgroundChart,
     }),
     [
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      seriesLimit,
       color,
+      colorRules,
+      backgroundChart,
     ],
   );
 
@@ -306,7 +349,18 @@ export default function EditTimeChartForm({
       if (errors.length > 0) return { errors, config: null };
 
       const savedConfig = convertFormStateToSavedChartConfig(form, tableSource);
-      if (!savedConfig) return { errors: [], config: null };
+      if (!savedConfig) {
+        console.error(
+          'convertFormStateToSavedChartConfig returned undefined after validation passed. ' +
+            'This likely means a new displayType or configType combination is not handled.',
+          {
+            displayType: form.displayType,
+            configType: form.configType,
+            source: form.source,
+          },
+        );
+        return { errors: [], config: null };
+      }
 
       const config = isRawSqlSavedChartConfig(savedConfig)
         ? savedConfig
@@ -539,15 +593,31 @@ export default function EditTimeChartForm({
       alignDateRangeToGranularity,
       fillNulls,
       compareToPreviousPeriod,
+      fitYAxisToData,
       groupByColumnsOnLeft,
+      seriesLimit,
       color,
+      colorRules,
+      backgroundChart,
     }: ChartConfigDisplaySettings) => {
-      setValue('numberFormat', numberFormat);
+      // Only persist an explicit numberFormat. When the drawer emits undefined
+      // (the user never chose a format), leave it unset so render-time
+      // auto-detection keeps driving the format from the datasource.
+      if (numberFormat !== undefined) {
+        setValue('numberFormat', numberFormat);
+      }
       setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
+      setValue('fitYAxisToData', fitYAxisToData);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
+      // Persist `null` (not undefined) when cleared so the disabled state
+      // survives JSON round-tripping through the URL query state; otherwise
+      // the dropped key lets RHF's `values` sync restore the stale value.
+      setValue('seriesLimit', seriesLimit ?? null);
       setValue('color', color);
+      setValue('colorRules', colorRules);
+      setValue('backgroundChart', backgroundChart);
       onSubmit();
     },
     [setValue, onSubmit],
@@ -733,6 +803,7 @@ export default function EditTimeChartForm({
             append={append}
             removeSeries={removeSeries}
             swapSeries={swapSeries}
+            duplicateSeries={duplicateSeries}
             tableSource={tableSource}
             tableConnection={tableConnection}
             databaseName={databaseName}

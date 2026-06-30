@@ -25,6 +25,10 @@
       "description": "Endpoints for querying chart data"
     },
     {
+      "name": "Connections",
+      "description": "Endpoints for managing ClickHouse connections"
+    },
+    {
       "name": "Sources",
       "description": "Endpoints for managing data sources"
     },
@@ -581,6 +585,186 @@
           }
         }
       },
+      "Connection": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "host",
+          "username"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique connection ID.",
+            "example": "507f1f77bcf86cd799439012"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name for the connection.",
+            "example": "Production ClickHouse"
+          },
+          "host": {
+            "type": "string",
+            "description": "ClickHouse HTTP endpoint URL.",
+            "example": "https://clickhouse.example.com:8443"
+          },
+          "username": {
+            "type": "string",
+            "description": "ClickHouse username.",
+            "example": "default"
+          },
+          "hyperdxSettingPrefix": {
+            "type": "string",
+            "description": "Optional prefix for HyperDX-specific ClickHouse settings. Must only contain alphanumeric characters and underscores.",
+            "nullable": true,
+            "example": "hyperdx_"
+          },
+          "isPrometheusEndpoint": {
+            "type": "boolean",
+            "description": "Optional. When true, `host` is treated as a Prometheus-compatible API endpoint (e.g. Prometheus or Thanos) and PromQL queries are proxied to it. When false or omitted, `host` is a ClickHouse HTTP endpoint.",
+            "example": false
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp",
+            "example": "2025-01-01T00:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp",
+            "example": "2025-06-15T10:30:00.000Z"
+          }
+        }
+      },
+      "CreateConnectionRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "host",
+          "username"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the connection.",
+            "example": "Production ClickHouse"
+          },
+          "host": {
+            "type": "string",
+            "description": "ClickHouse HTTP endpoint URL.",
+            "example": "https://clickhouse.example.com:8443"
+          },
+          "username": {
+            "type": "string",
+            "description": "ClickHouse username.",
+            "example": "default"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "ClickHouse password. Never returned by the API.",
+            "example": "my-secret-password"
+          },
+          "hyperdxSettingPrefix": {
+            "type": "string",
+            "description": "Optional prefix for HyperDX-specific ClickHouse settings. Must only contain alphanumeric characters and underscores.",
+            "nullable": true,
+            "example": "hyperdx_"
+          },
+          "isPrometheusEndpoint": {
+            "type": "boolean",
+            "description": "Optional. When true, `host` is treated as a Prometheus-compatible API endpoint (e.g. Prometheus or Thanos) and PromQL queries are proxied to it. When false or omitted, `host` is a ClickHouse HTTP endpoint.",
+            "example": false
+          }
+        }
+      },
+      "UpdateConnectionRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "host",
+          "username"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the connection.",
+            "example": "Production ClickHouse"
+          },
+          "host": {
+            "type": "string",
+            "description": "ClickHouse HTTP endpoint URL.",
+            "example": "https://clickhouse.example.com:8443"
+          },
+          "username": {
+            "type": "string",
+            "description": "ClickHouse username.",
+            "example": "default"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "ClickHouse password. If omitted or empty, the existing password is kept.",
+            "example": "my-new-secret-password"
+          },
+          "hyperdxSettingPrefix": {
+            "type": "string",
+            "description": "Optional prefix for HyperDX-specific ClickHouse settings. Set to null or an empty string to clear the existing value. If omitted, the existing value is kept.",
+            "nullable": true,
+            "example": "hyperdx_"
+          },
+          "isPrometheusEndpoint": {
+            "type": "boolean",
+            "description": "Optional. When true, `host` is treated as a Prometheus-compatible API endpoint. When false or omitted, `host` is a ClickHouse HTTP endpoint. Omit to keep the existing value unchanged.",
+            "example": false
+          }
+        }
+      },
+      "ConnectionResponseEnvelope": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Connection",
+            "description": "The connection object."
+          }
+        }
+      },
+      "ConnectionsListResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "description": "List of connection objects.",
+            "items": {
+              "$ref": "#/components/schemas/Connection"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "description": "Present only when one or more stored connections could not be serialized and were omitted from `data`.",
+            "properties": {
+              "skipped": {
+                "type": "integer",
+                "description": "Number of connections omitted from the response because they failed serialization.",
+                "example": 1
+              },
+              "skippedIds": {
+                "type": "array",
+                "description": "IDs of the connections that were omitted.",
+                "items": {
+                  "type": "string"
+                },
+                "example": [
+                  "507f1f77bcf86cd799439012"
+                ]
+              }
+            }
+          }
+        }
+      },
       "NumberFormatOutput": {
         "type": "string",
         "enum": [
@@ -776,6 +960,196 @@
             "type": "string",
             "description": "Custom unit label.",
             "example": "ms"
+          }
+        }
+      },
+      "ChartPaletteToken": {
+        "type": "string",
+        "enum": [
+          "chart-blue",
+          "chart-orange",
+          "chart-red",
+          "chart-cyan",
+          "chart-green",
+          "chart-pink",
+          "chart-purple",
+          "chart-light-blue",
+          "chart-brown",
+          "chart-gray",
+          "chart-success",
+          "chart-warning",
+          "chart-error"
+        ],
+        "description": "Palette token used to color a number tile. Tokens reflow across light and dark themes, so raw hex values are not accepted.\n",
+        "example": "chart-red"
+      },
+      "BackgroundChart": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "description": "Optional background trend sparkline drawn behind a number tile's value, derived from a time-bucketed version of the tile's query. Builder number tiles only (raw SQL number tiles have no time dimension to bucket).\n",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "line",
+              "area"
+            ],
+            "description": "Sparkline shape.",
+            "example": "line"
+          },
+          "color": {
+            "$ref": "#/components/schemas/ChartPaletteToken",
+            "description": "Optional palette-token override for the sparkline. When unset the sparkline inherits the tile's static color.\n"
+          }
+        }
+      },
+      "NumericColorCondition": {
+        "type": "object",
+        "required": [
+          "operator",
+          "value",
+          "color"
+        ],
+        "description": "Color rule comparing the displayed value against a single numeric bound.",
+        "properties": {
+          "operator": {
+            "type": "string",
+            "enum": [
+              "gt",
+              "gte",
+              "lt",
+              "lte"
+            ],
+            "description": "Numeric comparison operator.",
+            "example": "gt"
+          },
+          "value": {
+            "type": "number",
+            "description": "Numeric bound the displayed value is compared against. Only finite numbers are accepted (Infinity and NaN are rejected).\n",
+            "example": 100
+          },
+          "color": {
+            "$ref": "#/components/schemas/ChartPaletteToken",
+            "description": "Color applied when the rule matches."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Optional label describing the rule.",
+            "example": "High"
+          }
+        }
+      },
+      "BetweenColorCondition": {
+        "type": "object",
+        "required": [
+          "operator",
+          "value",
+          "color"
+        ],
+        "description": "Color rule matching when the displayed value falls within an inclusive range.",
+        "properties": {
+          "operator": {
+            "type": "string",
+            "enum": [
+              "between"
+            ],
+            "description": "Range comparison operator.",
+            "example": "between"
+          },
+          "value": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number"
+            },
+            "description": "Inclusive [min, max] range. Both bounds must be finite numbers.\n",
+            "example": [
+              100,
+              500
+            ]
+          },
+          "color": {
+            "$ref": "#/components/schemas/ChartPaletteToken",
+            "description": "Color applied when the rule matches."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Optional label describing the rule.",
+            "example": "Warning"
+          }
+        }
+      },
+      "EqualityColorCondition": {
+        "type": "object",
+        "required": [
+          "operator",
+          "value",
+          "color"
+        ],
+        "description": "Color rule matching when the displayed value equals (eq) or does not equal (neq) a number or string.",
+        "properties": {
+          "operator": {
+            "type": "string",
+            "enum": [
+              "eq",
+              "neq"
+            ],
+            "description": "Equality comparison operator.",
+            "example": "eq"
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "maxLength": 200
+              }
+            ],
+            "description": "A finite number, or a string up to 200 characters, to compare for equality.\n",
+            "example": "OK"
+          },
+          "color": {
+            "$ref": "#/components/schemas/ChartPaletteToken",
+            "description": "Color applied when the rule matches."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Optional label describing the rule.",
+            "example": "Healthy"
+          }
+        }
+      },
+      "NumberTileColorCondition": {
+        "description": "A single conditional color rule for a number tile. Rules are evaluated in order and the last matching rule wins. When no rule matches, the static color applies, then the default text color. The number-tile editor surfaces numeric and equality operators only.\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/NumericColorCondition"
+          },
+          {
+            "$ref": "#/components/schemas/BetweenColorCondition"
+          },
+          {
+            "$ref": "#/components/schemas/EqualityColorCondition"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "operator",
+          "mapping": {
+            "gt": "#/components/schemas/NumericColorCondition",
+            "gte": "#/components/schemas/NumericColorCondition",
+            "lt": "#/components/schemas/NumericColorCondition",
+            "lte": "#/components/schemas/NumericColorCondition",
+            "between": "#/components/schemas/BetweenColorCondition",
+            "eq": "#/components/schemas/EqualityColorCondition",
+            "neq": "#/components/schemas/EqualityColorCondition"
           }
         }
       },
@@ -1239,6 +1613,11 @@
             "description": "Fill missing time buckets with zero instead of leaving gaps.",
             "default": true
           },
+          "fitYAxisToData": {
+            "type": "boolean",
+            "description": "Set the y-axis lower bound to the minimum of the displayed data instead of zero, making small fluctuations between series easier to see.\n",
+            "default": false
+          },
           "numberFormat": {
             "$ref": "#/components/schemas/NumberFormat",
             "description": "Number formatting options for displayed values."
@@ -1412,6 +1791,22 @@
           "numberFormat": {
             "$ref": "#/components/schemas/NumberFormat",
             "description": "Number formatting options for displayed values."
+          },
+          "color": {
+            "$ref": "#/components/schemas/ChartPaletteToken",
+            "description": "Optional static color applied to the displayed number."
+          },
+          "colorRules": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "Ordered conditional color rules evaluated against the displayed value (last match wins). Falls back to color, then the default text color when no rule matches.\n",
+            "items": {
+              "$ref": "#/components/schemas/NumberTileColorCondition"
+            }
+          },
+          "backgroundChart": {
+            "$ref": "#/components/schemas/BackgroundChart",
+            "description": "Optional background trend sparkline drawn behind the value.\n"
           }
         }
       },
@@ -1676,6 +2071,11 @@
                 "type": "boolean",
                 "description": "Expand date range boundaries to the query granularity interval.",
                 "default": true
+              },
+              "fitYAxisToData": {
+                "type": "boolean",
+                "description": "Set the y-axis lower bound to the minimum of the displayed data instead of zero, making small fluctuations between series easier to see.\n",
+                "default": false
               }
             }
           }
@@ -1762,6 +2162,10 @@
                 ],
                 "description": "Display as a single big-number chart.",
                 "example": "number"
+              },
+              "color": {
+                "$ref": "#/components/schemas/ChartPaletteToken",
+                "description": "Optional static color applied to the displayed number. Raw SQL number tiles do not support conditional colorRules.\n"
               }
             }
           }
@@ -1985,6 +2389,30 @@
           }
         }
       },
+      "OnClickExternal": {
+        "type": "object",
+        "required": [
+          "type",
+          "urlTemplate"
+        ],
+        "description": "Link-out that navigates to an arbitrary external URL (e.g. a Grafana or Langfuse dashboard). The rendered URL must be an absolute http(s) URL.\n",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "external"
+            ],
+            "description": "OnClick variant discriminator. Must be \"external\" for external link-outs.",
+            "example": "external"
+          },
+          "urlTemplate": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Handlebars template rendered against the clicked row; supports `{{column}}` variables. The rendered value must be an absolute http(s) URL.\n",
+            "example": "https://example.com/d/abc?var-service={{ServiceName}}"
+          }
+        }
+      },
       "OnClick": {
         "description": "Link-out configuration applied when a user clicks a row of a table tile. Only table tiles (builder or raw SQL) currently support onClick. When target.mode is \"id\", the referenced source (type=search) or dashboard (type=dashboard) must already exist for the team.\n",
         "oneOf": [
@@ -1993,13 +2421,17 @@
           },
           {
             "$ref": "#/components/schemas/OnClickDashboard"
+          },
+          {
+            "$ref": "#/components/schemas/OnClickExternal"
           }
         ],
         "discriminator": {
           "propertyName": "type",
           "mapping": {
             "search": "#/components/schemas/OnClickSearch",
-            "dashboard": "#/components/schemas/OnClickDashboard"
+            "dashboard": "#/components/schemas/OnClickDashboard",
+            "external": "#/components/schemas/OnClickExternal"
           }
         }
       },
@@ -2941,6 +3373,12 @@
             "description": "Display name for the source.",
             "example": "Logs"
           },
+          "section": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.",
+            "example": "Billing"
+          },
           "kind": {
             "type": "string",
             "enum": [
@@ -3042,6 +3480,12 @@
             "nullable": true,
             "example": "Body"
           },
+          "knownColumnsListExpression": {
+            "type": "string",
+            "description": "For Distributed table sources whose target tables have non-matching column sets. A list of columns supported across all target tables, used instead of SELECT * when fetching full row data. Leave blank to select all columns.",
+            "nullable": true,
+            "example": "Timestamp, Body, ServiceName"
+          },
           "useTextIndexForImplicitColumn": {
             "type": "string",
             "enum": [
@@ -3128,6 +3572,12 @@
             "type": "string",
             "description": "Display name for the source.",
             "example": "Traces"
+          },
+          "section": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.",
+            "example": "Billing"
           },
           "kind": {
             "type": "string",
@@ -3262,6 +3712,12 @@
             "nullable": true,
             "example": "SpanName"
           },
+          "knownColumnsListExpression": {
+            "type": "string",
+            "description": "For Distributed table sources whose target tables have non-matching column sets. A list of columns supported across all target tables, used instead of SELECT * when fetching full row data. Leave blank to select all columns.",
+            "nullable": true,
+            "example": "Timestamp, Body, ServiceName"
+          },
           "useTextIndexForImplicitColumn": {
             "type": "string",
             "enum": [
@@ -3344,6 +3800,12 @@
             "description": "Display name for the source.",
             "example": "Metrics"
           },
+          "section": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.",
+            "example": "Billing"
+          },
           "kind": {
             "type": "string",
             "enum": [
@@ -3411,6 +3873,12 @@
             "type": "string",
             "description": "Display name for the source.",
             "example": "Sessions"
+          },
+          "section": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.",
+            "example": "Billing"
           },
           "kind": {
             "type": "string",
@@ -4286,6 +4754,307 @@
                 },
                 "example": {
                   "error": "Internal server error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/connections": {
+      "get": {
+        "summary": "List Connections",
+        "description": "Retrieves a list of all ClickHouse connections for the authenticated team. Passwords are never returned.",
+        "operationId": "listConnections",
+        "tags": [
+          "Connections"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved connections",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionsListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Connection",
+        "description": "Creates a new ClickHouse connection",
+        "operationId": "createConnection",
+        "tags": [
+          "Connections"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConnectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully created connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Body validation failed: name: Required"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/connections/{id}": {
+      "get": {
+        "summary": "Get Connection",
+        "description": "Retrieves a specific ClickHouse connection by ID. Passwords are never returned.",
+        "operationId": "getConnection",
+        "tags": [
+          "Connections"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Connection ID",
+            "example": "507f1f77bcf86cd799439012"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponseEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Connection not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Connection not found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Connection",
+        "description": "Updates an existing ClickHouse connection.\n\nField semantics: if `password` is omitted or empty the existing\npassword is kept. `hyperdxSettingPrefix` is cleared when set to null\nor an empty string, and `prometheusEndpoint` is cleared when set to\nnull; both are kept unchanged when omitted.\n",
+        "operationId": "updateConnection",
+        "tags": [
+          "Connections"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Connection ID",
+            "example": "507f1f77bcf86cd799439012"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConnectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully updated connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Body validation failed: host: Required"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Connection not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Connection not found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Connection",
+        "description": "Deletes a ClickHouse connection",
+        "operationId": "deleteConnection",
+        "tags": [
+          "Connections"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Connection ID",
+            "example": "507f1f77bcf86cd799439012"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully deleted connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                },
+                "example": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Connection not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Connection not found"
                 }
               }
             }
@@ -5187,6 +5956,131 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v2/team": {
+      "get": {
+        "summary": "Get Team",
+        "description": "Retrieves the authenticated team's basic settings.",
+        "operationId": "getTeam",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved team"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/api/v2/team/members": {
+      "get": {
+        "summary": "List Team Members",
+        "description": "Retrieves the team's members.",
+        "operationId": "listTeamMembers",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved members"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitation": {
+      "post": {
+        "summary": "Invite Team Member",
+        "description": "Creates a pending invitation for a new email address.",
+        "operationId": "inviteTeamMember",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully created the invitation"
+          },
+          "400": {
+            "description": "User already exists"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitations": {
+      "get": {
+        "summary": "List Team Invitations",
+        "description": "Retrieves the team's pending invitations.",
+        "operationId": "listTeamInvitations",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved invitations"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitation/{id}": {
+      "delete": {
+        "summary": "Delete Team Invitation",
+        "description": "Deletes a pending team invitation.",
+        "operationId": "deleteTeamInvitation",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully deleted the invitation"
+          },
+          "404": {
+            "description": "Invitation not found"
+          }
+        }
+      }
+    },
+    "/api/v2/team/member/{id}": {
+      "delete": {
+        "summary": "Remove Team Member",
+        "description": "Removes a member from the team.",
+        "operationId": "removeTeamMember",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully removed the member"
+          },
+          "400": {
+            "description": "Cannot remove yourself from the team"
+          },
+          "404": {
+            "description": "Member not found"
           }
         }
       }

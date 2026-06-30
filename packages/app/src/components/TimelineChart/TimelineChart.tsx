@@ -19,8 +19,8 @@ import {
   type TTimelineEvent,
 } from './TimelineChartRowEvents';
 
-import resizeStyles from '../../../styles/ResizablePanel.module.scss';
 import styles from './TimelineChart.module.scss';
+import resizeStyles from '@styles/ResizablePanel.module.scss';
 
 type Row = {
   events: TTimelineEvent[];
@@ -274,7 +274,6 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
               maxVal={maxVal}
               heightRef={timelineHeightRef}
               labelWidth={labelWidth}
-              scaleRef={scaleRef}
             />
 
             <div

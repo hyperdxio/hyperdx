@@ -595,7 +595,8 @@ export function convertToDashboardTemplate(
   // OnClickTargetSchema requires id.min(1), so we can't emit an empty string.
   const convertOnClickTargetIdToName = (config: SavedChartConfig) => {
     const onClick = config.onClick;
-    if (!onClick || onClick.target.mode !== 'id') return;
+    if (!onClick || onClick.type === 'external' || onClick.target.mode !== 'id')
+      return;
     const targetId = onClick.target.id;
     const name =
       onClick.type === 'search'
@@ -672,6 +673,15 @@ export function convertToDashboardTemplate(
     output.containers = structuredClone(input.containers);
   }
 
+  if (input.savedQuery != null) {
+    output.savedQuery = input.savedQuery;
+    output.savedQueryLanguage = input.savedQueryLanguage ?? null;
+  }
+
+  if (input.savedFilterValues && input.savedFilterValues.length > 0) {
+    output.savedFilterValues = structuredClone(input.savedFilterValues);
+  }
+
   return output;
 }
 
@@ -709,6 +719,15 @@ export function convertToDashboardDocument(
 
   if (input.containers) {
     output.containers = structuredClone(input.containers);
+  }
+
+  if (input.savedQuery != null) {
+    output.savedQuery = input.savedQuery;
+    output.savedQueryLanguage = input.savedQueryLanguage ?? null;
+  }
+
+  if (input.savedFilterValues && input.savedFilterValues.length > 0) {
+    output.savedFilterValues = structuredClone(input.savedFilterValues);
   }
 
   return output;
@@ -1181,6 +1200,14 @@ export function displayTypeSupportsBuilderAlerts(
     displayType === DisplayType.StackedBar ||
     displayType === DisplayType.Number
   );
+}
+
+export function displayTypeSupportsPromQLAlerts(
+  displayType: DisplayType | undefined,
+): boolean {
+  // TODO: Support alerts for PromQL (HDX-4636)
+  // This looks funky, just doing it to satisfy knip
+  return displayType ? false : false;
 }
 
 export function validateRawSqlForAlert(chartConfig: RawSqlChartConfig): {

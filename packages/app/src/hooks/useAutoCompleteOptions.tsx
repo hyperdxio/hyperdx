@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Field,
   parseKeyPath,
@@ -14,6 +15,24 @@ import {
 } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
 import { mergePath, toArray, useDebounce } from '@/utils';
+
+// Derive top-level Map column names from a fields list. Matches on the
+// canonical `JSDataType.Map` rather than the raw ClickHouse type string so
+// wrapped Map types (e.g. `LowCardinality(Map(...))`, `Nullable(Map(...))`)
+// are detected too: `convertCHDataTypeToJSType` unwraps those wrappers before
+// classifying. Top-level only (path.length === 1) since nested Map sub-keys
+// surface as deeper path segments and are not themselves Map-typed parents.
+//
+// Exported separately so a regression in `useAutoCompleteOptions`'s Map
+// derivation trips a unit test: dropping or breaking this filter would
+// silently re-introduce the array-index emission HDX-4369 fixed.
+export function deriveMapColumnsFromFields(
+  fields: readonly Field[] | undefined,
+): string[] {
+  return (fields ?? [])
+    .filter(f => f.path.length === 1 && f.jsType === JSDataType.Map)
+    .map(f => f.path[0]);
+}
 
 export type TokenInfo = {
   /** The full token at the cursor position */
@@ -234,9 +253,17 @@ export function useAutoCompleteOptions(
     [tcs, effectiveDateRange, source?.timestampValueExpression],
   );
 
+  // Map columns from the field list, so a path like `['LogAttributes', '1']`
+  // on a Map(String, ...) renders as `LogAttributes['1']` instead of the
+  // illegal array `LogAttributes[2]`. HDX-4369.
+  const mapColumns = useMemo(
+    () => deriveMapColumnsFromFields(fields),
+    [fields],
+  );
+
   const searchKeys = useMemo(
-    () => (searchField ? [mergePath(searchField.path)] : []),
-    [searchField],
+    () => (searchField ? [mergePath(searchField.path, [], mapColumns)] : []),
+    [searchField, mapColumns],
   );
 
   const metadataMVs = tcs[0]?.metadataMVs;

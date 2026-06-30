@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -19,6 +20,7 @@ import {
   IconAlertCircle,
   IconChevronDown,
   IconChevronUp,
+  IconFolder,
   IconPlus,
   IconRefresh,
   IconServer,
@@ -72,6 +74,29 @@ export function SourcesList({
 
   const [editedSourceId, setEditedSourceId] = useState<string | null>(null);
   const [isCreatingSource, setIsCreatingSource] = useState(false);
+
+  // Honor `?source=<id>` from the URL so kebab "Edit source" deep-links
+  // expand the right entry. We auto-expand once per param value, then
+  // strip it from the URL so subsequent in-page interactions don't
+  // re-fight the user. `expandedFromQueryRef` prevents the effect from
+  // toggling back on every keystroke that ticks `router.query`.
+  const router = useRouter();
+  const expandedFromQueryRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!router.isReady) return;
+    const sourceParam = router.query.source;
+    const sourceId = Array.isArray(sourceParam) ? sourceParam[0] : sourceParam;
+    if (!sourceId || expandedFromQueryRef.current === sourceId) return;
+    if (!sources?.some(s => s.id === sourceId)) return;
+    expandedFromQueryRef.current = sourceId;
+    setEditedSourceId(sourceId);
+    const { source: _omit, ...rest } = router.query;
+    void router.replace(
+      { pathname: router.pathname, query: rest, hash: 'sources' },
+      undefined,
+      { shallow: true },
+    );
+  }, [router, sources]);
 
   const isLoading = isLoadingConnections || isLoadingSources;
   const error = connectionsError || sourcesError;
@@ -177,6 +202,12 @@ export function SourcesList({
                 <Text size={subtextSize} c="dimmed" mt={4}>
                   <Group gap="xs">
                     {capitalizeFirstLetter(s.kind)}
+                    {s.section && (
+                      <Group gap={4}>
+                        <IconFolder size={iconSize} />
+                        {s.section}
+                      </Group>
+                    )}
                     <Group gap={4}>
                       <IconServer size={iconSize} />
                       {connections?.find(c => c.id === s.connection)?.name}

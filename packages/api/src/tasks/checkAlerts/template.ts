@@ -20,6 +20,7 @@ import {
 import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
+import { performance } from 'perf_hooks';
 import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
 import { z } from 'zod';
@@ -41,8 +42,25 @@ import {
 } from '@/tasks/checkAlerts/providers';
 import { escapeJsonString, unflattenObject } from '@/tasks/util';
 import { truncateString } from '@/utils/common';
+import { getCounter, getHistogram } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
+
+// Webhook delivery is the last (and most failure-prone) hop of an alert. It
+// happens in the background task, so failures only show up in logs today.
+// `service` and `outcome` are bounded enums (see agent_docs/observability.md).
+const webhookDeliveryCounter = getCounter('hyperdx.alerts.webhook_deliveries', {
+  description:
+    'Count of alert webhook delivery attempts, labeled by service (slack, generic, incidentio) and outcome (success, error).',
+});
+const webhookDeliveryDuration = getHistogram(
+  'hyperdx.alerts.webhook_delivery.duration_ms',
+  {
+    description:
+      'Duration of an alert webhook delivery attempt, labeled by service.',
+    unit: 'ms',
+  },
+);
 
 const describeThresholdViolation = (
   thresholdType: AlertThresholdType,
@@ -263,26 +281,58 @@ export const handleSendSlackWebhook = async (
   webhook: IWebhook,
   message: Message,
 ) => {
-  validateWebhookUrl(webhook);
+  const startedAt = performance.now();
+  try {
+    validateWebhookUrl(webhook);
 
-  await slack.postMessageToWebhook(webhook.url, {
-    text: message.title,
-    blocks: [
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*<${message.hdxLink} | ${message.title}>*\n${message.body}`,
+    await slack.postMessageToWebhook(webhook.url, {
+      text: message.title,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*<${message.hdxLink} | ${message.title}>*\n${message.body}`,
+          },
         },
-      },
-    ],
-  });
+      ],
+    });
+    webhookDeliveryCounter.add(1, {
+      service: WebhookService.Slack,
+      outcome: 'success',
+    });
+  } catch (e) {
+    webhookDeliveryCounter.add(1, {
+      service: WebhookService.Slack,
+      outcome: 'error',
+    });
+    throw e;
+  } finally {
+    webhookDeliveryDuration.record(performance.now() - startedAt, {
+      service: WebhookService.Slack,
+    });
+  }
 };
 
 export const handleSendGenericWebhook = async (
   webhook: IWebhook,
   message: Message,
 ) => {
+  const startedAt = performance.now();
+  // webhook.service is an enum, so it is safe as a low-cardinality label.
+  const service = webhook.service ?? WebhookService.Generic;
+  try {
+    await sendGenericWebhook(webhook, message);
+    webhookDeliveryCounter.add(1, { service, outcome: 'success' });
+  } catch (e) {
+    webhookDeliveryCounter.add(1, { service, outcome: 'error' });
+    throw e;
+  } finally {
+    webhookDeliveryDuration.record(performance.now() - startedAt, { service });
+  }
+};
+
+const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
   validateWebhookUrl(webhook);
 
   let url: string;

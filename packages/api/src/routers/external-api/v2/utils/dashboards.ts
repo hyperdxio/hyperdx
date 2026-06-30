@@ -1,9 +1,13 @@
-import { displayTypeSupportsRawSqlAlerts } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  displayTypeSupportsBuilderAlerts,
+  displayTypeSupportsRawSqlAlerts,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   validateDashboardContainersStructure,
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
 import {
+  isBuilderSavedChartConfig,
   isHeatmapCompatibleSource,
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -11,6 +15,8 @@ import {
 import {
   AggregateFunctionSchema,
   BuilderSavedChartConfig,
+  ChartPaletteToken,
+  ColorCondition,
   DASHBOARD_MAX_CONTAINERS,
   DashboardContainer,
   DashboardContainerSchema,
@@ -19,7 +25,10 @@ import {
   isOnClickDashboardById,
   isOnClickSearchById,
   isTraceSource,
+  NumberTileColorCondition,
+  NumberTileColorConditionSchema,
   RawSqlSavedChartConfig,
+  resolveChartPaletteToken,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 import { SearchConditionLanguageSchema as whereLanguageSchema } from '@hyperdx/common-utils/dist/types';
@@ -144,6 +153,36 @@ const convertToExternalSelectItem = (
   };
 };
 
+// Normalize the per-rule palette colors of a number tile's `colorRules`
+// for the API response. `colorRules` shipped after the hue rename so
+// stored rules already hold hue-named tokens; running each through
+// `resolveChartPaletteToken` keeps the static `color` (which can hold a
+// legacy `chart-1`..`chart-10` token from before the rename) and the rule
+// colors on a single normalization path. A rule whose color cannot be
+// resolved (reachable only via a direct DB write, since the input schema
+// validates rule colors) is dropped, mirroring how the static `color`
+// field omits an unresolvable token, so the response always stays within
+// the palette-token enum instead of leaking an unknown string. When no
+// rule survives (or the stored array is empty) the field is omitted
+// entirely rather than emitted as `[]`, matching the static `color` omit.
+const toExternalColorRules = (
+  colorRules: ColorCondition[] | undefined,
+): NumberTileColorCondition[] | undefined => {
+  if (!colorRules) return undefined;
+  const resolved = colorRules.flatMap((rule): NumberTileColorCondition[] => {
+    const color = resolveChartPaletteToken(rule.color);
+    if (!color) return [];
+    // Re-validate against the number-tile subset so the response stays
+    // within the documented operator set: a string-match or regex rule
+    // (reachable only via a direct DB write, since neither the editor nor
+    // the input schema produces one on a number tile) is dropped, just
+    // like an unresolvable color token.
+    const parsed = NumberTileColorConditionSchema.safeParse({ ...rule, color });
+    return parsed.success ? [parsed.data] : [];
+  });
+  return resolved.length > 0 ? resolved : undefined;
+};
+
 const convertToExternalTileChartConfig = (
   config: SavedChartConfig,
 ): ExternalDashboardTileConfig | undefined => {
@@ -158,6 +197,7 @@ const convertToExternalTileChartConfig = (
           sourceId: config.source,
           alignDateRangeToGranularity: config.alignDateRangeToGranularity,
           fillNulls: config.fillNulls !== false,
+          fitYAxisToData: config.fitYAxisToData,
           numberFormat: config.numberFormat,
           compareToPreviousPeriod: config.compareToPreviousPeriod,
         };
@@ -190,6 +230,10 @@ const convertToExternalTileChartConfig = (
           sqlTemplate: config.sqlTemplate,
           sourceId: config.source,
           numberFormat: config.numberFormat,
+          // Raw SQL number tiles carry the static tile color too (no
+          // colorRules; see the schema). Normalize a legacy token saved
+          // before the hue rename to its hue name on output.
+          color: resolveChartPaletteToken(config.color),
         };
       case DisplayType.Pie:
         return {
@@ -239,6 +283,7 @@ const convertToExternalTileChartConfig = (
           config.select.length == 2,
         alignDateRangeToGranularity: config.alignDateRangeToGranularity,
         fillNulls: config.fillNulls !== false,
+        fitYAxisToData: config.fitYAxisToData,
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         select: Array.isArray(config.select)
           ? config.select.map(convertToExternalSelectItem)
@@ -270,6 +315,22 @@ const convertToExternalTileChartConfig = (
           ? [convertToExternalSelectItem(config.select[0])]
           : [DEFAULT_SELECT_ITEM],
         numberFormat: config.numberFormat,
+        // Normalize stored palette tokens on the way out. A static `color`
+        // saved before the hue rename holds a legacy `chart-1`..`chart-10`
+        // token in Mongo (the `tiles` field is `Mixed`), so map it to the
+        // hue name via `resolveChartPaletteToken`, matching the app's
+        // fetch-time `normalizeDashboardTileColors`. `colorRules` colors go
+        // through the same path (see `toExternalColorRules`). An absent or
+        // unrecognized token resolves to undefined and is omitted from the
+        // response, keeping it within the palette-token enum.
+        color: resolveChartPaletteToken(config.color),
+        colorRules: toExternalColorRules(config.colorRules),
+        // Pass `backgroundChart` through as-is: it shipped after the hue
+        // rename, so its optional `color` can only hold a hue-named token (no
+        // legacy normalization needed). Builder number tiles only; raw SQL
+        // number tiles never persist it (see the schema). Absent resolves to
+        // undefined and is omitted from the response.
+        backgroundChart: config.backgroundChart,
       };
     case DisplayType.Pie:
       return {
@@ -537,6 +598,7 @@ export function convertToInternalTileConfig(
             'numberFormat',
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
+            'fitYAxisToData',
           ]),
           displayType:
             externalConfig.displayType === 'stacked_bar'
@@ -569,6 +631,12 @@ export function convertToInternalTileConfig(
             externalConfig.displayType === 'table'
               ? externalConfig.onClick
               : undefined,
+          // Only the raw SQL number variant carries `color`; table and pie
+          // do not expose it. `_.omitBy(_.isNil)` below drops it when absent.
+          color:
+            externalConfig.displayType === 'number'
+              ? externalConfig.color
+              : undefined,
         } satisfies RawSqlSavedChartConfig;
         break;
       default:
@@ -589,6 +657,7 @@ export function convertToInternalTileConfig(
             'numberFormat',
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
+            'fitYAxisToData',
           ]),
           displayType:
             externalConfig.displayType === 'stacked_bar'
@@ -627,6 +696,15 @@ export function convertToInternalTileConfig(
           source: externalConfig.sourceId,
           where: '',
           numberFormat: externalConfig.numberFormat,
+          // The input schema validates these as hue-only palette tokens,
+          // so pass them through directly; `_.omitBy(_.isNil)` below drops
+          // them when absent.
+          color: externalConfig.color,
+          colorRules: externalConfig.colorRules,
+          // Builder number tiles only; `_.omitBy(_.isNil)` below drops it when
+          // absent. The input schema validates the nested color as a hue-only
+          // palette token, so it passes through directly.
+          backgroundChart: externalConfig.backgroundChart,
           name,
         } satisfies BuilderSavedChartConfig;
         break;
@@ -767,15 +845,13 @@ export function convertToInternalTileConfig(
  * router can pass a single fetched array into multiple helpers without
  * pulling in `controllers/sources` for the type alone.
  */
-export type SourceForValidation = Awaited<
-  ReturnType<typeof getSources>
->[number];
+type SourceForValidation = Awaited<ReturnType<typeof getSources>>[number];
 
 /** Fetches sources for a team. Re-exports the controller call so callers
  * outside `controllers/sources` don't need a second import for the
  * validation flow. The return type is the awaited shape of `getSources`
  * (an array of Source documents) so callers can `await` it directly. */
-export async function fetchSourcesForValidation(
+async function fetchSourcesForValidation(
   team: string | mongoose.Types.ObjectId,
 ): Promise<SourceForValidation[]> {
   return getSources(team.toString());
@@ -792,7 +868,7 @@ function getTileOnClick(tile: ExternalDashboardTileWithId) {
 }
 
 /** Returns source IDs referenced in tiles/filters that do not exist for the team */
-export function getMissingSources(
+function getMissingSources(
   sources: SourceForValidation[],
   tiles: ExternalDashboardTileWithId[],
   filters?: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[],
@@ -840,7 +916,7 @@ export function getMissingSources(
  * `packages/common-utils/src/guards.ts` and `ChartEditorControls.tsx`), so
  * UI and API gates move together.
  */
-export function getHeatmapTilesWithIncompatibleSources(
+function getHeatmapTilesWithIncompatibleSources(
   sources: SourceForValidation[],
   tiles: ExternalDashboardTileWithId[],
 ): string[] {
@@ -874,7 +950,7 @@ export function getHeatmapTilesWithIncompatibleSources(
  * tiles, tiles whose displayType just changed to heatmap, and tiles
  * whose `sourceId` changed all flow through the check.
  */
-export function filterChangedHeatmapTiles(
+function filterChangedHeatmapTiles(
   requestTiles: ExternalDashboardTileWithId[],
   existingTiles: DashboardDocument['tiles'],
 ): ExternalDashboardTileWithId[] {
@@ -918,7 +994,7 @@ export function filterChangedHeatmapTiles(
  * Sources that don't exist are ignored here, getMissingSources handles that
  * case separately with a clearer error message.
  */
-export async function getInvalidOnClickSearchSources(
+async function getInvalidOnClickSearchSources(
   team: string | mongoose.Types.ObjectId,
   tiles: ExternalDashboardTileWithId[],
 ): Promise<string[]> {
@@ -943,7 +1019,7 @@ export async function getInvalidOnClickSearchSources(
  * Returns dashboard IDs referenced by tile OnClick link-outs (mode=id,
  * type=dashboard) that do not exist for the team.
  */
-export async function getMissingOnClickDashboards(
+async function getMissingOnClickDashboards(
   team: string | mongoose.Types.ObjectId,
   tiles: ExternalDashboardTileWithId[],
 ): Promise<string[]> {
@@ -969,7 +1045,7 @@ export async function getMissingOnClickDashboards(
 }
 
 /** Returns connection IDs referenced in tiles that do not belong to the team */
-export async function getMissingConnections(
+async function getMissingConnections(
   team: string | mongoose.Types.ObjectId,
   tiles: ExternalDashboardTileWithId[],
 ): Promise<string[]> {
@@ -1074,8 +1150,122 @@ export function convertExternalFiltersToInternal(
 }
 
 /**
- * Delete alerts for tiles that were removed or converted to raw SQL
- * (which doesn't support alerts).
+ * Returns source IDs on raw SQL tiles whose connection doesn't match
+ * the source's persisted connection. Catches copy-paste errors where
+ * the LLM mixes up sourceId and connectionId from different sources.
+ */
+function getSourceConnectionMismatches(
+  sources: SourceForValidation[],
+  tiles: ExternalDashboardTileWithId[],
+): string[] {
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
+
+  const mismatched: string[] = [];
+  for (const tile of tiles) {
+    if (
+      isConfigTile(tile) &&
+      isRawSqlExternalTileConfig(tile.config) &&
+      tile.config.sourceId
+    ) {
+      const source = sourceById.get(tile.config.sourceId);
+      if (source && source.connection.toString() !== tile.config.connectionId) {
+        mismatched.push(tile.config.sourceId);
+      }
+    }
+  }
+
+  return mismatched;
+}
+
+// ── Shared tile validation ───────────────────────────────────────────────
+
+export type TileValidationContext = {
+  teamId: string;
+  tiles: ExternalDashboardTileWithId[];
+  /** Filters to check for missing source IDs (create/full-update paths). */
+  filters?: (ExternalDashboardFilter | ExternalDashboardFilterWithId)[];
+  /** Existing internal tiles for scoping heatmap change detection (update paths). */
+  existingTiles?: DashboardDocument['tiles'];
+  /** Container set to validate tile containerId/tabId refs against. */
+  containers: DashboardContainer[];
+};
+
+/**
+ * Run the full suite of tile validation checks (sources, connections,
+ * heatmap source-kind, onClick targets, container/tab refs). Returns
+ * `null` when all checks pass, or an error message string on failure.
+ *
+ * Consolidates the ~95-line validation block that was previously
+ * duplicated across REST v2 POST/PUT, MCP save (create/update), and
+ * MCP patch handlers.
+ */
+export async function validateDashboardTiles(
+  ctx: TileValidationContext,
+): Promise<string | null> {
+  const { teamId, tiles, filters, existingTiles, containers } = ctx;
+
+  // Container/tab ref resolution.
+  const tileRefIssues = collectTileContainerRefIssues(containers, tiles);
+  if (tileRefIssues.length > 0) {
+    return tileRefIssues.join('; ');
+  }
+
+  // Fetch sources/connections/onClick targets in parallel.
+  const [
+    sources,
+    missingConnections,
+    missingOnClickDashboards,
+    invalidOnClickSearchSources,
+  ] = await Promise.all([
+    fetchSourcesForValidation(teamId),
+    getMissingConnections(teamId, tiles),
+    getMissingOnClickDashboards(teamId, tiles),
+    getInvalidOnClickSearchSources(teamId, tiles),
+  ]);
+
+  const missingSources = getMissingSources(sources, tiles, filters);
+  if (missingSources.length > 0) {
+    return `Could not find the following source IDs: ${missingSources.join(', ')}`;
+  }
+  if (missingConnections.length > 0) {
+    return `Could not find the following connection IDs: ${missingConnections.join(', ')}`;
+  }
+
+  const sourceConnectionMismatches = getSourceConnectionMismatches(
+    sources,
+    tiles,
+  );
+  if (sourceConnectionMismatches.length > 0) {
+    return `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(', ')}`;
+  }
+
+  // Heatmap source-kind gate. On create (no existingTiles), validate all
+  // tiles. On update, scope to tiles whose sourceId/displayType changed.
+  const heatmapTilesToCheck = existingTiles
+    ? filterChangedHeatmapTiles(tiles, existingTiles)
+    : tiles;
+  const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
+    sources,
+    heatmapTilesToCheck,
+  );
+  if (heatmapNonTraceSources.length > 0) {
+    return `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`;
+  }
+
+  if (missingOnClickDashboards.length > 0) {
+    return `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(', ')}`;
+  }
+  if (invalidOnClickSearchSources.length > 0) {
+    return `The following onClick search source IDs are not log or trace sources: ${invalidOnClickSearchSources.join(', ')}`;
+  }
+
+  return null;
+}
+
+/**
+ * Delete alerts for tiles that were removed or whose config no longer
+ * supports alerts (raw SQL with incompatible displayType, or builder
+ * tiles with incompatible displayType like Pie/Table/Heatmap/etc.).
  */
 export async function cleanupDashboardAlerts({
   dashboardId,
@@ -1090,13 +1280,19 @@ export async function cleanupDashboardAlerts({
 }) {
   const newTileIdSet = new Set(internalTiles.map(t => t.id));
   const tileIdsToDeleteAlerts = [
+    // Tiles whose config no longer supports alerts (raw SQL or builder).
     ...internalTiles
-      .filter(
-        tile =>
-          isRawSqlSavedChartConfig(tile.config) &&
-          !displayTypeSupportsRawSqlAlerts(tile.config.displayType),
-      )
+      .filter(tile => {
+        if (isRawSqlSavedChartConfig(tile.config)) {
+          return !displayTypeSupportsRawSqlAlerts(tile.config.displayType);
+        }
+        if (isBuilderSavedChartConfig(tile.config)) {
+          return !displayTypeSupportsBuilderAlerts(tile.config.displayType);
+        }
+        return false;
+      })
       .map(tile => tile.id),
+    // Tiles that were completely removed.
     ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
   ];
   if (tileIdsToDeleteAlerts.length > 0) {

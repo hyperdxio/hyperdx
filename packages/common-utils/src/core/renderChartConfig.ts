@@ -22,7 +22,12 @@ import {
   isRawSqlChartConfig,
 } from '@/guards';
 import { replaceMacros } from '@/macros';
-import { CustomSchemaSQLSerializerV2, SearchQueryBuilder } from '@/queryParser';
+import {
+  buildKvItemsLookup,
+  CustomSchemaSQLSerializerV2,
+  KvItemsLookup,
+  SearchQueryBuilder,
+} from '@/queryParser';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@/rawSqlParams';
 import {
   AggregateFunction,
@@ -338,6 +343,136 @@ const fastifySQL = ({
   }
 };
 
+export const rewriteSqlFilterWithKvItems = (
+  condition: string,
+  kvItemsLookup: KvItemsLookup,
+): string => {
+  if (kvItemsLookup.size === 0) return condition;
+  try {
+    const parser = new SQLParser.Parser();
+    const prefix = 'SELECT 1 FROM `t` WHERE ';
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const ast = parser.astify(`${prefix}${condition}`, {
+      database: 'Postgresql',
+    }) as SQLParser.Select;
+
+    const tryOptimize = (
+      node: SQLParser.ExpressionValue | SQLParser.ExprList,
+    ): void => {
+      if (!('operator' in node)) return;
+      const op = String(node.operator ?? '').toUpperCase();
+      if (op !== '=' && op !== 'IN') return;
+      const left = node.left;
+      if (
+        left?.type !== 'column_ref' ||
+        ('column' in left && typeof left.column === 'string')
+      ) {
+        return;
+      }
+      const mapColumn = left['column']?.expr?.value;
+      const arrIdx = left['array_index'];
+      if (
+        typeof mapColumn !== 'string' ||
+        !Array.isArray(arrIdx) ||
+        arrIdx.length !== 1
+      ) {
+        return;
+      }
+      const idxNode = arrIdx[0]?.index;
+      if (
+        idxNode?.type !== 'single_quote_string' ||
+        typeof idxNode.value !== 'string'
+      ) {
+        return;
+      }
+      const mapKey: string = idxNode.value;
+      const info = kvItemsLookup.get(mapColumn);
+      if (!info) return;
+
+      let values: string[];
+      if (op === '=') {
+        const right = node.right;
+        if (
+          right?.type !== 'single_quote_string' ||
+          typeof right.value !== 'string'
+        ) {
+          return;
+        }
+        values = [right.value];
+      } else {
+        const right = node.right;
+        if (right?.type !== 'expr_list' || !Array.isArray(right.value)) return;
+        const collected: string[] = [];
+        for (const item of right.value) {
+          if (
+            item?.type !== 'single_quote_string' ||
+            typeof item.value !== 'string'
+          ) {
+            return;
+          }
+          collected.push(item.value);
+        }
+        values = collected;
+      }
+      // Bail on empty values: `Map['k']='' ` also matches absent keys because
+      // Map(String, String)'s subscript default is '', which `has(items, 'k=')`
+      // alone does not preserve. Same rationale for empty entries in IN lists.
+      if (values.length === 0 || values.some(v => v === '')) return;
+
+      const replacement =
+        values.length === 1
+          ? SqlString.format('has(??, concat(?, ?, ?))', [
+              info.kvItemsColumn,
+              mapKey,
+              info.separator,
+              values[0],
+            ])
+          : `hasAny(${SqlString.format('??', [
+              info.kvItemsColumn,
+            ])}, array(${values
+              .map(v =>
+                SqlString.format('concat(?, ?, ?)', [
+                  mapKey,
+                  info.separator,
+                  v,
+                ]),
+              )
+              .join(', ')}))`;
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type, we expect Select
+      const replAst = parser.astify(`${prefix}${replacement}`, {
+        database: 'Postgresql',
+      }) as SQLParser.Select;
+      const newWhere = replAst.where;
+      if (newWhere == null) return;
+      for (const k of Object.keys(node)) delete node[k];
+      Object.assign(node, newWhere);
+    };
+
+    const traverse = (
+      node: SQLParser.ExpressionValue | SQLParser.ExprList | null,
+    ): void => {
+      if (node == null) return;
+      if (node.type === 'binary_expr') {
+        if ('left' in node) {
+          traverse(node.left);
+        }
+        if ('right' in node) {
+          traverse(node.right);
+        }
+        tryOptimize(node);
+      } else if (node.type === 'expr_list' && Array.isArray(node.value)) {
+        node.value.forEach(traverse);
+      }
+    };
+    traverse(ast.where);
+
+    return parser.sqlify(ast).slice(prefix.length);
+  } catch {
+    return condition;
+  }
+};
+
 const aggFnExpr = ({
   fn,
   expr,
@@ -549,18 +684,20 @@ async function renderSelectList(
 
   const selectsSQL = await Promise.all(
     selectList.map(async select => {
-      const whereClause = await renderWhereExpression({
-        condition: select.aggCondition ?? '',
-        from: chartConfig.from,
-        language: select.aggConditionLanguage ?? 'lucene',
-        implicitColumnExpression: chartConfig.implicitColumnExpression,
-        bodyExpression: chartConfig.bodyExpression,
-        useTextIndexForImplicitColumn:
-          chartConfig.useTextIndexForImplicitColumn,
-        metadata,
-        connectionId: chartConfig.connection,
-        with: chartConfig.with,
-      });
+      const whereClause = isNonEmptyWhereExpr(select.aggCondition)
+        ? await renderWhereExpression({
+            condition: select.aggCondition ?? '',
+            from: chartConfig.from,
+            language: select.aggConditionLanguage ?? 'lucene',
+            implicitColumnExpression: chartConfig.implicitColumnExpression,
+            bodyExpression: chartConfig.bodyExpression,
+            useTextIndexForImplicitColumn:
+              chartConfig.useTextIndexForImplicitColumn,
+            metadata,
+            connectionId: chartConfig.connection,
+            with: chartConfig.with,
+          })
+        : chSql``;
 
       let expr: ChSql;
       if (select.aggFn == null) {
@@ -966,6 +1103,21 @@ async function renderWhere(
     ).filter(v => v !== null) as ChSql[];
   }
 
+  const hasSqlFilter =
+    chartConfig.filters?.some(f => f.type === 'sql') ?? false;
+  const kvItemsLookup: KvItemsLookup =
+    hasSqlFilter &&
+    chartConfig.from.databaseName &&
+    chartConfig.from.tableName &&
+    !hasSubqueryCte(chartConfig.with)
+      ? await buildKvItemsLookup({
+          metadata,
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+        })
+      : new Map();
+
   const filterConditions = await Promise.all(
     (chartConfig.filters ?? []).map(async filter => {
       if (filter.type === 'sql_ast') {
@@ -975,9 +1127,13 @@ async function renderWhere(
           ')',
         );
       } else if (filter.type === 'lucene' || filter.type === 'sql') {
+        const condition =
+          filter.type === 'sql'
+            ? rewriteSqlFilterWithKvItems(filter.condition, kvItemsLookup)
+            : filter.condition;
         return wrapChSqlIfNotEmpty(
           await renderWhereExpression({
-            condition: filter.condition,
+            condition,
             from: chartConfig.from,
             language: filter.type,
             implicitColumnExpression: chartConfig.implicitColumnExpression,
@@ -1047,6 +1203,116 @@ async function renderGroupBy(
         })
       : [],
   );
+}
+
+async function renderSeriesLimitCte(
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
+  metadata: Metadata,
+  {
+    from,
+    where,
+    groupBy,
+  }: { from: ChSql; where: ChSql; groupBy: ChSql | undefined },
+): Promise<{ cte: ChSql; predicate: ChSql } | undefined> {
+  const { seriesLimit } = chartConfig;
+  if (
+    seriesLimit == null ||
+    !isUsingGroupBy(chartConfig) ||
+    !isUsingGranularity(chartConfig) ||
+    chartConfig.selectGroupBy === false ||
+    // Skip CTE/metric sources (no real table to re-scan) and string selects.
+    !chartConfig.from?.databaseName ||
+    !chartConfig.from?.tableName ||
+    !Array.isArray(chartConfig.select) ||
+    chartConfig.select.length === 0 ||
+    groupBy == null
+  ) {
+    return undefined;
+  }
+
+  // When the query was chunked into time windows, rank over the shared
+  // range the caller pinned (the newest window) instead of each chunk's own
+  // window — otherwise each chunk keeps its own top-N and the union across
+  // chunks exceeds N. Inclusivity is normalized so all chunks emit an
+  // identical CTE (non-first windows set dateRangeEndInclusive=false).
+  const cteConfig = chartConfig.seriesLimitDateRange
+    ? {
+        ...chartConfig,
+        dateRange: chartConfig.seriesLimitDateRange,
+        dateRangeStartInclusive: true,
+        dateRangeEndInclusive: true,
+      }
+    : undefined;
+  // groupBy is re-rendered (not reused) because timeBucketExpr derives the
+  // bucket size from dateRange when granularity is 'auto'.
+  const [cteWhere = where, cteGroupBy = groupBy] = cteConfig
+    ? await Promise.all([
+        renderWhere(cteConfig, metadata),
+        renderGroupBy(cteConfig, metadata),
+      ])
+    : [];
+
+  // One ChSql per group-by column (groupBy may be an array or a comma-separated
+  // string). splitAndTrimWithBracket respects []/()/quotes so it won't split
+  // inside Map['a,b']; the per-column null filter below needs them separated.
+  let groupByCols: ChSql[];
+  if (typeof chartConfig.groupBy === 'string') {
+    groupByCols = splitAndTrimWithBracket(chartConfig.groupBy).map(
+      col => chSql`${{ UNSAFE_RAW_SQL: col }}`,
+    );
+  } else {
+    // Strip aliases: these go inside tuple(...)/`IS NOT NULL`, where an
+    // `AS "alias"` suffix is a syntax error (unlike the outer GROUP BY).
+    const rendered = await renderSelectList(
+      chartConfig.groupBy.map(col => ({ ...col, alias: undefined })),
+      chartConfig,
+      metadata,
+    );
+    groupByCols = Array.isArray(rendered) ? rendered : [rendered];
+  }
+  const groupByTuple = concatChSql(',', groupByCols);
+
+  // Rank by the chart's first aggregate (alias stripped — we add our own).
+  const firstSelect = chartConfig.select[0];
+  const rankSelectList =
+    typeof firstSelect === 'string'
+      ? firstSelect
+      : [{ ...firstSelect, alias: undefined }];
+  const rankRendered = await renderSelectList(
+    rankSelectList,
+    chartConfig,
+    metadata,
+  );
+  const rankValue = Array.isArray(rankRendered)
+    ? rankRendered[0]
+    : rankRendered;
+
+  // Drop NULL components only (no-op on non-nullable columns).
+  const groupByNotNullFilter = concatChSql(
+    ' AND ',
+    groupByCols.map(g => chSql`${g} IS NOT NULL`),
+  );
+  const innerWhere = cteWhere.sql
+    ? concatChSql(' AND ', cteWhere, groupByNotNullFilter)
+    : groupByNotNullFilter;
+
+  // Per-(group, bucket) aggregate, then max per group, keeping the top N.
+  const cte = chSql`\`__hdx_series_limit\` AS (
+    SELECT \`group\`
+    FROM (
+      SELECT tuple(${groupByTuple}) AS \`group\`, ${rankValue} AS \`__hdx_series_rank\`
+      FROM ${from}
+      WHERE ${innerWhere}
+      GROUP BY ${cteGroupBy}
+    )
+    GROUP BY \`group\`
+    ORDER BY max(\`__hdx_series_rank\`) DESC, \`group\`
+    LIMIT ${{ Int32: seriesLimit }}
+  )`;
+
+  const predicate = chSql`tuple(${groupByTuple}) IN (SELECT \`group\` FROM \`__hdx_series_limit\`)`;
+
+  return { cte, predicate };
 }
 
 async function renderHaving(
@@ -1318,6 +1584,10 @@ async function translateMetricChartConfig(
     );
   }
 
+  // AttributesHash is computed inline with a variadic cityHash64 call
+  // (HDX-4466). This works for both Map(LowCardinality(String), String) and
+  // JSON attribute columns, so no schema detection round-trip is needed.
+
   if (
     metricType === MetricsDataType.Gauge &&
     metricName &&
@@ -1366,7 +1636,7 @@ async function translateMetricChartConfig(
           sql: chSql`
             SELECT
               *,
-              cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash
+              cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash
             FROM ${renderFrom({ from: { ...from, tableName: metricTables[MetricsDataType.Gauge] } })}
             WHERE ${where}
           `,
@@ -1480,7 +1750,7 @@ async function translateMetricChartConfig(
         sql: chSql`
                 SELECT
                   *,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+                  cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash,
                   IF(
                     AggregationTemporality = 1,
                     Value, -- DELTA: Value is already the per-interval increase
@@ -1867,16 +2137,30 @@ export async function renderChartConfig(
         : undefined),
   };
 
-  const withClauses = await renderWith(chartConfig, metadata, querySettings);
+  let withClauses = await renderWith(chartConfig, metadata, querySettings);
   const select = await renderSelect(chartConfig, metadata);
   const from = renderFrom(chartConfig);
-  const where = await renderWhere(chartConfig, metadata);
+  let where = await renderWhere(chartConfig, metadata);
   const groupBy = await renderGroupBy(chartConfig, metadata);
   const having = await renderHaving(chartConfig, metadata);
   const orderBy = renderOrderBy(chartConfig);
   //const fill = renderFill(chartConfig); //TODO: Fill breaks heatmaps and some charts
   const limit = renderLimit(chartConfig);
   const settings = renderSettings(chartConfig, querySettings);
+
+  const seriesCap = await renderSeriesLimitCte(chartConfig, metadata, {
+    from,
+    where,
+    groupBy,
+  });
+  if (seriesCap) {
+    withClauses = withClauses
+      ? concatChSql(',', withClauses, seriesCap.cte)
+      : seriesCap.cte;
+    where = where.sql
+      ? concatChSql(' AND ', where, seriesCap.predicate)
+      : seriesCap.predicate;
+  }
 
   return concatChSql(' ', [
     chSql`${withClauses?.sql ? chSql`WITH ${withClauses}` : ''}`,

@@ -1,10 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import type { McpContext } from '@/mcp/tools/types';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import Webhook from '@/models/webhook';
-
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 
 export function registerGetWebhook(
   server: McpServer,
@@ -13,16 +12,16 @@ export function registerGetWebhook(
   const { teamId } = context;
 
   server.registerTool(
-    'hyperdx_get_webhook',
+    'clickstack_get_webhook',
     {
       title: 'List Webhooks',
       description:
         'List available webhook destinations (id, name, service type). ' +
         'Use the returned id as the webhookId when creating alerts with ' +
-        'hyperdx_save_alert.',
+        'clickstack_save_alert.',
       inputSchema: z.object({}),
     },
-    withToolTracing('hyperdx_get_webhook', context, async () => {
+    withToolTracing('clickstack_get_webhook', context, async () => {
       const webhooks = await Webhook.find({ team: teamId });
 
       const output = webhooks.map(wh => ({

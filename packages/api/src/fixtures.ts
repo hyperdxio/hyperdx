@@ -332,10 +332,19 @@ export const bulkInsertLogs = async (
   await bulkInsertData(`${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`, events);
 };
 
+// ScopeAttributes and Attributes are optional so existing call sites that
+// only populate ResourceAttributes keep compiling unchanged. Omitting either
+// field drops the key from the JSONEachRow payload, and ClickHouse falls back
+// to the column default — an empty Map(LowCardinality(String), String) — so
+// the on-disk row is byte-identical to today's behaviour. New tests that need
+// to exercise the cross-scope attribute hashing (see HDX-4466) can opt in by
+// passing one or both maps explicitly.
 export const bulkInsertMetricsGauge = async (
   metrics: {
     MetricName: string;
     ResourceAttributes: Record<string, string>;
+    ScopeAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
     ServiceName: string;
     TimeUnix: Date;
     Value: number;
@@ -356,6 +365,8 @@ export const bulkInsertMetricsSum = async (
     IsMonotonic: boolean;
     MetricName: string;
     ResourceAttributes: Record<string, string>;
+    ScopeAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
     ServiceName: string;
     TimeUnix: Date;
     Value: number;
@@ -374,6 +385,8 @@ export const bulkInsertMetricsHistogram = async (
   metrics: {
     MetricName: string;
     ResourceAttributes: Record<string, string>;
+    ScopeAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
     TimeUnix: Date;
     BucketCounts: number[];
     ExplicitBounds: number[];

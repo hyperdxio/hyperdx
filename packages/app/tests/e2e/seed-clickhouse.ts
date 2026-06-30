@@ -11,10 +11,15 @@
 
 import {
   E2E_CLICKHOUSE_DATABASE,
+  E2E_INTERESTING_FILTER_KEYS_TABLE,
   E2E_LOGS_TABLE,
+  E2E_METADATA_MV_KEY_ROLLUP_TABLE,
+  E2E_METADATA_MV_KV_ROLLUP_TABLE,
+  E2E_METADATA_MV_LOGS_TABLE,
   E2E_METRICS_GAUGE_TABLE,
   E2E_METRICS_SUM_TABLE,
   E2E_SESSIONS_TABLE,
+  E2E_TRACES_MV_TABLE,
   E2E_TRACES_TABLE,
 } from './utils/constants';
 
@@ -73,6 +78,68 @@ export const SERVICES = [
   'notification-service',
   'inventory-service',
 ] as const;
+// Rows seeded into `otel_logs_interesting_filter_keys`. Each column has a
+// distinct value per row so a single filter value matches exactly one row.
+// Exported so the filter-key edge case E2E test asserts against the same data.
+export const INTERESTING_FILTER_KEYS_ROWS = [
+  {
+    serviceName: 'service1',
+    resourceAttrValue: 'value1',
+    jsonValue: 'value1',
+    clusterName: 'cluster1',
+    serviceNameHyphen: 'svc-one',
+    mapHyphenValue: 'mapval1',
+    jsonHyphenValue: 'jsonval1',
+    body: 'log body 1',
+  },
+  {
+    serviceName: 'service2',
+    resourceAttrValue: 'value2',
+    jsonValue: 'value2',
+    clusterName: 'cluster2',
+    serviceNameHyphen: 'svc-two',
+    mapHyphenValue: 'mapval2',
+    jsonHyphenValue: 'jsonval2',
+    body: 'log body 2',
+  },
+  {
+    serviceName: 'service3',
+    resourceAttrValue: 'value3',
+    jsonValue: 'value3',
+    clusterName: 'cluster3',
+    serviceNameHyphen: 'svc-three',
+    mapHyphenValue: 'mapval3',
+    jsonHyphenValue: 'jsonval3',
+    body: 'log body 3',
+  },
+] as const;
+
+// LogAttributes map key seeded into the metadata-MV source rows. Exported so
+// the filter-key edge case test references the same key when building filters.
+export const METADATA_MV_LOG_ATTR_KEY = 'requestId';
+// Rows seeded into `e2e_otel_logs_metadata_mv` (the metadata-MV-backed source).
+// Each row has a distinct ServiceName and LogAttributes['requestId'] value so a
+// single filter value matches exactly one row, mirroring the
+// INTERESTING_FILTER_KEYS_ROWS shape. Facet keys/values for this source come
+// from the rollup MVs rather than the base table.
+export const METADATA_MV_ROWS = [
+  {
+    serviceName: 'mv-service-1',
+    logAttrValue: 'mv-req-1',
+    body: 'mv log body 1',
+  },
+  {
+    serviceName: 'mv-service-2',
+    logAttrValue: 'mv-req-2',
+    body: 'mv log body 2',
+  },
+  {
+    serviceName: 'mv-service-3',
+    logAttrValue: 'mv-req-3',
+    body: 'mv log body 3',
+  },
+] as const;
+
 const LOG_MESSAGES = [
   'Request processed successfully',
   'Database connection established',
@@ -592,6 +659,45 @@ function generateK8sEventLogs(
   return rows.join(',\n');
 }
 
+/**
+ * Build the VALUES tuples for `otel_logs_interesting_filter_keys`. Rows are
+ * placed a few seconds before `seedRef` so they fall inside recent relative
+ * time ranges. The map key and JSON path intentionally use a dotted key
+ * ("key.subKey.subSubKey") and the table has dotted/hyphenated column names so
+ * the test exercises identifier escaping in generated filter queries.
+ */
+function generateInterestingFilterKeyLogData(seedRef: number): string {
+  return INTERESTING_FILTER_KEYS_ROWS.map((row, i) => {
+    const timestampNs = (seedRef - (i + 1) * 1000) * 1000000;
+    const json = `{"key": {"subKey": {"subSubKey": "${row.jsonValue}"}}}`;
+    // JSON column with a hyphenated name AND hyphenated nested keys.
+    const jsonHyphen = `{"key-1": {"key-2": "${row.jsonHyphenValue}"}}`;
+    return (
+      `('${timestampNs}', 'trace${i + 1}', 'span${i + 1}', 'INFO', ` +
+      `'${row.serviceName}', '${row.body}', ` +
+      `{'key.subKey.subSubKey':'${row.resourceAttrValue}'}, ` +
+      `'${json}', '${row.clusterName}', '${row.serviceNameHyphen}', ` +
+      `{'pod-name':'${row.mapHyphenValue}'}, '${jsonHyphen}')`
+    );
+  }).join(',\n');
+}
+
+/**
+ * Build the VALUES tuples for `e2e_otel_logs_metadata_mv`. Rows are placed a few
+ * seconds before `seedRef` so they fall inside recent relative time ranges (and
+ * inside the 15-minute rollup bucket the metadata MVs aggregate into). Inserting
+ * here also triggers the key/value rollup MVs that back the source's facets.
+ */
+function generateMetadataMvLogData(seedRef: number): string {
+  return METADATA_MV_ROWS.map((row, i) => {
+    const timestampNs = (seedRef - (i + 1) * 1000) * 1000000;
+    return (
+      `('${timestampNs}', '${row.serviceName}', '${row.body}', ` +
+      `{'${METADATA_MV_LOG_ATTR_KEY}':'${row.logAttrValue}'})`
+    );
+  }).join(',\n');
+}
+
 // CI can be slower, so use a longer timeout
 const CLICKHOUSE_READY_TIMEOUT_SECONDS = parseInt(
   process.env.E2E_CLICKHOUSE_READY_TIMEOUT || '60',
@@ -643,6 +749,12 @@ async function clearTestData(
   await client.query(
     `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_TRACES_TABLE}`,
   );
+  // The materialized view target is not cleared by truncating the source
+  // table, so clear it explicitly to avoid accumulating duplicate
+  // pre-aggregated rows across re-seeds.
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_TRACES_MV_TABLE}`,
+  );
   await client.query(
     `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_SESSIONS_TABLE}`,
   );
@@ -651,6 +763,20 @@ async function clearTestData(
   );
   await client.query(
     `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METRICS_SUM_TABLE}`,
+  );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_INTERESTING_FILTER_KEYS_TABLE}`,
+  );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METADATA_MV_LOGS_TABLE}`,
+  );
+  // The rollup MV targets are not cleared by truncating the base table, so
+  // clear them explicitly to avoid accumulating stale facet rows across re-seeds.
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METADATA_MV_KV_ROLLUP_TABLE}`,
+  );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METADATA_MV_KEY_ROLLUP_TABLE}`,
   );
   console.log('  Existing data cleared');
 }
@@ -765,6 +891,34 @@ export async function seedClickHouse(): Promise<void> {
     ) VALUES ${generateK8sEventLogs(numDataPoints, startMs, endMs)}
   `);
   console.log(`  Inserted ${numDataPoints} Kubernetes event logs`);
+
+  // Insert "interesting filter key" rows (dotted/hyphenated column names, Map
+  // key access, and JSON path access) for the filter-key edge case tests.
+  console.log('  Inserting interesting filter key data...');
+  await client.query(`
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_INTERESTING_FILTER_KEYS_TABLE} (
+      Timestamp, TraceId, SpanId, SeverityText, ServiceName, Body,
+      ResourceAttributes, ResourceAttributesJSON,
+      \`__hdx_materialized_k8s.cluster.name\`, \`service-name\`,
+      \`Map-Attributes\`, \`JSON-Attributes\`
+    ) VALUES ${generateInterestingFilterKeyLogData(seedRef)}
+  `);
+  console.log(
+    `  Inserted ${INTERESTING_FILTER_KEYS_ROWS.length} interesting filter key entries`,
+  );
+
+  // Insert metadata-MV source rows. The insert triggers the key/value rollup
+  // MVs that back this source's facets (ServiceName native column +
+  // LogAttributes['requestId'] map key).
+  console.log('  Inserting metadata-MV source data...');
+  await client.query(`
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_METADATA_MV_LOGS_TABLE} (
+      Timestamp, ServiceName, Body, LogAttributes
+    ) VALUES ${generateMetadataMvLogData(seedRef)}
+  `);
+  console.log(
+    `  Inserted ${METADATA_MV_ROWS.length} metadata-MV source entries`,
+  );
 
   console.log('ClickHouse seeding complete');
 }

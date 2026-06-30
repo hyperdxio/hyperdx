@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -50,7 +50,9 @@ import { DBTimeChart } from './components/DBTimeChart';
 import { FormatPodStatus } from './components/KubeComponents';
 import { KubernetesFilters } from './components/KubernetesFilters';
 import OnboardingModal from './components/OnboardingModal';
-import SourceSchemaPreview from './components/SourceSchemaPreview';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
@@ -1187,6 +1189,10 @@ function KubernetesDashboardPage() {
     defaultValue: 'pods',
   });
 
+  const [isLogSchemaPreviewOpen, setIsLogSchemaPreviewOpen] = useState(false);
+  const [isMetricSchemaPreviewOpen, setIsMetricSchemaPreviewOpen] =
+    useState(false);
+
   const [searchQuery, setSearchQuery] = useQueryState('q', {
     defaultValue: '',
   });
@@ -1257,9 +1263,14 @@ function KubernetesDashboardPage() {
         allowedSourceKinds={[SourceKind.Log]}
         size="xs"
         allowDeselect={false}
-        sourceSchemaPreview={
-          <SourceSchemaPreview source={logSource} variant="text" />
-        }
+        onSchemaPreview={() => setIsLogSchemaPreviewOpen(true)}
+        isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(logSource)}
+      />
+      <SourceSchemaPreview
+        source={logSource}
+        controlled
+        open={isLogSchemaPreviewOpen}
+        onClose={() => setIsLogSchemaPreviewOpen(false)}
       />
       <SourceSelectControlled
         name="metricSourceId"
@@ -1267,9 +1278,14 @@ function KubernetesDashboardPage() {
         allowedSourceKinds={[SourceKind.Metric]}
         size="xs"
         allowDeselect={false}
-        sourceSchemaPreview={
-          <SourceSchemaPreview source={metricSource} variant="text" />
-        }
+        onSchemaPreview={() => setIsMetricSchemaPreviewOpen(true)}
+        isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(metricSource)}
+      />
+      <SourceSchemaPreview
+        source={metricSource}
+        controlled
+        open={isMetricSchemaPreviewOpen}
+        onClose={() => setIsMetricSchemaPreviewOpen(false)}
       />
     </Group>
   );

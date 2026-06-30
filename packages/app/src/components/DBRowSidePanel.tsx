@@ -31,7 +31,6 @@ import DBRowSidePanelHeader, {
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
-import { LogSidePanelKbdShortcuts } from '@/LogSidePanelElements';
 import { getEventBody } from '@/source';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
@@ -41,11 +40,12 @@ import { useZIndex, ZIndexContext } from '@/zIndex';
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
 import ContextSubpanel from './ContextSidePanel';
 import DBInfraPanel from './DBInfraPanel';
-import { RowDataPanel, useRowData } from './DBRowDataPanel';
+import { RowDataPanel, rowHasK8sContext, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
+import { DBRowSidePanelErrorState } from './DBRowSidePanelErrorState';
 import { DBSessionPanel, useSessionId } from './DBSessionPanel';
 import DBTracePanel from './DBTracePanel';
-import { getInitialDrawerWidthPercent } from './DrawerUtils';
+import { INITIAL_DRAWER_WIDTH_PERCENT } from './DrawerUtils';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -121,6 +121,8 @@ const DBRowSidePanel = ({
     data: rowData,
     isLoading: isRowLoading,
     isSuccess: isRowSuccess,
+    isError: isRowError,
+    error: rowError,
   } = useRowData({
     source,
     rowId,
@@ -289,26 +291,10 @@ const DBRowSidePanel = ({
     enabled: rowId != null,
   });
 
-  const hasK8sContext = useMemo(() => {
-    try {
-      if (
-        !('resourceAttributesExpression' in source) ||
-        !source?.resourceAttributesExpression ||
-        !normalizedRow
-      ) {
-        return false;
-      }
-
-      const resourceAttrs = normalizedRow['__hdx_resource_attributes'];
-      return (
-        resourceAttrs?.['k8s.pod.uid'] != null ||
-        resourceAttrs?.['k8s.node.name'] != null
-      );
-    } catch (e) {
-      console.error(e);
-      return false;
-    }
-  }, [source, normalizedRow]);
+  const hasK8sContext = useMemo(
+    () => rowHasK8sContext(source, normalizedRow),
+    [source, normalizedRow],
+  );
 
   const initialRowHighlightHint = useMemo(() => {
     if (normalizedRow) {
@@ -325,6 +311,13 @@ const DBRowSidePanel = ({
   }
 
   if (!isRowSuccess) {
+    if (isRowError && rowError) {
+      return (
+        <Box p="sm" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <DBRowSidePanelErrorState error={rowError} source={source} />
+        </Box>
+      );
+    }
     return <div className={styles.loadingState}>Error loading row data</div>;
   }
 
@@ -554,7 +547,6 @@ const DBRowSidePanel = ({
           </Box>
         </ErrorBoundary>
       )}
-      <LogSidePanelKbdShortcuts />
     </>
   );
 };
@@ -572,12 +564,12 @@ export default function DBRowSidePanelErrorBoundary({
   const drawerZIndex = contextZIndex + 10;
 
   const { size, setSize, startResize } = useResizable(
-    getInitialDrawerWidthPercent(),
+    INITIAL_DRAWER_WIDTH_PERCENT,
   );
 
   const isFullWidth = size >= 99;
   const toggleFullWidth = useCallback(() => {
-    setSize(isFullWidth ? getInitialDrawerWidthPercent() : 100);
+    setSize(isFullWidth ? INITIAL_DRAWER_WIDTH_PERCENT : 100);
   }, [isFullWidth, setSize]);
 
   // Keep track of sub-drawers so we can disable closing this root drawer

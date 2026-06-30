@@ -1,4 +1,4 @@
-import { getLoggedInAgent, getServer } from '../../../fixtures';
+import { getLoggedInAgent, getServer } from '@/fixtures';
 
 describe('external api v2', () => {
   const server = getServer();

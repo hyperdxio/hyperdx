@@ -40,6 +40,7 @@ import { UserPreferencesModal } from '@/UserPreferencesModal';
 import { useUserPreferences } from '@/useUserPreferences';
 import { useWindowSize } from '@/utils';
 
+// eslint-disable-next-line no-restricted-imports -- package.json lives outside src, no @/ alias reaches it
 import packageJson from '../../../package.json';
 
 import {

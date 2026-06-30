@@ -69,8 +69,13 @@ export class ChartEditorComponent {
    */
   async selectSource(sourceName: string) {
     await this.sourceSelector.click();
-    // Use getByRole for more reliable selection
-    const sourceOption = this.page.getByRole('option', { name: sourceName });
+    // Use getByRole for more reliable selection. exact: true avoids matching
+    // sources whose names are prefixes of others (e.g. "E2E Traces MV" vs
+    // "E2E Traces MV AutoPopulate").
+    const sourceOption = this.page.getByRole('option', {
+      name: sourceName,
+      exact: true,
+    });
     if ((await sourceOption.getAttribute('data-combobox-active')) != 'true') {
       await sourceOption.click({ timeout: 5000 });
     }
@@ -326,11 +331,19 @@ export class ChartEditorComponent {
   /**
    * Switch the Row Click Action mode (SegmentedControl).
    */
-  async setRowClickMode(mode: 'Default' | 'Search' | 'Dashboard') {
+  async setRowClickMode(mode: 'Default' | 'Search' | 'Dashboard' | 'External') {
     await this.page
       .getByTestId('onclick-mode-segmented')
       .getByText(mode, { exact: true })
       .click();
+  }
+
+  /**
+   * Fill the External URL template input in the drawer. Call
+   * setRowClickMode('External') first to make the input visible.
+   */
+  async fillRowClickExternalUrl(urlTemplate: string) {
+    await this.page.getByTestId('onclick-external-url-input').fill(urlTemplate);
   }
 
   /**
@@ -480,6 +493,14 @@ export class ChartEditorComponent {
     await this.page
       .getByRole('button', { name: 'Add Series', exact: true })
       .click();
+  }
+
+  /**
+   * Click the "Duplicate" button on the series at zero-based `index` to insert
+   * a copy of it directly below.
+   */
+  async duplicateSeries(index: number) {
+    await this.page.getByTestId('series-duplicate-button').nth(index).click();
   }
 
   /**

@@ -1,13 +1,12 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
 import { getSavedSearch } from '@/controllers/savedSearch';
+import type { McpContext } from '@/mcp/tools/types';
+import { validateObjectId } from '@/mcp/utils/errors';
+import { withToolTracing } from '@/mcp/utils/tracing';
 import { SavedSearch } from '@/models/savedSearch';
-
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 
 export function registerGetSavedSearch(
   server: McpServer,
@@ -17,7 +16,7 @@ export function registerGetSavedSearch(
   const frontendUrl = config.FRONTEND_URL;
 
   server.registerTool(
-    'hyperdx_get_saved_search',
+    'clickstack_get_saved_search',
     {
       title: 'Get Saved Search(es)',
       description:
@@ -34,7 +33,7 @@ export function registerGetSavedSearch(
           ),
       }),
     },
-    withToolTracing('hyperdx_get_saved_search', context, async ({ id }) => {
+    withToolTracing('clickstack_get_saved_search', context, async ({ id }) => {
       // ── List all saved searches (slim query — only fetch the fields we need) ──
       if (!id) {
         const savedSearches = await SavedSearch.find(
@@ -55,12 +54,8 @@ export function registerGetSavedSearch(
       }
 
       // ── Get single saved search ──
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Invalid saved search ID' }],
-        };
-      }
+      const idError = validateObjectId(id, 'saved search ID');
+      if (idError) return idError;
 
       const savedSearch = await getSavedSearch(teamId, id);
       if (!savedSearch) {
