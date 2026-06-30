@@ -453,5 +453,3 @@ export function SendTelemetryPanel({
     </Stack>
   );
 }
-
-export default SendTelemetryPanel;

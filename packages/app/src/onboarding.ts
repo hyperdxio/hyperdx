@@ -25,7 +25,7 @@ import {
  * for a connection, wiring up the cross-source links. Shared by the onboarding
  * modal and the getting-started page.
  */
-export async function addOtelDemoSources({
+async function addOtelDemoSources({
   connectionId,
   createSourceMutation,
   updateSourceMutation,

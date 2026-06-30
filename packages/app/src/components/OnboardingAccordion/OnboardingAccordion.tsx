@@ -242,5 +242,3 @@ export function OnboardingAccordion({
     </Stack>
   );
 }
-
-export default OnboardingAccordion;

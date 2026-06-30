@@ -77,5 +77,3 @@ export function ConnectClickHousePanel({
     </Stack>
   );
 }
-
-export default ConnectClickHousePanel;

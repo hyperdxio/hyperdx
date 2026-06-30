@@ -13,7 +13,7 @@ import { Box } from '@mantine/core';
  * light and dark mode. The fallback mirrors the light-mode value so the badge
  * is never shadowless outside the themed app (e.g. isolated rendering).
  */
-export const LOGO_BADGE_SHADOW =
+const LOGO_BADGE_SHADOW =
   'var(--logo-badge-shadow, inset 0 1px 0 0 rgb(255 255 255 / 0.7), 0 0 0 1px rgb(0 0 0 / 0.06), 0 1px 2px 0 rgb(0 0 0 / 0.08), 0 2px 4px -1px rgb(0 0 0 / 0.06))';
 
 export interface LogoBadgeProps {
@@ -72,5 +72,3 @@ export function LogoBadge({
     </Box>
   );
 }
-
-export default LogoBadge;

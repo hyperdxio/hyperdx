@@ -123,5 +123,3 @@ export function CreateSourcesPanel({
     </Stack>
   );
 }
-
-export default CreateSourcesPanel;

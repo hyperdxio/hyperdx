@@ -26,7 +26,7 @@ import guidesJson from './integrationGuides.generated.json';
  * the catalog from what actually exists in the docs rather than hard-coding
  * setup guides that would drift out of date.
  */
-export const DOCS_BASE =
+const DOCS_BASE =
   'https://clickhouse.com/docs/use-cases/observability/clickstack';
 
 export interface IntegrationItem {
@@ -255,13 +255,13 @@ export const INTEGRATION_ITEMS_BY_ID: Record<string, IntegrationItem> =
     ]),
   );
 
-export interface GuideStep {
+interface GuideStep {
   title: string;
   lang: string;
   code: string;
 }
 
-export interface IntegrationGuide {
+interface IntegrationGuide {
   id: string;
   title: string;
   docUrl: string;

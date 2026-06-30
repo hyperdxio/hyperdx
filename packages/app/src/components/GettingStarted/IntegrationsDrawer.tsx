@@ -519,5 +519,3 @@ export function IntegrationsDrawer({
     </Drawer>
   );
 }
-
-export default IntegrationsDrawer;

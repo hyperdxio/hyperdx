@@ -208,5 +208,3 @@ export function ExploreTelemetryPanel() {
     </Stack>
   );
 }
-
-export default ExploreTelemetryPanel;
