@@ -50,7 +50,7 @@
     "lint": "npx nx run-many -t ci:lint",
     "lint:fix": "npx nx run-many -t lint:fix",
     "version": "make version",
-    "release": "npx changeset tag && npx changeset publish"
+    "release": "npx changeset publish --no-git-tag && npx changeset tag"
   },
   "lint-staged": {
     "packages/api/src/routers/external-api/**/*.ts": [
