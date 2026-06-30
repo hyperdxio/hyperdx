@@ -14,7 +14,7 @@
   ],
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
-    "@clickhouse/client": "1.23.0-head.fae5998.1",
+    "@clickhouse/client": "head",
     "commander": "^12.1.0",
     "ms": "^2.1.3"
   },
