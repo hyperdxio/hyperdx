@@ -1,3 +1,5 @@
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+
 import type { McpContext } from '@/mcp/tools/types';
 import {
   getCounter,
@@ -7,9 +9,16 @@ import {
 } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
-type ToolResult = {
+/**
+ * The result shape every MCP tool handler should return.
+ *
+ * Intersects the SDK's `CallToolResult` (which carries an index signature
+ * from the `$loose` Zod modifier) with a narrower `content` array so tool
+ * handlers are constrained to text-only content blocks. The intersection
+ * keeps the type assignable to `CallToolResult` in both directions.
+ */
+export type ToolResult = CallToolResult & {
   content: { type: 'text'; text: string }[];
-  isError?: boolean;
 };
 
 const toolDurationHistogram = getHistogram('hyperdx.mcp.tool.duration_ms', {
@@ -25,12 +34,16 @@ const toolErrorCounter = getCounter('hyperdx.mcp.tool.errors', {
 /**
  * Wraps an MCP tool handler with tracing, metrics, and structured logging.
  * Creates a span for each tool invocation and logs start/end with duration.
+ *
+ * The returned function signature is a strict subset of the SDK's
+ * `ToolCallback`: it accepts `(args, _extra?)` and returns
+ * `Promise<CallToolResult>`.  The extra parameter is accepted but unused.
  */
 export function withToolTracing<TArgs>(
   toolName: string,
   context: McpContext,
   handler: (args: TArgs) => Promise<ToolResult>,
-): (args: TArgs) => Promise<ToolResult> {
+): (args: TArgs, _extra?: unknown) => Promise<CallToolResult> {
   return async (args: TArgs) => {
     const logContext = {
       tool: toolName,
