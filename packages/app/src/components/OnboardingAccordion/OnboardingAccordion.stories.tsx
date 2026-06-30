@@ -41,7 +41,7 @@ import {
   IconTable,
 } from '@tabler/icons-react';
 
-import { LogoBadge } from '../LogoBadge/LogoBadge';
+import { LogoBadge } from '@/components/LogoBadge/LogoBadge';
 
 import {
   OnboardingAccordion,
