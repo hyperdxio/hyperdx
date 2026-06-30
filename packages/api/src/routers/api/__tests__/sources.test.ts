@@ -690,6 +690,88 @@ describe('sources router', () => {
     });
   });
 
+  describe('metadataMaterializedViews field', () => {
+    // Regression test for a bug where clearing the Metadata Materialized
+    // Views in the source form did not persist. The UI sets the field to
+    // undefined, JSON serialization drops it from the PUT payload, and the
+    // previous findOneAndUpdate-based controller silently preserved the
+    // old value because partial updates don't unset absent fields.
+    it('PUT /:id - removes metadataMaterializedViews when omitted from the payload', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+        metadataMaterializedViews: {
+          keyRollupTable: 'test_table_key_rollup_15m',
+          kvRollupTable: 'test_table_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+      });
+
+      const created = await Source.findById(source._id).lean();
+      if (created?.kind !== SourceKind.Log) {
+        throw new Error(`expected Log source, got ${created?.kind}`);
+      }
+      expect(created.metadataMaterializedViews).toMatchObject({
+        keyRollupTable: 'test_table_key_rollup_15m',
+        kvRollupTable: 'test_table_kv_rollup_15m',
+        granularity: '15 minute',
+      });
+
+      await agent
+        .put(`/sources/${source._id}`)
+        .send({
+          ...MOCK_SOURCE,
+          id: source._id.toString(),
+        })
+        .expect(200);
+
+      const updated = await Source.findById(source._id).lean();
+      if (updated?.kind !== SourceKind.Log) {
+        throw new Error(`expected Log source, got ${updated?.kind}`);
+      }
+      expect(updated.metadataMaterializedViews).toBeUndefined();
+    });
+
+    it('PUT /:id - updates metadataMaterializedViews when included in the payload', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+        metadataMaterializedViews: {
+          keyRollupTable: 'old_key_rollup',
+          kvRollupTable: 'old_kv_rollup',
+          granularity: '15 minute',
+        },
+      });
+
+      await agent
+        .put(`/sources/${source._id}`)
+        .send({
+          ...MOCK_SOURCE,
+          id: source._id.toString(),
+          metadataMaterializedViews: {
+            keyRollupTable: 'new_key_rollup',
+            kvRollupTable: 'new_kv_rollup',
+            granularity: '1 hour',
+          },
+        })
+        .expect(200);
+
+      const updated = await Source.findById(source._id).lean();
+      if (updated?.kind !== SourceKind.Log) {
+        throw new Error(`expected Log source, got ${updated?.kind}`);
+      }
+      expect(updated.metadataMaterializedViews).toMatchObject({
+        keyRollupTable: 'new_key_rollup',
+        kvRollupTable: 'new_kv_rollup',
+        granularity: '1 hour',
+      });
+    });
+  });
+
   describe('useTextIndexForImplicitColumn field', () => {
     it('POST / - persists useTextIndexForImplicitColumn on a Log source and returns it', async () => {
       const { agent } = await getLoggedInAgent(server);
