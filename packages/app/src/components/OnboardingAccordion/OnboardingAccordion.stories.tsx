@@ -2,7 +2,13 @@ import { type ReactNode, useState } from 'react';
 import { type IconType } from 'react-icons';
 import { FaJsSquare } from 'react-icons/fa';
 import { RiNextjsFill } from 'react-icons/ri';
-import { SiDeno, SiGo, SiPython, SiRuby } from 'react-icons/si';
+import {
+  SiDeno,
+  SiGo,
+  SiOpentelemetry,
+  SiPython,
+  SiRuby,
+} from 'react-icons/si';
 import {
   ActionIcon,
   Anchor,
@@ -481,14 +487,310 @@ function SendTelemetryBody() {
 
       <IntegrationsCard />
 
-      <Group gap={12} align="center">
-        <Button variant="secondary" size="xs">
-          Check for telemetry
-        </Button>
-        <Text fz={12} style={{ color: 'var(--color-text-muted)' }}>
-          Once data is detected your next cards will be ready to use
-        </Text>
+      <CheckTelemetryRow />
+    </Stack>
+  );
+}
+
+function CheckTelemetryRow() {
+  return (
+    <Group gap={12} align="center">
+      <Button variant="secondary" size="xs">
+        Check for telemetry
+      </Button>
+      <Text fz={12} style={{ color: 'var(--color-text-muted)' }}>
+        Once data is detected your next cards will be ready to use
+      </Text>
+    </Group>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Self-managed (open source) send-telemetry body
+//
+// Unlike the fully-managed flow (which just hands the user an ingestion
+// endpoint), self-managed users run their own collector. They first pick a
+// collector flavor (OpenTelemetry / Vector), then copy a command to either
+// start a fresh collector or wire ClickStack into an existing one.
+// ---------------------------------------------------------------------------
+
+/** Vector.dev mark — react-icons has no vector.dev logo, so we inline one. */
+function VectorLogo({ size = 20 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={(size * 24) / 20}
+      viewBox="0 0 20 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'block' }}
+    >
+      <path d="M2 2.5h16L11 12v8.5L9 19.5V12L2 2.5z" fill="#10b8b0" />
+    </svg>
+  );
+}
+
+interface CollectorSource {
+  value: string;
+  label: string;
+  recommended?: boolean;
+  logo: ReactNode;
+  /** Noun used in the instruction sentence ("Use the … below"). */
+  noun: string;
+}
+
+const COLLECTOR_SOURCES: CollectorSource[] = [
+  {
+    value: 'otel',
+    label: 'OpenTelemetry',
+    recommended: true,
+    logo: <SiOpentelemetry size={22} color="#f5a800" />,
+    noun: 'OpenTelemetry Collector',
+  },
+  {
+    value: 'vector',
+    label: 'Vector',
+    logo: <VectorLogo size={20} />,
+    noun: 'Vector pipeline',
+  },
+];
+
+const COLLECTOR_TABS = [
+  { value: 'start', label: 'Start collector' },
+  { value: 'existing', label: 'Configure existing collector' },
+];
+
+const COLLECTOR_SNIPPETS: Record<string, Record<string, string>> = {
+  otel: {
+    start: `export CLICKHOUSE_ENDPOINT=<CLICKHOUSE_ENDPOINT>
+export CLICKHOUSE_PASSWORD=<CLICKHOUSE_PASSWORD>
+docker run \\
+  -e CLICKHOUSE_ENDPOINT=\${CLICKHOUSE_ENDPOINT} \\
+  -e CLICKHOUSE_USER=default -e CLICKHOUSE_PASSWORD=\${CLICKHOUSE_PASSWORD} \\
+  -p 4317:4317 -p 4318:4318 clickhouse/clickstack-otel-collector:latest`,
+    existing: `# Add ClickStack's ClickHouse exporter to your collector config
+exporters:
+  clickhouse:
+    endpoint: <CLICKHOUSE_ENDPOINT>
+    username: default
+    password: <CLICKHOUSE_PASSWORD>
+
+service:
+  pipelines:
+    logs:    { exporters: [clickhouse] }
+    traces:  { exporters: [clickhouse] }
+    metrics: { exporters: [clickhouse] }`,
+  },
+  vector: {
+    start: `export CLICKHOUSE_ENDPOINT=<CLICKHOUSE_ENDPOINT>
+export CLICKHOUSE_PASSWORD=<CLICKHOUSE_PASSWORD>
+docker run \\
+  -e CLICKHOUSE_ENDPOINT=\${CLICKHOUSE_ENDPOINT} \\
+  -e CLICKHOUSE_PASSWORD=\${CLICKHOUSE_PASSWORD} \\
+  -p 4317:4317 -p 4318:4318 timberio/vector:latest-debian`,
+    existing: `# vector.toml — add a ClickHouse sink
+[sinks.clickhouse]
+type = "clickhouse"
+inputs = ["my_source"]
+endpoint = "<CLICKHOUSE_ENDPOINT>"
+database = "default"
+table = "otel"
+auth.strategy = "basic"
+auth.user = "default"
+auth.password = "<CLICKHOUSE_PASSWORD>"`,
+  },
+};
+
+function RecommendedBadge() {
+  return (
+    <Box
+      px={8}
+      py={2}
+      style={{ borderRadius: 1000, background: 'var(--color-bg-muted)' }}
+    >
+      <Text fz={12} fw={500} style={{ color: 'var(--color-text-muted)' }}>
+        Recommended
+      </Text>
+    </Box>
+  );
+}
+
+function CollectorSourceCard({
+  source,
+  active,
+  onSelect,
+}: {
+  source: CollectorSource;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <UnstyledButton
+      onClick={onSelect}
+      aria-pressed={active}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        borderRadius: 4,
+        padding: '12px 24px',
+        border: `1px solid ${
+          active ? 'var(--color-text)' : 'var(--color-border)'
+        }`,
+      }}
+    >
+      <Group gap={16} align="center" wrap="nowrap">
+        <Box style={{ display: 'flex', flexShrink: 0 }}>{source.logo}</Box>
+        <Group
+          gap={8}
+          align="center"
+          wrap="nowrap"
+          style={{ flex: 1, minWidth: 0 }}
+        >
+          <Text fw={600} fz={14} style={{ color: 'var(--color-text)' }}>
+            {source.label}
+          </Text>
+          {source.recommended ? <RecommendedBadge /> : null}
+        </Group>
       </Group>
+    </UnstyledButton>
+  );
+}
+
+function UnderlineTabs({
+  tabs,
+  value,
+  onChange,
+}: {
+  tabs: { value: string; label: string }[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <Group gap={0} style={{ borderBottom: '1px solid var(--color-border)' }}>
+      {tabs.map(t => {
+        const active = t.value === value;
+        return (
+          <UnstyledButton
+            key={t.value}
+            onClick={() => onChange(t.value)}
+            style={{
+              padding: '8px 12px',
+              marginBottom: -1,
+              borderBottom: `2px solid ${
+                active ? 'var(--color-text)' : 'transparent'
+              }`,
+            }}
+          >
+            <Text
+              fz={14}
+              style={{
+                color: active ? 'var(--color-text)' : 'var(--color-text-muted)',
+              }}
+            >
+              {t.label}
+            </Text>
+          </UnstyledButton>
+        );
+      })}
+    </Group>
+  );
+}
+
+function CommandBlock({ code }: { code: string }) {
+  return (
+    <Box
+      style={{
+        position: 'relative',
+        background: 'var(--color-bg-muted)',
+        borderRadius: 4,
+      }}
+    >
+      <Box
+        component="pre"
+        style={{
+          margin: 0,
+          padding: '16px 52px 16px 16px',
+          fontFamily:
+            'var(--mantine-font-family-monospace, ui-monospace, monospace)',
+          fontSize: 13,
+          lineHeight: 1.7,
+          color: 'var(--color-text)',
+          whiteSpace: 'pre',
+          overflowX: 'auto',
+        }}
+      >
+        {code}
+      </Box>
+      <CopyButton value={code}>
+        {({ copied, copy }) => (
+          <Tooltip label={copied ? 'Copied' : 'Copy'} withArrow>
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              onClick={copy}
+              style={{ position: 'absolute', top: 8, right: 8 }}
+            >
+              {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+            </ActionIcon>
+          </Tooltip>
+        )}
+      </CopyButton>
+    </Box>
+  );
+}
+
+function SelfManagedSendTelemetryBody() {
+  const [source, setSource] = useState('otel');
+  const [tab, setTab] = useState('start');
+  const activeSource =
+    COLLECTOR_SOURCES.find(s => s.value === source) ?? COLLECTOR_SOURCES[0];
+  const code = COLLECTOR_SNIPPETS[source][tab];
+
+  return (
+    <Stack gap={22}>
+      <Stack gap={16}>
+        <Group gap={24} align="center" wrap="nowrap">
+          {COLLECTOR_SOURCES.map(s => (
+            <CollectorSourceCard
+              key={s.value}
+              source={s}
+              active={s.value === source}
+              onSelect={() => setSource(s.value)}
+            />
+          ))}
+        </Group>
+        <Group gap={4} align="center">
+          <Text fz={14} style={{ color: 'var(--color-text-muted)' }}>
+            Need a custom setup?
+          </Text>
+          <Anchor href="#" underline="never" onClick={e => e.preventDefault()}>
+            <Text
+              fz={14}
+              style={{
+                color: 'var(--click-global-color-text-link-default, #437eef)',
+              }}
+            >
+              Read custom ingestion docs.
+            </Text>
+          </Anchor>
+        </Group>
+      </Stack>
+
+      <Box style={{ height: 1, background: 'var(--color-border)' }} />
+
+      <Stack gap={10}>
+        <Text fz={14} lh={1.5} style={{ color: 'var(--color-text)' }}>
+          Use the {activeSource.noun} below to send data to ClickStack. Start a
+          new collector if needed, or refer to the example for configuring an
+          existing one.
+        </Text>
+        <UnderlineTabs tabs={COLLECTOR_TABS} value={tab} onChange={setTab} />
+        <CommandBlock code={code} />
+      </Stack>
+
+      <IntegrationsCard />
+
+      <CheckTelemetryRow />
     </Stack>
   );
 }
@@ -764,7 +1066,17 @@ function ExploreTelemetryBody() {
   );
 }
 
-const STEPS: OnboardingStep[] = [
+const EXPLORE_STEP: OnboardingStep = {
+  id: 'explore-telemetry',
+  title: 'Explore your telemetry',
+  status: 'upcoming',
+  description:
+    'Search, visualize, and dashboard your logs, traces, and metrics — or jump into a prebuilt view to start investigating.',
+  children: <ExploreTelemetryBody />,
+};
+
+/** Cloud / fully-managed flow: ClickStack hands you an ingestion endpoint. */
+const FULLY_MANAGED_STEPS: OnboardingStep[] = [
   {
     id: 'send-telemetry',
     title: 'Send telemetry',
@@ -772,19 +1084,23 @@ const STEPS: OnboardingStep[] = [
     description: 'Point your OpenTelemetry collector or SDK at this endpoint',
     children: <SendTelemetryBody />,
   },
-  {
-    id: 'explore-telemetry',
-    title: 'Explore your telemetry',
-    status: 'upcoming',
-    description:
-      'Search, visualize, and dashboard your logs, traces, and metrics — or jump into a prebuilt view to start investigating.',
-    children: <ExploreTelemetryBody />,
-  },
+  EXPLORE_STEP,
 ];
 
-const HEADER_DESCRIPTION = (
-  <>
-    We run everything — you just send your data. Rather manage it all yourself?{' '}
+/** Open source / self-managed flow: you run your own collector. */
+const SELF_MANAGED_STEPS: OnboardingStep[] = [
+  {
+    id: 'send-telemetry',
+    title: 'Send telemetry',
+    status: 'active',
+    description: 'Point your OpenTelemetry collector or SDK at this endpoint',
+    children: <SelfManagedSendTelemetryBody />,
+  },
+  EXPLORE_STEP,
+];
+
+function DeploymentLink({ label }: { label: string }) {
+  return (
     <Anchor href="#" underline="never" onClick={e => e.preventDefault()}>
       <Text
         span
@@ -794,18 +1110,44 @@ const HEADER_DESCRIPTION = (
           color: 'var(--click-global-color-text-link-default, #437eef)',
         }}
       >
-        Go self-managed →
+        {label}
       </Text>
     </Anchor>
+  );
+}
+
+const FULLY_MANAGED_DESCRIPTION = (
+  <>
+    We run everything — you just send your data. Rather manage it all yourself?{' '}
+    <DeploymentLink label="Go self-managed →" />
   </>
 );
 
-export const Default: Story = {
+const SELF_MANAGED_DESCRIPTION = (
+  <>
+    Don’t want to manage it all yourself?{' '}
+    <DeploymentLink label="Go fully-managed →" />
+  </>
+);
+
+/** Cloud onboarding — matches the fully-managed “Send telemetry” design. */
+export const FullyManaged: Story = {
   args: {
     title: 'Start sending telemetry',
-    description: HEADER_DESCRIPTION,
+    description: FULLY_MANAGED_DESCRIPTION,
     banner: <ServiceSummaryBanner />,
-    steps: STEPS,
+    steps: FULLY_MANAGED_STEPS,
+    defaultOpenStep: 'send-telemetry',
+  },
+};
+
+/** Open source onboarding — pick a collector, then start or configure it. */
+export const SelfManaged: Story = {
+  args: {
+    title: 'Start sending telemetry',
+    description: SELF_MANAGED_DESCRIPTION,
+    banner: <ServiceSummaryBanner />,
+    steps: SELF_MANAGED_STEPS,
     defaultOpenStep: 'send-telemetry',
   },
 };
@@ -813,9 +1155,9 @@ export const Default: Story = {
 export const ExploreExpanded: Story = {
   args: {
     title: 'Start sending telemetry',
-    description: HEADER_DESCRIPTION,
+    description: FULLY_MANAGED_DESCRIPTION,
     banner: <ServiceSummaryBanner />,
-    steps: STEPS,
+    steps: FULLY_MANAGED_STEPS,
     defaultOpenStep: 'explore-telemetry',
   },
 };
@@ -823,8 +1165,8 @@ export const ExploreExpanded: Story = {
 export const AllStepsCollapsed: Story = {
   args: {
     title: 'Start sending telemetry',
-    description: HEADER_DESCRIPTION,
+    description: FULLY_MANAGED_DESCRIPTION,
     banner: <ServiceSummaryBanner />,
-    steps: STEPS,
+    steps: FULLY_MANAGED_STEPS,
   },
 };
