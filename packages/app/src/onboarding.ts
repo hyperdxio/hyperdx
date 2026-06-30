@@ -49,9 +49,7 @@ async function addOtelDemoSources({
 }: {
   connectionId: string;
   createSourceMutation: ReturnType<typeof useCreateSource>;
-  createConnectionMutation: ReturnType<typeof useCreateConnection>;
   updateSourceMutation: ReturnType<typeof useUpdateSource>;
-  deleteSourceMutation: ReturnType<typeof useDeleteSource>;
 
   logSourceDatabaseName?: string;
   logSourceName?: string;
@@ -125,7 +123,7 @@ async function addOtelDemoSources({
       parentSpanIdExpression: 'ParentSpanId',
       spanKindExpression: 'SpanKind',
       spanNameExpression: 'SpanName',
-      ...(hasLogSource ? { logSourceId: 'l-758211293' } : {}),
+      ...(logSource ? { logSourceId: logSource.id } : {}),
       statusCodeExpression: 'StatusCode',
       statusMessageExpression: 'StatusMessage',
       spanEventsValueExpression: 'Events',
@@ -268,9 +266,7 @@ export function useConnectToDemoServer({
 
       await addOtelDemoSources({
         connectionId: createdConnectionId,
-        createConnectionMutation,
         createSourceMutation,
-        deleteSourceMutation,
 
         logSourceDatabaseName: 'otel_v2',
         logSourceName: 'Demo Logs',
@@ -340,9 +336,7 @@ export function useConnectToDemoServer({
       // ClickPy demo sources
       await addOtelDemoSources({
         connectionId: createdConnectionId,
-        createConnectionMutation,
         createSourceMutation,
-        deleteSourceMutation,
 
         sessionSourceDatabaseName: 'otel_clickpy',
         sessionSourceName: 'ClickPy Sessions',
