@@ -433,7 +433,7 @@ const mcpTileLayoutSchema = z.object({
     .describe(
       'Width in grid columns (1-24; a full row is 24). Default 12. ' +
         'Match the width to the displayType: number 6-8 (three or four KPIs per row), ' +
-        'line / stacked_bar / pie 8-12, table / search / heatmap 12-24 (often the full row). ' +
+        'line / stacked_bar / pie 8-12, heatmap 12, table / search 12-24 (often the full row). ' +
         'A markdown note is usually full-width (24).',
     ),
   h: z
