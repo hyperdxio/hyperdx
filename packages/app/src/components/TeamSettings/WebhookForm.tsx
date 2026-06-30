@@ -345,14 +345,6 @@ export function WebhookForm({
           value={service}
           onChange={value => {
             form.setValue('service', value as WebhookService);
-            // Prefill the rich Claude payload so the agent-ready body is visible
-            // and editable. Only when empty so we never clobber existing edits.
-            if (
-              value === WebhookService.Claude &&
-              !form.getValues('body')?.trim()
-            ) {
-              form.setValue('body', CLAUDE_WEBHOOK_BODY);
-            }
           }}
         >
           <Group mt="xs">
@@ -378,15 +370,22 @@ export function WebhookForm({
         />
 
         <TextInput
-          label="Webhook URL"
+          label={
+            service === WebhookService.Claude
+              ? 'Slack Result URL'
+              : 'Webhook URL'
+          }
           data-testid="webhook-url-input"
           description={
-            isEditing
-              ? 'URL is masked for security. Enter a new URL to update.'
-              : undefined
+            service === WebhookService.Claude
+              ? 'Slack incoming-webhook URL where the agent posts its investigation summary.'
+              : isEditing
+                ? 'URL is masked for security. Enter a new URL to update.'
+                : undefined
           }
           placeholder={
-            service === WebhookService.Slack
+            service === WebhookService.Slack ||
+            service === WebhookService.Claude
               ? 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
               : service === WebhookService.IncidentIO
                 ? 'https://api.incident.io/v2/alert_events/http/ZZZZZZZZ?token=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
@@ -398,7 +397,8 @@ export function WebhookForm({
           {...form.register('url', {
             required: true,
             validate: (value, formValues) =>
-              formValues.service === WebhookService.Slack
+              formValues.service === WebhookService.Slack ||
+              formValues.service === WebhookService.Claude
                 ? isValidSlackUrl(value) ||
                   'URL must be valid and have a slack.com domain'
                 : isValidUrl(value) || 'URL must be valid',

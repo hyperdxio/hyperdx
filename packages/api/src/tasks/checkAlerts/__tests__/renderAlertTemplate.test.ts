@@ -11,7 +11,9 @@ import { AlertSource } from '@/models/alert';
 import { loadProvider } from '@/tasks/checkAlerts/providers';
 import {
   AlertMessageTemplateDefaultView,
+  buildAgentPrompt,
   buildAlertMessageTemplateTitle,
+  handleStartAgentSession,
   renderAlertTemplate,
 } from '@/tasks/checkAlerts/template';
 
@@ -399,7 +401,11 @@ describe('renderAlertTemplate', () => {
   });
 });
 
-describe('enriched webhook payload (Claude Managed Agents)', () => {
+// Enriched alert fields (alertId, status, sourceQuery, ...) render into a
+// webhook body. Claude no longer uses templated bodies (it starts an agent
+// session in-process — see anthropicAgents.test.ts), but these fields remain
+// available to Generic webhooks, which this covers.
+describe('enriched webhook payload fields', () => {
   let fetchSpy: jest.SpyInstance;
 
   beforeEach(() => {
@@ -425,8 +431,8 @@ describe('enriched webhook payload (Claude Managed Agents)', () => {
 
     const webhook = {
       _id: new mongoose.Types.ObjectId(),
-      name: 'claude-receiver',
-      service: WebhookService.Claude,
+      name: 'enriched-receiver',
+      service: WebhookService.Generic,
       url: 'https://receiver.example.com/hook',
       body: JSON.stringify({
         alert_id: '{{alertId}}',
@@ -474,8 +480,8 @@ describe('enriched webhook payload (Claude Managed Agents)', () => {
 
     const webhook = {
       _id: new mongoose.Types.ObjectId(),
-      name: 'claude-receiver',
-      service: WebhookService.Claude,
+      name: 'enriched-receiver',
+      service: WebhookService.Generic,
       url: 'https://receiver.example.com/hook',
       body: JSON.stringify({ status: '{{status}}' }),
     } as any;
@@ -589,5 +595,71 @@ describe('buildAlertMessageTemplateTitle', () => {
         },
       );
     });
+  });
+});
+
+describe('buildAgentPrompt', () => {
+  it('serializes the firing alert into the agent-ready JSON schema', () => {
+    const message = {
+      hdxLink: 'http://localhost/search/abc',
+      title: 'Trace Error',
+      body: '80 lines found',
+      startTime: Date.parse('2026-06-30T09:15:00.000Z'),
+      endTime: Date.parse('2026-06-30T09:20:00.000Z'),
+      eventId: 'evt-1',
+      alertId: 'alert-1',
+      status: 'firing',
+      alertType: 'search',
+      comparator: '>=',
+      threshold: 1,
+      value: 80,
+      groupKey: 'us-east-1',
+      sourceQuery: 'StatusCode:"Error"',
+      note: 'Runbook: https://wiki/runbook',
+      teamId: 'team-123',
+    };
+
+    const payload = JSON.parse(buildAgentPrompt(message as any));
+
+    expect(payload.source).toBe('clickstack');
+    expect(payload.schema_version).toBe('1');
+    expect(typeof payload.prompt).toBe('string');
+    expect(payload.alert).toMatchObject({
+      id: 'alert-1',
+      event_id: 'evt-1',
+      status: 'firing',
+      type: 'search',
+      title: 'Trace Error',
+      link: 'http://localhost/search/abc',
+    });
+    expect(payload.condition).toEqual({
+      comparator: '>=',
+      threshold: 1,
+      current_value: 80,
+    });
+    expect(payload.context.source_query).toBe('StatusCode:"Error"');
+    expect(payload.context.runbook).toBe('Runbook: https://wiki/runbook');
+    expect(payload.context.time_range).toEqual({
+      start: '2026-06-30T09:15:00.000Z',
+      end: '2026-06-30T09:20:00.000Z',
+    });
+    // Team id is included for multitenant routing/correlation downstream.
+    expect(payload.context.team_id).toBe('team-123');
+  });
+});
+
+describe('handleStartAgentSession', () => {
+  it('skips (no session) on a non-firing status, before the teamId/url guards', async () => {
+    // status 'resolved' must return early — otherwise the missing teamId would
+    // throw. Resolving cleanly proves the firing-only guard short-circuited.
+    await expect(
+      handleStartAgentSession(
+        {
+          url: 'https://hooks.slack.com/services/T/B/X',
+          service: WebhookService.Claude,
+        } as any,
+        { status: 'resolved' } as any,
+      ),
+    ).resolves.toBeUndefined();
   });
 });

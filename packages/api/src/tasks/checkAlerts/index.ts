@@ -56,6 +56,7 @@ import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
+import { pollAndDeliverAgentSessions } from '@/services/anthropicAgents';
 import {
   AlertDetails,
   AlertProvider,
@@ -1742,6 +1743,18 @@ export default class CheckAlertTask implements HdxTask<CheckAlertsTaskArgs> {
       },
       'finished processing all tasks on task_queue',
     );
+
+    // Deliver any managed-agent investigations that have finished since the last
+    // run. Piggybacks on the check-alerts cadence; isolated so a polling failure
+    // never fails the alert sweep.
+    try {
+      await pollAndDeliverAgentSessions();
+    } catch (e) {
+      logger.error(
+        { err: serializeError(e), args: this.args },
+        'Failed to poll/deliver managed-agent sessions',
+      );
+    }
   }
 
   name(): string {

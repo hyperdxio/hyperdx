@@ -469,12 +469,16 @@ router.post(
         teamId: 'test-team-id',
       };
 
-      if (service === WebhookService.Slack) {
+      if (
+        service === WebhookService.Slack ||
+        // A Claude webhook delivers its agent summary to Slack, so testing it
+        // just verifies that Slack URL works — same path as a Slack webhook.
+        service === WebhookService.Claude
+      ) {
         await handleSendSlackWebhook(testWebhook, testMessage);
       } else if (
         service === WebhookService.Generic ||
-        service === WebhookService.IncidentIO ||
-        service === WebhookService.Claude
+        service === WebhookService.IncidentIO
       ) {
         await handleSendGenericWebhook(testWebhook, testMessage);
       } else {

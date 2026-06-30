@@ -20,6 +20,7 @@ import {
 import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
+import mongoose from 'mongoose';
 import { performance } from 'perf_hooks';
 import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
@@ -32,6 +33,7 @@ import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
+import { startAgentSession } from '@/services/anthropicAgents';
 import {
   computeAliasWithClauses,
   doesExceedThreshold,
@@ -244,10 +246,13 @@ const notifyChannel = async ({
       // TODO: migrate to use handleSendGenericWebhook so templates can be used
       if (webhook.service === WebhookService.Slack) {
         await handleSendSlackWebhook(webhook, message);
+      } else if (webhook.service === WebhookService.Claude) {
+        // First-class agent action: start a managed-agent session in-process
+        // rather than POSTing the payload to an external receiver.
+        await handleStartAgentSession(webhook, message);
       } else if (
         webhook.service === WebhookService.Generic ||
-        webhook.service === WebhookService.IncidentIO ||
-        webhook.service === WebhookService.Claude
+        webhook.service === WebhookService.IncidentIO
       ) {
         await handleSendGenericWebhook(webhook, message);
       }
@@ -350,6 +355,98 @@ export const handleSendSlackWebhook = async (
   } finally {
     webhookDeliveryDuration.record(performance.now() - startedAt, {
       service: WebhookService.Slack,
+    });
+  }
+};
+
+// Builds the agent-ready payload for the firing alert, serialized as the
+// session's user message. This is the enriched, structured JSON format (the same
+// schema the Claude webhook body documented) — the agent gets complete,
+// unambiguous context (condition + source_query + time_range) it can act on
+// without a round-trip, and it stays easy to extend with new fields. The
+// embedded `prompt` is the per-invocation instruction; the agent's standing
+// instructions live in its system prompt (see anthropicAgents).
+export const buildAgentPrompt = (message: Message): string => {
+  const payload = {
+    source: 'clickstack',
+    schema_version: '1',
+    prompt:
+      'A ClickStack alert fired. Investigate the root cause using your pre-configured clickstack MCP server (logs, traces, metrics, and alert history). Reconstruct and re-run the alert source_query over the time_range, inspect related logs, traces, and metrics, follow context.runbook if present, check recent deploys, then post a concise, evidence-linked root-cause summary.',
+    alert: {
+      id: message.alertId,
+      event_id: message.eventId,
+      status: message.status,
+      type: message.alertType,
+      title: message.title,
+      body: message.body,
+      link: message.hdxLink,
+    },
+    condition: {
+      comparator: message.comparator,
+      threshold: message.threshold,
+      current_value: message.value,
+    },
+    context: {
+      group_key: message.groupKey,
+      source_query: message.sourceQuery,
+      runbook: message.note,
+      team_id: message.teamId,
+      time_range: {
+        start: new Date(message.startTime).toISOString(),
+        end: new Date(message.endTime).toISOString(),
+      },
+    },
+  };
+  return JSON.stringify(payload, null, 2);
+};
+
+// Claude managed-agent dispatch. Mirrors the other handle* senders (timed,
+// counted) but instead of an HTTP POST it starts an in-process agent session.
+// The webhook's `url` field is reused as the Slack URL the result is delivered
+// to once the session idles.
+export const handleStartAgentSession = async (
+  webhook: IWebhook,
+  message: Message,
+) => {
+  const startedAt = performance.now();
+  try {
+    // Only investigate on the firing edge. notifyChannel also runs on resolve
+    // (status resolved/no_data); the agent prompt is "an alert fired —
+    // investigate", so starting a session on resolution is wrong and wasteful.
+    if (message.status && message.status !== 'firing') {
+      return;
+    }
+    if (!message.teamId) {
+      throw new Error(
+        'Cannot start agent session: alert message has no teamId',
+      );
+    }
+    if (!webhook.url) {
+      throw new Error(
+        'Claude agent webhook requires a Slack delivery URL in its url field',
+      );
+    }
+    await startAgentSession({
+      teamId: new mongoose.Types.ObjectId(message.teamId),
+      alertId: message.alertId,
+      eventId: message.eventId,
+      title: message.title,
+      prompt: buildAgentPrompt(message),
+      deliverToUrl: webhook.url,
+    });
+    webhookDeliveryCounter.add(1, {
+      service: WebhookService.Claude,
+      outcome: 'success',
+    });
+  } catch (e) {
+    webhookDeliveryCounter.add(1, {
+      service: WebhookService.Claude,
+      outcome: 'error',
+    });
+    throw e;
+  } finally {
+    webhookDeliveryDuration.record(performance.now() - startedAt, {
+      service: WebhookService.Claude,
     });
   }
 };

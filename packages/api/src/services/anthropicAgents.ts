@@ -1,11 +1,15 @@
+import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
 import type { ObjectId } from '@/models';
+import AgentRun, { AgentRunDocument } from '@/models/agentRun';
 import AnthropicIntegration from '@/models/anthropicIntegration';
 import ManagedAgent from '@/models/managedAgent';
 import { decrypt } from '@/utils/encryption';
+import { setBusinessContext } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+import * as slack from '@/utils/slack';
 
 const ANTHROPIC_API_BASE = 'https://api.anthropic.com';
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -25,7 +29,7 @@ export class AnthropicApiError extends Error {
 // Single choke point for outbound calls — only ever talks to api.anthropic.com.
 const anthropicRequest = async (
   apiKey: string,
-  method: 'POST' | 'DELETE',
+  method: 'GET' | 'POST' | 'DELETE',
   path: string,
   body?: unknown,
 ): Promise<any> => {
@@ -60,6 +64,63 @@ export const getTeamAnthropicKey = async (
   }).select('+encryptedApiKey');
   if (!integration) return null;
   return decrypt(integration.encryptedApiKey);
+};
+
+// Confirms the agent will actually be able to reach the ClickStack MCP server
+// before we provision anything on Anthropic. The agent authenticates with the
+// same bearer token, so we exercise that exact path (reachability + auth) by
+// sending an MCP `initialize`. This catches the common setup mistakes up front —
+// a dead/wrong tunnel (no response or 404), the URL pointed at the wrong port or
+// path, or an access key the MCP server rejects (401) — instead of creating an
+// agent that silently can't talk to ClickStack.
+export const verifyMcpReachable = async (
+  mcpServerUrl: string,
+  userAccessKey: string,
+): Promise<void> => {
+  const unreachable = (detail: string) =>
+    new AnthropicApiError(
+      `Could not reach the ClickStack MCP server at ${mcpServerUrl}: ${detail}. ` +
+        `Check that the URL is a live HTTPS tunnel to your instance — the API port uses the path /mcp, the app port uses /api/mcp.`,
+      400,
+    );
+
+  let res: Response;
+  try {
+    res = await fetch(mcpServerUrl, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${userAccessKey}`,
+        'content-type': 'application/json',
+        // The streamable-HTTP transport requires both content types in Accept.
+        accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'hyperdx-provision-check', version: '1.0.0' },
+        },
+      }),
+    });
+  } catch (e) {
+    throw unreachable((e as Error).message);
+  }
+
+  if (res.status === 401) {
+    throw new AnthropicApiError(
+      `The ClickStack MCP server at ${mcpServerUrl} rejected the access key (401), so the agent would not be able to authenticate.`,
+      400,
+    );
+  }
+  // Auth passed (no 401) and the MCP endpoint answered. A non-OK status here
+  // means the URL is not the MCP endpoint (e.g. 404 from a wrong path or an
+  // offline tunnel).
+  if (!res.ok) {
+    throw unreachable(`it returned HTTP ${res.status}`);
+  }
 };
 
 // Provisions a ClickStack SRE agent: environment + vault (with the ClickStack
@@ -100,6 +161,10 @@ export const provisionClickStackAgent = async ({
     );
   }
 
+  // Fail fast if the agent won't be able to talk to ClickStack, before creating
+  // any Anthropic resources.
+  await verifyMcpReachable(mcpServerUrl, userAccessKey);
+
   const environment = await anthropicRequest(
     apiKey,
     'POST',
@@ -130,7 +195,16 @@ export const provisionClickStackAgent = async ({
     mcp_servers: [{ type: 'url', name: 'clickstack', url: mcpServerUrl }],
     tools: [
       { type: 'agent_toolset_20260401' },
-      { type: 'mcp_toolset', mcp_server_name: 'clickstack' },
+      {
+        type: 'mcp_toolset',
+        mcp_server_name: 'clickstack',
+        // MCP toolsets default to `always_ask`, which pauses the session waiting
+        // for human approval. This loop is unattended (fired from an alert), so
+        // auto-allow the ClickStack tools — they are read-only and the system
+        // prompt forbids changes. Without this the session idles immediately on
+        // the first tool call.
+        default_config: { permission_policy: { type: 'always_allow' } },
+      },
     ],
   });
 
@@ -157,9 +231,361 @@ export const deleteAnthropicAgent = async (
   try {
     await anthropicRequest(apiKey, 'DELETE', `/v1/agents/${anthropicAgentId}`);
   } catch (e) {
+    // A 404 means the agent is already gone on Anthropic — that's the desired
+    // end state, so treat delete as idempotent rather than an error.
+    if (e instanceof AnthropicApiError && e.status === 404) {
+      logger.info(
+        { anthropicAgentId },
+        'Agent already absent on Anthropic (404); removing local record',
+      );
+      return;
+    }
     logger.warn(
       { error: serializeError(e), anthropicAgentId },
       'Failed to delete agent on Anthropic; removing local record anyway',
     );
+  }
+};
+
+// The Anthropic session `status` value that means the agent has finished its
+// turn and is waiting. Verified against live sessions: the status field is
+// `idle` (distinct from the `session.status_idled` webhook *event* name, which
+// is what tripped this up originally).
+const SESSION_IDLE_STATUS = 'idle';
+
+// Sessions that never idle are abandoned after this, so the poll set stays
+// bounded. ponytail: fixed ceiling; make it configurable only if real runs
+// legitimately exceed it.
+const MAX_SESSION_AGE_MS = 30 * 60 * 1000;
+
+// Alert notifications are level-triggered (they fire every evaluation window
+// while the threshold is breached), but we don't want a fresh agent session
+// every minute. Dedupe per alert per window: re-fires inside the window reuse
+// the run; a firing in a later window (a persisting or recurring incident) gets
+// a fresh investigation. ponytail: fixed 1h cooldown; tie to the alert interval
+// only if a fixed window proves too coarse.
+const AGENT_DEDUPE_WINDOW_MS = 60 * 60 * 1000;
+
+// Oldest-first cap per sweep, so one poll can't fan out unbounded GETs.
+const MAX_RUNS_PER_SWEEP = 100;
+
+// Give up (and report the real reason) after this many failed delivery attempts,
+// rather than re-posting every sweep until the age ceiling.
+const MAX_DELIVERY_ATTEMPTS = 5;
+
+// A run claimed for delivery but left in `delivering` longer than this (e.g. the
+// process crashed mid-post) is reclaimed for retry.
+const RECLAIM_DELIVERING_MS = 5 * 60 * 1000;
+
+// Kicks off a managed-agent investigation for a firing alert: starts an
+// Anthropic session against the team's provisioned agent, injects the alert
+// prompt, and records an AgentRun for the poll loop to deliver later. Returns
+// the run, or null when the team has no agent provisioned (a misconfiguration
+// that must not break alert delivery) or the firing was already handled.
+export const startAgentSession = async ({
+  teamId,
+  alertId,
+  eventId,
+  title,
+  prompt,
+  deliverToUrl,
+}: {
+  teamId: ObjectId;
+  alertId?: string;
+  eventId: string;
+  title: string;
+  prompt: string;
+  deliverToUrl: string;
+}): Promise<AgentRunDocument | null> => {
+  setBusinessContext({ teamId: teamId.toString() });
+
+  // Results post straight to Slack from the poll loop, so reject a non-Slack
+  // (or non-HTTPS) target up front — the only SSRF/transport guard on the
+  // persisted deliverToUrl before the loop POSTs the agent summary to it.
+  if (!isValidSlackUrl(deliverToUrl) || !deliverToUrl.startsWith('https://')) {
+    throw new AnthropicApiError(
+      `Claude agent delivery URL must be an HTTPS Slack webhook URL (got "${deliverToUrl}")`,
+      400,
+    );
+  }
+
+  // Dedupe per alert per cooldown window (see AGENT_DEDUPE_WINDOW_MS): a re-fire
+  // inside the window reuses the run; a later window re-investigates. The window
+  // suffix keeps the unique index from blocking future firings forever. The
+  // findOne avoids the redundant Anthropic calls in the common case; the unique
+  // index (+ 11000 catch below) is the real race guard.
+  const dedupeWindow = Math.floor(Date.now() / AGENT_DEDUPE_WINDOW_MS);
+  const dedupeKey = `${alertId ?? 'no-alert'}:${eventId}:${dedupeWindow}`;
+  const existing = await AgentRun.findOne({ dedupeKey });
+  if (existing) return existing;
+
+  const agent = await ManagedAgent.findOne({ team: teamId }).sort({
+    createdAt: -1,
+  });
+  if (!agent) {
+    logger.warn(
+      { teamId: teamId.toString() },
+      'Claude alert fired but no managed agent is provisioned for the team; skipping',
+    );
+    return null;
+  }
+
+  const apiKey = await getTeamAnthropicKey(teamId);
+  if (!apiKey) {
+    throw new AnthropicApiError(
+      'No Anthropic API key configured for this team',
+      400,
+    );
+  }
+
+  const session = await anthropicRequest(apiKey, 'POST', '/v1/sessions', {
+    agent: agent.anthropicAgentId,
+    environment_id: agent.environmentId,
+    vault_ids: [agent.vaultId],
+    title,
+  });
+
+  await anthropicRequest(apiKey, 'POST', `/v1/sessions/${session.id}/events`, {
+    events: [
+      { type: 'user.message', content: [{ type: 'text', text: prompt }] },
+    ],
+  });
+
+  try {
+    return await AgentRun.create({
+      team: teamId,
+      managedAgent: agent._id,
+      anthropicSessionId: session.id,
+      alertId,
+      status: 'running',
+      deliverToUrl,
+      dedupeKey,
+      title,
+    });
+  } catch (e: any) {
+    // Lost a race to a concurrent firing — the other run owns this session.
+    if (e?.code === 11000) {
+      return AgentRun.findOne({ dedupeKey });
+    }
+    throw e;
+  }
+};
+
+// Pulls the agent's final summary text out of a session's event list. The
+// agent's last `agent.message` is the answer; its content is a block array that
+// may lead with non-text blocks (thinking/tool-use) or split prose across
+// several text blocks, so concatenate every text block rather than taking the
+// first.
+const fetchSessionSummary = async (
+  apiKey: string,
+  sessionId: string,
+): Promise<string> => {
+  const res = await anthropicRequest(
+    apiKey,
+    'GET',
+    `/v1/sessions/${sessionId}/events`,
+  );
+  const events: any[] = res.events ?? res.data ?? [];
+  const messages = events.filter(e => e.type === 'agent.message');
+  const last = messages[messages.length - 1];
+  if (!Array.isArray(last?.content)) return '';
+  return last.content
+    .filter((c: any) => c?.type === 'text' && typeof c.text === 'string')
+    .map((c: any) => c.text)
+    .join('\n')
+    .trim();
+};
+
+// Slack `section` mrkdwn text is capped at 3000 chars; a section over the cap
+// renders blank, so an RCA summary (often several KB) must be split across
+// blocks. We leave headroom and bound the block count (Slack allows ~50/msg).
+const SLACK_SECTION_LIMIT = 2900;
+const MAX_SUMMARY_BLOCKS = 40;
+
+// Splits text into <=SLACK_SECTION_LIMIT chunks, preferring line boundaries so
+// markdown stays readable; a single over-long line is hard-split.
+export const chunkForSlack = (text: string): string[] => {
+  const chunks: string[] = [];
+  let current = '';
+  const flush = () => {
+    if (current) {
+      chunks.push(current);
+      current = '';
+    }
+  };
+  for (const line of text.split('\n')) {
+    if (line.length > SLACK_SECTION_LIMIT) {
+      flush();
+      for (let i = 0; i < line.length; i += SLACK_SECTION_LIMIT) {
+        chunks.push(line.slice(i, i + SLACK_SECTION_LIMIT));
+      }
+      continue;
+    }
+    if (current && current.length + line.length + 1 > SLACK_SECTION_LIMIT) {
+      flush();
+    }
+    current = current ? `${current}\n${line}` : line;
+  }
+  flush();
+  return chunks;
+};
+
+// Builds the Slack message for a finished investigation: a title header, the
+// summary split into Slack-safe section blocks, and a footer linking back to the
+// live session. Exported for testing.
+export const buildAgentSlackMessage = (
+  title: string,
+  summary: string,
+  sessionId: string,
+) => {
+  const allChunks = summary.trim()
+    ? chunkForSlack(summary)
+    : ['_The agent produced no summary text — open the session for details._'];
+  const chunks = allChunks.slice(0, MAX_SUMMARY_BLOCKS);
+  const truncated = allChunks.length > MAX_SUMMARY_BLOCKS;
+  return {
+    text: title,
+    blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text: `*${title}*` } },
+      ...chunks.map(text => ({
+        type: 'section',
+        text: { type: 'mrkdwn', text },
+      })),
+      {
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: `${truncated ? '_(summary truncated)_ · ' : ''}Continue in the live agent session: ${sessionId}`,
+          },
+        ],
+      },
+    ],
+  };
+};
+
+const failRun = async (run: AgentRunDocument, error: string): Promise<void> => {
+  run.status = 'failed';
+  run.error = error;
+  await run.save();
+};
+
+// Sweeps in-flight agent runs: any whose Anthropic session has idled is claimed
+// (atomically, so concurrent sweeps can't both deliver) and its summary posted
+// to Slack, then marked delivered; sessions that never idle are abandoned past
+// MAX_SESSION_AGE_MS. Designed to run on the check-alerts cadence. One bad run
+// is logged and skipped — it never aborts the sweep.
+export const pollAndDeliverAgentSessions = async (): Promise<void> => {
+  // Reclaim runs whose delivery was interrupted (claimed `delivering` but the
+  // process died before finishing), so they retry instead of stalling.
+  await AgentRun.updateMany(
+    {
+      status: 'delivering',
+      updatedAt: { $lt: new Date(Date.now() - RECLAIM_DELIVERING_MS) },
+    },
+    { status: 'running' },
+  );
+
+  const runs = await AgentRun.find({ status: 'running' })
+    .sort({ createdAt: 1 })
+    .limit(MAX_RUNS_PER_SWEEP);
+
+  for (const run of runs) {
+    setBusinessContext({ teamId: run.team.toString() });
+    // Evaluated independently of the session GET so a perpetually-failing poll
+    // still gets abandoned rather than stuck `running` forever.
+    const tooOld = Date.now() - run.createdAt.getTime() > MAX_SESSION_AGE_MS;
+    try {
+      const apiKey = await getTeamAnthropicKey(run.team);
+      if (!apiKey) {
+        if (tooOld)
+          await failRun(run, 'Anthropic API key removed before delivery');
+        continue;
+      }
+
+      let session: any;
+      try {
+        session = await anthropicRequest(
+          apiKey,
+          'GET',
+          `/v1/sessions/${run.anthropicSessionId}`,
+        );
+      } catch (e) {
+        if (tooOld) {
+          await failRun(
+            run,
+            `Session polling kept failing: ${(e as Error).message}`,
+          );
+        } else {
+          logger.warn(
+            { error: serializeError(e), agentRunId: run._id.toString() },
+            'Session poll failed; will retry next sweep',
+          );
+        }
+        continue;
+      }
+
+      if (session.status !== SESSION_IDLE_STATUS) {
+        if (tooOld) {
+          await failRun(
+            run,
+            `Session did not idle within ${MAX_SESSION_AGE_MS}ms (last status: ${session.status})`,
+          );
+        }
+        continue;
+      }
+
+      // Idle: claim it atomically before doing any visible work. If another
+      // sweep already claimed it, findOneAndUpdate returns null and we skip.
+      const claimed = await AgentRun.findOneAndUpdate(
+        { _id: run._id, status: 'running' },
+        { $set: { status: 'delivering' }, $inc: { attempts: 1 } },
+        { new: true },
+      );
+      if (!claimed) continue;
+
+      const summary = await fetchSessionSummary(apiKey, run.anthropicSessionId);
+
+      // Idle but the final message isn't readable yet — release for retry,
+      // up to the attempt cap, rather than delivering an empty placeholder.
+      if (!summary && claimed.attempts < MAX_DELIVERY_ATTEMPTS) {
+        claimed.status = 'running';
+        await claimed.save();
+        continue;
+      }
+
+      try {
+        await slack.postMessageToWebhook(
+          claimed.deliverToUrl,
+          buildAgentSlackMessage(
+            claimed.title,
+            summary,
+            claimed.anthropicSessionId,
+          ),
+        );
+        claimed.status = 'delivered';
+        claimed.deliveredAt = new Date();
+        await claimed.save();
+      } catch (e) {
+        // Delivery failed (e.g. revoked Slack webhook). Retry until the cap,
+        // then fail with the real reason instead of re-posting every sweep.
+        if (claimed.attempts >= MAX_DELIVERY_ATTEMPTS) {
+          claimed.status = 'failed';
+          claimed.error = `Slack delivery failed after ${claimed.attempts} attempts: ${(e as Error).message}`;
+        } else {
+          claimed.status = 'running';
+        }
+        await claimed.save();
+        logger.warn(
+          { error: serializeError(e), agentRunId: claimed._id.toString() },
+          'Failed to deliver agent summary to Slack',
+        );
+      }
+    } catch (e) {
+      logger.warn(
+        { error: serializeError(e), agentRunId: run._id.toString() },
+        'Failed to poll/deliver agent session; will retry next sweep',
+      );
+    }
   }
 };
