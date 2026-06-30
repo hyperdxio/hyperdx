@@ -91,7 +91,7 @@ import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { InputControlled } from '@/components/InputControlled';
-import OnboardingModal from '@/components/OnboardingModal';
+import OnboardingGate from '@/components/OnboardingGate';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
@@ -1850,7 +1850,7 @@ export function DBSearchPage() {
           onClose={closeAlertModal}
         />
       )}
-      <OnboardingModal />
+      <OnboardingGate />
       {savedSearch && (
         <Stack mt="lg" mx="xs">
           <Group justify="space-between">

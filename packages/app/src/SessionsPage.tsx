@@ -40,7 +40,7 @@ import { TimePicker } from '@/components/TimePicker';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 
-import OnboardingModal from './components/OnboardingModal';
+import OnboardingGate from './components/OnboardingGate';
 import SearchWhereInput, {
   getStoredLanguage,
 } from './components/SearchInput/SearchWhereInput';
@@ -366,7 +366,7 @@ export default function SessionsPage() {
       <Head>
         <title>Client Sessions - {brandName}</title>
       </Head>
-      <OnboardingModal />
+      <OnboardingGate />
       {selectedSession != null &&
         traceTrace != null &&
         sessionSource != null &&

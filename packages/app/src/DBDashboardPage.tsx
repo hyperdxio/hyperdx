@@ -138,7 +138,7 @@ import DBHeatmapChart, {
 } from './components/DBHeatmapChart';
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
-import OnboardingModal from './components/OnboardingModal';
+import OnboardingGate from './components/OnboardingGate';
 import SearchWhereInput, {
   getStoredLanguage,
 } from './components/SearchInput/SearchWhereInput';
@@ -2563,7 +2563,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           {dashboard?.name ? `${dashboard.name}` : 'Dashboard'} – {brandName}
         </title>
       </Head>
-      <OnboardingModal />
+      <OnboardingGate />
       <EditTileModal
         dashboardId={dashboardId}
         chart={editedTile}

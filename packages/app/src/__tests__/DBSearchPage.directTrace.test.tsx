@@ -178,7 +178,7 @@ jest.mock('@/components/FavoriteButton', () => ({
 jest.mock('@/components/InputControlled', () => ({
   InputControlled: () => <div />,
 }));
-jest.mock('@/components/OnboardingModal', () => () => <div />);
+jest.mock('@/components/OnboardingGate', () => () => <div />);
 jest.mock('@/components/SearchInput/SearchWhereInput', () => ({
   __esModule: true,
   default: () => <div />,

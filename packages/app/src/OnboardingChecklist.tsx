@@ -34,11 +34,7 @@ interface OnboardingStep {
   href?: string;
   onClick?: () => void;
 }
-const OnboardingChecklist = ({
-  onAddDataClick,
-}: {
-  onAddDataClick?: () => void;
-}) => {
+const OnboardingChecklist = () => {
   const [isCollapsed, setIsCollapsed] = useLocalStorage(
     'onboardingChecklistCollapsed',
     false,
@@ -117,7 +113,7 @@ const OnboardingChecklist = ({
         description: 'Set up your database connection',
         isComplete: hasConnections ?? false,
         isLoading: isConnectionsLoading,
-        href: hasConnections ? undefined : '/team',
+        href: hasConnections ? undefined : '/getting-started',
       },
       {
         id: 'sources',
@@ -125,7 +121,7 @@ const OnboardingChecklist = ({
         description: 'Configure where your data comes from',
         isComplete: hasSources ?? false,
         isLoading: isSourcesLoading,
-        href: hasSources ? undefined : '/team',
+        href: hasSources ? undefined : '/getting-started',
       },
       {
         id: 'data',
@@ -133,7 +129,7 @@ const OnboardingChecklist = ({
         description: 'Start sending logs, metrics, or traces',
         isComplete: hasData,
         isLoading: isSourceRowsLoading, // We'll implement data checking later
-        onClick: hasData ? undefined : onAddDataClick,
+        href: hasData ? undefined : '/getting-started',
       },
     ],
     [
@@ -142,7 +138,6 @@ const OnboardingChecklist = ({
       hasData,
       isConnectionsLoading,
       isSourcesLoading,
-      onAddDataClick,
       isSourceRowsLoading,
     ],
   );

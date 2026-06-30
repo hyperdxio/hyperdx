@@ -33,7 +33,7 @@ import { useGetKeyValues } from '@/hooks/useMetadata';
 import { withAppNav } from '@/layout';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
-import OnboardingModal from './components/OnboardingModal';
+import OnboardingGate from './components/OnboardingGate';
 import ServiceMap from './components/ServiceMap/ServiceMap';
 import { TableSourceForm } from './components/Sources/SourceForm';
 import SourceSchemaPreview, {
@@ -213,7 +213,7 @@ function DBServiceMapPage() {
         <Head>
           <title>Service Map - {brandName}</title>
         </Head>
-        <OnboardingModal />
+        <OnboardingGate />
       </>
     ),
     [brandName],

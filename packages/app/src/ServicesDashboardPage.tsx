@@ -77,7 +77,7 @@ import DBHistogramChart from '@/components/DBHistogramChart';
 import DBListBarChart from '@/components/DBListBarChart';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
-import OnboardingModal from '@/components/OnboardingModal';
+import OnboardingGate from '@/components/OnboardingGate';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
@@ -1609,7 +1609,7 @@ function ServicesDashboardPage() {
           Services
         </Text>
       </Breadcrumbs>
-      <OnboardingModal requireSource={false} />
+      <OnboardingGate requireSource={false} />
       <ServiceDashboardEndpointSidePanel
         service={service}
         searchedTimeRange={searchedTimeRange}

@@ -49,7 +49,7 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { DBTimeChart } from './components/DBTimeChart';
 import { FormatPodStatus } from './components/KubeComponents';
 import { KubernetesFilters } from './components/KubernetesFilters';
-import OnboardingModal from './components/OnboardingModal';
+import OnboardingGate from './components/OnboardingGate';
 import SourceSchemaPreview, {
   isSourceSchemaPreviewEnabled,
 } from './components/SourceSchemaPreview';
@@ -1344,7 +1344,7 @@ function KubernetesDashboardPage() {
       <Head>
         <title>Kubernetes Dashboard – {brandName}</title>
       </Head>
-      <OnboardingModal requireSource={false} />
+      <OnboardingGate requireSource={false} />
       {metricSource && logSource && (
         <PodDetailsSidePanel
           logSource={logSource}

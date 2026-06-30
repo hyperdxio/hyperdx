@@ -17,6 +17,7 @@ import {
   BuilderSavedChartConfig,
   ChartConfigWithOptTimestamp,
   MetricsDataType,
+  MetricTable,
   NumberFormat,
   SourceKind,
   SourceSchema,
@@ -439,6 +440,241 @@ export async function inferTableSourceConfig({
         }
       : {}),
   };
+}
+
+/**
+ * Detect OTel tables for a connection and create the matching sources
+ * (logs / traces / metrics / sessions), wiring up the cross-source links.
+ * Returns the sources that were created, or an empty array when no OTel tables
+ * could be detected. Shared by the onboarding modal and the getting-started
+ * page so both stay in sync.
+ */
+export async function autoDetectOtelSources({
+  connectionId,
+  metadata,
+  createSource,
+  updateSource,
+}: {
+  connectionId: string;
+  metadata: Metadata;
+  createSource: ReturnType<typeof useCreateSource>['mutateAsync'];
+  updateSource: ReturnType<typeof useUpdateSource>['mutateAsync'];
+}): Promise<TSource[]> {
+  const otelTables = await metadata.getOtelTables({ connectionId });
+
+  if (!otelTables) {
+    return [];
+  }
+
+  const createdSources: TSource[] = [];
+
+  // Create Log Source if available
+  if (otelTables.tables.logs) {
+    const inferredConfig = await inferTableSourceConfig({
+      kind: SourceKind.Log,
+      databaseName: otelTables.database,
+      tableName: otelTables.tables.logs,
+      connectionId,
+      metadata,
+    });
+
+    if (
+      inferredConfig.kind === SourceKind.Log &&
+      inferredConfig.timestampValueExpression != null
+    ) {
+      const logSource = await createSource({
+        source: {
+          name: 'Logs',
+          connection: connectionId,
+          from: {
+            databaseName: otelTables.database,
+            tableName: otelTables.tables.logs,
+          },
+          ...inferredConfig,
+          timestampValueExpression: inferredConfig.timestampValueExpression,
+          defaultTableSelectExpression:
+            inferredConfig.defaultTableSelectExpression ?? '',
+        },
+      });
+      createdSources.push(logSource);
+    } else {
+      console.error(
+        'Log source was found but missing required fields',
+        inferredConfig,
+      );
+    }
+  }
+
+  // Create Trace Source if available
+  if (otelTables.tables.traces) {
+    const inferredConfig = await inferTableSourceConfig({
+      kind: SourceKind.Trace,
+      databaseName: otelTables.database,
+      tableName: otelTables.tables.traces,
+      connectionId,
+      metadata,
+    });
+
+    if (
+      inferredConfig.kind === SourceKind.Trace &&
+      inferredConfig.timestampValueExpression != null
+    ) {
+      const traceSource = await createSource({
+        source: {
+          name: 'Traces',
+          connection: connectionId,
+          from: {
+            databaseName: otelTables.database,
+            tableName: otelTables.tables.traces,
+          },
+          ...inferredConfig,
+          defaultTableSelectExpression:
+            inferredConfig.defaultTableSelectExpression ?? '',
+          timestampValueExpression: inferredConfig.timestampValueExpression,
+          durationExpression: inferredConfig.durationExpression ?? '',
+          durationPrecision: inferredConfig.durationPrecision ?? 9,
+          traceIdExpression: inferredConfig.traceIdExpression ?? '',
+          spanIdExpression: inferredConfig.spanIdExpression ?? '',
+          parentSpanIdExpression: inferredConfig.parentSpanIdExpression ?? '',
+          spanNameExpression: inferredConfig.spanNameExpression ?? '',
+          spanKindExpression: inferredConfig.spanKindExpression ?? '',
+        },
+      });
+      createdSources.push(traceSource);
+    } else {
+      console.error(
+        'Trace source was found but missing required fields',
+        inferredConfig,
+      );
+    }
+  }
+
+  // Create Metrics Source if any metrics tables are available
+  const hasMetrics = Object.values(otelTables.tables.metrics).some(
+    t => t != null,
+  );
+  if (hasMetrics) {
+    const metricTables: MetricTable = {
+      [MetricsDataType.Gauge]: '',
+      [MetricsDataType.Histogram]: '',
+      [MetricsDataType.Sum]: '',
+      [MetricsDataType.Summary]: '',
+      [MetricsDataType.ExponentialHistogram]: '',
+    };
+    if (otelTables.tables.metrics.gauge) {
+      metricTables[MetricsDataType.Gauge] = otelTables.tables.metrics.gauge;
+    }
+    if (otelTables.tables.metrics.histogram) {
+      metricTables[MetricsDataType.Histogram] =
+        otelTables.tables.metrics.histogram;
+    }
+    if (otelTables.tables.metrics.sum) {
+      metricTables[MetricsDataType.Sum] = otelTables.tables.metrics.sum;
+    }
+    if (otelTables.tables.metrics.summary) {
+      metricTables[MetricsDataType.Summary] = otelTables.tables.metrics.summary;
+    }
+    if (otelTables.tables.metrics.expHistogram) {
+      metricTables[MetricsDataType.ExponentialHistogram] =
+        otelTables.tables.metrics.expHistogram;
+    }
+
+    const metricsSource = await createSource({
+      source: {
+        kind: SourceKind.Metric,
+        name: 'Metrics',
+        connection: connectionId,
+        from: {
+          databaseName: otelTables.database,
+          tableName: '',
+        },
+        timestampValueExpression: 'TimeUnix',
+        metricTables,
+        resourceAttributesExpression: 'ResourceAttributes',
+      },
+    });
+    createdSources.push(metricsSource);
+  }
+
+  // Create Session Source if available
+  if (otelTables.tables.sessions) {
+    const inferredConfig = await inferTableSourceConfig({
+      kind: SourceKind.Session,
+      databaseName: otelTables.database,
+      tableName: otelTables.tables.sessions,
+      connectionId,
+      metadata,
+    });
+    const traceSource = createdSources.find(s => s.kind === SourceKind.Trace);
+
+    if (
+      inferredConfig.kind === SourceKind.Session &&
+      inferredConfig.timestampValueExpression != null &&
+      traceSource != null
+    ) {
+      const sessionSource = await createSource({
+        source: {
+          name: 'Sessions',
+          connection: connectionId,
+          from: {
+            databaseName: otelTables.database,
+            tableName: otelTables.tables.sessions,
+          },
+          ...inferredConfig,
+          timestampValueExpression: inferredConfig.timestampValueExpression,
+          traceSourceId: traceSource.id, // this is required for session source creation
+        },
+      });
+      createdSources.push(sessionSource);
+    } else {
+      console.error(
+        'Session source was found but missing required fields',
+        inferredConfig,
+      );
+    }
+  }
+
+  if (createdSources.length === 0) {
+    console.error('No sources created due to missing required fields');
+    return [];
+  }
+
+  // Update sources to link them together
+  const logSource = createdSources.find(s => s.kind === SourceKind.Log);
+  const traceSource = createdSources.find(s => s.kind === SourceKind.Trace);
+  const metricsSource = createdSources.find(s => s.kind === SourceKind.Metric);
+  const sessionSource = createdSources.find(s => s.kind === SourceKind.Session);
+
+  const updatePromises = [];
+
+  if (logSource) {
+    updatePromises.push(
+      updateSource({
+        source: {
+          ...logSource,
+          ...(traceSource ? { traceSourceId: traceSource.id } : {}),
+          ...(metricsSource ? { metricSourceId: metricsSource.id } : {}),
+        },
+      }),
+    );
+  }
+
+  if (traceSource) {
+    updatePromises.push(
+      updateSource({
+        source: {
+          ...traceSource,
+          ...(logSource ? { logSourceId: logSource.id } : {}),
+          ...(metricsSource ? { metricSourceId: metricsSource.id } : {}),
+          ...(sessionSource ? { sessionSourceId: sessionSource.id } : {}),
+        },
+      }),
+    );
+  }
+
+  await Promise.all(updatePromises);
+
+  return createdSources;
 }
 
 export function getDurationMsExpression(source: TTraceSource) {

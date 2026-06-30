@@ -32,7 +32,6 @@ import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { IS_LOCAL_MODE } from '@/config';
 import { Dashboard, useDashboards } from '@/dashboard';
 import { useFavorites } from '@/favorites';
-import InstallInstructionModal from '@/InstallInstructionsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches } from '@/savedSearch';
 import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
@@ -262,11 +261,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     userPreferences: { isUTC },
   } = useUserPreferences();
 
-  const [
-    showInstallInstructions,
-    { open: openInstallInstructions, close: closeInstallInstructions },
-  ] = useDisclosure(false);
-
   const isSavedSearchActive = useMemo(() => {
     if (!pathname?.startsWith('/search/')) return false;
 
@@ -320,10 +314,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           }}
         ></div>
       )}
-      <InstallInstructionModal
-        show={showInstallInstructions}
-        onHide={closeInstallInstructions}
-      />
       <div
         data-testid="app-nav"
         className={cx(styles.nav, {
@@ -481,7 +471,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               style={{ width: navWidth }}
               className={styles.onboardingSection}
             >
-              <OnboardingChecklist onAddDataClick={openInstallInstructions} />
+              <OnboardingChecklist />
               <AppNavCloudBanner />
             </div>
           )}

@@ -42,7 +42,7 @@ import { ChartBox } from './components/ChartBox';
 import DBHeatmapChart from './components/DBHeatmapChart';
 import { DBSqlRowTable } from './components/DBRowTable';
 import DBTableChart from './components/DBTableChart';
-import OnboardingModal from './components/OnboardingModal';
+import OnboardingGate from './components/OnboardingGate';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { clickhouseSql } from './utils/codeMirror';
@@ -647,7 +647,7 @@ function ClickhousePage() {
           <Head>
             <title>ClickHouse Dashboard – {brandName}</title>
           </Head>
-          <OnboardingModal requireSource={false} />
+          <OnboardingGate requireSource={false} />
           <Tabs
             mt="md"
             keepMounted={false}

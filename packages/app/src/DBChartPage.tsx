@@ -35,7 +35,7 @@ import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
 
-import OnboardingModal from './components/OnboardingModal';
+import OnboardingGate from './components/OnboardingGate';
 
 // Autocomplete can focus on column/map keys
 
@@ -232,7 +232,7 @@ function DBChartExplorerPage() {
       <Head>
         <title>Chart Explorer - {brandName}</title>
       </Head>
-      <OnboardingModal />
+      <OnboardingGate />
       <AIAssistant
         setConfig={setChartConfig}
         onTimeRangeSelect={onTimeRangeSelect}
