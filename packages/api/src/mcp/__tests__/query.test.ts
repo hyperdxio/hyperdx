@@ -6,11 +6,16 @@ jest.mock('@/utils/trimToolResponse', () => ({
   trimToolResponse: (data: unknown) => ({ data, isTrimmed: false }),
 }));
 
+import { ClickHouseError } from '@clickhouse/client-common';
+
 import {
   annotateIncreaseTopNHint,
   assertSourceKindMatchesSelect,
+  clickHouseErrorResult,
   errorHint,
+  getClickHouseErrorType,
   INCREASE_TOP_N_CAP,
+  isServerError,
   mergeWhereIntoSelectItems,
   parseTimeRange,
 } from '@/mcp/tools/query/helpers';
@@ -20,6 +25,7 @@ import {
   validateMetricSelectItems,
 } from '@/mcp/tools/query/schemas';
 import { resolveOrderBy } from '@/mcp/tools/query/table';
+import { getErrorCategory } from '@/mcp/utils/errors';
 
 describe('parseTimeRange', () => {
   it('should return default range (last 15 minutes) when no arguments provided', () => {
@@ -258,6 +264,233 @@ describe('errorHint', () => {
   it('should return null for unrecognized errors', () => {
     const hint = errorHint('Connection refused');
     expect(hint).toBeNull();
+  });
+});
+
+// ─── getClickHouseErrorType ──────────────────────────────────────────────────
+
+describe('getClickHouseErrorType', () => {
+  it('returns undefined for a non-Error value', () => {
+    expect(getClickHouseErrorType('NETWORK_ERROR')).toBeUndefined();
+    expect(getClickHouseErrorType(null)).toBeUndefined();
+    expect(getClickHouseErrorType(undefined)).toBeUndefined();
+    expect(getClickHouseErrorType({ type: 'NETWORK_ERROR' })).toBeUndefined();
+  });
+
+  it('returns the type from .cause when present (wrapped ClickHouseError)', () => {
+    const cause = new ClickHouseError({
+      message: 'timeout',
+      code: '159',
+      type: 'SOCKET_TIMEOUT',
+    });
+    const err = new Error('query failed', { cause });
+    expect(getClickHouseErrorType(err)).toBe('SOCKET_TIMEOUT');
+  });
+
+  it('returns the type from a direct ClickHouseError', () => {
+    const err = new ClickHouseError({
+      message: 'direct',
+      code: '62',
+      type: 'SYNTAX_ERROR',
+    });
+    expect(getClickHouseErrorType(err)).toBe('SYNTAX_ERROR');
+  });
+
+  it('returns .cause type when wrapper carries a ClickHouseError cause', () => {
+    const cause = new ClickHouseError({
+      message: 'inner',
+      code: '210',
+      type: 'NETWORK_ERROR',
+    });
+    const err = new Error('outer wrapper', { cause });
+    expect(getClickHouseErrorType(err)).toBe('NETWORK_ERROR');
+  });
+
+  it('returns undefined when neither .cause nor the error is a ClickHouseError', () => {
+    expect(getClickHouseErrorType(new Error('plain'))).toBeUndefined();
+  });
+
+  it('ignores non-ClickHouseError objects with a .type property', () => {
+    const err = Object.assign(new Error('not CH'), { type: 'NETWORK_ERROR' });
+    expect(getClickHouseErrorType(err)).toBeUndefined();
+  });
+
+  it('ignores .cause that is a plain object with a type (not ClickHouseError)', () => {
+    const err = new Error('no CH cause', {
+      cause: { type: 'SOCKET_TIMEOUT' },
+    });
+    expect(getClickHouseErrorType(err)).toBeUndefined();
+  });
+});
+
+// ─── isServerError ───────────────────────────────────────────────────────────
+
+describe('isServerError', () => {
+  it('returns true for ClickHouseError with a server-side type', () => {
+    const cause = new ClickHouseError({
+      message: 'network',
+      code: '210',
+      type: 'NETWORK_ERROR',
+    });
+    const err = new Error('query failed', { cause });
+    expect(isServerError(err)).toBe(true);
+  });
+
+  it('returns false for ClickHouseError with a query-level type', () => {
+    const cause = new ClickHouseError({
+      message: 'syntax',
+      code: '62',
+      type: 'SYNTAX_ERROR',
+    });
+    const err = new Error('query failed', { cause });
+    expect(isServerError(err)).toBe(false);
+  });
+
+  it('returns true for ECONNREFUSED (TCP connection failure)', () => {
+    const err = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:1'), {
+      code: 'ECONNREFUSED',
+    });
+    expect(isServerError(err)).toBe(true);
+  });
+
+  it('returns true for ENOTFOUND (DNS failure)', () => {
+    const err = Object.assign(
+      new Error('getaddrinfo ENOTFOUND bogus.invalid'),
+      { code: 'ENOTFOUND' },
+    );
+    expect(isServerError(err)).toBe(true);
+  });
+
+  it('returns true for ECONNRESET', () => {
+    const err = Object.assign(new Error('socket hang up'), {
+      code: 'ECONNRESET',
+    });
+    expect(isServerError(err)).toBe(true);
+  });
+
+  it('returns true for ETIMEDOUT', () => {
+    const err = Object.assign(new Error('connect timed out'), {
+      code: 'ETIMEDOUT',
+    });
+    expect(isServerError(err)).toBe(true);
+  });
+
+  it('returns true when TCP error is wrapped in .cause', () => {
+    const cause = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:1'), {
+      code: 'ECONNREFUSED',
+    });
+    const err = new Error('request failed', { cause });
+    expect(isServerError(err)).toBe(true);
+  });
+
+  it('returns false for a plain Error with no code', () => {
+    expect(isServerError(new Error('something failed'))).toBe(false);
+  });
+
+  it('returns false for non-Error values', () => {
+    expect(isServerError('ECONNREFUSED')).toBe(false);
+    expect(isServerError(null)).toBe(false);
+  });
+});
+
+// ─── clickHouseErrorResult ───────────────────────────────────────────────────
+
+describe('clickHouseErrorResult', () => {
+  it('classifies infrastructure error types as "server"', () => {
+    for (const type of [
+      'NETWORK_ERROR',
+      'SOCKET_TIMEOUT',
+      'POCO_EXCEPTION',
+      'ALL_CONNECTION_TRIES_FAILED',
+    ]) {
+      const cause = new ClickHouseError({
+        message: 'infra down',
+        code: '210',
+        type,
+      });
+      const err = new Error('infra down', { cause });
+      const result = clickHouseErrorResult(err);
+      expect(result.isError).toBe(true);
+      expect(getErrorCategory(result)).toBe('server');
+    }
+  });
+
+  it('classifies query/syntax errors as "user"', () => {
+    const cause = new ClickHouseError({
+      message: 'bad query',
+      code: '62',
+      type: 'SYNTAX_ERROR',
+    });
+    const err = new Error('bad query', { cause });
+    const result = clickHouseErrorResult(err);
+    expect(getErrorCategory(result)).toBe('user');
+  });
+
+  it('defaults to "user" when no error type is available', () => {
+    const result = clickHouseErrorResult(new Error('mystery'));
+    expect(getErrorCategory(result)).toBe('user');
+  });
+
+  it('classifies a non-Error value as "user"', () => {
+    const result = clickHouseErrorResult('some string failure');
+    expect(getErrorCategory(result)).toBe('user');
+    expect(result.content[0].text).toContain('some string failure');
+  });
+
+  it('prepends a string prefix to the message', () => {
+    const result = clickHouseErrorResult(
+      new Error('boom'),
+      'Failed to sample rows',
+    );
+    expect(result.content[0].text).toBe('Failed to sample rows: boom');
+  });
+
+  it('supports prefix and suffix via the object form', () => {
+    const result = clickHouseErrorResult(new Error('boom'), {
+      prefix: 'Failed to compute breakdown',
+      suffix: 'The parentFilter must be valid ClickHouse SQL.',
+    });
+    expect(result.content[0].text).toBe(
+      'Failed to compute breakdown: boom The parentFilter must be valid ClickHouse SQL.',
+    );
+  });
+
+  it('preserves categorization regardless of message context', () => {
+    const cause = new ClickHouseError({
+      message: 'infra down',
+      code: '210',
+      type: 'NETWORK_ERROR',
+    });
+    const err = new Error('infra down', { cause });
+    const result = clickHouseErrorResult(err, 'Failed to sample rows');
+    expect(getErrorCategory(result)).toBe('server');
+  });
+
+  it('appends the DateTime64 hint and still classifies as "user"', () => {
+    const err = new Error("Cannot parse string '2024Z' as DateTime64(9)");
+    const result = clickHouseErrorResult(err);
+    expect(result.content[0].text).toContain('HINT:');
+    expect(getErrorCategory(result)).toBe('user');
+  });
+
+  it('classifies ECONNREFUSED as "server"', () => {
+    const err = Object.assign(
+      new Error('connect ECONNREFUSED 127.0.0.1:19999'),
+      { code: 'ECONNREFUSED' },
+    );
+    const result = clickHouseErrorResult(err);
+    expect(result.isError).toBe(true);
+    expect(getErrorCategory(result)).toBe('server');
+  });
+
+  it('classifies ENOTFOUND as "server"', () => {
+    const err = Object.assign(
+      new Error('getaddrinfo ENOTFOUND bogus.invalid'),
+      { code: 'ENOTFOUND' },
+    );
+    const result = clickHouseErrorResult(err);
+    expect(result.isError).toBe(true);
+    expect(getErrorCategory(result)).toBe('server');
   });
 });
 

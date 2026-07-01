@@ -10,6 +10,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import { mcpUserError } from '@/mcp/utils/errors';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import {
@@ -41,15 +42,9 @@ export async function runEventPatterns(
   // ── Resolve source & connection ──
   const source = await getSource(teamId, sourceId);
   if (!source) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source not found: ${sourceId}. Call clickstack_list_sources to discover available source IDs.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source not found: ${sourceId}. Call clickstack_list_sources to discover available source IDs.`,
+    );
   }
 
   const connection = await getConnectionById(
@@ -58,15 +53,9 @@ export async function runEventPatterns(
     true,
   );
   if (!connection) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Connection not found for source: ${sourceId}. Call clickstack_list_sources to discover available source IDs.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Connection not found for source: ${sourceId}. Call clickstack_list_sources to discover available source IDs.`,
+    );
   }
 
   // ── Determine body column ──
@@ -77,36 +66,22 @@ export async function runEventPatterns(
   if (options?.bodyExpression) {
     const parts = splitAndTrimWithBracket(options.bodyExpression);
     if (parts.length !== 1 || !SAFE_BODY_EXPR_CHARS.test(parts[0])) {
-      return {
-        isError: true as const,
-        content: [
-          {
-            type: 'text' as const,
-            text:
-              'bodyExpression must be a single column expression ' +
-              '(e.g. "Body", "SpanName", "SpanAttributes[\'http.url\']"). ' +
-              'Multiple expressions, function calls, or sub-queries are not allowed.',
-          },
-        ],
-      };
+      return mcpUserError(
+        'bodyExpression must be a single column expression ' +
+          '(e.g. "Body", "SpanName", "SpanAttributes[\'http.url\']"). ' +
+          'Multiple expressions, function calls, or sub-queries are not allowed.',
+      );
     }
     bodyColumn = parts[0];
   } else {
     bodyColumn = resolveBodyExpression(source);
   }
   if (!bodyColumn) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text:
-            'Could not determine body column for pattern mining. ' +
-            'This source may not have a body/spanName expression configured. ' +
-            'Try specifying bodyExpression explicitly.',
-        },
-      ],
-    };
+    return mcpUserError(
+      'Could not determine body column for pattern mining. ' +
+        'This source may not have a body/spanName expression configured. ' +
+        'Try specifying bodyExpression explicitly.',
+    );
   }
 
   const clickhouseClient = new ClickhouseClient({
@@ -247,15 +222,7 @@ export async function runEventPatterns(
     }));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Pattern mining failed: ${message}`,
-        },
-      ],
-    };
+    return mcpUserError(`Pattern mining failed: ${message}`);
   }
 
   // ── Format response ──

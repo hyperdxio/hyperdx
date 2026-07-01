@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
 
 import { parseTimeRange } from './helpers';
 import { runEventPatterns } from './runEventPatterns';
@@ -93,10 +94,7 @@ export function registerEventPatterns({
     async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: timeRange.error }],
-        };
+        return mcpUserError(timeRange.error);
       }
       const { startDate, endDate } = timeRange;
 

@@ -7,7 +7,7 @@ import * as config from '@/config';
 import { getRecentAlertHistories } from '@/controllers/alertHistory';
 import { getAlertById } from '@/controllers/alerts';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { validateObjectId } from '@/mcp/utils/errors';
+import { mcpUserError, validateObjectId } from '@/mcp/utils/errors';
 import Alert from '@/models/alert';
 import type { IDashboard } from '@/models/dashboard';
 import type { ISavedSearch } from '@/models/savedSearch';
@@ -114,10 +114,7 @@ export function registerGetAlert({
 
       const alert = await getAlertById(id, teamId);
       if (!alert) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Alert not found' }],
-        };
+        return mcpUserError('Alert not found');
       }
 
       const external = translateAlertDocumentToExternalAlert(alert);

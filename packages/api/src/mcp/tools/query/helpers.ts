@@ -1,3 +1,4 @@
+import { ClickHouseError } from '@clickhouse/client-common';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -22,6 +23,8 @@ import ms from 'ms';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import type { McpErrorResult } from '@/mcp/utils/errors';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import {
   convertToInternalTileConfig,
   isConfigTile,
@@ -392,12 +395,7 @@ export async function runConfigTile(
   options?: { maxResults?: number; granularity?: string },
 ) {
   if (!isConfigTile(tile)) {
-    return {
-      isError: true as const,
-      content: [
-        { type: 'text' as const, text: 'Invalid tile: config field missing' },
-      ],
-    };
+    return mcpUserError('Invalid tile: config field missing');
   }
 
   const internalTile = convertToInternalTileConfig(tile);
@@ -422,15 +420,9 @@ export async function runConfigTile(
 
     const source = await getSource(teamId, builderConfig.source);
     if (!source) {
-      return {
-        isError: true as const,
-        content: [
-          {
-            type: 'text' as const,
-            text: `Source not found: ${builderConfig.source}. Call clickstack_list_sources to discover available source IDs.`,
-          },
-        ],
-      };
+      return mcpUserError(
+        `Source not found: ${builderConfig.source}. Call clickstack_list_sources to discover available source IDs.`,
+      );
     }
 
     // Reject metric-style select against a non-metric source (and vice
@@ -447,15 +439,9 @@ export async function runConfigTile(
       true,
     );
     if (!connection) {
-      return {
-        isError: true as const,
-        content: [
-          {
-            type: 'text' as const,
-            text: `Connection not found for source: ${builderConfig.source}`,
-          },
-        ],
-      };
+      return mcpUserError(
+        `Connection not found for source: ${builderConfig.source}`,
+      );
     }
 
     const clickhouseClient = new ClickhouseClient({
@@ -597,15 +583,9 @@ export async function runConfigTile(
     true,
   );
   if (!connection) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Connection not found: ${savedConfig.connection}. Call clickstack_list_sources to discover available connection IDs.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Connection not found: ${savedConfig.connection}. Call clickstack_list_sources to discover available connection IDs.`,
+    );
   }
 
   const clickhouseClient = new ClickhouseClient({
@@ -638,22 +618,146 @@ export async function runConfigTile(
 // ─── Error hints ─────────────────────────────────────────────────────────────
 
 /**
+ * ClickHouse server-side error types that indicate an infrastructure problem
+ * rather than a user query issue. These appear in `ClickHouseError.type` when
+ * the ClickHouse server itself reports a connection/network failure (e.g. to
+ * a replica or Zookeeper).
+ */
+const SERVER_CH_ERROR_TYPES = new Set([
+  'NETWORK_ERROR',
+  'SOCKET_TIMEOUT',
+  'POCO_EXCEPTION',
+  'ALL_CONNECTION_TRIES_FAILED',
+]);
+
+/**
+ * Node.js system error codes that indicate a TCP-level connection failure.
+ * These appear on plain `Error` objects thrown by the ClickHouse HTTP client
+ * when the server is unreachable — the client never gets an HTTP response,
+ * so no `ClickHouseError` is constructed.
+ */
+const SERVER_NODE_ERROR_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'EPIPE',
+  'UND_ERR_CONNECT_TIMEOUT',
+]);
+
+/**
+ * Extract the ClickHouse error `type` from an error, walking `.cause` to
+ * find the original `ClickHouseError` from `@clickhouse/client-common`.
+ *
+ * Uses `instanceof ClickHouseError` instead of duck-typing to avoid false
+ * positives from other errors that happen to carry a `.type` property
+ * (e.g. Node.js `TypeError`).
+ *
+ * @internal Exported for testing only.
+ */
+export function getClickHouseErrorType(e: unknown): string | undefined {
+  if (!(e instanceof Error)) return undefined;
+  // ClickHouseQueryError wraps the original ClickHouseError as .cause
+  if (e.cause instanceof ClickHouseError) {
+    return e.cause.type;
+  }
+  // Direct ClickHouseError (has .type on itself)
+  if (e instanceof ClickHouseError) {
+    return e.type;
+  }
+  return undefined;
+}
+
+/**
+ * Check whether an error represents a system-level infrastructure failure
+ * rather than a user query issue. Covers both ClickHouse server-side error
+ * types (e.g. NETWORK_ERROR) and Node.js TCP-level errors (e.g. ECONNREFUSED)
+ * which the client throws as plain `Error` objects.
+ *
+ * @internal Exported for testing only.
+ */
+export function isServerError(e: unknown): boolean {
+  // ClickHouse server-side error type
+  const chType = getClickHouseErrorType(e);
+  if (chType && SERVER_CH_ERROR_TYPES.has(chType)) return true;
+
+  // Node.js TCP/socket-level error. Walk the full cause chain because
+  // common-utils' ClickHouseQueryError may nest the real TCP error
+  // several levels deep.
+  let current: unknown = e;
+  const seen = new Set<unknown>(); // guard against circular .cause
+  while (current instanceof Error) {
+    if (seen.has(current)) break;
+    seen.add(current);
+    if (hasNodeErrorCode(current, SERVER_NODE_ERROR_CODES)) return true;
+    // AggregateError.errors may hold the real TCP error
+    if (
+      current instanceof AggregateError &&
+      current.errors.some(inner =>
+        hasNodeErrorCode(inner, SERVER_NODE_ERROR_CODES),
+      )
+    ) {
+      return true;
+    }
+    current = current.cause;
+  }
+
+  return false;
+}
+
+/** Type-safe check for a Node.js system error code on an unknown value. */
+function hasNodeErrorCode(val: unknown, codes: ReadonlySet<string>): boolean {
+  if (!(val instanceof Error)) return false;
+  const code =
+    'code' in val && typeof val.code === 'string' ? val.code : undefined;
+  return code != null && codes.has(code);
+}
+
+/**
  * Decorate raw ClickHouse error messages with actionable guidance before
  * they reach the agent. Some ClickHouse errors are unhelpful in isolation —
  * e.g. "Cannot convert string '...Z' to type DateTime64(9)" leaves the agent
  * guessing about the right format. Catch common patterns and append a hint.
+ *
+ * ClickHouse query errors are classified as user errors by default since the
+ * user/agent wrote the query that failed. Only infrastructure-level errors
+ * (network, socket, connection failures) are classified as server errors.
+ *
+ * @param e        The caught error.
+ * @param context  Optional message context. `prefix` is prepended (e.g.
+ *                 "Failed to sample rows") and `suffix` is appended (e.g.
+ *                 guidance about valid input). The categorization is derived
+ *                 from the underlying ClickHouse error type regardless of the
+ *                 surrounding context.
  */
-export function clickHouseErrorResult(e: unknown): {
-  isError: true;
-  content: [{ type: 'text'; text: string }];
-} {
-  const raw = e instanceof Error ? e.message : String(e);
+export function clickHouseErrorResult(
+  e: unknown,
+  context?: string | { prefix?: string; suffix?: string },
+): McpErrorResult {
+  const { prefix, suffix } =
+    typeof context === 'string'
+      ? { prefix: context, suffix: undefined }
+      : (context ?? {});
+
+  // Prefer .message, but fall back to .cause.message when the wrapper
+  // (e.g. ClickHouseQueryError from common-utils) has an empty message
+  // and the real error details are in the cause chain.
+  const raw =
+    e instanceof Error
+      ? e.message ||
+        (e.cause instanceof Error ? e.cause.message : '') ||
+        String(e)
+      : String(e);
   const hint = errorHint(raw);
-  const text = hint ? `${raw}\n\nHINT: ${hint}` : raw;
-  return {
-    isError: true as const,
-    content: [{ type: 'text' as const, text }],
-  };
+  const base = hint ? `${raw}\n\nHINT: ${hint}` : raw;
+  const text = `${prefix ? `${prefix}: ` : ''}${base}${suffix ? ` ${suffix}` : ''}`;
+
+  // Default to a user error — the user wrote the query that failed.
+  // Only promote to a server error for known infrastructure error types
+  // (ClickHouse server-side errors or TCP-level connection failures).
+  return isServerError(e) ? mcpServerError(text) : mcpUserError(text);
 }
 
 /** @internal Exported for testing only. */
