@@ -17,7 +17,7 @@ export interface QuickFilterItem {
   generateWhere: (isSql: boolean) => string;
 }
 
-export function formatColumnEquals(
+function formatColumnEquals(
   column: string,
   value: string,
   isSql: boolean,

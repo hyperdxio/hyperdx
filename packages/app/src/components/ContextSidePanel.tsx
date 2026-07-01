@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import ms from 'ms';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
@@ -145,6 +145,10 @@ export default function ContextSubpanel({
 
   // Filter state
   const [selectedFilterIds, setSelectedFilterIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setSelectedFilterIds([]);
+  }, [rowId]);
 
   const availableFilters = useMemo(
     () => extractQuickFilters(rowData, source),
