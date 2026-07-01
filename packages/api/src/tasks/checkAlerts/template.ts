@@ -359,7 +359,14 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
   const headers = {
     'Content-Type': 'application/json', // default, will be overwritten if user has set otherwise
     ...(webhook.headers?.toJSON() ?? {}),
-    'Idempotency-Key': `${message.eventId}-${message.startTime}-${message.state}`,
+    // objectHash captures delivery identity: the same alert window + state always maps to the
+    // same key, so retries are safely deduplicated by the receiver.
+    'Idempotency-Key': objectHash({
+      eventId: message.eventId,
+      startTime: message.startTime,
+      endTime: message.endTime,
+      state: message.state,
+    }),
   };
   // BODY
   let body = '';

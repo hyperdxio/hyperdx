@@ -2,7 +2,7 @@ import { serializeError } from 'serialize-error';
 
 import logger from './logger';
 
-export interface RetryOptions {
+interface RetryOptions {
   maxRetries?: number;
   initialDelayMs?: number;
   maxDelayMs?: number;
