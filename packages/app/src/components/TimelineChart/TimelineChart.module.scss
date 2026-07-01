@@ -76,6 +76,30 @@
   position: relative;
 }
 
+// Duration (+ span body on hover) rendered just outside the bar. Positioned by
+// TimelineChartRowEvents on whichever side has more room.
+.barDetail {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+// Span body text is hidden by default and only revealed while the row is
+// hovered or active, so it never competes with the always-on duration label.
+.barDetailBody {
+  display: none;
+  color: var(--color-text-muted);
+}
+
+.timelineRow:hover .barDetailBody,
+.timelineRowActive .barDetailBody {
+  display: inline;
+}
+
 .resizeHandleContainer {
   position: absolute;
   left: 0;
@@ -102,9 +126,26 @@
   background: var(--color-bg-body);
 }
 
+// Full-height grid lines layer. Zero-height + sticky top so the lines track the
+// viewport (matching the label header), with no z-index so they paint behind
+// the rows while the header (z-index: 1) stays above them.
+.xAxisGrid {
+  position: sticky;
+  top: 0;
+  height: 0;
+  pointer-events: none;
+}
+
 .xAxisInner {
   display: flex;
   align-items: center;
+}
+
+// Top-align the grid lines so they start at the viewport top and extend down,
+// rather than being vertically centered in the zero-height grid layer.
+.xAxisGridInner {
+  display: flex;
+  align-items: flex-start;
 }
 
 // Tick children are created/measured imperatively by TimelineXAxis.tsx
