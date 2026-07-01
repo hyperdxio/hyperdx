@@ -117,7 +117,10 @@ import {
   useSavedSearch,
   useUpdateSavedSearch,
 } from '@/savedSearch';
-import { useSearchPageFilterState } from '@/searchFilters';
+import {
+  canonicalizeFilterQuery,
+  useSearchPageFilterState,
+} from '@/searchFilters';
 import { getEventBody, useSource, useSources } from '@/source';
 import { useAppTheme, useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
@@ -146,6 +149,7 @@ import {
 } from './components/TimePicker/utils';
 import {
   useColumns,
+  useJsonColumns,
   useResolvedDateTimeColumns,
   useTableMetadata,
 } from './hooks/useMetadata';
@@ -1125,6 +1129,7 @@ export function DBSearchPage() {
       },
       resolver: zodResolver(SearchConfigSchema),
     });
+  const canonicalizedFiltersSyncRef = useRef<Filter[] | null>(null);
 
   const inputSource = useWatch({ name: 'source', control });
 
@@ -1159,6 +1164,10 @@ export function DBSearchPage() {
   // const { data: inputSourceObj } = useSource({ id: inputSource });
   const { data: inputSourceObjs } = useSources();
   const inputSourceObj = inputSourceObjs?.find(s => s.id === inputSource);
+  const inputSourceTableConnection = useMemo(
+    () => tcFromSource(inputSourceObj),
+    [inputSourceObj],
+  );
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Live Tail');
@@ -1178,6 +1187,15 @@ export function DBSearchPage() {
   const prevSearched = usePrevious(searchedConfig);
   useEffect(() => {
     if (JSON.stringify(prevSearched) !== JSON.stringify(searchedConfig)) {
+      if (
+        canonicalizedFiltersSyncRef.current != null &&
+        JSON.stringify(canonicalizedFiltersSyncRef.current) ===
+          JSON.stringify(searchedConfig.filters ?? [])
+      ) {
+        canonicalizedFiltersSyncRef.current = null;
+        return;
+      }
+
       reset({
         select: searchedConfig?.select ?? '',
         where: searchedConfig?.where ?? '',
@@ -1318,6 +1336,10 @@ export function DBSearchPage() {
         : new Set<string>(),
     [inputSourceColumns],
   );
+  const { data: inputSourceJsonColumns = [] } = useJsonColumns(
+    inputSourceTableConnection,
+    { enabled: !!inputSourceObj },
+  );
 
   const watchedSource = useWatch({
     control,
@@ -1348,11 +1370,43 @@ export function DBSearchPage() {
     useResolvedDateTimeColumns(inputSourceColumns);
 
   const filters = useWatch({ name: 'filters', control });
+  const canonicalizedFilters = useMemo(() => {
+    if (!filters?.length || !inputSourceColumns) {
+      return null;
+    }
+
+    const nextFilters = canonicalizeFilterQuery(
+      filters,
+      knownColumns,
+      inputSourceJsonColumns,
+      dateTimeColumns,
+    );
+
+    return JSON.stringify(nextFilters) === JSON.stringify(filters)
+      ? null
+      : nextFilters;
+  }, [
+    dateTimeColumns,
+    filters,
+    inputSourceColumns,
+    inputSourceJsonColumns,
+    knownColumns,
+  ]);
+  useEffect(() => {
+    if (!canonicalizedFilters) {
+      return;
+    }
+
+    setValue('filters', canonicalizedFilters);
+    canonicalizedFiltersSyncRef.current = canonicalizedFilters;
+    setSearchedConfig({ filters: canonicalizedFilters });
+  }, [canonicalizedFilters, setSearchedConfig, setValue]);
   const searchFilters = useSearchPageFilterState({
     searchQuery: filters ?? undefined,
     onFilterChange: handleSetFilters,
     dateTimeColumns,
     knownColumns,
+    jsonColumns: inputSourceJsonColumns,
   });
 
   useEffect(() => {
@@ -1967,11 +2021,6 @@ export function DBSearchPage() {
       generateSearchUrl,
       isDrawerChildModalOpen,
     ],
-  );
-
-  const inputSourceTableConnection = useMemo(
-    () => tcFromSource(inputSourceObj),
-    [inputSourceObj],
   );
 
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
