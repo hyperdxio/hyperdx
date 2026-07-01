@@ -164,6 +164,21 @@ describe('DBRowJsonViewer', () => {
     );
   });
 
+  // HDX-4427: "Add to Filters" on a value inside parsed JSON from a String
+  // column must hand searchFilters the JSONExtract* expression, which is what
+  // gets serialized into the WHERE clause. Body here is a String column holding
+  // a JSON string with a dotted key, mirroring the play-clickstack repro.
+  it('adds a JSONExtractString filter for a value inside a parsed-JSON string column', () => {
+    renderComponent({ Body: JSON.stringify({ 'app.user.currency': 'USD' }) });
+
+    expandAndClickButton('Body', 'app.user.currency', 'Add to Filters');
+
+    expect(mockOnPropertyAddClick).toHaveBeenCalledWith(
+      "JSONExtractString(Body, 'app.user.currency')",
+      'USD',
+    );
+  });
+
   it('toggles columns with correct path formatting', () => {
     renderComponent(logData);
     clickLineButton('field1', 'Column');
