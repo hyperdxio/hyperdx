@@ -1,7 +1,6 @@
 import { SearchPage } from '../../page-objects/SearchPage';
 import { JSON_BODY_LOG } from '../../seed-clickhouse';
 import { expect, test } from '../../utils/base-test';
-import { DEFAULT_LOGS_SOURCE_NAME } from '../../utils/constants';
 
 // Re-running the search query after a filter change can take longer than
 // Playwright's 5s assertion default on slow CI runners.
@@ -22,7 +21,10 @@ test.describe(
     }) => {
       const searchPage = new SearchPage(page);
       await searchPage.goto();
-      await searchPage.selectSource(DEFAULT_LOGS_SOURCE_NAME);
+      // The default source is already the logs source (as total-count-matches
+      // relies on). Do not selectSource here: re-selecting a source resets the
+      // search bar, so the query below would not apply and results stay
+      // unfiltered.
       await searchPage.timePicker.selectRelativeTime('Last 1 hour');
 
       // Isolate the seeded JSON-body row so the side panel opens on it.
