@@ -56,7 +56,7 @@ import {
   StatusPill,
   SummaryRow,
 } from '@/components/GettingStarted/SummaryRow';
-import { IntegrationsDrawer } from '@/components/IntegrationsDrawer';
+import { IntegrationsDrawer } from '@/components/Integrations';
 import { LogoBadge } from '@/components/LogoBadge/LogoBadge';
 
 import {
