@@ -580,7 +580,12 @@ export function DBTraceWaterfallChartContainer({
     defaultValues: {
       traceWhere: traceWhere ?? '',
       logWhere: logWhere ?? '',
-      traceWhereLanguage: getStoredLanguage() ?? 'lucene',
+      // Prefer the URL's whereLanguage so a shared link / reload shows the same
+      // language the filter runs in; fall back to the stored preference.
+      traceWhereLanguage:
+        whereLanguage === 'sql' || whereLanguage === 'lucene'
+          ? whereLanguage
+          : (getStoredLanguage() ?? 'lucene'),
     },
   });
 
@@ -600,6 +605,9 @@ export function DBTraceWaterfallChartContainer({
   const onClearFilters = useCallback(() => {
     setValue('traceWhere', '');
     setValue('logWhere', '');
+    // Reset the language toggle too, otherwise a stale value gets re-serialized
+    // into the URL on the next submit, undoing the cleared state.
+    setValue('traceWhereLanguage', getStoredLanguage() ?? 'lucene');
     clearFilters();
   }, [clearFilters, setValue]);
 
