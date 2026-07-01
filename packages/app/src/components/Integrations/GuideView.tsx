@@ -21,8 +21,28 @@ import {
   applyGuideTokens,
   INTEGRATION_GUIDES,
   INTEGRATION_ITEMS_BY_ID,
+  SIGNAL_LABELS,
+  signalsFor,
 } from './integrationsCatalog';
 import { ItemBadge } from './ItemTile';
+
+function SignalChip({ label }: { label: string }) {
+  return (
+    <Box
+      px={8}
+      py={2}
+      style={{
+        borderRadius: 999,
+        border: '1px solid var(--color-border)',
+        background: 'var(--color-bg-muted)',
+      }}
+    >
+      <Text fz={12} fw={500} style={{ color: 'var(--color-text)' }}>
+        {label}
+      </Text>
+    </Box>
+  );
+}
 
 interface GuideCodeProps {
   code: string;
@@ -87,6 +107,7 @@ export function GuideView({
 }) {
   const guide = INTEGRATION_GUIDES[guideId];
   const item = INTEGRATION_ITEMS_BY_ID[guideId];
+  const signals = signalsFor(guideId);
 
   return (
     <Stack gap={16}>
@@ -114,6 +135,17 @@ export function GuideView({
           </Text>
         </Stack>
       </Group>
+
+      {signals.length > 0 ? (
+        <Group gap={8} align="center" wrap="wrap">
+          <Text fz={12} fw={500} style={{ color: 'var(--color-text-muted)' }}>
+            This guide integrates:
+          </Text>
+          {signals.map(signal => (
+            <SignalChip key={signal} label={SIGNAL_LABELS[signal]} />
+          ))}
+        </Group>
+      ) : null}
 
       <Divider />
 

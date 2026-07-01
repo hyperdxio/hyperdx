@@ -1,4 +1,12 @@
-import { Box, Group, Stack, Text, UnstyledButton } from '@mantine/core';
+import {
+  Box,
+  Group,
+  Stack,
+  Text,
+  Tooltip,
+  UnstyledButton,
+} from '@mantine/core';
+import { IconArrowUpRight } from '@tabler/icons-react';
 
 import { LogoBadge } from '@/components/LogoBadge/LogoBadge';
 
@@ -70,15 +78,26 @@ function ItemTile({
   }
 
   return (
-    <UnstyledButton
-      component="a"
-      href={docUrl(item.doc)}
-      target="_blank"
-      rel="noreferrer"
-      style={TILE_STYLE}
-    >
-      {label}
-    </UnstyledButton>
+    <Tooltip label="Opens the docs in a new tab" withArrow position="top">
+      <UnstyledButton
+        component="a"
+        href={docUrl(item.doc)}
+        target="_blank"
+        rel="noreferrer"
+        style={{ ...TILE_STYLE, position: 'relative' }}
+      >
+        {label}
+        <IconArrowUpRight
+          size={13}
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            color: 'var(--color-text-muted)',
+          }}
+        />
+      </UnstyledButton>
+    </Tooltip>
   );
 }
 

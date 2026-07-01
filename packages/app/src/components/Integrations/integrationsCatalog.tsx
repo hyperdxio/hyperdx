@@ -205,6 +205,46 @@ export function docUrl(slug: string) {
   return `${DOCS_BASE}/${slug}`;
 }
 
+/** Telemetry signal an integration can send into ClickStack. */
+export type Signal = 'logs' | 'traces' | 'metrics';
+
+export const SIGNAL_LABELS: Record<Signal, string> = {
+  logs: 'Logs',
+  traces: 'Traces',
+  metrics: 'Metrics',
+};
+
+/**
+ * Which signals each integration brings, shown as chips in the setup guide.
+ * Best-effort defaults — adjust per integration as the guides are finalized.
+ */
+const INTEGRATION_SIGNALS: Record<string, Signal[]> = {
+  browser: ['logs', 'traces'],
+  nodejs: ['logs', 'traces', 'metrics'],
+  python: ['logs', 'traces', 'metrics'],
+  go: ['logs', 'traces', 'metrics'],
+  java: ['logs', 'traces', 'metrics'],
+  ruby: ['logs', 'traces', 'metrics'],
+  elixir: ['logs', 'traces', 'metrics'],
+  deno: ['logs', 'traces', 'metrics'],
+  nextjs: ['logs', 'traces'],
+  nestjs: ['logs', 'traces', 'metrics'],
+  'react-native': ['logs', 'traces'],
+  kubernetes: ['logs', 'metrics'],
+  docker: ['logs', 'metrics'],
+  nginx: ['logs', 'metrics'],
+  kafka: ['logs', 'metrics'],
+  aws: ['logs', 'metrics'],
+  gcp: ['logs', 'metrics'],
+  azure: ['logs', 'metrics'],
+  opentelemetry: ['logs', 'traces', 'metrics'],
+  vector: ['logs', 'metrics'],
+};
+
+export function signalsFor(id: string): Signal[] {
+  return INTEGRATION_SIGNALS[id] ?? [];
+}
+
 /** Flat lookup of every catalog item by id (for guide headers etc.). */
 export const INTEGRATION_ITEMS_BY_ID: Record<string, IntegrationItem> =
   Object.fromEntries(
