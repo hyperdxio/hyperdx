@@ -1,5 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-
 import * as config from '@/config';
 import {
   createSavedSearch,
@@ -7,20 +5,19 @@ import {
   updateSavedSearch,
 } from '@/controllers/savedSearch';
 import { getSource } from '@/controllers/sources';
-import type { McpContext } from '@/mcp/tools/types';
+import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpError, validateObjectId } from '@/mcp/utils/errors';
-import { withToolTracing } from '@/mcp/utils/tracing';
 
 import { mcpSaveSavedSearchSchema } from './schemas';
 
-export function registerSaveSavedSearch(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerSaveSavedSearch({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
-  server.registerTool(
+  registerTool(
     'clickstack_save_saved_search',
     {
       title: 'Create or Update Saved Search',
@@ -30,7 +27,7 @@ export function registerSaveSavedSearch(
         'Use clickstack_list_sources to find the sourceId.',
       inputSchema: mcpSaveSavedSearchSchema,
     },
-    withToolTracing('clickstack_save_saved_search', context, async input => {
+    async input => {
       const isUpdate = !!input.id;
 
       // ── Validate ID for updates ──
@@ -127,6 +124,6 @@ export function registerSaveSavedSearch(
           },
         ],
       };
-    }),
+    },
   );
 }
