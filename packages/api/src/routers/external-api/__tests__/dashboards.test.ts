@@ -5893,11 +5893,51 @@ describe('External API v2 Dashboards - new format', () => {
         { method: 'post', path: BASE_URL },
         { method: 'put', path: `${BASE_URL}/${testId}` },
         { method: 'delete', path: `${BASE_URL}/${testId}` },
+        { method: 'post', path: `${BASE_URL}/validate` },
       ];
 
       for (const { method, path } of routes) {
         await unauthenticatedAgent[method](path).expect(401);
       }
+    });
+  });
+
+  describe('POST /api/v2/dashboards/validate', () => {
+    it('returns valid:true for a well-formed builder dashboard', async () => {
+      const res = await authRequest('post', `${BASE_URL}/validate`).send({
+        name: 'D',
+        tiles: [],
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.valid).toBe(true);
+      expect(res.body.errors).toEqual([]);
+    });
+
+    it('returns valid:false with errors for a malformed body', async () => {
+      const res = await authRequest('post', `${BASE_URL}/validate`).send({
+        tiles: 'nope',
+      }); // name missing, tiles wrong type
+      expect(res.status).toBe(200);
+      expect(res.body.valid).toBe(false);
+      expect(res.body.errors.length).toBeGreaterThan(0);
+    });
+
+    it('returns a normalized body with zod defaults applied when valid', async () => {
+      const res = await authRequest('post', `${BASE_URL}/validate`).send({
+        name: 'D',
+        tiles: [],
+      });
+      expect(res.body.valid).toBe(true);
+      expect(res.body.normalized).toMatchObject({ name: 'D', tiles: [] });
+    });
+
+    it('does not persist (dashboard count unchanged)', async () => {
+      const before = await Dashboard.countDocuments({});
+      await authRequest('post', `${BASE_URL}/validate`).send({
+        name: 'D',
+        tiles: [],
+      });
+      expect(await Dashboard.countDocuments({})).toBe(before);
     });
   });
 });

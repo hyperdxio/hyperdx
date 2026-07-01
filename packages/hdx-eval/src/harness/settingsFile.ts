@@ -39,17 +39,35 @@ export const DENIED_BUILT_IN_TOOLS = [
 /**
  * Build the list of denied tools for a given MCP and prompt variant.
  * Per-MCP denied tools come from `McpDefinition.deniedTools`.
+ *
+ * When `allowedToolPatterns` is provided (from a scenario hook), matching
+ * tools are removed from the deny list via substring matching.
  */
 export function deniedToolsFor(
   variant: PromptVariant,
   def?: McpDefinition,
+  allowedToolPatterns?: string[],
 ): readonly string[] {
   const builtIn =
     variant === 'hypothesis'
       ? DENIED_BUILT_IN_TOOLS_BASE
       : DENIED_BUILT_IN_TOOLS;
 
-  const mcpDenied = def?.deniedTools ?? [];
+  let mcpDenied = def?.deniedTools ?? [];
+
+  // Scenarios can selectively unblock tools by providing substring patterns.
+  // E.g., dashboard scenarios pass ['delete_dashboard', 'save_dashboard', ...]
+  // to remove those from the deny list.
+  if (
+    allowedToolPatterns &&
+    allowedToolPatterns.length > 0 &&
+    mcpDenied.length > 0
+  ) {
+    mcpDenied = mcpDenied.filter(
+      t => !allowedToolPatterns.some(p => t.includes(p)),
+    );
+  }
+
   if (mcpDenied.length > 0) {
     return [...builtIn, ...mcpDenied];
   }
@@ -60,6 +78,7 @@ export function buildSettings(
   def: McpDefinition,
   variant: PromptVariant = 'baseline',
   tempdir?: string,
+  allowedToolPatterns?: string[],
 ): Record<string, unknown> {
   const allow: string[] = [allowedToolsPattern(def)];
 
@@ -73,7 +92,7 @@ export function buildSettings(
   return {
     permissions: {
       allow,
-      deny: [...deniedToolsFor(variant, def)],
+      deny: [...deniedToolsFor(variant, def, allowedToolPatterns)],
     },
   };
 }
