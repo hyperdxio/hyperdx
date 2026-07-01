@@ -65,11 +65,14 @@ function useFacetsFromRawTables({
   const { data: jsonColumns } = useJsonColumns(tableConnection);
   const { data: mapColumns } = useMapColumns(tableConnection);
 
-  const { data: allFields } = useAllFields(tableConnection, {
-    dateRange,
-    timestampValueExpression: source?.timestampValueExpression,
-    enabled,
-  });
+  const { data: allFields, error: allFieldsError } = useAllFields(
+    tableConnection,
+    {
+      dateRange,
+      timestampValueExpression: source?.timestampValueExpression,
+      enabled,
+    },
+  );
 
   const { isFieldPinned, isSharedFieldPinned } = usePinnedFilters(
     sourceId ?? null,
@@ -209,7 +212,12 @@ function useFacetsFromRawTables({
     ],
   );
 
-  return { ...rest, data: exactFacets, loadMoreFacetsForKey };
+  return {
+    ...rest,
+    error: allFieldsError ?? rest.error,
+    data: exactFacets,
+    loadMoreFacetsForKey,
+  };
 }
 
 function useAllFacetsFromMVs({
