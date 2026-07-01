@@ -180,6 +180,34 @@ describe('toClickHouseKeyExpression', () => {
       "LogAttributes['42.foo']",
     );
   });
+
+  // HDX-4427: "Add to Filters" on a value inside parsed JSON from a String
+  // column builds a JSONExtract* function call as the filter key. These are
+  // already valid ClickHouse expressions and must pass through untouched.
+  // Previously the dot inside the quoted JSON path argument made
+  // parseMapFieldName treat the whole expression as a dot-form Map sub-key, and
+  // mergePath mangled it into invalid SQL like
+  // `JSONExtractString(Body, 'app['user.currency')']`.
+  describe('raw SQL function-call expression keys (parsed-JSON "Add to Filters")', () => {
+    it.each([
+      "JSONExtractString(Body, 'app.user.currency')",
+      "JSONExtractString(Body, 'app', 'user.currency')",
+      "JSONExtractString(Body, 'level')",
+      "JSONExtractFloat(Body, 'metrics.latency')",
+      "JSONExtractBool(Body, 'flags.enabled')",
+      "JSONExtractString(LogAttributes['weird.key.payload'], 'abc.def.jqk/abcd')",
+    ])('leaves the JSON-extract expression %s unchanged', key => {
+      expect(toClickHouseKeyExpression(key)).toBe(key);
+    });
+
+    // The guard generalizes the previous `startsWith('toString(')` special case,
+    // so a toString() wrapper with no bracket access still passes through.
+    it('leaves a toString() wrapper without bracket access unchanged', () => {
+      expect(toClickHouseKeyExpression('toString(Body)')).toBe(
+        'toString(Body)',
+      );
+    });
+  });
 });
 
 describe('toQuotedClickHouseKeyExpression', () => {
@@ -239,6 +267,18 @@ describe('toQuotedClickHouseKeyExpression', () => {
         new Set(['service-name']),
       ),
     ).toBe('`service-name`');
+  });
+
+  // HDX-4427: the JSONExtract* key from a parsed-JSON "Add to Filters" reaches
+  // toQuotedClickHouseKeyExpression via escapeFilterStateKeys. It is not a known
+  // column and is already valid SQL, so it must pass through unquoted/unmangled.
+  it('leaves a JSON-extract function-call key unchanged', () => {
+    expect(
+      toQuotedClickHouseKeyExpression(
+        "JSONExtractString(Body, 'app.user.currency')",
+        new Set(['Body']),
+      ),
+    ).toBe("JSONExtractString(Body, 'app.user.currency')");
   });
 
   describe('with knownColumns (schema-aware)', () => {

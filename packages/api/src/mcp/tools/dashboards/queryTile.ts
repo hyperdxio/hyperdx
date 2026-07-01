@@ -1,22 +1,20 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
-import type { McpContext } from '@/mcp/tools/types';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import type { ToolRegistrar } from '@/mcp/tools/types';
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
 import { objectIdSchema } from '@/utils/zod';
 
 import { getRawSqlTileMacroWarnings } from './validation';
 
-export function registerQueryTile(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerQueryTile({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_query_tile',
     {
       title: 'Query a Dashboard Tile',
@@ -46,71 +44,67 @@ export function registerQueryTile(
           .describe('End of the query window as ISO 8601. Default: now.'),
       }),
     },
-    withToolTracing(
-      'clickstack_query_tile',
-      context,
-      async ({ dashboardId, tileId, startTime, endTime }) => {
-        const timeRange = parseTimeRange(startTime, endTime);
-        if ('error' in timeRange) {
-          return {
-            isError: true,
-            content: [{ type: 'text' as const, text: timeRange.error }],
-          };
+    async ({ dashboardId, tileId, startTime, endTime }) => {
+      const timeRange = parseTimeRange(startTime, endTime);
+      if ('error' in timeRange) {
+        return {
+          isError: true,
+          content: [{ type: 'text' as const, text: timeRange.error }],
+        };
+      }
+      const { startDate, endDate } = timeRange;
+
+      const dashboard = await Dashboard.findOne({
+        _id: dashboardId,
+        team: teamId,
+      });
+      if (!dashboard) {
+        return {
+          isError: true,
+          content: [{ type: 'text' as const, text: 'Dashboard not found' }],
+        };
+      }
+
+      const externalDashboard = convertToExternalDashboard(dashboard);
+      const tile = externalDashboard.tiles.find(t => t.id === tileId);
+      if (!tile) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text' as const,
+              text: `Tile not found: ${tileId}. Available tile IDs: ${externalDashboard.tiles.map(t => t.id).join(', ')}`,
+            },
+          ],
+        };
+      }
+
+      const result = await runConfigTile(
+        teamId.toString(),
+        tile,
+        startDate,
+        endDate,
+      );
+
+      // Surface non-blocking missing macro warnings alongside
+      // the successful result so the agent can spot a tile that runs but
+      // ignores dashboard controls.
+      const macroWarnings = getRawSqlTileMacroWarnings([tile]);
+      if (
+        macroWarnings.length > 0 &&
+        !('isError' in result && result.isError) &&
+        result.content?.[0]?.type === 'text'
+      ) {
+        try {
+          const parsed = JSON.parse(result.content[0].text);
+          parsed.warnings = macroWarnings;
+          result.content[0].text = JSON.stringify(parsed, null, 2);
+        } catch {
+          // leave result unmodified
         }
-        const { startDate, endDate } = timeRange;
+      }
 
-        const dashboard = await Dashboard.findOne({
-          _id: dashboardId,
-          team: teamId,
-        });
-        if (!dashboard) {
-          return {
-            isError: true,
-            content: [{ type: 'text' as const, text: 'Dashboard not found' }],
-          };
-        }
-
-        const externalDashboard = convertToExternalDashboard(dashboard);
-        const tile = externalDashboard.tiles.find(t => t.id === tileId);
-        if (!tile) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: 'text' as const,
-                text: `Tile not found: ${tileId}. Available tile IDs: ${externalDashboard.tiles.map(t => t.id).join(', ')}`,
-              },
-            ],
-          };
-        }
-
-        const result = await runConfigTile(
-          teamId.toString(),
-          tile,
-          startDate,
-          endDate,
-        );
-
-        // Surface non-blocking missing macro warnings alongside
-        // the successful result so the agent can spot a tile that runs but
-        // ignores dashboard controls.
-        const macroWarnings = getRawSqlTileMacroWarnings([tile]);
-        if (
-          macroWarnings.length > 0 &&
-          !('isError' in result && result.isError) &&
-          result.content?.[0]?.type === 'text'
-        ) {
-          try {
-            const parsed = JSON.parse(result.content[0].text);
-            parsed.warnings = macroWarnings;
-            result.content[0].text = JSON.stringify(parsed, null, 2);
-          } catch {
-            // leave result unmodified
-          }
-        }
-
-        return result;
-      },
-    ),
+      return result;
+    },
   );
 }

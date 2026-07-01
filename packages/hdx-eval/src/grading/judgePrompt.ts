@@ -12,12 +12,17 @@ Return STRICT JSON of shape:
 { "scores": { "<criterion_id>": { "score": N, "rationale": "..." } } }
 No prose outside the JSON. Include every criterion id from the rubric.`;
 
-export function buildJudgeSystem(scenarioName: string, rubric: Rubric): string {
+export function buildJudgeSystem(
+  scenarioName: string,
+  rubric: Rubric,
+  /** Custom system preamble from a scenario hook. */
+  customPreamble?: string,
+): string {
   const criteriaSection = rubric.judge.criteria
     .map(c => `- "${c.id}" (weight ${c.weight}): ${c.description}`)
     .join('\n');
   return [
-    SYSTEM_PREAMBLE,
+    customPreamble ?? SYSTEM_PREAMBLE,
     '',
     `SCENARIO: ${scenarioName}`,
     '',
@@ -30,8 +35,10 @@ export function buildJudgeUser(args: {
   scenarioPrompt: string;
   groundTruthFacts: string;
   candidateAnswer: string;
+  /** Dashboard artifact evidence — appended for dashboard scenarios. */
+  dashboardEvidence?: string;
 }): string {
-  return [
+  const sections = [
     'SCENARIO QUESTION:',
     args.scenarioPrompt,
     '',
@@ -40,7 +47,13 @@ export function buildJudgeUser(args: {
     '',
     'CANDIDATE FINAL ANSWER (anonymized):',
     args.candidateAnswer,
-  ].join('\n');
+  ];
+
+  if (args.dashboardEvidence) {
+    sections.push('', args.dashboardEvidence);
+  }
+
+  return sections.join('\n');
 }
 
 /**

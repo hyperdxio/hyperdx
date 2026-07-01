@@ -1,19 +1,17 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import type { McpContext } from '@/mcp/tools/types';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import type { ToolRegistrar } from '@/mcp/tools/types';
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
 import { objectIdSchema } from '@/utils/zod';
 
-export function registerGetDashboardTile(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerGetDashboardTile({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_get_dashboard_tile',
     {
       title: 'Get a Single Dashboard Tile',
@@ -32,44 +30,40 @@ export function registerGetDashboardTile(
           ),
       }),
     },
-    withToolTracing(
-      'clickstack_get_dashboard_tile',
-      context,
-      async ({ dashboardId, tileId }) => {
-        const dashboard = await Dashboard.findOne({
-          _id: dashboardId,
-          team: teamId,
-        });
-        if (!dashboard) {
-          return {
-            isError: true,
-            content: [{ type: 'text' as const, text: 'Dashboard not found' }],
-          };
-        }
-
-        const externalDashboard = convertToExternalDashboard(dashboard);
-        const tile = externalDashboard.tiles.find(t => t.id === tileId);
-        if (!tile) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: 'text' as const,
-                text: `Tile not found: ${tileId}. Available tile IDs: ${externalDashboard.tiles.map(t => `${t.id} (${t.name})`).join(', ')}`,
-              },
-            ],
-          };
-        }
-
+    async ({ dashboardId, tileId }) => {
+      const dashboard = await Dashboard.findOne({
+        _id: dashboardId,
+        team: teamId,
+      });
+      if (!dashboard) {
         return {
+          isError: true,
+          content: [{ type: 'text' as const, text: 'Dashboard not found' }],
+        };
+      }
+
+      const externalDashboard = convertToExternalDashboard(dashboard);
+      const tile = externalDashboard.tiles.find(t => t.id === tileId);
+      if (!tile) {
+        return {
+          isError: true,
           content: [
             {
               type: 'text' as const,
-              text: JSON.stringify(tile, null, 2),
+              text: `Tile not found: ${tileId}. Available tile IDs: ${externalDashboard.tiles.map(t => `${t.id} (${t.name})`).join(', ')}`,
             },
           ],
         };
-      },
-    ),
+      }
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(tile, null, 2),
+          },
+        ],
+      };
+    },
   );
 }

@@ -1,13 +1,11 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-
-import type { McpContext, ToolDefinition } from '@/mcp/tools/types';
+import type { ToolDefinition, ToolRegistrar } from '@/mcp/tools/types';
 
 import { registerTraceBreakdown } from './breakdown';
 import { registerTraceWaterfall } from './waterfall';
 
-const traceTools: ToolDefinition = (server: McpServer, context: McpContext) => {
-  registerTraceWaterfall(server, context);
-  registerTraceBreakdown(server, context);
+const traceTools: ToolDefinition = (registrar: ToolRegistrar) => {
+  registerTraceWaterfall(registrar);
+  registerTraceBreakdown(registrar);
 };
 
 export default traceTools;
