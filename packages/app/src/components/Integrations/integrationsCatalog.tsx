@@ -35,6 +35,11 @@ export interface IntegrationItem {
   /** Slug appended to `DOCS_BASE`. */
   doc: string;
   Icon?: IconType;
+  /**
+   * Path to a brand SVG under `/public/integrations`. Takes precedence over
+   * `Icon` and `monogram` — use it for logos react-icons doesn't carry.
+   */
+  logo?: string;
   /** Glyph color; defaults to the brand color or theme text when omitted. */
   color?: string;
   /** Two-letter fallback shown when there's no brand icon. */
@@ -234,7 +239,7 @@ export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
         id: 'vector',
         name: 'Vector',
         doc: 'ingesting-data/vector',
-        monogram: 'Vec',
+        logo: '/integrations/vector.svg',
         color: '#10b1e7',
         keywords: ['logs', 'pipeline'],
       },
