@@ -3125,13 +3125,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@clickhouse/client-common@npm:^1.12.1":
-  version: 1.23.0
-  resolution: "@clickhouse/client-common@npm:1.23.0"
-  checksum: 10c0/180787ceac558035c4e4f5d2418b560707b6b718b9bd5e541b8b14ec32390fc861b624232d64899c923f3b5e5bb04fce6014d1715cce0990a3bff062cc335c81
-  languageName: node
-  linkType: hard
-
 "@clickhouse/client-web@npm:1.23.0-head.fae5998.1":
   version: 1.23.0-head.fae5998.1
   resolution: "@clickhouse/client-web@npm:1.23.0-head.fae5998.1"
@@ -4449,7 +4442,7 @@ __metadata:
     "@ai-sdk/anthropic": "npm:^3.0.58"
     "@ai-sdk/openai": "npm:^3.0.47"
     "@braintree/sanitize-url": "npm:^7.1.1"
-    "@clickhouse/client-common": "npm:^1.12.1"
+    "@clickhouse/client-common": "npm:1.23.0-head.fae5998.1"
     "@esm2cjs/p-queue": "npm:^7.3.0"
     "@hyperdx/common-utils": "npm:^0.21.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"

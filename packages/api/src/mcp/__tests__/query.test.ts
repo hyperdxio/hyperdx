@@ -321,6 +321,28 @@ describe('getClickHouseErrorType', () => {
     });
     expect(getClickHouseErrorType(err)).toBeUndefined();
   });
+
+  it('detects a cross-package ClickHouseError via constructor-name fallback', () => {
+    // Simulate a ClickHouseError from a different copy of
+    // @clickhouse/client-common where instanceof would fail.
+    class ClickHouseError extends Error {
+      type: string;
+      code: string;
+      constructor(opts: { message: string; code: string; type: string }) {
+        super(opts.message);
+        this.name = 'ClickHouseError';
+        this.type = opts.type;
+        this.code = opts.code;
+      }
+    }
+    const cause = new ClickHouseError({
+      message: 'network',
+      code: '210',
+      type: 'NETWORK_ERROR',
+    });
+    const err = new Error('query failed', { cause });
+    expect(getClickHouseErrorType(err)).toBe('NETWORK_ERROR');
+  });
 });
 
 // ─── isServerError ───────────────────────────────────────────────────────────
@@ -390,6 +412,57 @@ describe('isServerError', () => {
   it('returns false for non-Error values', () => {
     expect(isServerError('ECONNREFUSED')).toBe(false);
     expect(isServerError(null)).toBe(false);
+  });
+
+  it('returns true for ClickHouseError nested at depth 2+', () => {
+    const chErr = new ClickHouseError({
+      message: 'network',
+      code: '210',
+      type: 'NETWORK_ERROR',
+    });
+    const mid = new Error('mid-level wrapper', { cause: chErr });
+    const outer = new Error('outer wrapper', { cause: mid });
+    expect(isServerError(outer)).toBe(true);
+  });
+
+  it('detects a cross-package ClickHouseError via constructor-name fallback', () => {
+    // Locally-declared class — instanceof against the imported
+    // ClickHouseError will fail, exercising the name-based fallback.
+    class ClickHouseError extends Error {
+      type: string;
+      code: string;
+      constructor(opts: { message: string; code: string; type: string }) {
+        super(opts.message);
+        this.name = 'ClickHouseError';
+        this.type = opts.type;
+        this.code = opts.code;
+      }
+    }
+    const cause = new ClickHouseError({
+      message: 'network',
+      code: '210',
+      type: 'NETWORK_ERROR',
+    });
+    const err = new Error('query failed', { cause });
+    expect(isServerError(err)).toBe(true);
+  });
+
+  it('returns true for AggregateError containing a TCP error', () => {
+    const tcpErr = Object.assign(
+      new Error('connect ECONNREFUSED 127.0.0.1:1'),
+      { code: 'ECONNREFUSED' },
+    );
+    const aggErr = new AggregateError([tcpErr], 'all connections failed');
+    expect(isServerError(aggErr)).toBe(true);
+  });
+
+  it('handles circular .cause without infinite loop', () => {
+    const a = new Error('a');
+    const b = new Error('b', { cause: a });
+    // Create circular reference: a.cause -> b -> a -> ...
+    (a as any).cause = b;
+    // Should terminate and return false (no server error codes)
+    expect(isServerError(a)).toBe(false);
   });
 });
 

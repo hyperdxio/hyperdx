@@ -341,9 +341,7 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
           columnMetaUnavailable = true;
         }
       } catch (e) {
-        return mcpUserError(
-          `Failed to build sample queries: ${e instanceof Error ? e.message : String(e)}`,
-        );
+        return clickHouseErrorResult(e, 'Failed to build sample queries');
       }
 
       let targetRows: Record<string, any>[];
