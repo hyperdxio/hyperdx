@@ -21,6 +21,10 @@ export type JudgeOptions = {
   client?: Anthropic;
   /** Blinding entries for anonymizing MCP identity in the answer. */
   blindingEntries?: BlindingEntry[];
+  /** Custom judge system preamble from a scenario hook. */
+  judgeSystemPreamble?: string;
+  /** Post-run inspection evidence to append to the judge prompt. */
+  inspectionEvidence?: string;
 };
 
 export async function judgeTrajectory(
@@ -30,11 +34,16 @@ export async function judgeTrajectory(
   const client =
     opts.client ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const systemPrompt = buildJudgeSystem(opts.scenarioName, opts.rubric);
+  const systemPrompt = buildJudgeSystem(
+    opts.scenarioName,
+    opts.rubric,
+    opts.judgeSystemPreamble,
+  );
   const userPrompt = buildJudgeUser({
     scenarioPrompt: opts.scenarioPrompt,
     groundTruthFacts: formatGroundTruthFacts(opts.groundTruth),
     candidateAnswer: blindAnswer(opts.finalAnswer, opts.blindingEntries),
+    dashboardEvidence: opts.inspectionEvidence,
   });
 
   const startedMs = Date.now();
