@@ -19,6 +19,35 @@ describe('cleanClickHouseExpression', () => {
     ).toBe('ResourceAttributes.hdx.sdk');
   });
 
+  it('strips typed JSON subcolumn suffixes', () => {
+    expect(
+      cleanClickHouseExpression(
+        'ResourceAttributes.`k8s`.`namespace`.`name`.:String',
+      ),
+    ).toBe('ResourceAttributes.k8s.namespace.name');
+    expect(
+      cleanClickHouseExpression(
+        'ResourceAttributes.`http`.`status_code`.:Int64',
+      ),
+    ).toBe('ResourceAttributes.http.status_code');
+    expect(
+      cleanClickHouseExpression('ResourceAttributes.`duration_ms`.:Float64'),
+    ).toBe('ResourceAttributes.duration_ms');
+    expect(
+      cleanClickHouseExpression('LogAttributes.`time`.:`DateTime64(9)`'),
+    ).toBe('LogAttributes.time');
+    expect(
+      cleanClickHouseExpression(
+        'ResourceAttributes.`http`.`headers`.:LowCardinality(Nullable(String))',
+      ),
+    ).toBe('ResourceAttributes.http.headers');
+    expect(
+      cleanClickHouseExpression(
+        'ResourceAttributes.`status_codes`.:Array(Nullable(Int64))',
+      ),
+    ).toBe('ResourceAttributes.status_codes');
+  });
+
   it('leaves a plain identifier unchanged', () => {
     expect(cleanClickHouseExpression('ServiceName')).toBe('ServiceName');
   });
@@ -238,6 +267,50 @@ describe('toQuotedClickHouseKeyExpression', () => {
     expect(
       toQuotedClickHouseKeyExpression('LogAttributes.host', knownColumns),
     ).toBe("LogAttributes['host']");
+  });
+
+  it('converts JSON dot-form keys to string expressions', () => {
+    expect(
+      toQuotedClickHouseKeyExpression(
+        'ResourceAttributes.k8s.namespace.name',
+        new Set(['ResourceAttributes']),
+        { jsonColumns: ['ResourceAttributes'] },
+      ),
+    ).toBe('toString(ResourceAttributes.`k8s`.`namespace`.`name`)');
+  });
+
+  it('converts JSON bracket-form keys to string expressions', () => {
+    expect(
+      toQuotedClickHouseKeyExpression(
+        "ResourceAttributes['k8s.namespace.name']",
+        new Set(['ResourceAttributes']),
+        { jsonColumns: ['ResourceAttributes'] },
+      ),
+    ).toBe('toString(ResourceAttributes.`k8s`.`namespace`.`name`)');
+  });
+
+  it('converts typed JSON subcolumn keys to string expressions', () => {
+    expect(
+      toQuotedClickHouseKeyExpression(
+        'ResourceAttributes.`cloud`.`account`.`id`.:Int64',
+        new Set(['ResourceAttributes']),
+        { jsonColumns: ['ResourceAttributes'] },
+      ),
+    ).toBe('toString(ResourceAttributes.`cloud`.`account`.`id`)');
+    expect(
+      toQuotedClickHouseKeyExpression(
+        'LogAttributes.`time`.:`DateTime64(9)`',
+        new Set(['LogAttributes']),
+        { jsonColumns: ['LogAttributes'] },
+      ),
+    ).toBe('toString(LogAttributes.`time`)');
+    expect(
+      toQuotedClickHouseKeyExpression(
+        'ResourceAttributes.`status_codes`.:Array(Nullable(Int64))',
+        new Set(['ResourceAttributes']),
+        { jsonColumns: ['ResourceAttributes'] },
+      ),
+    ).toBe('toString(ResourceAttributes.`status_codes`)');
   });
 
   it('quotes only the root of a bracket map access that needs it', () => {

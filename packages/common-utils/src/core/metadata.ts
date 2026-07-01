@@ -70,19 +70,143 @@ const quoteIdentifierIfNeeded = (identifier: string): string => {
     : quoteJsonPathSegment(unquoted);
 };
 
-const JSON_STRING_TYPE_SUFFIX = '.:String';
+const isIdentifierStart = (char: string): boolean =>
+  (char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z');
 
-const renderJsonStringSubcolumn = (
+const isIdentifierChar = (char: string): boolean =>
+  isIdentifierStart(char) || (char >= '0' && char <= '9') || char === '_';
+
+const isClickHouseJsonTypeSuffix = (suffix: string): boolean => {
+  if (suffix.startsWith('`') && suffix.endsWith('`')) {
+    return suffix.length > 2 && !suffix.slice(1, -1).includes('`');
+  }
+
+  const parenIdx = suffix.indexOf('(');
+  const typeName =
+    parenIdx === -1
+      ? suffix
+      : suffix.endsWith(')')
+        ? suffix.slice(0, parenIdx)
+        : '';
+
+  return (
+    typeName.length > 0 &&
+    isIdentifierStart(typeName[0]) &&
+    [...typeName].every(isIdentifierChar)
+  );
+};
+
+const stripClickHouseJsonTypeSuffix = (jsonPath: string): string => {
+  const suffixIdx = jsonPath.lastIndexOf('.:');
+  if (suffixIdx === -1) {
+    return jsonPath;
+  }
+
+  const suffix = jsonPath.slice(suffixIdx + 2);
+  return isClickHouseJsonTypeSuffix(suffix)
+    ? jsonPath.slice(0, suffixIdx)
+    : jsonPath;
+};
+
+const parseClickHouseIdentifier = (
+  expression: string,
+  startIdx = 0,
+): { value: string; endIdx: number } | undefined => {
+  if (expression.charAt(startIdx) === '`') {
+    let value = '';
+    for (let i = startIdx + 1; i < expression.length; i++) {
+      if (expression.charAt(i) !== '`') {
+        value += expression.charAt(i);
+        continue;
+      }
+
+      if (expression.charAt(i + 1) === '`') {
+        value += '`';
+        i++;
+        continue;
+      }
+
+      return { value, endIdx: i + 1 };
+    }
+    return undefined;
+  }
+
+  if (!isIdentifierStart(expression.charAt(startIdx))) {
+    return undefined;
+  }
+
+  let endIdx = startIdx + 1;
+  while (
+    endIdx < expression.length &&
+    isIdentifierChar(expression.charAt(endIdx))
+  ) {
+    endIdx++;
+  }
+
+  return { value: expression.slice(startIdx, endIdx), endIdx };
+};
+
+const parseRenderedJsonPath = (
+  pathExpression: string,
+): string[] | undefined => {
+  const segments: string[] = [];
+  let idx = 0;
+
+  while (idx < pathExpression.length) {
+    const parsed = parseClickHouseIdentifier(pathExpression, idx);
+    if (!parsed || pathExpression.charAt(idx) !== '`') {
+      return undefined;
+    }
+
+    segments.push(parsed.value);
+    idx = parsed.endIdx;
+
+    if (idx === pathExpression.length) {
+      break;
+    }
+
+    if (pathExpression.charAt(idx) !== '.') {
+      return undefined;
+    }
+    idx++;
+  }
+
+  return segments.length > 0 ? segments : undefined;
+};
+
+const parseRenderedJsonStringExpression = (
+  keyExpression: string,
+): { column: string; key: string } | undefined => {
+  const prefix = 'toString(';
+  if (!keyExpression.startsWith(prefix) || !keyExpression.endsWith(')')) {
+    return undefined;
+  }
+
+  const innerExpression = keyExpression.slice(prefix.length, -1);
+  const parsedColumn = parseClickHouseIdentifier(innerExpression);
+  if (!parsedColumn || innerExpression[parsedColumn.endIdx] !== '.') {
+    return undefined;
+  }
+
+  const path = parseRenderedJsonPath(
+    innerExpression.slice(parsedColumn.endIdx + 1),
+  );
+  if (!path) {
+    return undefined;
+  }
+
+  return { column: parsedColumn.value, key: path.join('.') };
+};
+
+const renderJsonStringExpression = (
   column: string,
   jsonPath: string,
-  options: { preserveStringTypeSuffix?: boolean } = {},
+  options: { stripTypeSuffix?: boolean } = {},
 ): string => {
   const columnIdentifier = quoteIdentifierIfNeeded(column);
-  const untypedJsonPath =
-    options.preserveStringTypeSuffix &&
-    jsonPath.endsWith(JSON_STRING_TYPE_SUFFIX)
-      ? jsonPath.slice(0, -JSON_STRING_TYPE_SUFFIX.length)
-      : jsonPath;
+  const untypedJsonPath = options.stripTypeSuffix
+    ? stripClickHouseJsonTypeSuffix(jsonPath)
+    : jsonPath;
 
   const path = untypedJsonPath
     .split('.')
@@ -90,7 +214,7 @@ const renderJsonStringSubcolumn = (
     .map(quoteJsonPathSegment)
     .join('.');
 
-  return `${columnIdentifier}.${path}${JSON_STRING_TYPE_SUFFIX}`;
+  return `toString(${columnIdentifier}.${path})`;
 };
 
 export class MetadataCache {
@@ -249,7 +373,7 @@ export class Metadata {
       if (
         convertCHDataTypeToJSType(columnMeta?.type ?? '') === JSDataType.JSON
       ) {
-        return renderJsonStringSubcolumn(column, bracketPath[1]);
+        return renderJsonStringExpression(column, bracketPath[1]);
       }
 
       return keyExpression;
@@ -270,8 +394,8 @@ export class Metadata {
     });
 
     if (convertCHDataTypeToJSType(columnMeta?.type ?? '') === JSDataType.JSON) {
-      return renderJsonStringSubcolumn(column, jsonPath, {
-        preserveStringTypeSuffix: true,
+      return renderJsonStringExpression(column, jsonPath, {
+        stripTypeSuffix: true,
       });
     }
 
@@ -824,7 +948,7 @@ export class Metadata {
       : undefined;
     const jsonValueExpression =
       key && convertCHDataTypeToJSType(colMeta?.type ?? '') === JSDataType.JSON
-        ? renderJsonStringSubcolumn(column, key)
+        ? renderJsonStringExpression(column, key)
         : undefined;
 
     let sql: ChSql;
@@ -1560,6 +1684,17 @@ export class Metadata {
 
     // Parse all keys into (rollupColumn, rollupKey) pairs
     const parsed = keyExpressions.map(keyExpr => {
+      const renderedJsonKey = parseRenderedJsonStringExpression(keyExpr);
+      if (renderedJsonKey) {
+        return {
+          keyExpression: keyExpr,
+          rollupColumn: renderedJsonKey.column,
+          rollupKey: renderedJsonKey.key,
+          column: renderedJsonKey.column,
+          mapKey: renderedJsonKey.key,
+        };
+      }
+
       const path = parseKeyPath(keyExpr);
       const isMapKey = path.length >= 2;
       return {
