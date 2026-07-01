@@ -20,7 +20,7 @@ import { HyperdxApiClient } from '@/hyperdx/api';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /** Full evidence collected for a single tile — fed to the LLM judge. */
-export type TileEvidence = {
+type TileEvidence = {
   tileId: string;
   tileName: string;
   displayType: string;
@@ -44,7 +44,7 @@ export type TileEvidence = {
 };
 
 /** Evidence about the dashboard's container/section structure. */
-export type ContainerEvidence = {
+type ContainerEvidence = {
   id: string;
   title: string;
   collapsed: boolean;
@@ -113,18 +113,18 @@ function extractDashboardIds(toolCalls: ToolCallRecord[]): string[] {
 /**
  * Extract the tile configs the agent intended to create from its
  * save_dashboard tool call input. Returns a map of tile name → config.
- * Keys are prefixed with a per-call index to avoid collisions when
- * multiple dashboards share tile names (e.g., "Error Rate" in both
- * Dashboard 1 and Dashboard 2).
+ * When two dashboards share a tile name (e.g., "Error Rate" in both
+ * Dashboard 1 and Dashboard 2), the last-seen config wins. This is
+ * acceptable because intendedConfig is used for evidence formatting
+ * (judge context), not scoring — the judge sees both tile configs in
+ * the artifact evidence regardless of which one the map returns here.
  */
 function extractIntendedTileConfigs(
   toolCalls: ToolCallRecord[],
 ): Map<string, Record<string, unknown>> {
   const configs = new Map<string, Record<string, unknown>>();
-  let callIdx = 0;
   for (const call of toolCalls) {
     if (!SAVE_DASHBOARD_PATTERN.test(call.name)) continue;
-    callIdx++;
     const input = call.input as Record<string, unknown> | null;
     if (!input) continue;
     const tiles = input.tiles as
@@ -134,12 +134,7 @@ function extractIntendedTileConfigs(
     for (const tile of tiles) {
       const name = tile.name ?? (tile.config as Record<string, unknown>)?.name;
       if (typeof name === 'string' && tile.config) {
-        // Store with plain name (for lookup by tile name from the API response)
-        // and with indexed prefix (for disambiguation across dashboards).
-        // The plain-name entry gets overwritten if two dashboards share a name,
-        // but the indexed entry is always unique.
         configs.set(name, tile.config);
-        configs.set(`${callIdx}:${name}`, tile.config);
       }
     }
   }
@@ -421,11 +416,14 @@ export function analyzeDistractorAwareness(
   const filtersOutDistractors = exclusionNearDistractor;
 
   // Allow-list: an `IN (...)` (or multiple equality ORs) referencing the
-  // user-facing services without the distractors.
+  // user-facing services. We intentionally do NOT require that distractor
+  // service names are absent from the combined text — a dashboard that
+  // correctly scopes headline tiles to user-facing services with an IN-list
+  // may still mention distractors in other tiles (e.g. to explicitly exclude
+  // them). The filtersOutDistractors signal already captures that pattern.
   const userFacingInList =
     /\bin\s*\(\s*'?(web-gateway|order-service|inventory-service)/.test(lower) &&
-    USER_FACING_SERVICES.every(s => lower.includes(s)) &&
-    !DISTRACTOR_SERVICES.some(s => lower.includes(s));
+    USER_FACING_SERVICES.every(s => lower.includes(s));
   const scopesToUserFacing = userFacingInList;
 
   const handlesMessySeverity =
