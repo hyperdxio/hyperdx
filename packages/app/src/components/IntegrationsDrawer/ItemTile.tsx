@@ -7,7 +7,7 @@ import {
   hasGuide,
   type IntegrationCategory,
   type IntegrationItem,
-} from '../integrationsCatalog';
+} from './integrationsCatalog';
 
 export function ItemBadge({ item }: { item: IntegrationItem }) {
   const { Icon } = item;

@@ -8,7 +8,7 @@ const SAMPLE_ENDPOINT = 'https://in-otel.hyperdx.io:4318';
 const SAMPLE_API_KEY = 'a1b2c3d4-0000-0000-0000-abcdef123456';
 
 const meta = {
-  title: 'Components/GettingStarted/IntegrationsDrawer',
+  title: 'Components/IntegrationsDrawer',
   component: IntegrationsDrawer,
   parameters: { layout: 'centered' },
   args: {

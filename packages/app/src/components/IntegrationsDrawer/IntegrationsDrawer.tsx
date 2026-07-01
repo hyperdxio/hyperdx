@@ -1,8 +1,7 @@
 import { Box, Drawer, Group, Stack, Text } from '@mantine/core';
 
-import { INTEGRATION_CATEGORIES } from '../integrationsCatalog';
-
 import { DrawerContent } from './DrawerContent';
+import { INTEGRATION_CATEGORIES } from './integrationsCatalog';
 
 export interface IntegrationsDrawerProps {
   opened: boolean;

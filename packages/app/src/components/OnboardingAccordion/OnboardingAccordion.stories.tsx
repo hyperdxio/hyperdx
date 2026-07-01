@@ -56,6 +56,7 @@ import {
   StatusPill,
   SummaryRow,
 } from '@/components/GettingStarted/SummaryRow';
+import { IntegrationsDrawer } from '@/components/IntegrationsDrawer';
 import { LogoBadge } from '@/components/LogoBadge/LogoBadge';
 
 import {
@@ -517,7 +518,7 @@ function AIAgentTab() {
 }
 
 function SendTelemetryBody({ onCheck }: { onCheck?: () => void }) {
-  const [docsOpen, setDocsOpen] = useState(false);
+  const [drawerCategory, setDrawerCategory] = useState<string | null>(null);
   return (
     <Stack gap={20}>
       <ConnectionPanel />
@@ -525,15 +526,18 @@ function SendTelemetryBody({ onCheck }: { onCheck?: () => void }) {
       <Box style={{ height: 1, background: 'var(--color-border)' }} />
 
       <IntegrationsCard
-        onBrowse={() => setDocsOpen(true)}
-        onLanguageSdks={() => setDocsOpen(true)}
+        onBrowse={() => setDrawerCategory('all')}
+        onLanguageSdks={() => setDrawerCategory('languages')}
       />
 
       <CheckTelemetryRow onCheck={onCheck} />
 
-      <IntegrationsDocsDrawer
-        opened={docsOpen}
-        onClose={() => setDocsOpen(false)}
+      <IntegrationsDrawer
+        opened={drawerCategory !== null}
+        onClose={() => setDrawerCategory(null)}
+        endpoint={ENDPOINT}
+        apiKey={API_KEY}
+        initialCategory={drawerCategory ?? 'all'}
       />
     </Stack>
   );
@@ -895,98 +899,9 @@ function CollectorSetupBody() {
   );
 }
 
-const DOC_GUIDES = [
-  'Kubernetes',
-  'Kafka',
-  'Postgres',
-  'Redis',
-  'Nginx',
-  'AWS CloudWatch',
-];
-const DOC_SDKS = ['Browser', 'Node.js', 'Python', 'Go', 'Ruby', 'Java'];
-
-/** A single clickable doc/guide row inside the integrations flyout. */
-function DocRow({ label }: { label: string }) {
-  return (
-    <Anchor href="#" underline="never" onClick={e => e.preventDefault()}>
-      <Group
-        justify="space-between"
-        align="center"
-        wrap="nowrap"
-        style={{
-          border: '1px solid var(--color-border)',
-          borderRadius: 8,
-          padding: '10px 14px',
-        }}
-      >
-        <Text fz={14} fw={500} style={{ color: 'var(--color-text)' }}>
-          {label}
-        </Text>
-        <IconArrowUpRight
-          size={15}
-          style={{ color: 'var(--color-text-muted)' }}
-        />
-      </Group>
-    </Anchor>
-  );
-}
-
-/** Docs flyout: integration guides and language SDKs, opened from a card. */
-function IntegrationsDocsDrawer({
-  opened,
-  onClose,
-}: {
-  opened: boolean;
-  onClose: () => void;
-}) {
-  return (
-    <Drawer
-      opened={opened}
-      onClose={onClose}
-      position="right"
-      size={520}
-      title={
-        <DrawerTitle
-          title="Integrations & SDKs"
-          subtitle="Step-by-step guides to ship data from your sources and apps."
-        />
-      }
-    >
-      <Stack gap={24}>
-        <Stack gap={10}>
-          <Text
-            fz={13}
-            fw={700}
-            tt="uppercase"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            Integration guides
-          </Text>
-          {DOC_GUIDES.map(label => (
-            <DocRow key={label} label={label} />
-          ))}
-        </Stack>
-        <Stack gap={10}>
-          <Text
-            fz={13}
-            fw={700}
-            tt="uppercase"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            Language SDKs
-          </Text>
-          {DOC_SDKS.map(label => (
-            <DocRow key={label} label={label} />
-          ))}
-        </Stack>
-      </Stack>
-    </Drawer>
-  );
-}
-
 function SelfManagedSendTelemetryBody({ onCheck }: { onCheck?: () => void }) {
   const [setupOpen, setSetupOpen] = useState(false);
-  const [docsOpen, setDocsOpen] = useState(false);
+  const [drawerCategory, setDrawerCategory] = useState<string | null>(null);
 
   return (
     <Stack gap={16}>
@@ -1002,8 +917,8 @@ function SelfManagedSendTelemetryBody({ onCheck }: { onCheck?: () => void }) {
       />
 
       <IntegrationsCard
-        onBrowse={() => setDocsOpen(true)}
-        onLanguageSdks={() => setDocsOpen(true)}
+        onBrowse={() => setDrawerCategory('all')}
+        onLanguageSdks={() => setDrawerCategory('languages')}
       />
 
       <CheckTelemetryRow onCheck={onCheck} />
@@ -1023,9 +938,12 @@ function SelfManagedSendTelemetryBody({ onCheck }: { onCheck?: () => void }) {
         <CollectorSetupBody />
       </Drawer>
 
-      <IntegrationsDocsDrawer
-        opened={docsOpen}
-        onClose={() => setDocsOpen(false)}
+      <IntegrationsDrawer
+        opened={drawerCategory !== null}
+        onClose={() => setDrawerCategory(null)}
+        endpoint={ENDPOINT}
+        apiKey={API_KEY}
+        initialCategory={drawerCategory ?? 'all'}
       />
     </Stack>
   );

@@ -18,13 +18,12 @@ import {
   IconSearch,
 } from '@tabler/icons-react';
 
+import { GuideView } from './GuideView';
 import {
   docUrl,
   INTEGRATION_CATEGORIES,
   type IntegrationItem,
-} from '../integrationsCatalog';
-
-import { GuideView } from './GuideView';
+} from './integrationsCatalog';
 import { CategorySection } from './ItemTile';
 
 function CopyRow({ label, value }: { label: string; value: string }) {

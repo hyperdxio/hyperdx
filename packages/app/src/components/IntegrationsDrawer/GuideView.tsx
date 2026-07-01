@@ -21,8 +21,7 @@ import {
   applyGuideTokens,
   INTEGRATION_GUIDES,
   INTEGRATION_ITEMS_BY_ID,
-} from '../integrationsCatalog';
-
+} from './integrationsCatalog';
 import { ItemBadge } from './ItemTile';
 
 interface GuideCodeProps {
