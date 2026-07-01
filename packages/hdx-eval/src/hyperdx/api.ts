@@ -422,7 +422,7 @@ function extractMcpContent(
   return null;
 }
 
-export type HyperdxDashboard = {
+type HyperdxDashboard = {
   /** v2 API returns `id`; internal API returns `_id`. */
   id: string;
   _id?: string;
@@ -443,7 +443,7 @@ export type HyperdxDashboard = {
 };
 
 /** Query result with sample rows for LLM judge evaluation. */
-export type TileQueryEvidence = {
+type TileQueryEvidence = {
   success: boolean;
   hasData: boolean;
   error?: string;
