@@ -687,18 +687,27 @@ export function getClickHouseErrorType(e: unknown): string | undefined {
  * @internal Exported for testing only.
  */
 export function isServerError(e: unknown): boolean {
-  // ClickHouse server-side error type
-  const chType = getClickHouseErrorType(e);
-  if (chType && SERVER_CH_ERROR_TYPES.has(chType)) return true;
-
-  // Node.js TCP/socket-level error. Walk the full cause chain because
-  // common-utils' ClickHouseQueryError may nest the real TCP error
-  // several levels deep.
+  // Walk the full cause chain checking for both ClickHouse server-side
+  // error types and Node.js TCP-level errors at every depth. This
+  // ensures a ClickHouseError with NETWORK_ERROR nested at arbitrary
+  // depth is caught, not just at depth 0-1.
   let current: unknown = e;
   const seen = new Set<unknown>(); // guard against circular .cause
   while (current instanceof Error) {
     if (seen.has(current)) break;
     seen.add(current);
+
+    // ClickHouse server-side error type at this level
+    if (isClickHouseError(current)) {
+      if (SERVER_CH_ERROR_TYPES.has(current.type)) return true;
+    }
+    // Also check .cause for a direct ClickHouseError (the common
+    // ClickHouseQueryError -> ClickHouseError pattern)
+    if (isClickHouseError(current.cause)) {
+      if (SERVER_CH_ERROR_TYPES.has(current.cause.type)) return true;
+    }
+
+    // Node.js TCP/socket-level error
     if (hasNodeErrorCode(current, SERVER_NODE_ERROR_CODES)) return true;
     // AggregateError.errors may hold the real TCP error
     if (
