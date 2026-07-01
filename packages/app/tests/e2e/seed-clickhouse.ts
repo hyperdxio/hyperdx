@@ -121,7 +121,10 @@ export const INTERESTING_FILTER_KEYS_ROWS = [
 // and filters on the nested value, exercising the JSONExtractString(...) filter
 // key path (HDX-4427).
 export const JSON_BODY_LOG = {
-  serviceName: 'json-body-filter-svc',
+  // Underscores, not hyphens: Lucene matches an underscore token exactly inside
+  // quotes, so `ServiceName:"json_body_filter_svc"` isolates this one row. A
+  // hyphenated name tokenizes and matches broadly.
+  serviceName: 'json_body_filter_svc',
   jsonKey: 'app.user.currency',
   jsonValue: 'USD',
 } as const;

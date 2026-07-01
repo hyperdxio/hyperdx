@@ -64,42 +64,42 @@ export class SidePanelComponent {
 
   /**
    * In the parsed JSON view, expand a field whose value is a JSON string, then
-   * click the "Add to Filters" line action on a nested key. Mirrors the
-   * DBRowJsonViewer line actions: each row carries a hashed `*__line` CSS-module
-   * class, and the action is a `<button title="Add to Filters">` revealed only
-   * while the row is hovered.
+   * click the "Add to Filters" line action on a nested key. Each row in the JSON
+   * viewer carries `data-testid="json-viewer-line"`, and the action is a
+   * `<button title="Add to Filters">` rendered only while the row is hovered.
    */
   async addParsedJsonFieldToFilter(parentField: string, nestedKey: string) {
     await this.clickTab('parsed');
 
+    const lines = this.panelContainer.getByTestId('json-viewer-line');
+    // The leaf line is the one containing an element whose text is exactly the
+    // nested key. Exact match avoids the collapsed parent's raw-value preview,
+    // which contains the key inline as part of a longer string.
+    const leafLine = lines.filter({
+      has: this.page.getByText(nestedKey, { exact: true }),
+    });
+
     // The nested key only renders as its own line once the parent field (whose
-    // value is a JSON string) is expanded. An exact text match avoids matching
-    // the collapsed parent's raw-value preview, which contains the key inline.
-    const leaf = this.panelContainer.getByText(nestedKey, { exact: true });
+    // value is a JSON string) is expanded. Expand it if the leaf is not showing.
     if (
-      !(await leaf
+      !(await leafLine
         .first()
         .isVisible()
         .catch(() => false))
     ) {
-      // Click the parent's key (left side, away from the hover-only action
-      // menu) to expand it.
-      await this.panelContainer
-        .getByText(parentField, { exact: true })
+      await lines
+        .filter({ has: this.page.getByText(parentField, { exact: true }) })
         .first()
         .click();
     }
 
-    await leaf.first().waitFor({ state: 'visible', timeout: 10_000 });
+    await leafLine.first().waitFor({ state: 'visible', timeout: 10_000 });
     // Hover the line to mount its action menu, then click the titled button
     // scoped to that line so the parent's menu is never the target.
-    await leaf.first().hover();
-    const leafLine = leaf
-      .first()
-      .locator('xpath=ancestor::*[contains(@class,"__line")][1]');
+    await leafLine.first().hover();
     await leafLine
-      .getByTitle(/add to filters/i)
       .first()
+      .getByTitle(/add to filters/i)
       .click({ timeout: 10_000 });
   }
 
