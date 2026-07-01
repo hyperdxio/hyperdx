@@ -116,6 +116,7 @@ export type SearchWhereInputProps = {
    * Source id used in various queries
    */
   sourceId?: string;
+  parentRef?: HTMLElement | null;
 } & TableConnectionChoice &
   UseControllerProps<any>;
 
@@ -163,6 +164,7 @@ export default function SearchWhereInput({
   dateRange,
   languageName = `${name}Language`,
   sourceId,
+  parentRef,
 }: SearchWhereInputProps) {
   const { field: languageField } = useController({
     control,
@@ -217,6 +219,7 @@ export default function SearchWhereInput({
             additionalSuggestions={additionalSuggestions}
             dateRange={dateRange}
             sourceId={sourceId}
+            parentRef={parentRef}
           />
         ) : (
           <SearchInputV2
