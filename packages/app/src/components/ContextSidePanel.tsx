@@ -171,6 +171,7 @@ export default function ContextSubpanel({
       prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id],
     );
     setActivePreset('custom');
+    setShowCustomSearch(true);
   }, []);
 
   const getWhereClause = useCallback((): string => {
