@@ -1931,6 +1931,122 @@ router.get(
 
 /**
  * @openapi
+ * /api/v2/dashboards/validate:
+ *   post:
+ *     summary: Validate Dashboard
+ *     description: |
+ *       Validates a dashboard body against the same schema and tile rules used
+ *       by POST /api/v2/dashboards. The dashboard is **never persisted**. Use
+ *       this endpoint at plan time (e.g. from a Terraform provider) to check
+ *       that a dashboard configuration is valid before applying it.
+ *     operationId: validateDashboard
+ *     tags: [Dashboards]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateDashboardRequest'
+ *     responses:
+ *       '200':
+ *         description: |
+ *           Validation result. HTTP 200 is always returned for valid **and**
+ *           invalid bodies — a non-200 response means the request itself
+ *           failed (auth, server error, etc.).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [valid, errors, normalized]
+ *               properties:
+ *                 valid:
+ *                   type: boolean
+ *                   description: True when the body passes all validation rules.
+ *                 errors:
+ *                   type: array
+ *                   description: Validation errors. Empty when valid is true.
+ *                   items:
+ *                     type: object
+ *                     required: [path, message]
+ *                     properties:
+ *                       path:
+ *                         type: string
+ *                         description: Dot-separated field path, or empty string for top-level errors.
+ *                       message:
+ *                         type: string
+ *                         description: Human-readable error description.
+ *                 normalized:
+ *                   type: object
+ *                   nullable: true
+ *                   description: Reserved for Task 2 — always null in this version.
+ *             examples:
+ *               valid:
+ *                 summary: Valid dashboard body
+ *                 value:
+ *                   valid: true
+ *                   errors: []
+ *                   normalized: null
+ *               invalid:
+ *                 summary: Invalid dashboard body
+ *                 value:
+ *                   valid: false
+ *                   errors:
+ *                     - path: "name"
+ *                       message: "Required"
+ *                   normalized: null
+ *       '401':
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Unauthorized access. API key is missing or invalid."
+ */
+router.post('/validate', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.sendStatus(403);
+    }
+
+    const parsed = createDashboardBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.json({
+        valid: false,
+        errors: parsed.error.issues.map(i => ({
+          path: i.path.join('.'),
+          message: i.message,
+        })),
+        normalized: null,
+      });
+    }
+
+    const { tiles, filters, containers } = parsed.data;
+    // Cast: createDashboardBodySchema tiles have optional `id`; the validator
+    // only reads sourceId/config — the cast is safe for a no-persist call.
+    const validationError = await validateDashboardTiles({
+      teamId: teamId.toString(),
+      tiles: tiles as ExternalDashboardTileWithId[],
+      filters,
+      containers: containers ?? [],
+    });
+    if (validationError) {
+      return res.json({
+        valid: false,
+        errors: [{ path: '', message: validationError }],
+        normalized: null,
+      });
+    }
+
+    return res.json({ valid: true, errors: [], normalized: parsed.data });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * @openapi
  * /api/v2/dashboards:
  *   post:
  *     summary: Create Dashboard

@@ -5779,6 +5779,111 @@
         }
       }
     },
+    "/api/v2/dashboards/validate": {
+      "post": {
+        "summary": "Validate Dashboard",
+        "description": "Validates a dashboard body against the same schema and tile rules used\nby POST /api/v2/dashboards. The dashboard is **never persisted**. Use\nthis endpoint at plan time (e.g. from a Terraform provider) to check\nthat a dashboard configuration is valid before applying it.\n",
+        "operationId": "validateDashboard",
+        "tags": [
+          "Dashboards"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDashboardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validation result. HTTP 200 is always returned for valid **and**\ninvalid bodies — a non-200 response means the request itself\nfailed (auth, server error, etc.).\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "valid",
+                    "errors",
+                    "normalized"
+                  ],
+                  "properties": {
+                    "valid": {
+                      "type": "boolean",
+                      "description": "True when the body passes all validation rules."
+                    },
+                    "errors": {
+                      "type": "array",
+                      "description": "Validation errors. Empty when valid is true.",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "path",
+                          "message"
+                        ],
+                        "properties": {
+                          "path": {
+                            "type": "string",
+                            "description": "Dot-separated field path, or empty string for top-level errors."
+                          },
+                          "message": {
+                            "type": "string",
+                            "description": "Human-readable error description."
+                          }
+                        }
+                      }
+                    },
+                    "normalized": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Reserved for Task 2 — always null in this version."
+                    }
+                  }
+                },
+                "examples": {
+                  "valid": {
+                    "summary": "Valid dashboard body",
+                    "value": {
+                      "valid": true,
+                      "errors": [],
+                      "normalized": null
+                    }
+                  },
+                  "invalid": {
+                    "summary": "Invalid dashboard body",
+                    "value": {
+                      "valid": false,
+                      "errors": [
+                        {
+                          "path": "name",
+                          "message": "Required"
+                        }
+                      ],
+                      "normalized": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/search": {
       "post": {
         "summary": "Search Raw Logs and Traces",
