@@ -215,6 +215,7 @@ mirrors HyperDX's `otel_traces` / `otel_logs` exactly.
 | `noisy-signals` | "We want to cut log ingest cost..." | ~16M logs across composite cells. Each noisy cell has a load-bearing pattern mixed in. |
 | `segmented-regression` | "API error rate has gone up..." | Enterprise x cache-miss errors at ~12%. Single-axis aggregates dilute the signal. |
 | `service-health-check` | "Generate a service health report..." | Peace-time report — no incident, but 4 novel signals to call out. |
+| `dashboard-build` | "We need dashboards to monitor our microservices..." | 3 user-facing + 4 distractor services. Dashboard creation via MCP tools, cross-dashboard drill-down, messy severity, latency red herring, impossible metric requests. |
 
 Use `--volume-factor` to scale background row counts for faster iteration.
 Planted anomaly counts stay fixed.

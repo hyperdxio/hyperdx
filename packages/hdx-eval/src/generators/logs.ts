@@ -24,7 +24,8 @@ function deriveSeverityNumber(severityText: string): number {
   if (direct !== undefined) return direct;
   const u = severityText.toUpperCase();
   if (u.startsWith('WARN')) return SEVERITY_NUMBER.WARN;
-  if (u.startsWith('ERR') || u === 'FATAL') return SEVERITY_NUMBER.ERROR;
+  if (u === 'FATAL') return 21; // OTel FATAL is 21, distinct from ERROR (17)
+  if (u.startsWith('ERR')) return SEVERITY_NUMBER.ERROR;
   if (u.startsWith('DEB')) return SEVERITY_NUMBER.DEBUG;
   if (u === 'TRACE') return SEVERITY_NUMBER.TRACE;
   return SEVERITY_NUMBER.INFO;

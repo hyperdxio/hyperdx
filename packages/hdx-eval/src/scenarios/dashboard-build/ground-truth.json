@@ -79,7 +79,7 @@
       [
         "two_dashboards",
         2,
-        "(2|two)\\s*(dashboard)|Dashboard 1[\\s\\S]{1,2000}Dashboard 2"
+        "(2|two)\\s*(dashboard)|Dashboard 1[\\s\\S]{1,2000}Dashboard 2|Service Health Overview[\\s\\S]{1,3000}Service Detail"
       ],
       [
         "has_line_chart",
@@ -91,7 +91,7 @@
       [
         "has_number_tile",
         1,
-        "(number.{0,3}tile|single.?number|scalar|\\(number\\))"
+        "(number.{0,3}tile|single.?number|scalar|\\(number\\)|Number \\(|displayType.{0,5}number)"
       ],
       ["has_heatmap", 1, "(heatmap|heat.?map|\\(heatmap\\))"],
       [
@@ -114,7 +114,7 @@
       [
         "has_dashboard_filter",
         1,
-        "(dashboard.{0,10}filter|filter.{0,10}(bar|dropdown)|ServiceName.{0,20}filter)"
+        "(dashboard.{0,10}filter|filter.{0,10}(bar|dropdown)|ServiceName.{0,20}filter|Service.{0,5}(filter|dropdown))"
       ],
       [
         "has_onclick_drilldown",

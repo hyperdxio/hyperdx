@@ -113,13 +113,18 @@ function extractDashboardIds(toolCalls: ToolCallRecord[]): string[] {
 /**
  * Extract the tile configs the agent intended to create from its
  * save_dashboard tool call input. Returns a map of tile name → config.
+ * Keys are prefixed with a per-call index to avoid collisions when
+ * multiple dashboards share tile names (e.g., "Error Rate" in both
+ * Dashboard 1 and Dashboard 2).
  */
 function extractIntendedTileConfigs(
   toolCalls: ToolCallRecord[],
 ): Map<string, Record<string, unknown>> {
   const configs = new Map<string, Record<string, unknown>>();
+  let callIdx = 0;
   for (const call of toolCalls) {
     if (!SAVE_DASHBOARD_PATTERN.test(call.name)) continue;
+    callIdx++;
     const input = call.input as Record<string, unknown> | null;
     if (!input) continue;
     const tiles = input.tiles as
@@ -129,7 +134,12 @@ function extractIntendedTileConfigs(
     for (const tile of tiles) {
       const name = tile.name ?? (tile.config as Record<string, unknown>)?.name;
       if (typeof name === 'string' && tile.config) {
+        // Store with plain name (for lookup by tile name from the API response)
+        // and with indexed prefix (for disambiguation across dashboards).
+        // The plain-name entry gets overwritten if two dashboards share a name,
+        // but the indexed entry is always unique.
         configs.set(name, tile.config);
+        configs.set(`${callIdx}:${name}`, tile.config);
       }
     }
   }
@@ -228,33 +238,11 @@ export async function inspectDashboards(args: {
       for (const tile of dashboard.tiles) {
         totalTiles++;
         const tileId = tile.id ?? tile._id;
-        const tileName =
-          tile.name ??
-          (tile.config as Record<string, unknown>)?.name ??
-          'unknown';
+        const tileName = tile.name ?? 'unknown';
 
-        if (!tileId) {
-          tileEvidence.push({
-            tileId: 'unknown',
-            tileName: String(tileName),
-            displayType: String(tile.config?.displayType ?? 'unknown'),
-            config: tile.config ?? {},
-            intendedConfig: intendedConfigs.get(String(tileName)),
-            queryResult: {
-              success: false,
-              hasData: false,
-              error: 'No tile ID',
-            },
-          });
-          continue;
-        }
-
-        const containerId = (tile as Record<string, unknown>).containerId as
-          | string
-          | undefined;
-
-        const tileW = (tile as Record<string, unknown>).w as number | undefined;
-        const tileH = (tile as Record<string, unknown>).h as number | undefined;
+        const containerId = tile.containerId;
+        const tileW = tile.w;
+        const tileH = tile.h;
 
         if (tile.config?.displayType === 'markdown') {
           tileEvidence.push({

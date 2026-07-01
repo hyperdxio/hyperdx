@@ -96,9 +96,11 @@ export class HyperdxApiClient {
         typeof parsed === 'string'
           ? parsed.slice(0, 500)
           : JSON.stringify(parsed).slice(0, 500);
-      throw new Error(
+      const err = new Error(
         `HyperDX API ${method} ${path} → ${res.status}: ${snippet}`,
       );
+      (err as ApiError).status = res.status;
+      throw err;
     }
     return { status: res.status, body: parsed as T };
   }
@@ -231,8 +233,27 @@ export class HyperdxApiClient {
       (err as ApiError).status = res.status;
       throw err;
     }
-    const parsed = JSON.parse(text);
-    return (parsed.data ?? parsed) as HyperdxDashboard;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const err = new Error(
+        `GET /api/v2/dashboards/${id} → ${res.status}: non-JSON response: ${text.slice(0, 200)}`,
+      );
+      (err as ApiError).status = res.status;
+      throw err;
+    }
+    const dashboard = (parsed as Record<string, unknown>)?.data ?? parsed;
+    if (
+      !dashboard ||
+      typeof dashboard !== 'object' ||
+      !Array.isArray((dashboard as Record<string, unknown>).tiles)
+    ) {
+      throw new Error(
+        `GET /api/v2/dashboards/${id}: unexpected response shape (missing tiles array)`,
+      );
+    }
+    return dashboard as HyperdxDashboard;
   }
 
   async deleteDashboard(id: string): Promise<void> {
@@ -360,6 +381,12 @@ function extractMcpContent(
   // Try JSON-RPC
   try {
     const parsed = JSON.parse(text);
+    if (parsed?.error) {
+      return {
+        text: parsed.error.message ?? JSON.stringify(parsed.error),
+        isError: true,
+      };
+    }
     const result = parsed?.result;
     if (result) {
       return {
@@ -375,6 +402,12 @@ function extractMcpContent(
   for (const line of lines) {
     try {
       const data = JSON.parse(line.slice(6));
+      if (data?.error) {
+        return {
+          text: data.error.message ?? JSON.stringify(data.error),
+          isError: true,
+        };
+      }
       const result = data?.result;
       if (result) {
         return {
@@ -390,15 +423,18 @@ function extractMcpContent(
 }
 
 export type HyperdxDashboard = {
-  _id: string;
-  id?: string;
+  /** v2 API returns `id`; internal API returns `_id`. */
+  id: string;
+  _id?: string;
   name: string;
   tags?: string[];
   tiles: Array<{
-    id?: string;
+    /** v2 API always returns `id`. */
+    id: string;
     _id?: string;
     name: string;
     config: Record<string, unknown>;
+    containerId?: string;
     x?: number;
     y?: number;
     w?: number;

@@ -51,12 +51,7 @@ import {
   pickSeverityIn,
   uuidv4,
 } from '@/generators/templates';
-import {
-  makeSpan,
-  msToNs,
-  newSpanId,
-  newTraceId,
-} from '@/generators/traces';
+import { makeSpan, msToNs, newSpanId, newTraceId } from '@/generators/traces';
 import type { LogRow, TraceRow } from '@/generators/types';
 import {
   analyzeDistractorAwareness,
@@ -72,6 +67,7 @@ import type {
   ScenarioBatch,
   SystemPromptContext,
 } from '@/scenarios/types';
+
 import groundTruth from './ground-truth.json';
 
 // ─── Volumes ─────────────────────────────────────────────────────────────────
@@ -442,7 +438,7 @@ When someone clicks a service in the main dashboard, they should land on this da
 - Recent error logs
 - Top error messages by count
 
-After creating both dashboards, verify tiles return data and report what you built. If any requested metrics aren't available in the data, note that too.`,
+After creating both dashboards, verify tiles return data and report what you built. If any requested metrics aren't available in the data, note that. Also call out any data quality caveats you discovered — misleading signals, services that shouldn't be in headline metrics, severity inconsistencies, etc.`,
   description:
     'Dashboard creation eval — two dashboards with cross-dashboard onClick ' +
     'drill-down, ClickHouse expressions (if/bracket syntax/avgIf), containers ' +
@@ -555,7 +551,17 @@ ${anchorBlock}
 ENVIRONMENT: Only MCP tools and the Read tool are available.
 No Bash, Write, Edit, Glob, or Grep.
 
+DATA REVIEW: Before designing tiles, inspect the data. Run a quick count
+grouped by ServiceName to understand which services exist and their relative
+volume — not all services may be user-facing. Check the lowCardinalityValues
+from describe_source for data quality issues (mixed casing in SeverityText,
+mixed environments, etc.). If requested metrics don't exist in the data,
+report that rather than creating broken tiles.
+
 TURN BUDGET: ~${ctx.maxTurns ?? 30} tool calls. Plan carefully.
 
-Report your results in the final answer.`;
+Report your results in the final answer. Be concise — list tiles and key
+findings briefly. No need for detailed per-tile config tables or full query
+results. A short summary of what was built, what worked, and what wasn't
+available is sufficient.`;
 }
