@@ -23,6 +23,7 @@
     "test:e2e:ci": "../../scripts/test-e2e-ci.sh",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
+    "generate:integration-guides": "node scripts/generate-integration-guides.mjs",
     "knip": "knip"
   },
   "dependencies": {
