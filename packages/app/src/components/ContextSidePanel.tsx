@@ -20,7 +20,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconPlus, IconX } from '@tabler/icons-react';
+import { IconSearch, IconX } from '@tabler/icons-react';
 
 import SearchWhereInput, {
   getStoredLanguage,
@@ -37,15 +37,6 @@ import {
   BreadcrumbPath,
 } from './DBRowSidePanelHeader';
 import { DBSqlRowTable } from './DBRowTable';
-
-enum ContextBy {
-  All = 'all',
-  Custom = 'custom',
-  Host = 'host',
-  Node = 'k8s.node.name',
-  Pod = 'k8s.pod.name',
-  Service = 'service',
-}
 
 interface ContextSubpanelProps {
   source: TSource;
@@ -74,6 +65,12 @@ function formatColumnEquals(
   return `${column}:"${value.replace(/"/g, '\\"')}"`;
 }
 
+const PROMOTED_RESOURCE_ATTR_KEYS = [
+  'host.name',
+  'k8s.pod.name',
+  'k8s.node.name',
+];
+
 function extractQuickFilters(
   rowData: Record<string, any>,
   source: TSource,
@@ -94,35 +91,88 @@ function extractQuickFilters(
       ? source.eventAttributesExpression
       : undefined;
 
-  const resourceAttrs = rowData[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES];
-  if (resourceAttrs && typeof resourceAttrs === 'object' && resourceAttrExpr) {
-    for (const [key, val] of Object.entries(resourceAttrs)) {
-      if (typeof val !== 'string' || !val || val.length > 200) continue;
-      if (key === 'service.name' && serviceNameExpr) continue;
+  const resourceAttrs = rowData[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES] as
+    | Record<string, unknown>
+    | undefined;
+
+  // Service name pill (promoted, always first)
+  const serviceNameValue = rowData[ROW_DATA_ALIASES.SERVICE_NAME];
+  if (serviceNameExpr && serviceNameValue) {
+    filters.push({
+      id: 'svc',
+      label: serviceNameExpr,
+      value: String(serviceNameValue),
+      generateWhere: isSql =>
+        formatColumnEquals(serviceNameExpr, String(serviceNameValue), isSql),
+    });
+  } else if (
+    resourceAttrs?.['service.name'] &&
+    typeof resourceAttrs['service.name'] === 'string' &&
+    resourceAttrExpr
+  ) {
+    filters.push({
+      id: 'ra:service.name',
+      label: 'service.name',
+      value: String(resourceAttrs['service.name']),
+      generateWhere: isSql =>
+        formatAttributeClause(
+          resourceAttrExpr,
+          'service.name',
+          String(resourceAttrs['service.name']),
+          isSql,
+        ),
+    });
+  }
+
+  // Promoted resource attribute pills (host, k8s)
+  if (resourceAttrs && resourceAttrExpr) {
+    for (const key of PROMOTED_RESOURCE_ATTR_KEYS) {
+      const val = resourceAttrs[key];
+      if (typeof val !== 'string' || !val) continue;
       filters.push({
         id: `ra:${key}`,
         label: key,
-        value: String(val),
+        value: val,
         generateWhere: isSql =>
-          formatAttributeClause(resourceAttrExpr, key, String(val), isSql),
+          formatAttributeClause(resourceAttrExpr, key, val, isSql),
       });
     }
   }
 
+  // Remaining resource attributes
+  const addedIds = new Set(filters.map(f => f.id));
+  if (resourceAttrs && resourceAttrExpr) {
+    for (const [key, val] of Object.entries(resourceAttrs)) {
+      if (addedIds.has(`ra:${key}`)) continue;
+      if (typeof val !== 'string' || !val || val.length > 200) continue;
+      filters.push({
+        id: `ra:${key}`,
+        label: key,
+        value: val,
+        generateWhere: isSql =>
+          formatAttributeClause(resourceAttrExpr, key, val, isSql),
+      });
+    }
+  }
+
+  // Event attributes
   const eventAttrs = rowData[ROW_DATA_ALIASES.EVENT_ATTRIBUTES];
   if (eventAttrs && typeof eventAttrs === 'object' && eventAttrExpr) {
-    for (const [key, val] of Object.entries(eventAttrs)) {
+    for (const [key, val] of Object.entries(
+      eventAttrs as Record<string, unknown>,
+    )) {
       if (typeof val !== 'string' || !val || val.length > 200) continue;
       filters.push({
         id: `ea:${key}`,
         label: key,
-        value: String(val),
+        value: val,
         generateWhere: isSql =>
-          formatAttributeClause(eventAttrExpr, key, String(val), isSql),
+          formatAttributeClause(eventAttrExpr, key, val, isSql),
       });
     }
   }
 
+  // Top-level columns
   for (const [key, val] of Object.entries(rowData)) {
     if (skipAliases.has(key) || key.startsWith('__hdx_')) continue;
     if (typeof val !== 'string' || !val || val.length > 200) continue;
@@ -140,21 +190,21 @@ function extractQuickFilters(
   return filters;
 }
 
-const quickFilterPillStyle = {
+const filterPillStyle = {
   display: 'inline-flex',
   alignItems: 'center' as const,
   gap: 4,
-  padding: '1px 6px',
-  borderRadius: 3,
-  fontSize: 11,
-  lineHeight: '18px',
+  padding: '2px 8px',
+  borderRadius: 4,
+  fontSize: 12,
+  lineHeight: '20px',
   cursor: 'pointer',
   whiteSpace: 'nowrap' as const,
-  maxWidth: 260,
+  maxWidth: 400,
   overflow: 'hidden',
 };
 
-function QuickFilterPill({
+function FilterPill({
   filter,
   isSelected,
   onToggle,
@@ -165,40 +215,44 @@ function QuickFilterPill({
 }) {
   return (
     <Tooltip
-      label={`${isSelected ? 'Remove' : 'Add'} filter: ${filter.label} = ${filter.value}`}
-      openDelay={300}
+      label={`${filter.label} = ${filter.value}`}
+      openDelay={400}
+      maw={400}
+      multiline
     >
       <span
-        data-testid={`quick-filter-${filter.id}`}
+        data-testid={`context-filter-${filter.id}`}
         onClick={onToggle}
         style={{
-          ...quickFilterPillStyle,
+          ...filterPillStyle,
           backgroundColor: isSelected ? 'var(--color-bg-hover)' : 'transparent',
           border: isSelected
             ? '1px solid var(--color-border-emphasis)'
-            : '1px dashed var(--color-border)',
+            : '1px solid var(--color-border)',
+          opacity: isSelected ? 1 : 0.7,
         }}
       >
-        <Text
-          span
-          size="xxs"
-          c="dimmed"
-          fw={500}
-          style={{ flexShrink: 0, maxWidth: 100 }}
-          truncate="start"
-        >
+        <Text span size="xs" c="dimmed" fw={500} style={{ flexShrink: 0 }}>
           {filter.label}
         </Text>
-        <Text span size="xxs" c="dimmed">
-          {' = '}
+        <Text span size="xs" c="dimmed">
+          =
         </Text>
-        <Text span size="xxs" fw={500} truncate>
+        <Text
+          span
+          size="xs"
+          fw={500}
+          truncate
+          style={{ maxWidth: 180, display: 'inline-block' }}
+        >
           {filter.value}
         </Text>
-        {isSelected ? (
-          <IconX size={9} style={{ flexShrink: 0, marginLeft: 2 }} />
-        ) : (
-          <IconPlus size={9} style={{ flexShrink: 0, marginLeft: 2 }} />
+        {isSelected && (
+          <IconX
+            size={12}
+            style={{ flexShrink: 0, marginLeft: 2 }}
+            aria-label="Remove filter"
+          />
         )}
       </span>
     </Tooltip>
@@ -245,7 +299,7 @@ export default function ContextSubpanel({
   const { whereLanguage: originalLanguage = 'lucene' } =
     dbSqlRowTableConfig ?? {};
   const [range, setRange] = useState<number>(ms('30s'));
-  const [contextBy, setContextBy] = useState<ContextBy>(ContextBy.All);
+  const [showCustomSearch, setShowCustomSearch] = useState(false);
   const { control } = useForm({
     defaultValues: {
       where: '',
@@ -301,151 +355,48 @@ export default function ContextSubpanel({
     [date, range],
   );
 
-  // Extract source-specific expressions
-  const serviceNameExpr =
-    isLogSource(source) || isTraceSource(source)
-      ? source.serviceNameExpression
-      : undefined;
-  const serviceName = rowData[ROW_DATA_ALIASES.SERVICE_NAME] as
-    | string
-    | undefined;
-  const resourceAttrExpr =
-    'resourceAttributesExpression' in source
-      ? source.resourceAttributesExpression
-      : undefined;
-
-  const {
-    'k8s.node.name': k8sNodeName,
-    'k8s.pod.name': k8sPodName,
-    'host.name': host,
-    'service.name': service,
-  } = rowData[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES] ?? {};
-
-  // Resolve effective service name: prefer serviceNameExpression, fall back to
-  // resource attribute
-  const effectiveServiceName = serviceName || service;
-
-  // Quick filter state
+  // Filter state
   const [selectedFilterIds, setSelectedFilterIds] = useState<string[]>([]);
-  const [showQuickFilters, setShowQuickFilters] = useState(false);
 
   const availableQuickFilters = useMemo(
     () => extractQuickFilters(rowData, source),
     [rowData, source],
   );
 
-  const toggleQuickFilter = useCallback((id: string) => {
+  const toggleFilter = useCallback((id: string) => {
     setSelectedFilterIds(prev =>
       prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id],
     );
   }, []);
 
-  const CONTEXT_MAPPING = useMemo(
-    () =>
-      ({
-        [ContextBy.All]: {
-          field: '',
-          value: '',
-        },
-        [ContextBy.Custom]: {
-          field: '',
-          value: debouncedWhere || '',
-        },
-        [ContextBy.Service]: {
-          field: 'service.name',
-          value: effectiveServiceName,
-        },
-        [ContextBy.Host]: {
-          field: 'host.name',
-          value: host,
-        },
-        [ContextBy.Pod]: {
-          field: 'k8s.pod.name',
-          value: k8sPodName,
-        },
-        [ContextBy.Node]: {
-          field: 'k8s.node.name',
-          value: k8sNodeName,
-        },
-      }) as const,
-    [k8sNodeName, k8sPodName, host, effectiveServiceName, debouncedWhere],
-  );
+  const getWhereClause = useCallback((): string => {
+    const isSql = originalLanguage === 'sql';
+    const clauses: string[] = [];
 
-  const getWhereClause = useCallback(
-    (contextBy: ContextBy): string => {
-      const isSql = originalLanguage === 'sql';
-      const clauses: string[] = [];
-
-      if (contextBy === ContextBy.Custom) {
-        const customWhere = CONTEXT_MAPPING[contextBy].value.trim();
-        if (customWhere) {
-          clauses.push(customWhere);
-        }
-      } else if (contextBy === ContextBy.Service) {
-        if (serviceNameExpr && serviceName) {
-          clauses.push(formatColumnEquals(serviceNameExpr, serviceName, isSql));
-        } else if (service) {
-          clauses.push(
-            formatAttributeClause(
-              resourceAttrExpr || 'ResourceAttributes',
-              'service.name',
-              service,
-              isSql,
-            ),
-          );
-        }
-      } else if (contextBy !== ContextBy.All) {
-        const mapping = CONTEXT_MAPPING[contextBy];
-        if (mapping.value) {
-          clauses.push(
-            formatAttributeClause(
-              resourceAttrExpr || 'ResourceAttributes',
-              mapping.field,
-              mapping.value,
-              isSql,
-            ),
-          );
-        }
+    for (const filterId of selectedFilterIds) {
+      const filter = availableQuickFilters.find(f => f.id === filterId);
+      if (filter) {
+        clauses.push(filter.generateWhere(isSql));
       }
+    }
 
-      for (const filterId of selectedFilterIds) {
-        const filter = availableQuickFilters.find(f => f.id === filterId);
-        if (filter) {
-          clauses.push(filter.generateWhere(isSql));
-        }
-      }
+    if (showCustomSearch && debouncedWhere?.trim()) {
+      clauses.push(debouncedWhere.trim());
+    }
 
-      if (clauses.length === 0) return '';
-      if (clauses.length === 1) return clauses[0];
-      return clauses.map(c => `(${c})`).join(' AND ');
-    },
-    [
-      CONTEXT_MAPPING,
-      originalLanguage,
-      serviceNameExpr,
-      serviceName,
-      service,
-      resourceAttrExpr,
-      selectedFilterIds,
-      availableQuickFilters,
-    ],
-  );
-
-  function generateSegmentedControlData() {
-    return [
-      { label: 'All', value: ContextBy.All },
-      ...(effectiveServiceName
-        ? [{ label: 'Service', value: ContextBy.Service }]
-        : []),
-      ...(host ? [{ label: 'Host', value: ContextBy.Host }] : []),
-      ...(k8sPodName ? [{ label: 'Pod', value: ContextBy.Pod }] : []),
-      ...(k8sNodeName ? [{ label: 'Node', value: ContextBy.Node }] : []),
-      { label: 'Custom', value: ContextBy.Custom },
-    ];
-  }
+    if (clauses.length === 0) return '';
+    if (clauses.length === 1) return clauses[0];
+    return clauses.map(c => `(${c})`).join(' AND ');
+  }, [
+    originalLanguage,
+    selectedFilterIds,
+    availableQuickFilters,
+    showCustomSearch,
+    debouncedWhere,
+  ]);
 
   const config = useMemo(() => {
-    const whereClause = getWhereClause(contextBy);
+    const whereClause = getWhereClause();
     if (!dbSqlRowTableConfig)
       return {
         connection: source.connection,
@@ -474,99 +425,44 @@ export default function ContextSubpanel({
     getWhereClause,
     originalLanguage,
     newDateRange,
-    contextBy,
     source,
   ]);
-
-  const activeQuickFilterLabels = selectedFilterIds
-    .map(id => {
-      const filter = availableQuickFilters.find(f => f.id === id);
-      return filter ? `${filter.label}=${filter.value}` : null;
-    })
-    .filter(Boolean);
 
   return (
     <>
       {config && (
         <Flex direction="column" mih="0px" style={{ flexGrow: 1 }}>
-          <Group justify="space-between" p="sm">
-            <SegmentedControl
-              size="xs"
-              data={generateSegmentedControlData()}
-              value={contextBy}
-              onChange={v => setContextBy(v as ContextBy)}
-            />
-            {contextBy === ContextBy.Custom && (
-              <SearchWhereInput
-                tableConnection={tcFromSource(source)}
-                control={control}
-                name="where"
-                enableHotkey
-                size="xs"
-              />
-            )}
-            <SegmentedControl
-              size="xs"
-              data={[
-                { label: '100ms', value: ms('100ms').toString() },
-                { label: '500ms', value: ms('500ms').toString() },
-                { label: '1s', value: ms('1s').toString() },
-                { label: '5s', value: ms('5s').toString() },
-                { label: '30s', value: ms('30s').toString() },
-                { label: '1m', value: ms('1m').toString() },
-                { label: '5m', value: ms('5m').toString() },
-                { label: '15m', value: ms('15m').toString() },
-              ]}
-              value={range.toString()}
-              onChange={value => setRange(Number(value))}
-            />
-          </Group>
-          <Group px="sm" pb="xs" gap="xs">
-            <div>
-              {contextBy !== ContextBy.All &&
-                contextBy !== ContextBy.Custom && (
-                  <Badge size="md" variant="default" mr={4}>
-                    {contextBy}:{CONTEXT_MAPPING[contextBy].value}
-                  </Badge>
-                )}
-              {contextBy === ContextBy.Custom && debouncedWhere && (
-                <Badge size="md" variant="default" mr={4}>
-                  custom query
-                </Badge>
-              )}
-              {activeQuickFilterLabels.map(label => (
-                <Badge key={label} size="md" variant="default" mr={4}>
-                  {label}
-                </Badge>
-              ))}
+          <Group justify="space-between" p="sm" gap="xs">
+            <Group gap="xs">
               <Badge size="md" variant="default">
-                Time range: ±{ms(range / 2)}
+                ±{ms(range / 2)}
               </Badge>
-            </div>
-          </Group>
-          {availableQuickFilters.length > 0 && (
-            <Group px="sm" pb="xs" gap="xs" align="center">
-              <ActionIcon
+              <SegmentedControl
                 size="xs"
-                variant="subtle"
-                onClick={() => setShowQuickFilters(v => !v)}
-                title={
-                  showQuickFilters ? 'Hide event filters' : 'Show event filters'
-                }
-              >
-                <IconPlus
-                  size={12}
-                  style={{
-                    transform: showQuickFilters
-                      ? 'rotate(45deg)'
-                      : 'rotate(0deg)',
-                    transition: 'transform 150ms',
-                  }}
-                />
-              </ActionIcon>
-              <Text size="xxs" c="dimmed">
-                Event Filters
-              </Text>
+                data={[
+                  { label: '100ms', value: ms('100ms').toString() },
+                  { label: '500ms', value: ms('500ms').toString() },
+                  { label: '1s', value: ms('1s').toString() },
+                  { label: '5s', value: ms('5s').toString() },
+                  { label: '30s', value: ms('30s').toString() },
+                  { label: '1m', value: ms('1m').toString() },
+                  { label: '5m', value: ms('5m').toString() },
+                  { label: '15m', value: ms('15m').toString() },
+                ]}
+                value={range.toString()}
+                onChange={value => setRange(Number(value))}
+              />
+            </Group>
+            <Group gap="xs">
+              <Tooltip label="Custom search query" openDelay={300}>
+                <ActionIcon
+                  size="sm"
+                  variant={showCustomSearch ? 'secondary' : 'subtle'}
+                  onClick={() => setShowCustomSearch(v => !v)}
+                >
+                  <IconSearch size={14} />
+                </ActionIcon>
+              </Tooltip>
               {selectedFilterIds.length > 0 && (
                 <Text
                   size="xxs"
@@ -575,20 +471,37 @@ export default function ContextSubpanel({
                   td="underline"
                   onClick={() => setSelectedFilterIds([])}
                 >
-                  Clear all
+                  Clear filters
                 </Text>
               )}
             </Group>
+          </Group>
+          {showCustomSearch && (
+            <Group px="sm" pb="xs">
+              <SearchWhereInput
+                tableConnection={tcFromSource(source)}
+                control={control}
+                name="where"
+                enableHotkey
+                size="xs"
+              />
+            </Group>
           )}
-          {showQuickFilters && availableQuickFilters.length > 0 && (
-            <ScrollArea px="sm" pb="xs" type="auto" offsetScrollbars>
+          {availableQuickFilters.length > 0 && (
+            <ScrollArea
+              px="sm"
+              pb="xs"
+              type="auto"
+              offsetScrollbars
+              style={{ flexShrink: 0 }}
+            >
               <Flex gap={4} wrap="wrap">
                 {availableQuickFilters.map(filter => (
-                  <QuickFilterPill
+                  <FilterPill
                     key={filter.id}
                     filter={filter}
                     isSelected={selectedFilterIds.includes(filter.id)}
-                    onToggle={() => toggleQuickFilter(filter.id)}
+                    onToggle={() => toggleFilter(filter.id)}
                   />
                 ))}
               </Flex>
