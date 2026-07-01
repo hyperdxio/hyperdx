@@ -9,13 +9,11 @@ import {
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { type MetricTable, SourceKind } from '@hyperdx/common-utils/dist/types';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import type { McpContext } from '@/mcp/tools/types';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import type { ToolRegistrar } from '@/mcp/tools/types';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -629,13 +627,13 @@ async function describeSourceSchema(
   };
 }
 
-export function registerDescribeSource(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerDescribeSource({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_describe_source',
     {
       title: 'Describe Source Schema',
@@ -661,62 +659,54 @@ export function registerDescribeSource(
           ),
       }),
     },
-    withToolTracing(
-      'clickstack_describe_source',
-      context,
-      async ({ sourceId }) => {
-        const controller = new AbortController();
+    async ({ sourceId }) => {
+      const controller = new AbortController();
 
-        // Promise.race enforces wall-clock timeout regardless of whether
-        // internal ClickHouse calls honour the AbortSignal. Hoist the
-        // timer handle so the finally block can cancel it on the success
-        // path — otherwise a stale controller.abort() fires
-        // DESCRIBE_TIMEOUT_MS after every successful call and the
-        // setTimeout closure stays pinned for the same duration.
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => {
-            controller.abort();
-            reject(new Error('DESCRIBE_TIMEOUT'));
-          }, DESCRIBE_TIMEOUT_MS);
-        });
+      // Promise.race enforces wall-clock timeout regardless of whether
+      // internal ClickHouse calls honour the AbortSignal. Hoist the
+      // timer handle so the finally block can cancel it on the success
+      // path — otherwise a stale controller.abort() fires
+      // DESCRIBE_TIMEOUT_MS after every successful call and the
+      // setTimeout closure stays pinned for the same duration.
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          controller.abort();
+          reject(new Error('DESCRIBE_TIMEOUT'));
+        }, DESCRIBE_TIMEOUT_MS);
+      });
 
-        try {
-          return await Promise.race([
-            describeSourceSchema(
-              teamId.toString(),
-              sourceId,
-              controller.signal,
-            ),
-            timeoutPromise,
-          ]);
-        } catch (e) {
-          if (e instanceof Error && e.message === 'DESCRIBE_TIMEOUT') {
-            logger.warn(
-              { teamId, sourceId },
-              'clickstack_describe_source timed out',
-            );
-            return {
-              isError: true,
-              content: [
-                {
-                  type: 'text' as const,
-                  text:
-                    'Schema discovery timed out. The ClickHouse server may be under load. ' +
-                    'Try again, or use clickstack_list_sources for basic source info without schema details.',
-                },
-              ],
-            };
-          }
+      try {
+        return await Promise.race([
+          describeSourceSchema(teamId.toString(), sourceId, controller.signal),
+          timeoutPromise,
+        ]);
+      } catch (e) {
+        if (e instanceof Error && e.message === 'DESCRIBE_TIMEOUT') {
           logger.warn(
-            { teamId, sourceId, error: e },
-            'Failed to describe source schema',
+            { teamId, sourceId },
+            'clickstack_describe_source timed out',
           );
-          throw e;
-        } finally {
-          if (timeoutId !== undefined) clearTimeout(timeoutId);
+          return {
+            isError: true,
+            content: [
+              {
+                type: 'text' as const,
+                text:
+                  'Schema discovery timed out. The ClickHouse server may be under load. ' +
+                  'Try again, or use clickstack_list_sources for basic source info without schema details.',
+              },
+            ],
+          };
         }
-      },
-    ),
+        logger.warn(
+          { teamId, sourceId, error: e },
+          'Failed to describe source schema',
+        );
+        throw e;
+      } finally {
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
+      }
+    },
   );
 }

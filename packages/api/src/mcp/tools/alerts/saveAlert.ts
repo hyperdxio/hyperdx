@@ -1,5 +1,4 @@
 import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import mongoose from 'mongoose';
 
 import * as config from '@/config';
@@ -9,9 +8,8 @@ import {
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
-import type { McpContext } from '@/mcp/tools/types';
+import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpError, validateObjectId } from '@/mcp/utils/errors';
-import { withToolTracing } from '@/mcp/utils/tracing';
 import { type AlertChannel, AlertSource } from '@/models/alert';
 import { BaseError } from '@/utils/errors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
@@ -33,14 +31,14 @@ function toAlertChannel(ch: McpSaveAlertInput['channel']): AlertChannel {
   };
 }
 
-export function registerSaveAlert(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerSaveAlert({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
-  server.registerTool(
+  registerTool(
     'clickstack_save_alert',
     {
       title: 'Create or Update Alert',
@@ -50,7 +48,7 @@ export function registerSaveAlert(
         'metric crosses a threshold. A webhook notification channel is required.',
       inputSchema: mcpSaveAlertSchema,
     },
-    withToolTracing('clickstack_save_alert', context, async input => {
+    async input => {
       // ── Runtime cross-field validation ──
       const validationError = validateSaveAlertInput(input);
       if (validationError) {
@@ -147,6 +145,6 @@ export function registerSaveAlert(
           },
         ],
       };
-    }),
+    },
   );
 }

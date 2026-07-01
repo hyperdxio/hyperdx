@@ -1,8 +1,6 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import type { McpContext } from '@/mcp/tools/types';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import type { ToolRegistrar } from '@/mcp/tools/types';
 
 import { buildTile, parseTimeRange, runConfigTile } from './helpers';
 import { endTimeSchema, startTimeSchema } from './schemas';
@@ -53,10 +51,10 @@ const sqlSchema = z.object({
 
 // ─── Tool registration ───────────────────────────────────────────────────────
 
-export function registerSql(server: McpServer, context: McpContext) {
+export function registerSql({ context, registerTool }: ToolRegistrar) {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_sql',
     {
       title: 'Raw SQL Query',
@@ -73,7 +71,7 @@ export function registerSql(server: McpServer, context: McpContext) {
         'For browsing rows use clickstack_search.',
       inputSchema: sqlSchema,
     },
-    withToolTracing('clickstack_sql', context, async input => {
+    async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
         return {
@@ -91,6 +89,6 @@ export function registerSql(server: McpServer, context: McpContext) {
       });
 
       return runConfigTile(teamId.toString(), tile, startDate, endDate);
-    }),
+    },
   );
 }

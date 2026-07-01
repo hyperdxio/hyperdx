@@ -10,6 +10,7 @@ import savedSearchesTools from './tools/savedSearches/index';
 import sourcesTools from './tools/sources/index';
 import traceTools from './tools/trace/index';
 import { McpContext } from './tools/types';
+import { createRegisterTool } from './utils/registerTool';
 
 export function createServer(context: McpContext) {
   const server = new McpServer({
@@ -17,12 +18,15 @@ export function createServer(context: McpContext) {
     version: `${CODE_VERSION}-beta`,
   });
 
-  sourcesTools(server, context);
-  alertsTools(server, context);
-  dashboardsTools(server, context);
-  queryTools(server, context);
-  savedSearchesTools(server, context);
-  traceTools(server, context);
+  const registerTool = createRegisterTool(server, context);
+  const registrar = { server, context, registerTool };
+
+  sourcesTools(registrar);
+  alertsTools(registrar);
+  dashboardsTools(registrar);
+  queryTools(registrar);
+  savedSearchesTools(registrar);
+  traceTools(registrar);
   dashboardPrompts(server, context);
 
   return server;
