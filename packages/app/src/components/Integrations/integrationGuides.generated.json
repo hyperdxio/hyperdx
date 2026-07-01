@@ -1,0 +1,204 @@
+{
+  "browser": {
+    "id": "browser",
+    "title": "Browser JS",
+    "docUrl": "https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/browser",
+    "steps": [
+      {
+        "title": "Install the SDK",
+        "lang": "shell",
+        "code": "npm install @hyperdx/browser"
+      },
+      {
+        "title": "Connect to ClickStack",
+        "lang": "javascript",
+        "code": "import HyperDX from '@hyperdx/browser';\n\nHyperDX.init({\n    url: 'http://your-otel-collector:4318',\n    apiKey: 'YOUR_INGESTION_API_KEY', //omit for Managed ClickStack\n    service: 'my-frontend-app',\n    tracePropagationTargets: [/api.myapp.domain/i], // Set to link traces from frontend to backend requests\n    consoleCapture: true, // Capture console logs (default false)\n    advancedNetworkCapture: true, // Capture full HTTP request/response headers and bodies (default false)\n});"
+      }
+    ]
+  },
+  "nodejs": {
+    "id": "nodejs",
+    "title": "Node.js",
+    "docUrl": "https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/nodejs",
+    "steps": [
+      {
+        "title": "Install the SDK",
+        "lang": "shell",
+        "code": "npm install @hyperdx/node-opentelemetry"
+      },
+      {
+        "title": "Connect to ClickStack",
+        "lang": "javascript",
+        "code": "const HyperDX = require('@hyperdx/node-opentelemetry');\n\nHyperDX.init({\n    url: 'http://your-otel-collector:4318',\n    apiKey: 'YOUR_INGESTION_API_KEY', // Omit for Managed ClickStack\n    service: 'my-service'\n});"
+      }
+    ]
+  },
+  "python": {
+    "id": "python",
+    "title": "Python",
+    "docUrl": "https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/python",
+    "steps": [
+      {
+        "title": "Install the SDK",
+        "lang": "shell",
+        "code": "pip install hyperdx-opentelemetry"
+      },
+      {
+        "title": "Connect to ClickStack",
+        "lang": "shell",
+        "code": "OTEL_SERVICE_NAME='<NAME_OF_YOUR_APP_OR_SERVICE>' \\\nOTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318"
+      },
+      {
+        "title": "Run your app",
+        "lang": "shell",
+        "code": "opentelemetry-instrument python app.py"
+      }
+    ]
+  },
+  "go": {
+    "id": "go",
+    "title": "Golang",
+    "docUrl": "https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/golang",
+    "steps": [
+      {
+        "title": "Install the SDK",
+        "lang": "shell",
+        "code": "go get -u go.opentelemetry.io/otel\ngo get -u github.com/hyperdxio/otel-config-go\ngo get -u github.com/hyperdxio/opentelemetry-go\ngo get -u github.com/hyperdxio/opentelemetry-logs-go"
+      },
+      {
+        "title": "Connect to ClickStack",
+        "lang": "shell",
+        "code": "export OTEL_EXPORTER_OTLP_ENDPOINT=https://your-otel-collector:4318 \\\nOTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \\\nOTEL_SERVICE_NAME='<NAME_OF_YOUR_APP_OR_SERVICE>' \\"
+      }
+    ]
+  },
+  "java": {
+    "id": "java",
+    "title": "Java",
+    "docUrl": "https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/java",
+    "steps": [
+      {
+        "title": "Install the SDK",
+        "lang": "shell",
+        "code": "curl -L -O https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar"
+      },
+      {
+        "title": "Connect to ClickStack",
+        "lang": "shell",
+        "code": "export JAVA_TOOL_OPTIONS=\"-javaagent:PATH/TO/opentelemetry-javaagent.jar\" \\\nOTEL_EXPORTER_OTLP_ENDPOINT=https://your-otel-collector:4318 \\\nOTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \\\nOTEL_LOGS_EXPORTER=otlp \\\nOTEL_SERVICE_NAME='<NAME_OF_YOUR_APP_OR_SERVICE>'"
+      },
+      {
+        "title": "Run your app",
+        "lang": "shell",
+        "code": "java -jar target/<APPLICATION_JAR_FILE>"
+      }
+    ]
+  },
+  "ruby": {
+    "id": "ruby",
+    "title": "Ruby on Rails",
+    "docUrl": "https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/ruby-on-rails",
+    "steps": [
+      {
+        "title": "Install the SDK",
+        "lang": "shell",
+        "code": "bundle add opentelemetry-sdk opentelemetry-instrumentation-all opentelemetry-exporter-otlp"
+      },
+      {
+        "title": "Connect to ClickStack",
+        "lang": "shell",
+        "code": "export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \\\nOTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \\\nOTEL_SERVICE_NAME='<NAME_OF_YOUR_APP_OR_SERVICE>' \\"
+      }
+    ]
+  },
+  "elixir": {
+    "id": "elixir",
+    "title": "Elixir",
+    "docUrl": "https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/elixir",
+    "steps": [
+      {
+        "title": "Install the SDK",
+        "lang": "elixir",
+        "code": "def deps do\n  [\n    {:hyperdx, \"~> 0.1.6\"}\n  ]\nend"
+      },
+      {
+        "title": "Connect to ClickStack",
+        "lang": "shell",
+        "code": "export HYPERDX_API_KEY='<YOUR_INGESTION_API_KEY>' \\\nOTEL_SERVICE_NAME='<NAME_OF_YOUR_APP_OR_SERVICE>'"
+      }
+    ]
+  },
+  "deno": {
+    "id": "deno",
+    "title": "Deno",
+    "docUrl": "https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/deno",
+    "steps": [
+      {
+        "title": "Connect to ClickStack",
+        "lang": "shell",
+        "code": "OTEL_EXPORTER_OTLP_HEADERS=\"authorization=<YOUR_INGESTION_API_KEY>\" \\\nOTEL_EXPORTER_OTLP_ENDPOINT=http://your-otel-collector:4318 \\\nOTEL_SERVICE_NAME=\"<NAME_OF_YOUR_APP_OR_SERVICE>\" \\\ndeno run --allow-net --allow-env --allow-read --allow-sys --allow-run app.ts"
+      },
+      {
+        "title": "Run your app",
+        "lang": "shell",
+        "code": "OTEL_EXPORTER_OTLP_ENDPOINT=http://your-otel-collector:4318 \\\nOTEL_SERVICE_NAME=\"<NAME_OF_YOUR_APP_OR_SERVICE>\" \\\ndeno run --allow-net --allow-env --allow-read --allow-sys --allow-run app.ts"
+      }
+    ]
+  },
+  "nextjs": {
+    "id": "nextjs",
+    "title": "Next.js",
+    "docUrl": "https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/nextjs",
+    "steps": [
+      {
+        "title": "Install the SDK",
+        "lang": "shell",
+        "code": "npm install @hyperdx/node-opentelemetry"
+      },
+      {
+        "title": "Connect to ClickStack",
+        "lang": "javascript",
+        "code": "export async function register() {\n  if (process.env.NEXT_RUNTIME === 'nodejs') {\n    const { init } = await import('@hyperdx/node-opentelemetry');\n    init({\n      apiKey: '<YOUR_INGESTION_API_KEY>', // optionally configure via `HYPERDX_API_KEY` env var\n      service: '<MY_SERVICE_NAME>', // optionally configure via `OTEL_SERVICE_NAME` env var\n      additionalInstrumentations: [], // optional, default: []\n    });\n  }\n}"
+      },
+      {
+        "title": "Run your app",
+        "lang": "sh",
+        "code": "OTEL_SERVICE_NAME=<MY_SERVICE_NAME> \\\nOTEL_EXPORTER_OTLP_ENDPOINT=http://your-otel-collector:4318\nnpm run dev"
+      }
+    ]
+  },
+  "nestjs": {
+    "id": "nestjs",
+    "title": "NestJS",
+    "docUrl": "https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/nestjs",
+    "steps": [
+      {
+        "title": "Connect to ClickStack",
+        "lang": "javascript",
+        "code": "import { Module } from '@nestjs/common';\nimport { HyperDXNestLoggerModule } from '@hyperdx/node-logger';\n\n@Module({\n  imports: [\n    HyperDXNestLoggerModule.forRoot({\n      url: 'http://your-otel-collector:4318',\n      apiKey: ***YOUR_INGESTION_API_KEY***, // Not need for Managed ClickStack\n      maxLevel: 'info',\n      service: 'my-app',\n    }),\n  ],\n})\nexport class AppModule {}"
+      },
+      {
+        "title": "Configure",
+        "lang": "javascript",
+        "code": "import { HyperDXNestLoggerModule } from '@hyperdx/node-logger';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule, {\n    logger: HyperDXNestLoggerModule.createLogger({\n      url: 'http://your-otel-collector:4318',\n      apiKey: ***YOUR_INGESTION_API_KEY***, // Not needed for Managed ClickStack\n      maxLevel: 'info',\n      service: 'my-app',\n    })\n  });\n  await app.listen(3000);\n}\nbootstrap();"
+      }
+    ]
+  },
+  "react-native": {
+    "id": "react-native",
+    "title": "React Native",
+    "docUrl": "https://clickhouse.com/docs/use-cases/observability/clickstack/sdks/react-native",
+    "steps": [
+      {
+        "title": "Install the SDK",
+        "lang": "shell",
+        "code": "npm install @hyperdx/otel-react-native"
+      },
+      {
+        "title": "Connect to ClickStack",
+        "lang": "javascript",
+        "code": "import { HyperDXRum } from '@hyperdx/otel-react-native';\n\nHyperDXRum.init({\n  url: 'http://your-otel-collector:4318',\n  service: 'my-rn-app',\n  apiKey: '<YOUR_INGESTION_API_KEY>', // Omit for Managed ClickStack\n  tracePropagationTargets: [/api.myapp.domain/i], // Set to link traces from frontend to backend requests\n});"
+      }
+    ]
+  }
+}
