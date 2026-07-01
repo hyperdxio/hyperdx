@@ -9,14 +9,7 @@ import {
   isTraceSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  Badge,
-  Flex,
-  Group,
-  ScrollArea,
-  SegmentedControl,
-  Text,
-} from '@mantine/core';
+import { Flex, Group, ScrollArea, SegmentedControl, Text } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 
 import SearchWhereInput, {
@@ -177,6 +170,7 @@ export default function ContextSubpanel({
     setSelectedFilterIds(prev =>
       prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id],
     );
+    setActivePreset('custom');
   }, []);
 
   const getWhereClause = useCallback((): string => {
@@ -246,9 +240,9 @@ export default function ContextSubpanel({
       {config && (
         <Flex direction="column" mih="0px" style={{ flexGrow: 1 }}>
           <Group gap="xs" p="sm" pb={4}>
-            <Badge size="md" variant="default">
+            <Text size="xs" c="dimmed" fw={500}>
               ±{ms(range / 2)}
-            </Badge>
+            </Text>
             <SegmentedControl
               size="xs"
               data={[
@@ -274,6 +268,7 @@ export default function ContextSubpanel({
               data={presetOptions}
               value={displayedPreset}
               onChange={handlePresetChange}
+              style={{ width: 'fit-content' }}
             />
           </Flex>
           {showCustomSearch && (

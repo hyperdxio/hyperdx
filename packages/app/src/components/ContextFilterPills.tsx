@@ -176,7 +176,7 @@ export function getAvailablePresets(
   const hasNode = ids.has('ra:k8s.node.name');
 
   return [
-    { label: 'All', value: 'all' },
+    { label: 'Anything', value: 'all' },
     ...(hasService ? [{ label: 'Service', value: 'service' }] : []),
     ...(hasHost ? [{ label: 'Host', value: 'host' }] : []),
     ...(hasPod ? [{ label: 'Pod', value: 'pod' }] : []),
