@@ -352,11 +352,7 @@ export function useFetchFacets({
       );
       const newFacet = await strategy(key);
       if (newFacet) {
-        setExtraFacets(prev =>
-          produce(prev, draft => {
-            (draft ?? []).push(newFacet);
-          }),
-        );
+        setExtraFacets(prev => [...(prev ?? []), newFacet]);
       }
       setLoadMoreLoadingKeys(prev =>
         produce(prev, draft => {
@@ -380,6 +376,8 @@ export function useFetchFacets({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setExtraFacets(null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setExtraFacetKeys(new Set());
   }, [sourceId, dateRange]);
 
   const output = useMemo(() => {
