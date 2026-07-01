@@ -11,10 +11,15 @@ const mockSetAnalysisMode = jest.fn();
 const mockSetIsLive = jest.fn();
 const mockOnSearch = jest.fn();
 const mockOnTimeRangeSelect = jest.fn();
+const mockCanonicalizeFilterQuery = jest.fn();
+const mockFormReset = jest.fn();
 
 let mockDirectTraceId: string | null = null;
 let mockSearchedConfig: Record<string, any> = {};
+let mockApplySearchedConfigUpdates = false;
 let mockSources: any[] = [];
+let mockColumns: any[] | undefined;
+let mockJsonColumns: string[] = [];
 let latestDirectTracePanelProps: Record<string, any> | null = null;
 
 jest.mock('@/layout', () => ({
@@ -69,8 +74,41 @@ jest.mock('nuqs', () => ({
         return [null, jest.fn()];
     }
   },
-  useQueryStates: () => [mockSearchedConfig, mockSetSearchedConfig],
+  useQueryStates: () => {
+    const [, forceRender] = React.useReducer(value => value + 1, 0);
+    const setSearchedConfig = React.useCallback(
+      (value: Record<string, any>) => {
+        mockSetSearchedConfig(value);
+        if (mockApplySearchedConfigUpdates) {
+          mockSearchedConfig = { ...mockSearchedConfig, ...value };
+          forceRender();
+        }
+      },
+      [],
+    );
+    return [mockSearchedConfig, setSearchedConfig];
+  },
 }));
+
+jest.mock('react-hook-form', () => {
+  const actual = jest.requireActual('react-hook-form');
+
+  return {
+    ...actual,
+    useForm: (options: unknown) => {
+      const form = actual.useForm(options);
+      const originalReset = form.reset;
+      const reset = React.useCallback(
+        (...args: Parameters<typeof originalReset>) => {
+          mockFormReset(...args);
+          return originalReset(...args);
+        },
+        [originalReset],
+      );
+      return { ...form, reset };
+    },
+  };
+});
 
 jest.mock('@/source', () => ({
   getEventBody: () => 'Body',
@@ -106,6 +144,8 @@ jest.mock('@/savedSearch', () => ({
 }));
 
 jest.mock('@/searchFilters', () => ({
+  canonicalizeFilterQuery: (...args: unknown[]) =>
+    mockCanonicalizeFilterQuery(...args),
   useSearchPageFilterState: () => ({
     filters: [],
     whereSuggestions: [],
@@ -134,7 +174,11 @@ jest.mock('../hooks/useMetadata', () => ({
     isLoading: false,
   }),
   useColumns: () => ({
-    data: undefined,
+    data: mockColumns,
+    isLoading: false,
+  }),
+  useJsonColumns: () => ({
+    data: mockJsonColumns,
     isLoading: false,
   }),
 }));
@@ -245,7 +289,14 @@ jest.mock('@/utils', () => ({
     initialValue,
     jest.fn(),
   ],
-  usePrevious: (value: unknown) => value,
+  usePrevious: (value: unknown) => {
+    const ref = React.useRef(value);
+    const previous = ref.current;
+    React.useEffect(() => {
+      ref.current = value;
+    }, [value]);
+    return previous;
+  },
 }));
 
 jest.mock('@tanstack/react-query', () => ({
@@ -257,6 +308,10 @@ describe('DBSearchPage direct trace flow', () => {
     jest.clearAllMocks();
     latestDirectTracePanelProps = null;
     mockDirectTraceId = 'trace-123';
+    mockApplySearchedConfigUpdates = false;
+    mockColumns = undefined;
+    mockJsonColumns = [];
+    mockCanonicalizeFilterQuery.mockImplementation(filters => filters);
     mockSearchedConfig = {
       source: undefined,
       where: '',
@@ -379,5 +434,53 @@ describe('DBSearchPage direct trace flow', () => {
     screen.getByText('close-trace').click();
 
     expect(mockSetDirectTraceId).toHaveBeenCalledWith(null);
+  });
+
+  it('canonicalizes only the applied filters without resetting form drafts', async () => {
+    mockDirectTraceId = null;
+    mockApplySearchedConfigUpdates = true;
+    const staleFilters = [
+      {
+        type: 'sql',
+        condition: "ResourceAttributes['k8s.namespace.name'] IN ('backend')",
+      },
+    ];
+    const canonicalFilters = [
+      {
+        type: 'sql',
+        condition:
+          "toString(ResourceAttributes.`k8s`.`namespace`.`name`) IN ('backend')",
+      },
+    ];
+    mockSearchedConfig = {
+      source: 'log-source',
+      where: 'ServiceName:api',
+      select: 'Timestamp,Body',
+      whereLanguage: 'lucene',
+      filters: staleFilters,
+      orderBy: 'Timestamp DESC',
+    };
+    mockColumns = [
+      {
+        name: 'ResourceAttributes',
+        type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+      },
+    ];
+    mockJsonColumns = ['ResourceAttributes'];
+    mockCanonicalizeFilterQuery.mockReturnValue(canonicalFilters);
+
+    renderWithMantine(<DBSearchPage />);
+
+    await waitFor(() => {
+      expect(mockSetSearchedConfig).toHaveBeenCalledWith({
+        filters: canonicalFilters,
+      });
+    });
+    await waitFor(() => {
+      expect(mockSearchedConfig.filters).toEqual(canonicalFilters);
+    });
+
+    expect(mockSetSearchedConfig).toHaveBeenCalledTimes(1);
+    expect(mockFormReset).not.toHaveBeenCalled();
   });
 });

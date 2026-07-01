@@ -4,6 +4,8 @@ import {
   Metadata,
   MetadataCache,
   parseKeyPath,
+  parseRenderedJsonStringExpression,
+  renderJsonStringExpression,
 } from '@/core/metadata';
 import * as renderChartConfigModule from '@/core/renderChartConfig';
 import { timeFilterExpr } from '@/core/renderChartConfig';
@@ -693,7 +695,7 @@ describe('Metadata', () => {
       expect(renderChartConfigSpy).not.toHaveBeenCalled();
     });
 
-    it('renders JSON attribute keys as typed subcolumns', async () => {
+    it('renders JSON attribute keys as string expressions', async () => {
       jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
         Promise.resolve(
           column === 'ResourceAttributes'
@@ -722,7 +724,40 @@ describe('Metadata', () => {
       expect(actualConfig.with?.[0]).toMatchObject({
         chartConfig: {
           select:
-            'ResourceAttributes.`k8s`.`namespace`.`name`.:String as param0',
+            'toString(ResourceAttributes.`k8s`.`namespace`.`name`) as param0',
+        },
+      });
+    });
+
+    it('escapes backslashes while rendering JSON attribute keys', async () => {
+      jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
+        Promise.resolve(
+          column === 'ResourceAttributes'
+            ? ({
+                name: 'ResourceAttributes',
+                type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+              } as any)
+            : undefined,
+        ),
+      );
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getKeyValues({
+        chartConfig: mockChartConfig,
+        keys: ["ResourceAttributes['foo\\bar.name']"],
+        limit: 10,
+        source,
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls[0][0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
+      expect(actualConfig.with?.[0]).toMatchObject({
+        chartConfig: {
+          select: 'toString(ResourceAttributes.`foo\\\\bar`.`name`) as param0',
         },
       });
     });
@@ -756,7 +791,7 @@ describe('Metadata', () => {
       expect(actualConfig.with?.[0]).toMatchObject({
         chartConfig: {
           select:
-            'ResourceAttributes.`foo`.`:String, count() AS injected`.:String as param0',
+            'toString(ResourceAttributes.`foo`.`:String, count() AS injected`) as param0',
         },
       });
     });
@@ -1078,6 +1113,66 @@ describe('Metadata', () => {
       ][0] as any;
       expect(configArg.select).toContain('groupUniqArray(');
       expect(configArg.select).toContain('param0');
+    });
+
+    it('routes rendered JSON expressions through metadata MV rollup keys', async () => {
+      setupDefaultLogsSchema();
+      jest.spyOn(metadata, 'getColumns').mockResolvedValue([
+        { name: 'Timestamp', type: 'DateTime64(9)' },
+        {
+          name: 'ResourceAttributes',
+          type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+        },
+      ] as any);
+      jest
+        .spyOn(metadata as any, 'doMetadataMVsAggregateColumn')
+        .mockResolvedValue(true);
+
+      const keyExpression =
+        'toString(ResourceAttributes.`k8s`.`namespace`.`name`)';
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: [keyExpression],
+      });
+
+      const calls = (mockClickhouseClient.query as jest.Mock).mock.calls;
+      const lastCall = calls[calls.length - 1][0];
+      expect(Object.values(lastCall.query_params)).toEqual(
+        expect.arrayContaining(['ResourceAttributes', 'k8s.namespace.name']),
+      );
+      expect(Object.values(lastCall.query_params)).not.toContain(
+        'NativeColumn',
+      );
+    });
+
+    it('preserves rendered JSON expressions on the raw-table fallback path', async () => {
+      setupDefaultLogsSchema();
+      jest.spyOn(metadata, 'getColumns').mockResolvedValue([
+        { name: 'Timestamp', type: 'DateTime64(9)' },
+        {
+          name: 'ResourceAttributes',
+          type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+        },
+      ] as any);
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      const keyExpression =
+        'toString(ResourceAttributes.`k8s`.`namespace`.`name`)';
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        metadataMVs: undefined,
+        keyExpressions: [keyExpression],
+      });
+
+      const configArg = renderChartConfigSpy.mock.calls[
+        renderChartConfigSpy.mock.calls.length - 1
+      ][0] as any;
+      const innerSelect = configArg.with?.[0]?.chartConfig?.select as string;
+      expect(innerSelect).toContain(`${keyExpression} as param0`);
+      expect(innerSelect).not.toContain("ResourceAttributes['");
     });
 
     it('SQL-escapes map keys with single quotes on the raw-table fallback path (SQL-injection regression)', async () => {
@@ -1535,7 +1630,7 @@ describe('Metadata', () => {
       });
     });
 
-    it('renders JSON distribution keys as typed subcolumns', async () => {
+    it('renders JSON distribution keys as string expressions', async () => {
       jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
         Promise.resolve(
           column === 'ResourceAttributes'
@@ -1561,7 +1656,7 @@ describe('Metadata', () => {
       if (!isBuilderChartConfig(actualConfig))
         throw new Error('Expected builder config');
       expect(actualConfig.select).toBe(
-        'ResourceAttributes.`k8s`.`namespace`.`name`.:String AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
+        'toString(ResourceAttributes.`k8s`.`namespace`.`name`) AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
       );
       expect(actualConfig.groupBy).toBe('__hdx_value');
     });
@@ -1584,7 +1679,7 @@ describe('Metadata', () => {
 
       await metadata.getValuesDistribution({
         chartConfig: mockChartConfig,
-        key: 'ResourceAttributes.k8s.namespace.name.:String',
+        key: 'ResourceAttributes.cloud.account.id.:Int64',
         source,
       });
 
@@ -1592,7 +1687,7 @@ describe('Metadata', () => {
       if (!isBuilderChartConfig(actualConfig))
         throw new Error('Expected builder config');
       expect(actualConfig.select).toBe(
-        'ResourceAttributes.`k8s`.`namespace`.`name`.:String AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
+        'toString(ResourceAttributes.`cloud`.`account`.`id`) AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
       );
     });
   });
@@ -2078,7 +2173,7 @@ describe('Metadata', () => {
       expect(valuesCall.query).toContain('__TIME_FILTER__');
     });
 
-    it('uses typed JSON subcolumns for JSON attribute values', async () => {
+    it('uses string JSON expressions for JSON attribute values', async () => {
       const md = buildMetadata();
       jest.spyOn(md, 'getColumn').mockResolvedValue({
         name: 'ResourceAttributes',
@@ -2100,9 +2195,36 @@ describe('Metadata', () => {
       const valuesCall = (mockClickhouseClient.query as jest.Mock).mock
         .calls[0][0];
       expect(valuesCall.query).toContain(
-        'ResourceAttributes.`k8s`.`namespace`.`name`.:String as value',
+        'toString(ResourceAttributes.`k8s`.`namespace`.`name`) as value',
       );
       expect(valuesCall.query).not.toContain('ResourceAttributes[');
+    });
+
+    it('uses the JSON value expression for an empty attribute key', async () => {
+      const md = buildMetadata();
+      jest.spyOn(md, 'getColumn').mockResolvedValue({
+        name: 'ResourceAttributes',
+        type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+      } as any);
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () => Promise.resolve({ data: [] }),
+      });
+
+      await md.getMapValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'ResourceAttributes',
+        key: '',
+        connectionId: 'conn-1',
+      });
+
+      expect(md.getColumn).toHaveBeenCalled();
+      const valuesCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[0][0];
+      expect(valuesCall.query).toContain(
+        "JSONExtractString(toJSONString(ResourceAttributes), '') as value",
+      );
     });
 
     it('caches values distinctly for different dateRange values', async () => {
@@ -2899,6 +3021,52 @@ describe('Metadata', () => {
         ),
       ).toBe(true);
     });
+  });
+});
+
+describe('JSON string expressions', () => {
+  it('parses underscore-prefixed JSON columns', () => {
+    expect(
+      parseRenderedJsonStringExpression(
+        'toString(_ResourceAttributes.`k8s`.`namespace`.`name`)',
+      ),
+    ).toEqual({
+      column: '_ResourceAttributes',
+      key: 'k8s.namespace.name',
+    });
+  });
+
+  it('round-trips escaped path segments', () => {
+    const expression = renderJsonStringExpression(
+      'ResourceAttributes',
+      'path\\segment.tick`segment',
+    );
+
+    expect(expression).toBe(
+      'toString(ResourceAttributes.`path\\\\segment`.`tick``segment`)',
+    );
+    expect(parseRenderedJsonStringExpression(expression)).toEqual({
+      column: 'ResourceAttributes',
+      key: 'path\\segment.tick`segment',
+    });
+  });
+
+  it('uses a parseable string expression for an empty JSON key', () => {
+    const expression = renderJsonStringExpression('ResourceAttributes', '');
+
+    expect(expression).toBe(
+      "JSONExtractString(toJSONString(ResourceAttributes), '')",
+    );
+    expect(parseRenderedJsonStringExpression(expression)).toEqual({
+      column: 'ResourceAttributes',
+      key: '',
+    });
+  });
+
+  it('does not emit a dangling dot for separator-only JSON paths', () => {
+    expect(renderJsonStringExpression('ResourceAttributes', '.')).toBe(
+      "JSONExtractString(toJSONString(ResourceAttributes), '')",
+    );
   });
 });
 

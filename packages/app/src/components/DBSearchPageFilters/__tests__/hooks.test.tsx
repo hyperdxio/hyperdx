@@ -7,11 +7,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import api from '@/api';
+import { useFetchFacets } from '@/components/DBSearchPageFilters/hooks';
 import * as useMetadataModule from '@/hooks/useMetadata';
 import * as searchFiltersModule from '@/searchFilters';
 import * as sourceModule from '@/source';
-
-import { useFetchFacets } from './hooks';
 
 enableMapSet();
 
@@ -438,6 +437,48 @@ describe('useFetchFacets', () => {
     });
   });
 
+  describe('JSON key rendering', () => {
+    it('renders JSON facet keys as toString expressions in the raw-tables pipeline', () => {
+      setupDefaultMocks({ withMVs: false });
+      useColumns.mockReturnValue({
+        data: [
+          { name: 'Timestamp', type: 'DateTime' },
+          { name: 'ResourceAttributes', type: 'JSON' },
+        ],
+        isLoading: false,
+      } as any);
+      useJsonColumns.mockReturnValue({
+        data: ['ResourceAttributes'],
+      } as any);
+      useAllFields.mockReturnValue({
+        data: [
+          {
+            path: ['ResourceAttributes', 'k8s', 'namespace', 'name'],
+            type: 'String',
+            jsType: 'string',
+          },
+        ],
+      } as any);
+
+      const { wrapper } = makeWrapper();
+
+      renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'exact',
+          }),
+        { wrapper },
+      );
+
+      expect(useGetKeyValues.mock.calls.at(-1)?.[0].keys).toEqual([
+        'toString(ResourceAttributes.`k8s`.`namespace`.`name`)',
+      ]);
+    });
+  });
+
   describe('loadMoreFacetsForKey (raw-tables pipeline)', () => {
     it('reports the key as loading while the fetch is in flight, then clears it', async () => {
       setupDefaultMocks({ withMVs: false });
@@ -605,6 +646,62 @@ describe('useFetchFacets', () => {
       ]);
     });
 
+    it('replaces an extra facet when concurrent requests return the same key', async () => {
+      setupDefaultMocks({ withMVs: false });
+      useGetKeyValues.mockReturnValue({
+        data: [{ key: 'ServiceName', value: ['api'] }],
+        isLoading: false,
+        isFetching: false,
+        error: null,
+      } as any);
+
+      let resolveFirstLoadMore: (val: unknown) => void = () => undefined;
+      const firstLoadMorePromise = new Promise(resolve => {
+        resolveFirstLoadMore = resolve;
+      });
+      let resolveSecondLoadMore: (val: unknown) => void = () => undefined;
+      const secondLoadMorePromise = new Promise(resolve => {
+        resolveSecondLoadMore = resolve;
+      });
+      useMetadataWithSettings.mockReturnValue({
+        getKeyValuesWithMVs: jest
+          .fn()
+          .mockReturnValueOnce(firstLoadMorePromise)
+          .mockReturnValueOnce(secondLoadMorePromise),
+      } as any);
+
+      const { wrapper } = makeWrapper();
+      const { result } = renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'exact',
+          }),
+        { wrapper },
+      );
+
+      let firstPending: Promise<unknown>;
+      let secondPending: Promise<unknown>;
+      act(() => {
+        firstPending = result.current.loadMoreFacetsForKey('NewKey');
+        secondPending = result.current.loadMoreFacetsForKey('NewKey');
+      });
+
+      await act(async () => {
+        resolveFirstLoadMore([{ key: 'NewKey', value: ['first'] }]);
+        await firstPending;
+        resolveSecondLoadMore([{ key: 'NewKey', value: ['second'] }]);
+        await secondPending;
+      });
+
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'ServiceName', value: ['api'] },
+        { key: 'NewKey', value: ['second'] },
+      ]);
+    });
+
     it('does not mutate state when the load-more strategy returns undefined (e.g. on error)', async () => {
       setupDefaultMocks({ withMVs: false });
       useGetKeyValues.mockReturnValue({
@@ -680,6 +777,56 @@ describe('useFetchFacets', () => {
       expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api', 'web'] },
       ]);
+    });
+
+    it('renders JSON keys as toString expressions before delegating to getAllKeyValues', async () => {
+      setupDefaultMocks({ withMVs: true });
+      useColumns.mockReturnValue({
+        data: [
+          { name: 'Timestamp', type: 'DateTime' },
+          { name: 'ResourceAttributes', type: 'JSON' },
+        ],
+        isLoading: false,
+      } as any);
+      useJsonColumns.mockReturnValue({
+        data: ['ResourceAttributes'],
+      } as any);
+      const getAllKeyValues = jest.fn().mockResolvedValue([
+        {
+          key: 'ResourceAttributes.k8s.namespace.name',
+          value: ['api', 'web'],
+        },
+      ]);
+      useMetadataWithSettings.mockReturnValue({
+        getAllKeyValues,
+        getKeyValuesWithMVs: jest.fn(),
+      } as any);
+
+      const { wrapper } = makeWrapper();
+      const { result } = renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+          }),
+        { wrapper },
+      );
+
+      await act(async () => {
+        await result.current.loadMoreFacetsForKey(
+          'ResourceAttributes.k8s.namespace.name',
+        );
+      });
+
+      expect(getAllKeyValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          keyExpressions: [
+            'toString(ResourceAttributes.`k8s`.`namespace`.`name`)',
+          ],
+        }),
+      );
     });
   });
 
@@ -912,6 +1059,138 @@ describe('useFetchFacets', () => {
       rerender({ mode: 'all' });
 
       expect(result.current.extraFacetKeys.size).toBe(0);
+    });
+
+    it('ignores stale load-more results after the query scope changes', async () => {
+      setupDefaultMocks({ withMVs: false });
+      useGetKeyValues.mockReturnValue({
+        data: [{ key: 'ServiceName', value: ['api'] }],
+        isLoading: false,
+        isFetching: false,
+        error: null,
+      } as any);
+
+      let resolveLoadMore: (val: unknown) => void = () => undefined;
+      const loadMorePromise = new Promise(resolve => {
+        resolveLoadMore = resolve;
+      });
+      useMetadataWithSettings.mockReturnValue({
+        getKeyValuesWithMVs: jest.fn().mockReturnValue(loadMorePromise),
+      } as any);
+
+      const { wrapper } = makeWrapper();
+      const { result, rerender } = renderHook(
+        (props: { chartConfig: BuilderChartConfigWithDateRange }) =>
+          useFetchFacets({
+            chartConfig: props.chartConfig,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'exact',
+          }),
+        { wrapper, initialProps: { chartConfig: CHART_CONFIG } },
+      );
+
+      let pending: Promise<unknown>;
+      act(() => {
+        pending = result.current.loadMoreFacetsForKey('NewKey');
+      });
+
+      rerender({
+        chartConfig: { ...CHART_CONFIG, where: 'level = "error"' },
+      });
+
+      await act(async () => {
+        resolveLoadMore([{ key: 'NewKey', value: ['n1'] }]);
+        await pending;
+      });
+
+      expect(result.current.extraFacetKeys.size).toBe(0);
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'ServiceName', value: ['api'] },
+      ]);
+    });
+
+    it('does not let a stale same-key load-more request clear a newer loading state', async () => {
+      setupDefaultMocks({ withMVs: false });
+      useGetKeyValues.mockReturnValue({
+        data: [{ key: 'ServiceName', value: ['api'] }],
+        isLoading: false,
+        isFetching: false,
+        error: null,
+      } as any);
+
+      let resolveFirstLoadMore: (val: unknown) => void = () => undefined;
+      const firstLoadMorePromise = new Promise(resolve => {
+        resolveFirstLoadMore = resolve;
+      });
+      let resolveSecondLoadMore: (val: unknown) => void = () => undefined;
+      const secondLoadMorePromise = new Promise(resolve => {
+        resolveSecondLoadMore = resolve;
+      });
+      useMetadataWithSettings.mockReturnValue({
+        getKeyValuesWithMVs: jest
+          .fn()
+          .mockReturnValueOnce(firstLoadMorePromise)
+          .mockReturnValueOnce(secondLoadMorePromise),
+      } as any);
+
+      const { wrapper } = makeWrapper();
+      const { result, rerender } = renderHook(
+        (props: { chartConfig: BuilderChartConfigWithDateRange }) =>
+          useFetchFacets({
+            chartConfig: props.chartConfig,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'exact',
+          }),
+        { wrapper, initialProps: { chartConfig: CHART_CONFIG } },
+      );
+
+      let stalePending: Promise<unknown>;
+      act(() => {
+        stalePending = result.current.loadMoreFacetsForKey('ServiceName');
+      });
+
+      await waitFor(() => {
+        expect(result.current.loadMoreLoadingKeys.has('ServiceName')).toBe(
+          true,
+        );
+      });
+
+      rerender({
+        chartConfig: { ...CHART_CONFIG, where: 'level = "error"' },
+      });
+
+      let freshPending: Promise<unknown>;
+      act(() => {
+        freshPending = result.current.loadMoreFacetsForKey('ServiceName');
+      });
+
+      await waitFor(() => {
+        expect(result.current.loadMoreLoadingKeys.has('ServiceName')).toBe(
+          true,
+        );
+      });
+
+      await act(async () => {
+        resolveFirstLoadMore([{ key: 'ServiceName', value: ['api', 'stale'] }]);
+        await stalePending;
+      });
+
+      expect(result.current.loadMoreLoadingKeys.has('ServiceName')).toBe(true);
+      expect(result.current.extraFacetKeys.size).toBe(0);
+
+      await act(async () => {
+        resolveSecondLoadMore([
+          { key: 'ServiceName', value: ['api', 'fresh'] },
+        ]);
+        await freshPending;
+      });
+
+      expect(result.current.loadMoreLoadingKeys.has('ServiceName')).toBe(false);
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'ServiceName', value: ['api', 'fresh'] },
+      ]);
     });
   });
 });

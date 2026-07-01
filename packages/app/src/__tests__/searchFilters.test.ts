@@ -4,6 +4,7 @@ import { act, renderHook } from '@testing-library/react';
 
 import {
   areFiltersEqual,
+  canonicalizeFilterQuery,
   parseQuery,
   useSearchPageFilterState,
 } from '@/searchFilters';
@@ -894,6 +895,264 @@ describe('searchFilters', () => {
       expect(onFilterChange).toHaveBeenLastCalledWith([
         { type: 'sql', condition: "level IN ('error')" },
       ]);
+    });
+
+    it('serializes JSON column filters as string expressions', () => {
+      const onFilterChangeLocal = jest.fn();
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [],
+          onFilterChange: onFilterChangeLocal,
+          knownColumns: new Set(['ResourceAttributes']),
+          jsonColumns: ['ResourceAttributes'],
+        }),
+      );
+
+      act(() => {
+        result.current.setFilterValue(
+          'ResourceAttributes.k8s.namespace.name',
+          'alert-service',
+          'only',
+        );
+      });
+
+      expect(onFilterChangeLocal).toHaveBeenLastCalledWith([
+        {
+          type: 'sql',
+          condition:
+            "toString(ResourceAttributes.`k8s`.`namespace`.`name`) IN ('alert-service')",
+        },
+      ]);
+    });
+
+    it('serializes non-string JSON column filters as string expressions', () => {
+      const onFilterChangeLocal = jest.fn();
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [],
+          onFilterChange: onFilterChangeLocal,
+          knownColumns: new Set(['ResourceAttributes']),
+          jsonColumns: ['ResourceAttributes'],
+        }),
+      );
+
+      act(() => {
+        result.current.setFilterValue(
+          'ResourceAttributes.cloud.account.id',
+          '47452524847',
+          'only',
+        );
+      });
+
+      expect(onFilterChangeLocal).toHaveBeenLastCalledWith([
+        {
+          type: 'sql',
+          condition:
+            "toString(ResourceAttributes.`cloud`.`account`.`id`) IN ('47452524847')",
+        },
+      ]);
+    });
+
+    it('hydrates string JSON column filters back to clean keys', () => {
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [
+            {
+              type: 'sql',
+              condition:
+                "toString(ResourceAttributes.`k8s`.`namespace`.`name`) IN ('alert-service')",
+            },
+          ],
+          onFilterChange: jest.fn(),
+          knownColumns: new Set(['ResourceAttributes']),
+          jsonColumns: ['ResourceAttributes'],
+        }),
+      );
+
+      expect(result.current.filters).toEqual({
+        'ResourceAttributes.k8s.namespace.name': {
+          included: new Set(['alert-service']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('hydrates legacy typed JSON column filters back to clean keys', () => {
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [
+            {
+              type: 'sql',
+              condition:
+                "ResourceAttributes.`k8s`.`namespace`.`name`.:String IN ('alert-service')",
+            },
+          ],
+          onFilterChange: jest.fn(),
+          knownColumns: new Set(['ResourceAttributes']),
+          jsonColumns: ['ResourceAttributes'],
+        }),
+      );
+
+      expect(result.current.filters).toEqual({
+        'ResourceAttributes.k8s.namespace.name': {
+          included: new Set(['alert-service']),
+          excluded: new Set(),
+        },
+      });
+    });
+
+    it('canonicalizes persisted JSON column filters as string expressions', () => {
+      expect(
+        canonicalizeFilterQuery(
+          [
+            {
+              type: 'sql',
+              condition:
+                "ResourceAttributes['k8s.namespace.name'] IN ('traefik-private')",
+            },
+          ],
+          new Set(['ResourceAttributes']),
+          ['ResourceAttributes'],
+        ),
+      ).toEqual([
+        {
+          type: 'sql',
+          condition:
+            "toString(ResourceAttributes.`k8s`.`namespace`.`name`) IN ('traefik-private')",
+        },
+      ]);
+    });
+
+    it.each([
+      [
+        'bracket form',
+        "ResourceAttributes['k8s.namespace.name'] IN ('traefik-private')",
+      ],
+      [
+        'typed subcolumn form',
+        "ResourceAttributes.`k8s`.`namespace`.`name`.:String IN ('traefik-private')",
+      ],
+      [
+        'string expression form',
+        "toString(ResourceAttributes.`k8s`.`namespace`.`name`) IN ('traefik-private')",
+      ],
+    ])(
+      'canonicalizes JSON filters idempotently from %s',
+      (_name, condition) => {
+        const filters = [{ type: 'sql' as const, condition }];
+        const once = canonicalizeFilterQuery(
+          filters,
+          new Set(['ResourceAttributes']),
+          ['ResourceAttributes'],
+        );
+        const twice = canonicalizeFilterQuery(
+          once,
+          new Set(['ResourceAttributes']),
+          ['ResourceAttributes'],
+        );
+
+        expect(twice).toEqual(once);
+      },
+    );
+
+    it('canonicalizes escaped JSON paths idempotently', () => {
+      const filters = [
+        {
+          type: 'sql' as const,
+          condition:
+            "toString(ResourceAttributes.`path\\\\segment`.`tick``segment`) IN ('value')",
+        },
+      ];
+
+      const once = canonicalizeFilterQuery(
+        filters,
+        new Set(['ResourceAttributes']),
+        ['ResourceAttributes'],
+      );
+      const twice = canonicalizeFilterQuery(
+        once,
+        new Set(['ResourceAttributes']),
+        ['ResourceAttributes'],
+      );
+
+      expect(once).toEqual(filters);
+      expect(twice).toEqual(once);
+    });
+
+    it('canonicalizes empty JSON paths idempotently', () => {
+      const legacyFilters = [
+        {
+          type: 'sql' as const,
+          condition: "ResourceAttributes[''] IN ('value')",
+        },
+      ];
+      const canonicalFilters = [
+        {
+          type: 'sql' as const,
+          condition:
+            "JSONExtractString(toJSONString(ResourceAttributes), '') IN ('value')",
+        },
+      ];
+
+      const once = canonicalizeFilterQuery(
+        legacyFilters,
+        new Set(['ResourceAttributes']),
+        ['ResourceAttributes'],
+      );
+      const twice = canonicalizeFilterQuery(
+        once,
+        new Set(['ResourceAttributes']),
+        ['ResourceAttributes'],
+      );
+
+      expect(once).toEqual(canonicalFilters);
+      expect(twice).toEqual(once);
+    });
+
+    it('does not canonicalize non-JSON sidebar filters', () => {
+      const filters = [
+        {
+          type: 'sql' as const,
+          condition: "SpanKind IN ('Server')",
+        },
+      ];
+
+      expect(
+        canonicalizeFilterQuery(filters, new Set(['ResourceAttributes']), [
+          'ResourceAttributes',
+        ]),
+      ).toBe(filters);
+    });
+
+    it('does not canonicalize compound SQL predicates that contain sidebar clauses', () => {
+      const filters = [
+        {
+          type: 'sql' as const,
+          condition: "SpanName = 'foo' AND SpanKind IN ('Server')",
+        },
+      ];
+
+      expect(
+        canonicalizeFilterQuery(filters, new Set(['ResourceAttributes']), [
+          'ResourceAttributes',
+        ]),
+      ).toBe(filters);
+    });
+
+    it('does not drop surrounding predicates while canonicalizing legacy JSON filters', () => {
+      const filters = [
+        {
+          type: 'sql' as const,
+          condition:
+            "SpanName = 'foo' AND ResourceAttributes['k8s.namespace.name'] IN ('traefik-private')",
+        },
+      ];
+
+      expect(
+        canonicalizeFilterQuery(filters, new Set(['ResourceAttributes']), [
+          'ResourceAttributes',
+        ]),
+      ).toBe(filters);
     });
 
     it('updating filter query', () => {

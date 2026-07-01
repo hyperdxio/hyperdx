@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { UseQueryResult } from '@tanstack/react-query';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -653,6 +654,203 @@ describe('FilterGroup', () => {
     );
 
     expect(screen.getAllByTestId(/filter-checkbox-.+-input/)).toHaveLength(3);
+  });
+
+  it('should show Load more for empty facets that have not loaded more yet', async () => {
+    const onLoadMore = jest.fn();
+    renderWithMantine(
+      <FilterGroup
+        {...defaultProps}
+        options={[]}
+        onLoadMore={onLoadMore}
+        hasLoadedMore={false}
+        isDefaultExpanded={false}
+      />,
+    );
+
+    const loadMoreButton = screen.getByTestId('filter-load-more-Test Filter');
+    await userEvent.click(loadMoreButton);
+
+    expect(onLoadMore).toHaveBeenCalledWith('Test Filter');
+  });
+
+  it('should stay expanded when an empty facet receives options', async () => {
+    const EmptyFacetHarness = () => {
+      const [options, setOptions] = useState<FilterGroupProps['options']>([]);
+
+      return (
+        <>
+          <button
+            data-testid="load-options"
+            onClick={() => setOptions([{ value: 'loaded', label: 'loaded' }])}
+          >
+            Load options
+          </button>
+          <FilterGroup
+            {...defaultProps}
+            options={options}
+            hasLoadedMore={false}
+            isDefaultExpanded={false}
+          />
+        </>
+      );
+    };
+
+    renderWithMantine(<EmptyFacetHarness />);
+
+    const panel = screen.getByTestId('filter-group-panel');
+    expect(panel).toHaveAttribute('aria-hidden', 'false');
+
+    await userEvent.click(screen.getByTestId('load-options'));
+
+    expect(panel).toHaveAttribute('aria-hidden', 'false');
+    expect(screen.getByText('loaded')).toBeInTheDocument();
+  });
+
+  it('should stay expanded when the default-expanded state clears', async () => {
+    const DefaultExpandedHarness = () => {
+      const [isDefaultExpanded, setIsDefaultExpanded] = useState(true);
+
+      return (
+        <>
+          <button
+            data-testid="clear-default-expanded"
+            onClick={() => setIsDefaultExpanded(false)}
+          >
+            Clear default
+          </button>
+          <FilterGroup
+            {...defaultProps}
+            isDefaultExpanded={isDefaultExpanded}
+          />
+        </>
+      );
+    };
+
+    renderWithMantine(<DefaultExpandedHarness />);
+
+    const panel = screen.getByTestId('filter-group-panel');
+    expect(panel).toHaveAttribute('aria-hidden', 'false');
+
+    await userEvent.click(screen.getByTestId('clear-default-expanded'));
+
+    expect(panel).toHaveAttribute('aria-hidden', 'false');
+  });
+
+  it('should not reopen an empty facet after it is manually collapsed', async () => {
+    const onLoadMore = jest.fn();
+    const EmptyFacetHarness = () => {
+      const [optionsLoading, setOptionsLoading] = useState(false);
+
+      return (
+        <>
+          <button
+            data-testid="toggle-options-loading"
+            onClick={() => setOptionsLoading(value => !value)}
+          >
+            Toggle loading
+          </button>
+          <FilterGroup
+            {...defaultProps}
+            options={[]}
+            optionsLoading={optionsLoading}
+            onLoadMore={onLoadMore}
+            hasLoadedMore={false}
+            isDefaultExpanded={false}
+          />
+        </>
+      );
+    };
+
+    renderWithMantine(<EmptyFacetHarness />);
+
+    const panel = screen.getByTestId('filter-group-panel');
+    expect(panel).toHaveAttribute('aria-hidden', 'false');
+
+    await userEvent.click(screen.getByTestId('filter-group-control'));
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
+
+    await userEvent.click(screen.getByTestId('toggle-options-loading'));
+    await userEvent.click(screen.getByTestId('toggle-options-loading'));
+
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('should keep a default-expanded facet collapsed during a refetch', async () => {
+    const DefaultExpandedHarness = () => {
+      const [options, setOptions] = useState(defaultProps.options);
+
+      return (
+        <>
+          <button data-testid="clear-options" onClick={() => setOptions([])}>
+            Clear options
+          </button>
+          <FilterGroup
+            {...defaultProps}
+            options={options}
+            isDefaultExpanded={true}
+          />
+        </>
+      );
+    };
+
+    renderWithMantine(<DefaultExpandedHarness />);
+
+    const panel = screen.getByTestId('filter-group-panel');
+    await userEvent.click(screen.getByTestId('filter-group-control'));
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
+
+    await userEvent.click(screen.getByTestId('clear-options'));
+
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('should reopen a manually collapsed facet when a filter is applied', async () => {
+    const AppliedFilterHarness = () => {
+      const [isDefaultExpanded, setIsDefaultExpanded] = useState(false);
+
+      return (
+        <>
+          <button
+            data-testid="apply-filter"
+            onClick={() => setIsDefaultExpanded(true)}
+          >
+            Apply filter
+          </button>
+          <FilterGroup
+            {...defaultProps}
+            isDefaultExpanded={isDefaultExpanded}
+          />
+        </>
+      );
+    };
+
+    renderWithMantine(<AppliedFilterHarness />);
+
+    const panel = screen.getByTestId('filter-group-panel');
+    const control = screen.getByTestId('filter-group-control');
+    await userEvent.click(control);
+    await userEvent.click(control);
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
+
+    await userEvent.click(screen.getByTestId('apply-filter'));
+
+    expect(panel).toHaveAttribute('aria-hidden', 'false');
+  });
+
+  it('should hide Load more for empty facets after load more has completed', () => {
+    renderWithMantine(
+      <FilterGroup
+        {...defaultProps}
+        options={[]}
+        hasLoadedMore={true}
+        isDefaultExpanded={true}
+      />,
+    );
+
+    expect(
+      screen.queryByTestId('filter-load-more-Test Filter'),
+    ).not.toBeInTheDocument();
   });
 
   // https://github.com/hyperdxio/hyperdx/issues/2576 — an empty map attribute
