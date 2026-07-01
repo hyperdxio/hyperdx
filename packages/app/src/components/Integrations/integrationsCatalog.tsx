@@ -1,23 +1,3 @@
-import { type IconType } from 'react-icons';
-import { FaAws, FaJava, FaJsSquare } from 'react-icons/fa';
-import {
-  SiApachekafka,
-  SiDeno,
-  SiDocker,
-  SiElixir,
-  SiGo,
-  SiGooglecloud,
-  SiKubernetes,
-  SiNestjs,
-  SiNextdotjs,
-  SiNginx,
-  SiNodedotjs,
-  SiOpentelemetry,
-  SiPython,
-  SiReact,
-  SiRuby,
-} from 'react-icons/si';
-
 import guidesJson from './integrationGuides.generated.json';
 
 /**
@@ -34,16 +14,12 @@ export interface IntegrationItem {
   name: string;
   /** Slug appended to `DOCS_BASE`. */
   doc: string;
-  Icon?: IconType;
-  /**
-   * Path to a brand SVG under `/public/integrations`. Takes precedence over
-   * `Icon` and `monogram` — use it for logos react-icons doesn't carry.
-   */
+  /** Path to the brand SVG under `/public/integrations` (usually `<id>.svg`). */
   logo?: string;
-  /** Glyph color; defaults to the brand color or theme text when omitted. */
-  color?: string;
-  /** Two-letter fallback shown when there's no brand icon. */
+  /** Two-letter fallback shown when a logo is missing. */
   monogram?: string;
+  /** Color for the monogram fallback. */
+  color?: string;
   /** Extra search terms beyond the name. */
   keywords?: string[];
 }
@@ -54,8 +30,6 @@ export interface IntegrationCategory {
   items: IntegrationItem[];
 }
 
-const TEXT = 'var(--color-text)';
-
 export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
   {
     id: 'languages',
@@ -65,63 +39,55 @@ export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
         id: 'browser',
         name: 'Browser',
         doc: 'sdks/browser',
-        Icon: FaJsSquare,
-        color: '#f7df1e',
+        logo: '/integrations/browser.svg',
         keywords: ['javascript', 'js', 'web', 'rum'],
       },
       {
         id: 'nodejs',
         name: 'Node.js',
         doc: 'sdks/nodejs',
-        Icon: SiNodedotjs,
-        color: '#5fa04e',
+        logo: '/integrations/nodejs.svg',
         keywords: ['javascript', 'js', 'typescript'],
       },
       {
         id: 'python',
         name: 'Python',
         doc: 'sdks/python',
-        Icon: SiPython,
-        color: '#3776ab',
+        logo: '/integrations/python.svg',
       },
       {
         id: 'go',
         name: 'Go',
         doc: 'sdks/golang',
-        Icon: SiGo,
-        color: '#00add8',
+        logo: '/integrations/go.svg',
         keywords: ['golang'],
       },
       {
         id: 'java',
         name: 'Java',
         doc: 'sdks/java',
-        Icon: FaJava,
-        color: '#e76f00',
+        logo: '/integrations/java.svg',
         keywords: ['jvm'],
       },
       {
         id: 'ruby',
         name: 'Ruby on Rails',
         doc: 'sdks/ruby-on-rails',
-        Icon: SiRuby,
-        color: '#cc342d',
+        logo: '/integrations/ruby.svg',
         keywords: ['rails'],
       },
       {
         id: 'elixir',
         name: 'Elixir',
         doc: 'sdks/elixir',
-        Icon: SiElixir,
-        color: '#4b275f',
+        logo: '/integrations/elixir.svg',
         keywords: ['erlang', 'phoenix'],
       },
       {
         id: 'deno',
         name: 'Deno',
         doc: 'sdks/deno',
-        Icon: SiDeno,
-        color: TEXT,
+        logo: '/integrations/deno.svg',
       },
     ],
   },
@@ -133,24 +99,21 @@ export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
         id: 'nextjs',
         name: 'Next.js',
         doc: 'sdks/nextjs',
-        Icon: SiNextdotjs,
-        color: TEXT,
+        logo: '/integrations/nextjs.svg',
         keywords: ['react'],
       },
       {
         id: 'nestjs',
         name: 'NestJS',
         doc: 'sdks/nestjs',
-        Icon: SiNestjs,
-        color: '#e0234e',
+        logo: '/integrations/nestjs.svg',
         keywords: ['node'],
       },
       {
         id: 'react-native',
         name: 'React Native',
         doc: 'sdks/react-native',
-        Icon: SiReact,
-        color: '#61dafb',
+        logo: '/integrations/react-native.svg',
         keywords: ['mobile', 'ios', 'android'],
       },
     ],
@@ -163,32 +126,28 @@ export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
         id: 'kubernetes',
         name: 'Kubernetes',
         doc: 'ingesting-data/kubernetes',
-        Icon: SiKubernetes,
-        color: '#326ce5',
+        logo: '/integrations/kubernetes.svg',
         keywords: ['k8s', 'helm'],
       },
       {
         id: 'docker',
         name: 'Docker',
         doc: 'ingesting-data',
-        Icon: SiDocker,
-        color: '#2496ed',
+        logo: '/integrations/docker.svg',
         keywords: ['container'],
       },
       {
         id: 'nginx',
         name: 'Nginx',
         doc: 'ingesting-data',
-        Icon: SiNginx,
-        color: '#009639',
+        logo: '/integrations/nginx.svg',
         keywords: ['proxy', 'web server'],
       },
       {
         id: 'kafka',
         name: 'Kafka',
         doc: 'ingesting-data',
-        Icon: SiApachekafka,
-        color: TEXT,
+        logo: '/integrations/kafka.svg',
         keywords: ['streaming', 'queue'],
       },
     ],
@@ -201,24 +160,21 @@ export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
         id: 'aws',
         name: 'AWS',
         doc: 'ingesting-data',
-        Icon: FaAws,
-        color: '#ff9900',
+        logo: '/integrations/aws.svg',
         keywords: ['amazon', 'cloudwatch', 'lambda'],
       },
       {
         id: 'gcp',
         name: 'Google Cloud',
         doc: 'ingesting-data',
-        Icon: SiGooglecloud,
-        color: '#4285f4',
+        logo: '/integrations/gcp.svg',
         keywords: ['gcp'],
       },
       {
         id: 'azure',
         name: 'Azure',
         doc: 'ingesting-data',
-        monogram: 'Az',
-        color: '#0078d4',
+        logo: '/integrations/azure.svg',
         keywords: ['microsoft'],
       },
     ],
@@ -231,8 +187,7 @@ export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
         id: 'opentelemetry',
         name: 'OpenTelemetry',
         doc: 'ingesting-data/opentelemetry',
-        Icon: SiOpentelemetry,
-        color: TEXT,
+        logo: '/integrations/opentelemetry.svg',
         keywords: ['otel', 'otlp', 'collector'],
       },
       {
@@ -240,7 +195,6 @@ export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
         name: 'Vector',
         doc: 'ingesting-data/vector',
         logo: '/integrations/vector.svg',
-        color: '#10b1e7',
         keywords: ['logs', 'pipeline'],
       },
     ],

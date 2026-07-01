@@ -10,9 +10,10 @@ import {
 } from './integrationsCatalog';
 
 export function ItemBadge({ item }: { item: IntegrationItem }) {
-  const { Icon } = item;
   return (
-    <LogoBadge size={44} radius={10}>
+    // Brand SVGs are drawn for light backgrounds (several use near-black marks),
+    // so keep the tile white in both themes to stay legible.
+    <LogoBadge size={44} radius={10} background="#fff">
       {item.logo ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -21,8 +22,6 @@ export function ItemBadge({ item }: { item: IntegrationItem }) {
           aria-hidden
           style={{ height: 24, width: 'auto', display: 'block' }}
         />
-      ) : Icon ? (
-        <Icon size={24} color={item.color} />
       ) : (
         <Text fw={700} fz={14} style={{ color: item.color ?? 'inherit' }}>
           {item.monogram}
