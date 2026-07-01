@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import React from 'react';
 import { enableMapSet } from 'immer';
+import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
@@ -23,8 +24,10 @@ enableMapSet();
  *     the source has metadata materialized views AND `mode === 'all'`.
  *
  * Plus the shared state layer that merges "load more" results into whichever
- * pipeline is active and resets that state when the source or date range
- * changes.
+ * pipeline is active (union — primary values are preserved and never
+ * overridden by extras) and resets that state whenever the query scope that
+ * produced the extras changes (source, date range, mode, filter state, or
+ * the where clause).
  */
 
 jest.mock('@/api', () => ({
@@ -421,11 +424,11 @@ describe('useFetchFacets', () => {
       expect(result.current.extraFacetKeys.has('ServiceName')).toBe(true);
     });
 
-    it('overrides the primary facet with the extra facet when keys match', async () => {
+    it('unions extra facet values with primary values when keys match, preserving primary values and primary order', async () => {
       setupDefaultMocks({ withMVs: false });
       useGetKeyValues.mockReturnValue({
         data: [
-          { key: 'ServiceName', value: ['api'] },
+          { key: 'ServiceName', value: ['api', 'primary-only'] },
           { key: 'HostName', value: ['h1'] },
         ],
         isLoading: false,
@@ -436,7 +439,7 @@ describe('useFetchFacets', () => {
         getKeyValuesWithMVs: jest.fn().mockResolvedValue([
           {
             key: 'ServiceName',
-            value: ['api', 'web', 'db', 'auth', 'cache'],
+            value: ['api', 'web', 'db'],
           },
         ]),
       } as any);
@@ -460,7 +463,7 @@ describe('useFetchFacets', () => {
       expect(result.current.data).toEqual([
         {
           key: 'ServiceName',
-          value: ['api', 'web', 'db', 'auth', 'cache'],
+          value: ['api', 'primary-only', 'web', 'db'],
         },
         { key: 'HostName', value: ['h1'] },
       ]);
@@ -538,7 +541,7 @@ describe('useFetchFacets', () => {
         { key: 'ServiceName', value: ['api'] },
       ]);
       expect(result.current.loadMoreLoadingKeys.has('ServiceName')).toBe(false);
-      expect(result.current.extraFacetKeys.has('ServiceName')).toBe(true);
+      expect(result.current.extraFacetKeys.has('ServiceName')).toBe(false);
 
       consoleErrorSpy.mockRestore();
     });
@@ -674,6 +677,147 @@ describe('useFetchFacets', () => {
       expect(result.current.data).toEqual([
         { key: 'ServiceName', value: ['api'] },
       ]);
+    });
+
+    it('clears extraFacets when filterState changes', async () => {
+      setupDefaultMocks({ withMVs: false });
+      useGetKeyValues.mockReturnValue({
+        data: [{ key: 'ServiceName', value: ['api'] }],
+        isLoading: false,
+        isFetching: false,
+        error: null,
+      } as any);
+      useMetadataWithSettings.mockReturnValue({
+        getKeyValuesWithMVs: jest
+          .fn()
+          .mockResolvedValue([{ key: 'NewKey', value: ['n1'] }]),
+      } as any);
+
+      const { wrapper } = makeWrapper();
+      const { result, rerender } = renderHook(
+        (props: { filterState: FilterState }) =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'exact',
+            filterState: props.filterState,
+          }),
+        {
+          wrapper,
+          initialProps: { filterState: {} as FilterState },
+        },
+      );
+
+      await act(async () => {
+        await result.current.loadMoreFacetsForKey('NewKey');
+      });
+
+      expect(result.current.extraFacetKeys.has('NewKey')).toBe(true);
+      expect(result.current.data).toEqual([
+        { key: 'ServiceName', value: ['api'] },
+        { key: 'NewKey', value: ['n1'] },
+      ]);
+
+      rerender({
+        filterState: {
+          level: {
+            included: new Set<string | boolean>(['error']),
+            excluded: new Set<string | boolean>(),
+          },
+        },
+      });
+
+      expect(result.current.extraFacetKeys.size).toBe(0);
+      expect(result.current.data).toEqual([
+        { key: 'ServiceName', value: ['api'] },
+      ]);
+    });
+
+    it('clears extraFacets when chartConfig.where changes', async () => {
+      setupDefaultMocks({ withMVs: false });
+      useGetKeyValues.mockReturnValue({
+        data: [{ key: 'ServiceName', value: ['api'] }],
+        isLoading: false,
+        isFetching: false,
+        error: null,
+      } as any);
+      useMetadataWithSettings.mockReturnValue({
+        getKeyValuesWithMVs: jest
+          .fn()
+          .mockResolvedValue([{ key: 'NewKey', value: ['n1'] }]),
+      } as any);
+
+      const { wrapper } = makeWrapper();
+      const { result, rerender } = renderHook(
+        (props: { chartConfig: BuilderChartConfigWithDateRange }) =>
+          useFetchFacets({
+            chartConfig: props.chartConfig,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'exact',
+          }),
+        { wrapper, initialProps: { chartConfig: CHART_CONFIG } },
+      );
+
+      await act(async () => {
+        await result.current.loadMoreFacetsForKey('NewKey');
+      });
+
+      expect(result.current.extraFacetKeys.has('NewKey')).toBe(true);
+      expect(result.current.data).toEqual([
+        { key: 'ServiceName', value: ['api'] },
+        { key: 'NewKey', value: ['n1'] },
+      ]);
+
+      rerender({
+        chartConfig: { ...CHART_CONFIG, where: 'level = "error"' },
+      });
+
+      expect(result.current.extraFacetKeys.size).toBe(0);
+      expect(result.current.data).toEqual([
+        { key: 'ServiceName', value: ['api'] },
+      ]);
+    });
+
+    it('clears extraFacets when mode changes', async () => {
+      setupDefaultMocks({ withMVs: false });
+      useGetKeyValues.mockReturnValue({
+        data: [{ key: 'ServiceName', value: ['api'] }],
+        isLoading: false,
+        isFetching: false,
+        error: null,
+      } as any);
+      useMetadataWithSettings.mockReturnValue({
+        getKeyValuesWithMVs: jest
+          .fn()
+          .mockResolvedValue([{ key: 'NewKey', value: ['n1'] }]),
+      } as any);
+
+      const { wrapper } = makeWrapper();
+      const { result, rerender } = renderHook(
+        (props: { mode: 'all' | 'exact' }) =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: props.mode,
+          }),
+        {
+          wrapper,
+          initialProps: { mode: 'exact' } as { mode: 'all' | 'exact' },
+        },
+      );
+
+      await act(async () => {
+        await result.current.loadMoreFacetsForKey('NewKey');
+      });
+
+      expect(result.current.extraFacetKeys.has('NewKey')).toBe(true);
+
+      rerender({ mode: 'all' });
+
+      expect(result.current.extraFacetKeys.size).toBe(0);
     });
   });
 });

@@ -65,14 +65,15 @@ function useFacetsFromRawTables({
   const { data: jsonColumns } = useJsonColumns(tableConnection);
   const { data: mapColumns } = useMapColumns(tableConnection);
 
-  const { data: allFields, error: allFieldsError } = useAllFields(
-    tableConnection,
-    {
-      dateRange,
-      timestampValueExpression: source?.timestampValueExpression,
-      enabled,
-    },
-  );
+  const {
+    data: allFields,
+    error: allFieldsError,
+    isLoading: isAllFieldsLoading,
+  } = useAllFields(tableConnection, {
+    dateRange,
+    timestampValueExpression: source?.timestampValueExpression,
+    enabled,
+  });
 
   const { isFieldPinned, isSharedFieldPinned } = usePinnedFilters(
     sourceId ?? null,
@@ -216,6 +217,7 @@ function useFacetsFromRawTables({
     ...rest,
     error: allFieldsError ?? rest.error,
     data: exactFacets,
+    isLoading: isAllFieldsLoading || rest.isLoading,
     loadMoreFacetsForKey,
   };
 }
@@ -330,7 +332,17 @@ export function useFetchFacets({
       seenFacets.add(facet.key);
       const extraFacet = extraFacets.find(ef => ef.key === facet.key);
       if (extraFacet) {
-        output.push(extraFacet);
+        // Union values: primary is query-scoped and must not be overridden;
+        // extras from "Load More" only append (see PR #2329, commit 8938b05ef).
+        const seenValues = new Set(facet.value);
+        const merged = [...facet.value];
+        for (const v of extraFacet.value) {
+          if (!seenValues.has(v)) {
+            seenValues.add(v);
+            merged.push(v);
+          }
+        }
+        output.push({ key: facet.key, value: merged });
       } else {
         output.push(facet);
       }
@@ -361,15 +373,15 @@ export function useFetchFacets({
       const newFacet = await strategy(key);
       if (newFacet) {
         setExtraFacets(prev => [...(prev ?? []), newFacet]);
+        setExtraFacetKeys(prev =>
+          produce(prev, draft => {
+            draft.add(key);
+          }),
+        );
       }
       setLoadMoreLoadingKeys(prev =>
         produce(prev, draft => {
           draft.delete(key);
-        }),
-      );
-      setExtraFacetKeys(prev =>
-        produce(prev, draft => {
-          draft.add(key);
         }),
       );
     },
@@ -380,13 +392,21 @@ export function useFetchFacets({
     ],
   );
 
-  // Clear extra facets (from "load more") when switching sources or new date range
+  // Clear extras when the query scope that produced them changes; otherwise
+  // they'd persist against a query they were never fetched for.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setExtraFacets(null);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setExtraFacetKeys(new Set());
-  }, [sourceId, dateRange]);
+  }, [
+    sourceId,
+    dateRange,
+    mode,
+    filterState,
+    chartConfig.where,
+    chartConfig.whereLanguage,
+  ]);
 
   const output = useMemo(() => {
     return {
