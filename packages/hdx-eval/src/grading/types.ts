@@ -10,7 +10,7 @@ export type ProgrammaticCheck = {
   negative?: boolean;
 };
 
-export type JudgeCriterion = {
+type JudgeCriterion = {
   id: string;
   weight: number;
   description: string;

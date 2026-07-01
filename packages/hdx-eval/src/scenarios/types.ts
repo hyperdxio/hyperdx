@@ -62,7 +62,7 @@ export type PostRunInspectionResult = {
 /**
  * Context passed to the post-run inspection hook.
  */
-export type PostRunInspectionContext = {
+type PostRunInspectionContext = {
   toolCalls: ToolCallRecord[];
   apiUrl: string;
   accessKey: string;
