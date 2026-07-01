@@ -1978,14 +1978,19 @@ router.get(
  *                 normalized:
  *                   type: object
  *                   nullable: true
- *                   description: Reserved for Task 2 — always null in this version.
+ *                   description: |
+ *                     The parsed dashboard body with defaults applied (no
+ *                     persistence, so no server-assigned tile IDs). Populated
+ *                     when valid is true, null when valid is false.
  *             examples:
  *               valid:
  *                 summary: Valid dashboard body
  *                 value:
  *                   valid: true
  *                   errors: []
- *                   normalized: null
+ *                   normalized:
+ *                     name: "My Dashboard"
+ *                     tiles: []
  *               invalid:
  *                 summary: Invalid dashboard body
  *                 value:

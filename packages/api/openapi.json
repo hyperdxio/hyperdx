@@ -5838,7 +5838,7 @@
                     "normalized": {
                       "type": "object",
                       "nullable": true,
-                      "description": "Reserved for Task 2 — always null in this version."
+                      "description": "The parsed dashboard body with defaults applied (no\npersistence, so no server-assigned tile IDs). Populated\nwhen valid is true, null when valid is false.\n"
                     }
                   }
                 },
@@ -5848,7 +5848,10 @@
                     "value": {
                       "valid": true,
                       "errors": [],
-                      "normalized": null
+                      "normalized": {
+                        "name": "My Dashboard",
+                        "tiles": []
+                      }
                     }
                   },
                   "invalid": {
