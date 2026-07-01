@@ -1,4 +1,8 @@
-import { calculateInterval, renderMs } from '@/components/TimelineChart/utils';
+import {
+  calculateInterval,
+  getMaxEventValue,
+  renderMs,
+} from '@/components/TimelineChart/utils';
 
 describe('renderMs', () => {
   it('formats sub-second values as ms', () => {
@@ -104,5 +108,29 @@ describe('calculateInterval', () => {
   it('returns a safe fallback for non-positive ranges', () => {
     expect(calculateInterval(0)).toBe(1);
     expect(calculateInterval(-5)).toBe(1);
+  });
+});
+
+describe('getMaxEventValue', () => {
+  it('returns the max event end plus 10% padding', () => {
+    const rows = [
+      { events: [{ end: 100 }, { end: 250 }] },
+      { events: [{ end: 300 }] },
+    ];
+    expect(getMaxEventValue(rows)).toBeCloseTo(330);
+  });
+
+  it('ignores rows with no events and finds the global max', () => {
+    const rows = [
+      { events: [] },
+      { events: [{ end: 50 }] },
+      { events: [{ end: 10 }, { end: 500 }] },
+    ];
+    expect(getMaxEventValue(rows)).toBeCloseTo(550);
+  });
+
+  it('returns 0 for empty input', () => {
+    expect(getMaxEventValue([])).toBe(0);
+    expect(getMaxEventValue([{ events: [] }])).toBe(0);
   });
 });
