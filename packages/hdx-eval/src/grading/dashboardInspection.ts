@@ -25,6 +25,9 @@ export type TileEvidence = {
   tileName: string;
   displayType: string;
   containerId?: string;
+  /** Tile layout dimensions. */
+  w?: number;
+  h?: number;
   /** The tile config as returned by the v2 API. */
   config: Record<string, unknown>;
   /** The tile config as sent by the agent in save_dashboard (intent). */
@@ -250,12 +253,17 @@ export async function inspectDashboards(args: {
           | string
           | undefined;
 
+        const tileW = (tile as Record<string, unknown>).w as number | undefined;
+        const tileH = (tile as Record<string, unknown>).h as number | undefined;
+
         if (tile.config?.displayType === 'markdown') {
           tileEvidence.push({
             tileId,
             tileName: String(tileName),
             displayType: 'markdown',
             containerId,
+            w: tileW,
+            h: tileH,
             config: tile.config ?? {},
             queryResult: { success: true, hasData: true },
           });
@@ -275,6 +283,8 @@ export async function inspectDashboards(args: {
             tileName: String(tileName),
             displayType: String(tile.config?.displayType ?? 'unknown'),
             containerId,
+            w: tileW,
+            h: tileH,
             config: tile.config ?? {},
             intendedConfig: intendedConfigs.get(String(tileName)),
             queryResult,
@@ -285,6 +295,8 @@ export async function inspectDashboards(args: {
             tileName: String(tileName),
             displayType: String(tile.config?.displayType ?? 'unknown'),
             containerId,
+            w: tileW,
+            h: tileH,
             config: tile.config ?? {},
             intendedConfig: intendedConfigs.get(String(tileName)),
             queryResult: {
@@ -507,7 +519,9 @@ export function formatDashboardEvidence(
   for (let i = 0; i < result.tileEvidence.length; i++) {
     const tile = result.tileEvidence[i];
     lines.push(`Tile ${i + 1}: "${tile.tileName}"`);
-    lines.push(`  displayType: ${tile.displayType}`);
+    lines.push(
+      `  displayType: ${tile.displayType}  layout: ${tile.w ?? '?'}w x ${tile.h ?? '?'}h`,
+    );
     if (tile.containerId) {
       const container = result.containerEvidence.find(
         c => c.id === tile.containerId,

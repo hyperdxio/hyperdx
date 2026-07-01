@@ -120,25 +120,6 @@ function defaultApiUrl(): string {
 const DEFAULT_EVAL_EMAIL = 'eval@local.test';
 const DEFAULT_EVAL_PASSWORD = 'EvalPass123!#';
 
-/** Build the inspection config from an eval config + CLI credentials. */
-function buildInspectionConfig(
-  config: import('./hyperdx/config').EvalConfig,
-  creds: { email: string; password: string },
-  anchorTimeIso?: string,
-):
-  | NonNullable<import('./grading/grade').GradeBatchOptions['inspectionConfig']>
-  | undefined {
-  if (!config.hyperdxApi) return undefined;
-  return {
-    apiUrl: config.hyperdxApi.apiUrl,
-    accessKey: config.hyperdxApi.accessKey,
-    email: creds.email,
-    password: creds.password,
-    anchorTimeIso,
-    cleanup: true,
-  };
-}
-
 const program = new Command();
 
 program

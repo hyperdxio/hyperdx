@@ -183,8 +183,8 @@
         },
         {
           "id": "structure_and_design",
-          "weight": 2,
-          "description": "Is the dashboard well-organized? Collapsible sections, tabs where appropriate, logical grouping, markdown headers, proper use of dashboard-level filters. Does it look like a dashboard a human would want to use, or is it a flat dump of tiles?"
+          "weight": 3,
+          "description": "Is the dashboard well-organized AND well-proportioned? Check: (1) Collapsible sections, tabs where appropriate, logical grouping, markdown headers, dashboard-level filters. (2) TILE SIZING: tiles should be sized to fit their content — number tiles should be compact (w: 4-8, h: 3-4) and share a row, NOT take up the full width. Tables and search tiles should be taller (h: 6-10) so rows aren't clipped. Line/bar charts mid-height (h: 4-6). Heatmaps need height (h: 5-6). Markdown tiles should be short (h: 2-3). If every tile is the same default 12x4, that's lazy layout — score 2-3. A well-proportioned dashboard with varied tile sizes that match their content scores 5."
         },
         {
           "id": "tool_efficiency",
