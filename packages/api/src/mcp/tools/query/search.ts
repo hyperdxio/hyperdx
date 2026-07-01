@@ -1,8 +1,6 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import type { McpContext } from '@/mcp/tools/types';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import type { ToolRegistrar } from '@/mcp/tools/types';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -56,10 +54,10 @@ const searchSchema = z.object({
 
 // ─── Tool registration ───────────────────────────────────────────────────────
 
-export function registerSearch(server: McpServer, context: McpContext) {
+export function registerSearch({ context, registerTool }: ToolRegistrar) {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_search',
     {
       title: 'Search Events',
@@ -76,7 +74,7 @@ export function registerSearch(server: McpServer, context: McpContext) {
         "Map attributes use bracket syntax: SpanAttributes['http.method'].",
       inputSchema: searchSchema,
     },
-    withToolTracing('clickstack_search', context, async input => {
+    async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
         return {
@@ -220,6 +218,6 @@ export function registerSearch(server: McpServer, context: McpContext) {
           },
         ],
       };
-    }),
+    },
   );
 }

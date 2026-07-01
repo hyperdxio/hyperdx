@@ -1,4 +1,5 @@
 import { SourceKind, SourceSchema } from '@hyperdx/common-utils/dist/types';
+import mongoose from 'mongoose';
 
 import {
   ISourceInput,
@@ -35,8 +36,21 @@ export function getSources(team: string) {
   return Source.find({ team });
 }
 
-export function getSource(team: string, sourceId: string) {
-  return Source.findOne({ _id: sourceId, team });
+export async function getSource(team: string, sourceId: string) {
+  // Pre-check the sourceId shape so a non-ObjectId input returns null
+  // (the caller's "not found" branch) instead of bubbling a Mongoose
+  // CastError.
+  if (!mongoose.Types.ObjectId.isValid(sourceId)) {
+    return null;
+  }
+  try {
+    return await Source.findOne({ _id: sourceId, team });
+  } catch {
+    // Defense-in-depth: if Mongoose still throws (e.g. a future cast
+    // path), treat it as "not found" so the caller can surface a clean
+    // error.
+    return null;
+  }
 }
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends T

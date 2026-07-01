@@ -8,7 +8,7 @@ export type McpKind = string;
 /**
  * Transport configuration for an HTTP-based MCP server (e.g. HyperDX MCP).
  */
-export type HttpMcpTransport = {
+type HttpMcpTransport = {
   type: 'http';
   url: string;
   headers?: Record<string, string>;
@@ -17,7 +17,7 @@ export type HttpMcpTransport = {
 /**
  * Transport configuration for a stdio-based MCP server (e.g. mcp-clickhouse).
  */
-export type StdioMcpTransport = {
+type StdioMcpTransport = {
   type: 'stdio';
   command: string;
   args?: string[];

@@ -6,6 +6,7 @@ import type { RunRecord } from '@/harness/types';
 import { isModelSubdir, isRunJson, runsRoot, safeReaddir } from '@/runs/path';
 import { readRun } from '@/runs/store';
 import { getScenario, SCENARIO_NAMES } from '@/scenarios';
+import type { PostRunInspectionResult } from '@/scenarios/types';
 
 import type { BlindingEntry } from './blind';
 import { judgeTrajectory } from './judge';
@@ -76,6 +77,19 @@ export type GradeBatchOptions = {
   apiKey?: string;
   /** Blinding entries for anonymizing MCP identity during judging. */
   blindingEntries?: BlindingEntry[];
+  /**
+   * API config for post-run inspection hooks. When provided, scenarios
+   * with a `postRunInspection` hook will receive this config so they
+   * can call the HyperDX API to inspect artifacts.
+   */
+  inspectionConfig?: {
+    apiUrl: string;
+    accessKey: string;
+    email: string;
+    password: string;
+    anchorTimeIso?: string;
+    cleanup?: boolean;
+  };
 };
 
 export type GradeBatchSummary = {
@@ -142,12 +156,16 @@ export async function gradeBatch(
             ? ` (-${(grade.toolErrors.penalty * 100).toFixed(0)}pp)`
             : '')
         : '';
+      // Show inspection summary if present.
+      const inspBit = grade.inspectionSummary
+        ? formatInspectionLogBit(grade.inspectionSummary)
+        : '';
       console.log(
         `  ${grade.scenario}/${grade.mcp}/${grade.runId.split('-').slice(-1)[0]}  prog=${(
           grade.programmatic.score * 100
         ).toFixed(
           0,
-        )}%  ${judgeBit}  combined=${(grade.combinedScore * 100).toFixed(0)}%${errBit}`,
+        )}%  ${judgeBit}  combined=${(grade.combinedScore * 100).toFixed(0)}%${errBit}${inspBit}`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -157,6 +175,23 @@ export async function gradeBatch(
   }
 
   return { batchDir: resolved, graded, errors };
+}
+
+function formatInspectionLogBit(summary: Record<string, unknown>): string {
+  const parts: string[] = [];
+  if (
+    typeof summary.totalTiles === 'number' &&
+    typeof summary.tilesWithData === 'number'
+  ) {
+    parts.push(`tiles=${summary.tilesWithData}/${summary.totalTiles}`);
+  }
+  if (typeof summary.createCalls === 'number') {
+    parts.push(`creates=${summary.createCalls}`);
+  }
+  if (typeof summary.patchCalls === 'number') {
+    parts.push(`patches=${summary.patchCalls}`);
+  }
+  return parts.length > 0 ? `  ${parts.join('  ')}` : '';
 }
 
 async function gradeOne(args: {
@@ -174,6 +209,42 @@ async function gradeOne(args: {
     rubric.programmatic,
   );
 
+  const toolErrors = computeToolErrorStats(record);
+
+  // ── Post-run inspection (scenario hook) ──────────────────────────
+  // Runs BEFORE the judge so evidence can be passed to the judge prompt.
+  // On re-grade, reuse the cached inspectionSummary from the existing
+  // grade record — the artifacts were likely cleaned up on the first pass,
+  // so re-running the hook would fail or produce empty evidence.
+  let inspectionResult: PostRunInspectionResult | undefined;
+
+  if (existing?.inspectionSummary) {
+    // Reuse cached inspection from previous grading pass. The artifacts
+    // were likely cleaned up, so re-running the hook would fail. The
+    // persisted evidence string lets --rerun-judge work without re-inspection.
+    inspectionResult = {
+      evidence: existing.inspectionEvidence ?? '',
+      summary: existing.inspectionSummary,
+    };
+  } else if (scenario.postRunInspection && opts.inspectionConfig) {
+    try {
+      inspectionResult = await scenario.postRunInspection({
+        toolCalls: record.toolCalls,
+        apiUrl: opts.inspectionConfig.apiUrl,
+        accessKey: opts.inspectionConfig.accessKey,
+        email: opts.inspectionConfig.email,
+        password: opts.inspectionConfig.password,
+        anchorTimeIso: opts.inspectionConfig.anchorTimeIso,
+        cleanup: opts.inspectionConfig.cleanup ?? true,
+      });
+    } catch (err) {
+      console.warn(
+        `  post-run inspection failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  // ── LLM Judge ────────────────────────────────────────────────────
   let judge: JudgeResult | null = existing?.judge ?? null;
   if (!opts.skipJudge && client && (!judge || opts.rerunJudge)) {
     judge = await judgeTrajectory({
@@ -185,9 +256,12 @@ async function gradeOne(args: {
       judgeModel: opts.judgeModel,
       client,
       blindingEntries: opts.blindingEntries,
+      judgeSystemPreamble: scenario.judgeSystemPreamble,
+      inspectionEvidence: inspectionResult?.evidence,
     });
   }
 
+  // ── Combined score ───────────────────────────────────────────────
   const judgeError = judge && 'error' in judge && judge.error;
   const judgeScore = judge?.weightedScore ?? 0;
   const rawCombined =
@@ -195,8 +269,7 @@ async function gradeOne(args: {
       ? COMBINED_SCORE_PROGRAMMATIC_WEIGHT * programmatic.score +
         COMBINED_SCORE_JUDGE_WEIGHT * judgeScore
       : programmatic.score;
-  const toolErrors = computeToolErrorStats(record);
-  // Apply the tool-error penalty AFTER scoring the answer. Clamp to [0,1].
+
   const combinedScore = Math.max(
     0,
     Math.min(1, rawCombined - toolErrors.penalty),
@@ -210,6 +283,8 @@ async function gradeOne(args: {
     programmatic,
     judge,
     toolErrors,
+    inspectionSummary: inspectionResult?.summary,
+    inspectionEvidence: inspectionResult?.evidence || undefined,
     combinedScore,
     gradedAt: new Date().toISOString(),
     judgeModel: judge?.model ?? opts.judgeModel ?? 'skipped',
