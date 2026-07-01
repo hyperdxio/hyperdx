@@ -1,23 +1,19 @@
 import { useMemo, useState } from 'react';
 import {
-  ActionIcon,
   Anchor,
-  CopyButton,
   Group,
   Stack,
   Text,
   TextInput,
-  Tooltip,
   UnstyledButton,
 } from '@mantine/core';
 import {
   IconArrowUpRight,
-  IconCheck,
-  IconCopy,
   IconExternalLink,
   IconSearch,
 } from '@tabler/icons-react';
 
+import { ConnectionSnippet } from './ConnectionSnippet';
 import { GuideView } from './GuideView';
 import {
   docUrl,
@@ -25,43 +21,6 @@ import {
   type IntegrationItem,
 } from './integrationsCatalog';
 import { CategorySection } from './ItemTile';
-
-function CopyRow({ label, value }: { label: string; value: string }) {
-  return (
-    <Group
-      gap={10}
-      wrap="nowrap"
-      align="center"
-      style={{
-        border: '1px solid var(--color-border)',
-        borderRadius: 8,
-        padding: '8px 8px 8px 12px',
-        background: 'var(--color-bg-surface)',
-      }}
-    >
-      <Text fz={12} fw={500} style={{ color: 'var(--color-text-muted)' }}>
-        {label}
-      </Text>
-      <Text
-        fz={12}
-        ff="var(--mantine-font-family-monospace, ui-monospace, monospace)"
-        truncate
-        style={{ color: 'var(--color-text)', flex: 1 }}
-      >
-        {value}
-      </Text>
-      <CopyButton value={value}>
-        {({ copied, copy }) => (
-          <Tooltip label={copied ? 'Copied' : 'Copy'} withArrow>
-            <ActionIcon variant="subtle" color="gray" onClick={copy}>
-              {copied ? <IconCheck size={15} /> : <IconCopy size={15} />}
-            </ActionIcon>
-          </Tooltip>
-        )}
-      </CopyButton>
-    </Group>
-  );
-}
 
 const CHIPS = [
   { id: 'all', label: 'All' },
@@ -119,10 +78,7 @@ export function DrawerContent({
 
   return (
     <Stack gap={16}>
-      <Stack gap={8}>
-        <CopyRow label="Endpoint" value={endpoint} />
-        <CopyRow label="Ingestion key" value={apiKey} />
-      </Stack>
+      <ConnectionSnippet endpoint={endpoint} apiKey={apiKey} />
 
       <TextInput
         value={query}
