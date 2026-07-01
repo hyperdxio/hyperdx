@@ -349,6 +349,12 @@ export const Table = ({
           style={{
             position: 'sticky',
             top: 0,
+            // Body cells include positioned elements (e.g. the
+            // position: relative `.lastCell`), which otherwise paint on
+            // top of the sticky header as rows scroll underneath it.
+            // A stacking context above those cells keeps the header on
+            // top. Mirrors the log table's sticky head (LogTable.module.scss).
+            zIndex: 2,
             background:
               variant === 'muted'
                 ? 'var(--color-bg-muted)'

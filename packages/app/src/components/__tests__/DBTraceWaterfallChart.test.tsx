@@ -55,7 +55,14 @@ jest.mock('@/components/TimelineChart', () => {
     );
   };
   mockComponent.latestProps = {};
-  return { TimelineChart: mockComponent };
+
+  const MockTimelineMinimap = function MockTimelineMinimap(props: any) {
+    MockTimelineMinimap.latestProps = props;
+    return <div data-testid="timeline-minimap">TimelineMinimap</div>;
+  };
+  MockTimelineMinimap.latestProps = {};
+
+  return { TimelineChart: mockComponent, TimelineMinimap: MockTimelineMinimap };
 });
 
 jest.mock('@/hooks/useOffsetPaginatedQuery');
