@@ -63,6 +63,47 @@ export class SidePanelComponent {
   }
 
   /**
+   * In the parsed JSON view, expand a field whose value is a JSON string, then
+   * click the "Add to Filters" line action on a nested key. Each row in the JSON
+   * viewer carries `data-testid="json-viewer-line"`, and the action is a
+   * `<button title="Add to Filters">` rendered only while the row is hovered.
+   */
+  async addParsedJsonFieldToFilter(parentField: string, nestedKey: string) {
+    await this.clickTab('parsed');
+
+    const lines = this.panelContainer.getByTestId('json-viewer-line');
+    // The leaf line is the one containing an element whose text is exactly the
+    // nested key. Exact match avoids the collapsed parent's raw-value preview,
+    // which contains the key inline as part of a longer string.
+    const leafLine = lines.filter({
+      has: this.page.getByText(nestedKey, { exact: true }),
+    });
+
+    // The nested key only renders as its own line once the parent field (whose
+    // value is a JSON string) is expanded. Expand it if the leaf is not showing.
+    if (
+      !(await leafLine
+        .first()
+        .isVisible()
+        .catch(() => false))
+    ) {
+      await lines
+        .filter({ has: this.page.getByText(parentField, { exact: true }) })
+        .first()
+        .click();
+    }
+
+    await leafLine.first().waitFor({ state: 'visible', timeout: 10_000 });
+    // Hover the line to mount its action menu, then click the titled button
+    // scoped to that line so the parent's menu is never the target.
+    await leafLine.first().hover();
+    await leafLine
+      .first()
+      .getByTitle(/add to filters/i)
+      .click({ timeout: 10_000 });
+  }
+
+  /**
    * Close the side panel (if it has a close button)
    */
   async close() {
