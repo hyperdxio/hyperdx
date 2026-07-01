@@ -10,17 +10,14 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
-  ActionIcon,
   Badge,
   Flex,
   Group,
   ScrollArea,
   SegmentedControl,
   Text,
-  Tooltip,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconSearch } from '@tabler/icons-react';
 
 import SearchWhereInput, {
   getStoredLanguage,
@@ -29,7 +26,13 @@ import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import { useSource } from '@/source';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
-import { extractQuickFilters, FilterPill } from './ContextFilterPills';
+import {
+  extractQuickFilters,
+  FilterLegend,
+  FilterPill,
+  getAvailablePresets,
+  getPresetFilterIds,
+} from './ContextFilterPills';
 import { ROW_DATA_ALIASES } from './DBRowDataPanel';
 import DBRowSidePanel, { RowSidePanelContext } from './DBRowSidePanel';
 import {
@@ -49,21 +52,14 @@ interface ContextSubpanelProps {
 
 // Custom hook to manage nested panel state
 export function useNestedPanelState(isNested?: boolean) {
-  // Query state (URL-based) for root level
   const queryState = {
     contextRowId: useQueryState('contextRowId', parseAsStringEncoded),
-    // Source IDs are MongoDB ObjectIDs (hex strings) and contain no special
-    // characters, so no encoding is needed here.
     contextRowSource: useQueryState('contextRowSource'),
   };
-
-  // Local state for nested levels
   const localState = {
     contextRowId: useState<string | null>(null),
     contextRowSource: useState<string | null>(null),
   };
-
-  // Choose which state to use based on nesting level
   const activeState = isNested ? localState : queryState;
 
   return {
@@ -87,6 +83,7 @@ export default function ContextSubpanel({
   const { whereLanguage: originalLanguage = 'lucene' } =
     dbSqlRowTableConfig ?? {};
   const [range, setRange] = useState<number>(ms('30s'));
+  const [activePreset, setActivePreset] = useState('all');
   const [showCustomSearch, setShowCustomSearch] = useState(false);
   const { control } = useForm({
     defaultValues: {
@@ -101,9 +98,7 @@ export default function ContextSubpanel({
   const formWhere = useWatch({ control, name: 'where' });
   const [debouncedWhere] = useDebouncedValue(formWhere, 1000);
 
-  // State management for nested panels
   const isNested = !!breadcrumbPath?.length;
-
   const {
     contextRowId,
     contextRowSource,
@@ -114,7 +109,6 @@ export default function ContextSubpanel({
   const { data: contextRowSidePanelSource } = useSource({
     id: contextRowSource || '',
   });
-
   const [contextAliasWith, setContextAliasWith] = useState<WithClause[]>([]);
 
   const handleContextSidePanelClose = useCallback(() => {
@@ -134,7 +128,6 @@ export default function ContextSubpanel({
   );
 
   const date = useMemo(() => new Date(origTimestamp), [origTimestamp]);
-
   const newDateRange = useMemo(
     (): [Date, Date] => [
       new Date(date.getTime() - range / 2),
@@ -148,11 +141,36 @@ export default function ContextSubpanel({
 
   useEffect(() => {
     setSelectedFilterIds([]);
+    setActivePreset('all');
+    setShowCustomSearch(false);
   }, [rowId]);
 
   const availableFilters = useMemo(
     () => extractQuickFilters(rowData, source),
     [rowData, source],
+  );
+
+  const presetOptions = useMemo(
+    () => getAvailablePresets(availableFilters),
+    [availableFilters],
+  );
+
+  const handlePresetChange = useCallback(
+    (preset: string) => {
+      setActivePreset(preset);
+      if (preset === 'custom') {
+        setShowCustomSearch(true);
+        return;
+      }
+      setShowCustomSearch(false);
+      if (preset === 'all') {
+        setSelectedFilterIds([]);
+        return;
+      }
+      const ids = getPresetFilterIds(preset, availableFilters);
+      setSelectedFilterIds(ids);
+    },
+    [availableFilters],
   );
 
   const toggleFilter = useCallback((id: string) => {
@@ -220,54 +238,44 @@ export default function ContextSubpanel({
     source,
   ]);
 
+  const displayedPreset =
+    selectedFilterIds.length === 0 && !showCustomSearch ? 'all' : activePreset;
+
   return (
     <>
       {config && (
         <Flex direction="column" mih="0px" style={{ flexGrow: 1 }}>
-          <Group justify="space-between" p="sm" gap="xs">
-            <Group gap="xs">
-              <Badge size="md" variant="default">
-                ±{ms(range / 2)}
-              </Badge>
-              <SegmentedControl
-                size="xs"
-                data={[
-                  { label: '100ms', value: ms('100ms').toString() },
-                  { label: '500ms', value: ms('500ms').toString() },
-                  { label: '1s', value: ms('1s').toString() },
-                  { label: '5s', value: ms('5s').toString() },
-                  { label: '30s', value: ms('30s').toString() },
-                  { label: '1m', value: ms('1m').toString() },
-                  { label: '5m', value: ms('5m').toString() },
-                  { label: '15m', value: ms('15m').toString() },
-                ]}
-                value={range.toString()}
-                onChange={value => setRange(Number(value))}
-              />
-            </Group>
-            <Group gap="xs">
-              <Tooltip label="Custom search query" openDelay={300}>
-                <ActionIcon
-                  size="sm"
-                  variant={showCustomSearch ? 'secondary' : 'subtle'}
-                  onClick={() => setShowCustomSearch(v => !v)}
-                >
-                  <IconSearch size={14} />
-                </ActionIcon>
-              </Tooltip>
-              {selectedFilterIds.length > 0 && (
-                <Text
-                  size="xxs"
-                  c="dimmed"
-                  style={{ cursor: 'pointer' }}
-                  td="underline"
-                  onClick={() => setSelectedFilterIds([])}
-                >
-                  Clear filters
-                </Text>
-              )}
-            </Group>
+          <Group gap="xs" p="sm" pb={4}>
+            <Badge size="md" variant="default">
+              ±{ms(range / 2)}
+            </Badge>
+            <SegmentedControl
+              size="xs"
+              data={[
+                { label: '100ms', value: ms('100ms').toString() },
+                { label: '500ms', value: ms('500ms').toString() },
+                { label: '1s', value: ms('1s').toString() },
+                { label: '5s', value: ms('5s').toString() },
+                { label: '30s', value: ms('30s').toString() },
+                { label: '1m', value: ms('1m').toString() },
+                { label: '5m', value: ms('5m').toString() },
+                { label: '15m', value: ms('15m').toString() },
+              ]}
+              value={range.toString()}
+              onChange={value => setRange(Number(value))}
+            />
           </Group>
+          <Flex direction="column" px="sm" pb="xs" gap={6}>
+            <Text size="xxs" c="dimmed" fw={600} tt="uppercase">
+              Match on
+            </Text>
+            <SegmentedControl
+              size="xs"
+              data={presetOptions}
+              value={displayedPreset}
+              onChange={handlePresetChange}
+            />
+          </Flex>
           {showCustomSearch && (
             <Group px="sm" pb="xs">
               <SearchWhereInput
@@ -280,24 +288,43 @@ export default function ContextSubpanel({
             </Group>
           )}
           {availableFilters.length > 0 && (
-            <ScrollArea
-              px="sm"
-              pb="xs"
-              type="auto"
-              offsetScrollbars
-              style={{ flexShrink: 0 }}
-            >
-              <Flex gap={4} wrap="wrap">
-                {availableFilters.map(filter => (
-                  <FilterPill
-                    key={filter.id}
-                    filter={filter}
-                    isSelected={selectedFilterIds.includes(filter.id)}
-                    onToggle={() => toggleFilter(filter.id)}
-                  />
-                ))}
-              </Flex>
-            </ScrollArea>
+            <Flex direction="column" px="sm" pb="xs" gap={4}>
+              <Group justify="space-between">
+                <Text size="xs">
+                  Matching on{' '}
+                  <Text span fw={700}>
+                    {selectedFilterIds.length}
+                  </Text>{' '}
+                  attributes
+                </Text>
+                {selectedFilterIds.length > 0 && (
+                  <Text
+                    size="xs"
+                    c="dimmed"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => {
+                      setSelectedFilterIds([]);
+                      setActivePreset('all');
+                    }}
+                  >
+                    Clear all
+                  </Text>
+                )}
+              </Group>
+              <ScrollArea mah={180} type="auto" offsetScrollbars>
+                <Flex gap={5} wrap="wrap">
+                  {availableFilters.map(filter => (
+                    <FilterPill
+                      key={filter.id}
+                      filter={filter}
+                      isSelected={selectedFilterIds.includes(filter.id)}
+                      onToggle={() => toggleFilter(filter.id)}
+                    />
+                  ))}
+                </Flex>
+              </ScrollArea>
+              <FilterLegend />
+            </Flex>
           )}
           <div style={{ height: '100%', overflow: 'auto' }}>
             <DBSqlRowTable

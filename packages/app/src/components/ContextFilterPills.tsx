@@ -3,8 +3,8 @@ import {
   isTraceSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Text, Tooltip } from '@mantine/core';
-import { IconX } from '@tabler/icons-react';
+import { Flex, Group, Text, Tooltip } from '@mantine/core';
+import { IconCheck, IconPlus } from '@tabler/icons-react';
 
 import { formatAttributeClause } from '@/utils';
 
@@ -31,6 +31,7 @@ function formatColumnEquals(
 const PROMOTED_RESOURCE_ATTR_KEYS = [
   'host.name',
   'k8s.pod.name',
+  'k8s.namespace.name',
   'k8s.node.name',
 ];
 
@@ -58,7 +59,6 @@ export function extractQuickFilters(
     | Record<string, unknown>
     | undefined;
 
-  // Service name pill (promoted, always first)
   const serviceNameValue = rowData[ROW_DATA_ALIASES.SERVICE_NAME];
   if (serviceNameExpr && serviceNameValue) {
     filters.push({
@@ -87,7 +87,6 @@ export function extractQuickFilters(
     });
   }
 
-  // Promoted resource attribute pills (host, k8s)
   if (resourceAttrs && resourceAttrExpr) {
     for (const key of PROMOTED_RESOURCE_ATTR_KEYS) {
       const val = resourceAttrs[key];
@@ -102,7 +101,6 @@ export function extractQuickFilters(
     }
   }
 
-  // Remaining resource attributes
   const addedIds = new Set(filters.map(f => f.id));
   if (resourceAttrs && resourceAttrExpr) {
     for (const [key, val] of Object.entries(resourceAttrs)) {
@@ -118,7 +116,6 @@ export function extractQuickFilters(
     }
   }
 
-  // Event attributes
   const eventAttrs = rowData[ROW_DATA_ALIASES.EVENT_ATTRIBUTES];
   if (eventAttrs && typeof eventAttrs === 'object' && eventAttrExpr) {
     for (const [key, val] of Object.entries(
@@ -135,7 +132,6 @@ export function extractQuickFilters(
     }
   }
 
-  // Top-level columns
   for (const [key, val] of Object.entries(rowData)) {
     if (skipAliases.has(key) || key.startsWith('__hdx_')) continue;
     if (typeof val !== 'string' || !val || val.length > 200) continue;
@@ -153,17 +149,53 @@ export function extractQuickFilters(
   return filters;
 }
 
+// Preset definitions: which filter IDs each preset auto-selects
+const MATCH_PRESET_IDS: Record<string, string[]> = {
+  service: ['svc', 'ra:service.name'],
+  host: ['svc', 'ra:service.name', 'ra:host.name'],
+  pod: ['svc', 'ra:service.name', 'ra:k8s.pod.name', 'ra:k8s.namespace.name'],
+  node: ['svc', 'ra:service.name', 'ra:k8s.node.name'],
+};
+
+export function getPresetFilterIds(
+  preset: string,
+  available: QuickFilterItem[],
+): string[] {
+  const wantedIds = MATCH_PRESET_IDS[preset] ?? [];
+  const availableIds = new Set(available.map(f => f.id));
+  return wantedIds.filter(id => availableIds.has(id));
+}
+
+export function getAvailablePresets(
+  available: QuickFilterItem[],
+): { label: string; value: string }[] {
+  const ids = new Set(available.map(f => f.id));
+  const hasService = ids.has('svc') || ids.has('ra:service.name');
+  const hasHost = ids.has('ra:host.name');
+  const hasPod = ids.has('ra:k8s.pod.name');
+  const hasNode = ids.has('ra:k8s.node.name');
+
+  return [
+    { label: 'All', value: 'all' },
+    ...(hasService ? [{ label: 'Service', value: 'service' }] : []),
+    ...(hasHost ? [{ label: 'Host', value: 'host' }] : []),
+    ...(hasPod ? [{ label: 'Pod', value: 'pod' }] : []),
+    ...(hasNode ? [{ label: 'Node', value: 'node' }] : []),
+    { label: 'Custom', value: 'custom' },
+  ];
+}
+
 const filterPillStyle = {
   display: 'inline-flex',
   alignItems: 'center' as const,
-  gap: 4,
-  padding: '2px 8px',
+  gap: 5,
+  padding: '3px 10px',
   borderRadius: 4,
   fontSize: 12,
   lineHeight: '20px',
   cursor: 'pointer',
   whiteSpace: 'nowrap' as const,
-  maxWidth: 400,
+  maxWidth: 360,
   overflow: 'hidden',
 };
 
@@ -188,14 +220,17 @@ export function FilterPill({
         onClick={onToggle}
         style={{
           ...filterPillStyle,
-          backgroundColor: isSelected ? 'var(--color-bg-hover)' : 'transparent',
           border: isSelected
-            ? '1px solid var(--color-border-emphasis)'
-            : '1px solid var(--color-border)',
-          opacity: isSelected ? 1 : 0.7,
+            ? '1.5px solid var(--mantine-color-yellow-5)'
+            : '1px dashed var(--color-border)',
         }}
       >
-        <Text span size="xs" c="dimmed" fw={500} style={{ flexShrink: 0 }}>
+        {isSelected ? (
+          <IconCheck size={13} color="var(--mantine-color-yellow-5)" />
+        ) : (
+          <IconPlus size={12} style={{ opacity: 0.5 }} />
+        )}
+        <Text span size="xs" fw={500} style={{ flexShrink: 0 }}>
           {filter.label}
         </Text>
         <Text span size="xs" c="dimmed">
@@ -204,20 +239,48 @@ export function FilterPill({
         <Text
           span
           size="xs"
-          fw={500}
+          fw={isSelected ? 700 : 400}
           truncate
           style={{ maxWidth: 180, display: 'inline-block' }}
         >
           {filter.value}
         </Text>
-        {isSelected && (
-          <IconX
-            size={12}
-            style={{ flexShrink: 0, marginLeft: 2 }}
-            aria-label="Remove filter"
-          />
-        )}
       </span>
     </Tooltip>
+  );
+}
+
+export function FilterLegend() {
+  return (
+    <Flex gap="md" align="center" mt={6}>
+      <Group gap={4}>
+        <span
+          style={{
+            display: 'inline-block',
+            width: 12,
+            height: 12,
+            borderRadius: 3,
+            border: '1.5px solid var(--mantine-color-yellow-5)',
+          }}
+        />
+        <Text size="xxs" c="dimmed">
+          matching
+        </Text>
+      </Group>
+      <Group gap={4}>
+        <span
+          style={{
+            display: 'inline-block',
+            width: 12,
+            height: 12,
+            borderRadius: 3,
+            border: '1px dashed var(--color-border)',
+          }}
+        />
+        <Text size="xxs" c="dimmed">
+          available — tap to add
+        </Text>
+      </Group>
+    </Flex>
   );
 }
