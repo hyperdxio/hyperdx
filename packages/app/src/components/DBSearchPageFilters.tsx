@@ -124,7 +124,7 @@ export function cleanedFacetName(key: string): string {
 }
 
 /** Value-level pin callbacks and state (personal + shared). */
-export type ValuePinHandlers = {
+type ValuePinHandlers = {
   onPinClick: (value: string | boolean) => void;
   isPinned: (value: string | boolean) => boolean;
   onSharedPinClick?: (value: string | boolean) => void;
@@ -132,7 +132,7 @@ export type ValuePinHandlers = {
 };
 
 /** Field/group-level pin callbacks and state (personal + shared). */
-export type FieldPinHandlers = {
+type FieldPinHandlers = {
   onFieldPinClick?: VoidFunction;
   isFieldPinned?: boolean;
   onToggleSharedFieldPin?: VoidFunction;

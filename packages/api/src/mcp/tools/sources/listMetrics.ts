@@ -6,13 +6,11 @@ import {
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import type { McpContext } from '@/mcp/tools/types';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import type { ToolRegistrar } from '@/mcp/tools/types';
 import logger from '@/utils/logger';
 
 import {
@@ -244,13 +242,13 @@ async function fetchMetricsForKind({
 
 // ─── Tool registration ───────────────────────────────────────────────────────
 
-export function registerListMetrics(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerListMetrics({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_list_metrics',
     {
       title: 'List Metric Names',
@@ -266,7 +264,7 @@ export function registerListMetrics(
         'clickstack_timeseries|clickstack_table.',
       inputSchema: listMetricsSchema,
     },
-    withToolTracing('clickstack_list_metrics', context, async rawInput => {
+    async rawInput => {
       // Re-parse explicitly: the MCP SDK callback signature widens
       // optional-field types into `unknown`, but the parser produces
       // the typed shape we need for downstream calls.
@@ -309,7 +307,7 @@ export function registerListMetrics(
       } finally {
         clearTimeout(timeoutId);
       }
-    }),
+    },
   );
 }
 

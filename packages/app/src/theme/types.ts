@@ -41,7 +41,7 @@ export type ThemeName = 'hyperdx' | 'clickstack';
  * Favicon configuration for a theme.
  * Modern best practice includes multiple formats for broad compatibility.
  */
-export interface FaviconConfig {
+interface FaviconConfig {
   /** SVG favicon - best for modern browsers, scalable */
   svg: string;
   /** PNG 32x32 - standard fallback */

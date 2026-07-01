@@ -457,7 +457,7 @@ export type ExternalDashboardRawSqlTileConfig = z.infer<
   typeof externalDashboardRawSqlTileConfigSchema
 >;
 
-export const externalDashboardTileConfigSchema = z
+const externalDashboardTileConfigSchema = z
   .custom<
     ExternalDashboardRawSqlTileConfig | ExternalDashboardBuilderTileConfig
   >()
