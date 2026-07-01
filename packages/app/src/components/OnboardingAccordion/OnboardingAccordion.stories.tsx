@@ -1374,7 +1374,7 @@ function ConnectServiceBody({
           border: '1px dashed var(--color-border-emphasis)',
           borderRadius: 8,
           padding: '28px 24px',
-          background: 'var(--color-bg-body)',
+          background: 'var(--color-bg-muted)',
         }}
       >
         <LogoBadge size={44} radius={10}>
