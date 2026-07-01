@@ -1235,6 +1235,17 @@ export function formatAttributeClause(
     : `${column}.${field}:"${value}"`;
 }
 
+export function formatColumnEquals(
+  column: string,
+  value: string,
+  isSql: boolean,
+): string {
+  if (isSql) {
+    return `${column} = '${value.replace(/'/g, "''")}'`;
+  }
+  return `${column}:"${value.replace(/"/g, '\\"')}"`;
+}
+
 /**
  * Gets the appropriate table name for a source based on metric type
  * @param source The data source

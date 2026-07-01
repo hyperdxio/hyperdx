@@ -6,7 +6,7 @@ import {
 import { Flex, Group, Text, Tooltip } from '@mantine/core';
 import { IconCheck, IconPlus } from '@tabler/icons-react';
 
-import { formatAttributeClause } from '@/utils';
+import { formatAttributeClause, formatColumnEquals } from '@/utils';
 
 import { ROW_DATA_ALIASES } from './DBRowDataPanel';
 
@@ -15,17 +15,6 @@ export interface QuickFilterItem {
   label: string;
   value: string;
   generateWhere: (isSql: boolean) => string;
-}
-
-function formatColumnEquals(
-  column: string,
-  value: string,
-  isSql: boolean,
-): string {
-  if (isSql) {
-    return `${column} = '${value.replace(/'/g, "''")}'`;
-  }
-  return `${column}:"${value.replace(/"/g, '\\"')}"`;
 }
 
 const PROMOTED_RESOURCE_ATTR_KEYS = [
@@ -149,7 +138,6 @@ export function extractQuickFilters(
   return filters;
 }
 
-// Preset definitions: which filter IDs each preset auto-selects
 const MATCH_PRESET_IDS: Record<string, string[]> = {
   service: ['svc', 'ra:service.name'],
   host: ['svc', 'ra:service.name', 'ra:host.name'],

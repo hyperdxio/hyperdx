@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import ms from 'ms';
 import { useQueryState } from 'nuqs';
+import { ErrorBoundary } from 'react-error-boundary';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -77,7 +78,6 @@ export default function ContextSubpanel({
     dbSqlRowTableConfig ?? {};
   const [range, setRange] = useState<number>(ms('30s'));
   const [activePreset, setActivePreset] = useState('all');
-  const [showCustomSearch, setShowCustomSearch] = useState(false);
   const { control } = useForm({
     defaultValues: {
       where: '',
@@ -129,13 +129,13 @@ export default function ContextSubpanel({
     [date, range],
   );
 
-  // Filter state
+  // Filter state — showCustomSearch is derived, not stored
   const [selectedFilterIds, setSelectedFilterIds] = useState<string[]>([]);
+  const showCustomSearch = activePreset === 'custom';
 
   useEffect(() => {
     setSelectedFilterIds([]);
     setActivePreset('all');
-    setShowCustomSearch(false);
   }, [rowId]);
 
   const availableFilters = useMemo(
@@ -151,12 +151,7 @@ export default function ContextSubpanel({
   const handlePresetChange = useCallback(
     (preset: string) => {
       setActivePreset(preset);
-      if (preset === 'custom') {
-        setShowCustomSearch(true);
-        return;
-      }
-      setShowCustomSearch(false);
-      if (preset === 'all') {
+      if (preset === 'custom' || preset === 'all') {
         setSelectedFilterIds([]);
         return;
       }
@@ -171,7 +166,6 @@ export default function ContextSubpanel({
       prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id],
     );
     setActivePreset('custom');
-    setShowCustomSearch(true);
   }, []);
 
   const getWhereClause = useCallback((): string => {
@@ -234,7 +228,9 @@ export default function ContextSubpanel({
   ]);
 
   const displayedPreset =
-    selectedFilterIds.length === 0 && !showCustomSearch ? 'all' : activePreset;
+    selectedFilterIds.length === 0 && activePreset !== 'custom'
+      ? 'all'
+      : activePreset;
 
   return (
     <>
@@ -284,43 +280,51 @@ export default function ContextSubpanel({
             </Group>
           )}
           {availableFilters.length > 0 && (
-            <Flex direction="column" px="sm" pb="xs" gap={4}>
-              <Group justify="space-between">
-                <Text size="xs">
-                  Matching on{' '}
-                  <Text span fw={700}>
-                    {selectedFilterIds.length}
-                  </Text>{' '}
-                  attributes
+            <ErrorBoundary
+              fallbackRender={() => (
+                <Text size="xs" c="dimmed" px="sm">
+                  Unable to load event filters.
                 </Text>
-                {selectedFilterIds.length > 0 && (
-                  <Text
-                    size="xs"
-                    c="dimmed"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => {
-                      setSelectedFilterIds([]);
-                      setActivePreset('all');
-                    }}
-                  >
-                    Clear all
+              )}
+            >
+              <Flex direction="column" px="sm" pb="xs" gap={4}>
+                <Group justify="space-between">
+                  <Text size="xs">
+                    Matching on{' '}
+                    <Text span fw={700}>
+                      {selectedFilterIds.length}
+                    </Text>{' '}
+                    attributes
                   </Text>
-                )}
-              </Group>
-              <ScrollArea mah={180} type="auto" offsetScrollbars>
-                <Flex gap={5} wrap="wrap">
-                  {availableFilters.map(filter => (
-                    <FilterPill
-                      key={filter.id}
-                      filter={filter}
-                      isSelected={selectedFilterIds.includes(filter.id)}
-                      onToggle={() => toggleFilter(filter.id)}
-                    />
-                  ))}
-                </Flex>
-              </ScrollArea>
-              <FilterLegend />
-            </Flex>
+                  {selectedFilterIds.length > 0 && (
+                    <Text
+                      size="xs"
+                      c="dimmed"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => {
+                        setSelectedFilterIds([]);
+                        setActivePreset('all');
+                      }}
+                    >
+                      Clear all
+                    </Text>
+                  )}
+                </Group>
+                <ScrollArea mah={180} type="auto" offsetScrollbars>
+                  <Flex gap={5} wrap="wrap">
+                    {availableFilters.map(filter => (
+                      <FilterPill
+                        key={filter.id}
+                        filter={filter}
+                        isSelected={selectedFilterIds.includes(filter.id)}
+                        onToggle={() => toggleFilter(filter.id)}
+                      />
+                    ))}
+                  </Flex>
+                </ScrollArea>
+                <FilterLegend />
+              </Flex>
+            </ErrorBoundary>
           )}
           <div style={{ height: '100%', overflow: 'auto' }}>
             <DBSqlRowTable
