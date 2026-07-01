@@ -84,6 +84,7 @@ import { useColumns, useMetadataWithSettings } from '@/hooks/useMetadata';
 import {
   inferTableSourceConfig,
   isValidMetricTable,
+  isValidSessionsTable,
   useCreateSource,
   useDeleteSource,
   useSource,
@@ -1888,6 +1889,37 @@ function SessionTableModelForm({ control }: TableModelProps) {
   });
   const connectionId = useWatch({ control, name: 'connection' });
   const tableName = useWatch({ control, name: 'from.tableName' });
+  const prevTableNameRef = useRef(tableName);
+  const metadata = useMetadataWithSettings();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        if (tableName && tableName !== prevTableNameRef.current) {
+          prevTableNameRef.current = tableName;
+          const isValid = await isValidSessionsTable({
+            databaseName,
+            tableName,
+            connectionId,
+            metadata,
+          });
+
+          if (!isValid) {
+            notifications.show({
+              color: 'red',
+              message: `${tableName} is not a valid Sessions schema.`,
+            });
+          }
+        }
+      } catch (e) {
+        console.error(e);
+        notifications.show({
+          color: 'red',
+          message: e.message,
+        });
+      }
+    })();
+  }, [tableName, databaseName, connectionId, metadata]);
 
   return (
     <>
