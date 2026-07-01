@@ -30,6 +30,7 @@ export function IntegrationsDrawer({
       onClose={onClose}
       position="right"
       size={640}
+      styles={{ body: { paddingInlineEnd: 'var(--mantine-spacing-md)' } }}
       title={
         <Stack gap={2}>
           <Group gap={8} align="center">
