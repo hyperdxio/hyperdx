@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { mcpUserError } from '@/mcp/utils/errors';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -674,7 +674,7 @@ export function registerDescribeSource({
             { teamId, sourceId },
             'clickstack_describe_source timed out',
           );
-          return mcpUserError(
+          return mcpServerError(
             'Schema discovery timed out. The ClickHouse server may be under load. ' +
               'Try again, or use clickstack_list_sources for basic source info without schema details.',
           );

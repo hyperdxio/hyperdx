@@ -13,8 +13,9 @@ import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import { clickHouseErrorResult } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { mcpUserError } from '@/mcp/utils/errors';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -541,9 +542,10 @@ async function describeMetricImpl(
       { kind, error: e instanceof Error ? e.message : String(e) },
       'describeMetric: getColumns failed',
     );
-    return mcpUserError(
-      `Failed to load columns for "${tableName}". The metric table may be missing or unreachable.`,
-    );
+    return clickHouseErrorResult(e, {
+      prefix: `Failed to load columns for "${tableName}"`,
+      suffix: 'The metric table may be missing or unreachable.',
+    });
   }
   const columnNames = new Set(columns.map(c => c.name));
   const hasUnit = columnNames.has('MetricUnit');
@@ -742,7 +744,7 @@ export function registerDescribeMetric({
             { teamId, sourceId: input.sourceId, metricName: input.metricName },
             'clickstack_describe_metric timed out',
           );
-          return mcpUserError(
+          return mcpServerError(
             'Discovery timed out. The metric table may be under load or the ' +
               'attribute set may be very high-cardinality. Try narrowing ' +
               'startTime/endTime or setting sampleValues:false to skip the ' +

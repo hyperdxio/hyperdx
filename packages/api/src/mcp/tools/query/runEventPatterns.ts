@@ -10,7 +10,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import { mcpUserError } from '@/mcp/utils/errors';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import {
@@ -222,7 +222,7 @@ export async function runEventPatterns(
     }));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return mcpUserError(`Pattern mining failed: ${message}`);
+    return mcpServerError(`Pattern mining failed: ${message}`);
   }
 
   // ── Format response ──

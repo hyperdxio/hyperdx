@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { mcpUserError } from '@/mcp/utils/errors';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
 
 import {
@@ -292,7 +292,7 @@ export function registerListMetrics({
             { teamId, sourceId: input.sourceId },
             'clickstack_list_metrics timed out',
           );
-          return mcpUserError(
+          return mcpServerError(
             'clickstack_list_metrics timed out. Try narrowing the time window ' +
               '(startTime/endTime), pinning a single `kind`, or adding a namePattern filter.',
           );

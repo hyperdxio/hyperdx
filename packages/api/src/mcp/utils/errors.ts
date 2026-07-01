@@ -61,13 +61,6 @@ export function mcpServerError(text: string): McpErrorResult {
 }
 
 /**
- * Build a standard MCP error response (defaults to user category).
- */
-export function mcpError(text: string): McpErrorResult {
-  return buildMcpError(text, 'user');
-}
-
-/**
  * Validate that a string is a valid MongoDB ObjectId.
  * Returns an MCP error result if invalid, or `null` if valid.
  */
@@ -76,7 +69,7 @@ export function validateObjectId(
   label: string,
 ): McpErrorResult | null {
   if (!mongoose.Types.ObjectId.isValid(id)) {
-    return mcpError(`Invalid ${label}`);
+    return mcpUserError(`Invalid ${label}`);
   }
   return null;
 }

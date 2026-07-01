@@ -2,7 +2,7 @@ import { escapeRegExp } from 'lodash';
 
 import * as config from '@/config';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { mcpUserError } from '@/mcp/utils/errors';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
 import logger from '@/utils/logger';
 
@@ -87,7 +87,7 @@ export function registerSearchDashboards({
           { err, teamId, query, tags },
           'clickstack_search_dashboards: query failed',
         );
-        return mcpUserError(
+        return mcpServerError(
           `Search failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }

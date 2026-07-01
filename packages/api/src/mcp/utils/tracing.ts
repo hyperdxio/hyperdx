@@ -1,7 +1,7 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import type { McpContext, ToolResult } from '@/mcp/tools/types';
-import type { McpErrorCategory } from '@/mcp/utils/errors';
+import type { McpErrorCategory, McpErrorResult } from '@/mcp/utils/errors';
 import { getErrorCategory } from '@/mcp/utils/errors';
 import {
   getCounter,
@@ -59,7 +59,7 @@ export function withToolTracing<TArgs>(
             // Default to 'server' when category is not set — safe default
             // that surfaces un-classified errors in alerts.
             const errorCategory: McpErrorCategory =
-              getErrorCategory(result) ?? 'server';
+              getErrorCategory(result as McpErrorResult) ?? 'server';
 
             span.setStatus({ code: SpanStatusCode.ERROR });
             span.setAttribute('mcp.tool.error', true);

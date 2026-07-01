@@ -334,7 +334,7 @@ type SelectItemForKindCheck = { metricType?: unknown };
 export function assertSourceKindMatchesSelect(
   source: { kind: string },
   select: unknown,
-): { isError: true; content: [{ type: 'text'; text: string }] } | null {
+): McpErrorResult | null {
   // Raw-string select (rare on the builder path) — the renderer handles
   // it; no metric annotations to inspect.
   if (typeof select === 'string') return null;
@@ -351,35 +351,21 @@ export function assertSourceKindMatchesSelect(
   const isMetricSource = source.kind === SourceKind.Metric;
 
   if (isMetricSource && metricItemCount === 0) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text:
-            'Source kind is "metric", but no select item specifies metricType + metricName. ' +
-            'Each select item on a metric source must set metricType ("gauge" | "sum" | "histogram") ' +
-            'and metricName (e.g. metricName:"system.cpu.utilization"). Call ' +
-            'clickstack_describe_source or clickstack_list_metrics to discover available metric names.',
-        },
-      ],
-    };
+    return mcpUserError(
+      'Source kind is "metric", but no select item specifies metricType + metricName. ' +
+        'Each select item on a metric source must set metricType ("gauge" | "sum" | "histogram") ' +
+        'and metricName (e.g. metricName:"system.cpu.utilization"). Call ' +
+        'clickstack_describe_source or clickstack_list_metrics to discover available metric names.',
+    );
   }
 
   if (!isMetricSource && metricItemCount > 0) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text:
-            `Source kind is "${source.kind}", not metric — but ${metricItemCount} select item(s) ` +
-            'set metricType. metricType + metricName only work on metric sources. ' +
-            'Drop the metric fields to query this source, or call clickstack_list_sources to find a ' +
-            'source whose kind is "metric".',
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source kind is "${source.kind}", not metric — but ${metricItemCount} select item(s) ` +
+        'set metricType. metricType + metricName only work on metric sources. ' +
+        'Drop the metric fields to query this source, or call clickstack_list_sources to find a ' +
+        'source whose kind is "metric".',
+    );
   }
 
   return null;
@@ -648,23 +634,45 @@ const SERVER_NODE_ERROR_CODES = new Set([
 ]);
 
 /**
+ * Check whether an error is a ClickHouseError, using both `instanceof`
+ * and a constructor-name fallback. The fallback handles the case where
+ * multiple copies of `@clickhouse/client-common` are installed (e.g.
+ * the root workspace uses one version while `common-utils` bundles
+ * another). In that scenario, `instanceof` fails because the class
+ * identities are different even though the shapes are identical.
+ */
+function isClickHouseError(
+  err: unknown,
+): err is ClickHouseError & { type: string } {
+  if (err instanceof ClickHouseError) return true;
+  if (
+    err instanceof Error &&
+    err.constructor?.name === 'ClickHouseError' &&
+    'type' in err &&
+    typeof (err as Record<string, unknown>).type === 'string'
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Extract the ClickHouse error `type` from an error, walking `.cause` to
  * find the original `ClickHouseError` from `@clickhouse/client-common`.
  *
- * Uses `instanceof ClickHouseError` instead of duck-typing to avoid false
- * positives from other errors that happen to carry a `.type` property
- * (e.g. Node.js `TypeError`).
+ * Uses `instanceof` with a constructor-name fallback to handle duplicate
+ * package installations across the monorepo (see `isClickHouseError`).
  *
  * @internal Exported for testing only.
  */
 export function getClickHouseErrorType(e: unknown): string | undefined {
   if (!(e instanceof Error)) return undefined;
   // ClickHouseQueryError wraps the original ClickHouseError as .cause
-  if (e.cause instanceof ClickHouseError) {
+  if (isClickHouseError(e.cause)) {
     return e.cause.type;
   }
   // Direct ClickHouseError (has .type on itself)
-  if (e instanceof ClickHouseError) {
+  if (isClickHouseError(e)) {
     return e.type;
   }
   return undefined;
