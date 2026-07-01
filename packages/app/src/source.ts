@@ -735,3 +735,30 @@ export async function isValidMetricTable({
 
   return hasAllColumns(columns, ReqMetricTableColumns[metricType]);
 }
+
+export async function isValidSessionsTable({
+  databaseName,
+  tableName,
+  connectionId,
+  metadata,
+}: {
+  databaseName: string;
+  tableName?: string;
+  connectionId: string;
+  metadata: Metadata;
+}) {
+  if (!tableName) {
+    return false;
+  }
+
+  const columns = await metadata.getColumns({
+    databaseName,
+    tableName,
+    connectionId,
+  });
+
+  return (
+    hasAllColumns(columns, Object.values(SESSION_TABLE_EXPRESSIONS)) ||
+    hasAllColumns(columns, Object.values(JSON_SESSION_TABLE_EXPRESSIONS))
+  );
+}
