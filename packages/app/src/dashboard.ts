@@ -138,7 +138,31 @@ export function useUpdateDashboard() {
         json: normalized,
       });
     },
-    onSuccess: () => {
+    onMutate: async (
+      dashboard: Partial<Dashboard> & { id: Dashboard['id'] },
+    ) => {
+      await queryClient.cancelQueries({ queryKey: ['dashboards'] });
+      const previousDashboards = queryClient.getQueryData<Dashboard[]>([
+        'dashboards',
+      ]);
+      queryClient.setQueryData<Dashboard[]>(['dashboards'], current =>
+        current
+          ? current.map(d =>
+              d.id === dashboard.id ? { ...d, ...dashboard } : d,
+            )
+          : current,
+      );
+      return { previousDashboards };
+    },
+    onError: (_error, _dashboard, context) => {
+      if (context?.previousDashboards) {
+        queryClient.setQueryData<Dashboard[]>(
+          ['dashboards'],
+          context.previousDashboards,
+        );
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboards'] });
     },
   });
