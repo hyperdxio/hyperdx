@@ -171,6 +171,9 @@ export default function SessionSidePanel({
       size={`${size}vw`}
       withCloseButton={false}
       closeOnEscape={false}
+      lockScroll={false}
+      withOverlay={false}
+      trapFocus={false}
       zIndex={zIndex}
       styles={{
         content: {

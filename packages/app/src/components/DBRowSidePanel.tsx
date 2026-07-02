@@ -1133,6 +1133,9 @@ export default function DBRowSidePanelErrorBoundary({
       opened={rowId != null}
       withCloseButton={false}
       closeOnEscape={false}
+      lockScroll={false}
+      withOverlay={false}
+      trapFocus={false}
       onClose={_onClose}
       position="right"
       size={`${size}vw`}
