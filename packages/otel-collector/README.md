@@ -129,23 +129,26 @@ custom OTel configurations without rebuilding the collector.
 | `https`  | core   |
 | `yaml`   | core   |
 
-## Ingesting Datadog APM traces
+## Ingesting Datadog traces, metrics, and logs
 
 The `datadogreceiver` contrib component is compiled into the binary so a
-Datadog Agent can ship **APM traces** to HyperDX (the receiver translates the
-Datadog trace API into OTLP, which flows through the existing `traces`
-pipeline into ClickHouse). It is **opt-in and traces-only**:
+Datadog Agent can ship **traces, metrics, and logs** to HyperDX. The receiver
+runs a single HTTP server on `:8126` that serves the Datadog intake API for
+all three signals and translates them into OTLP, which flows through the
+existing `traces`, `metrics`, and `logs` pipelines into ClickHouse. It is
+**opt-in**:
 
 - In OpAMP supervisor mode, set `ENABLE_DATADOG_RECEIVER=true` on the API/
   OpAMP process. `buildOtelCollectorConfig()` then emits the `datadog`
-  receiver (listening on `0.0.0.0:8126`) and attaches it to the `traces`
-  pipeline.
+  receiver (listening on `0.0.0.0:8126`) and attaches it to the `traces`,
+  `metrics`, and `logs/in` pipelines.
 - In standalone mode, add a `datadog` receiver block to your collector config
-  and add `datadog` to the `traces` pipeline receivers.
+  and add `datadog` to the `traces`, `metrics`, and `logs/in` pipeline
+  receivers.
 
-Point the Datadog Agent's trace intake at the collector's `:8126` endpoint
-(e.g. `DD_APM_DD_URL` / agent `apm_config.apm_dd_url`). Only metrics and logs
-are **not** wired — Datadog metrics/logs ingestion is out of scope.
+Point the Datadog Agent at the collector's `:8126` endpoint (e.g.
+`DD_APM_DD_URL` for traces, `DD_DD_URL` for metrics, and the logs endpoint
+config for logs).
 
 ### Authentication
 

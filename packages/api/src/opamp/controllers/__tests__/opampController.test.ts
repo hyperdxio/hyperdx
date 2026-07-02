@@ -54,9 +54,13 @@ describe('opampController', () => {
 
       expect(cfg.receivers.datadog).toBeUndefined();
       expect(cfg.service.pipelines.traces.receivers).not.toContain('datadog');
+      expect(cfg.service.pipelines.metrics.receivers).not.toContain('datadog');
+      expect(cfg.service.pipelines['logs/in'].receivers).not.toContain(
+        'datadog',
+      );
     });
 
-    it('attaches the datadog receiver to the traces pipeline when the flag is on', () => {
+    it('attaches the datadog receiver to the traces, metrics, and logs pipelines when the flag is on', () => {
       configState.ENABLE_DATADOG_RECEIVER = true;
 
       const cfg = buildOtelCollectorConfig([]);
@@ -65,12 +69,10 @@ describe('opampController', () => {
         endpoint: '0.0.0.0:8126',
         read_timeout: '60s',
       });
+      // The single DD receiver serves all three signals; attach it to each.
       expect(cfg.service.pipelines.traces.receivers).toContain('datadog');
-      // Traces-only: the receiver must not leak into metrics/logs pipelines.
-      expect(cfg.service.pipelines.metrics.receivers).not.toContain('datadog');
-      expect(cfg.service.pipelines['logs/in'].receivers).not.toContain(
-        'datadog',
-      );
+      expect(cfg.service.pipelines.metrics.receivers).toContain('datadog');
+      expect(cfg.service.pipelines['logs/in'].receivers).toContain('datadog');
     });
 
     it('leaves the datadog receiver unauthenticated when no team API keys exist', () => {
