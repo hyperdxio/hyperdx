@@ -759,7 +759,14 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
 
         const inputOnClick = tile.config.onClick;
         const applyOnClick = (config: SavedChartConfig): SavedChartConfig => {
-          if (!inputOnClick || inputOnClick.target.mode !== 'id') return config;
+          // The external variant references no source/dashboard, so there is no mapping to apply.
+          if (
+            !inputOnClick ||
+            inputOnClick.type === 'external' ||
+            inputOnClick.target.mode !== 'id'
+          ) {
+            return config;
+          }
           const mappedId =
             inputOnClick.type === 'search'
               ? data.onClickSourceMappings?.[idx]

@@ -18,7 +18,7 @@ import { objectIdSchema } from '@/utils/zod';
 // ISource is a discriminated union (inherits from TSource) with team added
 // and connection widened to ObjectId | string for Mongoose.
 // Omit and & distribute over the union, preserving the discriminated structure.
-export const ISourceSchema = z.discriminatedUnion('kind', [
+const ISourceSchema = z.discriminatedUnion('kind', [
   LogSourceSchema.omit({ connection: true }).extend({
     team: objectIdSchema,
     connection: objectIdSchema.or(z.string()),
@@ -144,6 +144,7 @@ export const LogSource = Source.discriminator<ILogSource>(
     traceIdExpression: String,
     spanIdExpression: String,
     implicitColumnExpression: String,
+    knownColumnsListExpression: String,
     useTextIndexForImplicitColumn: {
       type: String,
       enum: Object.values(UseTextIndex),
@@ -197,6 +198,7 @@ export const TraceSource = Source.discriminator<ITraceSource>(
     eventAttributesExpression: String,
     spanEventsValueExpression: String,
     implicitColumnExpression: String,
+    knownColumnsListExpression: String,
     useTextIndexForImplicitColumn: {
       type: String,
       enum: Object.values(UseTextIndex),
@@ -238,18 +240,27 @@ export const SessionSource = Source.discriminator<ISessionSource>(
 // --------------------------
 // Metric discriminator
 // --------------------------
+// metricTables is declared as a nested Schema with `_id: false` so the
+// embedded subdoc does not auto-generate an ObjectId. Without this opt-out
+// Mongoose adds an `_id` field that leaks into MCP responses alongside
+// the queryable kind keys (gauge/sum/histogram/...).
+const MetricTablesSchema = new Schema(
+  {
+    [MetricsDataType.Gauge]: String,
+    [MetricsDataType.Histogram]: String,
+    [MetricsDataType.Sum]: String,
+    [MetricsDataType.Summary]: String,
+    [MetricsDataType.ExponentialHistogram]: String,
+  },
+  { _id: false },
+);
+
 type IMetricSource = Extract<ISource, { kind: SourceKind.Metric }>;
 export const MetricSource = Source.discriminator<IMetricSource>(
   SourceKind.Metric,
   new Schema<Extract<ISource, { kind: SourceKind.Metric }>>({
     metricTables: {
-      type: {
-        [MetricsDataType.Gauge]: String,
-        [MetricsDataType.Histogram]: String,
-        [MetricsDataType.Sum]: String,
-        [MetricsDataType.Summary]: String,
-        [MetricsDataType.ExponentialHistogram]: String,
-      },
+      type: MetricTablesSchema,
       default: undefined,
     },
     resourceAttributesExpression: String,

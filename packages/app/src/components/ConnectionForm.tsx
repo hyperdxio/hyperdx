@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { omit } from 'lodash';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { testLocalConnection } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { Connection } from '@hyperdx/common-utils/dist/types';
 import {
@@ -10,6 +10,7 @@ import {
   Flex,
   Group,
   Stack,
+  Switch,
   Text,
   Tooltip,
 } from '@mantine/core';
@@ -20,8 +21,13 @@ import api from '@/api';
 import {
   InputControlled,
   PasswordInputControlled,
+  TextInputControlled,
 } from '@/components/InputControlled';
-import { IS_CLICKHOUSE_BUILD, IS_LOCAL_MODE } from '@/config';
+import {
+  IS_CLICKHOUSE_BUILD,
+  IS_LOCAL_MODE,
+  IS_PROMQL_ENABLED,
+} from '@/config';
 import {
   useCreateConnection,
   useDeleteConnection,
@@ -134,31 +140,43 @@ export function ConnectionForm({
   showCancelButton?: boolean;
   showDeleteButton?: boolean;
 }) {
-  const { control, handleSubmit, resetField, getValues, formState } =
+  const { control, handleSubmit, resetField, getValues, formState, trigger } =
     useForm<Connection>({
       defaultValues: {
         id: connection.id,
         name: connection.name,
-        host: connection.host,
+        host: connection.host ?? '',
         username: connection.username,
         password: connection.password,
         hyperdxSettingPrefix: connection.hyperdxSettingPrefix,
+        isPrometheusEndpoint: connection.isPrometheusEndpoint,
       },
     });
+
+  const watchedHost = useWatch({ control, name: 'host' });
+  const isPrometheusEndpoint = useWatch({
+    control,
+    name: 'isPrometheusEndpoint',
+  });
 
   const createConnection = useCreateConnection();
   const updateConnection = useUpdateConnection();
   const deleteConnection = useDeleteConnection();
 
   const onSubmit = (data: Connection) => {
-    // Make sure we don't save a trailing slash in the host
-    // Convert empty hyperdxSettingPrefix to null to signal clearing the field
-    // (undefined gets stripped from JSON, null is preserved and handled by API)
-    const normalizedData = {
-      ...data,
-      host: stripTrailingSlash(data.host),
-      hyperdxSettingPrefix: data.hyperdxSettingPrefix || null,
-    };
+    const stripped = data.host ? stripTrailingSlash(data.host) : '';
+    const normalizedData: Connection = data.isPrometheusEndpoint
+      ? {
+          ...data,
+          host: stripped,
+          username: '',
+          hyperdxSettingPrefix: null,
+        }
+      : {
+          ...data,
+          host: stripped,
+          hyperdxSettingPrefix: data.hyperdxSettingPrefix || null,
+        };
 
     if (isNew) {
       const connection = omit(normalizedData, ['id']);
@@ -237,71 +255,105 @@ export function ConnectionForm({
           />
         </Box>
         <Box>
-          <Text size="xs" mb="xs">
-            Host
-          </Text>
-          <InputControlled
+          <Group gap="xs" mb="xs">
+            <Text size="xs">Host</Text>
+            <Tooltip
+              label={
+                isPrometheusEndpoint
+                  ? 'Prometheus-compatible API endpoint. PromQL queries are proxied to this URL.'
+                  : 'ClickHouse HTTP endpoint URL.'
+              }
+              color="dark"
+              c="white"
+              multiline
+              maw={400}
+            >
+              <IconHelpCircle size={16} className="cursor-pointer" />
+            </Tooltip>
+          </Group>
+          <TextInputControlled
             data-testid="connection-host-input"
             name="host"
             control={control}
             placeholder={
-              IS_CLICKHOUSE_BUILD
-                ? window.location.origin
-                : 'http://localhost:8123'
+              isPrometheusEndpoint
+                ? 'http://thanos-querier:10902'
+                : IS_CLICKHOUSE_BUILD
+                  ? window.location.origin
+                  : 'http://localhost:8123'
             }
-            rules={{ required: 'Host is required' }}
+            rules={{
+              validate: value => {
+                if (typeof value !== 'string' || !value) {
+                  return 'Host is required';
+                }
+                if (isPrometheusEndpoint) {
+                  try {
+                    new URL(value);
+                    return true;
+                  } catch {
+                    return 'Must be a valid URL';
+                  }
+                }
+                return true;
+              },
+            }}
           />
         </Box>
-        <Box>
-          <Text size="xs" mb="xs">
-            Username
-          </Text>
-          <InputControlled
-            data-testid="connection-username-input"
-            name="username"
-            control={control}
-            placeholder="Username (default: default)"
-          />
-        </Box>
-        <Box>
-          <Text size="xs" mb="xs">
-            Password
-          </Text>
-          {!showUpdatePassword && !isNew && (
-            <Button
-              data-testid="update-password-button"
-              variant="secondary"
-              onClick={() => {
-                setShowUpdatePassword(true);
-              }}
-            >
-              Update Password
-            </Button>
-          )}
-          {(showUpdatePassword || isNew) && (
-            <Flex align="center" gap="sm">
-              <PasswordInputControlled
-                data-testid="connection-password-input"
-                style={{ flexGrow: 1 }}
-                name="password"
+        {!isPrometheusEndpoint && (
+          <>
+            <Box>
+              <Text size="xs" mb="xs">
+                Username
+              </Text>
+              <InputControlled
+                data-testid="connection-username-input"
+                name="username"
                 control={control}
-                placeholder="Password (default: blank)"
+                placeholder="Username (default: default)"
               />
-              {!isNew && (
+            </Box>
+            <Box>
+              <Text size="xs" mb="xs">
+                Password
+              </Text>
+              {!showUpdatePassword && !isNew && (
                 <Button
-                  data-testid="cancel-password-button"
+                  data-testid="update-password-button"
                   variant="secondary"
                   onClick={() => {
-                    setShowUpdatePassword(false);
-                    resetField('password');
+                    setShowUpdatePassword(true);
                   }}
                 >
-                  Cancel
+                  Update Password
                 </Button>
               )}
-            </Flex>
-          )}
-        </Box>
+              {(showUpdatePassword || isNew) && (
+                <Flex align="center" gap="sm">
+                  <PasswordInputControlled
+                    data-testid="connection-password-input"
+                    style={{ flexGrow: 1 }}
+                    name="password"
+                    control={control}
+                    placeholder="Password (default: blank)"
+                  />
+                  {!isNew && (
+                    <Button
+                      data-testid="cancel-password-button"
+                      variant="secondary"
+                      onClick={() => {
+                        setShowUpdatePassword(false);
+                        resetField('password');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </Flex>
+              )}
+            </Box>
+          </>
+        )}
         <Box>
           {!showAdvancedSettings && (
             <Anchor
@@ -330,34 +382,83 @@ export function ConnectionForm({
             display: showAdvancedSettings ? 'block' : 'none',
           }}
         >
-          <Group gap="xs" mb="xs">
-            <Text size="xs">Query Log Setting Prefix</Text>
-            <Tooltip
-              label="Tracks query origins by adding the current user's email to ClickHouse queries (as {prefix}_user in system.query_log). Requires 'custom_settings_prefixes' in your ClickHouse config.xml to include this exact value, otherwise queries will be rejected."
-              color="dark"
-              c="white"
-              multiline
-              maw={400}
-            >
-              <IconHelpCircle size={16} className="cursor-pointer" />
-            </Tooltip>
-          </Group>
-          <InputControlled
-            data-testid="connection-setting-prefix-input"
-            name="hyperdxSettingPrefix"
-            control={control}
-            placeholder="hyperdx"
-          />
+          <Stack gap="md">
+            {IS_PROMQL_ENABLED && (
+              <Box>
+                <Controller
+                  control={control}
+                  name="isPrometheusEndpoint"
+                  render={({ field: { value, onChange } }) => (
+                    <Group gap="xs">
+                      <Switch
+                        data-testid="connection-prometheus-compatible-switch"
+                        checked={!!value}
+                        onChange={e => {
+                          onChange(e.currentTarget.checked);
+                          if (
+                            formState.isSubmitted ||
+                            formState.touchedFields.host
+                          ) {
+                            void trigger('host');
+                          }
+                        }}
+                      />
+                      <Text size="sm">Prometheus compatible</Text>
+                      <Tooltip
+                        label="Treat the Host as a Prometheus-compatible API endpoint (e.g. Thanos). PromQL queries are proxied here. ClickHouse-backed sources (logs, traces, OTel metrics) are not available on this connection."
+                        color="dark"
+                        c="white"
+                        multiline
+                        maw={400}
+                      >
+                        <IconHelpCircle size={16} className="cursor-pointer" />
+                      </Tooltip>
+                    </Group>
+                  )}
+                />
+              </Box>
+            )}
+            {!isPrometheusEndpoint && (
+              <Box>
+                <Group gap="xs" mb="xs">
+                  <Text size="xs">Query Log Setting Prefix</Text>
+                  <Tooltip
+                    label="Tracks query origins by adding the current user's email to ClickHouse queries (as {prefix}_user in system.query_log). Requires 'custom_settings_prefixes' in your ClickHouse config.xml to include this exact value, otherwise queries will be rejected."
+                    color="dark"
+                    c="white"
+                    multiline
+                    maw={400}
+                  >
+                    <IconHelpCircle size={16} className="cursor-pointer" />
+                  </Tooltip>
+                </Group>
+                <InputControlled
+                  data-testid="connection-setting-prefix-input"
+                  name="hyperdxSettingPrefix"
+                  control={control}
+                  placeholder="hyperdx"
+                />
+              </Box>
+            )}
+          </Stack>
         </Box>
         <Group justify="space-between">
           <Tooltip
-            label="🔒 Password re-entry required for security"
+            label={
+              isPrometheusEndpoint
+                ? 'Test Connection only verifies ClickHouse hosts; Prometheus-compatible endpoints have no equivalent probe.'
+                : !watchedHost
+                  ? 'Enter a ClickHouse host to test the connection.'
+                  : '🔒 Password re-entry required for security'
+            }
             position="right"
-            disabled={isNew}
+            disabled={isNew && !!watchedHost && !isPrometheusEndpoint}
             withArrow
           >
             <Button
-              disabled={!formState.isValid}
+              disabled={
+                !formState.isValid || !watchedHost || isPrometheusEndpoint
+              }
               variant={
                 testConnectionState === TestConnectionState.Invalid
                   ? 'danger'

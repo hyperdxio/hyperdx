@@ -1,5 +1,4 @@
 import { type AlertInterval } from '@hyperdx/common-utils/dist/types';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 import { z } from 'zod';
@@ -7,9 +6,8 @@ import { z } from 'zod';
 import * as config from '@/config';
 import { getRecentAlertHistories } from '@/controllers/alertHistory';
 import { getAlertById } from '@/controllers/alerts';
-import type { McpContext } from '@/mcp/tools/types';
+import type { ToolRegistrar } from '@/mcp/tools/types';
 import { validateObjectId } from '@/mcp/utils/errors';
-import { withToolTracing } from '@/mcp/utils/tracing';
 import Alert from '@/models/alert';
 import type { IDashboard } from '@/models/dashboard';
 import type { ISavedSearch } from '@/models/savedSearch';
@@ -45,11 +43,14 @@ function deriveAlertName(alert: {
   return null;
 }
 
-export function registerGetAlert(server: McpServer, context: McpContext): void {
+export function registerGetAlert({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
-  server.registerTool(
+  registerTool(
     'clickstack_get_alert',
     {
       title: 'Get Alert(s)',
@@ -75,7 +76,7 @@ export function registerGetAlert(server: McpServer, context: McpContext): void {
           ),
       }),
     },
-    withToolTracing('clickstack_get_alert', context, async ({ id, state }) => {
+    async ({ id, state }) => {
       // ── List all alerts (slim summary) ──
       if (!id) {
         const query: Record<string, unknown> = {
@@ -151,6 +152,6 @@ export function registerGetAlert(server: McpServer, context: McpContext): void {
           },
         ],
       };
-    }),
+    },
   );
 }

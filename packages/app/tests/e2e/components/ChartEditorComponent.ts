@@ -331,11 +331,19 @@ export class ChartEditorComponent {
   /**
    * Switch the Row Click Action mode (SegmentedControl).
    */
-  async setRowClickMode(mode: 'Default' | 'Search' | 'Dashboard') {
+  async setRowClickMode(mode: 'Default' | 'Search' | 'Dashboard' | 'External') {
     await this.page
       .getByTestId('onclick-mode-segmented')
       .getByText(mode, { exact: true })
       .click();
+  }
+
+  /**
+   * Fill the External URL template input in the drawer. Call
+   * setRowClickMode('External') first to make the input visible.
+   */
+  async fillRowClickExternalUrl(urlTemplate: string) {
+    await this.page.getByTestId('onclick-external-url-input').fill(urlTemplate);
   }
 
   /**

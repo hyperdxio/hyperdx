@@ -360,6 +360,11 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log.
  *           nullable: true
  *           example: Body
+ *         knownColumnsListExpression:
+ *           type: string
+ *           description: For Distributed table sources whose target tables have non-matching column sets. A list of columns supported across all target tables, used instead of SELECT * when fetching full row data. Leave blank to select all columns.
+ *           nullable: true
+ *           example: Timestamp, Body, ServiceName
  *         useTextIndexForImplicitColumn:
  *           type: string
  *           enum: [auto, enabled, disabled]
@@ -538,6 +543,11 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log.
  *           nullable: true
  *           example: SpanName
+ *         knownColumnsListExpression:
+ *           type: string
+ *           description: For Distributed table sources whose target tables have non-matching column sets. A list of columns supported across all target tables, used instead of SELECT * when fetching full row data. Leave blank to select all columns.
+ *           nullable: true
+ *           example: Timestamp, Body, ServiceName
  *         useTextIndexForImplicitColumn:
  *           type: string
  *           enum: [auto, enabled, disabled]

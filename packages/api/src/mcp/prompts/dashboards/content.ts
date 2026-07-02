@@ -124,7 +124,7 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
      ]
    Use tabs when one container needs to show different views of the same data (Throughput / Latency / Errors over time, for instance); the tab bar appears when a container has two or more tabs declared.
 
-12. VALIDATE EVERY TILE AFTER SAVE. After clickstack_save_dashboard, call clickstack_query_tile on EVERY tile (not just one). Save validates input shape; it does NOT validate query semantics. Some queries pass save and fail at render time (known gaps: Lucene comparison/wildcard on map attributes, metric tiles with multiple metricTables, malformed having clauses). If query_tile returns an error, fix the tile and re-save before declaring the dashboard ready.
+12. VALIDATE EVERY TILE AFTER SAVE. After clickstack_save_dashboard, call clickstack_query_tile on EVERY tile (not just one). Save validates input shape; it does NOT validate query semantics. Some queries pass save and fail at render time (known gaps: Lucene comparison/wildcard on map attributes, malformed having clauses). If query_tile returns an error, fix the tile and re-save before declaring the dashboard ready.
 
 13. NO TITLE-RECAP MARKDOWN TILE. The dashboard's name shows in the title bar. Adding a markdown tile with the dashboard name (or a "About this dashboard" header) doubles the title and eats a row of vertical space because markdown heading styles render at title-bar scale. Skip the markdown tile entirely on starter dashboards.
 
@@ -958,7 +958,29 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
   search       No select items (select is a column list string). where is the filter.
   markdown     No select items. Set markdown field with content.
 
-NOTE: Authoring builder tiles on a metric source is not reliable today. The MCP select-item shape does not carry the metricName / metricType fields the metric query path needs, and a save with a metric sourceId may render in the UI as "Both table name and UUID are empty" even though the save itself succeeded. For metrics, use a raw SQL tile (configType: "sql") with explicit table reference. The standard tables that back a metric source are otel_metrics_gauge, otel_metrics_sum, and otel_metrics_histogram; clickstack_list_sources returns the metric source's metricTables map so you know which table holds which metric kind. Discovery: metric source schemas today do NOT publish mapAttributeKeys for ResourceAttributes / Attributes the way log and trace sources do, so attribute keys must be discovered by sampling (SELECT DISTINCT mapKeys(Attributes) FROM ...).
+== METRIC SOURCES ==
+
+Builder tiles work on metric sources. Each select item on a metric tile MUST set metricType ("gauge" | "sum" | "histogram") and metricName (the OTel metric name, e.g. "system.cpu.utilization"). valueExpression defaults to "Value" when omitted, so a typical metric series is { aggFn: "<fn>", metricType: "<kind>", metricName: "<name>" }. summary and "exponential histogram" kinds are not yet supported by the renderer.
+
+Per-kind aggregation guidance:
+  gauge      Use aggFn:"last_value" | "avg" | "min" | "max". Set isDelta:true for Prometheus-style delta over each bucket.
+  sum        Use aggFn:"increase" for the per-bucket counter increase (reset-aware), or aggFn:"sum" | "avg" on the computed rate. increase + groupBy is capped at the top 20 groups by the renderer; pre-filter via where or pick a coarser groupBy when you need broader coverage.
+  histogram  Use aggFn:"quantile" with level ∈ {0.5, 0.9, 0.95, 0.99} for percentiles, or aggFn:"count" for the total bucket count. quantile without level is rejected.
+
+Discovery workflow for metrics:
+  1. clickstack_list_sources: find the metric source ID and its metricTables map (which kinds are populated).
+  2. clickstack_describe_source(sourceId): returns columns, attribute keys, low-cardinality values, AND a per-kind metric-name sample (up to 20 names per kind).
+  3. clickstack_list_metrics(sourceId, ...): paginate the full metric catalog with optional kind + namePattern (ILIKE) + time-window filters. Pass nextCursor unchanged for the next page.
+  4. clickstack_describe_metric(sourceId, metricName): drill into a single metric: kind(s), unit, description, attribute keys per map column, and sampled values per attribute. Attribute keys vary per metric, not per source, so always call this before authoring tiles for a metric you've never queried.
+  5. clickstack_timeseries | clickstack_table: author the chart. Set metricType + metricName on each select item; pass the discovered attribute keys via groupBy / where.
+
+Examples:
+  Gauge p95-like spread by service (use last_value or avg):
+    { aggFn: "avg", metricType: "gauge", metricName: "system.cpu.utilization" }, groupBy: "ServiceName"
+  Sum counter increase:
+    { aggFn: "increase", metricType: "sum", metricName: "http.server.request.count", alias: "Requests" }, groupBy: "ServiceName"
+  Histogram p95 latency:
+    { aggFn: "quantile", level: 0.95, metricType: "histogram", metricName: "http.server.request.duration", alias: "P95 Latency" }, groupBy: "ServiceName"
 
 == NUMBER FORMAT ==
 
@@ -1056,6 +1078,8 @@ Destination types:
     Opens the /search page for a log or trace source. Metric and session sources are rejected by the server (the /search page does not render those kinds).
   { type: "dashboard", target, whereLanguage, whereTemplate?, filters? }
     Opens another ClickStack dashboard owned by the same team.
+  { type: "external",  urlTemplate }
+    Opens an arbitrary external URL in a new tab (e.g. a Grafana or Langfuse dashboard, a runbook). The urlTemplate is rendered against the clicked row and the rendered value must be an absolute http(s) URL. It takes no target, whereLanguage, whereTemplate, or filters, and references no ClickStack source or dashboard.
 
 Target shape, how the destination is identified:
   target: { mode: "id", id: "<object-id>" }
@@ -1115,6 +1139,12 @@ Example, destination chosen by the clicked row (rare; prefer mode="id"):
     "type": "dashboard",
     "target": { "mode": "template", "template": "{{TargetDashboardName}}" },
     "whereLanguage": "lucene"
+  }
+
+Example, link out to an external tool:
+  "onClick": {
+    "type": "external",
+    "urlTemplate": "https://grafana.example.com/d/abc?var-service={{ServiceName}}"
   }
 
 Validation rules the server enforces:
@@ -1271,7 +1301,7 @@ Example: find top patterns for production services over the last 4 hours:
    The dashboard filter applies globally; tiles do not need the literal. On mixed-source dashboards where only some tiles carry the column, add appliesToSourceIds: ["<id>", ...] to scope the filter to just those sources instead of breaking the unrelated tiles.
 
 8. Forgetting to validate tiles after saving
-   Always call clickstack_query_tile on EVERY tile after clickstack_save_dashboard, not just one. Save validates input shape but not query semantics. Several known gaps (Lucene comparison/wildcard on map attributes, builder tiles on metric sources, malformed having) pass save and fail at render time. A dashboard with one bad tile renders the whole page in a degraded state; the user sees "Error loading chart" with no way to know which tile broke unless you validated. If query_tile returns an error, fix the where / SQL and re-save before declaring the dashboard ready.
+   Always call clickstack_query_tile on EVERY tile after clickstack_save_dashboard, not just one. Save validates input shape but not query semantics. Several known gaps (Lucene comparison/wildcard on map attributes, malformed having) pass save and fail at render time. A dashboard with one bad tile renders the whole page in a degraded state; the user sees "Error loading chart" with no way to know which tile broke unless you validated. If query_tile returns an error, fix the where / SQL and re-save before declaring the dashboard ready.
 
 9. Using connectionId with builder tiles, or omitting connectionId or sourceId on a single-table SQL tile
    Builder tiles (line, table, etc.) use sourceId (no connectionId).

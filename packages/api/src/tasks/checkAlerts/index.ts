@@ -171,7 +171,7 @@ export async function computeAliasWithClauses(
   return aliasMapToWithClauses(aliasMap);
 }
 
-export class InvalidAlertError extends Error {
+class InvalidAlertError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'InvalidAlertError';
@@ -1387,7 +1387,8 @@ export const processAlert = async (
   }
 };
 
-// Re-export handleSendGenericWebhook for testing
+// Re-export handleSendGenericWebhook for testing (accessed via jest.spyOn)
+/** @public */
 export { handleSendGenericWebhook };
 
 export interface AggregatedAlertHistory {

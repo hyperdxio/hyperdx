@@ -1,5 +1,31 @@
 # @hyperdx/cli
 
+## 0.5.1
+
+### Patch Changes
+
+- 5c46215f8: Bump `@clickhouse/client*` to `1.23.0-head.fae5998.1` and fix the type
+  incompatibility it introduces.
+
+  In `@clickhouse/client*` 1.23 each platform package (`@clickhouse/client`,
+  `@clickhouse/client-web`) bundles its own copy of the shared types, so their
+  `ClickHouseSettings` types — which reference the nominally-compared `SettingsMap`
+  class — are no longer the same type as `@clickhouse/client-common`'s. The shared
+  `processClickhouseSettings()` helper produces the `client-common` flavor, so
+  assigning it into the per-platform clients' `query()` now requires an explicit
+  bridge. Guard the existing `as ClickHouseSettings` assertions at those
+  boundaries (`node.ts`, `browser.ts`, `cli`) with a scoped
+  `@typescript-eslint/no-unsafe-type-assertion` disable, matching the existing
+  "client library type mismatch" pattern. No runtime behavior changes.
+
+- 45954c318: Import ClickHouse client types from the platform packages
+  (`@clickhouse/client` / `@clickhouse/client-web`) instead of the deprecated
+  `@clickhouse/client-common`. This makes the packages forward-compatible with
+  `@clickhouse/client*` 1.23 (where `client-common` is deprecated and each
+  platform package bundles and re-exports its own copy of the shared types)
+  without bumping the pinned version. No runtime behavior changes.
+- 1a64796c1: Removing relative imports and using path aliases
+
 ## 0.5.0
 
 ### Minor Changes

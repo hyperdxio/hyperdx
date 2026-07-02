@@ -1,13 +1,11 @@
 import type { DashboardContainer } from '@hyperdx/common-utils/dist/types';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { uniq } from 'lodash';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
-import type { McpContext } from '@/mcp/tools/types';
+import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpError } from '@/mcp/utils/errors';
-import { withToolTracing } from '@/mcp/utils/tracing';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import {
   cleanupDashboardAlerts,
@@ -32,14 +30,14 @@ import {
   getRawSqlTileMacroWarnings,
 } from './validation';
 
-export function registerSaveDashboard(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerSaveDashboard({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
-  server.registerTool(
+  registerTool(
     'clickstack_save_dashboard',
     {
       title: 'Create or Update Dashboard',
@@ -63,40 +61,36 @@ export function registerSaveDashboard(
         filters: mcpFiltersParam.optional(),
       }),
     },
-    withToolTracing(
-      'clickstack_save_dashboard',
-      context,
-      async ({
-        id: dashboardId,
-        name,
-        tiles: inputTiles,
-        tags,
-        containers,
-        filters: inputFilters,
-      }) => {
-        if (!dashboardId) {
-          return createDashboard({
-            teamId,
-            frontendUrl,
-            name,
-            inputTiles,
-            tags,
-            containers,
-            inputFilters,
-          });
-        }
-        return updateDashboard({
+    async ({
+      id: dashboardId,
+      name,
+      tiles: inputTiles,
+      tags,
+      containers,
+      filters: inputFilters,
+    }) => {
+      if (!dashboardId) {
+        return createDashboard({
           teamId,
           frontendUrl,
-          dashboardId,
           name,
           inputTiles,
           tags,
           containers,
           inputFilters,
         });
-      },
-    ),
+      }
+      return updateDashboard({
+        teamId,
+        frontendUrl,
+        dashboardId,
+        name,
+        inputTiles,
+        tags,
+        containers,
+        inputFilters,
+      });
+    },
   );
 }
 

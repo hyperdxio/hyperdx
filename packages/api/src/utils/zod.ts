@@ -12,6 +12,7 @@ import {
   NumberFormatSchema,
   NumberTileColorConditionSchema,
   OnClickDashboardSchema,
+  OnClickExternalSchema,
   OnClickSearchSchema,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
@@ -188,9 +189,12 @@ const externalOnClickDashboardSchema = OnClickDashboardSchema.extend({
   target: externalOnClickTargetSchema,
 });
 
+const externalOnClickExternalSchema = OnClickExternalSchema;
+
 const externalOnClickSchema = z.discriminatedUnion('type', [
   externalOnClickSearchSchema,
   externalOnClickDashboardSchema,
+  externalOnClickExternalSchema,
 ]);
 
 const externalDashboardSelectItemSchema = z
@@ -453,7 +457,7 @@ export type ExternalDashboardRawSqlTileConfig = z.infer<
   typeof externalDashboardRawSqlTileConfigSchema
 >;
 
-export const externalDashboardTileConfigSchema = z
+const externalDashboardTileConfigSchema = z
   .custom<
     ExternalDashboardRawSqlTileConfig | ExternalDashboardBuilderTileConfig
   >()
