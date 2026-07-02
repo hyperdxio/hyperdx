@@ -8,6 +8,7 @@ import type { Filter } from '@hyperdx/common-utils/dist/types';
 
 import {
   cleanClickHouseExpression,
+  parseMapFieldName,
   toQuotedClickHouseKeyExpression,
 } from './components/DBSearchPageFilters/utils';
 import { usePinnedFiltersApi, useUpdatePinnedFilters } from './pinnedFilters';
@@ -25,10 +26,13 @@ export const IS_ROOT_SPAN_COLUMN_NAME = 'isRootSpan';
 export const escapeFilterStateKeys = (
   filters: FilterState,
   knownColumns: Set<string>,
+  jsonColumns: readonly string[] = [],
 ): FilterState => {
   const escaped: FilterState = {};
   for (const [key, value] of Object.entries(filters)) {
-    escaped[toQuotedClickHouseKeyExpression(key, knownColumns)] = value;
+    escaped[
+      toQuotedClickHouseKeyExpression(key, knownColumns, { jsonColumns })
+    ] = value;
   }
   return escaped;
 };
@@ -40,6 +44,65 @@ const unescapeFilterStateKeys = (filters: FilterState): FilterState => {
     cleaned[cleanClickHouseExpression(key)] = value;
   }
   return cleaned;
+};
+
+const normalizeFilterCondition = (condition: string): string =>
+  condition.replace(/\s+/g, ' ').trim();
+
+const areSameFilterQueries = (a: Filter[], b: Filter[]): boolean =>
+  a.length === b.length &&
+  a.every(
+    (filter, idx) =>
+      b[idx] != null &&
+      filter.type === b[idx].type &&
+      normalizeFilterCondition(filter.condition) ===
+        normalizeFilterCondition(b[idx].condition),
+  );
+
+export const canonicalizeFilterQuery = (
+  filters: Filter[],
+  knownColumns: Set<string>,
+  jsonColumns: readonly string[] = [],
+  dateTimeColumns?: ReadonlyMap<string, string>,
+): Filter[] => {
+  if (filters.some(filter => filter.type !== 'sql')) {
+    return filters;
+  }
+
+  const parsedFilters = parseQuery(filters).filters;
+  const cleanFilters = unescapeFilterStateKeys(parsedFilters);
+  const jsonColumnSet = new Set(jsonColumns);
+  const hasJsonFilter = Object.keys(cleanFilters).some(key => {
+    const parsed = parseMapFieldName(key);
+    return parsed != null && jsonColumnSet.has(parsed.baseName);
+  });
+  if (!hasJsonFilter) {
+    return filters;
+  }
+
+  // `parseQuery` intentionally extracts sidebar-style clauses from SQL, even
+  // inside compound predicates. Only rewrite filters that fully round-trip
+  // through the sidebar parser; otherwise canonicalization could drop unrelated
+  // SQL predicates from saved/URL state.
+  if (
+    !areSameFilterQueries(
+      filtersToQuery(parsedFilters, { dateTimeColumns }),
+      filters,
+    )
+  ) {
+    return filters;
+  }
+
+  const escapedFilters = escapeFilterStateKeys(
+    cleanFilters,
+    knownColumns,
+    jsonColumns,
+  );
+  const canonicalFilters = filtersToQuery(escapedFilters, { dateTimeColumns });
+
+  return canonicalFilters.length === filters.length
+    ? canonicalFilters
+    : filters;
 };
 
 export const areFiltersEqual = (a: FilterState, b: FilterState) => {
@@ -405,6 +468,7 @@ export const useSearchPageFilterState = ({
   onFilterChange,
   dateTimeColumns,
   knownColumns,
+  jsonColumns = [],
 }: {
   searchQuery?: Filter[];
   onFilterChange: (filters: Filter[]) => void;
@@ -415,6 +479,7 @@ export const useSearchPageFilterState = ({
    * (eg. service-name --> `service-name`).
    **/
   knownColumns: Set<string>;
+  jsonColumns?: readonly string[];
 }) => {
   // Access knownColumns through a ref so the returned mutators (which depend on
   // updateFilterQuery) keep stable identities across knownColumns reference
@@ -424,6 +489,10 @@ export const useSearchPageFilterState = ({
   useEffect(() => {
     knownColumnsRef.current = knownColumns;
   }, [knownColumns]);
+  const jsonColumnsRef = useRef<readonly string[]>(jsonColumns);
+  useEffect(() => {
+    jsonColumnsRef.current = jsonColumns;
+  }, [jsonColumns]);
 
   // Persisted filters carry canonical (escaped) keys; convert back to the clean
   // keys the sidebar/comparisons use as they enter in-memory FilterState.
@@ -455,6 +524,7 @@ export const useSearchPageFilterState = ({
       const escapedFilters = escapeFilterStateKeys(
         newFilters,
         knownColumnsRef.current,
+        jsonColumnsRef.current,
       );
       onFilterChange(filtersToQuery(escapedFilters, { dateTimeColumns }));
     },

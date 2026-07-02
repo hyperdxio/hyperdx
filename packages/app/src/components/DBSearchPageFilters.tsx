@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
 import {
   TableMetadata,
@@ -949,16 +949,24 @@ export const FilterGroup = ({
     setShowDistributions(false);
   }, []);
 
-  useEffect(() => {
-    if (isDefaultExpanded) {
-      setExpanded(true);
-    }
-  }, [isDefaultExpanded]);
-
   const totalAppliedFiltersSize =
     selectedValues.included.size +
     selectedValues.excluded.size +
     (hasRange ? 1 : 0);
+
+  const shouldExpandForLoadMore =
+    onLoadMore != null &&
+    !optionsLoading &&
+    options.length === 0 &&
+    totalAppliedFiltersSize === 0 &&
+    !hasLoadedMore &&
+    !loadMoreLoading;
+
+  useEffect(() => {
+    if (isDefaultExpanded || shouldExpandForLoadMore) {
+      setExpanded(true);
+    }
+  }, [isDefaultExpanded, shouldExpandForLoadMore]);
 
   const hasOptions = options.length > 0 || totalAppliedFiltersSize > 0;
 
@@ -1239,13 +1247,27 @@ const DBSearchPageFiltersComponent = ({
       return [];
     }
 
-    const strings = allFields
-      .sort((a, b) => {
-        // First show low cardinality fields
-        const isLowCardinality = (type: string) =>
-          type.includes('LowCardinality');
-        return isLowCardinality(a.type) && !isLowCardinality(b.type) ? -1 : 1;
-      })
+    const isLowCardinality = (type: string) => type.includes('LowCardinality');
+    const fieldPriority = (field: { path: string; type: string }) => {
+      const filter = getFilterStateEntry(filterState, field.path);
+      if (
+        filter &&
+        (filter.included.size > 0 ||
+          filter.excluded.size > 0 ||
+          filter.range != null)
+      ) {
+        return 0;
+      }
+      if (isFieldPinned(field.path) || isSharedFieldPinned(field.path)) {
+        return 1;
+      }
+      if (isLowCardinality(field.type)) {
+        return 2;
+      }
+      return 3;
+    };
+
+    const discoveredKeys = allFields
       .filter(
         field => field.jsType && ['string'].includes(field.jsType),
         // todo: add number type with sliders :D
@@ -1266,33 +1288,70 @@ const DBSearchPageFiltersComponent = ({
           isFieldPinned(field.path) || // keep personally pinned fields
           isSharedFieldPinned(field.path), // keep team-shared fields
       )
+      .toSorted((a, b) => {
+        const priorityDiff = fieldPriority(a) - fieldPriority(b);
+        if (priorityDiff !== 0) {
+          return priorityDiff;
+        }
+        return a.path.localeCompare(b.path);
+      })
       .map(({ path }) => path)
       .filter(
         path =>
           !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
       );
-    return strings;
+
+    return Array.from(
+      new Set([
+        ...Object.keys(filterState),
+        ...getPinnedFields(),
+        ...discoveredKeys,
+      ]),
+    ).filter(
+      path => !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
+    );
   }, [
     allFields,
     jsonColumns,
     mapColumns,
     filterState,
     showMoreFields,
+    getPinnedFields,
     isFieldPinned,
     isSharedFieldPinned,
   ]);
 
+  const metadata = useMetadataWithSettings();
+  const [extraFacets, setExtraFacets] = useState<Record<string, string[]>>({});
+  const [loadedMoreKeys, setLoadedMoreKeys] = useState<Set<string>>(new Set());
+  const [loadMoreLoadingKeys, setLoadMoreLoadingKeys] = useState<Set<string>>(
+    new Set(),
+  );
+  const loadMoreGenerationRef = useRef(0);
+  const clearLoadMoreState = useCallback(() => {
+    loadMoreGenerationRef.current += 1;
+    setExtraFacets({});
+    setLoadedMoreKeys(new Set());
+  }, []);
+
   useEffect(() => {
     if (!isLive) {
       setDateRange(chartConfig.dateRange);
-      setExtraFacets({});
+      clearLoadMoreState();
     }
-  }, [chartConfig.dateRange, isLive]);
+  }, [chartConfig.dateRange, clearLoadMoreState, isLive]);
 
   // Clear extra facets (from "load more") when switching sources
   useEffect(() => {
-    setExtraFacets({});
-  }, [sourceId]);
+    clearLoadMoreState();
+  }, [clearLoadMoreState, sourceId]);
+
+  // Values fetched through "Load more" are scoped to the current facet mode and
+  // query context. Drop them when the context changes so broad/stale options
+  // don't appear as valid refinements after the user narrows the search.
+  useEffect(() => {
+    clearLoadMoreState();
+  }, [chartConfig.where, clearLoadMoreState, filterMode, filterState]);
 
   const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
 
@@ -1323,12 +1382,14 @@ const DBSearchPageFiltersComponent = ({
 
     const sqlKeyToUiKey = new Map<string, string>();
     const escapedKeysToFetch = keysToFetch.map(key => {
-      const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
+      const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns, {
+        jsonColumns: jsonColumns ?? [],
+      });
       sqlKeyToUiKey.set(sqlKey, key);
       return sqlKey;
     });
     return { escapedKeysToFetch, sqlKeyToUiKey };
-  }, [isColumnsLoading, keysToFetch, knownColumns]);
+  }, [isColumnsLoading, jsonColumns, keysToFetch, knownColumns]);
 
   // Exact pipeline step 2: fetch values for discovered keys
   const {
@@ -1381,13 +1442,9 @@ const DBSearchPageFiltersComponent = ({
     });
   }, [facets, pinnedFilters, getPinnedFields]);
 
-  const metadata = useMetadataWithSettings();
-  const [extraFacets, setExtraFacets] = useState<Record<string, string[]>>({});
-  const [loadMoreLoadingKeys, setLoadMoreLoadingKeys] = useState<Set<string>>(
-    new Set(),
-  );
   const loadMoreFilterValuesForKey = useCallback(
     async (key: string) => {
+      const requestGeneration = loadMoreGenerationRef.current;
       setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
       try {
         // Coerce dot-form Map sub-keys (LogAttributes.foo) into bracket form
@@ -1397,7 +1454,9 @@ const DBSearchPageFiltersComponent = ({
         // up in filterState after setFilterValue's parseKeyPath().join('.')
         // normalization or after a Lucene URL round-trip, and ClickHouse
         // cannot resolve it as map access.
-        const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
+        const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns, {
+          jsonColumns: jsonColumns ?? [],
+        });
         let newValues: string[];
         if (!useExactPipeline) {
           const results = await metadata.getAllKeyValues({
@@ -1427,7 +1486,11 @@ const DBSearchPageFiltersComponent = ({
               ...chartConfig,
               dateRange,
               filters: filtersToQuery(
-                escapeFilterStateKeys(strippedFilterState, knownColumns),
+                escapeFilterStateKeys(
+                  strippedFilterState,
+                  knownColumns,
+                  jsonColumns ?? [],
+                ),
                 { dateTimeColumns },
               ),
             },
@@ -1436,14 +1499,16 @@ const DBSearchPageFiltersComponent = ({
             disableRowLimit: true,
             source,
           });
-          newValues = newKeyVals[0].value?.map(val => val.toString()) ?? [];
+          newValues = newKeyVals[0]?.value?.map(val => val.toString()) ?? [];
         }
-        if (newValues.length > 0) {
-          setExtraFacets(prev => ({
-            ...prev,
-            [key]: [...(prev[key] || []), ...newValues],
-          }));
+        if (requestGeneration !== loadMoreGenerationRef.current) {
+          return;
         }
+        setExtraFacets(prev => ({
+          ...prev,
+          [key]: [...(prev[key] || []), ...newValues],
+        }));
+        setLoadedMoreKeys(prev => new Set(prev).add(key));
       } catch (error) {
         console.error('failed to fetch more keys', error);
       } finally {
@@ -1460,6 +1525,7 @@ const DBSearchPageFiltersComponent = ({
       dateRange,
       dateTimeColumns,
       filterState,
+      jsonColumns,
       metadata,
       source,
       useExactPipeline,
@@ -1527,9 +1593,6 @@ const DBSearchPageFiltersComponent = ({
     const _facets: { key: string; value: (string | boolean)[] }[] = [];
     for (const _facet of facetsWithPinnedValues ?? []) {
       const facet = structuredClone(_facet);
-      if (jsonColumns?.some(col => facet.key.startsWith(col))) {
-        facet.key = `toString(${facet.key})`;
-      }
 
       // Skip fields already shown in the Shared Filters section
       if (sharedFilterKeys.has(facet.key)) {
@@ -1616,7 +1679,6 @@ const DBSearchPageFiltersComponent = ({
     extraFacets,
     isFieldPinned,
     isSharedFieldPinned,
-    jsonColumns,
     sharedFilterKeys,
   ]);
 
@@ -1736,6 +1798,7 @@ const DBSearchPageFiltersComponent = ({
                 sqlKey: toQuotedClickHouseKeyExpression(
                   child.key,
                   knownColumns,
+                  { jsonColumns: jsonColumns ?? [] },
                 ),
               }))}
               selectedValues={group.children.reduce((acc, child) => {
@@ -1777,7 +1840,7 @@ const DBSearchPageFiltersComponent = ({
               )}
               hasLoadedMore={group.children.reduce(
                 (acc, child) => {
-                  acc[child.key] = Boolean(extraFacets[child.key]);
+                  acc[child.key] = loadedMoreKeys.has(child.key);
                   return acc;
                 },
                 {} as Record<string, boolean>,
@@ -1802,6 +1865,7 @@ const DBSearchPageFiltersComponent = ({
             const facetSqlKey = toQuotedClickHouseKeyExpression(
               facet.key,
               knownColumns,
+              { jsonColumns: jsonColumns ?? [] },
             );
             return (
               <FilterGroup
@@ -1835,7 +1899,7 @@ const DBSearchPageFiltersComponent = ({
                 isColumnDisplayed={displayedColumns?.includes(facetSqlKey)}
                 onLoadMore={loadMoreFilterValuesForKey}
                 loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
-                hasLoadedMore={Boolean(extraFacets[facet.key])}
+                hasLoadedMore={loadedMoreKeys.has(facet.key)}
                 isDefaultExpanded={(() => {
                   const entry = getFilterStateEntry(filterState, facet.key);
                   return (
@@ -1874,13 +1938,14 @@ const DBSearchPageFiltersComponent = ({
       displayedColumns,
       loadMoreFilterValuesForKey,
       loadMoreLoadingKeys,
-      extraFacets,
+      loadedMoreKeys,
       showFilterCounts,
       isFacetsLoading,
       chartConfig,
       isLive,
       setFilterRange,
       tableMetadata,
+      jsonColumns,
       knownColumns,
     ],
   );

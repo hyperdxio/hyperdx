@@ -654,6 +654,39 @@ describe('FilterGroup', () => {
 
     expect(screen.getAllByTestId(/filter-checkbox-.+-input/)).toHaveLength(3);
   });
+
+  it('should show Load more for empty facets that have not loaded more yet', async () => {
+    const onLoadMore = jest.fn();
+    renderWithMantine(
+      <FilterGroup
+        {...defaultProps}
+        options={[]}
+        onLoadMore={onLoadMore}
+        hasLoadedMore={false}
+        isDefaultExpanded={false}
+      />,
+    );
+
+    const loadMoreButton = screen.getByTestId('filter-load-more-Test Filter');
+    await userEvent.click(loadMoreButton);
+
+    expect(onLoadMore).toHaveBeenCalledWith('Test Filter');
+  });
+
+  it('should hide Load more for empty facets after load more has completed', () => {
+    renderWithMantine(
+      <FilterGroup
+        {...defaultProps}
+        options={[]}
+        hasLoadedMore={true}
+        isDefaultExpanded={true}
+      />,
+    );
+
+    expect(
+      screen.queryByTestId('filter-load-more-Test Filter'),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe('NestedFilterGroup', () => {

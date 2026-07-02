@@ -6,10 +6,51 @@ import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
 import { mergePath } from '@/utils';
 
+const isIdentifierStart = (char: string): boolean =>
+  (char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z');
+
+const isIdentifierChar = (char: string): boolean =>
+  isIdentifierStart(char) || (char >= '0' && char <= '9') || char === '_';
+
+const isClickHouseJsonTypeSuffix = (suffix: string): boolean => {
+  if (suffix.startsWith('`') && suffix.endsWith('`')) {
+    return suffix.length > 2 && !suffix.slice(1, -1).includes('`');
+  }
+
+  const parenIdx = suffix.indexOf('(');
+  const typeName =
+    parenIdx === -1
+      ? suffix
+      : suffix.endsWith(')')
+        ? suffix.slice(0, parenIdx)
+        : '';
+
+  return (
+    typeName.length > 0 &&
+    isIdentifierStart(typeName[0]) &&
+    [...typeName].every(isIdentifierChar)
+  );
+};
+
+const stripClickHouseJsonTypeSuffix = (key: string): string => {
+  const suffixIdx = key.lastIndexOf('.:');
+  if (suffixIdx === -1) {
+    return key;
+  }
+
+  const suffix = key.slice(suffixIdx + 2);
+  return isClickHouseJsonTypeSuffix(suffix) ? key.slice(0, suffixIdx) : key;
+};
+
 // Clean ClickHouse expressions to extract clean property paths
 export function cleanClickHouseExpression(key: string): string {
   // Remove toString() wrapper if present
   let cleanKey = key.replace(/^toString\((.+)\)$/, '$1');
+
+  // Typed JSON subcolumns use a terminal ClickHouse type suffix
+  // (ResourceAttributes.`k8s`.`namespace`.`name`.:String). The sidebar keeps
+  // clean, type-free keys in memory so persisted URL filters match facet keys.
+  cleanKey = stripClickHouseJsonTypeSuffix(cleanKey);
 
   // Convert backtick dot notation to clean dot notation
   // e.g., `host`.`arch` -> host.arch
@@ -187,6 +228,39 @@ export function toClickHouseKeyExpression(key: string): string {
   );
 }
 
+type KeyExpressionOptions = {
+  jsonColumns?: readonly string[];
+};
+
+const unquoteIdentifier = (identifier: string): string => {
+  if (
+    (identifier.startsWith('`') && identifier.endsWith('`')) ||
+    (identifier.startsWith('"') && identifier.endsWith('"'))
+  ) {
+    return identifier.slice(1, -1);
+  }
+  return identifier;
+};
+
+const quoteJsonPathSegment = (segment: string): string => {
+  const unquoted = unquoteIdentifier(segment);
+  return `\`${unquoted.replace(/`/g, '``')}\``;
+};
+
+const renderJsonStringExpression = (
+  column: string,
+  jsonPath: string,
+): string => {
+  const columnIdentifier = quoteIdentifierIfNeeded(column);
+  const quotedPath = jsonPath
+    .split('.')
+    .filter(Boolean)
+    .map(quoteJsonPathSegment)
+    .join('.');
+
+  return `toString(${columnIdentifier}.${quotedPath})`;
+};
+
 /**
  * Quote a single identifier if it isn't already a valid bare ClickHouse identifier.
  * @param id - The identifier to quote
@@ -209,11 +283,22 @@ function quoteIdentifierIfNeeded(id: string): string {
 export function toQuotedClickHouseKeyExpression(
   key: string,
   knownColumns: Set<string>,
+  options: KeyExpressionOptions = {},
 ): string {
+  const jsonColumns = new Set(options.jsonColumns ?? []);
+
   // A whole-key match against a real column wins: quote the entire name as one
   // identifier (handles flat columns whose name contains dots/hyphens/etc.).
   if (knownColumns.has(key)) {
     return quoteIdentifierIfNeeded(key);
+  }
+
+  const parsedKey = parseMapFieldName(key);
+  if (parsedKey && jsonColumns.has(parsedKey.baseName)) {
+    return renderJsonStringExpression(
+      parsedKey.baseName,
+      parsedKey.propertyPath,
+    );
   }
 
   // Normalize dot-form (ResourceAttributes.host.name) to map access form (ResourceAttributes['host.name'])

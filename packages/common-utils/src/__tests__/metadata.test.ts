@@ -688,7 +688,7 @@ describe('Metadata', () => {
       expect(renderChartConfigSpy).not.toHaveBeenCalled();
     });
 
-    it('renders JSON attribute keys as typed subcolumns', async () => {
+    it('renders JSON attribute keys as string expressions', async () => {
       jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
         Promise.resolve(
           column === 'ResourceAttributes'
@@ -717,7 +717,7 @@ describe('Metadata', () => {
       expect(actualConfig.with?.[0]).toMatchObject({
         chartConfig: {
           select:
-            'ResourceAttributes.`k8s`.`namespace`.`name`.:String as param0',
+            'toString(ResourceAttributes.`k8s`.`namespace`.`name`) as param0',
         },
       });
     });
@@ -751,7 +751,7 @@ describe('Metadata', () => {
       expect(actualConfig.with?.[0]).toMatchObject({
         chartConfig: {
           select:
-            'ResourceAttributes.`foo`.`:String, count() AS injected`.:String as param0',
+            'toString(ResourceAttributes.`foo`.`:String, count() AS injected`) as param0',
         },
       });
     });
@@ -931,7 +931,7 @@ describe('Metadata', () => {
       });
     });
 
-    it('renders JSON distribution keys as typed subcolumns', async () => {
+    it('renders JSON distribution keys as string expressions', async () => {
       jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
         Promise.resolve(
           column === 'ResourceAttributes'
@@ -957,7 +957,7 @@ describe('Metadata', () => {
       if (!isBuilderChartConfig(actualConfig))
         throw new Error('Expected builder config');
       expect(actualConfig.select).toBe(
-        'ResourceAttributes.`k8s`.`namespace`.`name`.:String AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
+        'toString(ResourceAttributes.`k8s`.`namespace`.`name`) AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
       );
       expect(actualConfig.groupBy).toBe('__hdx_value');
     });
@@ -980,7 +980,7 @@ describe('Metadata', () => {
 
       await metadata.getValuesDistribution({
         chartConfig: mockChartConfig,
-        key: 'ResourceAttributes.k8s.namespace.name.:String',
+        key: 'ResourceAttributes.cloud.account.id.:Int64',
         source,
       });
 
@@ -988,7 +988,7 @@ describe('Metadata', () => {
       if (!isBuilderChartConfig(actualConfig))
         throw new Error('Expected builder config');
       expect(actualConfig.select).toBe(
-        'ResourceAttributes.`k8s`.`namespace`.`name`.:String AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
+        'toString(ResourceAttributes.`cloud`.`account`.`id`) AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
       );
     });
   });
@@ -1224,7 +1224,7 @@ describe('Metadata', () => {
       expect(valuesCall.query).toContain('__TIME_FILTER__');
     });
 
-    it('uses typed JSON subcolumns for JSON attribute values', async () => {
+    it('uses string JSON expressions for JSON attribute values', async () => {
       const md = buildMetadata();
       jest.spyOn(md, 'getColumn').mockResolvedValue({
         name: 'ResourceAttributes',
@@ -1246,7 +1246,7 @@ describe('Metadata', () => {
       const valuesCall = (mockClickhouseClient.query as jest.Mock).mock
         .calls[0][0];
       expect(valuesCall.query).toContain(
-        'ResourceAttributes.`k8s`.`namespace`.`name`.:String as value',
+        'toString(ResourceAttributes.`k8s`.`namespace`.`name`) as value',
       );
       expect(valuesCall.query).not.toContain('ResourceAttributes[');
     });
@@ -1800,6 +1800,67 @@ describe('parseKeyPath', () => {
     expect(parseKeyPath("ResourceAttributes['service.name")).toEqual([
       "ResourceAttributes['service.name",
     ]);
+  });
+});
+
+describe('getAllKeyValues', () => {
+  const buildMetadata = () => {
+    const realCache = new (
+      jest.requireActual('../core/metadata') as any
+    ).MetadataCache();
+    return new Metadata(mockClickhouseClient, realCache);
+  };
+
+  beforeEach(() => {
+    (mockClickhouseClient.query as jest.Mock).mockReset();
+  });
+
+  it('uses rendered JSON string expressions as metadata MV rollup keys', async () => {
+    const md = buildMetadata();
+    (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+      json: () =>
+        Promise.resolve({
+          data: [
+            {
+              ColumnIdentifier: 'ResourceAttributes',
+              Key: 'k8s.namespace.name',
+              Value: 'backend',
+              total_count: 10,
+            },
+          ],
+        }),
+    });
+
+    const keyExpression =
+      'toString(ResourceAttributes.`k8s`.`namespace`.`name`)';
+    const result = await md.getAllKeyValues({
+      databaseName: 'otel',
+      tableName: 'generic_logs',
+      keyExpressions: [keyExpression],
+      maxValuesPerKey: 20,
+      connectionId: 'conn-1',
+      metadataMVs: {
+        keyRollupTable: 'otel_logs_key_rollup_15m',
+        kvRollupTable: 'otel_logs_kv_rollup_15m',
+        granularity: '15 minute',
+      },
+      dateRange: [
+        new Date('2026-05-11T16:00:00Z'),
+        new Date('2026-05-11T17:00:00Z'),
+      ],
+    });
+
+    expect(result).toEqual([{ key: keyExpression, value: ['backend'] }]);
+
+    const valuesCall = (mockClickhouseClient.query as jest.Mock).mock
+      .calls[0][0];
+    expect(Object.values(valuesCall.query_params)).toEqual(
+      expect.arrayContaining(['ResourceAttributes', 'k8s.namespace.name']),
+    );
+    expect(Object.values(valuesCall.query_params)).not.toContain(
+      'NativeColumn',
+    );
+    expect(Object.values(valuesCall.query_params)).not.toContain(keyExpression);
   });
 });
 

@@ -114,7 +114,10 @@ import {
   useSavedSearch,
   useUpdateSavedSearch,
 } from '@/savedSearch';
-import { useSearchPageFilterState } from '@/searchFilters';
+import {
+  canonicalizeFilterQuery,
+  useSearchPageFilterState,
+} from '@/searchFilters';
 import { getEventBody, useSource, useSources } from '@/source';
 import { useAppTheme, useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
@@ -1096,6 +1099,10 @@ export function DBSearchPage() {
   // const { data: inputSourceObj } = useSource({ id: inputSource });
   const { data: inputSourceObjs } = useSources();
   const inputSourceObj = inputSourceObjs?.find(s => s.id === inputSource);
+  const inputSourceTableConnection = useMemo(
+    () => tcFromSource(inputSourceObj),
+    [inputSourceObj],
+  );
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState('Live Tail');
@@ -1115,15 +1122,18 @@ export function DBSearchPage() {
   const prevSearched = usePrevious(searchedConfig);
   useEffect(() => {
     if (JSON.stringify(prevSearched) !== JSON.stringify(searchedConfig)) {
-      reset({
-        select: searchedConfig?.select ?? '',
-        where: searchedConfig?.where ?? '',
-        whereLanguage:
-          searchedConfig?.whereLanguage ?? getStoredLanguage() ?? 'lucene',
-        source: searchedConfig?.source ?? undefined,
-        filters: searchedConfig?.filters ?? [],
-        orderBy: searchedConfig?.orderBy ?? '',
-      });
+      reset(
+        {
+          select: searchedConfig?.select ?? '',
+          where: searchedConfig?.where ?? '',
+          whereLanguage:
+            searchedConfig?.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+          source: searchedConfig?.source ?? undefined,
+          filters: searchedConfig?.filters ?? [],
+          orderBy: searchedConfig?.orderBy ?? '',
+        },
+        { keepDirtyValues: true },
+      );
     }
   }, [searchedConfig, reset, prevSearched]);
 
@@ -1248,6 +1258,13 @@ export function DBSearchPage() {
         : new Set<string>(),
     [inputSourceColumns],
   );
+  const inputSourceJsonColumns = useMemo(
+    () =>
+      inputSourceColumns
+        ?.filter(column => column.type.startsWith('JSON'))
+        .map(column => column.name) ?? [],
+    [inputSourceColumns],
+  );
 
   const watchedSource = useWatch({
     control,
@@ -1278,11 +1295,59 @@ export function DBSearchPage() {
     useResolvedDateTimeColumns(inputSourceColumns);
 
   const filters = useWatch({ name: 'filters', control });
+  const canonicalizedFilters = useMemo(() => {
+    if (!filters?.length || !inputSourceColumns) {
+      return null;
+    }
+
+    const nextFilters = canonicalizeFilterQuery(
+      filters,
+      knownColumns,
+      inputSourceJsonColumns,
+      dateTimeColumns,
+    );
+
+    return JSON.stringify(nextFilters) === JSON.stringify(filters)
+      ? null
+      : nextFilters;
+  }, [
+    dateTimeColumns,
+    filters,
+    inputSourceColumns,
+    inputSourceJsonColumns,
+    knownColumns,
+  ]);
+  useEffect(() => {
+    if (!canonicalizedFilters) {
+      return;
+    }
+
+    setValue('filters', canonicalizedFilters);
+    setSearchedConfig({
+      select: searchedConfig.select ?? '',
+      where: searchedConfig.where ?? '',
+      whereLanguage:
+        searchedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
+      source: searchedConfig.source ?? undefined,
+      filters: canonicalizedFilters,
+      orderBy: searchedConfig.orderBy ?? '',
+    });
+  }, [
+    canonicalizedFilters,
+    searchedConfig.orderBy,
+    searchedConfig.select,
+    searchedConfig.source,
+    searchedConfig.where,
+    searchedConfig.whereLanguage,
+    setSearchedConfig,
+    setValue,
+  ]);
   const searchFilters = useSearchPageFilterState({
     searchQuery: filters ?? undefined,
     onFilterChange: handleSetFilters,
     dateTimeColumns,
     knownColumns,
+    jsonColumns: inputSourceJsonColumns,
   });
 
   useEffect(() => {
@@ -1850,11 +1915,6 @@ export function DBSearchPage() {
       generateSearchUrl,
       isDrawerChildModalOpen,
     ],
-  );
-
-  const inputSourceTableConnection = useMemo(
-    () => tcFromSource(inputSourceObj),
-    [inputSourceObj],
   );
 
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
