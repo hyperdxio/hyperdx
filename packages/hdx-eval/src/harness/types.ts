@@ -44,6 +44,27 @@ export type McpDefinition = (HttpMcpTransport | StdioMcpTransport) & {
 };
 
 /**
+ * A Claude Code plugin definition in the eval config. A plugin is loaded into
+ * the isolated agent session (via `--plugin-url`/`--plugin-dir`) and treated
+ * as a evaluation variant. Exactly one of `url` (a `.zip` URL) or `dir`
+ * (a local plugin directory) should be set.
+ */
+export type PluginDefinition = {
+  /** Human-readable label for reports and CLI output. */
+  label: string;
+  /** URL to a plugin `.zip` archive (loaded via `--plugin-url`). */
+  url?: string;
+  /** Local plugin directory (loaded via `--plugin-dir`). */
+  dir?: string;
+};
+
+/**
+ * Sentinel plugin key meaning "no plugin". This is the implicit default
+ * for a run with no `--plugin` flag.
+ */
+export const PLUGIN_NONE = 'none';
+
+/**
  * Prompt variants for the system-prompt A/B.
  *  - `baseline`: the default investigative prompt, no subagent affordance.
  *  - `hypothesis`: hard playbook that asks the agent to enumerate 2–4
@@ -70,6 +91,7 @@ export type RunRecord = {
   scenario: string;
   mcp: McpKind;
   model: string;
+  plugin: string;
   runIndex: number;
   seed: number;
   startedAt: string;
