@@ -40,8 +40,9 @@ export const withRetry = async <T>(
         throw error;
       }
 
-      // Extract status code if available (e.g., from fetch wrapper or axios/slack SDK)
+      // Extract HTTP status statusCode first to handle slack webhook errors.
       const status =
+        error?.statusCode ??
         error?.status ??
         error?.response?.status ??
         error?.original?.response?.status ??
