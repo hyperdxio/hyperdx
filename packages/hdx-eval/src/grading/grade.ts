@@ -270,6 +270,7 @@ async function gradeOne(args: {
         COMBINED_SCORE_JUDGE_WEIGHT * judgeScore
       : programmatic.score;
 
+  // Apply the tool-error penalty AFTER scoring the answer. Clamp to [0,1].
   const combinedScore = Math.max(
     0,
     Math.min(1, rawCombined - toolErrors.penalty),

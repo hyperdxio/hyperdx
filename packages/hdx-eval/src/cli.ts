@@ -23,6 +23,7 @@ import {
   configPath,
   enabledMcpNames,
   ensureAnchorTime,
+  type EvalConfig,
   getMcpDefinition,
   readConfig,
 } from './hyperdx/config';
@@ -85,24 +86,9 @@ function buildClientFromConfig(
   });
 }
 
-function defaultApiUrl(): string {
-  if (process.env.HDX_EVAL_API_URL) return process.env.HDX_EVAL_API_URL;
-  if (process.env.HYPERDX_API_PORT) {
-    return `http://localhost:${process.env.HYPERDX_API_PORT}`;
-  }
-  if (process.env.HDX_DEV_API_PORT) {
-    return `http://localhost:${process.env.HDX_DEV_API_PORT}`;
-  }
-  return 'http://localhost:8000';
-}
-
-// Default eval account credentials — used by setup-hyperdx, run, and grade.
-const DEFAULT_EVAL_EMAIL = 'eval@local.test';
-const DEFAULT_EVAL_PASSWORD = 'EvalPass123!#';
-
-/** Build the inspection config from an eval config + CLI credentials. */
+/** Shared builder for post-run inspection config used by both `run` and `grade`. */
 function buildInspectionConfig(
-  config: import('./hyperdx/config').EvalConfig,
+  config: EvalConfig,
   creds: { email: string; password: string },
   anchorTimeIso?: string,
 ):
@@ -118,6 +104,21 @@ function buildInspectionConfig(
     cleanup: true,
   };
 }
+
+function defaultApiUrl(): string {
+  if (process.env.HDX_EVAL_API_URL) return process.env.HDX_EVAL_API_URL;
+  if (process.env.HYPERDX_API_PORT) {
+    return `http://localhost:${process.env.HYPERDX_API_PORT}`;
+  }
+  if (process.env.HDX_DEV_API_PORT) {
+    return `http://localhost:${process.env.HDX_DEV_API_PORT}`;
+  }
+  return 'http://localhost:8000';
+}
+
+// Default eval account credentials — used by setup-hyperdx, run, and grade.
+const DEFAULT_EVAL_EMAIL = 'eval@local.test';
+const DEFAULT_EVAL_PASSWORD = 'EvalPass123!#';
 
 const program = new Command();
 
@@ -500,6 +501,19 @@ program
       // --anchor-time <iso>: override + save to config.
       // --live: ignore saved anchor, use wall-clock now (no FIXED CURRENT
       //         TIME in system prompt), and force reseed.
+      //
+      // The anchor is "sticky": once generated it persists in eval.config.json
+      // and is reused across runs. We intentionally do NOT refresh a stale
+      // anchor or force a reseed when wall-clock time advances. Previously we
+      // did, solely so clickstack_describe_source's fixed 24h WALL-CLOCK
+      // sampling window could still see the seeded data — but that coupled the
+      // anchor to real time and forced frequent reseeds (slow in CI with
+      // cached seed data). Instead, the system prompt now tells the agent that
+      // describe_source's sampled value fields may be empty/stale and to
+      // discover real values via anchored queries (see SAMPLING_CAVEAT_BLOCK
+      // in harness/systemPrompt.ts). That removes the only reason the anchor
+      // had to track wall-clock, so seeded data can age indefinitely without a
+      // reseed.
       let anchorTimeIso: string | undefined;
       let anchorMs: number;
       if (cmdOpts.live) {
