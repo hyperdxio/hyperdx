@@ -6,7 +6,11 @@ import {
 } from '@/controllers/savedSearch';
 import { getSource } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { mcpError, validateObjectId } from '@/mcp/utils/errors';
+import {
+  mcpServerError,
+  mcpUserError,
+  validateObjectId,
+} from '@/mcp/utils/errors';
 
 import { mcpSaveSavedSearchSchema } from './schemas';
 
@@ -39,7 +43,7 @@ export function registerSaveSavedSearch({
       // ── Validate sourceId (format validated by Zod schema, check existence) ──
       const source = await getSource(teamId, input.sourceId);
       if (!source) {
-        return mcpError('Source not found');
+        return mcpUserError('Source not found');
       }
 
       // Build the saved search data matching what the controller expects.
@@ -58,12 +62,7 @@ export function registerSaveSavedSearch({
         // Verify the saved search exists before updating.
         const existing = await getSavedSearch(teamId, input.id!);
         if (!existing) {
-          return {
-            isError: true,
-            content: [
-              { type: 'text' as const, text: 'Saved search not found' },
-            ],
-          };
+          return mcpUserError('Saved search not found');
         }
 
         const updated = await updateSavedSearch(
@@ -74,15 +73,7 @@ export function registerSaveSavedSearch({
         );
 
         if (!updated) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: 'text' as const,
-                text: 'Failed to update saved search',
-              },
-            ],
-          };
+          return mcpServerError('Failed to update saved search');
         }
 
         return {

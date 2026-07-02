@@ -9,7 +9,11 @@ import {
   validateAlertInput,
 } from '@/controllers/alerts';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { mcpError, validateObjectId } from '@/mcp/utils/errors';
+import {
+  mcpServerError,
+  mcpUserError,
+  validateObjectId,
+} from '@/mcp/utils/errors';
 import { type AlertChannel, AlertSource } from '@/models/alert';
 import { BaseError } from '@/utils/errors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
@@ -52,7 +56,7 @@ export function registerSaveAlert({
       // ── Runtime cross-field validation ──
       const validationError = validateSaveAlertInput(input);
       if (validationError) {
-        return mcpError(validationError);
+        return mcpUserError(validationError);
       }
 
       // ── Validate ID for updates (early return narrows input.id to string) ──
@@ -96,7 +100,7 @@ export function registerSaveAlert({
             : e instanceof Error
               ? e.message
               : String(e);
-        return mcpError(msg);
+        return e instanceof BaseError ? mcpUserError(msg) : mcpServerError(msg);
       }
 
       const mongoUserId = new mongoose.Types.ObjectId(userId);
@@ -105,7 +109,7 @@ export function registerSaveAlert({
       if (alertId) {
         const updated = await updateAlert(alertId, mongoTeamId, alertInput);
         if (!updated) {
-          return mcpError('Alert not found');
+          return mcpUserError('Alert not found');
         }
         return {
           content: [

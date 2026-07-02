@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { deleteDashboard } from '@/controllers/dashboard';
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
 import { objectIdSchema } from '@/utils/zod';
 
@@ -29,10 +30,7 @@ export function registerDeleteDashboard({
         team: teamId,
       }).lean();
       if (!existing) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Dashboard not found' }],
-        };
+        return mcpUserError('Dashboard not found');
       }
 
       await deleteDashboard(dashboardId, new mongoose.Types.ObjectId(teamId));
