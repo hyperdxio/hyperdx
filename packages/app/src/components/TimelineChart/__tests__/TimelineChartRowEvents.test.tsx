@@ -20,7 +20,9 @@ const renderRow = (events: TTimelineEvent[], maxVal: number) =>
   );
 
 const bars = (container: HTMLElement) =>
-  Array.from(container.querySelectorAll<HTMLElement>('[style*="width"]'));
+  Array.from(
+    container.querySelectorAll<HTMLElement>('[style*="position: absolute"]'),
+  );
 
 describe('TimelineChartRowEvents width', () => {
   it('keeps a short span proportionally narrow instead of flooring its width percentage', () => {

@@ -40,7 +40,10 @@ export const TimelineChartRowEvents = memo(function (
     // with the zoom factor, letting very short spans render as wide as long
     // ones once zoomed in. The floor is applied as a fixed pixel `minWidth`
     // instead, so sub-pixel spans stay clickable without growing on zoom.
-    const percentWidth = ((event.end - event.start) / maxVal) * 100;
+    const percentWidth = Math.max(
+      ((event.end - event.start) / maxVal) * 100,
+      0,
+    );
 
     const durationMs = event.end - event.start;
     const barCenter = (event.start + event.end) / 2;
