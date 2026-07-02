@@ -1,5 +1,11 @@
 # @hyperdx/common-utils
 
+## 0.22.0
+
+### Minor Changes
+
+- 3f1e1fe4c: feat: update metrics schema for more efficient PK and time pruning
+
 ## 0.21.0
 
 ### Minor Changes

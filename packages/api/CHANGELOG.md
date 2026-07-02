@@ -1,5 +1,23 @@
 # @hyperdx/api
 
+## 2.30.0
+
+### Minor Changes
+
+- 727d3274e: Add an opt-in Datadog receiver (gated behind `ENABLE_DATADOG_RECEIVER`) so a
+  Datadog Agent can ship traces, metrics, and logs to HyperDX. The contrib
+  `datadogreceiver` is compiled into the collector binary and, when enabled, the
+  OpAMP controller attaches it (listening on `0.0.0.0:8126`) to the traces,
+  metrics, and logs pipelines. When collector authentication is enforced, the
+  receiver validates the `DD-API-KEY` header against team API keys.
+- abf5b5373: Adds a POST /api/v2/dashboards/validate endpoint to the external v2 API. It
+
+### Patch Changes
+
+- bfc6fb5c7: Classify MCP tool errors as `user` (bad input, not-found) or `server` (infrastructure failure, timeout) so alerting rules can filter on `error_category=server` without noise from agent input mistakes. Adds `error_category` attribute to spans and the `hyperdx.mcp.tool.errors` metric counter. ClickHouse errors are auto-classified by inspecting the error type and walking the cause chain for TCP-level codes.
+- Updated dependencies [3f1e1fe4c]
+  - @hyperdx/common-utils@0.22.0
+
 ## 2.29.0
 
 ### Minor Changes

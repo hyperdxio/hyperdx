@@ -1,5 +1,11 @@
 # @hyperdx/hdx-eval
 
+## 0.2.1
+
+### Patch Changes
+
+- 64d0bbe56: Add optional scenario hooks for custom system prompts, tool permissions, judge preambles, and post-run artifact inspection
+
 ## 0.2.0
 
 ### Minor Changes
