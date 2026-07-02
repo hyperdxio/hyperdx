@@ -13,7 +13,9 @@ import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import { clickHouseErrorResult } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -482,34 +484,19 @@ async function describeMetricImpl(
 ) {
   const source = await getSource(teamId, input.sourceId);
   if (!source) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source "${input.sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source "${input.sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
+    );
   }
   if (source.kind !== SourceKind.Metric) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source "${input.sourceId}" is a "${source.kind}" source, not a metric source. clickstack_describe_metric only works on metric sources.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source "${input.sourceId}" is a "${source.kind}" source, not a metric source. clickstack_describe_metric only works on metric sources.`,
+    );
   }
 
   const timeRange = parseTimeRange(input.startTime, input.endTime);
   if ('error' in timeRange) {
-    return {
-      isError: true,
-      content: [{ type: 'text' as const, text: timeRange.error }],
-    };
+    return mcpUserError(timeRange.error);
   }
   const { startDate, endDate } = timeRange;
 
@@ -519,15 +506,7 @@ async function describeMetricImpl(
     true,
   );
   if (!connection) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Connection not found for source "${input.sourceId}".`,
-        },
-      ],
-    };
+    return mcpUserError(`Connection not found for source "${input.sourceId}".`);
   }
 
   const clickhouseClient = new ClickhouseClient({
@@ -544,15 +523,9 @@ async function describeMetricImpl(
   const kind = input.kind;
   const tableName = source.metricTables[kind];
   if (!tableName) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source "${input.sourceId}" has no "${kind}" metric table populated. Populated kinds: ${Object.keys(source.metricTables).join(', ')}.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source "${input.sourceId}" has no "${kind}" metric table populated. Populated kinds: ${Object.keys(source.metricTables).join(', ')}.`,
+    );
   }
 
   // Defensive column-presence check before referencing MetricUnit /
@@ -569,15 +542,10 @@ async function describeMetricImpl(
       { kind, error: e instanceof Error ? e.message : String(e) },
       'describeMetric: getColumns failed',
     );
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Failed to load columns for "${tableName}". The metric table may be missing or unreachable.`,
-        },
-      ],
-    };
+    return clickHouseErrorResult(e, {
+      prefix: `Failed to load columns for "${tableName}"`,
+      suffix: 'The metric table may be missing or unreachable.',
+    });
   }
   const columnNames = new Set(columns.map(c => c.name));
   const hasUnit = columnNames.has('MetricUnit');
@@ -776,19 +744,12 @@ export function registerDescribeMetric({
             { teamId, sourceId: input.sourceId, metricName: input.metricName },
             'clickstack_describe_metric timed out',
           );
-          return {
-            isError: true as const,
-            content: [
-              {
-                type: 'text' as const,
-                text:
-                  'Discovery timed out. The metric table may be under load or the ' +
-                  'attribute set may be very high-cardinality. Try narrowing ' +
-                  'startTime/endTime or setting sampleValues:false to skip the ' +
-                  'value-sampling stage.',
-              },
-            ],
-          };
+          return mcpServerError(
+            'Discovery timed out. The metric table may be under load or the ' +
+              'attribute set may be very high-cardinality. Try narrowing ' +
+              'startTime/endTime or setting sampleValues:false to skip the ' +
+              'value-sampling stage.',
+          );
         }
         throw e;
       } finally {
