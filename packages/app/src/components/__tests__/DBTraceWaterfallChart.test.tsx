@@ -10,6 +10,10 @@ import userEvent from '@testing-library/user-event';
 
 import { RowSidePanelContext } from '@/components/DBRowSidePanel';
 import {
+  computeCollapseAll,
+  computeCollapseOneLevel,
+  computeExpandOneLevel,
+  computeToggleCollapse,
   DBTraceWaterfallChartContainer,
   getDescendantIds,
   SpanRow,
@@ -76,6 +80,7 @@ jest.mock('@/hooks/useWaterfallSearchState', () => ({
   default: () => ({
     traceWhere: '',
     logWhere: '',
+    whereLanguage: '',
     clear: jest.fn(),
     isFilterActive: false,
     isFilterExpanded: false,
@@ -367,6 +372,59 @@ describe('DBTraceWaterfallChartContainer', () => {
       expect(MockTimelineChart.latestProps.rows.length).toBe(1);
     });
   });
+
+  it('renders depth controls when the trace has collapsible spans', async () => {
+    // Distinct row ids per span so the parent/child tree is preserved (the
+    // default mock collapses every row onto the same id).
+    mockUseRowWhere.mockReturnValue((row: any) => ({
+      where: `where-${row?.SpanId ?? 'x'}`,
+      aliasWith: [],
+    }));
+
+    const nestedTraceData = {
+      data: [
+        {
+          Body: 'parent span',
+          Timestamp: '2024-01-01T06:00:00.000000000Z',
+          Duration: 0.2,
+          SpanId: 'span-1',
+          ParentSpanId: '',
+          ServiceName: 'svc-a',
+          HyperDXEventType: 'span' as const,
+          type: 'trace',
+        } as SpanRow,
+        {
+          Body: 'child span',
+          Timestamp: '2024-01-01T06:00:00.050000000Z',
+          Duration: 0.1,
+          SpanId: 'span-2',
+          ParentSpanId: 'span-1',
+          ServiceName: 'svc-b',
+          HyperDXEventType: 'span' as const,
+          type: 'trace',
+        } as SpanRow,
+      ],
+      meta: [{ totalCount: 2 }],
+    };
+
+    setupQueryMocks({ traceData: nestedTraceData });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByLabelText('Expand all')).toBeInTheDocument();
+    expect(screen.getByLabelText('Collapse all')).toBeInTheDocument();
+    expect(screen.getByLabelText('Expand one level')).toBeInTheDocument();
+    expect(screen.getByLabelText('Collapse one level')).toBeInTheDocument();
+  });
+
+  it('does not render depth controls for a flat trace', async () => {
+    setupQueryMocks({ traceData: mockTraceData });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.queryByLabelText('Expand all')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Collapse all')).not.toBeInTheDocument();
+  });
 });
 
 describe('useEventsAroundFocus', () => {
@@ -539,5 +597,195 @@ describe('getDescendantIds', () => {
       children: [{ id: 'only', children: [] }],
     };
     expect(getDescendantIds(node)).toEqual(['only']);
+  });
+});
+
+describe('depth control helpers', () => {
+  // Build a level -> parent-ids map. Keys are intentionally passed out of order
+  // in some tests to prove the helpers sort levels themselves.
+  const makeLevels = (entries: Array<[number, string[]]>) =>
+    new Map<number, Set<string>>(
+      entries.map(([level, ids]) => [level, new Set(ids)]),
+    );
+
+  // A 3-deep tree of collapsible parents:
+  //   level 0: root
+  //   level 1: a, b
+  //   level 2: a1
+  const threeLevels = () =>
+    makeLevels([
+      [2, ['a1']],
+      [0, ['root']],
+      [1, ['a', 'b']],
+    ]);
+
+  const asSorted = (set: Set<string>) => [...set].sort();
+
+  describe('computeCollapseAll', () => {
+    it('returns an empty set for a trace with no collapsible parents', () => {
+      expect(computeCollapseAll(new Map())).toEqual(new Set());
+    });
+
+    it('flattens every parent id from every level into one set', () => {
+      expect(asSorted(computeCollapseAll(threeLevels()))).toEqual([
+        'a',
+        'a1',
+        'b',
+        'root',
+      ]);
+    });
+  });
+
+  describe('computeExpandOneLevel', () => {
+    it('returns the same set reference when nothing is collapsed', () => {
+      const collapsed = new Set<string>();
+      const result = computeExpandOneLevel(collapsed, threeLevels());
+      // Identity is relied on by the caller to skip a redundant state update.
+      expect(result).toBe(collapsed);
+    });
+
+    it('expands the shallowest collapsed level first', () => {
+      const levels = threeLevels();
+      const fullyCollapsed = new Set(['root', 'a', 'b', 'a1']);
+
+      // level 0 (root) is shallowest -> expanded first.
+      const afterOne = computeExpandOneLevel(fullyCollapsed, levels);
+      expect(asSorted(afterOne)).toEqual(['a', 'a1', 'b']);
+
+      // next shallowest collapsed level is level 1 (a, b).
+      const afterTwo = computeExpandOneLevel(afterOne, levels);
+      expect(asSorted(afterTwo)).toEqual(['a1']);
+
+      // finally level 2 (a1).
+      const afterThree = computeExpandOneLevel(afterTwo, levels);
+      expect(asSorted(afterThree)).toEqual([]);
+    });
+
+    it('skips already-expanded shallow levels', () => {
+      // Only the deepest level remains collapsed.
+      const result = computeExpandOneLevel(new Set(['a1']), threeLevels());
+      expect(asSorted(result)).toEqual([]);
+    });
+
+    it('does not mutate the input set', () => {
+      const collapsed = new Set(['root', 'a', 'b', 'a1']);
+      computeExpandOneLevel(collapsed, threeLevels());
+      expect(asSorted(collapsed)).toEqual(['a', 'a1', 'b', 'root']);
+    });
+  });
+
+  describe('computeCollapseOneLevel', () => {
+    it('collapses the deepest expanded level first', () => {
+      const levels = threeLevels();
+
+      // Nothing collapsed -> deepest level (a1) collapses first.
+      const afterOne = computeCollapseOneLevel(new Set<string>(), levels);
+      expect(asSorted(afterOne)).toEqual(['a1']);
+
+      // next deepest expanded level is level 1 (a, b).
+      const afterTwo = computeCollapseOneLevel(afterOne, levels);
+      expect(asSorted(afterTwo)).toEqual(['a', 'a1', 'b']);
+
+      // finally level 0 (root).
+      const afterThree = computeCollapseOneLevel(afterTwo, levels);
+      expect(asSorted(afterThree)).toEqual(['a', 'a1', 'b', 'root']);
+    });
+
+    it('skips already-collapsed deep levels', () => {
+      // Deepest level already collapsed -> collapse level 1 next.
+      const result = computeCollapseOneLevel(new Set(['a1']), threeLevels());
+      expect(asSorted(result)).toEqual(['a', 'a1', 'b']);
+    });
+
+    it('returns an equivalent set when everything is already collapsed', () => {
+      const fullyCollapsed = new Set(['root', 'a', 'b', 'a1']);
+      const result = computeCollapseOneLevel(fullyCollapsed, threeLevels());
+      expect(asSorted(result)).toEqual(['a', 'a1', 'b', 'root']);
+    });
+
+    it('does not mutate the input set', () => {
+      const collapsed = new Set(['a1']);
+      computeCollapseOneLevel(collapsed, threeLevels());
+      expect(asSorted(collapsed)).toEqual(['a1']);
+    });
+  });
+
+  it('expand and collapse one level are inverse across a full tree', () => {
+    const levels = threeLevels();
+
+    // Collapse everything one level at a time.
+    let state = new Set<string>();
+    state = computeCollapseOneLevel(state, levels); // a1
+    state = computeCollapseOneLevel(state, levels); // + a, b
+    state = computeCollapseOneLevel(state, levels); // + root
+    expect(asSorted(state)).toEqual(['a', 'a1', 'b', 'root']);
+
+    // Expand everything one level at a time back to empty.
+    state = computeExpandOneLevel(state, levels); // - root
+    state = computeExpandOneLevel(state, levels); // - a, b
+    state = computeExpandOneLevel(state, levels); // - a1
+    expect(asSorted(state)).toEqual([]);
+  });
+
+  describe('computeToggleCollapse', () => {
+    // A parent `p` with a nested subtree: descendants are c1, c1a, c2.
+    const node = () => ({
+      id: 'p',
+      children: [
+        { id: 'c1', children: [{ id: 'c1a', children: [] }] },
+        { id: 'c2', children: [] },
+      ],
+    });
+
+    it('collapses an expanded node (adds its id)', () => {
+      expect(
+        asSorted(computeToggleCollapse(new Set(), 'p', node(), false)),
+      ).toEqual(['p']);
+    });
+
+    it('expands a collapsed node (removes its id)', () => {
+      expect(
+        asSorted(computeToggleCollapse(new Set(['p']), 'p', node(), false)),
+      ).toEqual([]);
+    });
+
+    it('collapses the whole subtree when includeDescendants is true', () => {
+      expect(
+        asSorted(computeToggleCollapse(new Set(), 'p', node(), true)),
+      ).toEqual(['c1', 'c1a', 'c2', 'p']);
+    });
+
+    it('expands the whole subtree when includeDescendants is true', () => {
+      const collapsed = new Set(['p', 'c1', 'c1a', 'c2']);
+      expect(
+        asSorted(computeToggleCollapse(collapsed, 'p', node(), true)),
+      ).toEqual([]);
+    });
+
+    it('leaves descendants untouched when includeDescendants is false', () => {
+      // c1 stays collapsed even though the parent is toggled.
+      expect(
+        asSorted(computeToggleCollapse(new Set(['c1']), 'p', node(), false)),
+      ).toEqual(['c1', 'p']);
+    });
+
+    it('toggles only the id when the node is not found', () => {
+      expect(
+        asSorted(computeToggleCollapse(new Set(), 'missing', undefined, true)),
+      ).toEqual(['missing']);
+    });
+
+    it('toggles only the id for a leaf node with no children', () => {
+      const leaf = { id: 'leaf', children: [] };
+      expect(
+        asSorted(computeToggleCollapse(new Set(), 'leaf', leaf, true)),
+      ).toEqual(['leaf']);
+    });
+
+    it('does not mutate the input set', () => {
+      const collapsed = new Set(['other']);
+      computeToggleCollapse(collapsed, 'p', node(), true);
+      expect(asSorted(collapsed)).toEqual(['other']);
+    });
   });
 });
