@@ -205,8 +205,6 @@ function PodLogs({
           sourceId={logSource.id}
           config={tableConfig}
           isLive={false}
-          isNestedPanel
-          breadcrumbPath={[{ label: 'Pods' }]}
           queryKeyPrefix="k8s-dashboard-pod-logs"
         />
       </Card.Section>
@@ -460,7 +458,6 @@ export default function PodDetailsSidePanel({
               rowId={rowId}
               aliasWith={aliasWith}
               onClose={handleCloseRowSidePanel}
-              isNestedPanel={true}
             />
           )}
         </div>
