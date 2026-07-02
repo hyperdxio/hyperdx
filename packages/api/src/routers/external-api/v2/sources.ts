@@ -358,7 +358,6 @@ function formatExternalSource(source: SourceDocument) {
  *     LogSource:
  *       type: object
  *       required:
- *         - id
  *         - name
  *         - kind
  *         - connection
@@ -515,7 +514,6 @@ function formatExternalSource(source: SourceDocument) {
  *     TraceSource:
  *       type: object
  *       required:
- *         - id
  *         - name
  *         - kind
  *         - connection
@@ -704,7 +702,6 @@ function formatExternalSource(source: SourceDocument) {
  *     MetricSource:
  *       type: object
  *       required:
- *         - id
  *         - name
  *         - kind
  *         - connection
@@ -769,7 +766,6 @@ function formatExternalSource(source: SourceDocument) {
  *     SessionSource:
  *       type: object
  *       required:
- *         - id
  *         - name
  *         - kind
  *         - connection
@@ -826,7 +822,6 @@ function formatExternalSource(source: SourceDocument) {
  *       type: object
  *       description: A source backed by a Prometheus-compatible endpoint, queried with PromQL. The referenced connection should be a Prometheus connection (isPrometheusEndpoint set to true).
  *       required:
- *         - id
  *         - name
  *         - kind
  *         - connection

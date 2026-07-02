@@ -414,6 +414,35 @@ describe('External API v2 Sources CRUD', () => {
       expect(raw!.createdAt).toEqual(originalCreatedAt);
       expect(raw!.connection).toBeInstanceOf(mongoose.Types.ObjectId);
     });
+
+    it('should return 404 on a kind change when the source is deleted concurrently', async () => {
+      const logSource = await LogSource.create({
+        ...logSourceBody(),
+        team: team._id,
+      });
+
+      // Simulate a concurrent delete landing between the controller's findOne
+      // and the raw replaceOne in the kind-change path: the replace matches
+      // nothing, so matchedCount === 0 and the controller must report 404
+      // rather than hydrating a phantom document.
+      const spy = jest
+        .spyOn(Source.collection, 'replaceOne')
+        .mockImplementationOnce(async () => {
+          await Source.deleteOne({ _id: logSource._id });
+          return { matchedCount: 0 } as any;
+        });
+
+      try {
+        await authRequest('put', `${BASE_URL}/${logSource._id}`)
+          .send({ ...traceSourceBody(), name: 'Now A Trace Source' })
+          .expect(404);
+      } finally {
+        spy.mockRestore();
+      }
+
+      // No phantom document was written back.
+      expect(await Source.findById(logSource._id)).toBeNull();
+    });
   });
 
   describe('DELETE /api/v2/sources/:id', () => {

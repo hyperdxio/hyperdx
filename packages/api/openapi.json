@@ -3338,7 +3338,6 @@
       "LogSource": {
         "type": "object",
         "required": [
-          "id",
           "name",
           "kind",
           "connection",
@@ -3539,7 +3538,6 @@
       "TraceSource": {
         "type": "object",
         "required": [
-          "id",
           "name",
           "kind",
           "connection",
@@ -3778,7 +3776,6 @@
       "MetricSource": {
         "type": "object",
         "required": [
-          "id",
           "name",
           "kind",
           "connection",
@@ -3861,7 +3858,6 @@
       "SessionSource": {
         "type": "object",
         "required": [
-          "id",
           "name",
           "kind",
           "connection",
@@ -3934,7 +3930,6 @@
         "type": "object",
         "description": "A source backed by a Prometheus-compatible endpoint, queried with PromQL. The referenced connection should be a Prometheus connection (isPrometheusEndpoint set to true).",
         "required": [
-          "id",
           "name",
           "kind",
           "connection",
