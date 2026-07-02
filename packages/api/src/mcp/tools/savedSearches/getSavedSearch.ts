@@ -1,21 +1,19 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import * as config from '@/config';
 import { getSavedSearch } from '@/controllers/savedSearch';
-import type { McpContext } from '@/mcp/tools/types';
-import { validateObjectId } from '@/mcp/utils/errors';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError, validateObjectId } from '@/mcp/utils/errors';
 import { SavedSearch } from '@/models/savedSearch';
 
-export function registerGetSavedSearch(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerGetSavedSearch({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
-  server.registerTool(
+  registerTool(
     'clickstack_get_saved_search',
     {
       title: 'Get Saved Search(es)',
@@ -33,7 +31,7 @@ export function registerGetSavedSearch(
           ),
       }),
     },
-    withToolTracing('clickstack_get_saved_search', context, async ({ id }) => {
+    async ({ id }) => {
       // ── List all saved searches (slim query — only fetch the fields we need) ──
       if (!id) {
         const savedSearches = await SavedSearch.find(
@@ -59,10 +57,7 @@ export function registerGetSavedSearch(
 
       const savedSearch = await getSavedSearch(teamId, id);
       if (!savedSearch) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Saved search not found' }],
-        };
+        return mcpUserError('Saved search not found');
       }
 
       return {
@@ -82,6 +77,6 @@ export function registerGetSavedSearch(
           },
         ],
       };
-    }),
+    },
   );
 }

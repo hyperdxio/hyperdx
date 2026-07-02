@@ -56,17 +56,18 @@ custom OTel configurations without rebuilding the collector.
 
 ### Receivers
 
-| Component        | Module  | Used in                                           |
-| ---------------- | ------- | ------------------------------------------------- |
-| `nop`            | core    | OpAMP controller                                  |
-| `otlp`           | core    | standalone configs, OpAMP controller, smoke tests |
-| `dockerstats`    | contrib | user configs                                      |
-| `filelog`        | contrib | user configs                                      |
-| `fluentforward`  | contrib | standalone configs, OpAMP controller, smoke tests |
-| `hostmetrics`    | contrib | custom.config.yaml                                |
-| `k8scluster`     | contrib | user configs                                      |
-| `kubeletstats`   | contrib | user configs                                      |
-| `prometheus`     | contrib | OpAMP controller, smoke tests                     |
+| Component       | Module  | Used in                                                 |
+| --------------- | ------- | ------------------------------------------------------- |
+| `nop`           | core    | OpAMP controller                                        |
+| `otlp`          | core    | standalone configs, OpAMP controller, smoke tests       |
+| `datadog`       | contrib | OpAMP controller (opt-in via `ENABLE_DATADOG_RECEIVER`) |
+| `dockerstats`   | contrib | user configs                                            |
+| `filelog`       | contrib | user configs                                            |
+| `fluentforward` | contrib | standalone configs, OpAMP controller, smoke tests       |
+| `hostmetrics`   | contrib | custom.config.yaml                                      |
+| `k8scluster`    | contrib | user configs                                            |
+| `kubeletstats`  | contrib | user configs                                            |
+| `prometheus`    | contrib | OpAMP controller, smoke tests                           |
 
 ### Processors
 
@@ -127,6 +128,34 @@ custom OTel configurations without rebuilding the collector.
 | `http`   | core   |
 | `https`  | core   |
 | `yaml`   | core   |
+
+## Ingesting Datadog traces, metrics, and logs
+
+The `datadogreceiver` contrib component is compiled into the binary so a
+Datadog Agent can ship **traces, metrics, and logs** to HyperDX. The receiver
+runs a single HTTP server on `:8126` that serves the Datadog intake API for
+all three signals and translates them into OTLP, which flows through the
+existing `traces`, `metrics`, and `logs` pipelines into ClickHouse. It is
+**opt-in**:
+
+- In OpAMP supervisor mode, set `ENABLE_DATADOG_RECEIVER=true` on the API/
+  OpAMP process. `buildOtelCollectorConfig()` then emits the `datadog`
+  receiver (listening on `0.0.0.0:8126`) and attaches it to the `traces`,
+  `metrics`, and `logs/in` pipelines.
+- In standalone mode, add a `datadog` receiver block to your collector config
+  and add `datadog` to the `traces`, `metrics`, and `logs/in` pipeline
+  receivers.
+
+Point the Datadog Agent at the collector's `:8126` endpoint (e.g.
+`DD_APM_DD_URL` for traces, `DD_DD_URL` for metrics, and the logs endpoint
+config for logs).
+
+### Authentication
+
+In OpAMP supervisor mode, when collector authentication is enforced the
+receiver authenticates against the team API keys (same as `otlp/hyperdx`) via
+the `DD-API-KEY` header. Set the Datadog Agent's `DD_API_KEY` to a HyperDX
+team ingestion API key.
 
 ## Overriding base components via `CUSTOM_OTELCOL_CONFIG_FILE`
 

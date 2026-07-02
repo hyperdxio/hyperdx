@@ -3480,6 +3480,12 @@
             "nullable": true,
             "example": "Body"
           },
+          "knownColumnsListExpression": {
+            "type": "string",
+            "description": "For Distributed table sources whose target tables have non-matching column sets. A list of columns supported across all target tables, used instead of SELECT * when fetching full row data. Leave blank to select all columns.",
+            "nullable": true,
+            "example": "Timestamp, Body, ServiceName"
+          },
           "useTextIndexForImplicitColumn": {
             "type": "string",
             "enum": [
@@ -3705,6 +3711,12 @@
             "description": "Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log.",
             "nullable": true,
             "example": "SpanName"
+          },
+          "knownColumnsListExpression": {
+            "type": "string",
+            "description": "For Distributed table sources whose target tables have non-matching column sets. A list of columns supported across all target tables, used instead of SELECT * when fetching full row data. Leave blank to select all columns.",
+            "nullable": true,
+            "example": "Timestamp, Body, ServiceName"
           },
           "useTextIndexForImplicitColumn": {
             "type": "string",
@@ -5760,6 +5772,114 @@
                 },
                 "example": {
                   "message": "Dashboard not found"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/dashboards/validate": {
+      "post": {
+        "summary": "Validate Dashboard",
+        "description": "Validates a dashboard body against the same schema and tile rules used\nby POST /api/v2/dashboards. The dashboard is **never persisted**. Use\nthis endpoint at plan time (e.g. from a Terraform provider) to check\nthat a dashboard configuration is valid before applying it.\n",
+        "operationId": "validateDashboard",
+        "tags": [
+          "Dashboards"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDashboardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validation result. HTTP 200 is always returned for valid **and**\ninvalid bodies — a non-200 response means the request itself\nfailed (auth, server error, etc.).\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "valid",
+                    "errors",
+                    "normalized"
+                  ],
+                  "properties": {
+                    "valid": {
+                      "type": "boolean",
+                      "description": "True when the body passes all validation rules."
+                    },
+                    "errors": {
+                      "type": "array",
+                      "description": "Validation errors. Empty when valid is true.",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "path",
+                          "message"
+                        ],
+                        "properties": {
+                          "path": {
+                            "type": "string",
+                            "description": "Dot-separated field path, or empty string for top-level errors."
+                          },
+                          "message": {
+                            "type": "string",
+                            "description": "Human-readable error description."
+                          }
+                        }
+                      }
+                    },
+                    "normalized": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "The parsed dashboard body with defaults applied (no\npersistence, so no server-assigned tile IDs). Populated\nwhen valid is true, null when valid is false.\n"
+                    }
+                  }
+                },
+                "examples": {
+                  "valid": {
+                    "summary": "Valid dashboard body",
+                    "value": {
+                      "valid": true,
+                      "errors": [],
+                      "normalized": {
+                        "name": "My Dashboard",
+                        "tiles": []
+                      }
+                    }
+                  },
+                  "invalid": {
+                    "summary": "Invalid dashboard body",
+                    "value": {
+                      "valid": false,
+                      "errors": [
+                        {
+                          "path": "name",
+                          "message": "Required"
+                        }
+                      ],
+                      "normalized": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
                 }
               }
             }

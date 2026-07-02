@@ -72,6 +72,7 @@ jest.mock('@/utils/logger', () => ({
   },
 }));
 
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import { withToolTracing } from '@/mcp/utils/tracing';
 
 describe('withToolTracing', () => {
@@ -196,7 +197,10 @@ describe('withToolTracing', () => {
     const traced = withToolTracing('my_tool', context, handler);
     await traced({});
 
-    expect(mockCounter.add).toHaveBeenCalledWith(1, { tool: 'my_tool' });
+    expect(mockCounter.add).toHaveBeenCalledWith(1, {
+      tool: 'my_tool',
+      error_category: 'server',
+    });
   });
 
   it('should increment the error counter on a thrown exception', async () => {
@@ -206,9 +210,90 @@ describe('withToolTracing', () => {
 
     await expect(traced({})).rejects.toThrow('boom');
 
-    expect(mockCounter.add).toHaveBeenCalledWith(1, { tool: 'my_tool' });
+    expect(mockCounter.add).toHaveBeenCalledWith(1, {
+      tool: 'my_tool',
+      error_category: 'server',
+    });
     expect(mockHistogram.record).toHaveBeenCalledWith(expect.any(Number), {
       tool: 'my_tool',
     });
+  });
+
+  // ─── Error category tests ───────────────────────────────────────────────
+
+  it('should default error_category to "server" when no category is set', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      isError: true,
+      content: [{ type: 'text', text: 'unknown failure' }],
+    });
+
+    const traced = withToolTracing('my_tool', context, handler);
+    await traced({});
+
+    expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+      'mcp.tool.error_category',
+      'server',
+    );
+  });
+
+  it('should record error_category "user" on span and counter', async () => {
+    const handler = jest.fn().mockResolvedValue(mcpUserError('bad input'));
+
+    const traced = withToolTracing('my_tool', context, handler);
+    await traced({});
+
+    expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+      'mcp.tool.error_category',
+      'user',
+    );
+    expect(mockCounter.add).toHaveBeenCalledWith(1, {
+      tool: 'my_tool',
+      error_category: 'user',
+    });
+  });
+
+  it('should record error_category "server" on span and counter', async () => {
+    const handler = jest
+      .fn()
+      .mockResolvedValue(mcpServerError('database timeout'));
+
+    const traced = withToolTracing('my_tool', context, handler);
+    await traced({});
+
+    expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+      'mcp.tool.error_category',
+      'server',
+    );
+    expect(mockCounter.add).toHaveBeenCalledWith(1, {
+      tool: 'my_tool',
+      error_category: 'server',
+    });
+  });
+
+  it('should not set error_category on successful results', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+    });
+
+    const traced = withToolTracing('my_tool', context, handler);
+    await traced({});
+
+    expect(mockSpan.setAttribute).not.toHaveBeenCalledWith(
+      'mcp.tool.error_category',
+      expect.anything(),
+    );
+  });
+
+  it('should not leak error category metadata on the returned result', async () => {
+    const handler = jest.fn().mockResolvedValue(mcpUserError('bad input'));
+
+    const traced = withToolTracing('my_tool', context, handler);
+    const result = await traced({});
+
+    expect(result).toEqual({
+      isError: true,
+      content: [{ type: 'text', text: 'bad input' }],
+    });
+    expect(result).not.toHaveProperty('_errorCategory');
   });
 });
