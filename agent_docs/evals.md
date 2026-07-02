@@ -67,11 +67,11 @@ talks to **two separate HyperDX API instances** running on different slots:
        main worktree                            branch worktree
 ```
 
-Each slot runs its own ClickHouse instance. Eval data (synthetic traces/logs)
-must be seeded into **both** ClickHouse instances separately — the harness
-auto-seeds on first run per slot, but only into the ClickHouse that the active
-`eval.config.json` points at. See step 2 below for how `setup-hyperdx` targets
-each instance.
+Each slot runs its own ClickHouse instance. `setup-hyperdx` (step 2) creates
+the HyperDX account, Connection, and Sources on each instance, but does **not**
+seed telemetry data. The `run` command auto-seeds on first run, but only into
+the single ClickHouse specified in the top-level `clickhouse` config — so for
+dual-slot comparisons you must seed each instance explicitly (step 4b).
 
 ### 1. Start both dev stacks
 
@@ -146,14 +146,27 @@ compare them in one batch. Use `jq` to merge:
 ```bash
 cat packages/hdx-eval/eval.config.branch.json | jq \
   --slurpfile main packages/hdx-eval/eval.config.main.json '
+  # Helper: rewrite mcp__hyperdx__ prefixes in toolPattern and deniedTools
+  def reprefix($new):
+    .toolPattern = ("mcp__" + $new + "__*")
+    | if .deniedTools then
+        .deniedTools = [.deniedTools[] | gsub("^mcp__hyperdx__"; "mcp__" + $new + "__")]
+      else . end;
+
   . as $branch |
   .mcps = {
-    "hyperdx-branch": ($branch.mcps.hyperdx + {"label": "HyperDX Branch", "enabled": true}),
-    "hyperdx-main": ($main[0].mcps.hyperdx + {"label": "HyperDX Main", "enabled": true})
+    "hyperdx-branch": ($branch.mcps.hyperdx + {"label": "HyperDX Branch", "enabled": true} | reprefix("hyperdx-branch")),
+    "hyperdx-main": ($main[0].mcps.hyperdx + {"label": "HyperDX Main", "enabled": true} | reprefix("hyperdx-main"))
   } |
   .hyperdxApi = $branch.hyperdxApi
 ' > packages/hdx-eval/eval.config.json
 ```
+
+> **Why the `reprefix` step?** The harness uses the config key (e.g.
+> `hyperdx-branch`) as the MCP server name, so Claude Code registers tools as
+> `mcp__hyperdx-branch__*`. The `toolPattern` and `deniedTools` from the
+> original single-MCP config still say `mcp__hyperdx__*`, which won't match.
+> The `reprefix` helper rewrites both to use the new key.
 
 Verify the config has both MCPs:
 
@@ -174,7 +187,26 @@ curl -s -o /dev/null -w "Main MCP: %{http_code}\n" \
 # Expected: 406 (SSE endpoint, wrong HTTP method — but proves auth works)
 ```
 
-### 5. Run the comparison
+### 5. Seed both ClickHouse instances
+
+`setup-hyperdx` creates the HyperDX account and Sources but does **not** seed
+telemetry data. The `run` command's auto-seed only writes to the single
+ClickHouse in the top-level `clickhouse` config, so you must seed each
+instance explicitly:
+
+```bash
+# Seed the main instance (slot 98, CH on port 30598)
+HDX_DEV_SLOT=98 yarn workspace @hyperdx/hdx-eval dev seed <scenario>
+
+# Seed the branch instance (slot 99, CH on port 30599)
+HDX_DEV_SLOT=99 yarn workspace @hyperdx/hdx-eval dev seed <scenario>
+```
+
+The seed command is idempotent — it skips if data already exists. Replace
+`<scenario>` with the scenario name (e.g. `error-root-cause`). You can seed
+multiple scenarios by running the command once per scenario.
+
+### 6. Run the comparison
 
 ```bash
 yarn workspace @hyperdx/hdx-eval dev run <scenario> \
@@ -191,8 +223,9 @@ from `.env.local` at the monorepo root via `dotenvx`. If the key isn't there,
 either add it to `.env.local` or export it in your shell. Check `.env.local`
 files in other worktrees or `~/sites/hyperdx/.env.local` for existing keys.
 
-The eval harness auto-seeds data on first run if the scenario tables are empty.
-Subsequent runs reuse existing data and the saved anchor time.
+For single-MCP runs, the harness auto-seeds on first run if the scenario
+tables are empty. For dual-slot A/B runs, seed both instances explicitly
+(step 5 above). Subsequent runs reuse existing data and the saved anchor time.
 
 ### Recommended flags
 
