@@ -387,47 +387,69 @@ export const computeRatio = (
 };
 
 export const computeResultSetRatio = (resultSet: ResponseJSON<any>) => {
-  const _meta = resultSet.meta;
+  const _meta = resultSet.meta ?? [];
   const _data = resultSet.data;
-  const timestampColumn = inferTimestampColumn(_meta ?? []);
-  const _restColumns = _meta?.filter(m => m.name !== timestampColumn?.name);
-  const firstColumn = _restColumns?.[0];
-  const secondColumn = _restColumns?.[1];
-  if (!firstColumn || !secondColumn) {
+  // The numerator/denominator are the two value columns. The joined meta seeds
+  // them first (see queryChartConfig), so the first two numeric columns are the
+  // ratio operands; numeric group-by dimensions (if any) come after.
+  const numericColumns = inferNumericColumn(_meta);
+  const numerator = numericColumns?.[0];
+  const denominator = numericColumns?.[1];
+  if (!numerator || !denominator) {
     throw new Error(
       `Unable to compute ratio - meta information: ${JSON.stringify(_meta)}.`,
     );
   }
-  const ratioColumnName = `${firstColumn.name}/${secondColumn.name}`;
-  const result = {
+  const ratioColumnName = `${numerator.name}/${denominator.name}`;
+  // Carry through every non-operand column — the timestamp and any group-by
+  // dimensions — so a grouped ratio renders one series per group instead of
+  // collapsing into a single line.
+  const passthroughColumns = _meta.filter(
+    m => m.name !== numerator.name && m.name !== denominator.name,
+  );
+  const timestampColumn = inferTimestampColumn(_meta);
+
+  // Share-of-total semantics: each group's denominator is the total of the
+  // denominator column across ALL groups in the same time bucket. So a grouped
+  // ratio shows each group's contribution to the overall ratio (the lines sum
+  // to the ungrouped value) rather than each group's own in-group rate. With no
+  // grouping there's one row per bucket, so the bucket total equals that row's
+  // denominator and the result is unchanged.
+  const bucketKey = (row: Record<string, any>) =>
+    timestampColumn ? String(row[timestampColumn.name]) : '__all__';
+  const totalDenominatorByBucket = new Map<string, number>();
+  for (const row of _data) {
+    const denominatorValue = row[denominator.name];
+    // A group missing from the denominator split has an undefined value;
+    // castToNumber returns it as-is and Number.isNaN(undefined) is false, so
+    // guard explicitly or it would poison the whole bucket total with NaN.
+    const denom =
+      denominatorValue == null ? NaN : castToNumber(denominatorValue);
+    if (!Number.isNaN(denom)) {
+      const key = bucketKey(row);
+      totalDenominatorByBucket.set(
+        key,
+        (totalDenominatorByBucket.get(key) ?? 0) + denom,
+      );
+    }
+  }
+
+  return {
     ...resultSet,
-    data: _data.map(row => ({
-      [ratioColumnName]: computeRatio(
-        row[firstColumn.name],
-        row[secondColumn.name],
-      ),
-      ...(timestampColumn
-        ? {
-            [timestampColumn.name]: row[timestampColumn.name],
-          }
-        : {}),
-    })),
-    meta: [
-      {
-        name: ratioColumnName,
-        type: 'Float64',
-      },
-      ...(timestampColumn
-        ? [
-            {
-              name: timestampColumn.name,
-              type: timestampColumn.type,
-            },
-          ]
-        : []),
-    ],
+    data: _data.map(row => {
+      // A group absent from the (filtered) numerator query contributes zero, not
+      // "no data" — so a zero-error group reads 0%, not N/A.
+      const numeratorValue = row[numerator.name] ?? 0;
+      const bucketTotal = totalDenominatorByBucket.get(bucketKey(row));
+      return {
+        [ratioColumnName]: computeRatio(numeratorValue, bucketTotal ?? NaN),
+        ...Object.fromEntries(
+          passthroughColumns.map(c => [c.name, row[c.name]]),
+        ),
+      };
+    }),
+    meta: [{ name: ratioColumnName, type: 'Float64' }, ...passthroughColumns],
   };
-  return result;
 };
 
 export interface QueryInputs<Format extends DataFormat> {
@@ -716,20 +738,29 @@ export abstract class BaseClickhouseClient {
                 ),
               )
             : { ...row };
-          const ts =
-            timestampColumn != null
+          // When the series are grouped, two rows at the same time bucket but
+          // different group values must stay distinct — key by (bucket + group
+          // dims) via the hash of the row minus its value column. Without a
+          // group dimension this collapses to the timestamp (or a fixed key),
+          // preserving the original behavior.
+          const hasGroupCols = Object.keys(_rowWithoutValue).some(
+            key => key !== timestampColumn?.name,
+          );
+          const mergeKey = hasGroupCols
+            ? objectHash(_rowWithoutValue)
+            : timestampColumn != null
               ? row[timestampColumn.name]
               : isTimeSeries
                 ? objectHash(_rowWithoutValue)
                 : '__FIXED_TIMESTAMP__';
-          if (tsBucketMap.has(ts)) {
-            const existingRow = tsBucketMap.get(ts);
-            tsBucketMap.set(ts, {
+          if (tsBucketMap.has(mergeKey)) {
+            const existingRow = tsBucketMap.get(mergeKey);
+            tsBucketMap.set(mergeKey, {
               ...existingRow,
               ...row,
             });
           } else {
-            tsBucketMap.set(ts, row);
+            tsBucketMap.set(mergeKey, row);
           }
         }
       }
