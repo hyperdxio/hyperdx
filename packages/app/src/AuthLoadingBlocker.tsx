@@ -28,7 +28,9 @@ export default function AuthLoadingBlocker() {
           aria-live="polite"
         >
           Loading {brandName}
-          <span style={{ width: 0 }} aria-hidden="true">{'.'.repeat(periods)}</span>
+          <span style={{ width: 0 }} aria-hidden="true">
+            {'.'.repeat(periods)}
+          </span>
         </div>
       )}
     </>
