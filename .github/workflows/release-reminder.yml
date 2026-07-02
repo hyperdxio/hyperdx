@@ -1,0 +1,76 @@
+name: Release Reminder
+
+on:
+  schedule:
+    - cron: '0 20 * * 5'
+  workflow_dispatch:
+
+permissions:
+  pull-requests: read
+
+concurrency:
+  group: release-reminder
+  cancel-in-progress: false
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        env:
+          SLACK_WEBHOOK_OSS_PRS: ${{ secrets.SLACK_WEBHOOK_OSS_PRS }}
+        with:
+          script: |
+            const MENTION_ID = '${{ vars.RELEASE_SLACK_MEMBER_ID }}';
+            const RELEASE_PR_TITLE = 'Release HyperDX';
+            const OVERDUE_DAYS = 7;
+
+            const { owner, repo } = context.repo;
+
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'open', per_page: 100,
+            });
+            const releasePr = prs.find(pr =>
+              pr.title === RELEASE_PR_TITLE &&
+              pr.user?.type === 'Bot' &&
+              (pr.user?.login === 'github-actions[bot]' || pr.user?.login === 'github-actions')
+            );
+
+            if (!releasePr) {
+              core.info('No open "Release HyperDX" PR found — nothing pending. Staying silent.');
+              return;
+            }
+
+            const openedAt = new Date(releasePr.created_at);
+            const daysOpen = Math.floor((Date.now() - openedAt.getTime()) / 86_400_000);
+            const overdue = daysOpen >= OVERDUE_DAYS;
+
+            const mention = MENTION_ID ? `<@${MENTION_ID}> ` : '';
+            const header = overdue
+              ? `:rotating_light: *OSS release is overdue* — the Release PR has been open ${daysOpen} day(s).`
+              : `:package: *OSS release is pending* — a Release PR has been open ${daysOpen} day(s).`;
+            const text = `${mention}${header}\n`
+              + `Merge it to cut the release (publishes Docker/npm/CLI artifacts):\n`
+              + `<${releasePr.html_url}|#${releasePr.number}: ${releasePr.title}>`;
+
+            const webhook = process.env.SLACK_WEBHOOK_OSS_PRS;
+            if (!webhook) {
+              core.warning('SLACK_WEBHOOK_OSS_PRS not set — no reminder sent.');
+              return;
+            }
+
+            try {
+              const res = await fetch(webhook, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }] }),
+              });
+              if (!res.ok) {
+                core.setFailed(`Slack post failed (${res.status}).`);
+                return;
+              }
+            } catch (e) {
+              core.setFailed(`Slack post errored (${e.message}).`);
+              return;
+            }
+            core.info(`Reminder sent for Release PR #${releasePr.number} (open ${daysOpen} day(s)).`);

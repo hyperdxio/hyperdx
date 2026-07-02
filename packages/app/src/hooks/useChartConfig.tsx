@@ -460,7 +460,7 @@ export function useQueriedChartConfig(
 
 export function useRenderedSqlChartConfig(
   config: ChartConfigWithOptDateRange,
-  options?: UseQueryOptions<string>,
+  options?: Partial<UseQueryOptions<string>>,
 ) {
   const { enabled = true } = options ?? {};
 

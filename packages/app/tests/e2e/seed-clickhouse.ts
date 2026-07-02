@@ -114,6 +114,23 @@ export const INTERESTING_FILTER_KEYS_ROWS = [
   },
 ] as const;
 
+// A single log whose Body is a JSON string with a flat, dotted key. It lives in
+// the default E2E Logs table (so it shares the E2E Logs source); the unique
+// ServiceName isolates it from other default-logs tests, which all scope by
+// their own markers. The parsed-JSON "Add to Filters" test expands this Body
+// and filters on the nested value, exercising the JSONExtractString(...) filter
+// key path (HDX-4427).
+export const JSON_BODY_LOG = {
+  // Underscores, not hyphens: Lucene matches an underscore token exactly inside
+  // quotes, so `ServiceName:"json_body_filter_svc"` isolates this one row. A
+  // hyphenated name tokenizes and matches broadly.
+  serviceName: 'json_body_filter_svc',
+  jsonKey: 'app.user.currency',
+  jsonValue: 'USD',
+} as const;
+const JSON_BODY_LOG_BODY =
+  '{"app.user.currency":"USD","app.checkout.flow":"guest"}';
+
 // LogAttributes map key seeded into the metadata-MV source rows. Exported so
 // the filter-key edge case test references the same key when building filters.
 export const METADATA_MV_LOG_ATTR_KEY = 'requestId';
@@ -237,6 +254,23 @@ function generateLogData(
   }
 
   return rows.join(',\n');
+}
+
+/**
+ * Build the VALUES tuple for the parsed-JSON Body log in the default logs table.
+ * Placed a couple seconds before `seedRef` so it falls inside recent relative
+ * time ranges. Body is a JSON string with a flat dotted key; the side panel
+ * parses it, and "Add to Filters" on the nested value builds
+ * JSONExtractString(Body, 'app.user.currency') (HDX-4427).
+ */
+function generateJsonBodyLogData(seedRef: number): string {
+  const timestampNs = (seedRef - 2000) * 1000000;
+  return (
+    `('${timestampNs}', '', '', 0, 'info', 0, ` +
+    `'${JSON_BODY_LOG.serviceName}', '${JSON_BODY_LOG_BODY}', '', ` +
+    `{'service.name':'${JSON_BODY_LOG.serviceName}','environment':'test'}, ` +
+    `'', '', '', {}, {})`
+  );
 }
 
 function generateK8sLogData(
@@ -803,6 +837,16 @@ export async function seedClickHouse(): Promise<void> {
     ) VALUES ${generateLogData(numDataPoints, startMs, endMs)}
   `);
   console.log(`  Inserted ${numDataPoints} log entries`);
+
+  // A log whose Body is a JSON string, for the parsed-JSON "Add to Filters" test.
+  console.log('  Inserting parsed-JSON Body log...');
+  await client.query(`
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_LOGS_TABLE} (
+      Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
+      ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
+      ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
+    ) VALUES ${generateJsonBodyLogData(seedRef)}
+  `);
 
   // Insert K8s-aware log data (logs with k8s resource attributes for infrastructure correlation)
   console.log('  Inserting K8s log data...');

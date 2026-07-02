@@ -556,10 +556,6 @@ export function useAllFieldsAndValues(
   });
 }
 
-export function deduplicateArray<T extends object>(array: T[]): T[] {
-  return deduplicate2dArray([array]);
-}
-
 export function deduplicate2dArray<T extends object>(array2d: T[][]): T[] {
   // deduplicate common fields
   const array: T[] = [];
