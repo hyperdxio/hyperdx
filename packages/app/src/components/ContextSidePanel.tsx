@@ -21,6 +21,7 @@ import { useSource } from '@/source';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import {
+  buildContextWhereClause,
   extractQuickFilters,
   FilterLegend,
   FilterPill,
@@ -78,7 +79,7 @@ export default function ContextSubpanel({
     dbSqlRowTableConfig ?? {};
   const [range, setRange] = useState<number>(ms('30s'));
   const [activePreset, setActivePreset] = useState('all');
-  const { control } = useForm({
+  const { control, reset } = useForm({
     defaultValues: {
       where: '',
       whereLanguage:
@@ -89,7 +90,9 @@ export default function ContextSubpanel({
   });
 
   const formWhere = useWatch({ control, name: 'where' });
+  const formWhereLanguage = useWatch({ control, name: 'whereLanguage' });
   const [debouncedWhere] = useDebouncedValue(formWhere, 1000);
+  const effectiveWhereLanguage = formWhereLanguage || originalLanguage;
 
   const isNested = !!breadcrumbPath?.length;
   const {
@@ -136,7 +139,11 @@ export default function ContextSubpanel({
   useEffect(() => {
     setSelectedFilterIds([]);
     setActivePreset('all');
-  }, [rowId]);
+    reset({
+      where: '',
+      whereLanguage: originalLanguage,
+    });
+  }, [originalLanguage, reset, rowId]);
 
   const availableFilters = useMemo(
     () => extractQuickFilters(rowData, source),
@@ -169,25 +176,14 @@ export default function ContextSubpanel({
   }, []);
 
   const getWhereClause = useCallback((): string => {
-    const isSql = originalLanguage === 'sql';
-    const clauses: string[] = [];
-
-    for (const filterId of selectedFilterIds) {
-      const filter = availableFilters.find(f => f.id === filterId);
-      if (filter) {
-        clauses.push(filter.generateWhere(isSql));
-      }
-    }
-
-    if (showCustomSearch && debouncedWhere?.trim()) {
-      clauses.push(debouncedWhere.trim());
-    }
-
-    if (clauses.length === 0) return '';
-    if (clauses.length === 1) return clauses[0];
-    return clauses.map(c => `(${c})`).join(' AND ');
+    return buildContextWhereClause({
+      selectedFilterIds,
+      availableFilters,
+      isSql: effectiveWhereLanguage === 'sql',
+      customWhere: showCustomSearch ? debouncedWhere : '',
+    });
   }, [
-    originalLanguage,
+    effectiveWhereLanguage,
     selectedFilterIds,
     availableFilters,
     showCustomSearch,
@@ -208,21 +204,21 @@ export default function ContextSubpanel({
         limit: { limit: 200 },
         orderBy: `${source.timestampValueExpression} DESC`,
         where: whereClause,
-        whereLanguage: originalLanguage,
+        whereLanguage: effectiveWhereLanguage,
         dateRange: newDateRange,
       };
 
     return {
       ...dbSqlRowTableConfig,
       where: whereClause,
-      whereLanguage: originalLanguage,
+      whereLanguage: effectiveWhereLanguage,
       dateRange: newDateRange,
       filters: [],
     };
   }, [
     dbSqlRowTableConfig,
+    effectiveWhereLanguage,
     getWhereClause,
-    originalLanguage,
     newDateRange,
     source,
   ]);

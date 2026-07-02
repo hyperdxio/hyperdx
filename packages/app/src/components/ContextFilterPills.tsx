@@ -17,12 +17,29 @@ export interface QuickFilterItem {
   generateWhere: (isSql: boolean) => string;
 }
 
+export interface BuildContextWhereClauseOptions {
+  selectedFilterIds: string[];
+  availableFilters: QuickFilterItem[];
+  isSql: boolean;
+  customWhere?: string;
+}
+
+const MAX_FILTER_VALUE_LENGTH = 200;
+
 const PROMOTED_RESOURCE_ATTR_KEYS = [
   'host.name',
   'k8s.pod.name',
   'k8s.namespace.name',
   'k8s.node.name',
 ];
+
+function isSafeLuceneFieldExpression(expression: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_.-]*$/.test(expression);
+}
+
+function isSafeAttributeKey(key: string): boolean {
+  return /^[A-Za-z0-9_.-]+$/.test(key);
+}
 
 export function extractQuickFilters(
   rowData: Record<string, any>,
@@ -49,13 +66,29 @@ export function extractQuickFilters(
     | undefined;
 
   const serviceNameValue = rowData[ROW_DATA_ALIASES.SERVICE_NAME];
-  if (serviceNameExpr && serviceNameValue) {
+  if (serviceNameExpr && typeof serviceNameValue === 'string') {
+    const resourceServiceName =
+      typeof resourceAttrs?.['service.name'] === 'string'
+        ? resourceAttrs['service.name']
+        : undefined;
     filters.push({
       id: 'svc',
       label: serviceNameExpr,
-      value: String(serviceNameValue),
-      generateWhere: isSql =>
-        formatColumnEquals(serviceNameExpr, String(serviceNameValue), isSql),
+      value: serviceNameValue,
+      generateWhere: isSql => {
+        if (isSql || isSafeLuceneFieldExpression(serviceNameExpr)) {
+          return formatColumnEquals(serviceNameExpr, serviceNameValue, isSql);
+        }
+        if (resourceAttrExpr && resourceServiceName) {
+          return formatAttributeClause(
+            resourceAttrExpr,
+            'service.name',
+            resourceServiceName,
+            isSql,
+          );
+        }
+        return '';
+      },
     });
   } else if (
     resourceAttrs?.['service.name'] &&
@@ -91,10 +124,19 @@ export function extractQuickFilters(
   }
 
   const addedIds = new Set(filters.map(f => f.id));
+  if (filters.some(f => f.id === 'svc')) {
+    addedIds.add('ra:service.name');
+  }
   if (resourceAttrs && resourceAttrExpr) {
     for (const [key, val] of Object.entries(resourceAttrs)) {
       if (addedIds.has(`ra:${key}`)) continue;
-      if (typeof val !== 'string' || !val || val.length > 200) continue;
+      if (!isSafeAttributeKey(key)) continue;
+      if (
+        typeof val !== 'string' ||
+        !val ||
+        val.length > MAX_FILTER_VALUE_LENGTH
+      )
+        continue;
       filters.push({
         id: `ra:${key}`,
         label: key,
@@ -110,7 +152,13 @@ export function extractQuickFilters(
     for (const [key, val] of Object.entries(
       eventAttrs as Record<string, unknown>,
     )) {
-      if (typeof val !== 'string' || !val || val.length > 200) continue;
+      if (!isSafeAttributeKey(key)) continue;
+      if (
+        typeof val !== 'string' ||
+        !val ||
+        val.length > MAX_FILTER_VALUE_LENGTH
+      )
+        continue;
       filters.push({
         id: `ea:${key}`,
         label: key,
@@ -123,7 +171,9 @@ export function extractQuickFilters(
 
   for (const [key, val] of Object.entries(rowData)) {
     if (skipAliases.has(key) || key.startsWith('__hdx_')) continue;
-    if (typeof val !== 'string' || !val || val.length > 200) continue;
+    if (!isSafeLuceneFieldExpression(key)) continue;
+    if (typeof val !== 'string' || !val || val.length > MAX_FILTER_VALUE_LENGTH)
+      continue;
     if (/timestamp|ttl/i.test(key)) continue;
     if (serviceNameExpr && key === serviceNameExpr) continue;
 
@@ -171,6 +221,32 @@ export function getAvailablePresets(
     ...(hasNode ? [{ label: 'Node', value: 'node' }] : []),
     { label: 'Custom', value: 'custom' },
   ];
+}
+
+export function buildContextWhereClause({
+  selectedFilterIds,
+  availableFilters,
+  isSql,
+  customWhere,
+}: BuildContextWhereClauseOptions): string {
+  const clauses: string[] = [];
+
+  for (const filterId of selectedFilterIds) {
+    const filter = availableFilters.find(f => f.id === filterId);
+    const clause = filter?.generateWhere(isSql).trim();
+    if (clause) {
+      clauses.push(clause);
+    }
+  }
+
+  const trimmedCustomWhere = customWhere?.trim();
+  if (trimmedCustomWhere) {
+    clauses.push(trimmedCustomWhere);
+  }
+
+  if (clauses.length === 0) return '';
+  if (clauses.length === 1) return clauses[0];
+  return clauses.map(c => `(${c})`).join(' AND ');
 }
 
 const filterPillStyle = {
