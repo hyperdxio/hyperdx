@@ -2,7 +2,7 @@ import { uniq } from 'lodash';
 
 import * as config from '@/config';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { mcpError } from '@/mcp/utils/errors';
+import { mcpUserError } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
 import {
   cleanupDashboardAlerts,
@@ -47,26 +47,14 @@ export function registerPatchDashboard({
         tags === undefined &&
         (tileId === undefined || inputTile === undefined)
       ) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: 'Provide at least one of: name, tags, or tileId+tile to patch.',
-            },
-          ],
-        };
+        return mcpUserError(
+          'Provide at least one of: name, tags, or tileId+tile to patch.',
+        );
       }
       if ((tileId === undefined) !== (inputTile === undefined)) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: 'tileId and tile must both be provided or both omitted.',
-            },
-          ],
-        };
+        return mcpUserError(
+          'tileId and tile must both be provided or both omitted.',
+        );
       }
 
       const existingDashboard = await Dashboard.findOne({
@@ -74,10 +62,7 @@ export function registerPatchDashboard({
         team: teamId,
       });
       if (!existingDashboard) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Dashboard not found' }],
-        };
+        return mcpUserError('Dashboard not found');
       }
 
       // Build the $set payload and the query filter. Metadata fields
@@ -112,15 +97,9 @@ export function registerPatchDashboard({
           // Convert only for the error message (read-only, no write-back).
           const externalDashboard =
             convertToExternalDashboard(existingDashboard);
-          return {
-            isError: true,
-            content: [
-              {
-                type: 'text' as const,
-                text: `Tile not found: ${tileId}. Available tile IDs: ${externalDashboard.tiles.map(t => `${t.id} (${t.name})`).join(', ')}`,
-              },
-            ],
-          };
+          return mcpUserError(
+            `Tile not found: ${tileId}. Available tile IDs: ${externalDashboard.tiles.map(t => `${t.id} (${t.name})`).join(', ')}`,
+          );
         }
 
         // Read the existing tile's layout and container refs from the
@@ -167,7 +146,7 @@ export function registerPatchDashboard({
         // macros which require a source to be set
         const sqlFilterSourceError = getRawSqlMissingSourceError([mergedTile]);
         if (sqlFilterSourceError) {
-          return mcpError(sqlFilterSourceError);
+          return mcpUserError(sqlFilterSourceError);
         }
 
         // Validate the patched tile using the shared validation helper.
@@ -178,23 +157,12 @@ export function registerPatchDashboard({
           containers: existingDashboard.containers ?? [],
         });
         if (validationError) {
-          return {
-            isError: true,
-            content: [{ type: 'text' as const, text: validationError }],
-          };
+          return mcpUserError(validationError);
         }
 
         // Convert only the patched tile to internal format.
         if (!isConfigTile(mergedTile)) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: 'text' as const,
-                text: 'Tile must have a config block.',
-              },
-            ],
-          };
+          return mcpUserError('Tile must have a config block.');
         }
         const internalTile = convertToInternalTileConfig(mergedTile);
 
@@ -219,22 +187,12 @@ export function registerPatchDashboard({
         // was removed or the dashboard was deleted between our read
         // and this write.
         if (tileId !== undefined) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: 'text' as const,
-                text:
-                  `Tile ${tileId} was not found at write time (it may have been removed by a concurrent update). ` +
-                  'The entire update was rejected — name/tags changes (if any) were not applied. Resubmit.',
-              },
-            ],
-          };
+          return mcpUserError(
+            `Tile ${tileId} was not found at write time (it may have been removed by a concurrent update). ` +
+              'The entire update was rejected — name/tags changes (if any) were not applied. Resubmit.',
+          );
         }
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Dashboard not found' }],
-        };
+        return mcpUserError('Dashboard not found');
       }
 
       // Reconcile alerts: if the tile's displayType changed to one

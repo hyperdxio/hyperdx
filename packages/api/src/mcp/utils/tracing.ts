@@ -1,6 +1,8 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import type { McpContext, ToolResult } from '@/mcp/tools/types';
+import type { McpErrorCategory, McpErrorResult } from '@/mcp/utils/errors';
+import { getErrorCategory } from '@/mcp/utils/errors';
 import {
   getCounter,
   getHistogram,
@@ -54,11 +56,20 @@ export function withToolTracing<TArgs>(
           const durationMs = Date.now() - startTime;
 
           if (result.isError) {
+            // Default to 'server' when category is not set — safe default
+            // that surfaces un-classified errors in alerts.
+            const errorCategory: McpErrorCategory =
+              getErrorCategory(result as McpErrorResult) ?? 'server';
+
             span.setStatus({ code: SpanStatusCode.ERROR });
             span.setAttribute('mcp.tool.error', true);
-            toolErrorCounter.add(1, { tool: toolName });
+            span.setAttribute('mcp.tool.error_category', errorCategory);
+            toolErrorCounter.add(1, {
+              tool: toolName,
+              error_category: errorCategory,
+            });
             logger.warn(
-              { ...logContext, durationMs },
+              { ...logContext, durationMs, errorCategory },
               `MCP tool error: ${toolName}`,
             );
           } else {
@@ -75,8 +86,12 @@ export function withToolTracing<TArgs>(
         } catch (err) {
           const durationMs = Date.now() - startTime;
           span.setAttribute('mcp.tool.duration_ms', durationMs);
+          span.setAttribute('mcp.tool.error_category', 'server');
           toolDurationHistogram.record(durationMs, { tool: toolName });
-          toolErrorCounter.add(1, { tool: toolName });
+          toolErrorCounter.add(1, {
+            tool: toolName,
+            error_category: 'server',
+          });
 
           logger.error(
             { ...logContext, durationMs, error: err },
