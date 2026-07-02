@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 import { QUERYABLE_METRIC_KINDS } from '@/mcp/tools/sources/metricKinds';
+import type { McpErrorResult } from '@/mcp/utils/errors';
+import { mcpUserError } from '@/mcp/utils/errors';
 
 // ─── Shared description fragments ────────────────────────────────────────────
 
@@ -340,7 +342,7 @@ export function applyMetricSelectDefaults<T extends McpSelectItem>(
  */
 export function validateMetricSelectItems(
   items: ReadonlyArray<McpSelectItem>,
-): { isError: true; content: [{ type: 'text'; text: string }] } | null {
+): McpErrorResult | null {
   const errors: string[] = [];
   items.forEach((item, idx) => {
     for (const issue of getMetricSelectIssues(item)) {
@@ -348,15 +350,7 @@ export function validateMetricSelectItems(
     }
   });
   if (errors.length === 0) return null;
-  return {
-    isError: true as const,
-    content: [
-      {
-        type: 'text' as const,
-        text: errors.join('\n'),
-      },
-    ],
-  };
+  return mcpUserError(errors.join('\n'));
 }
 
 export const startTimeSchema = z
