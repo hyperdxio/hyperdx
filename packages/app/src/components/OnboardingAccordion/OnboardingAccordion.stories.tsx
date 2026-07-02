@@ -928,6 +928,7 @@ function SelfManagedSendTelemetryBody({ onCheck }: { onCheck?: () => void }) {
         onClose={() => setSetupOpen(false)}
         position="right"
         size={640}
+        styles={{ body: { paddingInlineEnd: 'var(--mantine-spacing-md)' } }}
         title={
           <DrawerTitle
             title="Send telemetry with a collector"
@@ -1713,6 +1714,7 @@ function OssConnectBody({
         onClose={() => setConnDrawer(false)}
         position="right"
         size={640}
+        styles={{ body: { paddingInlineEnd: 'var(--mantine-spacing-md)' } }}
         title={
           <DrawerTitle
             title="ClickHouse connection"
@@ -1733,6 +1735,7 @@ function OssConnectBody({
         onClose={() => setSourcesDrawer(false)}
         position="right"
         size={640}
+        styles={{ body: { paddingInlineEnd: 'var(--mantine-spacing-md)' } }}
         title={
           <DrawerTitle
             title="Add a data source"
@@ -1830,8 +1833,9 @@ const OSS_DESCRIPTION = (
 function FullyManagedFlow() {
   const flow = useStepFlow(['send-telemetry', 'explore-telemetry']);
   const todos = useExploreTodos(MANAGED_EXPLORE_TODOS);
+  const [dismissed, setDismissed] = useState(false);
 
-  if (todos.allDone) return <OnboardingDismissed />;
+  if (todos.allDone || dismissed) return <OnboardingDismissed />;
 
   return (
     <OnboardingAccordion
@@ -1840,6 +1844,7 @@ function FullyManagedFlow() {
       banner={<ServiceSummaryBanner />}
       openStep={flow.open}
       onOpenStepChange={flow.setOpen}
+      onDismiss={() => setDismissed(true)}
       steps={[
         sendTelemetryStep(
           flow.statusOf('send-telemetry'),
@@ -1872,6 +1877,7 @@ function SelfManagedFlow() {
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [checking, setChecking] = useState(false);
   const todos = useExploreTodos(MANAGED_EXPLORE_TODOS);
+  const [dismissed, setDismissed] = useState(false);
 
   // Simulate polling ClickHouse Cloud for services the user just created. The
   // discovered list lives here (not in the step body) so it survives the step
@@ -1884,7 +1890,7 @@ function SelfManagedFlow() {
     }, 700);
   };
 
-  if (todos.allDone) return <OnboardingDismissed />;
+  if (todos.allDone || dismissed) return <OnboardingDismissed />;
 
   return (
     <OnboardingAccordion
@@ -1892,6 +1898,7 @@ function SelfManagedFlow() {
       description={SELF_MANAGED_DESCRIPTION}
       openStep={flow.open}
       onOpenStepChange={flow.setOpen}
+      onDismiss={() => setDismissed(true)}
       steps={[
         connectServiceStep(flow.statusOf('connect-service'), {
           service,
@@ -1933,8 +1940,9 @@ function OssFlow() {
   const [connected, setConnected] = useState(false);
   const [hasSources, setHasSources] = useState(false);
   const todos = useExploreTodos(OSS_EXPLORE_TODOS);
+  const [dismissed, setDismissed] = useState(false);
 
-  if (todos.allDone) return <OnboardingDismissed />;
+  if (todos.allDone || dismissed) return <OnboardingDismissed />;
 
   return (
     <OnboardingAccordion
@@ -1942,6 +1950,7 @@ function OssFlow() {
       description={OSS_DESCRIPTION}
       openStep={flow.open}
       onOpenStepChange={flow.setOpen}
+      onDismiss={() => setDismissed(true)}
       steps={[
         connectClickHouseStep(flow.statusOf('connect-clickhouse'), {
           connected,
