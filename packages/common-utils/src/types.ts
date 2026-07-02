@@ -1795,6 +1795,7 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   resourceAttributesExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),
+  spanLinksValueExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
   knownColumnsListExpression: z.string().optional(),
   displayedTimestampValueExpression: z.string().optional(),

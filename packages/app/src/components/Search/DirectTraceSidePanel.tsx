@@ -8,6 +8,7 @@ import DBTracePanel from '@/components/DBTracePanel';
 import EmptyState from '@/components/EmptyState';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { useSource } from '@/source';
+import { useZIndex, ZIndexContext } from '@/zIndex';
 
 interface DirectTraceSidePanelProps {
   opened: boolean;
@@ -88,12 +89,21 @@ export default function DirectTraceSidePanel({
   const shouldRenderTracePanel =
     opened && traceId.length > 0 && traceSource?.kind === SourceKind.Trace;
 
+  // Mantine's Drawer renders on the modal layer (z-index 200). Seed
+  // ZIndexContext with the drawer's z-index so panels opened from inside the
+  // trace view (for example a linked span via Span Links) stack above this
+  // drawer. Without this they inherit the base context value (0) and compute
+  // base + 10, rendering behind the trace drawer. Mirrors DBRowSidePanel.
+  const contextZIndex = useZIndex();
+  const drawerZIndex = Math.max(contextZIndex + 10, 200);
+
   return (
     <Drawer
       opened={opened}
       onClose={onClose}
       position="right"
       size="75vw"
+      zIndex={drawerZIndex}
       title={
         <Group gap="xs">
           <IconConnection size={16} />
@@ -107,42 +117,44 @@ export default function DirectTraceSidePanel({
         },
       }}
     >
-      <Flex justify="flex-end" mb="sm">
-        <Group gap="sm" align="center">
-          <Text size="sm">Trace Source</Text>
-          <SourceSelectControlled
-            control={control}
-            name="source"
-            size="xs"
-            allowedSourceKinds={[SourceKind.Trace]}
-          />
-        </Group>
-      </Flex>
-      <Box h="100%">
-        {opened ? (
-          shouldRenderTracePanel ? (
-            <DBTracePanel
-              traceId={traceId}
-              parentSourceId={traceSource.id}
-              childSourceId={traceSource.logSourceId}
-              dateRange={dateRange}
-              focusDate={focusDate}
-              emptyState={
-                <EmptyState
-                  icon={<IconConnection size={24} />}
-                  title="Trace not found"
-                  description="No matching spans or correlated logs were found for this trace in the selected source and time range."
-                  variant="card"
-                  fullWidth
-                  mt="md"
-                />
-              }
+      <ZIndexContext.Provider value={drawerZIndex}>
+        <Flex justify="flex-end" mb="sm">
+          <Group gap="sm" align="center">
+            <Text size="sm">Trace Source</Text>
+            <SourceSelectControlled
+              control={control}
+              name="source"
+              size="xs"
+              allowedSourceKinds={[SourceKind.Trace]}
             />
-          ) : (
-            emptyState
-          )
-        ) : null}
-      </Box>
+          </Group>
+        </Flex>
+        <Box h="100%">
+          {opened ? (
+            shouldRenderTracePanel ? (
+              <DBTracePanel
+                traceId={traceId}
+                parentSourceId={traceSource.id}
+                childSourceId={traceSource.logSourceId}
+                dateRange={dateRange}
+                focusDate={focusDate}
+                emptyState={
+                  <EmptyState
+                    icon={<IconConnection size={24} />}
+                    title="Trace not found"
+                    description="No matching spans or correlated logs were found for this trace in the selected source and time range."
+                    variant="card"
+                    fullWidth
+                    mt="md"
+                  />
+                }
+              />
+            ) : (
+              emptyState
+            )
+          ) : null}
+        </Box>
+      </ZIndexContext.Provider>
     </Drawer>
   );
 }
