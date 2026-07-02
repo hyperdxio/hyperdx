@@ -13,6 +13,7 @@ import Connection, { IConnection } from '@/models/connection';
 import { LogSource, Source, TraceSource } from '@/models/source';
 import { ITeam } from '@/models/team';
 import { IUser } from '@/models/user';
+import { validateConnectionId } from '@/routers/external-api/v2/sources';
 
 describe('External API v2 Sources CRUD', () => {
   const server = getServer();
@@ -478,6 +479,44 @@ describe('External API v2 Sources CRUD', () => {
       );
 
       expect(await Source.findById(otherTeamSource._id)).not.toBeNull();
+    });
+  });
+
+  describe('validateConnectionId', () => {
+    it('rejects a non-ObjectId connection with a 400', async () => {
+      expect(
+        await validateConnectionId('my-connection-name', team._id),
+      ).toEqual({
+        ok: false,
+        status: 400,
+        message: 'connection must be a valid connection id',
+      });
+    });
+
+    it('rejects a missing team with a 403', async () => {
+      expect(
+        await validateConnectionId(connection._id.toString(), undefined),
+      ).toEqual({ ok: false, status: 403, message: 'Forbidden' });
+    });
+
+    it('rejects a connection belonging to another team with a 400', async () => {
+      const otherConnection = await createOtherTeamConnection(
+        new mongoose.Types.ObjectId(),
+      );
+
+      expect(
+        await validateConnectionId(otherConnection._id.toString(), team._id),
+      ).toEqual({
+        ok: false,
+        status: 400,
+        message: 'connection must be an existing connection id',
+      });
+    });
+
+    it('accepts a valid connection owned by the team', async () => {
+      expect(
+        await validateConnectionId(connection._id.toString(), team._id),
+      ).toEqual({ ok: true });
     });
   });
 });
