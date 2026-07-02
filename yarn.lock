@@ -4442,6 +4442,7 @@ __metadata:
     "@ai-sdk/anthropic": "npm:^3.0.58"
     "@ai-sdk/openai": "npm:^3.0.47"
     "@braintree/sanitize-url": "npm:^7.1.1"
+    "@clickhouse/client-common": "npm:1.23.0-head.fae5998.1"
     "@esm2cjs/p-queue": "npm:^7.3.0"
     "@hyperdx/common-utils": "npm:^0.21.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"

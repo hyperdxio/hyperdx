@@ -2,6 +2,7 @@ import { FIXED_TIME_BUCKET_EXPR_ALIAS } from '@hyperdx/common-utils/dist/core/re
 import { z } from 'zod';
 
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
 
 import {
   annotateIncreaseTopNHint,
@@ -103,10 +104,7 @@ export function registerTimeseries({ context, registerTool }: ToolRegistrar) {
     async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: timeRange.error }],
-        };
+        return mcpUserError(timeRange.error);
       }
       const { startDate, endDate } = timeRange;
 
