@@ -58,13 +58,13 @@ talks to **two separate HyperDX API instances** running on different slots:
               ┌────────────────┘        └────────────────┐
               ▼                                          ▼
    ┌─────────────────────┐                  ┌─────────────────────┐
-   │  Slot 98 (branch)   │                  │  Slot 99 (main)     │
+   │  Slot 98 (main)     │                  │  Slot 99 (branch)   │
    │  API  :30198        │                  │  API  :30199        │
    │  CH   :30598        │                  │  CH   :30599        │
    │  Mongo:30498        │                  │  Mongo:30499        │
    │  MCP  :30198/mcp    │                  │  MCP  :30199/mcp    │
    └─────────────────────┘                  └─────────────────────┘
-       branch worktree                          main worktree
+       main worktree                            branch worktree
 ```
 
 Each slot runs its own ClickHouse instance. Eval data (synthetic traces/logs)
@@ -80,10 +80,10 @@ the API + App servers in one command. Run it from each worktree with a fixed
 slot:
 
 ```bash
-# From the branch worktree (slot 98)
+# From the main worktree (slot 98)
 HDX_DEV_SLOT=98 yarn dev
 
-# From the main worktree (slot 99)
+# From the branch worktree (slot 99)
 HDX_DEV_SLOT=99 yarn dev
 ```
 
@@ -129,13 +129,13 @@ cp packages/hdx-eval/eval.config.main.json packages/hdx-eval/eval.config.json 2>
 If either needs setup (or this is the first time):
 
 ```bash
-# Setup branch instance
+# Setup main instance (slot 98)
 yarn workspace @hyperdx/hdx-eval dev setup-hyperdx --api-url http://localhost:30198
-cp packages/hdx-eval/eval.config.json packages/hdx-eval/eval.config.branch.json
-
-# Setup main instance
-yarn workspace @hyperdx/hdx-eval dev setup-hyperdx --api-url http://localhost:30199
 cp packages/hdx-eval/eval.config.json packages/hdx-eval/eval.config.main.json
+
+# Setup branch instance (slot 99)
+yarn workspace @hyperdx/hdx-eval dev setup-hyperdx --api-url http://localhost:30199
+cp packages/hdx-eval/eval.config.json packages/hdx-eval/eval.config.branch.json
 ```
 
 ### 3. Build the combined eval config
@@ -168,9 +168,9 @@ jq '.mcps | keys' packages/hdx-eval/eval.config.json
 BRANCH_KEY=$(jq -r '.hyperdxApi.accessKey' packages/hdx-eval/eval.config.branch.json)
 MAIN_KEY=$(jq -r '.mcps["hyperdx-main"].headers.Authorization' packages/hdx-eval/eval.config.json | sed 's/Bearer //')
 curl -s -o /dev/null -w "Branch MCP: %{http_code}\n" \
-  -H "Authorization: Bearer $BRANCH_KEY" http://localhost:30198/mcp
+  -H "Authorization: Bearer $BRANCH_KEY" http://localhost:30199/mcp
 curl -s -o /dev/null -w "Main MCP: %{http_code}\n" \
-  -H "Authorization: Bearer $MAIN_KEY" http://localhost:30199/mcp
+  -H "Authorization: Bearer $MAIN_KEY" http://localhost:30198/mcp
 # Expected: 406 (SSE endpoint, wrong HTTP method — but proves auth works)
 ```
 
