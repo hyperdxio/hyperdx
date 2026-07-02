@@ -41,6 +41,9 @@ services:
       OTEL_SUPERVISOR_LOGS: 'true'
       HYPERDX_OTEL_EXPORTER_TABLES_TTL: '24h'
       ENABLE_PROMQL: 'true'
+      # Remote-write the span-derived metrics (with exemplars) to the dev
+      # Prometheus so the native query_exemplars path is testable with real data.
+      SPAN_METRICS_PROM_RW_ENDPOINT: 'http://prometheus:9090/api/v1/write'
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
       - ./docker/otel-collector/supervisor_docker.yaml.tmpl:/etc/otel/supervisor.yaml.tmpl
@@ -157,9 +160,15 @@ services:
       hdx.dev.service: prometheus
       hdx.dev.port: '${HDX_DEV_PROMETHEUS_PORT:-9090}'
       hdx.dev.url: 'http://localhost:${HDX_DEV_PROMETHEUS_PORT:-9090}'
-    profiles:
-      - prometheus
     image: prom/prometheus:latest
+    # exemplar-storage: query_exemplars data; remote-write receiver: ingest the
+    # collector's span-derived metrics (with exemplars) from real generated data.
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--enable-feature=exemplar-storage'
+      - '--web.enable-remote-write-receiver'
+      - '--web.enable-lifecycle'
     ports:
       - '${HDX_DEV_PROMETHEUS_PORT:-9090}:9090'
     volumes:
@@ -168,6 +177,26 @@ services:
     networks:
       - internal
     restart: on-failure
+
+  # Synthetic traces (via OTLP) + coherent metric exemplars (to ClickHouse) for
+  # local dev + e2e. See telemetry-generator/README.md.
+  telemetry-generator:
+    labels:
+      <<: *hdx-labels
+      hdx.dev.service: telemetry-generator
+    build:
+      context: ./telemetry-generator
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel-collector:4318'
+      GEN_OTLP_API_KEY: '${INGESTION_API_KEY:-super-secure-ingestion-api-key}'
+      GEN_BACKFILL_MINUTES: '30'
+      GEN_RATE_PER_SEC: '20'
+    networks:
+      - internal
+    restart: on-failure
+    depends_on:
+      otel-collector:
+        condition: service_started
 
 networks:
   internal:

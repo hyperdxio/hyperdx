@@ -270,4 +270,62 @@ describe('prometheus router', () => {
       expect(calledUrl).toContain('/api/v1/label/__name__/values');
     });
   });
+
+  describe('GET /v1/prometheus/query_exemplars', () => {
+    it('returns 400 when query parameter is missing', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({ connectionId: new Types.ObjectId().toString() })
+        .expect(400);
+      expect(res.body).toMatchObject({
+        status: 'error',
+        errorType: 'bad_data',
+        error: expect.stringContaining('query'),
+      });
+    });
+
+    it('proxies to upstream Prometheus when connection isPrometheusEndpoint', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedPrometheusConnection(team._id);
+
+      const promResponse = { status: 'success', data: [] };
+      mockFetch.mockResolvedValueOnce(
+        fakeUpstreamResponse(promResponse) as any,
+      );
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      expect(res.body).toEqual(promResponse);
+      const calledUrl = mockFetch.mock.calls[0][0] as string;
+      expect(calledUrl).toContain('/api/v1/query_exemplars');
+      expect(calledUrl).toContain('query=up');
+    });
+
+    it('returns an empty result for ClickHouse-backed connections (no native exemplar table function)', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedClickHouseConnection(team._id);
+
+      const res = await agent
+        .get('/v1/prometheus/query_exemplars')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      expect(res.body).toEqual({ status: 'success', data: [] });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
 });

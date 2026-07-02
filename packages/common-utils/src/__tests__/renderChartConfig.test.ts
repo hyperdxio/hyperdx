@@ -2,7 +2,9 @@ import { chSql, ColumnMeta, parameterizedQueryToSql } from '@/clickhouse';
 import { Metadata } from '@/core/metadata';
 import {
   ChartConfigWithOptDateRangeEx,
+  EXEMPLAR_QUERY_LIMIT,
   renderChartConfig,
+  renderMetricExemplarsChartConfig,
   timeFilterExpr,
 } from '@/core/renderChartConfig';
 import {
@@ -3435,4 +3437,141 @@ describe('renderChartConfig', () => {
   // attribute columns. Coverage of the variadic form lives in the regenerated
   // gauge / sum / histogram snapshots earlier in this file plus the
   // cross-scope integration test in packages/api/src/clickhouse/__tests__.
+});
+
+describe('renderMetricExemplarsChartConfig', () => {
+  let mockMetadata: jest.Mocked<Metadata>;
+
+  beforeAll(() => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
+  beforeEach(() => {
+    mockMetadata = {
+      getColumns: jest.fn().mockResolvedValue([]),
+      getMaterializedColumnsLookupTable: jest.fn().mockResolvedValue(null),
+      getColumn: jest.fn().mockResolvedValue(undefined),
+      getTableMetadata: jest
+        .fn()
+        .mockResolvedValue({ primary_key: 'TimeUnix' }),
+      getSkipIndices: jest.fn().mockResolvedValue([]),
+      getSetting: jest.fn().mockResolvedValue(undefined),
+      isClickHouseCloud: jest.fn().mockResolvedValue(false),
+    } as unknown as jest.Mocked<Metadata>;
+  });
+
+  const histogramConfig: ChartConfigWithOptDateRange = {
+    displayType: DisplayType.Line,
+    connection: 'test-connection',
+    metricTables: {
+      gauge: 'otel_metrics_gauge',
+      histogram: 'otel_metrics_histogram',
+      sum: 'otel_metrics_sum',
+      summary: 'otel_metrics_summary',
+      'exponential histogram': 'otel_metrics_exponential_histogram',
+    },
+    from: { databaseName: 'default', tableName: '' },
+    select: [
+      {
+        aggFn: 'quantile',
+        aggCondition: '',
+        aggConditionLanguage: 'lucene',
+        valueExpression: 'Value',
+        level: 0.95,
+        metricName: 'http.server.duration',
+        metricType: MetricsDataType.Histogram,
+      },
+    ],
+    where: '',
+    whereLanguage: 'lucene',
+    timestampValueExpression: 'TimeUnix',
+    dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+    granularity: '1 minute',
+  };
+
+  it('builds an ARRAY JOIN exemplar query against the metric-type table', async () => {
+    const generated = await renderMetricExemplarsChartConfig(
+      histogramConfig,
+      mockMetadata,
+    );
+    expect(generated).not.toBeNull();
+    const sql = parameterizedQueryToSql(generated!);
+
+    // Surfaces the exemplar columns
+    expect(sql).toContain('ARRAY JOIN');
+    expect(sql).toContain('`Exemplars.TraceId` AS ex_TraceId');
+    expect(sql).toContain('toUnixTimestamp64Milli(ex_TimeUnix)');
+    // Points at the histogram table and filters by metric name + time
+    expect(sql).toContain('otel_metrics_histogram');
+    expect(sql).toContain("MetricName = 'http.server.duration'");
+    expect(sql).toContain('TimeUnix');
+    // Drops empty trace ids and caps the result set
+    expect(sql).toContain('notEmpty(ex_TraceId)');
+    expect(sql).toContain(`LIMIT ${EXEMPLAR_QUERY_LIMIT}`);
+  });
+
+  it("scopes exemplars to the series' aggCondition so markers match the plotted line", async () => {
+    const filteredConfig = {
+      ...histogramConfig,
+      select: [
+        {
+          aggFn: 'quantile',
+          level: 0.95,
+          valueExpression: 'Value',
+          metricName: 'http.server.duration',
+          metricType: MetricsDataType.Histogram,
+          aggCondition: "ServiceName = 'api'",
+          aggConditionLanguage: 'sql',
+        },
+      ],
+    } as ChartConfigWithOptDateRange;
+    const generated = await renderMetricExemplarsChartConfig(
+      filteredConfig,
+      mockMetadata,
+    );
+    expect(generated).not.toBeNull();
+    const sql = parameterizedQueryToSql(generated!);
+    expect(sql).toContain("ServiceName = 'api'");
+  });
+
+  it('returns null for a ratio config (exemplars are meaningless on a ratio axis)', async () => {
+    const ratioConfig = {
+      ...histogramConfig,
+      seriesReturnType: 'ratio',
+      select: [histogramConfig.select[0], histogramConfig.select[0]],
+    } as ChartConfigWithOptDateRange;
+    expect(
+      await renderMetricExemplarsChartConfig(ratioConfig, mockMetadata),
+    ).toBeNull();
+  });
+
+  it('returns null for a multi-series config', async () => {
+    const multiConfig = {
+      ...histogramConfig,
+      select: [histogramConfig.select[0], histogramConfig.select[0]],
+    } as ChartConfigWithOptDateRange;
+    expect(
+      await renderMetricExemplarsChartConfig(multiConfig, mockMetadata),
+    ).toBeNull();
+  });
+
+  it('returns null for a non-metric config', async () => {
+    const logConfig: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      select: [{ aggFn: 'count', valueExpression: '' }],
+      where: '',
+      timestampValueExpression: 'Timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+      granularity: '1 minute',
+    };
+    expect(
+      await renderMetricExemplarsChartConfig(logConfig, mockMetadata),
+    ).toBeNull();
+  });
 });

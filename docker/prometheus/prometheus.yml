@@ -18,3 +18,7 @@ scrape_configs:
     static_configs:
       - targets: ['ch-server:9363']
     metrics_path: '/metrics'
+
+  # Note: the span-derived request metrics (with exemplars) arrive via
+  # remote-write from the OTel collector, not a scrape — see the collector's
+  # SPAN_METRICS_PROM_RW_ENDPOINT and the spanmetrics connector.

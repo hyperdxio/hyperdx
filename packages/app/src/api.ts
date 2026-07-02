@@ -509,6 +509,18 @@ type PrometheusLabelValuesResponse = {
   data?: string[];
   error?: string;
 };
+// Native Prometheus /query_exemplars shape: one entry per series, each with its
+// own exemplar list. `labels` carries the trace/span id (label naming varies by
+// exporter, e.g. trace_id vs traceID — normalized downstream).
+type PrometheusExemplarsResult = {
+  seriesLabels: PrometheusMetric;
+  exemplars: { labels: PrometheusMetric; value: string; timestamp: number }[];
+};
+type PrometheusQueryExemplarsResponse = {
+  status: 'success' | 'error';
+  data?: PrometheusExemplarsResult[];
+  error?: string;
+};
 
 async function prometheusFetch<T>(
   path: string,
@@ -549,6 +561,23 @@ export const prometheusApi = {
       start: String(params.start),
       end: String(params.end),
       step: params.step,
+      connectionId: params.connectionId,
+      ...(params.database ? { database: params.database } : {}),
+      ...(params.table ? { table: params.table } : {}),
+    }),
+
+  queryExemplars: (params: {
+    query: string;
+    start: number;
+    end: number;
+    connectionId: string;
+    database?: string;
+    table?: string;
+  }): Promise<PrometheusQueryExemplarsResponse> =>
+    prometheusFetch('v1/prometheus/query_exemplars', {
+      query: params.query,
+      start: String(params.start),
+      end: String(params.end),
       connectionId: params.connectionId,
       ...(params.database ? { database: params.database } : {}),
       ...(params.table ? { table: params.table } : {}),

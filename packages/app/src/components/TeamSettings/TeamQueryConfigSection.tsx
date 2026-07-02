@@ -22,6 +22,7 @@ import SelectControlled from '@/components/SelectControlled';
 import {
   DEFAULT_FILTER_KEYS_FETCH_LIMIT,
   DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS,
+  DEFAULT_MAX_EXEMPLARS,
   DEFAULT_QUERY_TIMEOUT,
   DEFAULT_SEARCH_ROW_LIMIT,
 } from '@/defaults';
@@ -342,6 +343,26 @@ export default function TeamQueryConfigSection() {
             tooltip={`${brandName} sends windowed queries to ClickHouse in series. This setting parallelizes those queries when it makes sense to. This may cause increased peak load on ClickHouse`}
             type="boolean"
             displayValue={value => (value ? 'Enabled' : 'Disabled')}
+          />
+        </Stack>
+      </Card>
+
+      <Text size="md" mt="lg">
+        Chart Settings
+      </Text>
+      <Divider my="md" />
+      <Card>
+        <Stack>
+          <ClickhouseSettingForm
+            settingKey="maxExemplars"
+            label="Max Exemplars per Chart"
+            tooltip="The most exemplar markers a time chart will show. The slowest/most notable trace per time window is kept. 0 shows all exemplars."
+            type="number"
+            defaultValue={DEFAULT_MAX_EXEMPLARS}
+            placeholder={`default = ${DEFAULT_MAX_EXEMPLARS}, 0 = unlimited`}
+            min={0}
+            max={1000}
+            displayValue={displayValueWithUnit('markers')}
           />
         </Stack>
       </Card>

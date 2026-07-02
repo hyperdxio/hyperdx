@@ -2178,6 +2178,95 @@ export async function renderChartConfig(
   ]);
 }
 
+/** Overall cap on exemplar markers returned for a single chart, so a wide
+ * time range can't flood the chart overlay with thousands of points. */
+export const EXEMPLAR_QUERY_LIMIT = 200;
+
+/**
+ * Builds a ClickHouse query that surfaces native exemplars stored on an OTel
+ * metric table (`Exemplars.TraceId/SpanId/Value/TimeUnix`). Returns null when
+ * the config is not a single-metric chart we can resolve a table for.
+ *
+ * Reuses `renderWhere` so the exemplar scan honors the exact same time range,
+ * metric-name, and user filters as the rendered series. Exemplars are kept as
+ * their own raw points (the marker sits at the exemplar's own value/time), not
+ * bucketed — so no `timeBucketExpr` here.
+ */
+export async function renderMetricExemplarsChartConfig(
+  chartConfig: ChartConfigWithOptDateRangeEx,
+  metadata: Metadata,
+): Promise<ChSql | null> {
+  if (
+    isRawSqlChartConfig(chartConfig) ||
+    isPromqlChartConfig(chartConfig) ||
+    !isMetricChartConfig(chartConfig) ||
+    !Array.isArray(chartConfig.select) ||
+    // Exemplars carry a single series' raw measurement (e.g. latency). They are
+    // meaningless on a ratio axis and ambiguous across multiple series, so only
+    // surface them for a single, non-ratio metric series.
+    chartConfig.select.length !== 1 ||
+    chartConfig.seriesReturnType === 'ratio'
+  ) {
+    return null;
+  }
+  const { metricTables, select } = chartConfig;
+  const { metricType, metricName, metricNameSql } = select[0] ?? {};
+  const table =
+    metricType && metricTables ? metricTables[metricType] : undefined;
+  if (!metricType || !metricName || !table) {
+    return null;
+  }
+  // Keep exemplars to latency metrics for now: a histogram's exemplar value is a
+  // request duration, which shares the chart's y-axis unit. Other metric types
+  // (counts/gauges/rates) put exemplars on an incompatible scale.
+  if (metricType !== MetricsDataType.Histogram) {
+    return null;
+  }
+
+  // Build a config that points at the concrete metric-type table and carries
+  // the metric-name predicate alongside the user filters, then let renderWhere
+  // assemble the time filter + filters exactly as the main query does. The
+  // guards above narrow chartConfig to the metric builder config, so no cast.
+  const whereConfig: BuilderChartConfigWithOptDateRangeEx = {
+    ...chartConfig,
+    from: { ...chartConfig.from, tableName: table },
+    timestampValueExpression:
+      chartConfig.timestampValueExpression || DEFAULT_METRIC_TABLE_TIME_COLUMN,
+    // Keep the original select so renderWhere applies the series' aggCondition —
+    // otherwise the exemplar scan would surface traces from other series (e.g.
+    // other services/routes/tenants) that share the same metric name.
+    filters: [
+      ...(chartConfig.filters ?? []),
+      {
+        type: 'sql',
+        condition: createMetricNameFilter(metricName, metricNameSql),
+      },
+    ],
+  };
+
+  const where = await renderWhere(whereConfig, metadata);
+  const from = renderFrom({ from: whereConfig.from });
+
+  return concatChSql(' ', [
+    chSql`SELECT
+      toUnixTimestamp64Milli(ex_TimeUnix) AS timestamp,
+      ex_Value AS value,
+      ex_TraceId AS traceId,
+      ex_SpanId AS spanId`,
+    chSql`FROM ${from}`,
+    chSql`ARRAY JOIN
+      \`Exemplars.TimeUnix\` AS ex_TimeUnix,
+      \`Exemplars.Value\` AS ex_Value,
+      \`Exemplars.TraceId\` AS ex_TraceId,
+      \`Exemplars.SpanId\` AS ex_SpanId`,
+    chSql`WHERE ${where.sql ? where : chSql`1 = 1`} AND notEmpty(ex_TraceId)`,
+    // Native exemplars carry no interestingness signal; keep the highest-value
+    // ones as a stable cap. ponytail: value-desc cap, revisit if even sampling
+    // across buckets is wanted.
+    chSql`ORDER BY value DESC LIMIT ${{ Int32: EXEMPLAR_QUERY_LIMIT }}`,
+  ]);
+}
+
 // EditForm -> translateToQueriedChartConfig -> QueriedChartConfig
 // renderFn(QueriedChartConfig) -> sql
 // query(sql) -> data
