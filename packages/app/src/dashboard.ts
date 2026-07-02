@@ -156,7 +156,10 @@ export function useUpdateDashboard() {
     },
     onError: (_error, _dashboard, context) => {
       if (context?.previousDashboards) {
-        queryClient.setQueryData(['dashboards'], context.previousDashboards);
+        queryClient.setQueryData<Dashboard[]>(
+          ['dashboards'],
+          context.previousDashboards,
+        );
       }
     },
     onSettled: () => {
