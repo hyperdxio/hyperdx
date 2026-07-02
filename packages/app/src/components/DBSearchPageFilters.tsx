@@ -962,17 +962,21 @@ export const FilterGroup = ({
 
   const hasOptions = options.length > 0 || totalAppliedFiltersSize > 0;
 
+  // An empty map attribute key (e.g. LogAttributes['']) yields an empty name,
+  // which Mantine rejects as an Accordion.Item value and throws during render.
+  const displayName = name.trim() ? name : '(empty)';
+
   return (
     <Accordion
       variant="unstyled"
       chevronPosition="left"
       classNames={{ chevron: classes.chevron }}
-      value={isExpanded ? name : null}
+      value={isExpanded ? displayName : null}
       onChange={v => {
-        setExpanded(v === name);
+        setExpanded(v === displayName);
       }}
     >
-      <Accordion.Item value={name} data-testid={dataTestId}>
+      <Accordion.Item value={displayName} data-testid={dataTestId}>
         <Stack gap={0}>
           <Center>
             <Accordion.Control
@@ -989,15 +993,15 @@ export const FilterGroup = ({
               className={hasOptions ? '' : 'opacity-50'}
             >
               <Tooltip
-                openDelay={name.length > 26 ? 0 : 1500}
-                label={name}
+                openDelay={displayName.length > 26 ? 0 : 1500}
+                label={displayName}
                 position="top"
                 withArrow
                 fz="xxs"
                 color="gray"
               >
                 <Text size="xs" fw="500" truncate="end">
-                  {name}
+                  {displayName}
                   {showFilterCounts && (
                     <Text
                       component="span"
