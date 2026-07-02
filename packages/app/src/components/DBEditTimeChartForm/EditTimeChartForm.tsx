@@ -246,6 +246,7 @@ export default function EditTimeChartForm({
     fitYAxisToData,
     numberFormat,
     groupByColumnsOnLeft,
+    alternateRowBackground,
     seriesLimit,
     color,
     colorRules,
@@ -259,6 +260,7 @@ export default function EditTimeChartForm({
       'fitYAxisToData',
       'numberFormat',
       'groupByColumnsOnLeft',
+      'alternateRowBackground',
       'seriesLimit',
       'color',
       'colorRules',
@@ -288,6 +290,7 @@ export default function EditTimeChartForm({
       fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      alternateRowBackground,
       seriesLimit,
       color,
       colorRules,
@@ -300,6 +303,7 @@ export default function EditTimeChartForm({
       fitYAxisToData,
       numberFormat,
       groupByColumnsOnLeft,
+      alternateRowBackground,
       seriesLimit,
       color,
       colorRules,
@@ -595,6 +599,7 @@ export default function EditTimeChartForm({
       compareToPreviousPeriod,
       fitYAxisToData,
       groupByColumnsOnLeft,
+      alternateRowBackground,
       seriesLimit,
       color,
       colorRules,
@@ -611,6 +616,7 @@ export default function EditTimeChartForm({
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
       setValue('fitYAxisToData', fitYAxisToData);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
+      setValue('alternateRowBackground', alternateRowBackground);
       // Persist `null` (not undefined) when cleared so the disabled state
       // survives JSON round-tripping through the URL query state; otherwise
       // the dropped key lets RHF's `values` sync restore the stale value.

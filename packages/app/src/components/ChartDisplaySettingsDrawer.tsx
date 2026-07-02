@@ -45,6 +45,7 @@ export type ChartConfigDisplaySettings = Pick<
   | 'backgroundChart'
 > & {
   groupByColumnsOnLeft?: boolean;
+  alternateRowBackground?: boolean;
   // Per-tile cap on the number of series fetched for a group-by time chart.
   // null/undefined = disabled (no __hdx_series_limit CTE; every series is
   // fetched). The editor clears to `null` (not `undefined`) so the cleared
@@ -90,6 +91,7 @@ function applyDefaultSettings(
     compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
     fitYAxisToData: settings.fitYAxisToData ?? false,
     groupByColumnsOnLeft: settings.groupByColumnsOnLeft ?? false,
+    alternateRowBackground: settings.alternateRowBackground ?? false,
     // Coerce to null so `reset` clears the input; undefined leaves the
     // previously registered field value in place.
     seriesLimit: settings.seriesLimit ?? null,
@@ -178,9 +180,10 @@ export default function ChartDisplaySettingsDrawer({
   const showSeriesLimit =
     isTimeChart && configType !== 'sql' && configType !== 'promql';
 
-  // Group By column ordering only applies to builder table charts; raw SQL
-  // configs let the user author whatever column order they want directly.
-  const showGroupByColumnsOnLeft =
+  // Builder-table-only display options (Group By column ordering, alternate
+  // row background). Raw SQL table configs author their own layout directly,
+  // so these are hidden there.
+  const showBuilderTableOptions =
     displayType === DisplayType.Table && configType !== 'sql';
 
   // Tile-level color is only meaningful for number tiles today.
@@ -271,13 +274,19 @@ export default function ChartDisplaySettingsDrawer({
           </>
         )}
 
-        {showGroupByColumnsOnLeft && (
+        {showBuilderTableOptions && (
           <>
             <CheckBoxControlled
               control={control}
               name="groupByColumnsOnLeft"
               size="xs"
               label="Display Group By Columns on Left"
+            />
+            <CheckBoxControlled
+              control={control}
+              name="alternateRowBackground"
+              size="xs"
+              label="Alternate Row Background"
             />
             <Divider />
           </>

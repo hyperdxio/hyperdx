@@ -383,4 +383,53 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       expect(screen.queryByTestId('row-action-hint')).toBeNull();
     });
   });
+
+  describe('alternate row background', () => {
+    const stripeData = [
+      { ServiceName: 'web', Count: 10 },
+      { ServiceName: 'api', Count: 20 },
+      { ServiceName: 'db', Count: 30 },
+      { ServiceName: 'cache', Count: 40 },
+    ];
+
+    it('stripes odd-index rows when alternateRowBackground is true', () => {
+      const { container } = renderWithMantine(
+        <Table
+          data={stripeData}
+          columns={baseColumns}
+          alternateRowBackground
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+      const rows = container.querySelectorAll('tbody tr[data-index]');
+      expect(rows.length).toBe(stripeData.length);
+      rows.forEach(row => {
+        const index = Number(row.getAttribute('data-index'));
+        if (index % 2 === 1) {
+          expect(row.className).toContain('stripedRow');
+        } else {
+          expect(row.className).not.toContain('stripedRow');
+        }
+      });
+    });
+
+    it('does not stripe any row when alternateRowBackground is omitted', () => {
+      const { container } = renderWithMantine(
+        <Table
+          data={stripeData}
+          columns={baseColumns}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+      const rows = container.querySelectorAll('tbody tr[data-index]');
+      expect(rows.length).toBe(stripeData.length);
+      rows.forEach(row => {
+        expect(row.className).not.toContain('stripedRow');
+      });
+    });
+  });
 });
