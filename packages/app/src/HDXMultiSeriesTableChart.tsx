@@ -1,6 +1,11 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
+import {
+  ChartPaletteToken,
+  ColorCondition,
+  isChartPaletteToken,
+} from '@hyperdx/common-utils/dist/types';
 import { Tooltip, UnstyledButton } from '@mantine/core';
 import {
   IconArrowUpRight,
@@ -29,7 +34,11 @@ import type { RowAction } from './hooks/useOnClickLinkBuilder';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { NumberFormat } from './types';
-import { formatNumber } from './utils';
+import {
+  formatNumber,
+  getColorFromCSSToken,
+  resolveConditionalColor,
+} from './utils';
 
 import styles from './HDXMultiSeriesTableChart.module.scss';
 import focusStyles from '@styles/focus.module.scss';
@@ -61,6 +70,12 @@ export const Table = ({
     columnWidthPercent?: number;
     visible?: boolean;
     sortingFn?: SortingFnOption<any>;
+    // Per-column static palette-token color (table tiles). Applied to the
+    // cell text; falls back through `colorRules` then the default color.
+    color?: ChartPaletteToken;
+    // Ordered conditional color rules evaluated against each cell's value
+    // (last match wins). Resolves to `color` when no rule matches.
+    colorRules?: ColorCondition[];
   }[];
   groupColumnName?: string;
   // Returns the row click destination + a hover-hint description. When
@@ -136,6 +151,8 @@ export const Table = ({
             numberFormat,
             columnWidthPercent,
             sortingFn,
+            color,
+            colorRules,
           },
           i,
         ) =>
@@ -161,6 +178,43 @@ export const Table = ({
               } else if (numberFormat) {
                 formattedValue = formatNumber(value, numberFormat);
               }
+
+              // Resolve this cell's color from the column config: ordered
+              // rules first (last match wins), then the column's static
+              // color, else no override. ClickHouse serializes numeric
+              // aggregates (count is UInt64, sums, etc.) as strings, so coerce
+              // a numeric-looking value to a number first; otherwise the
+              // numeric operators (gt / lt / between) never match. Genuine
+              // strings (group-by labels, status values) stay as-is so the
+              // equality / string-match rules still work. Mirrors the value
+              // coercion in DBNumberChart.
+              //
+              // react-table types the getter as `number`, but the runtime
+              // value can be a string (see above), so read it through
+              // `unknown` to narrow honestly without an unsafe cast.
+              const cellValue: unknown = value;
+              const primitiveValue =
+                typeof cellValue === 'number' || typeof cellValue === 'string'
+                  ? cellValue
+                  : null;
+              const colorValue =
+                typeof primitiveValue === 'string' &&
+                primitiveValue.trim() !== '' &&
+                Number.isFinite(Number(primitiveValue))
+                  ? Number(primitiveValue)
+                  : primitiveValue;
+              const resolvedColorToken = resolveConditionalColor(
+                colorValue,
+                colorRules,
+                color,
+              );
+              // Guard the CSS resolver: it throws on an unrecognized token,
+              // so an unknown / legacy token (e.g. a hand-edited config)
+              // renders with the default color instead of crashing the cell.
+              const colorStyle =
+                resolvedColorToken && isChartPaletteToken(resolvedColorToken)
+                  ? { color: getColorFromCSSToken(resolvedColorToken) }
+                  : undefined;
 
               const className = cx('align-top overflow-hidden py-1 pe-3', {
                 'text-break': wrapLinesEnabled,
@@ -205,6 +259,7 @@ export const Table = ({
                       href={action.url}
                       prefetch={false}
                       className={interactiveClassName}
+                      style={colorStyle}
                       data-testid="dashboard-table-row-action"
                       data-shape="link"
                     >
@@ -225,6 +280,7 @@ export const Table = ({
                   <button
                     type="button"
                     className={cx(interactiveClassName, focusStyles.cellButton)}
+                    style={colorStyle}
                     onClick={action.onClickError}
                     data-testid="dashboard-table-row-action"
                     data-shape="button"
@@ -242,6 +298,7 @@ export const Table = ({
                       href={url}
                       prefetch={false}
                       className={interactiveClassName}
+                      style={colorStyle}
                       data-testid="dashboard-table-row-action"
                       data-shape="link"
                     >
@@ -251,7 +308,11 @@ export const Table = ({
                 }
               }
 
-              return <div className={className}>{formattedValue}</div>;
+              return (
+                <div className={className} style={colorStyle}>
+                  {formattedValue}
+                </div>
+              );
             },
             size:
               i === numColumns - 2
