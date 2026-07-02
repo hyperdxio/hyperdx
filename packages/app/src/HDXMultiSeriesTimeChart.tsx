@@ -917,6 +917,8 @@ export const MemoChart = memo(function MemoChart({
                 );
               } catch (e) {
                 console.error('failed to highlight range', e);
+                justZoomedRef.current = false;
+                setZoomOrigin(null);
               }
               setHighlightStart(undefined);
               setHighlightEnd(undefined);
