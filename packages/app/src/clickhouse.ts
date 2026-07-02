@@ -16,6 +16,7 @@ import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { IS_LOCAL_MODE } from '@/config';
 import { getLocalConnections } from '@/connection';
+import { InstrumentedClickhouseClient } from '@/queryStats/InstrumentedClickhouseClient';
 
 import api from './api';
 import { DEFAULT_QUERY_TIMEOUT } from './defaults';
@@ -29,19 +30,19 @@ export const getClickhouseClient = (
     const localConnections = getLocalConnections();
     if (localConnections.length === 0) {
       console.warn('No local connection found');
-      return new ClickhouseClient({
+      return new InstrumentedClickhouseClient({
         host: '',
         ...options,
       });
     }
-    return new ClickhouseClient({
+    return new InstrumentedClickhouseClient({
       host: localConnections[0].host,
       username: localConnections[0].username,
       password: localConnections[0].password,
       ...options,
     });
   }
-  return new ClickhouseClient({
+  return new InstrumentedClickhouseClient({
     host: PROXY_CLICKHOUSE_HOST,
     ...options,
   });
