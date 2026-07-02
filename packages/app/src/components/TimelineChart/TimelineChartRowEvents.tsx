@@ -15,7 +15,7 @@ export type TTimelineEvent = {
   color: string;
   backgroundColor: string;
   body: React.ReactNode;
-  minWidthPerc?: number;
+  minWidthPx?: number;
   isError?: boolean;
   markers?: TTimelineSpanEventMarker[];
   showDuration?: boolean;
@@ -35,9 +35,14 @@ export const TimelineChartRowEvents = memo(function (
   return events.map(event => {
     const percentX = (event.start / maxVal) * 100;
 
+    // Width is a percentage of the events area, which the zoom model widens
+    // via `width: <100 * scale>%`. A percentage floor would therefore scale
+    // with the zoom factor, letting very short spans render as wide as long
+    // ones once zoomed in. The floor is applied as a fixed pixel `minWidth`
+    // instead, so sub-pixel spans stay clickable without growing on zoom.
     const percentWidth = Math.max(
       ((event.end - event.start) / maxVal) * 100,
-      event.minWidthPerc ?? 0,
+      0,
     );
 
     const durationMs = event.end - event.start;
@@ -53,6 +58,8 @@ export const TimelineChartRowEvents = memo(function (
           position: 'absolute',
           left: `${percentX}%`,
           width: `${percentWidth}%`,
+          minWidth:
+            event.minWidthPx != null ? `${event.minWidthPx}px` : undefined,
           height: '100%',
           padding: '1px 0',
         }}
