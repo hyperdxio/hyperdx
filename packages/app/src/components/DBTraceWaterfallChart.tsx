@@ -155,21 +155,17 @@ function getConfig(
     SpanId: source.spanIdExpression ?? '',
     ParentSpanId:
       source.kind === SourceKind.Trace
-        ? (source.parentSpanIdExpression ?? '')
+        ? source.parentSpanIdExpression ?? ''
         : '',
     StatusCode:
-      source.kind === SourceKind.Trace
-        ? (source.statusCodeExpression ?? '')
-        : '',
+      source.kind === SourceKind.Trace ? source.statusCodeExpression ?? '' : '',
     ServiceName: source.serviceNameExpression ?? '',
     SeverityText:
-      source.kind === SourceKind.Log
-        ? (source.severityTextExpression ?? '')
-        : '',
+      source.kind === SourceKind.Log ? source.severityTextExpression ?? '' : '',
     SpanAttributes: source.eventAttributesExpression ?? '',
     SpanEvents:
       source.kind === SourceKind.Trace
-        ? (source.spanEventsValueExpression ?? '')
+        ? source.spanEventsValueExpression ?? ''
         : '',
   };
 
@@ -979,7 +975,7 @@ export function DBTraceWaterfallChartContainer({
                 type,
               }),
               body: <span>{displayText}</span>,
-              minWidthPerc: 1,
+              minWidthPx: 2,
               isError,
               markers,
               showDuration: type !== SourceKind.Log,
@@ -1179,9 +1175,9 @@ export function DBTraceWaterfallChartContainer({
           flattenedNodes.length > 0 ? (
             <div className="my-3">All items are hidden by filters</div>
           ) : (
-            (emptyState ?? (
+            emptyState ?? (
               <div className="my-3">No matching spans or logs found</div>
-            ))
+            )
           )
         ) : (
           <TimelineChart

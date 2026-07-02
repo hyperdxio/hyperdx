@@ -24,7 +24,7 @@ function makeRow(
     color: 'var(--color-text-inverted)',
     backgroundColor: '#6A7077',
     body: <span>{body}</span>,
-    minWidthPerc: 1,
+    minWidthPx: 2,
     showDuration: true,
   };
 
