@@ -80,6 +80,14 @@ describe('readConfig plugin validation', () => {
     expect(() => readConfig(p)).toThrow(/exactly one of 'url' or 'dir'/);
   });
 
+  it('rejects a plugin using the reserved name "none"', () => {
+    const p = writeTmpConfig('reserved-none', {
+      mcps: baseConfig.mcps,
+      plugins: { none: { label: 'None', url: 'https://example.com/p.zip' } },
+    });
+    expect(() => readConfig(p)).toThrow(/reserved name "none"/);
+  });
+
   it('rejects a non-object plugins section', () => {
     const p = writeTmpConfig('not-object', {
       mcps: baseConfig.mcps,

@@ -91,7 +91,7 @@ export type RunRecord = {
   scenario: string;
   mcp: McpKind;
   model: string;
-  plugin: string;
+  plugin?: string;
   runIndex: number;
   seed: number;
   startedAt: string;

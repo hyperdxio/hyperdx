@@ -1,7 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
-import type { McpDefinition, McpKind, PluginDefinition } from '@/harness/types';
+import {
+  type McpDefinition,
+  type McpKind,
+  PLUGIN_NONE,
+  type PluginDefinition,
+} from '@/harness/types';
 
 type ScenarioSourceIds = {
   tracesSourceId: string;
@@ -216,6 +221,13 @@ function validateConfig(raw: unknown, path: string): EvalConfig {
       throw new Error(`Eval config at ${path} 'plugins' must be an object`);
     }
     for (const [name, def] of Object.entries(plugins)) {
+      if (name === PLUGIN_NONE) {
+        throw new Error(
+          `Eval config 'plugins' must not use the reserved name ` +
+            `"${PLUGIN_NONE}" — it always means the no-plugin baseline, so ` +
+            `a plugin with that name could never be selected`,
+        );
+      }
       if (!def || typeof def !== 'object') {
         throw new Error(`Eval config 'plugins.${name}' must be an object`);
       }
