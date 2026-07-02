@@ -1,13 +1,23 @@
 import {
   SourceKind,
   SourceSchema,
+  SourceSchemaNoId,
   type TSource,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
+import { z } from 'zod';
 
-import { getSources } from '@/controllers/sources';
+import {
+  createSource,
+  deleteSource,
+  getSource,
+  getSources,
+  updateSource,
+} from '@/controllers/sources';
 import { SourceDocument } from '@/models/source';
+import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import logger from '@/utils/logger';
+import { objectIdSchema } from '@/utils/zod';
 
 export function mapGranularityToExternalFormat(granularity: string): string {
   const matches = granularity.match(/^(\d+) (second|minute|hour|day)$/);
@@ -26,6 +36,76 @@ export function mapGranularityToExternalFormat(granularity: string): string {
     default:
       return granularity;
   }
+}
+
+export function mapGranularityToInternalFormat(granularity: string): string {
+  const matches = granularity.match(/^(\d+)(s|m|h|d)$/);
+  if (matches == null) return granularity;
+
+  const [, amount, unit] = matches;
+  switch (unit) {
+    case 's':
+      return `${amount} second`;
+    case 'm':
+      return `${amount} minute`;
+    case 'h':
+      return `${amount} hour`;
+    case 'd':
+      return `${amount} day`;
+    default:
+      return granularity;
+  }
+}
+
+// Maps external short-form granularities (e.g. "5m") in the request body to
+// the internal SQL interval format (e.g. "5 minute") expected by SourceSchema.
+// Runs before body validation so external clients can use the same format the
+// API returns.
+function mapRequestGranularitiesToInternalFormat(
+  req: express.Request,
+  _res: express.Response,
+  next: express.NextFunction,
+) {
+  const body = req.body;
+  if (body != null && typeof body === 'object') {
+    if (Array.isArray(body.materializedViews)) {
+      for (const view of body.materializedViews) {
+        if (view != null && typeof view.minGranularity === 'string') {
+          view.minGranularity = mapGranularityToInternalFormat(
+            view.minGranularity,
+          );
+        }
+      }
+    }
+    if (
+      body.metadataMaterializedViews != null &&
+      typeof body.metadataMaterializedViews.granularity === 'string'
+    ) {
+      body.metadataMaterializedViews.granularity =
+        mapGranularityToInternalFormat(
+          body.metadataMaterializedViews.granularity,
+        );
+    }
+  }
+  next();
+}
+
+// SourceSchemaNoId only requires `connection` to be a non-empty string, but
+// the Mongoose model declares it as an ObjectId ref — a non-ObjectId value
+// would surface as a 500 CastError instead of a 400. Runs after body
+// validation so req.body is the parsed shape.
+function requireValidConnectionId(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  const parsed = objectIdSchema.safeParse(req.body?.connection);
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ message: 'connection must be a valid connection id' });
+  }
+  next();
 }
 
 function mapSourceToExternalSource(source: TSource): TSource {
@@ -237,8 +317,8 @@ function formatExternalSource(source: SourceDocument) {
  *           example: ServiceName, SeverityText
  *         minGranularity:
  *           type: string
- *           description: The granularity of the timestamp column
- *           enum: [1s, 15s, 30s, 1m, 5m, 15m, 30m, 1h, 2h, 6h, 12h, 1d, 2d, 7d, 30d]
+ *           description: "The granularity of the timestamp column: a positive integer followed by a unit (s, m, h, d). Common values: 1s, 15s, 30s, 1m, 5m, 15m, 30m, 1h, 2h, 6h, 12h, 1d, 2d, 7d, 30d."
+ *           pattern: '^\d+(s|m|h|d)$'
  *           example: 5m
  *         minDate:
  *           type: string
@@ -279,6 +359,11 @@ function formatExternalSource(source: SourceDocument) {
  *           maxLength: 256
  *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
  *           example: Billing
+ *         disabled:
+ *           type: boolean
+ *           description: When true, the source is hidden from source selectors in the UI. Defaults to false.
+ *           nullable: true
+ *           example: false
  *         kind:
  *           type: string
  *           enum: [log]
@@ -414,6 +499,7 @@ function formatExternalSource(source: SourceDocument) {
  *         - kind
  *         - connection
  *         - from
+ *         - defaultTableSelectExpression
  *         - timestampValueExpression
  *         - durationExpression
  *         - durationPrecision
@@ -436,6 +522,11 @@ function formatExternalSource(source: SourceDocument) {
  *           maxLength: 256
  *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
  *           example: Billing
+ *         disabled:
+ *           type: boolean
+ *           description: When true, the source is hidden from source selectors in the UI. Defaults to false.
+ *           nullable: true
+ *           example: false
  *         kind:
  *           type: string
  *           enum: [trace]
@@ -457,7 +548,6 @@ function formatExternalSource(source: SourceDocument) {
  *         defaultTableSelectExpression:
  *           type: string
  *           description: Default columns selected in search results (this can be customized per search later)
- *           nullable: true
  *           example: Timestamp, SpanName, ServiceName, Duration
  *         timestampValueExpression:
  *           type: string
@@ -614,6 +704,11 @@ function formatExternalSource(source: SourceDocument) {
  *           maxLength: 256
  *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
  *           example: Billing
+ *         disabled:
+ *           type: boolean
+ *           description: When true, the source is hidden from source selectors in the UI. Defaults to false.
+ *           nullable: true
+ *           example: false
  *         kind:
  *           type: string
  *           enum: [metric]
@@ -671,6 +766,11 @@ function formatExternalSource(source: SourceDocument) {
  *           maxLength: 256
  *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
  *           example: Billing
+ *         disabled:
+ *           type: boolean
+ *           description: When true, the source is hidden from source selectors in the UI. Defaults to false.
+ *           nullable: true
+ *           example: false
  *         kind:
  *           type: string
  *           enum: [session]
@@ -698,12 +798,64 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           description: HyperDX Source for traces associated with sessions.
  *           example: 507f1f77bcf86cd799439021
+ *     PromqlSource:
+ *       type: object
+ *       description: A source backed by a Prometheus-compatible endpoint, queried with PromQL. The referenced connection should be a Prometheus connection (isPrometheusEndpoint set to true).
+ *       required:
+ *         - id
+ *         - name
+ *         - kind
+ *         - connection
+ *         - from
+ *         - timestampValueExpression
+ *       properties:
+ *         id:
+ *           type: string
+ *           description: Unique source ID.
+ *           example: 507f1f77bcf86cd799439051
+ *         name:
+ *           type: string
+ *           description: Display name for the source.
+ *           example: Prometheus Metrics
+ *         section:
+ *           type: string
+ *           maxLength: 256
+ *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
+ *           example: Billing
+ *         disabled:
+ *           type: boolean
+ *           description: When true, the source is hidden from source selectors in the UI. Defaults to false.
+ *           nullable: true
+ *           example: false
+ *         kind:
+ *           type: string
+ *           enum: [promql]
+ *           description: Source kind discriminator. Must be "promql" for PromQL sources.
+ *           example: promql
+ *         connection:
+ *           type: string
+ *           description: ID of the connection used by this source. Should reference a Prometheus-compatible connection.
+ *           example: 507f1f77bcf86cd799439012
+ *         from:
+ *           $ref: '#/components/schemas/SourceFrom'
+ *           description: Required by the API for all source kinds; not used when querying a Prometheus endpoint (empty strings are not accepted — use placeholder values such as "default").
+ *         querySettings:
+ *           type: array
+ *           description: Optional ClickHouse query settings applied when querying this source.
+ *           items:
+ *             $ref: '#/components/schemas/QuerySetting'
+ *           nullable: true
+ *         timestampValueExpression:
+ *           type: string
+ *           description: Required by the API for all source kinds; not used when querying a Prometheus endpoint.
+ *           example: timestamp
  *     Source:
  *       oneOf:
  *         - $ref: '#/components/schemas/LogSource'
  *         - $ref: '#/components/schemas/TraceSource'
  *         - $ref: '#/components/schemas/MetricSource'
  *         - $ref: '#/components/schemas/SessionSource'
+ *         - $ref: '#/components/schemas/PromqlSource'
  *       discriminator:
  *         propertyName: kind
  *         mapping:
@@ -711,6 +863,7 @@ function formatExternalSource(source: SourceDocument) {
  *           trace: '#/components/schemas/TraceSource'
  *           metric: '#/components/schemas/MetricSource'
  *           session: '#/components/schemas/SessionSource'
+ *           promql: '#/components/schemas/PromqlSource'
  *     SourcesListResponse:
  *       type: object
  *       properties:
@@ -719,6 +872,12 @@ function formatExternalSource(source: SourceDocument) {
  *           description: List of source objects.
  *           items:
  *             $ref: '#/components/schemas/Source'
+ *     SourceResponseEnvelope:
+ *       type: object
+ *       properties:
+ *         data:
+ *           $ref: '#/components/schemas/Source'
+ *           description: The source object.
  */
 
 const router = express.Router();
@@ -769,5 +928,333 @@ router.get('/', async (req, res, next) => {
     next(e);
   }
 });
+
+/**
+ * @openapi
+ * /api/v2/sources/{id}:
+ *   get:
+ *     summary: Get Source
+ *     description: Retrieves a specific source by ID
+ *     operationId: getSource
+ *     tags: [Sources]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Source ID
+ *         example: "507f1f77bcf86cd799439011"
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved source
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SourceResponseEnvelope'
+ *       '401':
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Unauthorized access. API key is missing or invalid."
+ *       '404':
+ *         description: Source not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Source not found"
+ */
+router.get(
+  '/:id',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const source = await getSource(teamId.toString(), req.params.id);
+
+      if (source == null) {
+        return res.sendStatus(404);
+      }
+
+      const data = formatExternalSource(source);
+      if (data === undefined) {
+        throw new Error(
+          `Failed to serialize source ${source._id} for external API`,
+        );
+      }
+
+      res.json({ data });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+/**
+ * @openapi
+ * /api/v2/sources:
+ *   post:
+ *     summary: Create Source
+ *     description: |
+ *       Creates a new source.
+ *
+ *       The request body is a source object without the `id` field. If an
+ *       `id` is sent anyway it is silently ignored (stripped before
+ *       validation — the request is never rejected because of it).
+ *       Granularity fields
+ *       (`materializedViews[].minGranularity` and
+ *       `metadataMaterializedViews.granularity`) accept the same short format
+ *       the API returns (e.g. `5m`, `15s`, `1h`, `1d`).
+ *     operationId: createSource
+ *     tags: [Sources]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Source'
+ *     responses:
+ *       '200':
+ *         description: Successfully created source
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SourceResponseEnvelope'
+ *       '400':
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Body validation failed: name: Required"
+ *       '401':
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Unauthorized access. API key is missing or invalid."
+ */
+router.post(
+  '/',
+  mapRequestGranularitiesToInternalFormat,
+  validateRequest({
+    body: SourceSchemaNoId,
+  }),
+  requireValidConnectionId,
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const source = await createSource(teamId.toString(), {
+        ...req.body,
+        team: teamId.toJSON(),
+      });
+
+      const data = formatExternalSource(source);
+      if (data === undefined) {
+        throw new Error(
+          `Failed to serialize source ${source._id} for external API`,
+        );
+      }
+
+      res.json({ data });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+/**
+ * @openapi
+ * /api/v2/sources/{id}:
+ *   put:
+ *     summary: Update Source
+ *     description: |
+ *       Updates an existing source. The full source object must be provided;
+ *       this is a replace, not a patch.
+ *
+ *       The request body is a source object without the `id` field. If an
+ *       `id` is sent anyway it is silently ignored (stripped before
+ *       validation — never a 400); the path parameter alone identifies the
+ *       source. Granularity fields (`materializedViews[].minGranularity` and
+ *       `metadataMaterializedViews.granularity`) accept the same short format
+ *       the API returns (e.g. `5m`, `15s`, `1h`, `1d`).
+ *     operationId: updateSource
+ *     tags: [Sources]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Source ID
+ *         example: "507f1f77bcf86cd799439011"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Source'
+ *     responses:
+ *       '200':
+ *         description: Successfully updated source
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SourceResponseEnvelope'
+ *       '400':
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Body validation failed: name: Required"
+ *       '401':
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Unauthorized access. API key is missing or invalid."
+ *       '404':
+ *         description: Source not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Source not found"
+ */
+router.put(
+  '/:id',
+  mapRequestGranularitiesToInternalFormat,
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+    body: SourceSchemaNoId,
+  }),
+  requireValidConnectionId,
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const source = await updateSource(teamId.toString(), req.params.id, {
+        ...req.body,
+        team: teamId.toJSON(),
+      });
+
+      if (source == null) {
+        return res.sendStatus(404);
+      }
+
+      const data = formatExternalSource(source);
+      if (data === undefined) {
+        throw new Error(
+          `Failed to serialize source ${source._id} for external API`,
+        );
+      }
+
+      res.json({ data });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+/**
+ * @openapi
+ * /api/v2/sources/{id}:
+ *   delete:
+ *     summary: Delete Source
+ *     description: Deletes a source
+ *     operationId: deleteSource
+ *     tags: [Sources]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Source ID
+ *         example: "507f1f77bcf86cd799439011"
+ *     responses:
+ *       '200':
+ *         description: Successfully deleted source
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/EmptyResponse'
+ *             example: {}
+ *       '401':
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Unauthorized access. API key is missing or invalid."
+ *       '404':
+ *         description: Source not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Source not found"
+ */
+router.delete(
+  '/:id',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const deletedSource = await deleteSource(
+        teamId.toString(),
+        req.params.id,
+      );
+
+      if (deletedSource == null) {
+        return res.sendStatus(404);
+      }
+
+      res.json({});
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 export default router;

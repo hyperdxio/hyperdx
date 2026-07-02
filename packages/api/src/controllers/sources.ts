@@ -1,4 +1,4 @@
-import { SourceKind, SourceSchema } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, SourceSchemaNoId } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
 import {
@@ -84,24 +84,42 @@ export async function updateSource(
   }
 
   // Kind changed: validate through Zod before writing since the raw
-  // collection bypass skips Mongoose's discriminator validation.
-  const parseResult = SourceSchema.safeParse(source);
+  // collection bypass skips Mongoose's discriminator validation. Uses the
+  // no-id schema because callers identify the source via sourceId — any id
+  // in the body is ignored (and _id is preserved from the existing doc).
+  const parseResult = SourceSchemaNoId.safeParse(source);
   if (!parseResult.success) {
     throw new Error(
       `Invalid source data: ${parseResult.error.errors.map(e => e.message).join(', ')}`,
     );
   }
 
+  // The raw write below bypasses Mongoose casting, so validate and cast
+  // connection explicitly — otherwise a garbage string is persisted verbatim
+  // and the stored BSON type diverges from documents written via Mongoose.
+  if (!mongoose.Types.ObjectId.isValid(parseResult.data.connection)) {
+    throw new Error('Invalid source data: connection must be a valid id');
+  }
+
   // Use replaceOne on the raw collection to swap the entire document
   // in place (including the discriminator key). This is a single atomic
   // write — the document is never absent from the collection.
+  const createdAt: Date | undefined = existing.get('createdAt');
   const replacement = {
     ...parseResult.data,
+    connection: new mongoose.Types.ObjectId(parseResult.data.connection),
     _id: existing._id,
     team: existing.team,
+    ...(createdAt && { createdAt }),
     updatedAt: new Date(),
   };
-  await Source.collection.replaceOne({ _id: existing._id }, replacement);
+  const result = await Source.collection.replaceOne(
+    { _id: existing._id, team: existing.team },
+    replacement,
+  );
+  // Deleted concurrently between the findOne above and the replace: report
+  // not-found instead of returning a hydrated document that no longer exists.
+  if (result.matchedCount === 0) return null;
   return getModelForKind(replacement.kind)?.hydrate(replacement);
 }
 
