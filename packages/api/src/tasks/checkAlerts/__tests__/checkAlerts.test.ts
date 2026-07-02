@@ -1,6 +1,7 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   AlertErrorType,
+  AlertInterval,
   AlertState,
   AlertThresholdType,
   SourceKind,
@@ -36,6 +37,7 @@ import Webhook, { IWebhook } from '@/models/webhook';
 import * as checkAlert from '@/tasks/checkAlerts';
 import {
   alertHasGroupBy,
+  computeAlertHistoryLookbackMs,
   doesExceedThreshold,
   getPreviousAlertHistories,
   getScheduledWindowStart,
@@ -2115,7 +2117,7 @@ describe('checkAlerts', () => {
       teamWebhooksById: Map<string, IWebhook>,
     ) => {
       const previousMap = await getPreviousAlertHistories(
-        [details.alert.id],
+        [{ id: details.alert.id, interval: details.alert.interval }],
         now,
       );
       await processAlert(
@@ -6206,7 +6208,7 @@ describe('checkAlerts', () => {
       // Should NOT rescan 22:00-22:05 where service-b had data but was already checked
       const nextRun = new Date('2023-11-16T22:23:00.000Z');
       const previousMapNextRun = await getPreviousAlertHistories(
-        [details.alert.id],
+        [{ id: details.alert.id, interval: details.alert.interval }],
         nextRun,
       );
 
@@ -8746,7 +8748,7 @@ describe('checkAlerts', () => {
 
       // Act - Run alerts twice to cover two periods
       let previousMap = await getPreviousAlertHistories(
-        [details.alert.id],
+        [{ id: details.alert.id, interval: details.alert.interval }],
         now,
       );
       await processAlert(
@@ -8763,7 +8765,7 @@ describe('checkAlerts', () => {
 
       const nextWindow = new Date('2023-11-16T22:15:00.000Z');
       previousMap = await getPreviousAlertHistories(
-        [details.alert.id],
+        [{ id: details.alert.id, interval: details.alert.interval }],
         nextWindow,
       );
       await processAlert(
@@ -8890,7 +8892,7 @@ describe('checkAlerts', () => {
 
       // Act - Run alerts twice to cover two periods
       let previousMap = await getPreviousAlertHistories(
-        [details.alert.id],
+        [{ id: details.alert.id, interval: details.alert.interval }],
         now,
       );
       await processAlert(
@@ -8907,7 +8909,7 @@ describe('checkAlerts', () => {
 
       const nextWindow = new Date('2023-11-16T22:15:00.000Z');
       previousMap = await getPreviousAlertHistories(
-        [details.alert.id],
+        [{ id: details.alert.id, interval: details.alert.interval }],
         nextWindow,
       );
       await processAlert(
@@ -8969,6 +8971,44 @@ describe('checkAlerts', () => {
       }).save();
     };
 
+    const toLookups = (ids: string[], interval: AlertInterval = '5m') =>
+      ids.map(id => ({ id, interval }));
+
+    it('computes interval-based lookback with a floor and max cap', () => {
+      expect(computeAlertHistoryLookbackMs('1m')).toBe(ms('1h'));
+      expect(computeAlertHistoryLookbackMs('5m')).toBe(ms('1h'));
+      expect(computeAlertHistoryLookbackMs('1h')).toBe(ms('5h'));
+      expect(computeAlertHistoryLookbackMs('1d')).toBe(ms('5d'));
+    });
+
+    it('does not run the wide fallback for alerts with no history at all', async () => {
+      const alertId = new mongoose.Types.ObjectId();
+      const aggregateSpy = jest.spyOn(AlertHistory, 'aggregate');
+
+      const result = await getPreviousAlertHistories(
+        [{ id: alertId.toString(), interval: '1m' }],
+        new Date('2025-01-10T00:00:00Z'),
+      );
+
+      expect(result.get(alertId.toString())).toBeUndefined();
+      expect(aggregateSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to the max lookback when narrow window has no history', async () => {
+      const alertId = new mongoose.Types.ObjectId();
+      const now = new Date('2025-01-10T00:00:00Z');
+      await saveAlert(alertId, new Date('2025-01-07T12:00:00Z'));
+
+      const result = await getPreviousAlertHistories(
+        [{ id: alertId.toString(), interval: '1m' }],
+        now,
+      );
+
+      expect(result.get(alertId.toString())!.createdAt).toEqual(
+        new Date('2025-01-07T12:00:00Z'),
+      );
+    });
+
     it('should return the latest alert history for each alert', async () => {
       const alert1Id = new mongoose.Types.ObjectId();
       await saveAlert(alert1Id, new Date('2025-01-01T00:00:00Z'));
@@ -8979,7 +9019,7 @@ describe('checkAlerts', () => {
       await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z'));
 
       const result = await getPreviousAlertHistories(
-        [alert1Id.toString(), alert2Id.toString()],
+        toLookups([alert1Id.toString(), alert2Id.toString()]),
         new Date('2025-01-01T00:20:00Z'),
       );
 
@@ -9002,7 +9042,7 @@ describe('checkAlerts', () => {
       await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z')); // This one is in the future
 
       const result = await getPreviousAlertHistories(
-        [alert1Id.toString(), alert2Id.toString()],
+        toLookups([alert1Id.toString(), alert2Id.toString()]),
         new Date('2025-01-01T00:14:00Z'),
       );
 
@@ -9023,7 +9063,7 @@ describe('checkAlerts', () => {
       const alert2Id = new mongoose.Types.ObjectId();
 
       const result = await getPreviousAlertHistories(
-        [alert1Id.toString(), alert2Id.toString()],
+        toLookups([alert1Id.toString(), alert2Id.toString()]),
         new Date('2025-01-01T00:20:00Z'),
       );
 
@@ -9044,7 +9084,7 @@ describe('checkAlerts', () => {
       await saveAlert(alert2Id, new Date('2025-01-01T00:15:00Z'));
 
       const result = await getPreviousAlertHistories(
-        [alert1Id.toString()],
+        toLookups([alert1Id.toString()]),
         new Date('2025-01-01T00:20:00Z'),
       );
 
@@ -9074,13 +9114,15 @@ describe('checkAlerts', () => {
         alert2Id.toString(),
       ];
 
+      const allLookups = toLookups(allIds);
+
       const result = await getPreviousAlertHistories(
-        allIds,
+        allLookups,
         new Date('2025-01-01T00:20:00Z'),
       );
 
-      // One aggregation per alert ID (no chunking)
-      expect(aggregateSpy).toHaveBeenCalledTimes(allIds.length);
+      // Alerts with recent history: one narrow query. Alerts with none: one narrow query only.
+      expect(aggregateSpy).toHaveBeenCalledTimes(2 + 150);
       expect(result.size).toBe(2);
       expect(result.get(alert1Id.toString())!.createdAt).toEqual(
         new Date('2025-01-01T00:05:00Z'),

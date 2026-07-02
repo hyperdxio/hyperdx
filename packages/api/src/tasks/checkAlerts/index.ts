@@ -32,7 +32,9 @@ import {
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
+  ALERT_INTERVAL_TO_MINUTES,
   AlertErrorType,
+  AlertInterval,
   AlertThresholdType,
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
@@ -1319,69 +1321,124 @@ export interface AggregatedAlertHistory {
   group?: string;
 }
 
+export type AlertHistoryLookup = {
+  id: string;
+  interval: AlertInterval;
+};
+
+/** Number of check intervals to include in the narrow history lookback window. */
+export const ALERT_HISTORY_LOOKBACK_INTERVAL_MULTIPLIER = 5;
+/** Minimum narrow lookback regardless of alert interval. */
+export const ALERT_HISTORY_LOOKBACK_FLOOR_MS = ms('1h');
+/** Maximum lookback used when falling back from the narrow window. */
+export const ALERT_HISTORY_LOOKBACK_MAX_MS = ms('7d');
+
+export function computeAlertHistoryLookbackMs(interval: AlertInterval): number {
+  const intervalMs = ALERT_INTERVAL_TO_MINUTES[interval] * 60 * 1000;
+  return Math.min(
+    ALERT_HISTORY_LOOKBACK_MAX_MS,
+    Math.max(
+      ALERT_HISTORY_LOOKBACK_FLOOR_MS,
+      intervalMs * ALERT_HISTORY_LOOKBACK_INTERVAL_MULTIPLIER,
+    ),
+  );
+}
+
+async function aggregatePreviousAlertHistoriesForAlert(
+  alertId: mongoose.Types.ObjectId,
+  now: Date,
+  lookbackMs: number,
+): Promise<AggregatedAlertHistory[]> {
+  const lookbackDate = new Date(now.getTime() - lookbackMs);
+
+  return AlertHistory.aggregate<AggregatedAlertHistory>([
+    {
+      $match: {
+        alert: alertId,
+        createdAt: { $lte: now, $gte: lookbackDate },
+      },
+    },
+    // With a single alert value, the compound index {alert: 1, group: 1, createdAt: -1}
+    // delivers results already in this sort order — this is an index-backed no-op sort.
+    {
+      $sort: { alert: 1, group: 1, createdAt: -1 },
+    },
+    // Group by {alert, group}, taking the first (latest) document's fields.
+    // Using $first on individual fields instead of $first: '$$ROOT' allows
+    // DocumentDB to avoid fetching full documents when not needed.
+    {
+      $group: {
+        _id: {
+          alert: '$alert',
+          group: '$group',
+        },
+        createdAt: { $first: '$createdAt' },
+        state: { $first: '$state' },
+      },
+    },
+    {
+      $project: {
+        _id: '$_id.alert',
+        createdAt: 1,
+        state: 1,
+        group: '$_id.group',
+      },
+    },
+  ]);
+}
+
 /**
- * Fetch the most recent AlertHistory value for each of the given alert IDs.
+ * Fetch the most recent AlertHistory value for each of the given alerts.
  * For group-by alerts, returns the latest history for each group within each alert.
  *
  * Uses per-alert queries instead of batched $in to leverage the compound index
- * {alert: 1, group: 1, createdAt: -1} for index-backed sorting. With a single
- * alert value, the index delivers results already sorted by {group, createdAt desc},
- * so the $sort is a no-op and $group + $first can short-circuit per group.
+ * {alert: 1, group: 1, createdAt: -1} for index-backed sorting. The lookback
+ * window is sized from each alert's check interval (with a floor and a 7-day
+ * fallback when the narrow window returns no rows but older history exists).
  *
- * @param alertIds The list of alert IDs to query the latest history for.
+ * @param alerts Alert IDs and intervals to query the latest history for.
  * @param now The current date and time. AlertHistory documents that have a createdAt > now are ignored.
  * @returns A map from Alert IDs (or Alert ID + group) to their most recent AlertHistory.
  *  For non-grouped alerts, the key is just the alert ID.
  *  For grouped alerts, the key is "alertId||group" to track per-group state.
  */
 export const getPreviousAlertHistories = async (
-  alertIds: string[],
+  alerts: AlertHistoryLookup[],
   now: Date,
 ) => {
-  const lookbackDate = new Date(now.getTime() - ms('7d'));
-
   // Use a concurrency-limited queue to avoid overwhelming the connection pool
   // when there are many alerts (e.g., 200+ alert IDs).
   const queue = new PQueue({ concurrency: ALERT_HISTORY_QUERY_CONCURRENCY });
 
   const results = await Promise.all(
-    alertIds.map(alertId =>
+    alerts.map(({ id, interval }) =>
       queue.add(async () => {
-        const id = new mongoose.Types.ObjectId(alertId);
-        return AlertHistory.aggregate<AggregatedAlertHistory>([
-          {
-            $match: {
-              alert: id,
-              createdAt: { $lte: now, $gte: lookbackDate },
-            },
-          },
-          // With a single alert value, the compound index {alert: 1, group: 1, createdAt: -1}
-          // delivers results already in this sort order — this is an index-backed no-op sort.
-          {
-            $sort: { alert: 1, group: 1, createdAt: -1 },
-          },
-          // Group by {alert, group}, taking the first (latest) document's fields.
-          // Using $first on individual fields instead of $first: '$$ROOT' allows
-          // DocumentDB to avoid fetching full documents when not needed.
-          {
-            $group: {
-              _id: {
-                alert: '$alert',
-                group: '$group',
-              },
-              createdAt: { $first: '$createdAt' },
-              state: { $first: '$state' },
-            },
-          },
-          {
-            $project: {
-              _id: '$_id.alert',
-              createdAt: 1,
-              state: 1,
-              group: '$_id.group',
-            },
-          },
-        ]);
+        const alertId = new mongoose.Types.ObjectId(id);
+        const narrowLookbackMs = computeAlertHistoryLookbackMs(interval);
+        let histories = await aggregatePreviousAlertHistoriesForAlert(
+          alertId,
+          now,
+          narrowLookbackMs,
+        );
+
+        if (
+          histories.length === 0 &&
+          narrowLookbackMs < ALERT_HISTORY_LOOKBACK_MAX_MS
+        ) {
+          const hasAnyHistory = await AlertHistory.exists({
+            alert: alertId,
+            createdAt: { $lte: now },
+          });
+          if (hasAnyHistory) {
+            histories = await aggregatePreviousAlertHistoriesForAlert(
+              alertId,
+              now,
+              ALERT_HISTORY_LOOKBACK_MAX_MS,
+            );
+          }
+        }
+
+        return histories;
       }),
     ),
   );
