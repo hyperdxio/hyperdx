@@ -2095,6 +2095,17 @@ describe('renderChartConfig', () => {
         dateRangeEndInclusive: false,
         expected: `(toDate(timestamp) >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toDate(timestamp) <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))AND(timestamp > fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()}))`,
       },
+      {
+        description:
+          'wraps includedDataInterval-expanded bound in toStartOf when PK has toStartOfHour(col) — prevents dropping rows whose hour is before the raw expanded start',
+        timestampValueExpression: 'timestamp, toStartOfHour(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 04:00:00Z'),
+          new Date('2025-02-12 04:20:00Z'),
+        ],
+        includedDataInterval: '5 minute',
+        expected: `(timestamp >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:00:00Z').getTime()}), INTERVAL 5 minute) - INTERVAL 5 minute AND timestamp <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:20:00Z').getTime()}), INTERVAL 5 minute) + INTERVAL 5 minute)AND(toStartOfHour(timestamp) >= toStartOfHour(toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:00:00Z').getTime()}), INTERVAL 5 minute) - INTERVAL 5 minute) AND toStartOfHour(timestamp) <= toStartOfHour(toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:20:00Z').getTime()}), INTERVAL 5 minute) + INTERVAL 5 minute))`,
+      },
     ];
 
     beforeEach(() => {
