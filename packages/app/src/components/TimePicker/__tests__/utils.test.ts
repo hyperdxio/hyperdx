@@ -99,6 +99,18 @@ describe('dateParser', () => {
     const result = dateParser('Jan 16 22:00:01');
     expect(result).toEqual(new Date('2024-01-16T22:00:01'));
   });
+
+  it('parses date with milliseconds (YYYY-MM-DD HH:mm:ss.SSS)', () => {
+    const result = dateParser('2024-01-15 14:37:42.123');
+    expect(result).toEqual(new Date('2024-01-15T14:37:42.123'));
+    expect(result?.getMilliseconds()).toBe(123);
+  });
+
+  it('parses date with milliseconds (MMM d HH:mm:ss.SSS)', () => {
+    const result = dateParser('Jan 10 14:37:42.456');
+    expect(result).toEqual(new Date('2025-01-10T14:37:42.456'));
+    expect(result?.getMilliseconds()).toBe(456);
+  });
 });
 
 describe('parseTimeRangeInput', () => {
@@ -152,5 +164,23 @@ describe('parseTimeRangeInput', () => {
       new Date('2024-01-15T12:00:00'),
       new Date('2024-01-16T12:00:00'),
     ]);
+  });
+
+  it('parses a range with milliseconds correctly', () => {
+    const [start, end] = parseTimeRangeInput(
+      'Jan 10 14:37:42.123 - Jan 10 15:37:42.456',
+    );
+    expect(start).toEqual(new Date('2025-01-10T14:37:42.123'));
+    expect(start?.getMilliseconds()).toBe(123);
+    expect(end).toEqual(new Date('2025-01-10T15:37:42.456'));
+    expect(end?.getMilliseconds()).toBe(456);
+  });
+
+  it('parses a range with YYYY-MM-DD and milliseconds', () => {
+    const [start, end] = parseTimeRangeInput(
+      '2024-01-15 14:37:42.100 - 2024-01-15 15:37:42.999',
+    );
+    expect(start?.getMilliseconds()).toBe(100);
+    expect(end?.getMilliseconds()).toBe(999);
   });
 });

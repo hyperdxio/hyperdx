@@ -142,7 +142,6 @@ export async function runSearchConfig({
     dateRange: [startDate, endDate],
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const chartConfig: ChartConfigWithDateRange = {
     ...searchBase,
     connection: source.connection.toString(),
