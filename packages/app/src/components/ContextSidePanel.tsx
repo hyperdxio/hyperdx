@@ -1,6 +1,7 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import ms from 'ms';
 import { useQueryState } from 'nuqs';
+import { ErrorBoundary } from 'react-error-boundary';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -9,7 +10,7 @@ import {
   isTraceSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Badge, Flex, Group, SegmentedControl } from '@mantine/core';
+import { Flex, Group, ScrollArea, SegmentedControl, Text } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 
 import SearchWhereInput, {
@@ -17,9 +18,15 @@ import SearchWhereInput, {
 } from '@/components/SearchInput/SearchWhereInput';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import { useSource } from '@/source';
-import { formatAttributeClause } from '@/utils';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
+import {
+  extractQuickFilters,
+  FilterLegend,
+  FilterPill,
+  getAvailablePresets,
+  getPresetFilterIds,
+} from './ContextFilterPills';
 import { ROW_DATA_ALIASES } from './DBRowDataPanel';
 import DBRowSidePanel, { RowSidePanelContext } from './DBRowSidePanel';
 import {
@@ -27,15 +34,6 @@ import {
   BreadcrumbPath,
 } from './DBRowSidePanelHeader';
 import { DBSqlRowTable } from './DBRowTable';
-
-enum ContextBy {
-  All = 'all',
-  Custom = 'custom',
-  Host = 'host',
-  Node = 'k8s.node.name',
-  Pod = 'k8s.pod.name',
-  Service = 'service',
-}
 
 interface ContextSubpanelProps {
   source: TSource;
@@ -48,21 +46,14 @@ interface ContextSubpanelProps {
 
 // Custom hook to manage nested panel state
 export function useNestedPanelState(isNested?: boolean) {
-  // Query state (URL-based) for root level
   const queryState = {
     contextRowId: useQueryState('contextRowId', parseAsStringEncoded),
-    // Source IDs are MongoDB ObjectIDs (hex strings) and contain no special
-    // characters, so no encoding is needed here.
     contextRowSource: useQueryState('contextRowSource'),
   };
-
-  // Local state for nested levels
   const localState = {
     contextRowId: useState<string | null>(null),
     contextRowSource: useState<string | null>(null),
   };
-
-  // Choose which state to use based on nesting level
   const activeState = isNested ? localState : queryState;
 
   return {
@@ -86,7 +77,7 @@ export default function ContextSubpanel({
   const { whereLanguage: originalLanguage = 'lucene' } =
     dbSqlRowTableConfig ?? {};
   const [range, setRange] = useState<number>(ms('30s'));
-  const [contextBy, setContextBy] = useState<ContextBy>(ContextBy.All);
+  const [activePreset, setActivePreset] = useState('all');
   const { control } = useForm({
     defaultValues: {
       where: '',
@@ -100,9 +91,7 @@ export default function ContextSubpanel({
   const formWhere = useWatch({ control, name: 'where' });
   const [debouncedWhere] = useDebouncedValue(formWhere, 1000);
 
-  // State management for nested panels
   const isNested = !!breadcrumbPath?.length;
-
   const {
     contextRowId,
     contextRowSource,
@@ -113,7 +102,6 @@ export default function ContextSubpanel({
   const { data: contextRowSidePanelSource } = useSource({
     id: contextRowSource || '',
   });
-
   const [contextAliasWith, setContextAliasWith] = useState<WithClause[]>([]);
 
   const handleContextSidePanelClose = useCallback(() => {
@@ -133,7 +121,6 @@ export default function ContextSubpanel({
   );
 
   const date = useMemo(() => new Date(origTimestamp), [origTimestamp]);
-
   const newDateRange = useMemo(
     (): [Date, Date] => [
       new Date(date.getTime() - range / 2),
@@ -142,88 +129,73 @@ export default function ContextSubpanel({
     [date, range],
   );
 
-  /* Functions to help generate WHERE clause based on
-     which Context the user chooses (All, Host, Node, etc...).
-     Since we support lucene and sql, we need to format the condition 
-     based on the language
-  */
-  const {
-    'k8s.node.name': k8sNodeName,
-    'k8s.pod.name': k8sPodName,
-    'host.name': host,
-    'service.name': service,
-  } = rowData[ROW_DATA_ALIASES.RESOURCE_ATTRIBUTES] ?? {};
+  // Filter state — showCustomSearch is derived, not stored
+  const [selectedFilterIds, setSelectedFilterIds] = useState<string[]>([]);
+  const showCustomSearch = activePreset === 'custom';
 
-  const CONTEXT_MAPPING = useMemo(
-    () =>
-      ({
-        [ContextBy.All]: {
-          field: '',
-          value: '',
-        },
-        [ContextBy.Custom]: {
-          field: '',
-          value: debouncedWhere || '',
-        },
-        [ContextBy.Service]: {
-          field: 'service.name',
-          value: service,
-        },
-        [ContextBy.Host]: {
-          field: 'host.name',
-          value: host,
-        },
-        [ContextBy.Pod]: {
-          field: 'k8s.pod.name',
-          value: k8sPodName,
-        },
-        [ContextBy.Node]: {
-          field: 'k8s.node.name',
-          value: k8sNodeName,
-        },
-      }) as const,
-    [k8sNodeName, k8sPodName, host, service, debouncedWhere],
+  useEffect(() => {
+    setSelectedFilterIds([]);
+    setActivePreset('all');
+  }, [rowId]);
+
+  const availableFilters = useMemo(
+    () => extractQuickFilters(rowData, source),
+    [rowData, source],
   );
 
-  // Main function to generate WHERE clause based on context
-  const getWhereClause = useCallback(
-    (contextBy: ContextBy): string => {
-      const isSql = originalLanguage === 'sql';
-      const mapping = CONTEXT_MAPPING[contextBy];
+  const presetOptions = useMemo(
+    () => getAvailablePresets(availableFilters),
+    [availableFilters],
+  );
 
-      if (contextBy === ContextBy.All) {
-        return mapping.value;
+  const handlePresetChange = useCallback(
+    (preset: string) => {
+      setActivePreset(preset);
+      if (preset === 'custom' || preset === 'all') {
+        setSelectedFilterIds([]);
+        return;
       }
-
-      if (contextBy === ContextBy.Custom) {
-        return mapping.value.trim();
-      }
-
-      const attributeClause = formatAttributeClause(
-        'ResourceAttributes',
-        mapping.field,
-        mapping.value,
-        isSql,
-      );
-      return attributeClause;
+      const ids = getPresetFilterIds(preset, availableFilters);
+      setSelectedFilterIds(ids);
     },
-    [CONTEXT_MAPPING, originalLanguage],
+    [availableFilters],
   );
 
-  function generateSegmentedControlData() {
-    return [
-      { label: 'All', value: ContextBy.All },
-      ...(service ? [{ label: 'Service', value: ContextBy.Service }] : []),
-      ...(host ? [{ label: 'Host', value: ContextBy.Host }] : []),
-      ...(k8sPodName ? [{ label: 'Pod', value: ContextBy.Pod }] : []),
-      ...(k8sNodeName ? [{ label: 'Node', value: ContextBy.Node }] : []),
-      { label: 'Custom', value: ContextBy.Custom },
-    ];
-  }
+  const toggleFilter = useCallback((id: string) => {
+    setSelectedFilterIds(prev =>
+      prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id],
+    );
+    setActivePreset('custom');
+  }, []);
+
+  const getWhereClause = useCallback((): string => {
+    const isSql = originalLanguage === 'sql';
+    const clauses: string[] = [];
+
+    for (const filterId of selectedFilterIds) {
+      const filter = availableFilters.find(f => f.id === filterId);
+      if (filter) {
+        clauses.push(filter.generateWhere(isSql));
+      }
+    }
+
+    if (showCustomSearch && debouncedWhere?.trim()) {
+      clauses.push(debouncedWhere.trim());
+    }
+
+    if (clauses.length === 0) return '';
+    if (clauses.length === 1) return clauses[0];
+    return clauses.map(c => `(${c})`).join(' AND ');
+  }, [
+    originalLanguage,
+    selectedFilterIds,
+    availableFilters,
+    showCustomSearch,
+    debouncedWhere,
+  ]);
 
   const config = useMemo(() => {
-    const whereClause = getWhereClause(contextBy);
-    // missing query info, build config from source with default value
+    const whereClause = getWhereClause();
     if (!dbSqlRowTableConfig)
       return {
         connection: source.connection,
@@ -252,30 +224,22 @@ export default function ContextSubpanel({
     getWhereClause,
     originalLanguage,
     newDateRange,
-    contextBy,
     source,
   ]);
+
+  const displayedPreset =
+    selectedFilterIds.length === 0 && activePreset !== 'custom'
+      ? 'all'
+      : activePreset;
 
   return (
     <>
       {config && (
         <Flex direction="column" mih="0px" style={{ flexGrow: 1 }}>
-          <Group justify="space-between" p="sm">
-            <SegmentedControl
-              size="xs"
-              data={generateSegmentedControlData()}
-              value={contextBy}
-              onChange={v => setContextBy(v as ContextBy)}
-            />
-            {contextBy === ContextBy.Custom && (
-              <SearchWhereInput
-                tableConnection={tcFromSource(source)}
-                control={control}
-                name="where"
-                enableHotkey
-                size="xs"
-              />
-            )}
+          <Group gap="xs" p="sm" pb={4}>
+            <Text size="xs" c="dimmed" fw={500}>
+              ±{ms(range / 2)}
+            </Text>
             <SegmentedControl
               size="xs"
               data={[
@@ -292,18 +256,76 @@ export default function ContextSubpanel({
               onChange={value => setRange(Number(value))}
             />
           </Group>
-          <Group p="sm">
-            <div>
-              {contextBy !== ContextBy.All && (
-                <Badge size="md" variant="default">
-                  {contextBy}:{CONTEXT_MAPPING[contextBy].value}
-                </Badge>
+          <Flex direction="column" px="sm" pb="xs" gap={6}>
+            <Text size="xxs" c="dimmed" fw={600} tt="uppercase">
+              Match on
+            </Text>
+            <SegmentedControl
+              size="xs"
+              data={presetOptions}
+              value={displayedPreset}
+              onChange={handlePresetChange}
+              style={{ width: 'fit-content' }}
+            />
+          </Flex>
+          {showCustomSearch && (
+            <Group px="sm" pb="xs">
+              <SearchWhereInput
+                tableConnection={tcFromSource(source)}
+                control={control}
+                name="where"
+                enableHotkey
+                size="xs"
+              />
+            </Group>
+          )}
+          {availableFilters.length > 0 && (
+            <ErrorBoundary
+              fallbackRender={() => (
+                <Text size="xs" c="dimmed" px="sm">
+                  Unable to load event filters.
+                </Text>
               )}
-              <Badge size="md" variant="default">
-                Time range: ±{ms(range / 2)}
-              </Badge>
-            </div>
-          </Group>
+            >
+              <Flex direction="column" px="sm" pb="xs" gap={4}>
+                <Group justify="space-between">
+                  <Text size="xs">
+                    Matching on{' '}
+                    <Text span fw={700}>
+                      {selectedFilterIds.length}
+                    </Text>{' '}
+                    attributes
+                  </Text>
+                  {selectedFilterIds.length > 0 && (
+                    <Text
+                      size="xs"
+                      c="dimmed"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => {
+                        setSelectedFilterIds([]);
+                        setActivePreset('all');
+                      }}
+                    >
+                      Clear all
+                    </Text>
+                  )}
+                </Group>
+                <ScrollArea mah={180} type="auto" offsetScrollbars>
+                  <Flex gap={5} wrap="wrap">
+                    {availableFilters.map(filter => (
+                      <FilterPill
+                        key={filter.id}
+                        filter={filter}
+                        isSelected={selectedFilterIds.includes(filter.id)}
+                        onToggle={() => toggleFilter(filter.id)}
+                      />
+                    ))}
+                  </Flex>
+                </ScrollArea>
+                <FilterLegend />
+              </Flex>
+            </ErrorBoundary>
+          )}
           <div style={{ height: '100%', overflow: 'auto' }}>
             <DBSqlRowTable
               sourceId={source.id}
