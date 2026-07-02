@@ -79,6 +79,8 @@ function formatExternalSource(source: SourceDocument) {
           return source.toJSON({ getters: true });
         case SourceKind.Session:
           return source.toJSON({ getters: true });
+        case SourceKind.Promql:
+          return source.toJSON({ getters: true });
         default:
           source satisfies never;
           return {};
@@ -272,6 +274,11 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           description: Display name for the source.
  *           example: Logs
+ *         section:
+ *           type: string
+ *           maxLength: 256
+ *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
+ *           example: Billing
  *         kind:
  *           type: string
  *           enum: [log]
@@ -353,6 +360,17 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log.
  *           nullable: true
  *           example: Body
+ *         knownColumnsListExpression:
+ *           type: string
+ *           description: For Distributed table sources whose target tables have non-matching column sets. A list of columns supported across all target tables, used instead of SELECT * when fetching full row data. Leave blank to select all columns.
+ *           nullable: true
+ *           example: Timestamp, Body, ServiceName
+ *         useTextIndexForImplicitColumn:
+ *           type: string
+ *           enum: [auto, enabled, disabled]
+ *           description: Controls whether lucene rendering uses ClickHouse text indices via hasAllTokens() against the implicit column. "auto" detects a covering index at query time, "enabled" forces text index usage, "disabled" forces a LIKE/hasToken fallback.
+ *           nullable: true
+ *           example: auto
  *         highlightedTraceAttributeExpressions:
  *           type: array
  *           description: Expressions defining trace-level attributes which are displayed in the trace view for the selected trace.
@@ -413,6 +431,11 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           description: Display name for the source.
  *           example: Traces
+ *         section:
+ *           type: string
+ *           maxLength: 256
+ *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
+ *           example: Billing
  *         kind:
  *           type: string
  *           enum: [trace]
@@ -520,6 +543,17 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log.
  *           nullable: true
  *           example: SpanName
+ *         knownColumnsListExpression:
+ *           type: string
+ *           description: For Distributed table sources whose target tables have non-matching column sets. A list of columns supported across all target tables, used instead of SELECT * when fetching full row data. Leave blank to select all columns.
+ *           nullable: true
+ *           example: Timestamp, Body, ServiceName
+ *         useTextIndexForImplicitColumn:
+ *           type: string
+ *           enum: [auto, enabled, disabled]
+ *           description: Controls whether lucene rendering uses ClickHouse text indices via hasAllTokens() against the implicit column. "auto" detects a covering index at query time, "enabled" forces text index usage, "disabled" forces a LIKE/hasToken fallback.
+ *           nullable: true
+ *           example: auto
  *         highlightedTraceAttributeExpressions:
  *           type: array
  *           description: Expressions defining trace-level attributes which are displayed in the trace view for the selected trace.
@@ -575,6 +609,11 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           description: Display name for the source.
  *           example: Metrics
+ *         section:
+ *           type: string
+ *           maxLength: 256
+ *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
+ *           example: Billing
  *         kind:
  *           type: string
  *           enum: [metric]
@@ -627,6 +666,11 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           description: Display name for the source.
  *           example: Sessions
+ *         section:
+ *           type: string
+ *           maxLength: 256
+ *           description: Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.
+ *           example: Billing
  *         kind:
  *           type: string
  *           enum: [session]

@@ -1,8 +1,9 @@
-import { ClickhouseClient } from '../clickhouse/node';
-import { Metadata, MetadataCache, parseKeyPath } from '../core/metadata';
-import * as renderChartConfigModule from '../core/renderChartConfig';
-import { isBuilderChartConfig } from '../guards';
-import { BuilderChartConfigWithDateRange, SourceKind, TSource } from '../types';
+import { ClickhouseClient } from '@/clickhouse/node';
+import { Metadata, MetadataCache, parseKeyPath } from '@/core/metadata';
+import * as renderChartConfigModule from '@/core/renderChartConfig';
+import { timeFilterExpr } from '@/core/renderChartConfig';
+import { isBuilderChartConfig } from '@/guards';
+import { BuilderChartConfigWithDateRange, SourceKind, TSource } from '@/types';
 
 // Mock ClickhouseClient
 const mockClickhouseClient = {
@@ -19,6 +20,9 @@ jest.mock('../core/renderChartConfig', () => ({
   renderChartConfig: jest
     .fn()
     .mockResolvedValue({ sql: 'SELECT 1', params: {} }),
+  timeFilterExpr: jest
+    .fn()
+    .mockResolvedValue({ sql: '__TIME_FILTER__', params: {} }),
 }));
 
 const source: TSource = {
@@ -209,6 +213,58 @@ describe('Metadata', () => {
       expect(result!.partition_key).toEqual('column1');
     });
 
+    it('does not set isPointerTable for tables that hold their own data', async () => {
+      const mockTableMetadata = {
+        database: 'test_db',
+        name: 'test_table',
+        engine: 'MergeTree',
+        engine_full: 'MergeTree() ORDER BY id',
+        partition_key: 'column1',
+        sorting_key: 'column2',
+        primary_key: 'column3',
+      };
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [mockTableMetadata],
+        }),
+      });
+
+      const result = await metadata.getTableMetadata({
+        databaseName: 'test_db',
+        tableName: 'test_table',
+        connectionId: 'test_connection',
+      });
+
+      expect(result!.isPointerTable).toBeFalsy();
+    });
+
+    it('sets isPointerTable for a Merge table', async () => {
+      const mockTableMetadata = {
+        database: 'test_db',
+        name: 'merge_table',
+        engine: 'Merge',
+        engine_full: "Merge('test_db', '^events_')",
+        partition_key: '',
+        sorting_key: '',
+        primary_key: '',
+      };
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [mockTableMetadata],
+        }),
+      });
+
+      const result = await metadata.getTableMetadata({
+        databaseName: 'test_db',
+        tableName: 'merge_table',
+        connectionId: 'test_connection',
+      });
+
+      expect(result!.isPointerTable).toBe(true);
+    });
+
     it('should query via cluster() for Distributed table underlying metadata', async () => {
       const distributedMetadata = {
         database: 'test_db',
@@ -302,6 +358,83 @@ describe('Metadata', () => {
 
       // Verify we still get the correct result
       expect(result).toEqual(mockTableMetadata);
+    });
+  });
+
+  describe('isClickHouseCloud', () => {
+    beforeEach(() => {
+      mockCache.getOrFetch.mockImplementation((key, queryFn) => queryFn());
+    });
+
+    it('returns true when SharedMergeTree is registered in system.table_engines', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [{ is_cloud: true }],
+        }),
+      });
+
+      const result = await metadata.isClickHouseCloud({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toBe(true);
+    });
+
+    it('returns false when SharedMergeTree is absent from system.table_engines', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [],
+        }),
+      });
+
+      const result = await metadata.isClickHouseCloud({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toBe(false);
+    });
+
+    it('re-probes after a transient failure instead of caching false', async () => {
+      const realCache = new MetadataCache();
+      const realMetadata = new Metadata(mockClickhouseClient, realCache);
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockRejectedValueOnce(new Error('connection refused'))
+        .mockResolvedValueOnce({
+          json: jest.fn().mockResolvedValue({ data: [{ is_cloud: true }] }),
+        });
+
+      const first = await realMetadata.isClickHouseCloud({
+        connectionId: 'test_connection',
+      });
+      expect(first).toBe(false);
+
+      const second = await realMetadata.isClickHouseCloud({
+        connectionId: 'test_connection',
+      });
+      expect(second).toBe(true);
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2);
+    });
+
+    it('caches a successful negative result and does not re-query', async () => {
+      const realCache = new MetadataCache();
+      const realMetadata = new Metadata(mockClickhouseClient, realCache);
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({ data: [] }),
+      });
+
+      const first = await realMetadata.isClickHouseCloud({
+        connectionId: 'test_connection',
+      });
+      const second = await realMetadata.isClickHouseCloud({
+        connectionId: 'test_connection',
+      });
+
+      expect(first).toBe(false);
+      expect(second).toBe(false);
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -554,6 +687,107 @@ describe('Metadata', () => {
       expect(results).toEqual([]);
       expect(renderChartConfigSpy).not.toHaveBeenCalled();
     });
+
+    it('renders JSON attribute keys as typed subcolumns', async () => {
+      jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
+        Promise.resolve(
+          column === 'ResourceAttributes'
+            ? ({
+                name: 'ResourceAttributes',
+                type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+              } as any)
+            : undefined,
+        ),
+      );
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getKeyValues({
+        chartConfig: mockChartConfig,
+        keys: ["ResourceAttributes['k8s.namespace.name']"],
+        limit: 10,
+        source,
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls[0][0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
+      expect(actualConfig.with?.[0]).toMatchObject({
+        chartConfig: {
+          select:
+            'ResourceAttributes.`k8s`.`namespace`.`name`.:String as param0',
+        },
+      });
+    });
+
+    it('quotes typed-looking bracket JSON keys instead of passing them through', async () => {
+      jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
+        Promise.resolve(
+          column === 'ResourceAttributes'
+            ? ({
+                name: 'ResourceAttributes',
+                type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+              } as any)
+            : undefined,
+        ),
+      );
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getKeyValues({
+        chartConfig: mockChartConfig,
+        keys: ["ResourceAttributes['foo.:String, count() AS injected']"],
+        limit: 10,
+        source,
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls[0][0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
+      expect(actualConfig.with?.[0]).toMatchObject({
+        chartConfig: {
+          select:
+            'ResourceAttributes.`foo`.`:String, count() AS injected`.:String as param0',
+        },
+      });
+    });
+
+    it('keeps map attribute keys in bracket form', async () => {
+      jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
+        Promise.resolve(
+          column === 'LogAttributes'
+            ? ({
+                name: 'LogAttributes',
+                type: 'Map(LowCardinality(String), String)',
+              } as any)
+            : undefined,
+        ),
+      );
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getKeyValues({
+        chartConfig: mockChartConfig,
+        keys: ["LogAttributes['k8s.namespace.name']"],
+        limit: 10,
+        source,
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls[0][0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
+      expect(actualConfig.with?.[0]).toMatchObject({
+        chartConfig: {
+          select: "LogAttributes['k8s.namespace.name'] as param0",
+        },
+      });
+    });
   });
 
   describe('getValuesDistribution', () => {
@@ -696,11 +930,421 @@ describe('Metadata', () => {
         condition: "ServiceName IN ('clickhouse')",
       });
     });
+
+    it('renders JSON distribution keys as typed subcolumns', async () => {
+      jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
+        Promise.resolve(
+          column === 'ResourceAttributes'
+            ? ({
+                name: 'ResourceAttributes',
+                type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+              } as any)
+            : undefined,
+        ),
+      );
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getValuesDistribution({
+        chartConfig: mockChartConfig,
+        key: 'ResourceAttributes.k8s.namespace.name',
+        source,
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls[0][0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
+      expect(actualConfig.select).toBe(
+        'ResourceAttributes.`k8s`.`namespace`.`name`.:String AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
+      );
+      expect(actualConfig.groupBy).toBe('__hdx_value');
+    });
+
+    it('normalizes typed dot-form JSON distribution keys safely', async () => {
+      jest.spyOn(metadata, 'getColumn').mockImplementation(({ column }) =>
+        Promise.resolve(
+          column === 'ResourceAttributes'
+            ? ({
+                name: 'ResourceAttributes',
+                type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+              } as any)
+            : undefined,
+        ),
+      );
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getValuesDistribution({
+        chartConfig: mockChartConfig,
+        key: 'ResourceAttributes.k8s.namespace.name.:String',
+        source,
+      });
+
+      const actualConfig = renderChartConfigSpy.mock.calls[0][0];
+      if (!isBuilderChartConfig(actualConfig))
+        throw new Error('Expected builder config');
+      expect(actualConfig.select).toBe(
+        'ResourceAttributes.`k8s`.`namespace`.`name`.:String AS __hdx_value, count() as __hdx_count, __hdx_count / (sum(__hdx_count) OVER ()) * 100 AS __hdx_percentage',
+      );
+    });
+  });
+
+  describe('getMapKeys', () => {
+    // Fresh real cache so cache-key assertions are meaningful per test
+    const buildMetadata = () => {
+      const realCache = new (
+        jest.requireActual('../core/metadata') as any
+      ).MetadataCache();
+      return new Metadata(mockClickhouseClient, realCache);
+    };
+
+    const lowCardinalityMapColumn = {
+      name: 'LogAttributes',
+      type: 'Map(LowCardinality(String), String)',
+      default_type: '',
+      default_expression: '',
+      comment: '',
+      codec_expression: '',
+      ttl_expression: '',
+    };
+
+    beforeEach(() => {
+      // Full reset (not just clear) so leftover mockResolvedValueOnce chains
+      // from prior tests don't leak in and starve our own assertions.
+      (mockClickhouseClient.query as jest.Mock).mockReset();
+      (timeFilterExpr as jest.Mock).mockClear();
+      (timeFilterExpr as jest.Mock).mockResolvedValue({
+        sql: '__TIME_FILTER__',
+        params: {},
+      });
+    });
+
+    it('emits a sampledKeys SQL with no time-filter or source-filter clause when neither is provided', async () => {
+      const md = buildMetadata();
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          // DESCRIBE TABLE
+          json: () => Promise.resolve({ data: [lowCardinalityMapColumn] }),
+        })
+        .mockResolvedValueOnce({
+          // sampledKeys query
+          json: () => Promise.resolve({ data: [] }),
+        });
+
+      await md.getMapKeys({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+      });
+
+      expect(timeFilterExpr).not.toHaveBeenCalled();
+
+      // Find the sampledKeys query (the second call, after DESCRIBE)
+      const sampledKeysCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[1][0];
+      expect(sampledKeysCall.query).not.toContain('WHERE');
+      expect(sampledKeysCall.query).not.toContain('__TIME_FILTER__');
+    });
+
+    it('injects the time filter into the sampledKeys WHERE clause when dateRange and timestampValueExpression are provided', async () => {
+      const md = buildMetadata();
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [lowCardinalityMapColumn] }),
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [] }),
+        });
+
+      const dateRange: [Date, Date] = [
+        new Date('2026-05-11T16:00:00Z'),
+        new Date('2026-05-11T17:00:00Z'),
+      ];
+
+      await md.getMapKeys({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+        dateRange,
+        timestampValueExpression: 'EventTime, EventDate',
+      });
+
+      expect(timeFilterExpr).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: 'conn-1',
+          databaseName: 'otel',
+          tableName: 'generic_logs',
+          dateRange,
+          timestampValueExpression: 'EventTime, EventDate',
+        }),
+      );
+
+      const sampledKeysCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[1][0];
+      expect(sampledKeysCall.query).toContain('WHERE');
+      expect(sampledKeysCall.query).toContain('__TIME_FILTER__');
+    });
+
+    it('caches keys distinctly for different dateRange values', async () => {
+      const md = buildMetadata();
+
+      // DESCRIBE runs once (getColumns is internally cached on the same md);
+      // sampledKeys runs twice with different cache keys due to dateRange suffix.
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [lowCardinalityMapColumn] }),
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ key: 'a' }] }),
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ key: 'b' }] }),
+        });
+
+      const baseArgs = {
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+        timestampValueExpression: 'EventTime, EventDate',
+      };
+
+      const keysA = await md.getMapKeys({
+        ...baseArgs,
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+      const keysB = await md.getMapKeys({
+        ...baseArgs,
+        dateRange: [
+          new Date('2026-05-11T18:00:00Z'),
+          new Date('2026-05-11T19:00:00Z'),
+        ],
+      });
+
+      // Distinct cache entries => distinct fetched results, not a single shared cached value
+      expect(keysA).toEqual(['a']);
+      expect(keysB).toEqual(['b']);
+    });
+  });
+
+  describe('getMapValues', () => {
+    const buildMetadata = () => {
+      const realCache = new (
+        jest.requireActual('../core/metadata') as any
+      ).MetadataCache();
+      return new Metadata(mockClickhouseClient, realCache);
+    };
+
+    beforeEach(() => {
+      (mockClickhouseClient.query as jest.Mock).mockReset();
+      (timeFilterExpr as jest.Mock).mockClear();
+      (timeFilterExpr as jest.Mock).mockResolvedValue({
+        sql: '__TIME_FILTER__',
+        params: {},
+      });
+    });
+
+    it("emits only the existing value != '' predicate when dateRange not provided", async () => {
+      const md = buildMetadata();
+      jest.spyOn(md, 'getColumn').mockResolvedValue({
+        name: 'LogAttributes',
+        type: 'Map(LowCardinality(String), String)',
+      } as any);
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () => Promise.resolve({ data: [] }),
+      });
+
+      await md.getMapValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        key: 'service.name',
+        connectionId: 'conn-1',
+      });
+
+      expect(timeFilterExpr).not.toHaveBeenCalled();
+
+      const valuesCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[0][0];
+      expect(valuesCall.query).toContain("value != ''");
+      expect(valuesCall.query).not.toContain('__TIME_FILTER__');
+    });
+
+    it('injects the time filter clause when dateRange and timestampValueExpression are provided', async () => {
+      const md = buildMetadata();
+      jest.spyOn(md, 'getColumn').mockResolvedValue({
+        name: 'LogAttributes',
+        type: 'Map(LowCardinality(String), String)',
+      } as any);
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () => Promise.resolve({ data: [] }),
+      });
+
+      const dateRange: [Date, Date] = [
+        new Date('2026-05-11T16:00:00Z'),
+        new Date('2026-05-11T17:00:00Z'),
+      ];
+
+      await md.getMapValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        key: 'service.name',
+        connectionId: 'conn-1',
+        dateRange,
+        timestampValueExpression: 'EventTime, EventDate',
+      });
+
+      expect(timeFilterExpr).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: 'conn-1',
+          databaseName: 'otel',
+          tableName: 'generic_logs',
+          dateRange,
+          timestampValueExpression: 'EventTime, EventDate',
+        }),
+      );
+
+      const valuesCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[0][0];
+      expect(valuesCall.query).toContain("value != ''");
+      expect(valuesCall.query).toContain('__TIME_FILTER__');
+    });
+
+    it('uses typed JSON subcolumns for JSON attribute values', async () => {
+      const md = buildMetadata();
+      jest.spyOn(md, 'getColumn').mockResolvedValue({
+        name: 'ResourceAttributes',
+        type: 'JSON(max_dynamic_types=8, max_dynamic_paths=64)',
+      } as any);
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () => Promise.resolve({ data: [] }),
+      });
+
+      await md.getMapValues({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'ResourceAttributes',
+        key: 'k8s.namespace.name',
+        connectionId: 'conn-1',
+      });
+
+      const valuesCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[0][0];
+      expect(valuesCall.query).toContain(
+        'ResourceAttributes.`k8s`.`namespace`.`name`.:String as value',
+      );
+      expect(valuesCall.query).not.toContain('ResourceAttributes[');
+    });
+
+    it('caches values distinctly for different dateRange values', async () => {
+      const md = buildMetadata();
+      jest.spyOn(md, 'getColumn').mockResolvedValue({
+        name: 'LogAttributes',
+        type: 'Map(LowCardinality(String), String)',
+      } as any);
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ value: 'morning' }] }),
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ value: 'afternoon' }] }),
+        });
+
+      const baseArgs = {
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        key: 'service.name',
+        connectionId: 'conn-1',
+        timestampValueExpression: 'EventTime, EventDate',
+      };
+
+      const valuesA = await md.getMapValues({
+        ...baseArgs,
+        dateRange: [
+          new Date('2026-05-11T16:00:00Z'),
+          new Date('2026-05-11T17:00:00Z'),
+        ],
+      });
+      const valuesB = await md.getMapValues({
+        ...baseArgs,
+        dateRange: [
+          new Date('2026-05-11T18:00:00Z'),
+          new Date('2026-05-11T19:00:00Z'),
+        ],
+      });
+
+      expect(valuesA).toEqual(['morning']);
+      expect(valuesB).toEqual(['afternoon']);
+    });
   });
 
   describe('getAllFields', () => {
     beforeEach(() => {
       jest.clearAllMocks();
+    });
+
+    it('threads dateRange and timestampValueExpression through to getMapKeys', async () => {
+      const realCache = new (
+        jest.requireActual('../core/metadata') as any
+      ).MetadataCache();
+      const md = new Metadata(mockClickhouseClient, realCache);
+      const getMapKeysSpy = jest
+        .spyOn(md, 'getMapKeys')
+        .mockResolvedValue(['http.method']);
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            data: [
+              {
+                name: 'LogAttributes',
+                type: 'Map(LowCardinality(String), String)',
+                default_type: '',
+                default_expression: '',
+                comment: '',
+                codec_expression: '',
+                ttl_expression: '',
+              },
+            ],
+          }),
+      });
+
+      const dateRange: [Date, Date] = [
+        new Date('2026-05-11T16:00:00Z'),
+        new Date('2026-05-11T17:00:00Z'),
+      ];
+
+      await md.getAllFields({
+        databaseName: 'otel',
+        tableName: 'otel_logs',
+        connectionId: 'conn-1',
+        dateRange,
+        timestampValueExpression: 'EventTime, EventDate',
+      });
+
+      expect(getMapKeysSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dateRange,
+          timestampValueExpression: 'EventTime, EventDate',
+        }),
+      );
     });
 
     it('should extract LowCardinality(String) type for Map sub-fields when value type is LowCardinality', async () => {
@@ -1156,5 +1800,219 @@ describe('parseKeyPath', () => {
     expect(parseKeyPath("ResourceAttributes['service.name")).toEqual([
       "ResourceAttributes['service.name",
     ]);
+  });
+});
+
+describe('parametric aggregate arguments are inlined as literals', () => {
+  const buildMetadata = () => {
+    const realCache = new (
+      jest.requireActual('../core/metadata') as any
+    ).MetadataCache();
+    return new Metadata(mockClickhouseClient, realCache);
+  };
+
+  beforeEach(() => {
+    (mockClickhouseClient.query as jest.Mock).mockReset();
+  });
+
+  it('emits groupUniqArray(N)(Value) with a literal N — not a CAST-wrapped query parameter', async () => {
+    const md = buildMetadata();
+
+    (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+      json: () => Promise.resolve({ data: [] }),
+    });
+
+    await md.getAllFieldsAndValues({
+      databaseName: 'default',
+      tableName: 'otel_logs',
+      connectionId: 'conn-1',
+      metadataMVs: {
+        keyRollupTable: 'otel_logs_key_rollup_15m',
+        kvRollupTable: 'otel_logs_kv_rollup_15m',
+        granularity: '15 minute',
+      },
+      dateRange: [
+        new Date('2026-05-11T16:00:00Z'),
+        new Date('2026-05-11T17:00:00Z'),
+      ],
+      maxValuesPerKey: 20,
+    });
+
+    const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+    expect(call.query).toContain('groupUniqArray(20)(Value)');
+    expect(call.query).not.toMatch(
+      /groupUniqArray\(\{[^}]+:Int32\}\)\(Value\)/,
+    );
+    expect(Object.values(call.query_params)).not.toContain(20);
+  });
+
+  it('emits groupUniqArrayArray(N)(keys) with a literal N in the sampledKeys query', async () => {
+    const md = buildMetadata();
+
+    (mockClickhouseClient.query as jest.Mock)
+      .mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            data: [
+              {
+                name: 'LogAttributes',
+                type: 'Map(String, String)',
+                default_type: '',
+                default_expression: '',
+                comment: '',
+                codec_expression: '',
+                ttl_expression: '',
+              },
+            ],
+          }),
+      })
+      .mockResolvedValueOnce({
+        json: () => Promise.resolve({ data: [{ keysArr: [] }] }),
+      });
+
+    await md.getMapKeys({
+      databaseName: 'otel',
+      tableName: 'generic_logs',
+      column: 'LogAttributes',
+      connectionId: 'conn-1',
+      maxKeys: 500,
+    });
+
+    const sampledKeysCall = (mockClickhouseClient.query as jest.Mock).mock
+      .calls[1][0];
+    expect(sampledKeysCall.query).toContain('groupUniqArrayArray(500)(keys)');
+    expect(sampledKeysCall.query).not.toMatch(
+      /groupUniqArrayArray\(\{[^}]+:Int32\}\)\(keys\)/,
+    );
+  });
+
+  describe('rejects bad values supplied for the parametric aggregate N argument', () => {
+    const badValues: Array<[string, unknown]> = [
+      ['null', null],
+      ['string', '20'],
+      ['NaN', Number.NaN],
+      ['object', {}],
+      ['boolean', true],
+      ['negative integer', -1],
+      ['float', 1.5],
+      ['Infinity', Number.POSITIVE_INFINITY],
+    ];
+
+    it.each(badValues)(
+      'getAllFieldsAndValues throws when maxValuesPerKey is %s and never queries ClickHouse',
+      async (_label, badValue) => {
+        const md = buildMetadata();
+
+        await expect(
+          md.getAllFieldsAndValues({
+            databaseName: 'default',
+            tableName: 'otel_logs',
+            connectionId: 'conn-1',
+            metadataMVs: {
+              keyRollupTable: 'otel_logs_key_rollup_15m',
+              kvRollupTable: 'otel_logs_kv_rollup_15m',
+              granularity: '15 minute',
+            },
+            dateRange: [
+              new Date('2026-05-11T16:00:00Z'),
+              new Date('2026-05-11T17:00:00Z'),
+            ],
+            maxValuesPerKey: badValue as number,
+          }),
+        ).rejects.toThrow(/maxValuesPerKey must be a non-negative integer/);
+
+        expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(badValues)(
+      'getMapKeys throws when maxKeys is %s and never runs the sampledKeys query',
+      async (_label, badValue) => {
+        const md = buildMetadata();
+
+        (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+          json: () =>
+            Promise.resolve({
+              data: [
+                {
+                  name: 'LogAttributes',
+                  type: 'Map(String, String)',
+                  default_type: '',
+                  default_expression: '',
+                  comment: '',
+                  codec_expression: '',
+                  ttl_expression: '',
+                },
+              ],
+            }),
+        });
+
+        await expect(
+          md.getMapKeys({
+            databaseName: 'otel',
+            tableName: 'generic_logs',
+            column: 'LogAttributes',
+            connectionId: 'conn-1',
+            maxKeys: badValue as number,
+          }),
+        ).rejects.toThrow(/maxKeys must be a non-negative integer/);
+
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+        const onlyCall = (mockClickhouseClient.query as jest.Mock).mock
+          .calls[0][0];
+        expect(onlyCall.query).not.toContain('groupUniqArrayArray');
+      },
+    );
+
+    it('error message includes the offending value for easy debugging', async () => {
+      const md = buildMetadata();
+
+      await expect(
+        md.getAllFieldsAndValues({
+          databaseName: 'default',
+          tableName: 'otel_logs',
+          connectionId: 'conn-1',
+          metadataMVs: {
+            keyRollupTable: 'otel_logs_key_rollup_15m',
+            kvRollupTable: 'otel_logs_kv_rollup_15m',
+            granularity: '15 minute',
+          },
+          dateRange: [
+            new Date('2026-05-11T16:00:00Z'),
+            new Date('2026-05-11T17:00:00Z'),
+          ],
+          maxValuesPerKey: 'oops' as unknown as number,
+        }),
+      ).rejects.toThrow('got: oops');
+    });
+
+    it('accepts the valid boundary case maxValuesPerKey=0 (degenerate but well-formed)', async () => {
+      const md = buildMetadata();
+
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
+        json: () => Promise.resolve({ data: [] }),
+      });
+
+      await expect(
+        md.getAllFieldsAndValues({
+          databaseName: 'default',
+          tableName: 'otel_logs',
+          connectionId: 'conn-1',
+          metadataMVs: {
+            keyRollupTable: 'otel_logs_key_rollup_15m',
+            kvRollupTable: 'otel_logs_kv_rollup_15m',
+            granularity: '15 minute',
+          },
+          dateRange: [
+            new Date('2026-05-11T16:00:00Z'),
+            new Date('2026-05-11T17:00:00Z'),
+          ],
+          maxValuesPerKey: 0,
+        }),
+      ).resolves.toEqual([]);
+
+      const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+      expect(call.query).toContain('groupUniqArray(0)(Value)');
+    });
   });
 });

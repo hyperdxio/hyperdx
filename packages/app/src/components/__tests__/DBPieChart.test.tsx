@@ -1,12 +1,11 @@
 import { screen } from '@testing-library/react';
 
+import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
+import { DBPieChart } from '@/components/DBPieChart';
+import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
-
-import DateRangeIndicator from '../charts/DateRangeIndicator';
-import { DBPieChart } from '../DBPieChart';
-import MVOptimizationIndicator from '../MaterializedViews/MVOptimizationIndicator';
 
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
@@ -22,7 +21,7 @@ jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
 
 jest.mock('@/source', () => ({
   useSource: jest.fn().mockReturnValue({ data: null }),
-  useResolvedNumberFormat: jest.fn().mockReturnValue(undefined),
+  useSingleSeriesNumberFormat: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>

@@ -8,17 +8,16 @@ import { screen, waitFor } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { TimelineChart } from '@/components/TimelineChart';
-import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
-import useRowWhere from '@/hooks/useRowWhere';
-
-import { RowSidePanelContext } from '../DBRowSidePanel';
+import { RowSidePanelContext } from '@/components/DBRowSidePanel';
 import {
   DBTraceWaterfallChartContainer,
   getDescendantIds,
   SpanRow,
   useEventsAroundFocus,
-} from '../DBTraceWaterfallChart';
+} from '@/components/DBTraceWaterfallChart';
+import { TimelineChart } from '@/components/TimelineChart';
+import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import useRowWhere from '@/hooks/useRowWhere';
 
 // Mock setup
 jest.mock('@/components/TimelineChart', () => {
@@ -56,7 +55,14 @@ jest.mock('@/components/TimelineChart', () => {
     );
   };
   mockComponent.latestProps = {};
-  return { TimelineChart: mockComponent };
+
+  const MockTimelineMinimap = function MockTimelineMinimap(props: any) {
+    MockTimelineMinimap.latestProps = props;
+    return <div data-testid="timeline-minimap">TimelineMinimap</div>;
+  };
+  MockTimelineMinimap.latestProps = {};
+
+  return { TimelineChart: mockComponent, TimelineMinimap: MockTimelineMinimap };
 });
 
 jest.mock('@/hooks/useOffsetPaginatedQuery');

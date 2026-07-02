@@ -50,14 +50,11 @@ import {
 
 import { IS_CLICKHOUSE_BUILD } from '@/config';
 import {
-  useAllFields,
   useColumns,
-  useGetKeyValues,
   useGetValuesDistribution,
   useJsonColumns,
   useTableMetadata,
 } from '@/hooks/useMetadata';
-import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
 import { usePinnedFiltersApi } from '@/pinnedFilters';
 import {
@@ -66,25 +63,24 @@ import {
   usePinnedFilters,
 } from '@/searchFilters';
 import { useSource } from '@/source';
-import { mergePath, useLocalStorage } from '@/utils';
+import { useLocalStorage } from '@/utils';
 
 import { FilterSettingsPanel } from './DBSearchPageFilters/FilterSettingsPopover';
+import { useFetchFacets } from './DBSearchPageFilters/hooks';
 import { NestedFilterGroup } from './DBSearchPageFilters/NestedFilterGroup';
 import {
   PinShareIndicator,
   PinShareMenu,
 } from './DBSearchPageFilters/PinShareMenu';
 import { SharedFiltersSection } from './DBSearchPageFilters/SharedFilters';
-import { groupFacetsByBaseName } from './DBSearchPageFilters/utils';
+import {
+  getFilterStateEntry,
+  groupFacetsByBaseName,
+  toQuotedClickHouseKeyExpression,
+} from './DBSearchPageFilters/utils';
 
-import resizeStyles from '../../styles/ResizablePanel.module.scss';
-import classes from '../../styles/SearchPage.module.scss';
-
-/* The initial number of values per filter to load */
-const INITIAL_LOAD_LIMIT = 20;
-
-/* The maximum number of values per filter to load when "Load More" is clicked */
-const LOAD_MORE_LOAD_LIMIT = 10000;
+import resizeStyles from '@styles/ResizablePanel.module.scss';
+import classes from '@styles/SearchPage.module.scss';
 
 /* The initial number of values per filter to render */
 const INITIAL_MAX_VALUES_DISPLAYED = 10;
@@ -108,7 +104,7 @@ export function cleanedFacetName(key: string): string {
 }
 
 /** Value-level pin callbacks and state (personal + shared). */
-export type ValuePinHandlers = {
+type ValuePinHandlers = {
   onPinClick: (value: string | boolean) => void;
   isPinned: (value: string | boolean) => boolean;
   onSharedPinClick?: (value: string | boolean) => void;
@@ -116,7 +112,7 @@ export type ValuePinHandlers = {
 };
 
 /** Field/group-level pin callbacks and state (personal + shared). */
-export type FieldPinHandlers = {
+type FieldPinHandlers = {
   onFieldPinClick?: VoidFunction;
   isFieldPinned?: boolean;
   onToggleSharedFieldPin?: VoidFunction;
@@ -169,9 +165,14 @@ const TextButton = ({
 type FilterPercentageProps = {
   percentage: number;
   isLoading?: boolean;
+  'data-testid'?: string;
 };
 
-const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
+const FilterPercentage = ({
+  percentage,
+  isLoading,
+  'data-testid': dataTestId,
+}: FilterPercentageProps) => {
   const formattedPercentage =
     percentage < 1
       ? `<1%`
@@ -180,7 +181,11 @@ const FilterPercentage = ({ percentage, isLoading }: FilterPercentageProps) => {
         : `~${Math.round(percentage)}%`;
 
   return (
-    <Text size="xs" className={isLoading ? 'effect-pulse' : ''}>
+    <Text
+      size="xs"
+      className={isLoading ? 'effect-pulse' : ''}
+      data-testid={dataTestId}
+    >
       {formattedPercentage}
     </Text>
   );
@@ -263,6 +268,7 @@ const FilterCheckbox = ({
               <FilterPercentage
                 percentage={percentage}
                 isLoading={isPercentageLoading}
+                data-testid={`filter-distribution-${columnName}-${label}`}
               />
             )}
           </Group>
@@ -1119,26 +1125,21 @@ const DBSearchPageFiltersComponent = ({
     'hdx-shared-filters-expanded',
     true,
   );
+  const [showAllValues, setShowAllValues] = useLocalStorage(
+    'hdx-show-all-filter-values',
+    true,
+  );
   const { size, startResize } = useResizable(16, 'left');
 
-  const { data: jsonColumns } = useJsonColumns({
-    databaseName: chartConfig.from.databaseName,
-    tableName: chartConfig.from.tableName,
-    connectionId: chartConfig.connection,
-  });
   const { data: source } = useSource({ id: sourceId });
   const sourceTableConnection = tcFromSource(source);
-  const { data, isLoading, error } = useAllFields(
-    {
-      databaseName: chartConfig.from.databaseName,
-      tableName: chartConfig.from.tableName,
-      connectionId: chartConfig.connection,
-      metadataMVs: sourceTableConnection.metadataMVs,
-    },
-    {
-      dateRange: chartConfig.dateRange,
-    },
+  const { data: jsonColumns } = useJsonColumns(sourceTableConnection);
+
+  // Special case for live tail
+  const [dateRange, setDateRange] = useState<[Date, Date]>(
+    chartConfig.dateRange,
   );
+
   const { data: columns } = useColumns({
     databaseName: chartConfig.from.databaseName,
     tableName: chartConfig.from.tableName,
@@ -1146,6 +1147,41 @@ const DBSearchPageFiltersComponent = ({
   });
 
   const { data: tableMetadata } = useTableMetadata(sourceTableConnection);
+
+  useEffect(() => {
+    if (!isLive) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDateRange(chartConfig.dateRange);
+    }
+  }, [chartConfig.dateRange, isLive]);
+
+  const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
+
+  // Conditionally backtick-quote facet keys that contain special characters and
+  // match known column names, so they can be used in the ClickHouse query to get
+  // key values.
+  const knownColumns = useMemo(
+    () => (columns ? new Set(columns.map(c => c.name)) : new Set<string>()),
+    [columns],
+  );
+
+  const [showMoreFields, setShowMoreFields] = useState(false);
+  const {
+    data: facets,
+    isLoading: isFacetsLoading,
+    isFetching: isFacetsFetching,
+    error,
+    loadMoreFacetsForKey,
+    loadMoreLoadingKeys,
+    extraFacetKeys,
+  } = useFetchFacets({
+    chartConfig,
+    sourceId: sourceId ?? null,
+    dateRange,
+    mode: showAllValues ? 'all' : 'exact',
+    filterState,
+    showMoreFields,
+  });
 
   useEffect(() => {
     if (error) {
@@ -1157,84 +1193,6 @@ const DBSearchPageFiltersComponent = ({
       });
     }
   }, [error]);
-
-  const [showMoreFields, setShowMoreFields] = useState(false);
-
-  const keysToFetch = useMemo(() => {
-    if (!data) {
-      return [];
-    }
-
-    const strings = data
-      .sort((a, b) => {
-        // First show low cardinality fields
-        const isLowCardinality = (type: string) =>
-          type.includes('LowCardinality');
-        return isLowCardinality(a.type) && !isLowCardinality(b.type) ? -1 : 1;
-      })
-      .filter(
-        field => field.jsType && ['string'].includes(field.jsType),
-        // todo: add number type with sliders :D
-      )
-      .map(({ path, type }) => {
-        return {
-          type,
-          path: mergePath(path, jsonColumns ?? []),
-          isMapSubField: path.length > 1,
-        };
-      })
-      .filter(
-        field =>
-          showMoreFields ||
-          field.type.includes('LowCardinality') || // query only low cardinality fields by default
-          field.isMapSubField || // always include Map/JSON sub-fields (e.g. LogAttributes, ResourceAttributes keys)
-          Object.keys(filterState).includes(field.path) || // keep selected fields
-          isFieldPinned(field.path) || // keep personally pinned fields
-          isSharedFieldPinned(field.path), // keep team-shared fields
-      )
-      .map(({ path }) => path)
-      .filter(
-        path =>
-          !['body', 'timestamp', '_hdx_body'].includes(path.toLowerCase()),
-      );
-    return strings;
-  }, [
-    data,
-    jsonColumns,
-    filterState,
-    showMoreFields,
-    isFieldPinned,
-    isSharedFieldPinned,
-  ]);
-
-  // Special case for live tail
-  const [dateRange, setDateRange] = useState<[Date, Date]>(
-    chartConfig.dateRange,
-  );
-
-  useEffect(() => {
-    if (!isLive) {
-      setDateRange(chartConfig.dateRange);
-      setExtraFacets({});
-    }
-  }, [chartConfig.dateRange, isLive]);
-
-  // Clear extra facets (from "load more") when switching sources
-  useEffect(() => {
-    setExtraFacets({});
-  }, [sourceId]);
-
-  const showRefreshButton = isLive && dateRange !== chartConfig.dateRange;
-
-  const {
-    data: facets,
-    isLoading: isFacetsLoading,
-    isFetching: isFacetsFetching,
-  } = useGetKeyValues({
-    chartConfig: { ...chartConfig, dateRange },
-    limit: INITIAL_LOAD_LIMIT,
-    keys: keysToFetch,
-  });
 
   // Merge pinned filter values into the queried facets, so that pinned values are always available
   const facetsWithPinnedValues = useMemo(() => {
@@ -1256,45 +1214,6 @@ const DBSearchPageFiltersComponent = ({
       return { key, value: Array.from(mergedValues) };
     });
   }, [facets, pinnedFilters, getPinnedFields]);
-
-  const metadata = useMetadataWithSettings();
-  const [extraFacets, setExtraFacets] = useState<Record<string, string[]>>({});
-  const [loadMoreLoadingKeys, setLoadMoreLoadingKeys] = useState<Set<string>>(
-    new Set(),
-  );
-  const loadMoreFilterValuesForKey = useCallback(
-    async (key: string) => {
-      setLoadMoreLoadingKeys(prev => new Set(prev).add(key));
-      try {
-        const newKeyVals = await metadata.getKeyValuesWithMVs({
-          chartConfig: {
-            ...chartConfig,
-            dateRange,
-          },
-          keys: [key],
-          limit: LOAD_MORE_LOAD_LIMIT,
-          disableRowLimit: true,
-          source,
-        });
-        const newValues = newKeyVals[0].value?.map(val => val.toString()) ?? [];
-        if (newValues.length > 0) {
-          setExtraFacets(prev => ({
-            ...prev,
-            [key]: [...(prev[key] || []), ...newValues],
-          }));
-        }
-      } catch (error) {
-        console.error('failed to fetch more keys', error);
-      } finally {
-        setLoadMoreLoadingKeys(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(key);
-          return newSet;
-        });
-      }
-    },
-    [chartConfig, setExtraFacets, dateRange, metadata, source],
-  );
 
   // Build the set of team-pinned fields for the Shared Filters section,
   // so we can avoid duplicating them in the regular Filters list below.
@@ -1332,24 +1251,9 @@ const DBSearchPageFiltersComponent = ({
         merged = [...dynamicValues];
       }
 
-      // Merge in extra values loaded via "Load more"
-      const extraValues = extraFacets[key];
-      if (extraValues && extraValues.length > 0) {
-        for (const v of extraValues) {
-          if (!merged.includes(v)) {
-            merged.push(v);
-          }
-        }
-      }
-
       return { key, value: merged };
     });
-  }, [
-    sharedFilterKeys,
-    facetsWithPinnedValues,
-    pinnedFiltersApiData,
-    extraFacets,
-  ]);
+  }, [sharedFilterKeys, facetsWithPinnedValues, pinnedFiltersApiData]);
 
   const shownFacets = useMemo(() => {
     const _facets: { key: string; value: (string | boolean)[] }[] = [];
@@ -1370,21 +1274,7 @@ const DBSearchPageFiltersComponent = ({
         filter && (filter.included.size > 0 || filter.excluded.size > 0);
       const isPinned = isFieldPinned(facet.key);
       if (facet.value?.length > 0 || hasSelectedValues || isPinned) {
-        const extraValues = extraFacets[facet.key];
-        if (extraValues && extraValues.length > 0) {
-          const allValues = facet.value.slice();
-          for (const extraValue of extraValues) {
-            if (!allValues.includes(extraValue)) {
-              allValues.push(extraValue);
-            }
-          }
-          _facets.push({
-            key: facet.key,
-            value: allValues,
-          });
-        } else {
-          _facets.push(facet);
-        }
+        _facets.push(facet);
       }
     }
     // get remaining filterState that are not in _facets
@@ -1441,7 +1331,6 @@ const DBSearchPageFiltersComponent = ({
     facetsWithPinnedValues,
     filterState,
     tableMetadata,
-    extraFacets,
     isFieldPinned,
     isSharedFieldPinned,
     jsonColumns,
@@ -1556,9 +1445,21 @@ const DBSearchPageFiltersComponent = ({
               key={`${keyPrefix}${group.key}`}
               data-testid={`${keyPrefix}nested-filter-group-${group.key}`}
               name={group.key}
-              childFilters={group.children}
+              // sqlKey is the canonical (quoted/bracket) SQL form used wherever
+              // the key becomes raw SQL (distribution query, "Add column"
+              // SELECT); child.key stays clean for the UI.
+              childFilters={group.children.map(child => ({
+                ...child,
+                sqlKey: toQuotedClickHouseKeyExpression(
+                  child.key,
+                  knownColumns,
+                ),
+              }))}
               selectedValues={group.children.reduce((acc, child) => {
-                acc[child.key] = filterState[child.key] ?? {
+                acc[child.key] = getFilterStateEntry(
+                  filterState,
+                  child.key,
+                ) ?? {
                   included: new Set(),
                   excluded: new Set(),
                 };
@@ -1583,7 +1484,7 @@ const DBSearchPageFiltersComponent = ({
               showFilterCounts={showFilterCounts}
               onColumnToggle={onColumnToggle}
               displayedColumns={displayedColumns}
-              onLoadMore={loadMoreFilterValuesForKey}
+              onLoadMore={loadMoreFacetsForKey}
               loadMoreLoading={group.children.reduce(
                 (acc, child) => {
                   acc[child.key] = loadMoreLoadingKeys.has(child.key);
@@ -1593,73 +1494,84 @@ const DBSearchPageFiltersComponent = ({
               )}
               hasLoadedMore={group.children.reduce(
                 (acc, child) => {
-                  acc[child.key] = Boolean(extraFacets[child.key]);
+                  acc[child.key] = extraFacetKeys.has(child.key);
                   return acc;
                 },
                 {} as Record<string, boolean>,
               )}
               isDefaultExpanded={
                 forceExpanded ??
-                group.children.some(
-                  child =>
-                    (filterState[child.key] &&
-                      (filterState[child.key].included.size > 0 ||
-                        filterState[child.key].excluded.size > 0)) ||
+                group.children.some(child => {
+                  const entry = getFilterStateEntry(filterState, child.key);
+                  return (
+                    (entry &&
+                      (entry.included.size > 0 || entry.excluded.size > 0)) ||
                     isFieldPinned(child.key) ||
-                    isSharedFieldPinned(child.key),
-                )
+                    isSharedFieldPinned(child.key)
+                  );
+                })
               }
               chartConfig={chartConfig}
               isLive={isLive}
             />
           ))}
-          {nonGrouped.map(facet => (
-            <FilterGroup
-              key={`${keyPrefix}${facet.key}`}
-              data-testid={`${keyPrefix}filter-group-${facet.key}`}
-              name={cleanedFacetName(facet.key)}
-              showFilterCounts={showFilterCounts}
-              options={facet.value.map(value => ({
-                value,
-                label: value.toString(),
-              }))}
-              optionsLoading={isFacetsLoading}
-              selectedValues={
-                filterState[facet.key] ?? {
-                  included: new Set(),
-                  excluded: new Set(),
+          {nonGrouped.map(facet => {
+            const facetSqlKey = toQuotedClickHouseKeyExpression(
+              facet.key,
+              knownColumns,
+            );
+            return (
+              <FilterGroup
+                key={`${keyPrefix}${facet.key}`}
+                data-testid={`${keyPrefix}filter-group-${facet.key}`}
+                name={cleanedFacetName(facet.key)}
+                distributionKey={facetSqlKey}
+                showFilterCounts={showFilterCounts}
+                options={facet.value.map(value => ({
+                  value,
+                  label: value.toString(),
+                }))}
+                optionsLoading={isFacetsLoading}
+                selectedValues={
+                  getFilterStateEntry(filterState, facet.key) ?? {
+                    included: new Set(),
+                    excluded: new Set(),
+                  }
                 }
-              }
-              onChange={value => setFilterValue(facet.key, value)}
-              onClearClick={() => clearFilter(facet.key)}
-              onOnlyClick={value => setFilterValue(facet.key, value, 'only')}
-              onExcludeClick={value =>
-                setFilterValue(facet.key, value, 'exclude')
-              }
-              valuePins={makeValuePins(facet.key)}
-              fieldPins={makeFieldPins(facet.key)}
-              onColumnToggle={
-                onColumnToggle ? () => onColumnToggle(facet.key) : undefined
-              }
-              isColumnDisplayed={displayedColumns?.includes(facet.key)}
-              onLoadMore={loadMoreFilterValuesForKey}
-              loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
-              hasLoadedMore={Boolean(extraFacets[facet.key])}
-              isDefaultExpanded={
-                forceExpanded ??
-                (isFieldPrimary(tableMetadata, facet.key) ||
-                  isFieldPinned(facet.key) ||
-                  isSharedFieldPinned(facet.key) ||
-                  (filterState[facet.key] != null &&
-                    (filterState[facet.key].included.size > 0 ||
-                      filterState[facet.key].excluded.size > 0 ||
-                      filterState[facet.key].range != null)))
-              }
-              chartConfig={chartConfig}
-              isLive={isLive}
-              onRangeChange={range => setFilterRange(facet.key, range)}
-            />
-          ))}
+                onChange={value => setFilterValue(facet.key, value)}
+                onClearClick={() => clearFilter(facet.key)}
+                onOnlyClick={value => setFilterValue(facet.key, value, 'only')}
+                onExcludeClick={value =>
+                  setFilterValue(facet.key, value, 'exclude')
+                }
+                valuePins={makeValuePins(facet.key)}
+                fieldPins={makeFieldPins(facet.key)}
+                onColumnToggle={
+                  onColumnToggle ? () => onColumnToggle(facetSqlKey) : undefined
+                }
+                isColumnDisplayed={displayedColumns?.includes(facetSqlKey)}
+                onLoadMore={loadMoreFacetsForKey}
+                loadMoreLoading={loadMoreLoadingKeys.has(facet.key)}
+                hasLoadedMore={extraFacetKeys.has(facet.key)}
+                isDefaultExpanded={(() => {
+                  const entry = getFilterStateEntry(filterState, facet.key);
+                  return (
+                    forceExpanded ??
+                    (isFieldPrimary(tableMetadata, facet.key) ||
+                      isFieldPinned(facet.key) ||
+                      isSharedFieldPinned(facet.key) ||
+                      (entry != null &&
+                        (entry.included.size > 0 ||
+                          entry.excluded.size > 0 ||
+                          entry.range != null)))
+                  );
+                })()}
+                chartConfig={chartConfig}
+                isLive={isLive}
+                onRangeChange={range => setFilterRange(facet.key, range)}
+              />
+            );
+          })}
         </>
       );
     },
@@ -1677,15 +1589,16 @@ const DBSearchPageFiltersComponent = ({
       isSharedFieldPinned,
       onColumnToggle,
       displayedColumns,
-      loadMoreFilterValuesForKey,
+      loadMoreFacetsForKey,
       loadMoreLoadingKeys,
-      extraFacets,
       showFilterCounts,
       isFacetsLoading,
       chartConfig,
       isLive,
       setFilterRange,
       tableMetadata,
+      knownColumns,
+      extraFacetKeys,
     ],
   );
 
@@ -1727,6 +1640,8 @@ const DBSearchPageFiltersComponent = ({
                 onResetPersonalPins={resetPersonalPins}
                 hasSharedPins={hasSharedPins}
                 onResetSharedFilters={resetSharedFilters}
+                showAllValues={showAllValues}
+                onShowAllValuesChange={setShowAllValues}
               />
               {onCollapse && (
                 <Tooltip label="Hide filters" position="bottom">
@@ -1907,7 +1822,7 @@ const DBSearchPageFiltersComponent = ({
                     />
                   )}
 
-                {isLoading || isFacetsLoading ? (
+                {isFacetsLoading ? (
                   <Flex align="center" justify="center">
                     <Loader size="xs" color="gray" />
                   </Flex>

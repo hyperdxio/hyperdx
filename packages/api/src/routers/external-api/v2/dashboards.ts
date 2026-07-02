@@ -1,13 +1,10 @@
 import express from 'express';
 import { uniq } from 'lodash';
-import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import { deleteDashboard } from '@/controllers/dashboard';
-import { getSources } from '@/controllers/sources';
-import Dashboard from '@/models/dashboard';
-import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
-import logger from '@/utils/logger';
+import Dashboard, { IDashboard } from '@/models/dashboard';
+import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
 
 import {
@@ -16,38 +13,27 @@ import {
   convertExternalTilesToInternal,
   convertToExternalDashboard,
   createDashboardBodySchema,
-  getMissingConnections,
-  getMissingSources,
-  isConfigTile,
-  isRawSqlExternalTileConfig,
-  isSeriesTile,
   resolveSavedQueryLanguage,
   updateDashboardBodySchema,
+  validateDashboardTiles,
 } from './utils/dashboards';
 
-async function getSourceConnectionMismatches(
-  team: string | mongoose.Types.ObjectId,
-  tiles: ExternalDashboardTileWithId[],
-): Promise<string[]> {
-  const existingSources = await getSources(team.toString());
-  const sourceById = new Map(existingSources.map(s => [s._id.toString(), s]));
-
-  const sourcesWithInvalidConnections: string[] = [];
-  for (const tile of tiles) {
-    if (
-      isConfigTile(tile) &&
-      isRawSqlExternalTileConfig(tile.config) &&
-      tile.config.sourceId
-    ) {
-      const source = sourceById.get(tile.config.sourceId);
-      if (source && source.connection.toString() !== tile.config.connectionId) {
-        sourcesWithInvalidConnections.push(tile.config.sourceId);
-      }
-    }
-  }
-
-  return sourcesWithInvalidConnections;
-}
+/**
+ * Projection used by the GET-list and GET-by-id Dashboard endpoints, kept in
+ * one place so adding a new field doesn't need touching both call sites.
+ * Mirrors the shape consumed by `convertToExternalDashboard`.
+ */
+const EXTERNAL_DASHBOARD_PROJECTION = {
+  _id: 1,
+  name: 1,
+  tiles: 1,
+  tags: 1,
+  filters: 1,
+  savedQuery: 1,
+  savedQueryLanguage: 1,
+  savedFilterValues: 1,
+  containers: 1,
+} as const;
 
 /**
  * @openapi
@@ -55,8 +41,8 @@ async function getSourceConnectionMismatches(
  *   schemas:
  *     NumberFormatOutput:
  *       type: string
- *       enum: [currency, percent, byte, time, number, data_rate, throughput]
- *       description: Output format type (currency, percent, byte, time, number, data_rate, throughput).
+ *       enum: [currency, percent, byte, time, number, data_rate, throughput, duration]
+ *       description: Output format type (currency, percent, byte, time, number, data_rate, throughput, duration).
  *     AggregationFunction:
  *       type: string
  *       enum: [avg, count, count_distinct, last_value, max, min, quantile, sum, any, none]
@@ -135,6 +121,142 @@ async function getSourceConnectionMismatches(
  *           type: string
  *           description: Custom unit label.
  *           example: "ms"
+ *
+ *     ChartPaletteToken:
+ *       type: string
+ *       enum: [chart-blue, chart-orange, chart-red, chart-cyan, chart-green, chart-pink, chart-purple, chart-light-blue, chart-brown, chart-gray, chart-success, chart-warning, chart-error]
+ *       description: >
+ *         Palette token used to color a number tile. Tokens reflow across
+ *         light and dark themes, so raw hex values are not accepted.
+ *       example: "chart-red"
+ *     BackgroundChart:
+ *       type: object
+ *       required:
+ *         - type
+ *       description: >
+ *         Optional background trend sparkline drawn behind a number tile's
+ *         value, derived from a time-bucketed version of the tile's query.
+ *         Builder number tiles only (raw SQL number tiles have no time
+ *         dimension to bucket).
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [line, area]
+ *           description: Sparkline shape.
+ *           example: "line"
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: >
+ *             Optional palette-token override for the sparkline. When unset
+ *             the sparkline inherits the tile's static color.
+ *     NumericColorCondition:
+ *       type: object
+ *       required:
+ *         - operator
+ *         - value
+ *         - color
+ *       description: Color rule comparing the displayed value against a single numeric bound.
+ *       properties:
+ *         operator:
+ *           type: string
+ *           enum: [gt, gte, lt, lte]
+ *           description: Numeric comparison operator.
+ *           example: "gt"
+ *         value:
+ *           type: number
+ *           description: >
+ *             Numeric bound the displayed value is compared against. Only
+ *             finite numbers are accepted (Infinity and NaN are rejected).
+ *           example: 100
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: Color applied when the rule matches.
+ *         label:
+ *           type: string
+ *           maxLength: 40
+ *           description: Optional label describing the rule.
+ *           example: "High"
+ *     BetweenColorCondition:
+ *       type: object
+ *       required:
+ *         - operator
+ *         - value
+ *         - color
+ *       description: Color rule matching when the displayed value falls within an inclusive range.
+ *       properties:
+ *         operator:
+ *           type: string
+ *           enum: [between]
+ *           description: Range comparison operator.
+ *           example: "between"
+ *         value:
+ *           type: array
+ *           minItems: 2
+ *           maxItems: 2
+ *           items:
+ *             type: number
+ *           description: >
+ *             Inclusive [min, max] range. Both bounds must be finite numbers.
+ *           example: [100, 500]
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: Color applied when the rule matches.
+ *         label:
+ *           type: string
+ *           maxLength: 40
+ *           description: Optional label describing the rule.
+ *           example: "Warning"
+ *     EqualityColorCondition:
+ *       type: object
+ *       required:
+ *         - operator
+ *         - value
+ *         - color
+ *       description: Color rule matching when the displayed value equals (eq) or does not equal (neq) a number or string.
+ *       properties:
+ *         operator:
+ *           type: string
+ *           enum: [eq, neq]
+ *           description: Equality comparison operator.
+ *           example: "eq"
+ *         value:
+ *           oneOf:
+ *             - type: number
+ *             - type: string
+ *               maxLength: 200
+ *           description: >
+ *             A finite number, or a string up to 200 characters, to compare
+ *             for equality.
+ *           example: "OK"
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: Color applied when the rule matches.
+ *         label:
+ *           type: string
+ *           maxLength: 40
+ *           description: Optional label describing the rule.
+ *           example: "Healthy"
+ *     NumberTileColorCondition:
+ *       description: >
+ *         A single conditional color rule for a number tile. Rules are
+ *         evaluated in order and the last matching rule wins. When no rule
+ *         matches, the static color applies, then the default text color.
+ *         The number-tile editor surfaces numeric and equality operators
+ *         only.
+ *       oneOf:
+ *         - $ref: '#/components/schemas/NumericColorCondition'
+ *         - $ref: '#/components/schemas/BetweenColorCondition'
+ *         - $ref: '#/components/schemas/EqualityColorCondition'
+ *       discriminator:
+ *         propertyName: operator
+ *         mapping:
+ *           gt: '#/components/schemas/NumericColorCondition'
+ *           gte: '#/components/schemas/NumericColorCondition'
+ *           lt: '#/components/schemas/NumericColorCondition'
+ *           lte: '#/components/schemas/NumericColorCondition'
+ *           between: '#/components/schemas/BetweenColorCondition'
+ *           eq: '#/components/schemas/EqualityColorCondition'
+ *           neq: '#/components/schemas/EqualityColorCondition'
  *
  *     TimeChartSeries:
  *       type: object
@@ -444,6 +566,11 @@ async function getSourceConnectionMismatches(
  *           enum: [delta]
  *           description: Optional period aggregation function for Gauge metrics (e.g., compute the delta over the period).
  *           example: "delta"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: >
+ *             Per-series number formatting options. When set, takes precedence
+ *             over the chart-level numberFormat for this select item only.
  *
  *     LineBuilderChartConfig:
  *       type: object
@@ -488,6 +615,13 @@ async function getSourceConnectionMismatches(
  *           type: boolean
  *           description: Fill missing time buckets with zero instead of leaving gaps.
  *           default: true
+ *         fitYAxisToData:
+ *           type: boolean
+ *           description: >
+ *             Set the y-axis lower bound to the minimum of the displayed data
+ *             instead of zero, making small fluctuations between series easier
+ *             to see.
+ *           default: false
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
@@ -598,6 +732,9 @@ async function getSourceConnectionMismatches(
  *             in the table. Defaults to false (Group By columns on the right).
  *           default: false
  *           example: false
+ *         onClick:
+ *           $ref: '#/components/schemas/OnClick'
+ *           description: Optional link-out configuration applied when a user clicks a row.
  *
  *     NumberBuilderChartConfig:
  *       type: object
@@ -626,6 +763,22 @@ async function getSourceConnectionMismatches(
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: Optional static color applied to the displayed number.
+ *         colorRules:
+ *           type: array
+ *           maxItems: 10
+ *           description: >
+ *             Ordered conditional color rules evaluated against the displayed
+ *             value (last match wins). Falls back to color, then the default
+ *             text color when no rule matches.
+ *           items:
+ *             $ref: '#/components/schemas/NumberTileColorCondition'
+ *         backgroundChart:
+ *           $ref: '#/components/schemas/BackgroundChart'
+ *           description: >
+ *             Optional background trend sparkline drawn behind the value.
  *
  *     PieBuilderChartConfig:
  *       type: object
@@ -656,6 +809,82 @@ async function getSourceConnectionMismatches(
  *           maxLength: 10000
  *           description: Field expression to group results by (one slice per group value).
  *           example: "service"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
+ *
+ *     HeatmapSelectItem:
+ *       type: object
+ *       required:
+ *         - valueExpression
+ *       description: >
+ *         Single select item for a heatmap tile. The value being bucketed is
+ *         provided in valueExpression and the count contributing to each
+ *         bucket in countExpression. The heatmap-specific fields
+ *         (countExpression, heatmapScaleType) are persisted on the select
+ *         item, not the chart config. The chart-level discriminator is the
+ *         HeatmapChartConfig's `displayType: "heatmap"`; no aggregation
+ *         function or alias is exposed on this select item because the
+ *         heatmap aggregation function is fixed internally and the
+ *         HeatmapSeriesEditor does not render an alias input.
+ *       properties:
+ *         valueExpression:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 10000
+ *           description: SQL expression for the value being bucketed on the y-axis. Must be non-empty.
+ *           example: "Duration"
+ *         countExpression:
+ *           type: string
+ *           maxLength: 10000
+ *           description: >
+ *             SQL expression for the count contributing to each bucket. Defaults
+ *             to "count()" in the editor when omitted.
+ *           example: "count()"
+ *         heatmapScaleType:
+ *           type: string
+ *           enum: [log, linear]
+ *           description: Scale type used to bucket values on the y-axis.
+ *           example: "log"
+ *
+ *     HeatmapChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *         - select
+ *       description: >
+ *         Builder configuration for a heatmap tile. Heatmap is builder-only
+ *         (no Raw SQL variant) and currently supports trace sources. The
+ *         row-level filter lives at the chart-config level (where /
+ *         whereLanguage), matching the HeatmapSeriesEditor in the UI.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [heatmap]
+ *           description: Display type discriminator. Must be "heatmap" for heatmap tiles.
+ *           example: "heatmap"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 1
+ *           description: Exactly one heatmap select item.
+ *           items:
+ *             $ref: '#/components/schemas/HeatmapSelectItem'
+ *         where:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Row-level filter (syntax depends on whereLanguage).
+ *           default: ""
+ *           example: "ServiceName = 'api'"
+ *         whereLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause.
+ *           default: "lucene"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
@@ -765,6 +994,13 @@ async function getSourceConnectionMismatches(
  *               type: boolean
  *               description: Expand date range boundaries to the query granularity interval.
  *               default: true
+ *             fitYAxisToData:
+ *               type: boolean
+ *               description: >
+ *                 Set the y-axis lower bound to the minimum of the displayed
+ *                 data instead of zero, making small fluctuations between
+ *                 series easier to see.
+ *               default: false
  *
  *     BarRawSqlChartConfig:
  *       description: Raw SQL configuration for a stacked-bar time-series chart.
@@ -801,6 +1037,9 @@ async function getSourceConnectionMismatches(
  *               enum: [table]
  *               description: Display as a table chart.
  *               example: "table"
+ *             onClick:
+ *               $ref: '#/components/schemas/OnClick'
+ *               description: Optional link-out configuration applied when a user clicks a row.
  *
  *     NumberRawSqlChartConfig:
  *       description: Raw SQL configuration for a single big-number chart.
@@ -815,6 +1054,11 @@ async function getSourceConnectionMismatches(
  *               enum: [number]
  *               description: Display as a single big-number chart.
  *               example: "number"
+ *             color:
+ *               $ref: '#/components/schemas/ChartPaletteToken'
+ *               description: >
+ *                 Optional static color applied to the displayed number. Raw
+ *                 SQL number tiles do not support conditional colorRules.
  *
  *     PieRawSqlChartConfig:
  *       description: Raw SQL configuration for a pie chart.
@@ -855,6 +1099,159 @@ async function getSourceConnectionMismatches(
  *         propertyName: configType
  *         mapping:
  *           sql: '#/components/schemas/BarRawSqlChartConfig'
+ *
+ *     OnClickFilterTemplate:
+ *       type: object
+ *       description: >
+ *         A templated filter applied to the link-out destination. The rendered
+ *         template value is combined with the expression as `expression IN (...)`
+ *         on the destination search or dashboard. Multiple templates sharing the
+ *         same expression are merged into a single IN clause.
+ *       required: [kind, expression, template]
+ *       properties:
+ *         kind:
+ *           type: string
+ *           enum: [expressionTemplate]
+ *           description: Filter template kind. Currently only "expressionTemplate" is supported.
+ *           example: "expressionTemplate"
+ *         expression:
+ *           type: string
+ *           minLength: 1
+ *           description: The column/expression to filter the destination by (e.g. "ServiceName").
+ *           example: "ServiceName"
+ *         template:
+ *           type: string
+ *           minLength: 1
+ *           description: >
+ *             Value template rendered against the clicked row; supports row column
+ *             variables in `{{column}}` form (e.g. `{{ServiceName}}`).
+ *           example: "{{ServiceName}}"
+ *
+ *     OnClickTarget:
+ *       description: >
+ *         Identifies the source (for type=search) or dashboard (for type=dashboard)
+ *         to link out to. Set mode to "id" to resolve a concrete ID, or
+ *         "template" to resolve by rendered name at click time.
+ *       oneOf:
+ *         - type: object
+ *           required: [mode, id]
+ *           properties:
+ *             mode:
+ *               type: string
+ *               enum: [id]
+ *               description: Target is a single dashboard or log/trace source
+ *               example: "id"
+ *             id:
+ *               type: string
+ *               description: ID of the target source (for search) or dashboard (for dashboard).
+ *               example: "65f5e4a3b9e77c001a567890"
+ *         - type: object
+ *           required: [mode, template]
+ *           properties:
+ *             mode:
+ *               type: string
+ *               enum: [template]
+ *               description: Target is matched by name against the template.
+ *               example: "template"
+ *             template:
+ *               type: string
+ *               minLength: 1
+ *               description: >
+ *                 Name template rendered against the clicked row; supports
+ *                 `{{column}}` variables.
+ *               example: "{{ServiceName}}"
+ *       discriminator:
+ *         propertyName: mode
+ *
+ *     OnClickSearch:
+ *       type: object
+ *       required: [type, target]
+ *       description: Link-out that navigates to the HyperDX search view.
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [search]
+ *           description: OnClick variant discriminator. Must be "search" for search link-outs.
+ *           example: "search"
+ *         target:
+ *           $ref: '#/components/schemas/OnClickTarget'
+ *           description: The source to navigate to.
+ *         whereTemplate:
+ *           type: string
+ *           description: Optional WHERE clause template applied to the destination search.
+ *           example: "ServiceName = '{{ServiceName}}'"
+ *         whereLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Language of the rendered whereTemplate.
+ *         filters:
+ *           type: array
+ *           description: Optional dashboard filter templates rendered against the clicked row.
+ *           items:
+ *             $ref: '#/components/schemas/OnClickFilterTemplate'
+ *
+ *     OnClickDashboard:
+ *       type: object
+ *       required: [type, target]
+ *       description: Link-out that navigates to a HyperDX dashboard.
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [dashboard]
+ *           description: OnClick variant discriminator. Must be "dashboard" for dashboard link-outs.
+ *           example: "dashboard"
+ *         target:
+ *           $ref: '#/components/schemas/OnClickTarget'
+ *           description: The dashboard to navigate to.
+ *         whereTemplate:
+ *           type: string
+ *           description: Optional WHERE clause template applied to the destination dashboard.
+ *           example: "ServiceName = '{{ServiceName}}'"
+ *         whereLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Language of the rendered whereTemplate.
+ *         filters:
+ *           type: array
+ *           description: Optional dashboard filter templates rendered against the clicked row.
+ *           items:
+ *             $ref: '#/components/schemas/OnClickFilterTemplate'
+ *
+ *     OnClickExternal:
+ *       type: object
+ *       required: [type, urlTemplate]
+ *       description: >
+ *         Link-out that navigates to an arbitrary external URL (e.g. a Grafana
+ *         or Langfuse dashboard). The rendered URL must be an absolute http(s) URL.
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [external]
+ *           description: OnClick variant discriminator. Must be "external" for external link-outs.
+ *           example: "external"
+ *         urlTemplate:
+ *           type: string
+ *           minLength: 1
+ *           description: >
+ *             Handlebars template rendered against the clicked row; supports
+ *             `{{column}}` variables. The rendered value must be an absolute
+ *             http(s) URL.
+ *           example: "https://example.com/d/abc?var-service={{ServiceName}}"
+ *
+ *     OnClick:
+ *       description: >
+ *         Link-out configuration applied when a user clicks a row of a table tile.
+ *         Only table tiles (builder or raw SQL) currently support onClick. When
+ *         target.mode is "id", the referenced source (type=search) or dashboard
+ *         (type=dashboard) must already exist for the team.
+ *       oneOf:
+ *         - $ref: '#/components/schemas/OnClickSearch'
+ *         - $ref: '#/components/schemas/OnClickDashboard'
+ *         - $ref: '#/components/schemas/OnClickExternal'
+ *       discriminator:
+ *         propertyName: type
+ *         mapping:
+ *           search: '#/components/schemas/OnClickSearch'
+ *           dashboard: '#/components/schemas/OnClickDashboard'
+ *           external: '#/components/schemas/OnClickExternal'
  *
  *     TableChartConfig:
  *       description: >
@@ -901,14 +1298,15 @@ async function getSourceConnectionMismatches(
  *         determines which variant group applies. For displayTypes that support
  *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie),
  *         configType is the secondary discriminant: omit it for the builder
- *         variant or set it to "sql" for the Raw SQL variant. The search and
- *         markdown displayTypes only have a builder variant.
+ *         variant or set it to "sql" for the Raw SQL variant. The heatmap,
+ *         search, and markdown displayTypes only have a builder variant.
  *       oneOf:
  *         - $ref: '#/components/schemas/LineChartConfig'
  *         - $ref: '#/components/schemas/BarChartConfig'
  *         - $ref: '#/components/schemas/TableChartConfig'
  *         - $ref: '#/components/schemas/NumberChartConfig'
  *         - $ref: '#/components/schemas/PieChartConfig'
+ *         - $ref: '#/components/schemas/HeatmapChartConfig'
  *         - $ref: '#/components/schemas/SearchChartConfig'
  *         - $ref: '#/components/schemas/MarkdownChartConfig'
  *       discriminator:
@@ -919,8 +1317,70 @@ async function getSourceConnectionMismatches(
  *           table: '#/components/schemas/TableChartConfig'
  *           number: '#/components/schemas/NumberChartConfig'
  *           pie: '#/components/schemas/PieChartConfig'
+ *           heatmap: '#/components/schemas/HeatmapChartConfig'
  *           search: '#/components/schemas/SearchChartConfig'
  *           markdown: '#/components/schemas/MarkdownChartConfig'
+ *
+ *     DashboardContainerTab:
+ *       type: object
+ *       description: A single tab inside a dashboard container. Tiles join a tab via tabId.
+ *       required:
+ *         - id
+ *         - title
+ *       properties:
+ *         id:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 256
+ *           description: Unique identifier for the tab within its container.
+ *           example: "errors"
+ *         title:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 256
+ *           description: Display title for the tab.
+ *           example: "Errors"
+ *
+ *     DashboardContainer:
+ *       type: object
+ *       description: A grouping container for tiles on a dashboard. Tiles join a container via containerId.
+ *       required:
+ *         - id
+ *         - title
+ *         - collapsed
+ *       properties:
+ *         id:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 256
+ *           description: Unique identifier for the container within the dashboard.
+ *           example: "service-health"
+ *         title:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 256
+ *           description: Display title for the container.
+ *           example: "Service Health"
+ *         collapsed:
+ *           type: boolean
+ *           description: Persisted default collapse state. Per-viewer state lives in the URL.
+ *           example: false
+ *         collapsible:
+ *           type: boolean
+ *           description: Whether the user can collapse the group.
+ *           default: true
+ *           example: true
+ *         bordered:
+ *           type: boolean
+ *           description: Whether to show a visual border around the group.
+ *           default: true
+ *           example: true
+ *         tabs:
+ *           type: array
+ *           description: Optional tabs. 2+ entries renders a tab bar; 0-1 entries renders a plain group header. Tiles join a tab via tabId.
+ *           maxItems: 20
+ *           items:
+ *             $ref: '#/components/schemas/DashboardContainerTab'
  *
  *     TileBase:
  *       type: object
@@ -961,6 +1421,18 @@ async function getSourceConnectionMismatches(
  *         config:
  *           $ref: '#/components/schemas/TileConfig'
  *           description: Chart configuration for the tile. The displayType field determines which variant is used. Replaces the deprecated "series" and "asRatio" fields.
+ *         containerId:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 256
+ *           description: References a DashboardContainer by id. Tiles without containerId render in the default ungrouped area.
+ *           example: "service-health"
+ *         tabId:
+ *           type: string
+ *           minLength: 1
+ *           maxLength: 256
+ *           description: References a tab inside the tile's container by id. Requires containerId to be set, and the container to declare a matching tab.
+ *           example: "errors"
  *
  *     TileOutput:
  *       description: Response format for dashboard tiles
@@ -981,7 +1453,7 @@ async function getSourceConnectionMismatches(
  *         Input / request format when creating or updating tiles. The id field is
  *         optional: on create it is ignored (the server always assigns a new ID);
  *         on update, a matching id is used to identify the existing tile to
- *         preserve — tiles whose id does not match an existing tile are assigned
+ *         preserve. Tiles whose id does not match an existing tile are assigned
  *         a new generated ID.
  *       allOf:
  *         - $ref: '#/components/schemas/TileBase'
@@ -1048,6 +1520,17 @@ async function getSourceConnectionMismatches(
  *           description: Language of the where condition
  *           default: "sql"
  *           example: "lucene"
+ *         appliesToSourceIds:
+ *           type: array
+ *           items:
+ *             type: string
+ *           description: |
+ *             Optional list of source IDs this filter applies to. Omit or provide
+ *             an empty array to apply the filter to ALL tiles regardless of source.
+ *             A non-empty array restricts the filter to only tiles whose source ID
+ *             is in the list; tiles using other sources are not affected by the
+ *             selected filter value(s).
+ *           example: ["65f5e4a3b9e77c001a111111"]
  *
  *     Filter:
  *       allOf:
@@ -1107,6 +1590,12 @@ async function getSourceConnectionMismatches(
  *           description: Optional default dashboard filter values restored when loading the dashboard.
  *           items:
  *             $ref: '#/components/schemas/SavedFilterValue'
+ *         containers:
+ *           type: array
+ *           description: Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.
+ *           maxItems: 50
+ *           items:
+ *             $ref: '#/components/schemas/DashboardContainer'
  *
  *     CreateDashboardRequest:
  *       type: object
@@ -1122,6 +1611,7 @@ async function getSourceConnectionMismatches(
  *         tiles:
  *           type: array
  *           description: List of tiles/charts to include in the dashboard.
+ *           maxItems: 500
  *           items:
  *             $ref: '#/components/schemas/TileInput'
  *         tags:
@@ -1153,6 +1643,12 @@ async function getSourceConnectionMismatches(
  *           description: Optional default dashboard filter values to persist on the dashboard.
  *           items:
  *             $ref: '#/components/schemas/SavedFilterValue'
+ *         containers:
+ *           type: array
+ *           description: Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.
+ *           maxItems: 50
+ *           items:
+ *             $ref: '#/components/schemas/DashboardContainer'
  *
  *     UpdateDashboardRequest:
  *       type: object
@@ -1167,6 +1663,7 @@ async function getSourceConnectionMismatches(
  *           example: "Updated Dashboard Name"
  *         tiles:
  *           type: array
+ *           maxItems: 500
  *           items:
  *             $ref: '#/components/schemas/TileInput'
  *           description: Full list of tiles for the dashboard. Existing tiles are matched by ID; tiles with an ID that does not match an existing tile will be assigned a new generated ID.
@@ -1199,6 +1696,12 @@ async function getSourceConnectionMismatches(
  *           description: Optional default dashboard filter values to persist on the dashboard.
  *           items:
  *             $ref: '#/components/schemas/SavedFilterValue'
+ *         containers:
+ *           type: array
+ *           description: Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.
+ *           maxItems: 50
+ *           items:
+ *             $ref: '#/components/schemas/DashboardContainer'
  *
  *     DashboardResponse:
  *       allOf:
@@ -1302,16 +1805,7 @@ router.get('/', async (req, res, next) => {
 
     const dashboards = await Dashboard.find(
       { team: teamId },
-      {
-        _id: 1,
-        name: 1,
-        tiles: 1,
-        tags: 1,
-        filters: 1,
-        savedQuery: 1,
-        savedQueryLanguage: 1,
-        savedFilterValues: 1,
-      },
+      EXTERNAL_DASHBOARD_PROJECTION,
     ).sort({ name: -1 });
 
     res.json({
@@ -1419,16 +1913,7 @@ router.get(
 
       const dashboard = await Dashboard.findOne(
         { team: teamId, _id: req.params.id },
-        {
-          _id: 1,
-          name: 1,
-          tiles: 1,
-          tags: 1,
-          filters: 1,
-          savedQuery: 1,
-          savedQueryLanguage: 1,
-          savedFilterValues: 1,
-        },
+        EXTERNAL_DASHBOARD_PROJECTION,
       );
 
       if (dashboard == null) {
@@ -1443,6 +1928,127 @@ router.get(
     }
   },
 );
+
+/**
+ * @openapi
+ * /api/v2/dashboards/validate:
+ *   post:
+ *     summary: Validate Dashboard
+ *     description: |
+ *       Validates a dashboard body against the same schema and tile rules used
+ *       by POST /api/v2/dashboards. The dashboard is **never persisted**. Use
+ *       this endpoint at plan time (e.g. from a Terraform provider) to check
+ *       that a dashboard configuration is valid before applying it.
+ *     operationId: validateDashboard
+ *     tags: [Dashboards]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateDashboardRequest'
+ *     responses:
+ *       '200':
+ *         description: |
+ *           Validation result. HTTP 200 is always returned for valid **and**
+ *           invalid bodies — a non-200 response means the request itself
+ *           failed (auth, server error, etc.).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [valid, errors, normalized]
+ *               properties:
+ *                 valid:
+ *                   type: boolean
+ *                   description: True when the body passes all validation rules.
+ *                 errors:
+ *                   type: array
+ *                   description: Validation errors. Empty when valid is true.
+ *                   items:
+ *                     type: object
+ *                     required: [path, message]
+ *                     properties:
+ *                       path:
+ *                         type: string
+ *                         description: Dot-separated field path, or empty string for top-level errors.
+ *                       message:
+ *                         type: string
+ *                         description: Human-readable error description.
+ *                 normalized:
+ *                   type: object
+ *                   nullable: true
+ *                   description: |
+ *                     The parsed dashboard body with defaults applied (no
+ *                     persistence, so no server-assigned tile IDs). Populated
+ *                     when valid is true, null when valid is false.
+ *             examples:
+ *               valid:
+ *                 summary: Valid dashboard body
+ *                 value:
+ *                   valid: true
+ *                   errors: []
+ *                   normalized:
+ *                     name: "My Dashboard"
+ *                     tiles: []
+ *               invalid:
+ *                 summary: Invalid dashboard body
+ *                 value:
+ *                   valid: false
+ *                   errors:
+ *                     - path: "name"
+ *                       message: "Required"
+ *                   normalized: null
+ *       '401':
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Unauthorized access. API key is missing or invalid."
+ */
+router.post('/validate', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.sendStatus(403);
+    }
+
+    const parsed = createDashboardBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.json({
+        valid: false,
+        errors: parsed.error.issues.map(i => ({
+          path: i.path.join('.'),
+          message: i.message,
+        })),
+        normalized: null,
+      });
+    }
+
+    const { tiles, filters, containers } = parsed.data;
+    // Cast: createDashboardBodySchema tiles have optional `id`; the validator
+    // only reads sourceId/config — the cast is safe for a no-persist call.
+    const validationError = await validateDashboardTiles({
+      teamId: teamId.toString(),
+      tiles: tiles as ExternalDashboardTileWithId[],
+      filters,
+      containers: containers ?? [],
+    });
+    if (validationError) {
+      return res.json({
+        valid: false,
+        errors: [{ path: '', message: validationError }],
+        normalized: null,
+      });
+    }
+
+    return res.json({ valid: true, errors: [], normalized: parsed.data });
+  } catch (e) {
+    next(e);
+  }
+});
 
 /**
  * @openapi
@@ -1595,34 +2201,17 @@ router.post(
         savedQuery,
         savedQueryLanguage,
         savedFilterValues,
+        containers,
       } = req.body;
 
-      const [missingSources, missingConnections, sourceConnectionMismatches] =
-        await Promise.all([
-          getMissingSources(teamId, tiles, filters),
-          getMissingConnections(teamId, tiles),
-          getSourceConnectionMismatches(teamId, tiles),
-        ]);
-      if (missingSources.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following source IDs: ${missingSources.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (missingConnections.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following connection IDs: ${missingConnections.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (sourceConnectionMismatches.length > 0) {
-        return res.status(400).json({
-          message: `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(
-            ', ',
-          )}`,
-        });
+      const validationError = await validateDashboardTiles({
+        teamId: teamId.toString(),
+        tiles,
+        filters,
+        containers: containers ?? [],
+      });
+      if (validationError) {
+        return res.status(400).json({ message: validationError });
       }
 
       const internalTiles = convertExternalTilesToInternal(tiles);
@@ -1642,6 +2231,7 @@ router.post(
         savedQueryLanguage: normalizedSavedQueryLanguage,
         savedFilterValues,
         team: teamId,
+        ...(containers !== undefined ? { containers } : {}),
       }).save();
 
       res.json({
@@ -1658,7 +2248,14 @@ router.post(
  * /api/v2/dashboards/{id}:
  *   put:
  *     summary: Update Dashboard
- *     description: Updates an existing dashboard
+ *     description: |
+ *       Updates an existing dashboard.
+ *
+ *       **Concurrency:** This endpoint does not support optimistic
+ *       concurrency control. Concurrent PUT requests for the same
+ *       dashboard may silently overwrite each other, which can leave
+ *       orphan tile-to-container references on layout-shape edits.
+ *       Clients should serialize edits to a given dashboard.
  *     operationId: updateDashboard
  *     tags: [Dashboards]
  *     parameters:
@@ -1818,45 +2415,36 @@ router.put(
         savedQuery,
         savedQueryLanguage,
         savedFilterValues,
+        containers,
       } = req.body ?? {};
-
-      const [missingSources, missingConnections, sourceConnectionMismatches] =
-        await Promise.all([
-          getMissingSources(teamId, tiles, filters),
-          getMissingConnections(teamId, tiles),
-          getSourceConnectionMismatches(teamId, tiles),
-        ]);
-      if (missingSources.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following source IDs: ${missingSources.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (missingConnections.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following connection IDs: ${missingConnections.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (sourceConnectionMismatches.length > 0) {
-        return res.status(400).json({
-          message: `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(
-            ', ',
-          )}`,
-        });
-      }
 
       const existingDashboard = await Dashboard.findOne(
         { _id: dashboardId, team: teamId },
-        { tiles: 1, filters: 1 },
+        { tiles: 1, filters: 1, containers: 1 },
       ).lean();
+
+      if (existingDashboard == null) {
+        return res.sendStatus(404);
+      }
+
+      const effectiveContainers =
+        containers ?? existingDashboard.containers ?? [];
+      const validationError = await validateDashboardTiles({
+        teamId: teamId.toString(),
+        tiles,
+        filters,
+        existingTiles: existingDashboard.tiles ?? [],
+        containers: effectiveContainers,
+      });
+      if (validationError) {
+        return res.status(400).json({ message: validationError });
+      }
+
       const existingTileIds = new Set(
-        (existingDashboard?.tiles ?? []).map((t: { id: string }) => t.id),
+        (existingDashboard.tiles ?? []).map((t: { id: string }) => t.id),
       );
       const existingFilterIds = new Set(
-        (existingDashboard?.filters ?? []).map((f: { id: string }) => f.id),
+        (existingDashboard.filters ?? []).map((f: { id: string }) => f.id),
       );
 
       const internalTiles = convertExternalTilesToInternal(
@@ -1864,7 +2452,10 @@ router.put(
         existingTileIds,
       );
 
-      const setPayload: Record<string, unknown> = {
+      // Typed as `Partial<IDashboard>` (the canonical Mongo doc shape) so
+      // that misnamed or wrong-shape fields fail at compile time. The
+      // legacy `Record<string, unknown>` accepted anything.
+      const setPayload: Partial<IDashboard> = {
         name,
         tiles: internalTiles,
         tags: tags && uniq(tags),
@@ -1887,6 +2478,9 @@ router.put(
       }
       if (savedFilterValues !== undefined) {
         setPayload.savedFilterValues = savedFilterValues;
+      }
+      if (containers !== undefined) {
+        setPayload.containers = containers;
       }
 
       const updatedDashboard = await Dashboard.findOneAndUpdate(

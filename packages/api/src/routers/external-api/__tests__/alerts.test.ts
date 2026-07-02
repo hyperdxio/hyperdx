@@ -8,12 +8,12 @@ import {
   getServer,
   RAW_SQL_ALERT_TEMPLATE,
   RAW_SQL_NUMBER_ALERT_TEMPLATE,
-} from '../../../fixtures';
-import { AlertSource, AlertThresholdType } from '../../../models/alert';
-import Alert from '../../../models/alert';
-import Dashboard from '../../../models/dashboard';
-import { SavedSearch } from '../../../models/savedSearch';
-import Webhook, { WebhookService } from '../../../models/webhook';
+} from '@/fixtures';
+import { AlertSource, AlertThresholdType } from '@/models/alert';
+import Alert from '@/models/alert';
+import Dashboard from '@/models/dashboard';
+import { SavedSearch } from '@/models/savedSearch';
+import Webhook, { WebhookService } from '@/models/webhook';
 
 // Constants
 const ALERTS_BASE_URL = '/api/v2/alerts';
@@ -222,6 +222,7 @@ describe('External API Alerts', () => {
           id: expect.any(String),
           name: 'Format Test Alert',
           message: 'This is a test alert for format verification',
+          note: null,
           threshold: 123,
           interval: '15m',
           source: AlertSource.TILE,

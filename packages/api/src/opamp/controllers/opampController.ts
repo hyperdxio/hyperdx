@@ -3,15 +3,32 @@ import { Request, Response } from 'express';
 import * as config from '@/config';
 import { getAllTeams } from '@/controllers/team';
 import type { ITeam } from '@/models/team';
-import logger from '@/utils/logger';
-
-import { agentService } from '../services/agentService';
+import { agentService } from '@/opamp/services/agentService';
 import {
   createRemoteConfig,
   decodeAgentToServer,
   encodeServerToAgent,
   serverCapabilities,
-} from '../utils/protobuf';
+} from '@/opamp/utils/protobuf';
+import {
+  getCounter,
+  SpanKind,
+  SpanStatusCode,
+  withSpan,
+} from '@/utils/instrumentation';
+import logger from '@/utils/logger';
+
+// OpAMP messages come from collector agents, not authenticated users, so there
+// is no team/user context to attach. We instead track delivery outcomes with a
+// low-cardinality `outcome` enum (see agent_docs/observability.md).
+const opampMessagesCounter = getCounter('hyperdx.opamp.messages', {
+  description:
+    'Count of OpAMP AgentToServer messages handled, labeled by outcome (processed, unsupported_media_type, error).',
+});
+const opampRemoteConfigsCounter = getCounter('hyperdx.opamp.remote_configs', {
+  description:
+    'Count of OpAMP remote collector configs sent back to agents in a ServerToAgent response.',
+});
 
 type CollectorConfig = {
   extensions: Record<string, any>;
@@ -54,6 +71,13 @@ type CollectorConfig = {
     };
     nop?: null;
     'routing/logs'?: string[];
+    datadog?: {
+      endpoint: string;
+      read_timeout: string;
+      auth?: {
+        authenticator: string;
+      };
+    };
   };
   connectors?: {
     'routing/logs'?: {
@@ -104,6 +128,15 @@ type CollectorConfig = {
         initial_interval: string;
         max_interval: string;
         max_elapsed_time: string;
+      };
+    };
+    prometheusremotewrite?: {
+      endpoint: string;
+      tls: {
+        insecure: boolean;
+      };
+      resource_to_telemetry_conversion: {
+        enabled: boolean;
       };
     };
   };
@@ -235,16 +268,22 @@ export const buildOtelCollectorConfig = (
     },
     service: {
       extensions: [],
+      // The pipeline `processors:` lists are intentionally declared in the
+      // bootstrap config (docker/otel-collector/config.yaml) instead of here,
+      // so that users can swap them via CUSTOM_OTELCOL_CONFIG_FILE. See
+      // https://github.com/hyperdxio/hyperdx/pull/2351: when the OpAMP
+      // remote config sets `processors:` on a pipeline, it overwrites the
+      // bootstrap+custom merge, which prevents users from substituting
+      // their own processor (e.g. a memory_limiter with limit_percentage
+      // instead of limit_mib).
       pipelines: {
         traces: {
           receivers: ['nop'],
-          processors: ['memory_limiter', 'batch'],
           exporters: ['clickhouse'],
         },
         metrics: {
           // TODO: prometheus needs to be authenticated
           receivers: ['prometheus'],
-          processors: ['memory_limiter', 'batch'],
           exporters: ['clickhouse'],
         },
         'logs/in': {
@@ -254,12 +293,10 @@ export const buildOtelCollectorConfig = (
         },
         'logs/out-default': {
           receivers: ['routing/logs'],
-          processors: ['memory_limiter', 'transform', 'batch'],
           exporters: ['clickhouse'],
         },
         'logs/out-rrweb': {
           receivers: ['routing/logs'],
-          processors: ['memory_limiter', 'batch'],
           exporters: ['clickhouse/rrweb'],
         },
       },
@@ -274,6 +311,23 @@ export const buildOtelCollectorConfig = (
     otelCollectorConfig.service.pipelines['logs/in'].receivers.push(
       'otlp/hyperdx',
     );
+
+    if (config.IS_PROMQL_ENABLED && otelCollectorConfig.exporters) {
+      otelCollectorConfig.exporters.prometheusremotewrite = {
+        endpoint: 'http://${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}/write',
+        tls: {
+          insecure: true,
+        },
+        resource_to_telemetry_conversion: {
+          enabled: true,
+        },
+      };
+      otelCollectorConfig.service.pipelines['metrics/promql'] = {
+        receivers: ['otlp/hyperdx'],
+        processors: ['memory_limiter', 'batch'],
+        exporters: ['prometheusremotewrite'],
+      };
+    }
 
     if (collectorAuthenticationEnforced) {
       if (otelCollectorConfig.receivers['otlp/hyperdx'] == null) {
@@ -295,6 +349,41 @@ export const buildOtelCollectorConfig = (
     }
   }
 
+  // Opt-in Datadog receiver: lets a Datadog Agent ship traces, metrics, and
+  // logs to HyperDX. The contrib `datadogreceiver` runs a single HTTP server
+  // (the DD intake API on :8126) that serves all three signals and translates
+  // them into OTLP, which then flow through the existing traces/metrics/logs
+  // pipelines to ClickHouse. It is gated behind ENABLE_DATADOG_RECEIVER
+  // because it opens an extra ingest port (:8126).
+  if (config.ENABLE_DATADOG_RECEIVER) {
+    otelCollectorConfig.receivers.datadog = {
+      endpoint: '0.0.0.0:8126',
+      read_timeout: '60s',
+    };
+    otelCollectorConfig.service.pipelines.traces.receivers.push('datadog');
+    otelCollectorConfig.service.pipelines.metrics.receivers.push('datadog');
+    otelCollectorConfig.service.pipelines['logs/in'].receivers.push('datadog');
+
+    // Authenticate Datadog agents with the same per-team API keys as
+    // otlp/hyperdx. DD agents send their key in the `DD-API-KEY` header
+    // (set via DD_API_KEY on the agent), so the bearer-token extension is
+    // configured to validate that header instead of `Authorization`. Only
+    // attached when team API keys exist and collector authentication is
+    // enforced, mirroring otlp/hyperdx — otherwise the receiver stays
+    // unauthenticated.
+    if (apiKeys && apiKeys.length > 0 && collectorAuthenticationEnforced) {
+      otelCollectorConfig.extensions['bearertokenauth/datadog'] = {
+        header: 'DD-API-KEY',
+        scheme: '',
+        tokens: apiKeys,
+      };
+      otelCollectorConfig.receivers.datadog.auth = {
+        authenticator: 'bearertokenauth/datadog',
+      };
+      otelCollectorConfig.service.extensions.push('bearertokenauth/datadog');
+    }
+  }
+
   return otelCollectorConfig;
 };
 
@@ -303,73 +392,102 @@ export class OpampController {
    * Handle an OpAMP message from an agent
    */
   public async handleOpampMessage(req: Request, res: Response): Promise<void> {
-    try {
-      // Check content type
-      const contentType = req.get('Content-Type');
-      if (contentType !== 'application/x-protobuf') {
-        res
-          .status(415)
-          .send(
-            'Unsupported Media Type: Content-Type must be application/x-protobuf',
+    return withSpan(
+      'opamp.handle_message',
+      async span => {
+        try {
+          // Check content type
+          const contentType = req.get('Content-Type');
+          if (contentType !== 'application/x-protobuf') {
+            opampMessagesCounter.add(1, { outcome: 'unsupported_media_type' });
+            span.setStatus({ code: SpanStatusCode.OK });
+            res
+              .status(415)
+              .send(
+                'Unsupported Media Type: Content-Type must be application/x-protobuf',
+              );
+            return;
+          }
+
+          // Decode the AgentToServer message
+          const agentToServer = decodeAgentToServer(req.body);
+          logger.debug({ agentToServer }, 'agentToServer');
+          logger.debug(
+            // @ts-ignore
+            `Received message from agent: ${agentToServer.instanceUid?.toString(
+              'hex',
+            )}`,
           );
-        return;
-      }
 
-      // Decode the AgentToServer message
-      const agentToServer = decodeAgentToServer(req.body);
-      logger.debug({ agentToServer }, 'agentToServer');
-      logger.debug(
-        // @ts-ignore
-        `Received message from agent: ${agentToServer.instanceUid?.toString(
-          'hex',
-        )}`,
-      );
+          // Process the agent status
+          const agent = agentService.processAgentStatus(agentToServer);
 
-      // Process the agent status
-      const agent = agentService.processAgentStatus(agentToServer);
+          // Prepare the response
+          const serverToAgent: any = {
+            instanceUid: agent.instanceUid,
+            capabilities: serverCapabilities,
+          };
 
-      // Prepare the response
-      const serverToAgent: any = {
-        instanceUid: agent.instanceUid,
-        capabilities: serverCapabilities,
-      };
+          const acceptsRemoteConfig =
+            agentService.agentAcceptsRemoteConfig(agent);
+          span.setAttribute(
+            'opamp.agent.accepts_remote_config',
+            acceptsRemoteConfig,
+          );
 
-      // Check if we should send a remote configuration
-      if (agentService.agentAcceptsRemoteConfig(agent)) {
-        const teams = await getAllTeams([
-          'apiKey',
-          'collectorAuthenticationEnforced',
-        ]);
-        const otelCollectorConfig = buildOtelCollectorConfig(teams);
+          // Check if we should send a remote configuration
+          if (acceptsRemoteConfig) {
+            const teams = await getAllTeams([
+              'apiKey',
+              'collectorAuthenticationEnforced',
+            ]);
+            const otelCollectorConfig = buildOtelCollectorConfig(teams);
 
-        if (config.IS_DEV) {
-          logger.debug(JSON.stringify(otelCollectorConfig, null, 2));
+            if (config.IS_DEV) {
+              logger.debug(JSON.stringify(otelCollectorConfig, null, 2));
+            }
+
+            const remoteConfig = createRemoteConfig(
+              new Map([
+                [
+                  'config.json',
+                  Buffer.from(JSON.stringify(otelCollectorConfig)),
+                ],
+              ]),
+              'application/json',
+            );
+
+            serverToAgent.remoteConfig = remoteConfig;
+            opampRemoteConfigsCounter.add(1);
+            logger.debug(
+              `Sending remote config to agent: ${agent.instanceUid.toString(
+                'hex',
+              )}`,
+            );
+          }
+
+          // Encode and send the response
+          const encodedResponse = encodeServerToAgent(serverToAgent);
+
+          opampMessagesCounter.add(1, { outcome: 'processed' });
+          span.setStatus({ code: SpanStatusCode.OK });
+          res.setHeader('Content-Type', 'application/x-protobuf');
+          res.send(encodedResponse);
+        } catch (error) {
+          opampMessagesCounter.add(1, { outcome: 'error' });
+          span.recordException(
+            error instanceof Error ? error : new Error(String(error)),
+          );
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: error instanceof Error ? error.message : String(error),
+          });
+          logger.error({ err: error }, 'Error handling OpAMP message');
+          res.status(500).send('Internal Server Error');
         }
-
-        const remoteConfig = createRemoteConfig(
-          new Map([
-            ['config.json', Buffer.from(JSON.stringify(otelCollectorConfig))],
-          ]),
-          'application/json',
-        );
-
-        serverToAgent.remoteConfig = remoteConfig;
-        logger.debug(
-          `Sending remote config to agent: ${agent.instanceUid.toString(
-            'hex',
-          )}`,
-        );
-      }
-
-      // Encode and send the response
-      const encodedResponse = encodeServerToAgent(serverToAgent);
-
-      res.setHeader('Content-Type', 'application/x-protobuf');
-      res.send(encodedResponse);
-    } catch (error) {
-      logger.error({ err: error }, 'Error handling OpAMP message');
-      res.status(500).send('Internal Server Error');
-    }
+      },
+      { kind: SpanKind.INTERNAL, recordOkStatus: false },
+    );
   }
 }
 

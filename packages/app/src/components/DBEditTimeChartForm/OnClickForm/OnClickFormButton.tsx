@@ -3,7 +3,6 @@ import { Button } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
-import { IS_DASHBOARD_LINKING_ENABLED } from '@/config';
 
 import OnClickDrawer from './OnClickDrawer';
 
@@ -29,12 +28,9 @@ export function OnClickFormButton({
       ? 'Search'
       : onClickValue?.type === 'dashboard'
         ? 'Dashboard'
-        : 'Default';
-
-  // TODO: Remove once feature flag is permanently enabled
-  if (!IS_DASHBOARD_LINKING_ENABLED) {
-    return null;
-  }
+        : onClickValue?.type === 'external'
+          ? 'External'
+          : 'Default';
 
   return (
     <>

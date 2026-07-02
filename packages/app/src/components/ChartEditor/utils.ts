@@ -3,6 +3,7 @@ import { Path, UseFormSetError } from 'react-hook-form';
 import { validateRawSqlForAlert } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -14,6 +15,8 @@ import {
   isMetricSource,
   isRangeThresholdType,
   isTraceSource,
+  PromqlChartConfig,
+  PromqlSavedChartConfig,
   RawSqlChartConfig,
   RawSqlSavedChartConfig,
   SavedChartConfig,
@@ -21,7 +24,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 
-import { getStoredLanguage } from '../SearchInput';
+import { getStoredLanguage } from '@/components/SearchInput';
 
 import { ChartEditorFormState } from './types';
 
@@ -66,10 +69,46 @@ export const isRawSqlDisplayType = (
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Number;
 
+export const isPromqlDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is
+  | DisplayType.Table
+  | DisplayType.Line
+  | DisplayType.StackedBar
+  | DisplayType.Pie
+  | DisplayType.Number =>
+  displayType === DisplayType.Table ||
+  displayType === DisplayType.Line ||
+  displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.Pie ||
+  displayType === DisplayType.Number;
+
 export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,
   source: TSource | undefined,
 ): SavedChartConfig | undefined {
+  if (form.configType === 'promql' && isPromqlDisplayType(form.displayType)) {
+    const promqlConfig: PromqlSavedChartConfig = {
+      configType: 'promql',
+      ...pick(form, [
+        'name',
+        'displayType',
+        'numberFormat',
+        'color',
+        'granularity',
+        'compareToPreviousPeriod',
+        'fillNulls',
+        'alignDateRangeToGranularity',
+        // 'alert', // TODO: Support alerts on PromQL (HDX-4636)
+      ]),
+      promqlExpression: form.promqlExpression ?? '',
+      connection: form.connection ?? '',
+      source: form.source || undefined,
+    };
+
+    return promqlConfig;
+  }
+
   if (form.configType === 'sql' && isRawSqlDisplayType(form.displayType)) {
     const rawSqlConfig: RawSqlSavedChartConfig = {
       configType: 'sql',
@@ -77,6 +116,7 @@ export function convertFormStateToSavedChartConfig(
         'name',
         'displayType',
         'numberFormat',
+        'color',
         'granularity',
         'compareToPreviousPeriod',
         'fillNulls',
@@ -89,6 +129,16 @@ export function convertFormStateToSavedChartConfig(
       source: form.source || undefined,
     };
     return rawSqlConfig;
+  }
+
+  if (form.displayType === DisplayType.Markdown) {
+    const config: BuilderSavedChartConfig = {
+      ...omit(form, ['series', 'configType', 'sqlTemplate']),
+      select: [],
+      where: form.where ?? '',
+      source: source?.id ?? form.source ?? '',
+    };
+    return config;
   }
 
   if (source) {
@@ -115,6 +165,27 @@ export function convertFormStateToChartConfig(
   dateRange: ChartConfigWithDateRange['dateRange'],
   source: TSource | undefined,
 ): ChartConfigWithDateRange | undefined {
+  if (form.configType === 'promql' && isPromqlDisplayType(form.displayType)) {
+    const promqlConfig: PromqlChartConfig = {
+      configType: 'promql',
+      ...pick(form, [
+        'displayType',
+        'numberFormat',
+        'color',
+        'granularity',
+        'compareToPreviousPeriod',
+        'fillNulls',
+        'alignDateRangeToGranularity',
+      ]),
+      promqlExpression: form.promqlExpression ?? '',
+      connection: source?.connection ?? form.connection ?? '',
+      source: form.source || undefined,
+      from: source?.from,
+    };
+
+    return { ...promqlConfig, dateRange };
+  }
+
   if (form.configType === 'sql' && isRawSqlDisplayType(form.displayType)) {
     const rawSqlConfig: RawSqlChartConfig = {
       configType: 'sql',
@@ -122,6 +193,7 @@ export function convertFormStateToChartConfig(
         'name',
         'displayType',
         'numberFormat',
+        'color',
         'granularity',
         'compareToPreviousPeriod',
         'fillNulls',
@@ -135,6 +207,15 @@ export function convertFormStateToChartConfig(
       implicitColumnExpression:
         source && (isLogSource(source) || isTraceSource(source))
           ? source.implicitColumnExpression
+          : undefined,
+      // Body expression is only populated for log sources; trace sources use
+      // `spanNameExpression` for display, which has a different semantic for
+      // bare-text search and should not auto-fall-back.
+      bodyExpression:
+        source && isLogSource(source) ? source.bodyExpression : undefined,
+      useTextIndexForImplicitColumn:
+        source && (isLogSource(source) || isTraceSource(source))
+          ? source.useTextIndexForImplicitColumn
           : undefined,
       metricTables:
         source && isMetricSource(source) ? source.metricTables : undefined,
@@ -159,6 +240,12 @@ export function convertFormStateToChartConfig(
         isLogSource(source) || isTraceSource(source)
           ? source.implicitColumnExpression
           : undefined,
+      // Logs-only body fallback (see comment above for raw-sql config).
+      bodyExpression: isLogSource(source) ? source.bodyExpression : undefined,
+      useTextIndexForImplicitColumn:
+        isLogSource(source) || isTraceSource(source)
+          ? source.useTextIndexForImplicitColumn
+          : undefined,
       sampleWeightExpression: getSampleWeightExpression(source),
       metricTables: isMetricSource(source) ? source.metricTables : undefined,
       where: form.where ?? '',
@@ -178,7 +265,11 @@ export function convertSavedChartConfigToFormState(
 ): ChartEditorFormState {
   return {
     ...config,
-    configType: isRawSqlSavedChartConfig(config) ? 'sql' : 'builder',
+    configType: isPromqlSavedChartConfig(config)
+      ? 'promql'
+      : isRawSqlSavedChartConfig(config)
+        ? 'sql'
+        : 'builder',
     series:
       isBuilderSavedChartConfig(config) && Array.isArray(config.select)
         ? config.select.map(s => ({
@@ -290,18 +381,35 @@ export const validateChartForm = (
     }
   }
 
-  // Validate number, pie, and heatmap charts only have one series
+  // Validate pie and heatmap charts only have one series
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
-    (form.displayType === DisplayType.Number ||
-      form.displayType === DisplayType.Pie ||
+    (form.displayType === DisplayType.Pie ||
       form.displayType === DisplayType.Heatmap) &&
     form.series.length > 1
   ) {
     errors.push({
       path: `series`,
       message: `Only one series is allowed for ${form.displayType} charts`,
+    });
+  }
+
+  // Number charts allow a second series only for ratio mode (numerator /
+  // denominator, which can be shown as a percentage via the number format);
+  // otherwise they show a single value.
+  if (
+    !isRawSqlChart &&
+    Array.isArray(form.series) &&
+    form.displayType === DisplayType.Number &&
+    form.series.length > (form.seriesReturnType === 'ratio' ? 2 : 1)
+  ) {
+    errors.push({
+      path: `series`,
+      message:
+        form.seriesReturnType === 'ratio'
+          ? 'Number charts support at most two series (ratio mode)'
+          : 'Number charts support a single series unless ratio mode (As Ratio) is enabled',
     });
   }
 

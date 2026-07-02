@@ -10,10 +10,9 @@ import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
+import { AggregatedAlertHistory } from '@/tasks/checkAlerts';
 import DefaultAlertProvider from '@/tasks/checkAlerts/providers/default';
 import logger from '@/utils/logger';
-
-import { AggregatedAlertHistory } from '..';
 
 export enum AlertTaskType {
   SAVED_SEARCH,
@@ -73,6 +72,7 @@ export interface AlertProvider {
     endTime: Date;
     granularity: string;
     startTime: Date;
+    tileId?: string;
   }): string;
 
   /**

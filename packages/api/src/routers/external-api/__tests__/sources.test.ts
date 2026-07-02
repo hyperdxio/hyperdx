@@ -2,17 +2,14 @@ import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import request, { SuperAgentTest } from 'supertest';
 
-import { ITeam } from '@/models/team';
-import { IUser } from '@/models/user';
-
-import * as config from '../../../config';
+import * as config from '@/config';
 import {
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
   getLoggedInAgent,
   getServer,
-} from '../../../fixtures';
-import Connection, { IConnection } from '../../../models/connection';
+} from '@/fixtures';
+import Connection, { IConnection } from '@/models/connection';
 import {
   ISource,
   LogSource,
@@ -20,8 +17,10 @@ import {
   SessionSource,
   Source,
   TraceSource,
-} from '../../../models/source';
-import { mapGranularityToExternalFormat } from '../v2/sources';
+} from '@/models/source';
+import { ITeam } from '@/models/team';
+import { IUser } from '@/models/user';
+import { mapGranularityToExternalFormat } from '@/routers/external-api/v2/sources';
 
 describe('External API v2 Sources', () => {
   const server = getServer();
@@ -532,6 +531,54 @@ describe('External API v2 Sources', () => {
       // Should only return the valid source
       expect(response.body.data).toHaveLength(1);
       expect(response.body.data[0].id).toBe(validSource._id.toString());
+    });
+
+    describe('section field', () => {
+      const SECTION = 'Control Plane Prod';
+
+      it('returns the section on a source that has one', async () => {
+        const logSource = await LogSource.create({
+          kind: SourceKind.Log,
+          team: team._id,
+          name: 'Sectioned Log Source',
+          section: SECTION,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_LOGS_TABLE,
+          },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '*',
+          connection: connection._id,
+        });
+
+        const response = await authRequest('get', BASE_URL).expect(200);
+
+        expect(response.body.data).toHaveLength(1);
+        expect(response.body.data[0]).toMatchObject({
+          id: logSource._id.toString(),
+          section: SECTION,
+        });
+      });
+
+      it('omits the section on a source that has none', async () => {
+        await LogSource.create({
+          kind: SourceKind.Log,
+          team: team._id,
+          name: 'Unsectioned Log Source',
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_LOGS_TABLE,
+          },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '*',
+          connection: connection._id,
+        });
+
+        const response = await authRequest('get', BASE_URL).expect(200);
+
+        expect(response.body.data).toHaveLength(1);
+        expect(response.body.data[0]).not.toHaveProperty('section');
+      });
     });
   });
 

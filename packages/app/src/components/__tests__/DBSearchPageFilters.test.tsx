@@ -2,19 +2,18 @@ import { UseQueryResult } from '@tanstack/react-query';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { useGetValuesDistribution } from '@/hooks/useMetadata';
-
 import {
   cleanedFacetName,
   FilterGroup,
   type FilterGroupProps,
-} from '../DBSearchPageFilters';
-import { NestedFilterGroup } from '../DBSearchPageFilters/NestedFilterGroup';
+} from '@/components/DBSearchPageFilters';
+import { NestedFilterGroup } from '@/components/DBSearchPageFilters/NestedFilterGroup';
 import {
   cleanClickHouseExpression,
   groupFacetsByBaseName,
   parseMapFieldName,
-} from '../DBSearchPageFilters/utils';
+} from '@/components/DBSearchPageFilters/utils';
+import { useGetValuesDistribution } from '@/hooks/useMetadata';
 
 describe('cleanClickHouseExpression', () => {
   it('should remove toString wrapper', () => {
@@ -690,5 +689,28 @@ describe('NestedFilterGroup', () => {
     );
 
     expect(screen.queryAllByTestId(/nested-filter-group-attr/)).toHaveLength(0);
+  });
+
+  it('should allow reopening after close (panel stays accessible)', async () => {
+    renderWithMantine(
+      <NestedFilterGroup {...defaultNestedProps} isDefaultExpanded={false} />,
+    );
+
+    // Initially closed
+    const panel = screen.getByTestId('nested-filter-group-panel');
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
+
+    // Open the group
+    const control = screen.getByTestId('nested-filter-group-control');
+    await userEvent.click(control);
+    expect(panel).toHaveAttribute('aria-hidden', 'false');
+
+    // Close the group
+    await userEvent.click(control);
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
+
+    // Reopen the group — should not be stuck closed
+    await userEvent.click(control);
+    expect(panel).toHaveAttribute('aria-hidden', 'false');
   });
 });

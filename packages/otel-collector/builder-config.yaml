@@ -28,6 +28,9 @@ receivers:
       v__OTEL_COLLECTOR_VERSION__
   # Contrib
   - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/receiver/datadogreceiver
+      v__OTEL_COLLECTOR_VERSION__
+  - gomod:
       github.com/open-telemetry/opentelemetry-collector-contrib/receiver/dockerstatsreceiver
       v__OTEL_COLLECTOR_VERSION__
   - gomod:
@@ -118,6 +121,9 @@ exporters:
   # Contrib
   - gomod:
       github.com/open-telemetry/opentelemetry-collector-contrib/exporter/clickhouseexporter
+      v__OTEL_COLLECTOR_VERSION__
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter
       v__OTEL_COLLECTOR_VERSION__
 
 connectors:

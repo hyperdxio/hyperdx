@@ -1,13 +1,12 @@
 import React from 'react';
 
+import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
+import DBTableChart from '@/components/DBTableChart';
+import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import { Table } from '@/HDXMultiSeriesTableChart';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useSource } from '@/source';
-
-import DateRangeIndicator from '../charts/DateRangeIndicator';
-import DBTableChart from '../DBTableChart';
-import MVOptimizationIndicator from '../MaterializedViews/MVOptimizationIndicator';
 
 // Mock dependencies
 jest.mock('@/hooks/useOffsetPaginatedQuery', () => ({
@@ -30,7 +29,9 @@ jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
 jest.mock('@/source', () => ({
   useSource: jest.fn().mockReturnValue({ data: null }),
   useSources: jest.fn().mockReturnValue({ data: [] }),
-  useResolvedNumberFormat: jest.fn().mockReturnValue(undefined),
+  useChartNumberFormats: jest
+    .fn()
+    .mockReturnValue({ formatByColumn: new Map(), chartFormat: undefined }),
 }));
 
 jest.mock('@/HDXMultiSeriesTableChart', () => ({

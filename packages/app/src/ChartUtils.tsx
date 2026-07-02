@@ -37,6 +37,7 @@ import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
+import { DEFAULT_SERIES_LIMIT } from './defaults';
 import { getMetricNameSql } from './otelSemanticConventions';
 import { AggFn, TableChartSeries, TimeChartSeries } from './types';
 import { NumberFormat } from './types';
@@ -60,6 +61,7 @@ export const AGG_FNS = [
     isAttributable: false,
   },
   { value: 'any' as const, label: 'Any' },
+  { value: 'increase' as const, label: 'Increase', isAttributable: false },
   { value: 'none' as const, label: 'Custom' },
 ];
 
@@ -102,9 +104,19 @@ function getTimeChartDateRange(
     : getAlignedDateRange(dateRange, granularity);
 }
 
+export const MAX_TIME_CHART_SERIES = DEFAULT_SERIES_LIMIT;
+
 export function convertToTimeChartConfig(
   config: ChartConfigWithDateRange,
 ): ChartConfigWithDateRange {
+  // Series capping is opt-in per tile via the chart's Display Settings; when
+  // unset, no __hdx_series_limit CTE is emitted and every series is fetched.
+  const seriesLimit = isBuilderChartConfig(config)
+    ? config.seriesLimit != null
+      ? Math.max(1, config.seriesLimit)
+      : undefined
+    : undefined;
+
   const granularity = getTimeChartGranularity(
     config.granularity,
     config.dateRange,
@@ -116,17 +128,29 @@ export function convertToTimeChartConfig(
     granularity,
   );
 
+  // When the range is bucket-aligned, the end is the start of the next bucket,
+  // so end-exclusive is required to avoid double-counting boundary events.
+  // When alignment is off the end is the user's exact selection, so fall back
+  // to the caller's setting, if there is one.
+  const isAligned = config.alignDateRangeToGranularity !== false;
+  const dateRangeEndInclusive = isAligned
+    ? false
+    : (config.dateRangeEndInclusive ?? false);
+
   return isBuilderChartConfig(config)
     ? {
         ...config,
         dateRange,
-        dateRangeEndInclusive: false,
+        dateRangeEndInclusive,
         granularity,
         limit: { limit: 100000 },
+        // Overwrite (not conditionally spread) so a cleared `null` from the
+        // source config is normalized to undefined rather than carried over.
+        seriesLimit,
       }
     : {
         ...config,
-        dateRangeEndInclusive: false,
+        dateRangeEndInclusive,
         dateRange,
         granularity,
       };
@@ -449,11 +473,55 @@ export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {
   ];
 }
 
+/**
+ * Find the series whose active-point pixel Y is closest to the cursor.
+ *
+ * `seriesYByKey` maps each series' dataKey to the pixel Y of its
+ * active point (captured from the chart's active dots), and `pointerY`
+ * is the cursor's pixel Y. Both live in the same chart pixel space, so
+ * the nearest series is the one with the smallest vertical distance.
+ * Returns that series' dataKey, or `undefined` when the pointer is
+ * farther than `maxDistancePx` from every line (so nothing is
+ * highlighted in empty space). Candidates not present in the map are
+ * skipped, and ties resolve to the first candidate in `candidateKeys`.
+ */
+export function findNearestSeriesKey(
+  seriesYByKey: Map<string, number> | undefined,
+  candidateKeys: string[],
+  pointerY: number | undefined,
+  maxDistancePx: number,
+): string | undefined {
+  if (seriesYByKey == null || pointerY == null) {
+    return undefined;
+  }
+
+  let nearestKey: string | undefined;
+  let nearestDistance = Infinity;
+  for (const key of candidateKeys) {
+    const seriesY = seriesYByKey.get(key);
+    if (seriesY == null) {
+      continue;
+    }
+    const distance = Math.abs(seriesY - pointerY);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestKey = key;
+    }
+  }
+
+  if (nearestKey == null || nearestDistance > maxDistancePx) {
+    return undefined;
+  }
+  return nearestKey;
+}
+
 export interface LineData {
   dataKey: string;
   currentPeriodKey: string;
   previousPeriodKey: string;
   displayName: string;
+  /** The original result column name this series' values were pulled from. */
+  valueColumnName: string;
   color: string;
   isDashed?: boolean;
 }
@@ -580,6 +648,7 @@ function addResponseToFormattedData({
         currentPeriodKey,
         previousPeriodKey,
         displayName: keyName,
+        valueColumnName: valueColumn.name,
         color,
         isDashed: isPreviousPeriod,
       };

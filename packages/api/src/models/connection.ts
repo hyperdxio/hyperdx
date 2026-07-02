@@ -12,7 +12,14 @@ export interface IConnection {
   username: string;
   team: ObjectId;
   hyperdxSettingPrefix?: string;
+  /** When true, `host` is treated as a Prometheus-compatible API endpoint
+   *  (e.g. Prometheus or Thanos) and PromQL queries are proxied directly to
+   *  it. When false/unset, `host` is a ClickHouse HTTP endpoint and PromQL
+   *  queries use ClickHouse's prometheusQuery() function. */
+  isPrometheusEndpoint?: boolean;
 }
+
+export type ConnectionDocument = mongoose.HydratedDocument<IConnection>;
 
 export default mongoose.model<IConnection>(
   'Connection',
@@ -31,6 +38,7 @@ export default mongoose.model<IConnection>(
         select: false,
       },
       hyperdxSettingPrefix: String,
+      isPrometheusEndpoint: Boolean,
     },
     {
       timestamps: true,

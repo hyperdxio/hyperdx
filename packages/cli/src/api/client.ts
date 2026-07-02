@@ -10,9 +10,10 @@
 import { createClient } from '@clickhouse/client';
 import type {
   BaseResultSet,
+  ClickHouseClient as NodeClickHouseClient,
   ClickHouseSettings,
   DataFormat,
-} from '@clickhouse/client-common';
+} from '@clickhouse/client';
 
 import {
   BaseClickhouseClient,
@@ -25,7 +26,10 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 
 import { loadSession, saveSession, clearSession } from '@/utils/config';
-import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
+import {
+  AlertThresholdType,
+  UseTextIndex,
+} from '@hyperdx/common-utils/dist/types';
 
 // ------------------------------------------------------------------
 // API Client (session management + REST calls)
@@ -342,6 +346,13 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
   // Silence the "Sending Query: ..." debug output from BaseClickhouseClient
   protected override logDebugQuery(): void {}
 
+  // This subclass always builds a node client, so narrow the base class's
+  // platform-agnostic client type to the node-specific one.
+  protected getClient(): NodeClickHouseClient {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- subclass always builds a node client
+    return super.getClient() as NodeClickHouseClient;
+  }
+
   protected async __query<Format extends DataFormat>({
     query,
     format = 'JSON' as Format,
@@ -354,10 +365,16 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
   }: QueryInputs<Format>): Promise<BaseResultSet<ReadableStream, Format>> {
     let clickhouseSettings: ClickHouseSettings | undefined;
     if (!shouldSkipApplySettings) {
-      clickhouseSettings = await this.processClickhouseSettings({
+      const neutralSettings = await this.processClickhouseSettings({
         connectionId,
         externalClickhouseSettings,
       });
+      // processClickhouseSettings returns the shared base class's settings type
+      // (from @clickhouse/client-common). It is structurally identical to the
+      // node client's own self-bundled ClickHouseSettings, but the two packages'
+      // copies are distinct nominal types since 1.23, so bridge explicitly.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- client library type mismatch
+      clickhouseSettings = neutralSettings as ClickHouseSettings;
     }
 
     // Pass connection ID as HTTP header — the proxy uses this to
@@ -424,6 +441,7 @@ export interface SourceResponse {
   displayedTimestampValueExpression?: string;
   defaultTableSelectExpression?: string;
   implicitColumnExpression?: string;
+  useTextIndexForImplicitColumn?: UseTextIndex;
   orderByExpression?: string;
   querySettings?: Array<{ setting: string; value: string }>;
 

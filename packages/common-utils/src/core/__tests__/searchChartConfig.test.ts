@@ -1,8 +1,8 @@
-import { DisplayType, Filter, SourceKind, TSource } from '../../types';
 import {
   ALERT_COUNT_DEFAULT_SELECT,
   buildSearchChartConfig,
-} from '../searchChartConfig';
+} from '@/core/searchChartConfig';
+import { DisplayType, Filter, SourceKind, TSource } from '@/types';
 
 // Factory helpers keep tests focused on the behavior under test rather than
 // the full source shape. We cast to TSource because most per-kind fields are
@@ -141,6 +141,68 @@ describe('buildSearchChartConfig', () => {
       const config = buildSearchChartConfig(source, { where: '' });
 
       expect(config.implicitColumnExpression).toBeUndefined();
+    });
+  });
+
+  describe('body expression', () => {
+    // bodyExpression is the search-side fallback for log sources where
+    // implicitColumnExpression is not configured. Symmetric to the
+    // display-side fallback in `getEventBody` (packages/app/src/source.ts).
+    // HDX-4376.
+    it('sets bodyExpression on Log sources when configured', () => {
+      const source = makeLogSource({
+        implicitColumnExpression: undefined,
+        bodyExpression: 'Body',
+      });
+
+      const config = buildSearchChartConfig(source, { where: '' });
+
+      expect(config.bodyExpression).toBe('Body');
+      expect(config.implicitColumnExpression).toBeUndefined();
+    });
+
+    it('sets both implicit and body when both are configured (resolver picks implicit at use site)', () => {
+      const source = makeLogSource({
+        implicitColumnExpression: 'IndexedBody',
+        bodyExpression: 'Body',
+      });
+
+      const config = buildSearchChartConfig(source, { where: '' });
+
+      expect(config.implicitColumnExpression).toBe('IndexedBody');
+      expect(config.bodyExpression).toBe('Body');
+    });
+
+    it('omits bodyExpression for Trace sources (logs-only field)', () => {
+      // Trace sources do not populate bodyExpression; spanNameExpression
+      // has different semantics for trace search and should not
+      // auto-fall-back via the body chain.
+      const source = makeTraceSource({
+        // Even if a runtime payload stuffed it on a trace source, it must
+        // not flow through.
+        bodyExpression: 'should-not-thread',
+      });
+
+      const config = buildSearchChartConfig(source, { where: '' });
+
+      expect(config.bodyExpression).toBeUndefined();
+    });
+
+    it('omits bodyExpression for Metric sources', () => {
+      const source = makeMetricSource();
+
+      const config = buildSearchChartConfig(source, { where: '' });
+
+      expect(config.bodyExpression).toBeUndefined();
+    });
+
+    it('omits the bodyExpression key entirely when unset on a Log source', () => {
+      const source = makeLogSource({ bodyExpression: undefined });
+
+      const config = buildSearchChartConfig(source, { where: '' });
+
+      expect(config.bodyExpression).toBeUndefined();
+      expect('bodyExpression' in config).toBe(false);
     });
   });
 

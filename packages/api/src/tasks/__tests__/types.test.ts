@@ -1,4 +1,4 @@
-import { asTaskArgs } from '../types';
+import { asTaskArgs } from '@/tasks/types';
 
 describe('asTaskArgs', () => {
   describe('invalid inputs', () => {
@@ -272,6 +272,21 @@ describe('asTaskArgs', () => {
       expect(() => asTaskArgs(invalidArgs)).toThrow(
         'sourceTimeoutMs must be an int',
       );
+    });
+  });
+
+  describe('provision-dashboards task', () => {
+    it('should accept provision-dashboards task', () => {
+      const validArgs = {
+        _: ['provision-dashboards'],
+      };
+
+      const result = asTaskArgs(validArgs);
+
+      expect(result).toEqual({
+        taskName: 'provision-dashboards',
+      });
+      expect(result.taskName).toBe('provision-dashboards');
     });
   });
 

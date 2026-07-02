@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import objectHash from 'object-hash';
 import {
   ColumnMeta,
+  ColumnMetaType,
   filterColumnMetaByType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
@@ -30,6 +31,8 @@ import { DEFAULT_FILTER_KEYS_FETCH_LIMIT } from '@/defaults';
 import { getMetadata } from '@/metadata';
 import { useSource, useSources } from '@/source';
 import { toArray } from '@/utils';
+
+export type Facet = { key: string; value: string[] };
 
 // Hook to get metadata with proper settings applied
 export function useMetadataWithSettings() {
@@ -88,7 +91,10 @@ export function useColumns(
 ) {
   const metadata = useMetadataWithSettings();
   return useQuery<ColumnMeta[]>({
-    queryKey: ['useMetadata.useColumns', { databaseName, tableName }],
+    queryKey: [
+      'useMetadata.useColumns',
+      { connectionId, databaseName, tableName },
+    ],
     queryFn: async () => {
       return metadata.getColumns({
         databaseName,
@@ -99,6 +105,64 @@ export function useColumns(
     enabled: !!databaseName && !!tableName && !!connectionId,
     ...options,
   });
+}
+
+// Derives a map of DateTime/Date column name → ClickHouse type.
+export function useDateTimeColumns(
+  columns: ColumnMetaType[] | undefined,
+): Map<string, string> {
+  return useMemo(
+    () =>
+      new Map(
+        filterColumnMetaByType(columns ?? [], [JSDataType.Date])?.map(
+          c => [c.name, c.type] as const,
+        ),
+      ),
+    [columns],
+  );
+}
+
+/**
+ * Resolves the Date/DateTime columns from two sources, with the live
+ * query result taking precedence.
+ *
+ * - **Table schema** (`schemaColumns`): every column on the table, available
+ *   before any query runs — but blind to SELECT aliases and computed
+ *   expressions, which don't exist on the table.
+ * - **Query result** (fed via the returned `onResolvedColumnsChange`): the
+ *   resolved type of every column the current query actually returns, including
+ *   aliases (`Timestamp AS time`) and expressions (`toDate(Timestamp)`). These
+ *   are exactly the cells a user can click to filter on, so they win.
+ */
+export function useResolvedDateTimeColumns(
+  schemaColumns: ColumnMetaType[] | undefined,
+): {
+  dateTimeColumns: Map<string, string>;
+  onResolvedColumnsChange: (meta: ColumnMetaType[]) => void;
+} {
+  const schemaDateTimeColumns = useDateTimeColumns(schemaColumns);
+
+  const [resultColumns, setResultColumns] = useState<ColumnMetaType[]>([]);
+  const resultDateTimeColumns = useDateTimeColumns(resultColumns);
+
+  const dateTimeColumns = useMemo(() => {
+    const merged = new Map(schemaDateTimeColumns);
+
+    // The query result is authoritative for the columns it returns. A column
+    // can be a date on the table yet non-date as displayed (e.g.
+    // `toString(Timestamp) AS Timestamp`); drop any such column so its string
+    // value isn't wrongly date-wrapped.
+    for (const { name } of resultColumns) {
+      if (!resultDateTimeColumns.has(name)) merged.delete(name);
+    }
+    // Add or override the columns the query reports as dates — this is what
+    // brings in aliases and computed expressions absent from the schema.
+    for (const [name, type] of resultDateTimeColumns) merged.set(name, type);
+
+    return merged;
+  }, [schemaDateTimeColumns, resultDateTimeColumns, resultColumns]);
+
+  return { dateTimeColumns, onResolvedColumnsChange: setResultColumns };
 }
 
 export function useJsonColumns(
@@ -126,21 +190,52 @@ export function useJsonColumns(
   });
 }
 
+// Mirrors `useJsonColumns` for Map-typed columns. Used by `mergePath`
+// callers (notably `DBSearchPageFilters`) so numeric-looking sub-keys on a
+// Map render as `Map['key']` instead of the illegal array `Map[N+1]`.
+// HDX-4369.
+export function useMapColumns(
+  tableConnection: TableConnection | undefined,
+  options?: Partial<UseQueryOptions<string[]>>,
+) {
+  const metadata = useMetadataWithSettings();
+  return useQuery<string[]>({
+    queryKey: ['useMetadata.useMapColumns', tableConnection],
+    queryFn: async () => {
+      if (!tableConnection) return [];
+      const columns = await metadata.getColumns(tableConnection);
+      return (
+        filterColumnMetaByType(columns, [JSDataType.Map])?.map(
+          column => column.name,
+        ) ?? []
+      );
+    },
+    enabled:
+      tableConnection &&
+      !!tableConnection.databaseName &&
+      !!tableConnection.tableName &&
+      !!tableConnection.connectionId,
+    ...options,
+  });
+}
+
 export function useMultipleAllFields(
   tableConnections: TableConnection[],
   options?: Partial<UseQueryOptions<Field[]>> & {
     dateRange?: [Date, Date];
+    timestampValueExpression?: string;
   },
 ) {
   const metadata = useMetadataWithSettings();
   const { data: me, isFetched } = api.useMe();
-  const { dateRange, ...queryOptions } = options ?? {};
+  const { dateRange, timestampValueExpression, ...queryOptions } =
+    options ?? {};
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useMultipleAllFields',
       ...tableConnections.map(tc => ({ ...tc })),
-      dateRange?.[0]?.getTime(),
-      dateRange?.[1]?.getTime(),
+      dateRange ? [dateRange[0].getTime(), dateRange[1].getTime()] : undefined,
+      timestampValueExpression,
     ],
     queryFn: async () => {
       const team = me?.team;
@@ -149,7 +244,9 @@ export function useMultipleAllFields(
       }
 
       const promiseResults = await Promise.allSettled(
-        tableConnections.map(tc => metadata.getAllFields({ ...tc, dateRange })),
+        tableConnections.map(tc =>
+          metadata.getAllFields({ ...tc, dateRange, timestampValueExpression }),
+        ),
       );
 
       const fields2d: Field[][] = promiseResults.map(result => {
@@ -182,6 +279,7 @@ export function useAllFields(
   tableConnection: TableConnection | undefined,
   options?: Partial<UseQueryOptions<Field[]>> & {
     dateRange?: [Date, Date];
+    timestampValueExpression?: string;
   },
 ) {
   return useMultipleAllFields(
@@ -204,7 +302,10 @@ export function useTableMetadata(
 ) {
   const metadata = useMetadataWithSettings();
   return useQuery<TableMetadata | undefined>({
-    queryKey: ['useMetadata.useTableMetadata', { databaseName, tableName }],
+    queryKey: [
+      'useMetadata.useTableMetadata',
+      { connectionId, databaseName, tableName },
+    ],
     queryFn: async () => {
       return await metadata.getTableMetadata({
         databaseName,
@@ -249,7 +350,7 @@ export function useMultipleGetKeyValues(
   const maxKeys =
     me?.team?.filterKeysFetchLimit ?? DEFAULT_FILTER_KEYS_FETCH_LIMIT;
 
-  const query = useQuery<{ key: string; value: string[] }[]>({
+  const query = useQuery<Facet[]>({
     queryKey: [
       'useMetadata.useGetKeyValues',
       mode,
@@ -279,20 +380,16 @@ export function useMultipleGetKeyValues(
         const connectionId = firstConfig.connection;
         const dateRange = firstConfig.dateRange;
 
-        return Promise.all(
-          keys.slice(0, maxKeys).map(async keyExpression => {
-            const value = await metadata.getAllKeyValues({
-              databaseName,
-              tableName,
-              keyExpression,
-              connectionId,
-              metadataMVs,
-              dateRange,
-              signal,
-            });
-            return { key: keyExpression, value };
-          }),
-        );
+        return metadata.getAllKeyValues({
+          databaseName,
+          tableName,
+          keyExpressions: keys.slice(0, maxKeys),
+          connectionId,
+          metadataMVs,
+          dateRange,
+          timestampValueExpression: firstConfig.timestampValueExpression,
+          signal,
+        });
       }
 
       // 'exact' mode
@@ -392,8 +489,73 @@ export function useGetKeyValues(
   );
 }
 
-export function deduplicateArray<T extends object>(array: T[]): T[] {
-  return deduplicate2dArray([array]);
+/**
+ * Combined key + value discovery in a single rollup query.
+ * Returns all fields and their top N values without needing a separate
+ * useAllFields + useGetKeyValues chain.
+ */
+export function useAllFieldsAndValues(
+  {
+    databaseName,
+    tableName,
+    connectionId,
+    metadataMVs,
+    dateRange,
+    maxValuesPerKey,
+    maxKeys,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    metadataMVs?: MetadataMaterializedViews;
+    dateRange?: [Date, Date];
+    maxValuesPerKey?: number;
+    maxKeys?: number;
+  },
+  options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
+) {
+  const metadata = useMetadataWithSettings();
+  const { data: me } = api.useMe();
+  const { enabled = true } = options || {};
+  const fieldMetadataDisabled = !!me?.team?.fieldMetadataDisabled;
+
+  return useQuery<Facet[]>({
+    queryKey: [
+      'useMetadata.useAllFieldsAndValues',
+      databaseName,
+      tableName,
+      connectionId,
+      metadataMVs,
+      dateRange?.[0]?.getTime(),
+      dateRange?.[1]?.getTime(),
+      maxValuesPerKey,
+      maxKeys,
+    ],
+    queryFn: async ({ signal }) => {
+      if (fieldMetadataDisabled) {
+        return [];
+      }
+      return metadata.getAllFieldsAndValues({
+        databaseName,
+        tableName,
+        connectionId,
+        metadataMVs,
+        dateRange,
+        maxValuesPerKey,
+        maxKeys,
+        signal,
+      });
+    },
+    staleTime: 1000 * 60 * 5,
+    placeholderData: keepPreviousData,
+    ...options,
+    enabled:
+      !!enabled &&
+      !fieldMetadataDisabled &&
+      !!databaseName &&
+      !!tableName &&
+      !!connectionId,
+  });
 }
 
 export function deduplicate2dArray<T extends object>(array2d: T[][]): T[] {

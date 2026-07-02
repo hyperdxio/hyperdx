@@ -9,9 +9,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import DBEditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { useSource } from '@/source';
-
-import DBEditTimeChartForm from '..';
 
 // Mock the hooks that fetch data
 jest.mock('@/hooks/useFetchMetricResourceAttrs', () => ({
@@ -68,7 +67,7 @@ jest.mock('@/source', () => ({
     return { data: undefined };
   }),
   getFirstTimestampValueExpression: jest.fn().mockReturnValue('Timestamp'),
-  getTraceDurationNumberFormat: jest.fn().mockReturnValue(undefined),
+  getFirstSeriesNumberFormat: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('../../MetricNameSelect', () => ({
@@ -479,5 +478,81 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
     expect(
       screen.getByTestId('alert-advanced-settings-toggle'),
     ).toHaveTextContent('Advanced Settings');
+  });
+});
+
+describe('DBEditTimeChartForm - Duplicate series', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  const sourceSeries = {
+    aggFn: 'avg' as const,
+    aggCondition: '',
+    aggConditionLanguage: 'lucene' as const,
+    valueExpression: 'Value',
+    metricType: MetricsDataType.Gauge,
+    metricName: 'test.metric.gauge',
+    alias: 'avg latency',
+  };
+
+  const renderWithSingleSeries = (
+    props: Partial<React.ComponentProps<typeof DBEditTimeChartForm>> = {},
+  ) =>
+    renderComponent({
+      chartConfig: { ...defaultChartConfig, select: [sourceSeries] },
+      ...props,
+    });
+
+  it('inserts a copy of the series directly below when duplicating', async () => {
+    renderWithSingleSeries();
+    expect(screen.getAllByTestId('series-alias-input')).toHaveLength(1);
+
+    await userEvent.click(screen.getByTestId('series-duplicate-button'));
+
+    const aliasInputs = screen.getAllByTestId('series-alias-input');
+    expect(aliasInputs).toHaveLength(2);
+    expect(aliasInputs[0]).toHaveValue('avg latency');
+    // The copy starts with a blank alias so it does not collide with the
+    // original's alias in the generated SQL.
+    expect(aliasInputs[1]).toHaveValue('');
+  });
+
+  it('saves both the original and the duplicated series', async () => {
+    const onSave = jest.fn();
+    renderWithSingleSeries({ onSave });
+
+    await userEvent.click(screen.getByTestId('series-duplicate-button'));
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.select).toHaveLength(2);
+    expect(saved.select[0]).toMatchObject(sourceSeries);
+    // The copy matches the source on every field except the alias, which is
+    // cleared so the two columns get distinct names in the generated SQL.
+    expect(saved.select[1]).toMatchObject({ ...sourceSeries, alias: '' });
+    expect(saved.select[1].alias).toBe('');
+  });
+
+  it('keeps the duplicated series independent of the original', async () => {
+    const onSave = jest.fn();
+    renderWithSingleSeries({ onSave });
+
+    await userEvent.click(screen.getByTestId('series-duplicate-button'));
+
+    const aliasInputs = screen.getAllByTestId('series-alias-input');
+    await userEvent.clear(aliasInputs[1]);
+    await userEvent.type(aliasInputs[1], 'p95 latency');
+
+    expect(screen.getAllByTestId('series-alias-input')[0]).toHaveValue(
+      'avg latency',
+    );
+
+    await userEvent.click(screen.getByTestId('chart-save-button'));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.select[0]).toMatchObject({ alias: 'avg latency' });
+    expect(saved.select[1]).toMatchObject({ alias: 'p95 latency' });
   });
 });

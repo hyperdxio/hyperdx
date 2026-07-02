@@ -1,4 +1,4 @@
-import { ResponseJSON } from '@clickhouse/client-common';
+import { ResponseJSON } from '@clickhouse/client';
 
 import {
   ChSql,
@@ -222,6 +222,91 @@ describe('chSqlToAliasMap - alias unit test', () => {
       start_time: 'toStartOfDay(LogAttributes.start.`time`)',
     };
     expect(res).toEqual(aliasMap);
+  });
+});
+
+describe('chSqlToAliasMap - resilient parsing of ClickHouse-specific SQL', () => {
+  // A sampling CTE renders `greatest(CAST(total / N AS UInt32), 1)`. The
+  // `CAST(... AS UInt32)` cast is rejected by node-sql-parser's Postgresql
+  // dialect, so the full statement no longer parses. Before the outer-
+  // projection fallback this returned `{}`, which dropped every alias and
+  // broke filters on select-alias columns (Event Patterns, histogram, alerts).
+  const samplingCte =
+    'WITH tableStats AS (SELECT count() as total, greatest(CAST(total / 10000 AS UInt32), 1) as sample_factor FROM db.t)';
+  const samplingWhere =
+    'cityHash64(Timestamp, rand()) % (SELECT sample_factor FROM tableStats) = 0';
+
+  it('recovers plain aliases when a sampling CTE makes the full query unparseable', () => {
+    const chSqlInput: ChSql = {
+      sql: `${samplingCte} SELECT ServiceName as service, Timestamp as ts FROM db.t WHERE ${samplingWhere} GROUP BY service, ts`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      service: 'ServiceName',
+      ts: 'Timestamp',
+    });
+  });
+
+  it('recovers bracket (map-access) aliases through the fallback', () => {
+    const chSqlInput: ChSql = {
+      sql: `${samplingCte} SELECT ResourceAttributes['service.name'] as svc, Timestamp as ts FROM db.t WHERE ${samplingWhere}`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      svc: "ResourceAttributes['service.name']",
+      ts: 'Timestamp',
+    });
+  });
+
+  it('recovers expression aliases through the fallback', () => {
+    const chSqlInput: ChSql = {
+      sql: `${samplingCte} SELECT toString(SpanId) as span, ServiceName as service FROM db.t WHERE ${samplingWhere}`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      span: 'toString(SpanId)',
+      service: 'ServiceName',
+    });
+  });
+
+  it('restores JSON-path aliases recovered through the fallback', () => {
+    const chSqlInput: ChSql = {
+      sql: `${samplingCte} SELECT ResourceAttributes.service.name as service, Timestamp as ts FROM db.t WHERE ${samplingWhere}`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      service: 'ResourceAttributes.service.name',
+      ts: 'Timestamp',
+    });
+  });
+
+  it('ignores SELECT / FROM keywords inside string literals in the CTE', () => {
+    const chSqlInput: ChSql = {
+      sql: `WITH cte AS (SELECT 'a SELECT b FROM c literal' as lit, greatest(CAST(count() / 10 AS UInt32), 1) as sf FROM db.t) SELECT ServiceName as service FROM db.t WHERE rand() % (SELECT sf FROM cte) = 0`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      service: 'ServiceName',
+    });
+  });
+
+  it('ignores SELECT / FROM keywords inside SQL comments', () => {
+    const chSqlInput: ChSql = {
+      sql: `${samplingCte} SELECT /* not a real SELECT ... FROM */ ServiceName as service, -- trailing SELECT x FROM y\n Timestamp as ts FROM db.t WHERE ${samplingWhere}`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      service: 'ServiceName',
+      ts: 'Timestamp',
+    });
+  });
+
+  it('returns an empty map when neither the full query nor the projection parses', () => {
+    const chSqlInput: ChSql = {
+      sql: 'NOT VALID SQL AT ALL )(',
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({});
   });
 });
 
@@ -472,6 +557,7 @@ describe('processClickhouseSettings - optimization settings', () => {
     await client.query({
       query: 'SELECT 1',
       format: 'JSON',
+      connectionId: 'test-conn',
     });
 
     const actualQueryCall = mockQueryMethod.mock.calls.find(
@@ -504,6 +590,7 @@ describe('processClickhouseSettings - optimization settings', () => {
     await client.query({
       query: 'SELECT 1',
       format: 'JSON',
+      connectionId: 'test-conn',
     });
 
     const actualQueryCall = mockQueryMethod.mock.calls.find(
@@ -531,6 +618,7 @@ describe('processClickhouseSettings - optimization settings', () => {
     await client.query({
       query: 'SELECT 1',
       format: 'JSON',
+      connectionId: 'test-conn',
       clickhouse_settings: {
         max_rows_to_read: '1000000',
       },
@@ -582,6 +670,7 @@ describe('processClickhouseSettings - optimization settings', () => {
     await client.query({
       query: 'SELECT 1',
       format: 'JSON',
+      connectionId: 'test-conn',
     });
 
     const actualQueryCall = mockQueryMethod.mock.calls.find(
@@ -602,8 +691,16 @@ describe('processClickhouseSettings - optimization settings', () => {
     setupMockQuery([{ name: 'use_skip_indexes_for_top_k', value: '1' }]);
 
     // Run two queries
-    await client.query({ query: 'SELECT 1', format: 'JSON' });
-    await client.query({ query: 'SELECT 2', format: 'JSON' });
+    await client.query({
+      query: 'SELECT 1',
+      format: 'JSON',
+      connectionId: 'test-conn',
+    });
+    await client.query({
+      query: 'SELECT 2',
+      format: 'JSON',
+      connectionId: 'test-conn',
+    });
 
     // Should only fetch settings once
     const settingsCalls = mockQueryMethod.mock.calls.filter(

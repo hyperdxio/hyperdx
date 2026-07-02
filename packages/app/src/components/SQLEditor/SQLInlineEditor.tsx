@@ -32,6 +32,7 @@ import CodeMirror, {
 
 import InputLanguageSwitch from '@/components/SearchInput/InputLanguageSwitch';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
+import { useSource } from '@/source';
 import { useQueryHistory } from '@/utils';
 import { clickhouseSql } from '@/utils/codeMirror';
 
@@ -63,6 +64,7 @@ type SQLInlineEditorProps = {
   parentRef?: HTMLElement | null;
   allowMultiline?: boolean;
   dateRange?: [Date, Date];
+  sourceId?: string;
 };
 
 const MAX_EDITOR_HEIGHT = '150px';
@@ -88,13 +90,16 @@ export default function SQLInlineEditor({
   parentRef,
   allowMultiline = true,
   dateRange,
+  sourceId,
 }: SQLInlineEditorProps & TableConnectionChoice) {
   const { colorScheme } = useMantineColorScheme();
   const _tableConnections = tableConnection
     ? [tableConnection]
     : tableConnections;
+  const { data: source } = useSource({ id: sourceId });
   const { data: fields } = useMultipleAllFields(_tableConnections ?? [], {
     dateRange,
+    timestampValueExpression: source?.timestampValueExpression,
   });
   const filteredFields = useMemo(() => {
     return filterField ? fields?.filter(filterField) : fields;
@@ -300,7 +305,7 @@ export default function SQLInlineEditor({
 
   // Only apply expanded styling when multiline is enabled and focused
   const isExpanded = allowMultiline && isFocused;
-  const baseHeight = size === 'xs' ? 32 : 36;
+  const baseHeight = size === 'xs' ? 30 : 36;
 
   return (
     <div

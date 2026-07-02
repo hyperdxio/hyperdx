@@ -156,13 +156,17 @@ export function useSessions(
             ...(where && {
               filters: [
                 {
-                  type: whereLanguage ?? 'lucene',
+                  type:
+                    (whereLanguage === 'promql' ? 'lucene' : whereLanguage) ??
+                    'lucene',
                   condition: where,
                 },
               ],
             }),
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
+            useTextIndexForImplicitColumn:
+              traceSource.useTextIndexForImplicitColumn,
             ...pickSampleWeightExpressionProps(traceSource),
             connection: traceSource.connection,
             groupBy: 'serviceName, sessionId',
@@ -211,6 +215,8 @@ export function useSessions(
             whereLanguage: 'sql',
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
+            useTextIndexForImplicitColumn:
+              traceSource.useTextIndexForImplicitColumn,
             connection: traceSource?.connection,
           },
           metadata,

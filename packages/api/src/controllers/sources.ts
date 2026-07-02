@@ -1,9 +1,11 @@
 import { SourceKind, SourceSchema } from '@hyperdx/common-utils/dist/types';
+import mongoose from 'mongoose';
 
 import {
   ISourceInput,
   LogSource,
   MetricSource,
+  PromqlSource,
   SessionSource,
   Source,
   TraceSource,
@@ -22,6 +24,8 @@ function getModelForKind(kind: SourceKind) {
       return SessionSource;
     case SourceKind.Metric:
       return MetricSource;
+    case SourceKind.Promql:
+      return PromqlSource;
     default:
       kind satisfies never;
       throw new Error(`${kind} is not a valid SourceKind`);
@@ -32,8 +36,21 @@ export function getSources(team: string) {
   return Source.find({ team });
 }
 
-export function getSource(team: string, sourceId: string) {
-  return Source.findOne({ _id: sourceId, team });
+export async function getSource(team: string, sourceId: string) {
+  // Pre-check the sourceId shape so a non-ObjectId input returns null
+  // (the caller's "not found" branch) instead of bubbling a Mongoose
+  // CastError.
+  if (!mongoose.Types.ObjectId.isValid(sourceId)) {
+    return null;
+  }
+  try {
+    return await Source.findOne({ _id: sourceId, team });
+  } catch {
+    // Defense-in-depth: if Mongoose still throws (e.g. a future cast
+    // path), treat it as "not found" so the caller can surface a clean
+    // error.
+    return null;
+  }
 }
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends T
@@ -58,8 +75,8 @@ export async function updateSource(
 
   // Same kind: simple update through the discriminator model
   if (existing.kind === source.kind) {
-    // @ts-expect-error The findOneAndUpdate method has incompatible type signatures but is actually safe
-    return getModelForKind(source.kind)?.findOneAndUpdate(
+    // @ts-expect-error The findOneAndReplace method has incompatible type signatures but is actually safe
+    return getModelForKind(source.kind)?.findOneAndReplace(
       { _id: sourceId, team },
       source,
       { new: true },

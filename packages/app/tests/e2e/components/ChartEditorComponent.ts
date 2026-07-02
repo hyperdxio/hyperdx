@@ -69,8 +69,13 @@ export class ChartEditorComponent {
    */
   async selectSource(sourceName: string) {
     await this.sourceSelector.click();
-    // Use getByRole for more reliable selection
-    const sourceOption = this.page.getByRole('option', { name: sourceName });
+    // Use getByRole for more reliable selection. exact: true avoids matching
+    // sources whose names are prefixes of others (e.g. "E2E Traces MV" vs
+    // "E2E Traces MV AutoPopulate").
+    const sourceOption = this.page.getByRole('option', {
+      name: sourceName,
+      exact: true,
+    });
     if ((await sourceOption.getAttribute('data-combobox-active')) != 'true') {
       await sourceOption.click({ timeout: 5000 });
     }
@@ -305,6 +310,14 @@ export class ChartEditorComponent {
     await input.blur();
   }
 
+  /**
+   * Set the note field in the tile alert editor.
+   */
+  async setTileAlertNote(note: string) {
+    const noteInput = this.page.getByTestId('alert-note-input');
+    await noteInput.fill(note);
+  }
+
   // ---- Row Click Action drawer helpers ----
 
   /**
@@ -318,11 +331,19 @@ export class ChartEditorComponent {
   /**
    * Switch the Row Click Action mode (SegmentedControl).
    */
-  async setRowClickMode(mode: 'Default' | 'Search' | 'Dashboard') {
+  async setRowClickMode(mode: 'Default' | 'Search' | 'Dashboard' | 'External') {
     await this.page
       .getByTestId('onclick-mode-segmented')
       .getByText(mode, { exact: true })
       .click();
+  }
+
+  /**
+   * Fill the External URL template input in the drawer. Call
+   * setRowClickMode('External') first to make the input visible.
+   */
+  async fillRowClickExternalUrl(urlTemplate: string) {
+    await this.page.getByTestId('onclick-external-url-input').fill(urlTemplate);
   }
 
   /**
@@ -475,6 +496,14 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Click the "Duplicate" button on the series at zero-based `index` to insert
+   * a copy of it directly below.
+   */
+  async duplicateSeries(index: number) {
+    await this.page.getByTestId('series-duplicate-button').nth(index).click();
+  }
+
+  /**
    * Toggle the "As Ratio" switch. Only visible when the chart has exactly
    * two series.
    */
@@ -500,6 +529,107 @@ export class ChartEditorComponent {
     await table.waitFor({ state: 'visible', timeout: 15000 });
     const headers = await table.locator('thead tr th').allTextContents();
     return headers.map(h => h.trim());
+  }
+
+  /**
+   * Return the trimmed text of every td at `columnIndex` across all visible
+   * data rows of the first table in the tile editor preview panel. Scopes to
+   * `tr[data-index]` so the row virtualizer's padding rows (which contain a
+   * single colSpan td) are skipped. Waits for at least one data row before
+   * reading.
+   */
+  async getPreviewTableCellTexts(columnIndex: number): Promise<string[]> {
+    const modalBody = this.page.locator('.mantine-Modal-body');
+    const table = modalBody.locator('table').first();
+    await table.waitFor({ state: 'visible', timeout: 15000 });
+    await table
+      .locator('tbody tr[data-index]')
+      .first()
+      .waitFor({ state: 'visible', timeout: 15000 });
+    const cells = await table
+      .locator(`tbody tr[data-index] td:nth-child(${columnIndex + 1})`)
+      .allTextContents();
+    return cells.map(c => c.trim());
+  }
+
+  // ---- Number format helpers ----
+
+  /**
+   * Select the "Output format" option in whichever number format drawer is
+   * currently open (Display Settings OR Series Display Settings). Both drawers
+   * embed the same NumberFormatForm with a NativeSelect labeled "Output format".
+   */
+  async setNumberFormatOutput(label: string) {
+    await this.page.getByLabel('Output format').selectOption({ label });
+  }
+
+  /**
+   * Convenience: open Display Settings drawer, set the chart-wide output format
+   * to `label`, then apply and close the drawer.
+   */
+  async setChartWideNumberFormat(label: string) {
+    await this.openDisplaySettings();
+    await this.setNumberFormatOutput(label);
+    await this.applyDisplaySettings();
+  }
+
+  /**
+   * Click the per-series format icon button (nth by seriesIndex, 0-based) and
+   * wait for the "Series Display Settings" drawer to become visible.
+   */
+  async openSeriesNumberFormat(seriesIndex: number) {
+    await this.page
+      .getByRole('button', { name: 'Edit series display format' })
+      .nth(seriesIndex)
+      .click();
+    const drawer = this.page.getByRole('dialog', {
+      name: 'Series Display Settings',
+    });
+    await drawer.waitFor({ state: 'visible', timeout: 5000 });
+  }
+
+  /**
+   * Click the Inherit or Custom segment inside the open
+   * "Series Display Settings" drawer.
+   */
+  async setSeriesFormatMode(mode: 'Inherit' | 'Custom') {
+    const drawer = this.page.getByRole('dialog', {
+      name: 'Series Display Settings',
+    });
+    await drawer.getByText(mode, { exact: true }).click();
+  }
+
+  /**
+   * Click Apply in the open "Series Display Settings" drawer and wait for
+   * the drawer to close.
+   */
+  async applySeriesNumberFormat() {
+    const drawer = this.page.getByRole('dialog', {
+      name: 'Series Display Settings',
+    });
+    await drawer.getByRole('button', { name: 'Apply', exact: true }).click();
+    await drawer.waitFor({ state: 'hidden', timeout: 5000 });
+  }
+
+  /**
+   * Open the per-series format drawer for seriesIndex, switch to Custom mode,
+   * set the output format to `output`, then apply.
+   */
+  async setSeriesNumberFormat(seriesIndex: number, output: string) {
+    await this.openSeriesNumberFormat(seriesIndex);
+    await this.setSeriesFormatMode('Custom');
+    await this.setNumberFormatOutput(output);
+    await this.applySeriesNumberFormat();
+  }
+
+  /**
+   * Open the per-series format drawer for seriesIndex, switch to Inherit
+   * (clears any per-series override), then apply.
+   */
+  async clearSeriesNumberFormat(seriesIndex: number) {
+    await this.openSeriesNumberFormat(seriesIndex);
+    await this.setSeriesFormatMode('Inherit');
+    await this.applySeriesNumberFormat();
   }
 
   // Getters for assertions

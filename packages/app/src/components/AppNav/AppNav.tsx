@@ -40,6 +40,7 @@ import { UserPreferencesModal } from '@/UserPreferencesModal';
 import { useUserPreferences } from '@/useUserPreferences';
 import { useWindowSize } from '@/utils';
 
+// eslint-disable-next-line no-restricted-imports -- package.json lives outside src, no @/ alias reaches it
 import packageJson from '../../../package.json';
 
 import {
@@ -458,20 +459,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   ) : null}
                 </div>
               </Collapse>
-            )}
-
-            {!isCollapsed && (
-              <Text size="xs" px="lg" py="xs" fw="lighter" fs="italic">
-                Saved searches and dashboards have moved! Try the{' '}
-                <Anchor component={Link} href="/search/list">
-                  Saved Searches
-                </Anchor>{' '}
-                or{' '}
-                <Anchor component={Link} href="/dashboards/list">
-                  Dashboards
-                </Anchor>{' '}
-                page.
-              </Text>
             )}
 
             {/* Help */}

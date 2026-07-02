@@ -1,15 +1,18 @@
-import { FilterState, filtersToQuery } from '../filters';
+import { FilterState, filtersToQuery } from '@/filters';
 import type {
   Filter,
   OnClick,
   OnClickDashboard,
+  OnClickExternal,
   OnClickFilterTemplate,
   OnClickSearch,
-} from '../types';
+} from '@/types';
+
 import {
   LinkTemplateError,
   MissingTemplateVariableError,
   renderLinkTemplate,
+  renderUrlTemplate,
   validateTemplate,
 } from './linkTemplate';
 
@@ -20,9 +23,13 @@ export type LinkBuildResult =
 function renderOrError(
   template: string,
   rowData: Record<string, unknown>,
+  options?: { encodeValues?: boolean },
 ): { ok: true; value: string } | { ok: false; error: string } {
   try {
-    return { ok: true, value: renderLinkTemplate(template, rowData) };
+    const value = options?.encodeValues
+      ? renderUrlTemplate(template, rowData)
+      : renderLinkTemplate(template, rowData);
+    return { ok: true, value };
   } catch (err) {
     const message =
       err instanceof MissingTemplateVariableError
@@ -238,8 +245,109 @@ export function renderOnClickDashboard({
   return { ok: true, url: `/dashboards/${dashboardId}?${params.toString()}` };
 }
 
+/**
+ * Only absolute http(s) URLs are allowed for external link-outs. This blocks
+ * dangerous schemes (e.g. `javascript:`, `data:`, `vbscript:`) that could
+ * execute when rendered into an anchor's `href`, and rejects relative URLs
+ * that would resolve against the HyperDX origin (those should use the search /
+ * dashboard variants instead).
+ */
+function isAllowedExternalUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+}
+
+/**
+ * Render an OnClickExternal to an absolute external URL, or return an error if
+ * rendering fails or the rendered value is not a safe http(s) URL.
+ */
+export function renderOnClickExternal({
+  onClick,
+  row,
+}: {
+  onClick: OnClickExternal;
+  row: Record<string, unknown>;
+}): LinkBuildResult {
+  const rendered = renderOrError(onClick.urlTemplate, row, {
+    encodeValues: true,
+  });
+  if (!rendered.ok) return rendered;
+
+  const url = rendered.value.trim();
+  if (url === '') {
+    return { ok: false, error: 'External link URL is empty' };
+  }
+  if (!isAllowedExternalUrl(url)) {
+    return {
+      ok: false,
+      error: `External link must be an absolute http(s) URL, got '${url}'`,
+    };
+  }
+
+  return { ok: true, url };
+}
+
+/**
+ * Build a one-line, row-independent description of an OnClick action,
+ * suitable for a hover hint shown before the user commits to the click.
+ *
+ * Returns one of four shapes:
+ * - `Search <SourceName>` when targeting a known source by ID.
+ * - `Open in search` when targeting a source by template, or when the
+ *   ID does not resolve to a known source.
+ * - `Open dashboard "<Name>"` when targeting a known dashboard by ID.
+ * - `Open dashboard` when targeting a dashboard by template, or when
+ *   the ID does not resolve to a known dashboard.
+ *
+ * Template-mode targets resolve a different name per row (the name
+ * is itself templated); the generic verb form keeps the hint stable
+ * across rows. Per-row scope preview belongs to a separate hint
+ * surface and is not the responsibility of this helper.
+ */
+export function describeOnClick({
+  onClick,
+  sourceNamesById,
+  dashboardNamesById,
+}: {
+  onClick: OnClick;
+  sourceNamesById: Map<string, string>;
+  dashboardNamesById: Map<string, string>;
+}): string {
+  if (onClick.type === 'search') {
+    if (onClick.target.mode === 'id') {
+      const name = sourceNamesById.get(onClick.target.id);
+      if (name) return `Search ${name}`;
+    }
+    return 'Open in search';
+  }
+  if (onClick.type === 'dashboard') {
+    if (onClick.target.mode === 'id') {
+      const name = dashboardNamesById.get(onClick.target.id);
+      if (name) return `Open dashboard "${name}"`;
+    }
+    return 'Open dashboard';
+  }
+  if (onClick.type === 'external') {
+    return 'Open external link';
+  }
+  // Exhaustiveness check: adding a new OnClickSchema variant must
+  // also extend describeOnClick.
+  const _exhaustive: never = onClick;
+  return _exhaustive;
+}
+
 /** Throws if the given OnClick includes a template with invalid syntax */
 export function validateOnClickTemplate(onClick: OnClick) {
+  if (onClick.type === 'external') {
+    validateTemplate(onClick.urlTemplate);
+    return;
+  }
+
   if (onClick.target.mode === 'template') {
     validateTemplate(onClick.target.template);
   }

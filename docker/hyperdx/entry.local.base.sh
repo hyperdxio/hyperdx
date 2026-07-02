@@ -66,6 +66,8 @@ echo "ClickHouse is ready!"
 # Start Otel Collector with entrypoint script for template rendering and log rotation
 /otel-entrypoint.sh /usr/local/bin/opampsupervisor > /var/log/otel-collector.log 2>&1 &
 
+node /etc/local/refresh-env.js
+
 # Start HyperDX app
 ./node_modules/.bin/concurrently \
   "--kill-others-on-fail" \

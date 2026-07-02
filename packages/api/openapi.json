@@ -25,12 +25,20 @@
       "description": "Endpoints for querying chart data"
     },
     {
+      "name": "Connections",
+      "description": "Endpoints for managing ClickHouse connections"
+    },
+    {
       "name": "Sources",
       "description": "Endpoints for managing data sources"
     },
     {
       "name": "Webhooks",
       "description": "Endpoints for managing webhooks"
+    },
+    {
+      "name": "Search",
+      "description": "Endpoints for querying raw data from log and trace sources"
     }
   ],
   "components": {
@@ -276,6 +284,14 @@
             "description": "Alert message template.",
             "nullable": true,
             "example": "Test Alert Message"
+          },
+          "note": {
+            "type": "string",
+            "description": "Freeform note for the alert. Supports markdown formatting.",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 4096,
+            "example": "Threshold raised from 50 to 100 on 2026-01-15. See [runbook](https://wiki.example.com/runbook)."
           }
         }
       },
@@ -569,6 +585,186 @@
           }
         }
       },
+      "Connection": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "host",
+          "username"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique connection ID.",
+            "example": "507f1f77bcf86cd799439012"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name for the connection.",
+            "example": "Production ClickHouse"
+          },
+          "host": {
+            "type": "string",
+            "description": "ClickHouse HTTP endpoint URL.",
+            "example": "https://clickhouse.example.com:8443"
+          },
+          "username": {
+            "type": "string",
+            "description": "ClickHouse username.",
+            "example": "default"
+          },
+          "hyperdxSettingPrefix": {
+            "type": "string",
+            "description": "Optional prefix for HyperDX-specific ClickHouse settings. Must only contain alphanumeric characters and underscores.",
+            "nullable": true,
+            "example": "hyperdx_"
+          },
+          "isPrometheusEndpoint": {
+            "type": "boolean",
+            "description": "Optional. When true, `host` is treated as a Prometheus-compatible API endpoint (e.g. Prometheus or Thanos) and PromQL queries are proxied to it. When false or omitted, `host` is a ClickHouse HTTP endpoint.",
+            "example": false
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp",
+            "example": "2025-01-01T00:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp",
+            "example": "2025-06-15T10:30:00.000Z"
+          }
+        }
+      },
+      "CreateConnectionRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "host",
+          "username"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the connection.",
+            "example": "Production ClickHouse"
+          },
+          "host": {
+            "type": "string",
+            "description": "ClickHouse HTTP endpoint URL.",
+            "example": "https://clickhouse.example.com:8443"
+          },
+          "username": {
+            "type": "string",
+            "description": "ClickHouse username.",
+            "example": "default"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "ClickHouse password. Never returned by the API.",
+            "example": "my-secret-password"
+          },
+          "hyperdxSettingPrefix": {
+            "type": "string",
+            "description": "Optional prefix for HyperDX-specific ClickHouse settings. Must only contain alphanumeric characters and underscores.",
+            "nullable": true,
+            "example": "hyperdx_"
+          },
+          "isPrometheusEndpoint": {
+            "type": "boolean",
+            "description": "Optional. When true, `host` is treated as a Prometheus-compatible API endpoint (e.g. Prometheus or Thanos) and PromQL queries are proxied to it. When false or omitted, `host` is a ClickHouse HTTP endpoint.",
+            "example": false
+          }
+        }
+      },
+      "UpdateConnectionRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "host",
+          "username"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the connection.",
+            "example": "Production ClickHouse"
+          },
+          "host": {
+            "type": "string",
+            "description": "ClickHouse HTTP endpoint URL.",
+            "example": "https://clickhouse.example.com:8443"
+          },
+          "username": {
+            "type": "string",
+            "description": "ClickHouse username.",
+            "example": "default"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "ClickHouse password. If omitted or empty, the existing password is kept.",
+            "example": "my-new-secret-password"
+          },
+          "hyperdxSettingPrefix": {
+            "type": "string",
+            "description": "Optional prefix for HyperDX-specific ClickHouse settings. Set to null or an empty string to clear the existing value. If omitted, the existing value is kept.",
+            "nullable": true,
+            "example": "hyperdx_"
+          },
+          "isPrometheusEndpoint": {
+            "type": "boolean",
+            "description": "Optional. When true, `host` is treated as a Prometheus-compatible API endpoint. When false or omitted, `host` is a ClickHouse HTTP endpoint. Omit to keep the existing value unchanged.",
+            "example": false
+          }
+        }
+      },
+      "ConnectionResponseEnvelope": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Connection",
+            "description": "The connection object."
+          }
+        }
+      },
+      "ConnectionsListResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "description": "List of connection objects.",
+            "items": {
+              "$ref": "#/components/schemas/Connection"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "description": "Present only when one or more stored connections could not be serialized and were omitted from `data`.",
+            "properties": {
+              "skipped": {
+                "type": "integer",
+                "description": "Number of connections omitted from the response because they failed serialization.",
+                "example": 1
+              },
+              "skippedIds": {
+                "type": "array",
+                "description": "IDs of the connections that were omitted.",
+                "items": {
+                  "type": "string"
+                },
+                "example": [
+                  "507f1f77bcf86cd799439012"
+                ]
+              }
+            }
+          }
+        }
+      },
       "NumberFormatOutput": {
         "type": "string",
         "enum": [
@@ -578,9 +774,10 @@
           "time",
           "number",
           "data_rate",
-          "throughput"
+          "throughput",
+          "duration"
         ],
-        "description": "Output format type (currency, percent, byte, time, number, data_rate, throughput)."
+        "description": "Output format type (currency, percent, byte, time, number, data_rate, throughput, duration)."
       },
       "AggregationFunction": {
         "type": "string",
@@ -763,6 +960,196 @@
             "type": "string",
             "description": "Custom unit label.",
             "example": "ms"
+          }
+        }
+      },
+      "ChartPaletteToken": {
+        "type": "string",
+        "enum": [
+          "chart-blue",
+          "chart-orange",
+          "chart-red",
+          "chart-cyan",
+          "chart-green",
+          "chart-pink",
+          "chart-purple",
+          "chart-light-blue",
+          "chart-brown",
+          "chart-gray",
+          "chart-success",
+          "chart-warning",
+          "chart-error"
+        ],
+        "description": "Palette token used to color a number tile. Tokens reflow across light and dark themes, so raw hex values are not accepted.\n",
+        "example": "chart-red"
+      },
+      "BackgroundChart": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "description": "Optional background trend sparkline drawn behind a number tile's value, derived from a time-bucketed version of the tile's query. Builder number tiles only (raw SQL number tiles have no time dimension to bucket).\n",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "line",
+              "area"
+            ],
+            "description": "Sparkline shape.",
+            "example": "line"
+          },
+          "color": {
+            "$ref": "#/components/schemas/ChartPaletteToken",
+            "description": "Optional palette-token override for the sparkline. When unset the sparkline inherits the tile's static color.\n"
+          }
+        }
+      },
+      "NumericColorCondition": {
+        "type": "object",
+        "required": [
+          "operator",
+          "value",
+          "color"
+        ],
+        "description": "Color rule comparing the displayed value against a single numeric bound.",
+        "properties": {
+          "operator": {
+            "type": "string",
+            "enum": [
+              "gt",
+              "gte",
+              "lt",
+              "lte"
+            ],
+            "description": "Numeric comparison operator.",
+            "example": "gt"
+          },
+          "value": {
+            "type": "number",
+            "description": "Numeric bound the displayed value is compared against. Only finite numbers are accepted (Infinity and NaN are rejected).\n",
+            "example": 100
+          },
+          "color": {
+            "$ref": "#/components/schemas/ChartPaletteToken",
+            "description": "Color applied when the rule matches."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Optional label describing the rule.",
+            "example": "High"
+          }
+        }
+      },
+      "BetweenColorCondition": {
+        "type": "object",
+        "required": [
+          "operator",
+          "value",
+          "color"
+        ],
+        "description": "Color rule matching when the displayed value falls within an inclusive range.",
+        "properties": {
+          "operator": {
+            "type": "string",
+            "enum": [
+              "between"
+            ],
+            "description": "Range comparison operator.",
+            "example": "between"
+          },
+          "value": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number"
+            },
+            "description": "Inclusive [min, max] range. Both bounds must be finite numbers.\n",
+            "example": [
+              100,
+              500
+            ]
+          },
+          "color": {
+            "$ref": "#/components/schemas/ChartPaletteToken",
+            "description": "Color applied when the rule matches."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Optional label describing the rule.",
+            "example": "Warning"
+          }
+        }
+      },
+      "EqualityColorCondition": {
+        "type": "object",
+        "required": [
+          "operator",
+          "value",
+          "color"
+        ],
+        "description": "Color rule matching when the displayed value equals (eq) or does not equal (neq) a number or string.",
+        "properties": {
+          "operator": {
+            "type": "string",
+            "enum": [
+              "eq",
+              "neq"
+            ],
+            "description": "Equality comparison operator.",
+            "example": "eq"
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "maxLength": 200
+              }
+            ],
+            "description": "A finite number, or a string up to 200 characters, to compare for equality.\n",
+            "example": "OK"
+          },
+          "color": {
+            "$ref": "#/components/schemas/ChartPaletteToken",
+            "description": "Color applied when the rule matches."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Optional label describing the rule.",
+            "example": "Healthy"
+          }
+        }
+      },
+      "NumberTileColorCondition": {
+        "description": "A single conditional color rule for a number tile. Rules are evaluated in order and the last matching rule wins. When no rule matches, the static color applies, then the default text color. The number-tile editor surfaces numeric and equality operators only.\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/NumericColorCondition"
+          },
+          {
+            "$ref": "#/components/schemas/BetweenColorCondition"
+          },
+          {
+            "$ref": "#/components/schemas/EqualityColorCondition"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "operator",
+          "mapping": {
+            "gt": "#/components/schemas/NumericColorCondition",
+            "gte": "#/components/schemas/NumericColorCondition",
+            "lt": "#/components/schemas/NumericColorCondition",
+            "lte": "#/components/schemas/NumericColorCondition",
+            "between": "#/components/schemas/BetweenColorCondition",
+            "eq": "#/components/schemas/EqualityColorCondition",
+            "neq": "#/components/schemas/EqualityColorCondition"
           }
         }
       },
@@ -1167,6 +1554,10 @@
             ],
             "description": "Optional period aggregation function for Gauge metrics (e.g., compute the delta over the period).",
             "example": "delta"
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Per-series number formatting options. When set, takes precedence over the chart-level numberFormat for this select item only.\n"
           }
         }
       },
@@ -1221,6 +1612,11 @@
             "type": "boolean",
             "description": "Fill missing time buckets with zero instead of leaving gaps.",
             "default": true
+          },
+          "fitYAxisToData": {
+            "type": "boolean",
+            "description": "Set the y-axis lower bound to the minimum of the displayed data instead of zero, making small fluctuations between series easier to see.\n",
+            "default": false
           },
           "numberFormat": {
             "$ref": "#/components/schemas/NumberFormat",
@@ -1354,6 +1750,10 @@
             "description": "When true, render Group By columns to the left of series columns in the table. Defaults to false (Group By columns on the right).\n",
             "default": false,
             "example": false
+          },
+          "onClick": {
+            "$ref": "#/components/schemas/OnClick",
+            "description": "Optional link-out configuration applied when a user clicks a row."
           }
         }
       },
@@ -1391,6 +1791,22 @@
           "numberFormat": {
             "$ref": "#/components/schemas/NumberFormat",
             "description": "Number formatting options for displayed values."
+          },
+          "color": {
+            "$ref": "#/components/schemas/ChartPaletteToken",
+            "description": "Optional static color applied to the displayed number."
+          },
+          "colorRules": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "Ordered conditional color rules evaluated against the displayed value (last match wins). Falls back to color, then the default text color when no rule matches.\n",
+            "items": {
+              "$ref": "#/components/schemas/NumberTileColorCondition"
+            }
+          },
+          "backgroundChart": {
+            "$ref": "#/components/schemas/BackgroundChart",
+            "description": "Optional background trend sparkline drawn behind the value.\n"
           }
         }
       },
@@ -1430,6 +1846,86 @@
             "maxLength": 10000,
             "description": "Field expression to group results by (one slice per group value).",
             "example": "service"
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Number formatting options for displayed values."
+          }
+        }
+      },
+      "HeatmapSelectItem": {
+        "type": "object",
+        "required": [
+          "valueExpression"
+        ],
+        "description": "Single select item for a heatmap tile. The value being bucketed is provided in valueExpression and the count contributing to each bucket in countExpression. The heatmap-specific fields (countExpression, heatmapScaleType) are persisted on the select item, not the chart config. The chart-level discriminator is the HeatmapChartConfig's `displayType: \"heatmap\"`; no aggregation function or alias is exposed on this select item because the heatmap aggregation function is fixed internally and the HeatmapSeriesEditor does not render an alias input.\n",
+        "properties": {
+          "valueExpression": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000,
+            "description": "SQL expression for the value being bucketed on the y-axis. Must be non-empty.",
+            "example": "Duration"
+          },
+          "countExpression": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "SQL expression for the count contributing to each bucket. Defaults to \"count()\" in the editor when omitted.\n",
+            "example": "count()"
+          },
+          "heatmapScaleType": {
+            "type": "string",
+            "enum": [
+              "log",
+              "linear"
+            ],
+            "description": "Scale type used to bucket values on the y-axis.",
+            "example": "log"
+          }
+        }
+      },
+      "HeatmapChartConfig": {
+        "type": "object",
+        "required": [
+          "displayType",
+          "sourceId",
+          "select"
+        ],
+        "description": "Builder configuration for a heatmap tile. Heatmap is builder-only (no Raw SQL variant) and currently supports trace sources. The row-level filter lives at the chart-config level (where / whereLanguage), matching the HeatmapSeriesEditor in the UI.\n",
+        "properties": {
+          "displayType": {
+            "type": "string",
+            "enum": [
+              "heatmap"
+            ],
+            "description": "Display type discriminator. Must be \"heatmap\" for heatmap tiles.",
+            "example": "heatmap"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the data source to query.",
+            "example": "65f5e4a3b9e77c001a111111"
+          },
+          "select": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "description": "Exactly one heatmap select item.",
+            "items": {
+              "$ref": "#/components/schemas/HeatmapSelectItem"
+            }
+          },
+          "where": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "Row-level filter (syntax depends on whereLanguage).",
+            "default": "",
+            "example": "ServiceName = 'api'"
+          },
+          "whereLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "description": "Query language for the where clause.",
+            "default": "lucene"
           },
           "numberFormat": {
             "$ref": "#/components/schemas/NumberFormat",
@@ -1575,6 +2071,11 @@
                 "type": "boolean",
                 "description": "Expand date range boundaries to the query granularity interval.",
                 "default": true
+              },
+              "fitYAxisToData": {
+                "type": "boolean",
+                "description": "Set the y-axis lower bound to the minimum of the displayed data instead of zero, making small fluctuations between series easier to see.\n",
+                "default": false
               }
             }
           }
@@ -1633,6 +2134,10 @@
                 ],
                 "description": "Display as a table chart.",
                 "example": "table"
+              },
+              "onClick": {
+                "$ref": "#/components/schemas/OnClick",
+                "description": "Optional link-out configuration applied when a user clicks a row."
               }
             }
           }
@@ -1657,6 +2162,10 @@
                 ],
                 "description": "Display as a single big-number chart.",
                 "example": "number"
+              },
+              "color": {
+                "$ref": "#/components/schemas/ChartPaletteToken",
+                "description": "Optional static color applied to the displayed number. Raw SQL number tiles do not support conditional colorRules.\n"
               }
             }
           }
@@ -1720,6 +2229,212 @@
           }
         }
       },
+      "OnClickFilterTemplate": {
+        "type": "object",
+        "description": "A templated filter applied to the link-out destination. The rendered template value is combined with the expression as `expression IN (...)` on the destination search or dashboard. Multiple templates sharing the same expression are merged into a single IN clause.\n",
+        "required": [
+          "kind",
+          "expression",
+          "template"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "expressionTemplate"
+            ],
+            "description": "Filter template kind. Currently only \"expressionTemplate\" is supported.",
+            "example": "expressionTemplate"
+          },
+          "expression": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The column/expression to filter the destination by (e.g. \"ServiceName\").",
+            "example": "ServiceName"
+          },
+          "template": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Value template rendered against the clicked row; supports row column variables in `{{column}}` form (e.g. `{{ServiceName}}`).\n",
+            "example": "{{ServiceName}}"
+          }
+        }
+      },
+      "OnClickTarget": {
+        "description": "Identifies the source (for type=search) or dashboard (for type=dashboard) to link out to. Set mode to \"id\" to resolve a concrete ID, or \"template\" to resolve by rendered name at click time.\n",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "mode",
+              "id"
+            ],
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "id"
+                ],
+                "description": "Target is a single dashboard or log/trace source",
+                "example": "id"
+              },
+              "id": {
+                "type": "string",
+                "description": "ID of the target source (for search) or dashboard (for dashboard).",
+                "example": "65f5e4a3b9e77c001a567890"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "mode",
+              "template"
+            ],
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "template"
+                ],
+                "description": "Target is matched by name against the template.",
+                "example": "template"
+              },
+              "template": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Name template rendered against the clicked row; supports `{{column}}` variables.\n",
+                "example": "{{ServiceName}}"
+              }
+            }
+          }
+        ],
+        "discriminator": {
+          "propertyName": "mode"
+        }
+      },
+      "OnClickSearch": {
+        "type": "object",
+        "required": [
+          "type",
+          "target"
+        ],
+        "description": "Link-out that navigates to the HyperDX search view.",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "search"
+            ],
+            "description": "OnClick variant discriminator. Must be \"search\" for search link-outs.",
+            "example": "search"
+          },
+          "target": {
+            "$ref": "#/components/schemas/OnClickTarget",
+            "description": "The source to navigate to."
+          },
+          "whereTemplate": {
+            "type": "string",
+            "description": "Optional WHERE clause template applied to the destination search.",
+            "example": "ServiceName = '{{ServiceName}}'"
+          },
+          "whereLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "description": "Language of the rendered whereTemplate."
+          },
+          "filters": {
+            "type": "array",
+            "description": "Optional dashboard filter templates rendered against the clicked row.",
+            "items": {
+              "$ref": "#/components/schemas/OnClickFilterTemplate"
+            }
+          }
+        }
+      },
+      "OnClickDashboard": {
+        "type": "object",
+        "required": [
+          "type",
+          "target"
+        ],
+        "description": "Link-out that navigates to a HyperDX dashboard.",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "dashboard"
+            ],
+            "description": "OnClick variant discriminator. Must be \"dashboard\" for dashboard link-outs.",
+            "example": "dashboard"
+          },
+          "target": {
+            "$ref": "#/components/schemas/OnClickTarget",
+            "description": "The dashboard to navigate to."
+          },
+          "whereTemplate": {
+            "type": "string",
+            "description": "Optional WHERE clause template applied to the destination dashboard.",
+            "example": "ServiceName = '{{ServiceName}}'"
+          },
+          "whereLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "description": "Language of the rendered whereTemplate."
+          },
+          "filters": {
+            "type": "array",
+            "description": "Optional dashboard filter templates rendered against the clicked row.",
+            "items": {
+              "$ref": "#/components/schemas/OnClickFilterTemplate"
+            }
+          }
+        }
+      },
+      "OnClickExternal": {
+        "type": "object",
+        "required": [
+          "type",
+          "urlTemplate"
+        ],
+        "description": "Link-out that navigates to an arbitrary external URL (e.g. a Grafana or Langfuse dashboard). The rendered URL must be an absolute http(s) URL.\n",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "external"
+            ],
+            "description": "OnClick variant discriminator. Must be \"external\" for external link-outs.",
+            "example": "external"
+          },
+          "urlTemplate": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Handlebars template rendered against the clicked row; supports `{{column}}` variables. The rendered value must be an absolute http(s) URL.\n",
+            "example": "https://example.com/d/abc?var-service={{ServiceName}}"
+          }
+        }
+      },
+      "OnClick": {
+        "description": "Link-out configuration applied when a user clicks a row of a table tile. Only table tiles (builder or raw SQL) currently support onClick. When target.mode is \"id\", the referenced source (type=search) or dashboard (type=dashboard) must already exist for the team.\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/OnClickSearch"
+          },
+          {
+            "$ref": "#/components/schemas/OnClickDashboard"
+          },
+          {
+            "$ref": "#/components/schemas/OnClickExternal"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "search": "#/components/schemas/OnClickSearch",
+            "dashboard": "#/components/schemas/OnClickDashboard",
+            "external": "#/components/schemas/OnClickExternal"
+          }
+        }
+      },
       "TableChartConfig": {
         "description": "Table chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate).\n",
         "oneOf": [
@@ -1772,7 +2487,7 @@
         }
       },
       "TileConfig": {
-        "description": "Tile chart configuration. displayType is the primary discriminant and determines which variant group applies. For displayTypes that support both builder and Raw SQL modes (line, stacked_bar, table, number, pie), configType is the secondary discriminant: omit it for the builder variant or set it to \"sql\" for the Raw SQL variant. The search and markdown displayTypes only have a builder variant.\n",
+        "description": "Tile chart configuration. displayType is the primary discriminant and determines which variant group applies. For displayTypes that support both builder and Raw SQL modes (line, stacked_bar, table, number, pie), configType is the secondary discriminant: omit it for the builder variant or set it to \"sql\" for the Raw SQL variant. The heatmap, search, and markdown displayTypes only have a builder variant.\n",
         "oneOf": [
           {
             "$ref": "#/components/schemas/LineChartConfig"
@@ -1790,6 +2505,9 @@
             "$ref": "#/components/schemas/PieChartConfig"
           },
           {
+            "$ref": "#/components/schemas/HeatmapChartConfig"
+          },
+          {
             "$ref": "#/components/schemas/SearchChartConfig"
           },
           {
@@ -1804,8 +2522,83 @@
             "table": "#/components/schemas/TableChartConfig",
             "number": "#/components/schemas/NumberChartConfig",
             "pie": "#/components/schemas/PieChartConfig",
+            "heatmap": "#/components/schemas/HeatmapChartConfig",
             "search": "#/components/schemas/SearchChartConfig",
             "markdown": "#/components/schemas/MarkdownChartConfig"
+          }
+        }
+      },
+      "DashboardContainerTab": {
+        "type": "object",
+        "description": "A single tab inside a dashboard container. Tiles join a tab via tabId.",
+        "required": [
+          "id",
+          "title"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Unique identifier for the tab within its container.",
+            "example": "errors"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Display title for the tab.",
+            "example": "Errors"
+          }
+        }
+      },
+      "DashboardContainer": {
+        "type": "object",
+        "description": "A grouping container for tiles on a dashboard. Tiles join a container via containerId.",
+        "required": [
+          "id",
+          "title",
+          "collapsed"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Unique identifier for the container within the dashboard.",
+            "example": "service-health"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Display title for the container.",
+            "example": "Service Health"
+          },
+          "collapsed": {
+            "type": "boolean",
+            "description": "Persisted default collapse state. Per-viewer state lives in the URL.",
+            "example": false
+          },
+          "collapsible": {
+            "type": "boolean",
+            "description": "Whether the user can collapse the group.",
+            "default": true,
+            "example": true
+          },
+          "bordered": {
+            "type": "boolean",
+            "description": "Whether to show a visual border around the group.",
+            "default": true,
+            "example": true
+          },
+          "tabs": {
+            "type": "array",
+            "description": "Optional tabs. 2+ entries renders a tab bar; 0-1 entries renders a plain group header. Tiles join a tab via tabId.",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/DashboardContainerTab"
+            }
           }
         }
       },
@@ -1854,6 +2647,20 @@
           "config": {
             "$ref": "#/components/schemas/TileConfig",
             "description": "Chart configuration for the tile. The displayType field determines which variant is used. Replaces the deprecated \"series\" and \"asRatio\" fields."
+          },
+          "containerId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "References a DashboardContainer by id. Tiles without containerId render in the default ungrouped area.",
+            "example": "service-health"
+          },
+          "tabId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "References a tab inside the tile's container by id. Requires containerId to be set, and the container to declare a matching tab.",
+            "example": "errors"
           }
         }
       },
@@ -1880,7 +2687,7 @@
         ]
       },
       "TileInput": {
-        "description": "Input / request format when creating or updating tiles. The id field is optional: on create it is ignored (the server always assigns a new ID); on update, a matching id is used to identify the existing tile to preserve — tiles whose id does not match an existing tile are assigned a new generated ID.\n",
+        "description": "Input / request format when creating or updating tiles. The id field is optional: on create it is ignored (the server always assigns a new ID); on update, a matching id is used to identify the existing tile to preserve. Tiles whose id does not match an existing tile are assigned a new generated ID.\n",
         "allOf": [
           {
             "$ref": "#/components/schemas/TileBase"
@@ -1974,6 +2781,16 @@
             "description": "Language of the where condition",
             "default": "sql",
             "example": "lucene"
+          },
+          "appliesToSourceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional list of source IDs this filter applies to. Omit or provide\nan empty array to apply the filter to ALL tiles regardless of source.\nA non-empty array restricts the filter to only tiles whose source ID\nis in the list; tiles using other sources are not affected by the\nselected filter value(s).\n",
+            "example": [
+              "65f5e4a3b9e77c001a111111"
+            ]
           }
         }
       },
@@ -2057,6 +2874,14 @@
             "items": {
               "$ref": "#/components/schemas/SavedFilterValue"
             }
+          },
+          "containers": {
+            "type": "array",
+            "description": "Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/DashboardContainer"
+            }
           }
         }
       },
@@ -2076,6 +2901,7 @@
           "tiles": {
             "type": "array",
             "description": "List of tiles/charts to include in the dashboard.",
+            "maxItems": 500,
             "items": {
               "$ref": "#/components/schemas/TileInput"
             }
@@ -2118,6 +2944,14 @@
             "items": {
               "$ref": "#/components/schemas/SavedFilterValue"
             }
+          },
+          "containers": {
+            "type": "array",
+            "description": "Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/DashboardContainer"
+            }
           }
         }
       },
@@ -2136,6 +2970,7 @@
           },
           "tiles": {
             "type": "array",
+            "maxItems": 500,
             "items": {
               "$ref": "#/components/schemas/TileInput"
             },
@@ -2180,6 +3015,14 @@
             "items": {
               "$ref": "#/components/schemas/SavedFilterValue"
             }
+          },
+          "containers": {
+            "type": "array",
+            "description": "Optional grouping containers. Each tile may join a container via tile.containerId, and a tab inside it via tile.tabId.",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/DashboardContainer"
+            }
           }
         }
       },
@@ -2208,6 +3051,96 @@
             "items": {
               "$ref": "#/components/schemas/DashboardResponse"
             }
+          }
+        }
+      },
+      "SearchRequest": {
+        "type": "object",
+        "required": [
+          "sourceId"
+        ],
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "description": "Source ID to query. Call GET /api/v2/sources to list available sources.\nThe source determines the underlying ClickHouse table (e.g. otel.otel_logs,\notel.otel_traces) and its column schema.\n",
+            "example": "69b46cb0d964ce2d0b9506a8"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Start of the query window (ISO 8601). Defaults to 15 minutes before endTime. Must be before endTime.\n",
+            "example": "2026-05-10T00:00:00Z"
+          },
+          "endTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "End of the query window (ISO 8601). Defaults to now.",
+            "example": "2026-05-10T01:00:00Z"
+          },
+          "where": {
+            "type": "string",
+            "maxLength": 8192,
+            "default": "",
+            "description": "Row filter expression. The language is controlled by whereLanguage.\n\nLucene examples (default):\n  SeverityText:ERROR\n  pipedream.pipeline_name:my-pipeline AND SeverityText:ERROR\n  Body:timeout\n\nSQL examples (whereLanguage: \"sql\"):\n  SeverityText = 'ERROR'\n  `pipedream.pipeline_name` = 'my-pipeline'\n",
+            "example": "SeverityText:ERROR"
+          },
+          "whereLanguage": {
+            "type": "string",
+            "enum": [
+              "lucene",
+              "sql"
+            ],
+            "example": "lucene",
+            "default": "lucene",
+            "description": "Language used for the where filter. Default is lucene."
+          },
+          "select": {
+            "type": "string",
+            "maxLength": 4096,
+            "default": "",
+            "description": "Comma-separated list of ClickHouse column expressions to include in\neach result row. When omitted the source's default select expression\nis used.\n\nEach entry is a ClickHouse SQL expression executed under the team's\ndatabase user. Semicolons and subqueries (SELECT keyword) are\nrejected; use column references, map lookups, or function calls only.\n\nHyperDX rewrites known attribute column names to their materialized\nequivalents automatically; you can still pass the logical name.\n",
+            "example": "Timestamp,SeverityText,Body,pipedream.pipeline_name"
+          },
+          "orderBy": {
+            "type": "string",
+            "maxLength": 1024,
+            "description": "ClickHouse ORDER BY expression. When omitted the source's default\nordering (typically timestamp DESC) is used.\n",
+            "example": "Timestamp DESC"
+          },
+          "maxResults": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2000,
+            "default": 100,
+            "description": "Maximum number of rows to return. Default is 100, max is 2000."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000,
+            "default": 0,
+            "description": "Number of rows to skip (best-effort offset pagination). Default is\n0, max is 10000. Offset pagination is non-deterministic when\nmultiple rows share the same timestamp; for reliable deep paging\nfilter by the last Timestamp value returned in the previous page\ninstead of using a large offset.\n"
+          }
+        }
+      },
+      "SearchRow": {
+        "type": "object",
+        "description": "A single result row. Keys correspond to the requested columns (or the source default columns when columns was omitted). Values are strings or numbers as returned by ClickHouse.\n",
+        "additionalProperties": true
+      },
+      "SearchResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "description": "Array of result rows. Each row is an object with keys corresponding to the requested columns.",
+            "items": {
+              "$ref": "#/components/schemas/SearchRow"
+            }
+          },
+          "rows": {
+            "type": "integer",
+            "description": "Number of rows in this response (not total matching rows)."
           }
         }
       },
@@ -2440,6 +3373,12 @@
             "description": "Display name for the source.",
             "example": "Logs"
           },
+          "section": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.",
+            "example": "Billing"
+          },
           "kind": {
             "type": "string",
             "enum": [
@@ -2541,6 +3480,23 @@
             "nullable": true,
             "example": "Body"
           },
+          "knownColumnsListExpression": {
+            "type": "string",
+            "description": "For Distributed table sources whose target tables have non-matching column sets. A list of columns supported across all target tables, used instead of SELECT * when fetching full row data. Leave blank to select all columns.",
+            "nullable": true,
+            "example": "Timestamp, Body, ServiceName"
+          },
+          "useTextIndexForImplicitColumn": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "enabled",
+              "disabled"
+            ],
+            "description": "Controls whether lucene rendering uses ClickHouse text indices via hasAllTokens() against the implicit column. \"auto\" detects a covering index at query time, \"enabled\" forces text index usage, \"disabled\" forces a LIKE/hasToken fallback.",
+            "nullable": true,
+            "example": "auto"
+          },
           "highlightedTraceAttributeExpressions": {
             "type": "array",
             "description": "Expressions defining trace-level attributes which are displayed in the trace view for the selected trace.",
@@ -2616,6 +3572,12 @@
             "type": "string",
             "description": "Display name for the source.",
             "example": "Traces"
+          },
+          "section": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.",
+            "example": "Billing"
           },
           "kind": {
             "type": "string",
@@ -2750,6 +3712,23 @@
             "nullable": true,
             "example": "SpanName"
           },
+          "knownColumnsListExpression": {
+            "type": "string",
+            "description": "For Distributed table sources whose target tables have non-matching column sets. A list of columns supported across all target tables, used instead of SELECT * when fetching full row data. Leave blank to select all columns.",
+            "nullable": true,
+            "example": "Timestamp, Body, ServiceName"
+          },
+          "useTextIndexForImplicitColumn": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "enabled",
+              "disabled"
+            ],
+            "description": "Controls whether lucene rendering uses ClickHouse text indices via hasAllTokens() against the implicit column. \"auto\" detects a covering index at query time, \"enabled\" forces text index usage, \"disabled\" forces a LIKE/hasToken fallback.",
+            "nullable": true,
+            "example": "auto"
+          },
           "highlightedTraceAttributeExpressions": {
             "type": "array",
             "description": "Expressions defining trace-level attributes which are displayed in the trace view for the selected trace.",
@@ -2821,6 +3800,12 @@
             "description": "Display name for the source.",
             "example": "Metrics"
           },
+          "section": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.",
+            "example": "Billing"
+          },
           "kind": {
             "type": "string",
             "enum": [
@@ -2888,6 +3873,12 @@
             "type": "string",
             "description": "Display name for the source.",
             "example": "Sessions"
+          },
+          "section": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.",
+            "example": "Billing"
           },
           "kind": {
             "type": "string",
@@ -3770,6 +4761,307 @@
         }
       }
     },
+    "/api/v2/connections": {
+      "get": {
+        "summary": "List Connections",
+        "description": "Retrieves a list of all ClickHouse connections for the authenticated team. Passwords are never returned.",
+        "operationId": "listConnections",
+        "tags": [
+          "Connections"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved connections",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionsListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Connection",
+        "description": "Creates a new ClickHouse connection",
+        "operationId": "createConnection",
+        "tags": [
+          "Connections"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConnectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully created connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Body validation failed: name: Required"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/connections/{id}": {
+      "get": {
+        "summary": "Get Connection",
+        "description": "Retrieves a specific ClickHouse connection by ID. Passwords are never returned.",
+        "operationId": "getConnection",
+        "tags": [
+          "Connections"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Connection ID",
+            "example": "507f1f77bcf86cd799439012"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponseEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Connection not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Connection not found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Connection",
+        "description": "Updates an existing ClickHouse connection.\n\nField semantics: if `password` is omitted or empty the existing\npassword is kept. `hyperdxSettingPrefix` is cleared when set to null\nor an empty string, and `prometheusEndpoint` is cleared when set to\nnull; both are kept unchanged when omitted.\n",
+        "operationId": "updateConnection",
+        "tags": [
+          "Connections"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Connection ID",
+            "example": "507f1f77bcf86cd799439012"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConnectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully updated connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Body validation failed: host: Required"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Connection not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Connection not found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Connection",
+        "description": "Deletes a ClickHouse connection",
+        "operationId": "deleteConnection",
+        "tags": [
+          "Connections"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Connection ID",
+            "example": "507f1f77bcf86cd799439012"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully deleted connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                },
+                "example": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Connection not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Connection not found"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/dashboards": {
       "get": {
         "summary": "List Dashboards",
@@ -4214,7 +5506,7 @@
       },
       "put": {
         "summary": "Update Dashboard",
-        "description": "Updates an existing dashboard",
+        "description": "Updates an existing dashboard.\n\n**Concurrency:** This endpoint does not support optimistic\nconcurrency control. Concurrent PUT requests for the same\ndashboard may silently overwrite each other, which can leave\norphan tile-to-container references on layout-shape edits.\nClients should serialize edits to a given dashboard.\n",
         "operationId": "updateDashboard",
         "tags": [
           "Dashboards"
@@ -4487,6 +5779,250 @@
         }
       }
     },
+    "/api/v2/dashboards/validate": {
+      "post": {
+        "summary": "Validate Dashboard",
+        "description": "Validates a dashboard body against the same schema and tile rules used\nby POST /api/v2/dashboards. The dashboard is **never persisted**. Use\nthis endpoint at plan time (e.g. from a Terraform provider) to check\nthat a dashboard configuration is valid before applying it.\n",
+        "operationId": "validateDashboard",
+        "tags": [
+          "Dashboards"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDashboardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validation result. HTTP 200 is always returned for valid **and**\ninvalid bodies — a non-200 response means the request itself\nfailed (auth, server error, etc.).\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "valid",
+                    "errors",
+                    "normalized"
+                  ],
+                  "properties": {
+                    "valid": {
+                      "type": "boolean",
+                      "description": "True when the body passes all validation rules."
+                    },
+                    "errors": {
+                      "type": "array",
+                      "description": "Validation errors. Empty when valid is true.",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "path",
+                          "message"
+                        ],
+                        "properties": {
+                          "path": {
+                            "type": "string",
+                            "description": "Dot-separated field path, or empty string for top-level errors."
+                          },
+                          "message": {
+                            "type": "string",
+                            "description": "Human-readable error description."
+                          }
+                        }
+                      }
+                    },
+                    "normalized": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "The parsed dashboard body with defaults applied (no\npersistence, so no server-assigned tile IDs). Populated\nwhen valid is true, null when valid is false.\n"
+                    }
+                  }
+                },
+                "examples": {
+                  "valid": {
+                    "summary": "Valid dashboard body",
+                    "value": {
+                      "valid": true,
+                      "errors": [],
+                      "normalized": {
+                        "name": "My Dashboard",
+                        "tiles": []
+                      }
+                    }
+                  },
+                  "invalid": {
+                    "summary": "Invalid dashboard body",
+                    "value": {
+                      "valid": false,
+                      "errors": [
+                        {
+                          "path": "name",
+                          "message": "Required"
+                        }
+                      ],
+                      "normalized": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/search": {
+      "post": {
+        "summary": "Search Raw Logs and Traces",
+        "description": "Fetch individual log or trace rows from a HyperDX source.\n\nThis endpoint mirrors the \"search\" panel mode in the HyperDX UI.\nHyperDX applies the same query optimizations used in the UI:\n  - Named attribute columns (e.g. \"pipedream.pipeline_name\") are\n    rewritten to their indexed materialized equivalents when the\n    source schema exposes them, avoiding slow Map lookups.\n  - Rows are ordered by timestamp descending (most recent first).\n  - The source's built-in PREWHERE / partition pruning is applied.\n\nAuthentication: Bearer token (personal API key from Team Settings).\n",
+        "operationId": "searchEvents",
+        "tags": [
+          "Search"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              },
+              "examples": {
+                "recentErrors": {
+                  "summary": "Recent errors for a service",
+                  "value": {
+                    "sourceId": "69b46cb0d964ce2d0b9506a8",
+                    "startTime": "2026-05-10T00:00:00Z",
+                    "endTime": "2026-05-10T01:00:00Z",
+                    "where": "SeverityText:ERROR",
+                    "select": "Timestamp,SeverityText,Body,ServiceName",
+                    "maxResults": 50
+                  }
+                },
+                "pipedreamTaskLogs": {
+                  "summary": "Pipedream task logs with materialized column filter",
+                  "value": {
+                    "sourceId": "69b46cb0d964ce2d0b9506a8",
+                    "startTime": "2026-05-10T00:00:00Z",
+                    "endTime": "2026-05-10T01:00:00Z",
+                    "where": "pipedream.pipeline_name:my-pipeline",
+                    "select": "Timestamp,SeverityText,Body,pipedream.pipeline_name,pipedream.stage_name,pipedream.task_index",
+                    "maxResults": 200
+                  }
+                },
+                "traceSearch": {
+                  "summary": "Slow spans for a service",
+                  "value": {
+                    "sourceId": "69b46cb0d964ce2d0b9508b2",
+                    "startTime": "2026-05-10T00:00:00Z",
+                    "endTime": "2026-05-10T01:00:00Z",
+                    "where": "ServiceName:my-service AND Duration:>1000000000",
+                    "select": "Timestamp,TraceId,SpanId,SpanName,ServiceName,Duration,StatusCode",
+                    "maxResults": 100
+                  }
+                },
+                "paginated": {
+                  "summary": "Paginated fetch",
+                  "value": {
+                    "sourceId": "69b46cb0d964ce2d0b9506a8",
+                    "startTime": "2026-05-10T00:00:00Z",
+                    "endTime": "2026-05-10T01:00:00Z",
+                    "maxResults": 100,
+                    "offset": 100
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Matching rows returned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                },
+                "example": {
+                  "data": [
+                    {
+                      "Timestamp": "2026-05-10T00:01:23.456789000Z",
+                      "SeverityText": "ERROR",
+                      "Body": "connection refused: redis:6379",
+                      "ServiceName": "api-service"
+                    }
+                  ],
+                  "rows": 1
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters or query error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "404": {
+            "description": "Source or connection not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/sources": {
       "get": {
         "summary": "List Sources",
@@ -4528,6 +6064,131 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v2/team": {
+      "get": {
+        "summary": "Get Team",
+        "description": "Retrieves the authenticated team's basic settings.",
+        "operationId": "getTeam",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved team"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/api/v2/team/members": {
+      "get": {
+        "summary": "List Team Members",
+        "description": "Retrieves the team's members.",
+        "operationId": "listTeamMembers",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved members"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitation": {
+      "post": {
+        "summary": "Invite Team Member",
+        "description": "Creates a pending invitation for a new email address.",
+        "operationId": "inviteTeamMember",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully created the invitation"
+          },
+          "400": {
+            "description": "User already exists"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitations": {
+      "get": {
+        "summary": "List Team Invitations",
+        "description": "Retrieves the team's pending invitations.",
+        "operationId": "listTeamInvitations",
+        "tags": [
+          "Team"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved invitations"
+          }
+        }
+      }
+    },
+    "/api/v2/team/invitation/{id}": {
+      "delete": {
+        "summary": "Delete Team Invitation",
+        "description": "Deletes a pending team invitation.",
+        "operationId": "deleteTeamInvitation",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully deleted the invitation"
+          },
+          "404": {
+            "description": "Invitation not found"
+          }
+        }
+      }
+    },
+    "/api/v2/team/member/{id}": {
+      "delete": {
+        "summary": "Remove Team Member",
+        "description": "Removes a member from the team.",
+        "operationId": "removeTeamMember",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully removed the member"
+          },
+          "400": {
+            "description": "Cannot remove yourself from the team"
+          },
+          "404": {
+            "description": "Member not found"
           }
         }
       }

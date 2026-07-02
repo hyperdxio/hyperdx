@@ -16,9 +16,8 @@ import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useClickhouseClient } from '@/clickhouse';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { getDisplayedTimestampValueExpression } from '@/source';
-
-import { KubePhase } from '../types';
-import { FormatTime } from '../useFormatTime';
+import { KubePhase } from '@/types';
+import { FormatTime } from '@/useFormatTime';
 
 type KubeEvent = {
   id: string;
@@ -89,6 +88,9 @@ export const useV2LogBatch = <T = any,>(
           dateRange,
           timestampValueExpression: logSource.timestampValueExpression,
           implicitColumnExpression: logSource.implicitColumnExpression,
+          bodyExpression: logSource.bodyExpression,
+          useTextIndexForImplicitColumn:
+            logSource.useTextIndexForImplicitColumn,
           where,
           whereLanguage,
           connection: logSource.connection,

@@ -1,6 +1,9 @@
 import { useCallback, useState } from 'react';
 import { useQueryState } from 'nuqs';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  ClickHouseQueryError,
+  ColumnMetaType,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import {
   BuilderChartConfigWithDateRange,
   TSource,
@@ -13,6 +16,7 @@ import TabBar from '@/TabBar';
 import { useLocalStorage } from '@/utils';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
+import { ChartErrorStateVariant } from './charts/ChartErrorState';
 import { useNestedPanelState } from './ContextSidePanel';
 import { RowDataPanel } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
@@ -43,6 +47,9 @@ interface Props {
   initialSortBy?: SortingState;
   variant?: DBRowTableVariant;
   enableSmallFirstWindow?: boolean;
+  tableId?: string;
+  errorVariant?: ChartErrorStateVariant;
+  onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
 }
 
 export default function DBSqlRowTableWithSideBar({
@@ -63,6 +70,9 @@ export default function DBSqlRowTableWithSideBar({
   initialSortBy,
   variant,
   enableSmallFirstWindow,
+  tableId,
+  errorVariant,
+  onResolvedColumnsChange,
 }: Props) {
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
@@ -142,6 +152,9 @@ export default function DBSqlRowTableWithSideBar({
         collapseAllRows={collapseAllRows}
         variant={variant}
         enableSmallFirstWindow={enableSmallFirstWindow}
+        tableId={tableId}
+        errorVariant={errorVariant}
+        onResolvedColumnsChange={onResolvedColumnsChange}
       />
     </RowSidePanelContext.Provider>
   );

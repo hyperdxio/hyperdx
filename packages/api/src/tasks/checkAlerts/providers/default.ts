@@ -22,6 +22,10 @@ import { type ISavedSearch, SavedSearch } from '@/models/savedSearch';
 import { type ISource, Source } from '@/models/source';
 import Webhook, { IWebhook } from '@/models/webhook';
 import {
+  AggregatedAlertHistory,
+  getPreviousAlertHistories,
+} from '@/tasks/checkAlerts';
+import {
   type AlertDetails,
   type AlertProvider,
   type AlertTask,
@@ -30,8 +34,6 @@ import {
 import { MappedOmit } from '@/tasks/types';
 import { convertMsToGranularityString } from '@/utils/common';
 import logger from '@/utils/logger';
-
-import { AggregatedAlertHistory, getPreviousAlertHistories } from '..';
 
 type PartialAlertDetails = MappedOmit<AlertDetails, 'previousMap'>;
 
@@ -318,11 +320,13 @@ export default class DefaultAlertProvider implements AlertProvider {
     endTime,
     granularity,
     startTime,
+    tileId,
   }: {
     dashboardId: string;
     endTime: Date;
     granularity: string;
     startTime: Date;
+    tileId?: string;
   }): string {
     const url = new URL(`${config.FRONTEND_URL}/dashboards/${dashboardId}`);
     // extend both start and end time by 7x granularity
@@ -333,6 +337,9 @@ export default class DefaultAlertProvider implements AlertProvider {
       granularity: convertMsToGranularityString(ms(granularity)),
       to,
     });
+    if (tileId) {
+      queryParams.set('highlightedTileId', tileId);
+    }
     url.search = queryParams.toString();
     return url.toString();
   }

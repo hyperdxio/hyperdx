@@ -1,4 +1,8 @@
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  TSource,
+  UseTextIndex,
+} from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
@@ -683,6 +687,215 @@ describe('sources router', () => {
       expect(sources[1].kind).toBe(SourceKind.Metric);
       expect(sources[2].kind).toBe(SourceKind.Session);
       expect(sources[3].kind).toBe(SourceKind.Trace);
+    });
+  });
+
+  describe('metadataMaterializedViews field', () => {
+    // Regression test for a bug where clearing the Metadata Materialized
+    // Views in the source form did not persist. The UI sets the field to
+    // undefined, JSON serialization drops it from the PUT payload, and the
+    // previous findOneAndUpdate-based controller silently preserved the
+    // old value because partial updates don't unset absent fields.
+    it('PUT /:id - removes metadataMaterializedViews when omitted from the payload', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+        metadataMaterializedViews: {
+          keyRollupTable: 'test_table_key_rollup_15m',
+          kvRollupTable: 'test_table_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+      });
+
+      const created = await Source.findById(source._id).lean();
+      if (created?.kind !== SourceKind.Log) {
+        throw new Error(`expected Log source, got ${created?.kind}`);
+      }
+      expect(created.metadataMaterializedViews).toMatchObject({
+        keyRollupTable: 'test_table_key_rollup_15m',
+        kvRollupTable: 'test_table_kv_rollup_15m',
+        granularity: '15 minute',
+      });
+
+      await agent
+        .put(`/sources/${source._id}`)
+        .send({
+          ...MOCK_SOURCE,
+          id: source._id.toString(),
+        })
+        .expect(200);
+
+      const updated = await Source.findById(source._id).lean();
+      if (updated?.kind !== SourceKind.Log) {
+        throw new Error(`expected Log source, got ${updated?.kind}`);
+      }
+      expect(updated.metadataMaterializedViews).toBeUndefined();
+    });
+
+    it('PUT /:id - updates metadataMaterializedViews when included in the payload', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+        metadataMaterializedViews: {
+          keyRollupTable: 'old_key_rollup',
+          kvRollupTable: 'old_kv_rollup',
+          granularity: '15 minute',
+        },
+      });
+
+      await agent
+        .put(`/sources/${source._id}`)
+        .send({
+          ...MOCK_SOURCE,
+          id: source._id.toString(),
+          metadataMaterializedViews: {
+            keyRollupTable: 'new_key_rollup',
+            kvRollupTable: 'new_kv_rollup',
+            granularity: '1 hour',
+          },
+        })
+        .expect(200);
+
+      const updated = await Source.findById(source._id).lean();
+      if (updated?.kind !== SourceKind.Log) {
+        throw new Error(`expected Log source, got ${updated?.kind}`);
+      }
+      expect(updated.metadataMaterializedViews).toMatchObject({
+        keyRollupTable: 'new_key_rollup',
+        kvRollupTable: 'new_kv_rollup',
+        granularity: '1 hour',
+      });
+    });
+  });
+
+  describe('useTextIndexForImplicitColumn field', () => {
+    it('POST / - persists useTextIndexForImplicitColumn on a Log source and returns it', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/sources')
+        .send({
+          ...MOCK_SOURCE,
+          useTextIndexForImplicitColumn: UseTextIndex.Enabled,
+        })
+        .expect(200);
+
+      expect(response.body.useTextIndexForImplicitColumn).toBe(
+        UseTextIndex.Enabled,
+      );
+
+      const sources = await Source.find({}).lean();
+      expect(sources).toHaveLength(1);
+      const stored = sources[0];
+      if (stored?.kind !== SourceKind.Log) {
+        throw new Error(`expected Log source, got ${stored?.kind}`);
+      }
+      expect(stored.useTextIndexForImplicitColumn).toBe(UseTextIndex.Enabled);
+    });
+
+    it('POST / - persists useTextIndexForImplicitColumn on a Trace source and returns it', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const traceSource: Omit<Extract<TSource, { kind: 'trace' }>, 'id'> = {
+        kind: SourceKind.Trace,
+        name: 'Trace with text index pref',
+        connection: new Types.ObjectId().toString(),
+        from: { databaseName: 'test_db', tableName: 'otel_traces' },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: '*',
+        durationExpression: 'Duration',
+        durationPrecision: 9,
+        traceIdExpression: 'TraceId',
+        spanIdExpression: 'SpanId',
+        parentSpanIdExpression: 'ParentSpanId',
+        spanNameExpression: 'SpanName',
+        spanKindExpression: 'SpanKind',
+        useTextIndexForImplicitColumn: UseTextIndex.Disabled,
+      };
+
+      const response = await agent
+        .post('/sources')
+        .send(traceSource)
+        .expect(200);
+
+      expect(response.body.useTextIndexForImplicitColumn).toBe(
+        UseTextIndex.Disabled,
+      );
+
+      const stored = await Source.findById(response.body.id).lean();
+      if (stored?.kind !== SourceKind.Trace) {
+        throw new Error(`expected Trace source, got ${stored?.kind}`);
+      }
+      expect(stored.useTextIndexForImplicitColumn).toBe(UseTextIndex.Disabled);
+    });
+
+    it('PUT /:id - updates useTextIndexForImplicitColumn on an existing Log source', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+        useTextIndexForImplicitColumn: UseTextIndex.Auto,
+      });
+
+      await agent
+        .put(`/sources/${source._id}`)
+        .send({
+          ...MOCK_SOURCE,
+          id: source._id.toString(),
+          useTextIndexForImplicitColumn: UseTextIndex.Enabled,
+        })
+        .expect(200);
+
+      const updated = await Source.findById(source._id).lean();
+      if (updated?.kind !== SourceKind.Log) {
+        throw new Error(`expected Log source, got ${updated?.kind}`);
+      }
+      expect(updated.useTextIndexForImplicitColumn).toBe(UseTextIndex.Enabled);
+    });
+
+    it('GET / - returns useTextIndexForImplicitColumn when set', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+        useTextIndexForImplicitColumn: UseTextIndex.Disabled,
+      });
+
+      const response = await agent.get('/sources').expect(200);
+
+      expect(response.body).toHaveLength(1);
+      expect(response.body[0].useTextIndexForImplicitColumn).toBe(
+        UseTextIndex.Disabled,
+      );
+    });
+
+    it('GET / - omits useTextIndexForImplicitColumn when not set', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      await Source.create({ ...MOCK_SOURCE, team: team._id });
+
+      const response = await agent.get('/sources').expect(200);
+
+      expect(response.body).toHaveLength(1);
+      expect(response.body[0].useTextIndexForImplicitColumn).toBeUndefined();
+    });
+
+    it('POST / - rejects an invalid useTextIndexForImplicitColumn value', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      await agent
+        .post('/sources')
+        .send({ ...MOCK_SOURCE, useTextIndexForImplicitColumn: 'maybe' })
+        .expect(400);
+
+      const sources = await Source.find({}).lean();
+      expect(sources).toHaveLength(0);
     });
   });
 });

@@ -9,6 +9,20 @@
  * to tune the future buffer.
  */
 
+import {
+  E2E_CLICKHOUSE_DATABASE,
+  E2E_INTERESTING_FILTER_KEYS_TABLE,
+  E2E_LOGS_TABLE,
+  E2E_METADATA_MV_KEY_ROLLUP_TABLE,
+  E2E_METADATA_MV_KV_ROLLUP_TABLE,
+  E2E_METADATA_MV_LOGS_TABLE,
+  E2E_METRICS_GAUGE_TABLE,
+  E2E_METRICS_SUM_TABLE,
+  E2E_SESSIONS_TABLE,
+  E2E_TRACES_MV_TABLE,
+  E2E_TRACES_TABLE,
+} from './utils/constants';
+
 interface ClickHouseConfig {
   host: string;
   user: string;
@@ -64,6 +78,85 @@ export const SERVICES = [
   'notification-service',
   'inventory-service',
 ] as const;
+// Rows seeded into `otel_logs_interesting_filter_keys`. Each column has a
+// distinct value per row so a single filter value matches exactly one row.
+// Exported so the filter-key edge case E2E test asserts against the same data.
+export const INTERESTING_FILTER_KEYS_ROWS = [
+  {
+    serviceName: 'service1',
+    resourceAttrValue: 'value1',
+    jsonValue: 'value1',
+    clusterName: 'cluster1',
+    serviceNameHyphen: 'svc-one',
+    mapHyphenValue: 'mapval1',
+    jsonHyphenValue: 'jsonval1',
+    body: 'log body 1',
+  },
+  {
+    serviceName: 'service2',
+    resourceAttrValue: 'value2',
+    jsonValue: 'value2',
+    clusterName: 'cluster2',
+    serviceNameHyphen: 'svc-two',
+    mapHyphenValue: 'mapval2',
+    jsonHyphenValue: 'jsonval2',
+    body: 'log body 2',
+  },
+  {
+    serviceName: 'service3',
+    resourceAttrValue: 'value3',
+    jsonValue: 'value3',
+    clusterName: 'cluster3',
+    serviceNameHyphen: 'svc-three',
+    mapHyphenValue: 'mapval3',
+    jsonHyphenValue: 'jsonval3',
+    body: 'log body 3',
+  },
+] as const;
+
+// A single log whose Body is a JSON string with a flat, dotted key. It lives in
+// the default E2E Logs table (so it shares the E2E Logs source); the unique
+// ServiceName isolates it from other default-logs tests, which all scope by
+// their own markers. The parsed-JSON "Add to Filters" test expands this Body
+// and filters on the nested value, exercising the JSONExtractString(...) filter
+// key path (HDX-4427).
+export const JSON_BODY_LOG = {
+  // Underscores, not hyphens: Lucene matches an underscore token exactly inside
+  // quotes, so `ServiceName:"json_body_filter_svc"` isolates this one row. A
+  // hyphenated name tokenizes and matches broadly.
+  serviceName: 'json_body_filter_svc',
+  jsonKey: 'app.user.currency',
+  jsonValue: 'USD',
+} as const;
+const JSON_BODY_LOG_BODY =
+  '{"app.user.currency":"USD","app.checkout.flow":"guest"}';
+
+// LogAttributes map key seeded into the metadata-MV source rows. Exported so
+// the filter-key edge case test references the same key when building filters.
+export const METADATA_MV_LOG_ATTR_KEY = 'requestId';
+// Rows seeded into `e2e_otel_logs_metadata_mv` (the metadata-MV-backed source).
+// Each row has a distinct ServiceName and LogAttributes['requestId'] value so a
+// single filter value matches exactly one row, mirroring the
+// INTERESTING_FILTER_KEYS_ROWS shape. Facet keys/values for this source come
+// from the rollup MVs rather than the base table.
+export const METADATA_MV_ROWS = [
+  {
+    serviceName: 'mv-service-1',
+    logAttrValue: 'mv-req-1',
+    body: 'mv log body 1',
+  },
+  {
+    serviceName: 'mv-service-2',
+    logAttrValue: 'mv-req-2',
+    body: 'mv log body 2',
+  },
+  {
+    serviceName: 'mv-service-3',
+    logAttrValue: 'mv-req-3',
+    body: 'mv log body 3',
+  },
+] as const;
+
 const LOG_MESSAGES = [
   'Request processed successfully',
   'Database connection established',
@@ -161,6 +254,23 @@ function generateLogData(
   }
 
   return rows.join(',\n');
+}
+
+/**
+ * Build the VALUES tuple for the parsed-JSON Body log in the default logs table.
+ * Placed a couple seconds before `seedRef` so it falls inside recent relative
+ * time ranges. Body is a JSON string with a flat dotted key; the side panel
+ * parses it, and "Add to Filters" on the nested value builds
+ * JSONExtractString(Body, 'app.user.currency') (HDX-4427).
+ */
+function generateJsonBodyLogData(seedRef: number): string {
+  const timestampNs = (seedRef - 2000) * 1000000;
+  return (
+    `('${timestampNs}', '', '', 0, 'info', 0, ` +
+    `'${JSON_BODY_LOG.serviceName}', '${JSON_BODY_LOG_BODY}', '', ` +
+    `{'service.name':'${JSON_BODY_LOG.serviceName}','environment':'test'}, ` +
+    `'', '', '', {}, {})`
+  );
 }
 
 function generateK8sLogData(
@@ -583,6 +693,45 @@ function generateK8sEventLogs(
   return rows.join(',\n');
 }
 
+/**
+ * Build the VALUES tuples for `otel_logs_interesting_filter_keys`. Rows are
+ * placed a few seconds before `seedRef` so they fall inside recent relative
+ * time ranges. The map key and JSON path intentionally use a dotted key
+ * ("key.subKey.subSubKey") and the table has dotted/hyphenated column names so
+ * the test exercises identifier escaping in generated filter queries.
+ */
+function generateInterestingFilterKeyLogData(seedRef: number): string {
+  return INTERESTING_FILTER_KEYS_ROWS.map((row, i) => {
+    const timestampNs = (seedRef - (i + 1) * 1000) * 1000000;
+    const json = `{"key": {"subKey": {"subSubKey": "${row.jsonValue}"}}}`;
+    // JSON column with a hyphenated name AND hyphenated nested keys.
+    const jsonHyphen = `{"key-1": {"key-2": "${row.jsonHyphenValue}"}}`;
+    return (
+      `('${timestampNs}', 'trace${i + 1}', 'span${i + 1}', 'INFO', ` +
+      `'${row.serviceName}', '${row.body}', ` +
+      `{'key.subKey.subSubKey':'${row.resourceAttrValue}'}, ` +
+      `'${json}', '${row.clusterName}', '${row.serviceNameHyphen}', ` +
+      `{'pod-name':'${row.mapHyphenValue}'}, '${jsonHyphen}')`
+    );
+  }).join(',\n');
+}
+
+/**
+ * Build the VALUES tuples for `e2e_otel_logs_metadata_mv`. Rows are placed a few
+ * seconds before `seedRef` so they fall inside recent relative time ranges (and
+ * inside the 15-minute rollup bucket the metadata MVs aggregate into). Inserting
+ * here also triggers the key/value rollup MVs that back the source's facets.
+ */
+function generateMetadataMvLogData(seedRef: number): string {
+  return METADATA_MV_ROWS.map((row, i) => {
+    const timestampNs = (seedRef - (i + 1) * 1000) * 1000000;
+    return (
+      `('${timestampNs}', '${row.serviceName}', '${row.body}', ` +
+      `{'${METADATA_MV_LOG_ATTR_KEY}':'${row.logAttrValue}'})`
+    );
+  }).join(',\n');
+}
+
 // CI can be slower, so use a longer timeout
 const CLICKHOUSE_READY_TIMEOUT_SECONDS = parseInt(
   process.env.E2E_CLICKHOUSE_READY_TIMEOUT || '60',
@@ -628,11 +777,41 @@ async function clearTestData(
   client: ReturnType<typeof createClickHouseClient>,
 ): Promise<void> {
   console.log('  Clearing existing test data...');
-  await client.query('TRUNCATE TABLE IF EXISTS default.e2e_otel_logs');
-  await client.query('TRUNCATE TABLE IF EXISTS default.e2e_otel_traces');
-  await client.query('TRUNCATE TABLE IF EXISTS default.e2e_hyperdx_sessions');
-  await client.query('TRUNCATE TABLE IF EXISTS default.e2e_otel_metrics_gauge');
-  await client.query('TRUNCATE TABLE IF EXISTS default.e2e_otel_metrics_sum');
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_LOGS_TABLE}`,
+  );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_TRACES_TABLE}`,
+  );
+  // The materialized view target is not cleared by truncating the source
+  // table, so clear it explicitly to avoid accumulating duplicate
+  // pre-aggregated rows across re-seeds.
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_TRACES_MV_TABLE}`,
+  );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_SESSIONS_TABLE}`,
+  );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METRICS_GAUGE_TABLE}`,
+  );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METRICS_SUM_TABLE}`,
+  );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_INTERESTING_FILTER_KEYS_TABLE}`,
+  );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METADATA_MV_LOGS_TABLE}`,
+  );
+  // The rollup MV targets are not cleared by truncating the base table, so
+  // clear them explicitly to avoid accumulating stale facet rows across re-seeds.
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METADATA_MV_KV_ROLLUP_TABLE}`,
+  );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METADATA_MV_KEY_ROLLUP_TABLE}`,
+  );
   console.log('  Existing data cleared');
 }
 
@@ -651,7 +830,7 @@ export async function seedClickHouse(): Promise<void> {
   // Insert log data
   console.log('  Inserting log data...');
   await client.query(`
-    INSERT INTO default.e2e_otel_logs (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_LOGS_TABLE} (
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
@@ -659,10 +838,20 @@ export async function seedClickHouse(): Promise<void> {
   `);
   console.log(`  Inserted ${numDataPoints} log entries`);
 
+  // A log whose Body is a JSON string, for the parsed-JSON "Add to Filters" test.
+  console.log('  Inserting parsed-JSON Body log...');
+  await client.query(`
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_LOGS_TABLE} (
+      Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
+      ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
+      ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
+    ) VALUES ${generateJsonBodyLogData(seedRef)}
+  `);
+
   // Insert K8s-aware log data (logs with k8s resource attributes for infrastructure correlation)
   console.log('  Inserting K8s log data...');
   await client.query(`
-    INSERT INTO default.e2e_otel_logs (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_LOGS_TABLE} (
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
@@ -673,7 +862,7 @@ export async function seedClickHouse(): Promise<void> {
   // Insert trace data
   console.log('  Inserting trace data...');
   await client.query(`
-    INSERT INTO default.e2e_otel_traces (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_TRACES_TABLE} (
       Timestamp, TraceId, SpanId, ParentSpanId, TraceState, SpanName, SpanKind,
       ServiceName, ResourceAttributes, ScopeName, ScopeVersion, SpanAttributes,
       Duration, StatusCode, StatusMessage, \`Events.Timestamp\`, \`Events.Name\`,
@@ -686,7 +875,7 @@ export async function seedClickHouse(): Promise<void> {
   // Insert session trace data (spans with rum.sessionId for session tracking)
   console.log('  Inserting session trace data...');
   await client.query(`
-    INSERT INTO default.e2e_otel_traces (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_TRACES_TABLE} (
       Timestamp, TraceId, SpanId, ParentSpanId, TraceState, SpanName, SpanKind,
       ServiceName, ResourceAttributes, ScopeName, ScopeVersion, SpanAttributes,
       Duration, StatusCode, StatusMessage, \`Events.Timestamp\`, \`Events.Name\`,
@@ -699,7 +888,7 @@ export async function seedClickHouse(): Promise<void> {
   // Insert session data
   console.log('  Inserting session data...');
   await client.query(`
-    INSERT INTO default.e2e_hyperdx_sessions (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_SESSIONS_TABLE} (
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
@@ -710,7 +899,7 @@ export async function seedClickHouse(): Promise<void> {
   // Insert Kubernetes gauge metrics (pods and nodes)
   console.log('  Inserting Kubernetes gauge metrics...');
   await client.query(`
-    INSERT INTO default.e2e_otel_metrics_gauge (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_METRICS_GAUGE_TABLE} (
       ResourceAttributes, ResourceSchemaUrl, ScopeName, ScopeVersion, ScopeAttributes,
       ScopeDroppedAttrCount, ScopeSchemaUrl, ServiceName, MetricName, MetricDescription,
       MetricUnit, Attributes, StartTimeUnix, TimeUnix, Value, Flags,
@@ -725,7 +914,7 @@ export async function seedClickHouse(): Promise<void> {
   // Insert Kubernetes sum metrics (uptime)
   console.log('  Inserting Kubernetes sum metrics...');
   await client.query(`
-    INSERT INTO default.e2e_otel_metrics_sum (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_METRICS_SUM_TABLE} (
       ResourceAttributes, ResourceSchemaUrl, ScopeName, ScopeVersion, ScopeAttributes,
       ScopeDroppedAttrCount, ScopeSchemaUrl, ServiceName, MetricName, MetricDescription,
       MetricUnit, Attributes, StartTimeUnix, TimeUnix, Value, Flags,
@@ -739,13 +928,41 @@ export async function seedClickHouse(): Promise<void> {
   // Insert Kubernetes event logs
   console.log('  Inserting Kubernetes event logs...');
   await client.query(`
-    INSERT INTO default.e2e_otel_logs (
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_LOGS_TABLE} (
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
     ) VALUES ${generateK8sEventLogs(numDataPoints, startMs, endMs)}
   `);
   console.log(`  Inserted ${numDataPoints} Kubernetes event logs`);
+
+  // Insert "interesting filter key" rows (dotted/hyphenated column names, Map
+  // key access, and JSON path access) for the filter-key edge case tests.
+  console.log('  Inserting interesting filter key data...');
+  await client.query(`
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_INTERESTING_FILTER_KEYS_TABLE} (
+      Timestamp, TraceId, SpanId, SeverityText, ServiceName, Body,
+      ResourceAttributes, ResourceAttributesJSON,
+      \`__hdx_materialized_k8s.cluster.name\`, \`service-name\`,
+      \`Map-Attributes\`, \`JSON-Attributes\`
+    ) VALUES ${generateInterestingFilterKeyLogData(seedRef)}
+  `);
+  console.log(
+    `  Inserted ${INTERESTING_FILTER_KEYS_ROWS.length} interesting filter key entries`,
+  );
+
+  // Insert metadata-MV source rows. The insert triggers the key/value rollup
+  // MVs that back this source's facets (ServiceName native column +
+  // LogAttributes['requestId'] map key).
+  console.log('  Inserting metadata-MV source data...');
+  await client.query(`
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_METADATA_MV_LOGS_TABLE} (
+      Timestamp, ServiceName, Body, LogAttributes
+    ) VALUES ${generateMetadataMvLogData(seedRef)}
+  `);
+  console.log(
+    `  Inserted ${METADATA_MV_ROWS.length} metadata-MV source entries`,
+  );
 
   console.log('ClickHouse seeding complete');
 }

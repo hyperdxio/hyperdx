@@ -39,6 +39,7 @@ import {
   doesExceedThreshold,
   getPreviousAlertHistories,
   getScheduledWindowStart,
+  parseAlertData,
   processAlert,
 } from '@/tasks/checkAlerts';
 import {
@@ -967,6 +968,97 @@ describe('checkAlerts', () => {
     });
   });
 
+  describe('parseAlertData', () => {
+    const timeSeriesMeta = {
+      type: 'time_series' as const,
+      timestampColumnName: 'ts',
+      valueColumnNames: new Set(['cnt']),
+    };
+
+    it('returns the value and ordered [key, value] field pairs, excluding timestamp and value columns', () => {
+      const { value, extraFields } = parseAlertData(
+        {
+          ts: '2023-11-16T22:12:00.000Z',
+          ServiceName: 'web',
+          SeverityText: 'error',
+          cnt: 5,
+        },
+        timeSeriesMeta,
+      );
+
+      expect(value).toBe(5);
+      // Column order is preserved and the timestamp/value columns are excluded.
+      expect(extraFields).toEqual([
+        ['ServiceName', 'web'],
+        ['SeverityText', 'error'],
+      ]);
+    });
+
+    it('derives a group string byte-identical to the old "k:v, k:v" format', () => {
+      const { extraFields } = parseAlertData(
+        {
+          ts: '2023-11-16T22:12:00.000Z',
+          ServiceName: 'web',
+          SeverityText: 'error',
+          cnt: 5,
+        },
+        timeSeriesMeta,
+      );
+
+      const groupKey = extraFields.map(([k, v]) => `${k}:${v}`).join(', ');
+      expect(groupKey).toBe('ServiceName:web, SeverityText:error');
+    });
+
+    it('derives attributes via Object.fromEntries, preserving values that contain colons', () => {
+      const { extraFields } = parseAlertData(
+        {
+          ts: '2023-11-16T22:12:00.000Z',
+          'k8s.pod.name': 'otel-collector-123',
+          firstSeen: '2023-11-16T22:12:00.000Z',
+          url: 'https://example.com/path',
+          cnt: 5,
+        },
+        timeSeriesMeta,
+      );
+
+      expect(Object.fromEntries(extraFields)).toEqual({
+        'k8s.pod.name': 'otel-collector-123',
+        firstSeen: '2023-11-16T22:12:00.000Z',
+        url: 'https://example.com/path',
+      });
+    });
+
+    it('coerces numeric field values to strings', () => {
+      const { extraFields } = parseAlertData(
+        { ts: '2023-11-16T22:12:00.000Z', StatusCode: 500, cnt: 5 },
+        timeSeriesMeta,
+      );
+
+      expect(extraFields).toEqual([['StatusCode', '500']]);
+    });
+
+    it('returns no fields when there are no group-by columns', () => {
+      const { value, extraFields } = parseAlertData(
+        { ts: '2023-11-16T22:12:00.000Z', cnt: 5 },
+        timeSeriesMeta,
+      );
+
+      expect(value).toBe(5);
+      expect(extraFields).toEqual([]);
+    });
+
+    it('does not treat the timestamp column as a field for single_value results', () => {
+      const { value, extraFields } = parseAlertData(
+        { ts: '2023-11-16T22:12:00.000Z', cnt: 5 },
+        { type: 'single_value' as const, valueColumnNames: new Set(['cnt']) },
+      );
+
+      expect(value).toBe(5);
+      // single_value has no timestamp column, so `ts` is kept as a field.
+      expect(extraFields).toEqual([['ts', '2023-11-16T22:12:00.000Z']]);
+    });
+  });
+
   describe('getScheduledWindowStart', () => {
     it('should align to the default interval boundary when offset is 0', () => {
       const now = new Date('2024-01-01T12:13:45.000Z');
@@ -1232,7 +1324,7 @@ describe('checkAlerts', () => {
       expect(
         buildAlertMessageTemplateHdxLink(alertProvider, defaultChartView),
       ).toMatchInlineSnapshot(
-        `"http://app:8080/dashboards/id-123?from=1679089083103&granularity=5+minute&to=1679093339103"`,
+        `"http://app:8080/dashboards/id-123?from=1679089083103&granularity=5+minute&to=1679093339103&highlightedTileId=test-tile-id"`,
       );
     });
 
@@ -2418,6 +2510,118 @@ describe('checkAlerts', () => {
       expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
     });
 
+    it('SAVED_SEARCH alert - applies a saved filter whose column needs backtick-quoting', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      // A table with a column whose name requires backtick-quoting. The default
+      // otel_logs schema has no such column, so create a dedicated one.
+      const nativeClient = await getTestFixtureClickHouseClient();
+      const ESCAPED_FILTER_TABLE = 'otel_logs_alert_escaped_filter';
+      await nativeClient.command({
+        query: `CREATE OR REPLACE TABLE ${DEFAULT_DATABASE}.${ESCAPED_FILTER_TABLE} (
+          Timestamp DateTime64(9),
+          \`service-name\` String,
+          Body String
+        ) ENGINE = MergeTree ORDER BY Timestamp`,
+        clickhouse_settings: { wait_end_of_query: 1 },
+      });
+
+      try {
+        const source = await Source.create({
+          kind: 'log',
+          team: team._id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: ESCAPED_FILTER_TABLE,
+          },
+          timestampValueExpression: 'Timestamp',
+          connection: connection.id,
+          name: 'Escaped Filter Logs',
+        });
+
+        // The condition is in the exact shape the UI saves to Mongo: the
+        // special-char column key is backtick-quoted in the persisted SQL.
+        const savedSearch = await new SavedSearch({
+          team: team._id,
+          name: 'Escaped Filter Search',
+          select: 'Body',
+          where: '',
+          whereLanguage: 'sql',
+          orderBy: 'Timestamp',
+          source: source.id,
+          tags: ['test'],
+          filters: [{ type: 'sql', condition: "`service-name` IN ('svc-a')" }],
+        }).save();
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          {
+            taskType: AlertTaskType.SAVED_SEARCH,
+            savedSearch,
+          },
+        );
+
+        const now = new Date('2023-11-16T22:12:00.000Z');
+        const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+        // Two rows in the alert window; only the 'svc-a' row matches the
+        // saved filter, so a correctly-quoted query counts exactly one.
+        await bulkInsertData(`${DEFAULT_DATABASE}.${ESCAPED_FILTER_TABLE}`, [
+          {
+            Timestamp: eventMs,
+            'service-name': 'svc-a',
+            Body: 'matches the saved filter',
+          },
+          {
+            Timestamp: eventMs,
+            'service-name': 'svc-b',
+            Body: 'excluded by the saved filter',
+          },
+        ]);
+
+        const querySpy = jest.spyOn(clickhouseClient, 'queryChartConfig');
+
+        await processAlertAtTime(
+          now,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        // The query ran (no SQL error from an unquoted key) ...
+        expect(querySpy).toHaveBeenCalledTimes(1);
+
+        // ... and counted exactly the one matching row — not two (filter
+        // dropped) and not zero (filter over-matched / errored).
+        expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+        const alertHistories = await AlertHistory.find({
+          alert: details.alert.id,
+        }).sort({ createdAt: 1 });
+        expect(alertHistories.length).toBe(1);
+        expect(alertHistories[0].state).toBe('ALERT');
+        expect(alertHistories[0].lastValues).toEqual([
+          expect.objectContaining({ count: 1 }),
+        ]);
+      } finally {
+        await nativeClient.command({
+          query: `DROP TABLE IF EXISTS ${DEFAULT_DATABASE}.${ESCAPED_FILTER_TABLE}`,
+          clickhouse_settings: { wait_end_of_query: 1 },
+        });
+      }
+    });
+
     it('TILE alert (events) - slack webhook', async () => {
       const {
         team,
@@ -2573,7 +2777,7 @@ describe('checkAlerts', () => {
             {
               text: {
                 text: [
-                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1>*`,
+                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000&highlightedTileId=17quud | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1>*`,
                   '',
                   '3 meets or exceeds 1',
                   'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
@@ -3540,7 +3744,7 @@ describe('checkAlerts', () => {
       expect(fetchMock).toHaveBeenCalledWith('https://webhook.site/123', {
         method: 'POST',
         body: JSON.stringify({
-          text: `http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1`,
+          text: `http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000&highlightedTileId=17quud | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1`,
         }),
         headers: {
           'Content-Type': 'application/json',
@@ -3780,6 +3984,115 @@ describe('checkAlerts', () => {
       expect(workerHistory).toBeDefined();
       expect(workerHistory!.state).toBe('OK');
       expect(workerHistory!.lastValues.map(v => v.count)).toEqual([1]);
+    });
+
+    it('TILE alert (raw SQL) - group-by fields are exposed as {{attributes.*}} in the notification payload', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = now.getTime() - ms('5m');
+
+      // Two errors from a single service so the group "ServiceName:web" fires.
+      await bulkInsertLogs([
+        {
+          ServiceName: 'web',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'web error 1',
+        },
+        {
+          ServiceName: 'web',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'web error 2',
+        },
+      ]);
+
+      const groupedSqlTemplate = `
+        SELECT
+          toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} second) AS ts,
+          ServiceName,
+          count() AS cnt
+        FROM default.otel_logs
+        WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
+          AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
+        GROUP BY ts, ServiceName
+        ORDER BY ts`;
+
+      const dashboard = await new Dashboard({
+        name: 'Raw SQL Grouped Attributes Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'rawsql-grouped-attrs',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              configType: 'sql',
+              displayType: 'line',
+              sqlTemplate: groupedSqlTemplate,
+              connection: connection.id,
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find(
+        (t: any) => t.id === 'rawsql-grouped-attrs',
+      );
+      if (!tile) throw new Error('tile not found');
+
+      const details = await createAlertDetails(
+        team,
+        undefined,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          dashboardId: dashboard.id,
+          tileId: 'rawsql-grouped-attrs',
+          // The title and body templates reference the per-group field directly.
+          name: 'Errors for {{attributes.ServiceName}}',
+          message: 'Affected service: {{attributes.ServiceName}}',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      // The webhook payload is captured via the mocked slack sender. Its
+      // rendered title/body must resolve {{attributes.ServiceName}} to the
+      // firing group's value ("web"), not an empty string.
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      const [, payload] = (slack.postMessageToWebhook as jest.Mock).mock
+        .calls[0];
+
+      expect(payload.text).toContain('Errors for web');
+
+      const renderedBody = payload.blocks[0].text.text;
+      expect(renderedBody).toContain('Affected service: web');
+      expect(renderedBody).toContain('Group: "ServiceName:web"');
     });
 
     it('TILE alert (raw SQL) - alert is evaluated using the last numeric column', async () => {
@@ -5340,7 +5653,7 @@ describe('checkAlerts', () => {
             {
               text: {
                 text: [
-                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000 | 🚨 Alert for "CPU" in "My Dashboard" - 6 meets or exceeds 1>*`,
+                  `*<http://app:8080/dashboards/${dashboard._id}?from=1700170200000&granularity=5+minute&to=1700174700000&highlightedTileId=17quud | 🚨 Alert for "CPU" in "My Dashboard" - 6 meets or exceeds 1>*`,
                   '',
                   '6 meets or exceeds 1',
                   'Time Range (UTC): [Nov 16 10:05:00 PM - Nov 16 10:10:00 PM)',
@@ -5365,7 +5678,7 @@ describe('checkAlerts', () => {
 
       // Insert gauge metrics for two different services
       // Note: ResourceAttributes must differ per service so that
-      // AttributesHash (cityHash64 of mapConcat(ScopeAttributes, ResourceAttributes, Attributes))
+      // AttributesHash (variadic cityHash64(ScopeAttributes, ResourceAttributes, Attributes))
       // produces distinct hashes. Otherwise, the Bucketed CTE collapses all rows into one group.
       const gaugePoints = [
         // service-a: high CPU values (should trigger alert)

@@ -5,7 +5,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderHook } from '@testing-library/react';
 
-import useRowWhere, { processRowToWhereClause } from '../useRowWhere';
+import useRowWhere, { processRowToWhereClause } from '@/hooks/useRowWhere';
 
 // Mock crypto-js/md5
 jest.mock('crypto-js/md5');
@@ -583,5 +583,194 @@ describe('useRowWhere', () => {
     const row = { id: '123' };
 
     expect(() => result.current(row)).toThrow('Column type not found for id');
+  });
+
+  it('should filter to only primaryKeyColumns when provided', () => {
+    const meta: ColumnMetaType[] = [
+      { name: 'Timestamp', type: 'DateTime64' },
+      { name: 'ServiceName', type: 'String' },
+      { name: 'Body', type: 'String' },
+      { name: '__hdx_id', type: 'String' },
+    ];
+
+    const primaryKeyColumns = new Set(['Timestamp', 'ServiceName', '__hdx_id']);
+
+    const { result } = renderHook(() =>
+      useRowWhere({ meta, primaryKeyColumns }),
+    );
+
+    const row = {
+      Timestamp: '2024-01-01T00:00:00Z',
+      ServiceName: 'my-service',
+      Body: 'a very long log message that should not be in the WHERE clause',
+      __hdx_id: 'abc123',
+    };
+    const rowWhereResult = result.current(row);
+
+    // Body should NOT be in the WHERE clause
+    expect(rowWhereResult.where).not.toContain('Body');
+    expect(rowWhereResult.where).toContain('Timestamp');
+    expect(rowWhereResult.where).toContain('ServiceName');
+    expect(rowWhereResult.where).toContain('__hdx_id');
+  });
+
+  it('should use all columns when primaryKeyColumns is not provided', () => {
+    const meta: ColumnMetaType[] = [
+      { name: 'id', type: 'String' },
+      { name: 'Body', type: 'String' },
+    ];
+
+    const { result } = renderHook(() => useRowWhere({ meta }));
+
+    const row = { id: '123', Body: 'hello' };
+    const rowWhereResult = result.current(row);
+
+    expect(rowWhereResult.where).toBe("id='123' AND Body='hello'");
+  });
+
+  // Tests matching actual ClickHouse schemas in docker/otel-collector/schema/seed/
+  // These simulate the full row data a user would see and verify that only
+  // PK + partition + block columns end up in the WHERE clause.
+
+  it('otel_logs schema: only PK/partition/block columns in WHERE, Body and SeverityText excluded', () => {
+    // meta only contains actual columns — expression-based PK entries like
+    // toStartOfFiveMinutes(Timestamp) don't appear as result columns.
+    const meta: ColumnMetaType[] = [
+      { name: 'Timestamp', type: "DateTime64(9, 'UTC')" },
+      { name: 'ServiceName', type: 'String' },
+      { name: 'SeverityText', type: 'String' },
+      { name: 'Body', type: 'String' },
+      { name: '_block_number', type: 'UInt64' },
+      { name: '_block_offset', type: 'UInt64' },
+    ];
+
+    // primaryKeyColumns includes expression names from the raw PK even though
+    // they won't match any row key — the filter silently skips them.
+    const primaryKeyColumns = new Set([
+      'Timestamp',
+      'ServiceName',
+      'toDate(Timestamp)',
+      'toStartOfFiveMinutes(Timestamp)',
+      '_block_number',
+      '_block_offset',
+    ]);
+
+    const { result } = renderHook(() =>
+      useRowWhere({ meta, primaryKeyColumns }),
+    );
+
+    const row = {
+      Timestamp: '2026-05-20T21:20:00.123456789Z',
+      ServiceName: 'api-server',
+      SeverityText: 'ERROR',
+      Body: 'Connection refused to downstream service after 30s timeout',
+      _block_number: '2668',
+      _block_offset: '4',
+    };
+
+    const rowWhereResult = result.current(row);
+
+    // Non-PK columns must NOT appear
+    expect(rowWhereResult.where).not.toContain('Body');
+    expect(rowWhereResult.where).not.toContain('SeverityText');
+
+    // Actual PK column references and block columns must appear
+    expect(rowWhereResult.where).toContain('Timestamp');
+    expect(rowWhereResult.where).toContain('ServiceName');
+    expect(rowWhereResult.where).toContain('_block_number');
+    expect(rowWhereResult.where).toContain('_block_offset');
+  });
+
+  it('otel_traces schema: only PK/partition/block columns in WHERE, Duration and StatusCode excluded', () => {
+    const meta: ColumnMetaType[] = [
+      { name: 'Timestamp', type: "DateTime64(9, 'UTC')" },
+      { name: 'ServiceName', type: 'String' },
+      { name: 'SpanName', type: 'String' },
+      { name: 'Duration', type: 'Int64' },
+      { name: 'StatusCode', type: 'String' },
+      { name: '_block_number', type: 'UInt64' },
+      { name: '_block_offset', type: 'UInt64' },
+    ];
+
+    const primaryKeyColumns = new Set([
+      'Timestamp',
+      'ServiceName',
+      'SpanName',
+      'toDate(Timestamp)',
+      'toDateTime(Timestamp)',
+      '_block_number',
+      '_block_offset',
+    ]);
+
+    const { result } = renderHook(() =>
+      useRowWhere({ meta, primaryKeyColumns }),
+    );
+
+    const row = {
+      Timestamp: '2026-05-20T21:20:00.123456789Z',
+      ServiceName: 'api-server',
+      SpanName: 'GET /api/users',
+      Duration: '150000000',
+      StatusCode: 'STATUS_CODE_ERROR',
+      _block_number: '100',
+      _block_offset: '7',
+    };
+
+    const rowWhereResult = result.current(row);
+
+    expect(rowWhereResult.where).not.toContain('Duration');
+    expect(rowWhereResult.where).not.toContain('StatusCode');
+
+    expect(rowWhereResult.where).toContain('ServiceName');
+    expect(rowWhereResult.where).toContain('SpanName');
+    expect(rowWhereResult.where).toContain('_block_number');
+    expect(rowWhereResult.where).toContain('_block_offset');
+  });
+
+  it('otel_logs schema with __hdx_id in PK: hash column included, Body excluded', () => {
+    const meta: ColumnMetaType[] = [
+      { name: 'Timestamp', type: "DateTime64(9, 'UTC')" },
+      { name: 'ServiceName', type: 'String' },
+      { name: 'SeverityText', type: 'String' },
+      { name: 'Body', type: 'String' },
+      { name: '__hdx_id', type: 'String' },
+      { name: '_block_number', type: 'UInt64' },
+      { name: '_block_offset', type: 'UInt64' },
+    ];
+
+    const primaryKeyColumns = new Set([
+      'Timestamp',
+      'ServiceName',
+      '__hdx_id',
+      'toDate(Timestamp)',
+      'toStartOfFiveMinutes(Timestamp)',
+      '_block_number',
+      '_block_offset',
+    ]);
+
+    const { result } = renderHook(() =>
+      useRowWhere({ meta, primaryKeyColumns }),
+    );
+
+    const row = {
+      Timestamp: '2026-05-20T21:20:00.123456789Z',
+      ServiceName: 'api-server',
+      SeverityText: 'INFO',
+      Body: 'Request completed successfully with 200 OK',
+      __hdx_id: 'a1b2c3d4e5f6',
+      _block_number: '500',
+      _block_offset: '12',
+    };
+
+    const rowWhereResult = result.current(row);
+
+    expect(rowWhereResult.where).not.toContain('Body');
+    expect(rowWhereResult.where).not.toContain('SeverityText');
+
+    expect(rowWhereResult.where).toContain('Timestamp');
+    expect(rowWhereResult.where).toContain('__hdx_id');
+    expect(rowWhereResult.where).toContain('ServiceName');
+    expect(rowWhereResult.where).toContain('_block_number');
+    expect(rowWhereResult.where).toContain('_block_offset');
   });
 });

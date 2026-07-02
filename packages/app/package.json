@@ -1,14 +1,15 @@
 {
   "name": "@hyperdx/app",
-  "version": "2.24.1",
+  "version": "2.29.0",
   "private": true,
   "license": "MIT",
   "engines": {
     "node": ">=22.16.0"
   },
+  "//bundler": "dev/dev:local run on Turbopack for fast local iteration; build/build:clickhouse run on Webpack (--webpack) for production parity. The two bundlers can diverge on CSS Modules/loaders/module resolution, so build failures may not reproduce in dev. See next.config.mjs for rationale.",
   "scripts": {
-    "dev": "npx dotenv -e .env.development -- next dev --webpack",
-    "dev:local": "NEXT_PUBLIC_IS_LOCAL_MODE=true npx dotenv -e .env.development -- next dev --webpack",
+    "dev": "npx dotenv -e .env.development -- next dev --turbopack",
+    "dev:local": "NEXT_PUBLIC_IS_LOCAL_MODE=true npx dotenv -e .env.development -- next dev --turbopack",
     "build": "next build --webpack",
     "build:clickhouse": "NEXT_PUBLIC_THEME=clickstack NEXT_PUBLIC_IS_LOCAL_MODE=true NEXT_PUBLIC_CLICKHOUSE_BUILD=true next build --webpack && node scripts/prepare-clickhouse-build-export.js",
     "run:clickhouse": "test -d out && npx rimraf tmp && mkdir tmp && cp -r out tmp/clickstack && echo 'visit http://localhost:3000/clickstack to start' && npx serve tmp -l 3000 || echo 'run build:clickhouse first'",
@@ -22,8 +23,7 @@
     "test:e2e": "node scripts/run-e2e.js",
     "test:e2e:ci": "../../scripts/test-e2e-ci.sh",
     "storybook": "storybook dev -p 6006",
-    "storybook:build": "storybook build",
-    "knip": "knip"
+    "storybook:build": "storybook build"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.0.0",
@@ -38,7 +38,7 @@
     "@hookform/resolvers": "^3.9.0",
     "@hyperdx/api": "workspace:*",
     "@hyperdx/browser": "^0.22.1",
-    "@hyperdx/common-utils": "^0.18.1",
+    "@hyperdx/common-utils": "^0.21.0",
     "@hyperdx/node-opentelemetry": "^0.9.0",
     "@mantine/core": "^9.0.0",
     "@mantine/dates": "^9.0.0",
@@ -47,6 +47,7 @@
     "@mantine/hooks": "^9.0.0",
     "@mantine/notifications": "^9.0.0",
     "@mantine/spotlight": "^9.0.0",
+    "@prometheus-io/codemirror-promql": "^0.311.3",
     "@tabler/icons-react": "^3.39.0",
     "@tanstack/react-query": "^5.56.2",
     "@tanstack/react-query-devtools": "^5.56.2",
@@ -62,7 +63,7 @@
     "dayjs": "^1.11.19",
     "flat": "^5.0.2",
     "fuse.js": "^6.6.2",
-    "http-proxy-middleware": "^3.0.5",
+    "http-proxy-middleware": "^4.0.0",
     "immer": "^9.0.21",
     "jotai": "^2.5.1",
     "ky": "^0.30.0",
@@ -136,7 +137,6 @@
     "identity-obj-proxy": "^3.0.0",
     "jest": "^30.2.0",
     "jest-environment-jsdom": "^30.2.0",
-    "knip": "^5.33.2",
     "msw": "^2.3.0",
     "msw-storybook-addon": "^2.0.2",
     "postcss": "^8.5.10",

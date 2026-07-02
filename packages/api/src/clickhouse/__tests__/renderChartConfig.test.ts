@@ -789,6 +789,174 @@ describe('renderChartConfig', () => {
       );
       expect(await queryData(maxQuery)).toMatchSnapshot('maxSum');
     });
+
+    it('new series appearing mid-window: v2 suppresses first-row spike', async () => {
+      // Scenario: An existing series (customerA) has data from the start,
+      // and a new series (customerB) appears mid-window with a high
+      // cumulative counter value (e.g. 10000). A naive inter-bucket diff
+      // approach would leak the full cumulative value as a spike on the
+      // first bucket of customerB. The v2 lagInFrame-based Rate yields 0
+      // for the first row of each series, preventing the spike.
+
+      // Use a unique metric name to isolate from the beforeEach data.
+      const metricName = 'customer.events.total';
+
+      // customerA: present from the start, steady increase
+      const customerAPoints = [
+        { value: 0, timestamp: now - ms('1m') },
+        { value: 10, timestamp: now + ms('2m') },
+        { value: 20, timestamp: now + ms('7m') },
+        { value: 30, timestamp: now + ms('12m') },
+        { value: 40, timestamp: now + ms('17m') },
+      ].map(point => ({
+        MetricName: metricName,
+        ServiceName: 'api',
+        ResourceAttributes: { customer: 'customerA' },
+        Value: point.value,
+        TimeUnix: new Date(point.timestamp),
+        IsMonotonic: true,
+        AggregationTemporality: 2, // Cumulative
+      }));
+
+      // customerB: appears at +10m with a high cumulative value (10000),
+      // then increases to 10050 by +17m. The real per-bucket increase is
+      // only 50. A naive approach would show 10000 in the bucket where it
+      // first appears.
+      const customerBPoints = [
+        { value: 10000, timestamp: now + ms('10m') },
+        { value: 10020, timestamp: now + ms('12m') },
+        { value: 10050, timestamp: now + ms('17m') },
+      ].map(point => ({
+        MetricName: metricName,
+        ServiceName: 'api',
+        ResourceAttributes: { customer: 'customerB' },
+        Value: point.value,
+        TimeUnix: new Date(point.timestamp),
+        IsMonotonic: true,
+        AggregationTemporality: 2, // Cumulative
+      }));
+
+      await bulkInsertMetricsSum([...customerAPoints, ...customerBPoints]);
+
+      // --- v2 query (current code with lagInFrame) ---
+      const v2Query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'sum',
+              metricName: metricName,
+              metricType: MetricsDataType.Sum,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('20m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+        querySettings,
+      );
+      const v2Results = await queryData(v2Query);
+
+      // v2 should NOT have a spike — the max bucket value should be much
+      // smaller than customerB's initial cumulative value (10000). The real
+      // per-bucket increases across both series are at most ~50.
+      const v2Values = v2Results.map((r: any) => Number(r.Value));
+      const v2MaxValue = Math.max(...v2Values);
+      expect(v2MaxValue).toBeLessThan(100);
+
+      // Verify we actually got data back (not an empty result set).
+      expect(v2Results.length).toBeGreaterThan(0);
+    });
+
+    it('cross-scope same-key attributes split into two series under variadic AttributesHash (HDX-4466)', async () => {
+      // HDX-4466 pinning test. Two cumulative Sum rows that carry the same
+      // logical attribute set ({service.name: api, host: h1}) but distribute
+      // the host key across different attribute scopes:
+      //
+      //   Row A: ResourceAttributes={service.name: api, host: h1}, Attributes={}
+      //   Row B: ResourceAttributes={service.name: api},           Attributes={host: h1}
+      //
+      // AttributesHash is now computed as the variadic
+      //   cityHash64(ScopeAttributes, ResourceAttributes, Attributes)
+      // for all metric schemas (Map and JSON), so the two rows hash
+      // distinctly: each lands in its own series. Both rows are then the
+      // first row of their respective series, the lagInFrame Rate is NULL
+      // for both, and the bucketed Sum aggregation collapses to 0 for the
+      // bucket holding them.
+      //
+      // Pre-HDX-4466 (Map schema only) this was different: the Map path
+      // wrapped the three maps in mapConcat() before hashing, which
+      // collapsed both rows into a single series. Row B's lagInFrame
+      // captured the cumulative increase (110 - 100 = 10) and the bucket
+      // reported Value=10. The pre-refactor commit pinned that behaviour;
+      // this assertion records the variadic outcome that replaced it.
+      const metricName = 'hdx4466.cross_scope.events.total';
+
+      await bulkInsertMetricsSum([
+        {
+          MetricName: metricName,
+          ServiceName: 'api',
+          ResourceAttributes: { 'service.name': 'api', host: 'h1' },
+          Attributes: {},
+          Value: 100,
+          TimeUnix: new Date(now + ms('1m')),
+          IsMonotonic: true,
+          AggregationTemporality: 2, // Cumulative
+        },
+        {
+          MetricName: metricName,
+          ServiceName: 'api',
+          ResourceAttributes: { 'service.name': 'api' },
+          Attributes: { host: 'h1' },
+          Value: 110,
+          TimeUnix: new Date(now + ms('2m')),
+          IsMonotonic: true,
+          AggregationTemporality: 2, // Cumulative
+        },
+      ]);
+
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'sum',
+              metricName,
+              metricType: MetricsDataType.Sum,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), new Date(now + ms('5m'))],
+          granularity: '5 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+        querySettings,
+      );
+
+      const results = await queryData(query);
+
+      // Under variadic AttributesHash, both rows are first-in-series, so
+      // no rate is captured and the bucketed Sum collapses to 0. A
+      // regression that reintroduced mapConcat-style collapsing would
+      // produce Value=10 in the populated bucket, failing this check.
+      const totalValue = results.reduce(
+        (acc: number, r: any) => acc + (r.Value == null ? 0 : Number(r.Value)),
+        0,
+      );
+      expect(totalValue).toBe(0);
+
+      // Snapshot pins the bucketed output for the two-series-split case.
+      expect(results).toMatchSnapshot();
+    });
   });
 
   describe('Query Metrics - Histogram', () => {

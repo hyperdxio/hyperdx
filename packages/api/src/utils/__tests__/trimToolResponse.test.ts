@@ -1,37 +1,59 @@
-import { trimToolResponse } from '../trimToolResponse';
+import { trimToolResponse } from '@/utils/trimToolResponse';
 
 describe('trimToolResponse', () => {
+  describe('return shape', () => {
+    it('should return { data, isTrimmed } object', () => {
+      const result = trimToolResponse(42);
+      expect(result).toHaveProperty('data');
+      expect(result).toHaveProperty('isTrimmed');
+    });
+
+    it('should set isTrimmed to false when data fits', () => {
+      expect(trimToolResponse(42).isTrimmed).toBe(false);
+      expect(trimToolResponse('hello').isTrimmed).toBe(false);
+      expect(trimToolResponse([1, 2, 3]).isTrimmed).toBe(false);
+    });
+
+    it('should set isTrimmed to true when data is trimmed', () => {
+      const largeArray = Array.from({ length: 500 }, (_, i) => ({
+        id: i,
+        data: 'x'.repeat(200),
+      }));
+      expect(trimToolResponse(largeArray, 5000).isTrimmed).toBe(true);
+    });
+  });
+
   describe('small data (within maxSize)', () => {
     it('should return primitive values unchanged', () => {
-      expect(trimToolResponse(42)).toBe(42);
-      expect(trimToolResponse('hello')).toBe('hello');
-      expect(trimToolResponse(null)).toBeNull();
-      expect(trimToolResponse(true)).toBe(true);
+      expect(trimToolResponse(42).data).toBe(42);
+      expect(trimToolResponse('hello').data).toBe('hello');
+      expect(trimToolResponse(null).data).toBeNull();
+      expect(trimToolResponse(true).data).toBe(true);
     });
 
     it('should return small arrays unchanged', () => {
       const data = [1, 2, 3, 4, 5];
-      expect(trimToolResponse(data)).toEqual(data);
+      expect(trimToolResponse(data).data).toEqual(data);
     });
 
     it('should return small objects unchanged', () => {
       const data = { a: 1, b: 'hello', c: [1, 2, 3] };
-      expect(trimToolResponse(data)).toEqual(data);
+      expect(trimToolResponse(data).data).toEqual(data);
     });
   });
 
   describe('large arrays', () => {
     it('should trim large arrays to fit within maxSize', () => {
-      // Create an array that exceeds maxSize
       const largeArray = Array.from({ length: 500 }, (_, i) => ({
         id: i,
         data: 'x'.repeat(200),
       }));
 
-      const result = trimToolResponse(largeArray, 5000);
+      const { data: result, isTrimmed } = trimToolResponse(largeArray, 5000);
+      expect(isTrimmed).toBe(true);
       expect(Array.isArray(result)).toBe(true);
       expect(result.length).toBeLessThan(largeArray.length);
-      expect(result.length).toBeGreaterThanOrEqual(10); // minimum 10 items
+      expect(result.length).toBeGreaterThanOrEqual(10);
       expect(JSON.stringify(result).length).toBeLessThanOrEqual(5000);
     });
 
@@ -41,15 +63,15 @@ describe('trimToolResponse', () => {
         data: 'x'.repeat(500),
       }));
 
-      // maxSize so small even 10 items may exceed it, but we keep 10 minimum
-      const result = trimToolResponse(largeArray, 100);
+      const { data: result } = trimToolResponse(largeArray, 100);
       expect(Array.isArray(result)).toBe(true);
       expect(result.length).toBeGreaterThanOrEqual(10);
     });
 
     it('should not trim arrays that fit within maxSize', () => {
       const smallArray = [1, 2, 3, 4, 5];
-      const result = trimToolResponse(smallArray, 50000);
+      const { data: result, isTrimmed } = trimToolResponse(smallArray, 50000);
+      expect(isTrimmed).toBe(false);
       expect(result).toEqual(smallArray);
     });
   });
@@ -61,22 +83,21 @@ describe('trimToolResponse', () => {
         largeObj[`key_${i}`] = 'x'.repeat(200);
       }
 
-      const result = trimToolResponse(largeObj, 5000);
-      // The trimmed result must be smaller than the original
+      const { data: result, isTrimmed } = trimToolResponse(largeObj, 5000);
+      expect(isTrimmed).toBe(true);
       expect(JSON.stringify(result).length).toBeLessThan(
         JSON.stringify(largeObj).length,
       );
-      // All keys should still be present (values are trimmed, not dropped)
       expect(
         Object.keys(result).filter(k => k !== '__hdx_trimmed'),
       ).toHaveLength(100);
-      // The sentinel flag should be set to indicate trimming occurred
       expect(result.__hdx_trimmed).toBe(true);
     });
 
     it('should not trim objects that fit within maxSize', () => {
       const obj = { a: 1, b: 2 };
-      const result = trimToolResponse(obj, 50000);
+      const { data: result, isTrimmed } = trimToolResponse(obj, 50000);
+      expect(isTrimmed).toBe(false);
       expect(result).toEqual(obj);
     });
   });
@@ -95,7 +116,7 @@ describe('trimToolResponse', () => {
         otherProp: 'preserved',
       };
 
-      const result = trimToolResponse(metadataObj, 5000);
+      const { data: result } = trimToolResponse(metadataObj, 5000);
       expect(result).toHaveProperty('allFieldsWithKeys');
       expect(result).toHaveProperty('keyValues');
       expect(result).toHaveProperty('otherProp', 'preserved');
@@ -106,7 +127,6 @@ describe('trimToolResponse', () => {
 
   describe('default maxSize', () => {
     it('should use 50000 as default maxSize', () => {
-      // Create data just over default size
       const data = Array.from({ length: 1000 }, (_, i) => ({
         id: i,
         payload: 'x'.repeat(100),
@@ -114,8 +134,7 @@ describe('trimToolResponse', () => {
 
       const resultDefault = trimToolResponse(data);
       const resultExplicit = trimToolResponse(data, 50000);
-      // Both should produce the same result
-      expect(resultDefault.length).toBe(resultExplicit.length);
+      expect(resultDefault.data.length).toBe(resultExplicit.data.length);
     });
   });
 });

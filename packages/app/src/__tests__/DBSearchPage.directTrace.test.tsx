@@ -2,7 +2,7 @@ import React from 'react';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { screen, waitFor } from '@testing-library/react';
 
-import { DBSearchPage } from '../DBSearchPage';
+import { DBSearchPage } from '@/DBSearchPage';
 
 const mockRouterPush = jest.fn();
 const mockSetSearchedConfig = jest.fn();
@@ -128,8 +128,13 @@ jest.mock('@/theme/ThemeProvider', () => ({
 }));
 
 jest.mock('../hooks/useMetadata', () => ({
+  ...jest.requireActual('../hooks/useMetadata'),
   useTableMetadata: () => ({
     data: { sorting_key: 'Timestamp' },
+    isLoading: false,
+  }),
+  useColumns: () => ({
+    data: undefined,
     isLoading: false,
   }),
 }));
@@ -204,7 +209,12 @@ jest.mock('../components/PatternTable', () => () => <div />);
 jest.mock('../components/Search/DBSearchHeatmapChart', () => ({
   DBSearchHeatmapChart: () => <div />,
 }));
-jest.mock('../components/SourceSchemaPreview', () => () => <div />);
+jest.mock('../components/SourceSchemaPreview', () => ({
+  __esModule: true,
+  default: () => <div />,
+  isSourceSchemaPreviewEnabled: () => false,
+  getSourceSchemaTables: () => [],
+}));
 jest.mock('../components/Error/ErrorBoundary', () => ({
   ErrorBoundary: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>

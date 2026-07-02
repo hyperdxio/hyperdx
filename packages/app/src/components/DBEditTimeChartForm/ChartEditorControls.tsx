@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Control,
   FieldArrayWithId,
@@ -6,7 +7,10 @@ import {
   UseFormSetValue,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  HEATMAP_ALLOWED_SOURCE_KINDS,
+  isBuilderChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
   DisplayType,
@@ -22,7 +26,9 @@ import {
 } from '@/components/ChartEditor/types';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
-import SourceSchemaPreview from '@/components/SourceSchemaPreview';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from '@/components/SourceSchemaPreview';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { IS_LOCAL_MODE } from '@/config';
@@ -42,6 +48,7 @@ type ChartEditorControlsProps = {
   append: (value: SavedChartConfigWithSelectArray['select'][number]) => void;
   removeSeries: (index: number) => void;
   swapSeries: (from: number, to: number) => void;
+  duplicateSeries: (index: number) => void;
   tableSource?: TSource;
   tableConnection: TableConnection;
   databaseName?: string;
@@ -70,6 +77,7 @@ export function ChartEditorControls({
   append,
   removeSeries,
   swapSeries,
+  duplicateSeries,
   tableSource,
   tableConnection,
   databaseName,
@@ -88,6 +96,15 @@ export function ChartEditorControls({
   openDisplaySettings,
   openHeatmapSettings,
 }: ChartEditorControlsProps) {
+  const canAddSeries =
+    displayType !== DisplayType.Pie &&
+    displayType !== DisplayType.Heatmap &&
+    // Number tiles support up to two series (numerator + denominator for
+    // ratio mode); Line/Table types remain unbounded.
+    !(displayType === DisplayType.Number && fields.length >= 2);
+  const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
+    useState(false);
+
   return (
     <>
       <Flex mb="md" align="center" justify="space-between">
@@ -102,12 +119,17 @@ export function ChartEditorControls({
             data-testid="source-selector"
             allowedSourceKinds={
               displayType === DisplayType.Heatmap
-                ? [SourceKind.Trace]
+                ? [...HEATMAP_ALLOWED_SOURCE_KINDS]
                 : undefined
             }
-            sourceSchemaPreview={
-              <SourceSchemaPreview source={tableSource} variant="text" />
-            }
+            onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+            isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(tableSource)}
+          />
+          <SourceSchemaPreview
+            source={tableSource}
+            controlled
+            open={isSourceSchemaPreviewOpen}
+            onClose={() => setIsSourceSchemaPreviewOpen(false)}
           />
         </Group>
         <Group>
@@ -145,6 +167,7 @@ export function ChartEditorControls({
               onRemoveSeries={removeSeries}
               length={fields.length}
               onSwapSeries={swapSeries}
+              onDuplicateSeries={duplicateSeries}
               onSubmit={onSubmit}
               setValue={setValue}
               connectionId={tableSource?.connection}
@@ -154,6 +177,7 @@ export function ChartEditorControls({
               showHaving={
                 fields.length === 1 && displayType === DisplayType.Table
               }
+              showDuplicate={canAddSeries}
               tableName={tableName ?? ''}
               tableSource={tableSource}
               errors={
@@ -225,27 +249,28 @@ export function ChartEditorControls({
           <Divider mt="md" mb="sm" />
           <Flex mt={4} align="center" justify="space-between">
             <Group gap="xs">
-              {displayType !== DisplayType.Number &&
-                displayType !== DisplayType.Pie &&
-                displayType !== DisplayType.Heatmap && (
-                  <Button
-                    variant="subtle"
-                    size="sm"
-                    color="gray"
-                    onClick={() => {
-                      append({
-                        aggFn: 'count',
-                        aggCondition: '',
-                        aggConditionLanguage: 'lucene',
-                        valueExpression: '',
-                      });
-                    }}
-                  >
-                    <IconCirclePlus size={14} className="me-2" />
-                    Add Series
-                  </Button>
-                )}
-              {fields.length == 2 && displayType !== DisplayType.Number && (
+              {canAddSeries && (
+                <Button
+                  variant="subtle"
+                  size="sm"
+                  color="gray"
+                  onClick={() => {
+                    append({
+                      aggFn: 'count',
+                      aggCondition: '',
+                      aggConditionLanguage: 'lucene',
+                      valueExpression: '',
+                    });
+                  }}
+                >
+                  <IconCirclePlus size={14} className="me-2" />
+                  Add Series
+                </Button>
+              )}
+              {/* Ratio merges exactly two series via divide(); only
+                  Line/StackedBar/Table/Number can reach two series, so gating
+                  on the count alone covers them all (Number included). */}
+              {fields.length === 2 && (
                 <Switch
                   label="As Ratio"
                   size="sm"

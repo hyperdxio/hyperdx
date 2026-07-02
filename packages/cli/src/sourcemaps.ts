@@ -18,6 +18,7 @@ const log = (msg: string) => process.stdout.write(`${msg}\n`);
 const logError = (msg: string) => process.stderr.write(`${msg}\n`);
 
 const require = createRequire(import.meta.url);
+// eslint-disable-next-line no-restricted-imports -- package.json lives outside src, no @/ alias reaches it
 const PKG_VERSION: string = (require('../package.json') as { version: string })
   .version;
 
@@ -101,7 +102,7 @@ export async function uploadSourcemaps({
       `Error: No source maps found in ${path}, is this the correct path?`,
     );
     logError('Failed to upload source maps. Please see reason above.');
-    return;
+    throw new Error(`No source maps found in ${path}`);
   }
 
   const uploadKeys = fileList.map(({ name }) => ({
@@ -143,7 +144,7 @@ export async function uploadSourcemaps({
       `Error: Unable to generate source map upload urls. Response: ${JSON.stringify(urlRes)}`,
     );
     logError('Failed to upload source maps. Please see reason above.');
-    return;
+    throw new Error('Failed to get source map upload URLs');
   }
 
   const uploadUrls = urlRes.data;
@@ -161,6 +162,7 @@ export async function uploadSourcemaps({
   );
   if (failed > 0) {
     logError('[HyperDX] Some files failed to upload. See errors above.');
+    throw new Error(`${failed} source map upload(s) failed`);
   }
 }
 

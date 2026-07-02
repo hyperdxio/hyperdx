@@ -43,6 +43,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     valuesForExistingFilters,
     queriesForExistingFilters,
     ignoredExpressions,
+    filtersByExpression,
   } = useMemo(() => {
     const { filters: parsedFilters } = parseQuery(filterQueries ?? []);
     const valuesForExistingFilters: FilterState = {};
@@ -60,6 +61,18 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
       }
     }
 
+    // Multiple filter definitions may share the same expression but each
+    // declare a different `appliesToSourceIds` scope.
+    const filtersByExpression = new Map<string, DashboardFilter[]>();
+    for (const f of filters) {
+      const existing = filtersByExpression.get(f.expression);
+      if (existing) {
+        existing.push(f);
+      } else {
+        filtersByExpression.set(f.expression, [f]);
+      }
+    }
+
     return {
       valuesForExistingFilters,
       queriesForExistingFilters: filtersToQuery(
@@ -69,8 +82,40 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
         { stringifyKeys: true },
       ),
       ignoredExpressions: ignored,
+      filtersByExpression,
     };
   }, [filterQueries, filters]);
+
+  // Return only the filter queries that should be applied to a tile whose
+  // source is `sourceId`. When multiple filter definitions share the same
+  // expression, their scopes are unioned: the filter value applies if ANY
+  // sibling is unscoped or includes `sourceId`. A filter with no
+  // `appliesToSourceIds` (or an empty array) is treated as "applies to all".
+  // If `sourceId` is undefined (e.g. a RawSQL tile with no resolvable
+  // source), scoped filters are skipped and only unscoped filters are
+  // returned.
+  const getFilterQueriesForSource = useCallback(
+    (sourceId: string | undefined): Filter[] => {
+      const scoped: FilterState = {};
+      for (const [expression, state] of Object.entries(
+        valuesForExistingFilters,
+      )) {
+        const definitions = filtersByExpression.get(expression) ?? [];
+        const applies = definitions.some(def => {
+          const appliesTo = def.appliesToSourceIds;
+          if (!appliesTo || appliesTo.length === 0) return true;
+          return !!sourceId && appliesTo.includes(sourceId);
+        });
+        if (applies) {
+          scoped[expression] = state;
+        }
+      }
+      // Wrap keys in `toString()` to support JSON/Dynamic-type columns,
+      // consistent with the transformation applied in `queriesForExistingFilters` above.
+      return filtersToQuery(scoped, { stringifyKeys: true });
+    },
+    [valuesForExistingFilters, filtersByExpression],
+  );
 
   return {
     filterValues: valuesForExistingFilters,
@@ -83,6 +128,13 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
      * be silently dropped. Callers can surface a warning.
      */
     ignoredFilterExpressions: ignoredExpressions,
+    /**
+     * Returns the subset of filter queries that should apply to a tile whose
+     * source is `sourceId`. Filters with no `appliesToSourceIds` apply to all
+     * tiles. Filters with `appliesToSourceIds` defined apply only to tiles
+     * whose source ID is in the list.
+     */
+    getFilterQueriesForSource,
   };
 };
 

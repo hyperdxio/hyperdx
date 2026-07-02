@@ -1,8 +1,8 @@
 import { renderHook } from '@testing-library/react';
 
-import api from '../api';
-import { useSavedSearches } from '../savedSearch';
-import { useSpotlightActions } from '../Spotlights';
+import { useDashboards } from '@/dashboard';
+import { useSavedSearches } from '@/savedSearch';
+import { useSpotlightActions } from '@/Spotlights';
 
 jest.mock('next/router', () => ({
   useRouter() {
@@ -22,10 +22,10 @@ jest.mock('next/router', () => ({
   },
 }));
 jest.mock('../savedSearch');
-jest.mock('../api');
+jest.mock('../dashboard');
 
 const mockUseSavedSearches = useSavedSearches as jest.Mock;
-const mockUseDashboards = api.useDashboards as jest.Mock;
+const mockUseDashboards = useDashboards as jest.Mock;
 
 describe('useSpotlightActions', () => {
   const mockSavedSearches = {

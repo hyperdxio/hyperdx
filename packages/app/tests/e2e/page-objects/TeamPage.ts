@@ -13,6 +13,7 @@ export class TeamPage {
   private readonly dataTabButton: Locator;
   private readonly teamTabButton: Locator;
   private readonly accessTabButton: Locator;
+  private readonly apiAndAgentsTabButton: Locator;
   private readonly integrationsTabButton: Locator;
   private readonly advancedTabButton: Locator;
 
@@ -22,6 +23,7 @@ export class TeamPage {
   private readonly integrationsSection: Locator;
   private readonly teamNameSection: Locator;
   private readonly apiKeysSection: Locator;
+  private readonly mcpServerSection: Locator;
   private readonly teamMembersSection: Locator;
   private readonly securityPoliciesHeading: Locator;
   private readonly querySettingsHeading: Locator;
@@ -65,6 +67,10 @@ export class TeamPage {
       name: 'Access',
       exact: true,
     });
+    this.apiAndAgentsTabButton = page.getByRole('tab', {
+      name: 'API & Agents',
+      exact: true,
+    });
     this.integrationsTabButton = page.getByRole('tab', {
       name: 'Integrations',
       exact: true,
@@ -79,6 +85,7 @@ export class TeamPage {
     this.integrationsSection = page.getByTestId('integrations-section');
     this.teamNameSection = page.getByTestId('team-name-section');
     this.apiKeysSection = page.getByTestId('api-keys-section');
+    this.mcpServerSection = page.getByTestId('mcp-server-section');
     this.teamMembersSection = page.getByTestId('team-members-section');
     this.securityPoliciesHeading = page.getByText('Security Policies', {
       exact: true,
@@ -126,6 +133,10 @@ export class TeamPage {
 
   async openTeamTab() {
     await this.openTab(this.teamTabButton, this.teamMembersSection);
+  }
+
+  async openApiAndAgentsTab() {
+    await this.openTab(this.apiAndAgentsTabButton, this.apiKeysSection);
   }
 
   async openIntegrationsTab() {
@@ -289,6 +300,15 @@ export class TeamPage {
       .click();
   }
 
+  async editWebhookByName(webhookName: string) {
+    const webhookItem = this.integrationsSection
+      .locator('div')
+      .filter({ hasText: webhookName })
+      .filter({ has: this.page.getByRole('button', { name: 'Edit' }) })
+      .last();
+    await webhookItem.getByRole('button', { name: 'Edit' }).click();
+  }
+
   async deleteWebhookByName(webhookName: string) {
     const webhookItem = this.integrationsSection
       .locator('div')
@@ -318,6 +338,10 @@ export class TeamPage {
 
   get accessTab() {
     return this.accessTabButton;
+  }
+
+  get apiAndAgentsTab() {
+    return this.apiAndAgentsTabButton;
   }
 
   get integrationsTab() {
@@ -362,6 +386,10 @@ export class TeamPage {
 
   get apiKeys() {
     return this.apiKeysSection;
+  }
+
+  get mcpServer() {
+    return this.mcpServerSection;
   }
 
   get rotateButton() {

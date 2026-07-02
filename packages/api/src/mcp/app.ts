@@ -2,9 +2,10 @@ import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
-import { validateUserAccessKey } from '../middleware/auth';
-import logger from '../utils/logger';
-import rateLimiter, { rateLimiterKeyGenerator } from '../utils/rateLimiter';
+import { validateUserAccessKey } from '@/middleware/auth';
+import logger from '@/utils/logger';
+import rateLimiter, { rateLimiterKeyGenerator } from '@/utils/rateLimiter';
+
 import { createServer } from './mcpServer';
 import { McpContext } from './tools/types';
 
@@ -12,7 +13,7 @@ const app = createMcpExpressApp();
 
 const mcpRateLimiter = rateLimiter({
   windowMs: 60 * 1000, // 1 minute
-  max: 100,
+  max: 600, // 10 req/s
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: rateLimiterKeyGenerator,
@@ -32,6 +33,12 @@ app.all('/', mcpRateLimiter, validateUserAccessKey, async (req, res) => {
   }
 
   const userId = req.user?._id?.toString();
+  if (!userId) {
+    logger.warn('MCP request rejected: no userId');
+    res.sendStatus(403);
+    return;
+  }
+
   const context: McpContext = {
     teamId: teamId.toString(),
     userId,
@@ -39,7 +46,7 @@ app.all('/', mcpRateLimiter, validateUserAccessKey, async (req, res) => {
 
   setTraceAttributes({
     'mcp.team.id': context.teamId,
-    ...(userId && { 'mcp.user.id': userId }),
+    'mcp.user.id': userId,
   });
 
   logger.info({ teamId: context.teamId, userId }, 'MCP request received');

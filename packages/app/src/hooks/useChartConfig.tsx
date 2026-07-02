@@ -14,6 +14,7 @@ import {
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
+  isPromqlChartConfig,
   isRawSqlChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import { format } from '@hyperdx/common-utils/dist/sqlFormatter';
@@ -29,6 +30,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 
+import { prometheusApi } from '@/api';
 import { toStartOfInterval } from '@/ChartUtils';
 import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
@@ -71,7 +73,7 @@ const shouldUseChunking = (
   granularity: string;
 } => {
   // Avoid chunking for raw SQL charts since they can include arbitrary window functions, etc.
-  if (isRawSqlChartConfig(config)) return false;
+  if (isRawSqlChartConfig(config) || isPromqlChartConfig(config)) return false;
 
   // Granularity is required for chunking, otherwise we could break other group-bys.
   if (!isUsingGranularity(config)) return false;
@@ -151,6 +153,24 @@ async function* fetchDataInChunks({
       ? getGranularityAlignedTimeWindows(config)
       : [undefined];
 
+  // Every chunk must rank the __hdx_series_limit CTE over the same fixed
+  // range, or each window keeps its own top-N and the union across chunks
+  // exceeds seriesLimit. The newest window is used (rather than the full
+  // chart range) to bound the ranking scan; the trade-off is that series
+  // are picked by recent activity, so groups with no events in the newest
+  // window are dropped from the chart.
+  const rankingDateRange = windows[0]?.dateRange;
+  const seriesLimit = isBuilderChartConfig(config)
+    ? config.seriesLimit
+    : undefined;
+  const windowedConfigFor = (w: (typeof windows)[number]) => ({
+    ...config,
+    ...(w ?? {}),
+    ...(w != null && seriesLimit != null && rankingDateRange != null
+      ? { seriesLimitDateRange: rankingDateRange }
+      : {}),
+  });
+
   if (IS_MTVIEWS_ENABLED && isBuilderChartConfig(config)) {
     const { dataTableDDL, mtViewDDL, renderMTViewConfig } =
       await buildMTViewSelectQuery(config, metadata, querySettings);
@@ -170,10 +190,7 @@ async function* fetchDataInChunks({
   if (enableParallelQueries) {
     // fetch in parallel
     const promises = windows.map(async (w, index) => {
-      const windowedConfig = {
-        ...config,
-        ...(w ?? {}),
-      };
+      const windowedConfig = windowedConfigFor(w);
       return {
         index,
         queryResult: await clickhouseClient.queryChartConfig({
@@ -212,12 +229,7 @@ async function* fetchDataInChunks({
 
   // fetch in series
   for (let i = 0; i < windows.length; i++) {
-    const window = windows[i];
-
-    const windowedConfig = {
-      ...config,
-      ...(window ?? {}),
-    };
+    const windowedConfig = windowedConfigFor(windows[i]);
 
     const result = await clickhouseClient.queryChartConfig({
       config: windowedConfig,
@@ -294,6 +306,94 @@ export function useQueriedChartConfig(
     // TODO: Replace this with `streamedQuery` when it is no longer experimental. Use 'replace' refetch mode.
     // https://tanstack.com/query/latest/docs/reference/streamedQuery
     queryFn: async context => {
+      // PromQL queries go through the Prometheus API route, not ClickHouse proxy
+      if (isPromqlChartConfig(config) && config.dateRange) {
+        const [startDate, endDate] = config.dateRange;
+        const startSec = startDate.getTime() / 1000;
+        const endSec = endDate.getTime() / 1000;
+
+        // Convert HyperDX granularity ("5 minute") to Prometheus step ("300s")
+        let stepStr = '60s';
+        if (config.granularity && config.granularity !== 'auto') {
+          const granToSec: Record<string, number> = {
+            '15 second': 15,
+            '30 second': 30,
+            '1 minute': 60,
+            '5 minute': 300,
+            '10 minute': 600,
+            '15 minute': 900,
+            '30 minute': 1800,
+            '1 hour': 3600,
+            '2 hour': 7200,
+            '6 hour': 21600,
+            '12 hour': 43200,
+            '1 day': 86400,
+          };
+          stepStr = `${granToSec[config.granularity] ?? 60}s`;
+        }
+
+        const resp = await prometheusApi.queryRange({
+          query: config.promqlExpression,
+          start: startSec,
+          end: endSec,
+          step: stepStr,
+          connectionId: config.connection,
+          database: config.from?.databaseName,
+          table: config.from?.tableName,
+        });
+
+        if (resp.status !== 'success' || !resp.data) {
+          throw new Error(resp.error ?? 'PromQL query failed');
+        }
+
+        // Transform Prometheus matrix response into chart-compatible format.
+        // Use Grafana-style legends: only show labels that differ across series.
+        const allSeries = resp.data.result;
+
+        // Find labels that have more than one distinct value across all series
+        const labelValueSets = new Map<string, Set<string>>();
+        for (const s of allSeries) {
+          for (const [k, v] of Object.entries(s.metric)) {
+            if (k === '__name__') continue;
+            if (!labelValueSets.has(k)) labelValueSets.set(k, new Set());
+            labelValueSets.get(k)!.add(v);
+          }
+        }
+        const distinguishingKeys = new Set<string>();
+        for (const [k, vs] of labelValueSets) {
+          if (vs.size > 1) distinguishingKeys.add(k);
+        }
+
+        const data: Record<string, string | number>[] = [];
+        for (const series of allSeries) {
+          const metricName = series.metric.__name__ ?? '';
+          const labels = Object.entries(series.metric)
+            .filter(([k]) => k !== '__name__' && distinguishingKeys.has(k))
+            .map(([k, v]) => `${k}="${v}"`)
+            .join(', ');
+          const seriesName = labels ? `${metricName}{${labels}}` : metricName;
+
+          for (const [ts, val] of series.values) {
+            data.push({
+              __hdx_time_bucket: new Date(ts * 1000).toISOString(),
+              value: parseFloat(val),
+              series_name: seriesName,
+            });
+          }
+        }
+
+        return {
+          data,
+          meta: [
+            { name: '__hdx_time_bucket', type: 'DateTime64(3)' },
+            { name: 'value', type: 'Float64' },
+            { name: 'series_name', type: 'String' },
+          ],
+          rows: data.length,
+          isComplete: true,
+        };
+      }
+
       const optimizedConfig = mvOptimizationData?.optimizedConfig ?? config;
       const query = queryClient
         .getQueryCache()
@@ -360,7 +460,7 @@ export function useQueriedChartConfig(
 
 export function useRenderedSqlChartConfig(
   config: ChartConfigWithOptDateRange,
-  options?: UseQueryOptions<string>,
+  options?: Partial<UseQueryOptions<string>>,
 ) {
   const { enabled = true } = options ?? {};
 
@@ -386,10 +486,19 @@ export function useRenderedSqlChartConfig(
         metadata,
         source?.querySettings,
       );
-      return format(parameterizedQueryToSql(query));
+      const sql = parameterizedQueryToSql(query);
+      // sql-formatter can't handle prometheusQuery() / CTE syntax in PromQL queries
+      if (isPromqlChartConfig(config)) {
+        return sql;
+      }
+      return format(sql);
     },
     ...options,
-    enabled: enabled && !isLoadingMVOptimization && !isSourceLoading,
+    enabled:
+      enabled &&
+      !isLoadingMVOptimization &&
+      !isSourceLoading &&
+      !isPromqlChartConfig(config),
   });
 
   return {
@@ -431,6 +540,20 @@ export function useAliasMapFromChartConfig(
     queryFn: async () => {
       if (config == null) {
         return {};
+      }
+
+      // PromQL queries use prometheusQuery() which node-sql-parser can't parse.
+      // Return a fixed alias map since the column names are known.
+      // Check configType directly since the TS type may not include PromQL here.
+      if (
+        'configType' in config &&
+        (config as { configType: string }).configType === 'promql'
+      ) {
+        return {
+          __hdx_time_bucket: '__hdx_time_bucket',
+          value: 'value',
+          series_name: 'series_name',
+        };
       }
 
       const query = await renderChartConfig(

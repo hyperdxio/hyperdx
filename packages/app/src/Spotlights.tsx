@@ -15,7 +15,8 @@ import {
 } from '@tabler/icons-react';
 
 import { useBrandDisplayName, useLogomark } from './theme/ThemeProvider';
-import api from './api';
+import { IS_K8S_DASHBOARD_ENABLED } from './config';
+import { useDashboards } from './dashboard';
 import { useSavedSearches } from './savedSearch';
 
 import '@mantine/spotlight/styles.css';
@@ -26,7 +27,7 @@ export const useSpotlightActions = () => {
   const logomark = useLogomark({ size: 16 });
 
   const { data: logViewsData } = useSavedSearches();
-  const { data: dashboardsData } = api.useDashboards();
+  const { data: dashboardsData } = useDashboards();
 
   const actions = React.useMemo<SpotlightActionData[]>(() => {
     const logViews = logViewsData ?? [];
@@ -58,6 +59,49 @@ export const useSpotlightActions = () => {
         keywords: ['dashboard'],
         onClick: () => {
           router.push(`/dashboards/${dashboard.id}`);
+        },
+      });
+    });
+
+    // Preset dashboards
+    const presetDashboards = [
+      {
+        id: 'preset-services',
+        label: 'Services',
+        description: 'Monitor HTTP endpoints, latency, and error rates',
+        href: '/services',
+        keywords: ['preset', 'dashboard', 'http', 'latency', 'errors'],
+      },
+      {
+        id: 'preset-clickhouse',
+        label: 'ClickHouse',
+        description: 'ClickHouse cluster health and query performance',
+        href: '/clickhouse',
+        keywords: ['preset', 'dashboard', 'database', 'queries'],
+      },
+      ...(IS_K8S_DASHBOARD_ENABLED
+        ? [
+            {
+              id: 'preset-kubernetes',
+              label: 'Kubernetes',
+              description: 'Kubernetes cluster monitoring and pod health',
+              href: '/kubernetes',
+              keywords: ['preset', 'dashboard', 'k8s', 'pods', 'cluster'],
+            },
+          ]
+        : []),
+    ];
+
+    presetDashboards.forEach(preset => {
+      logViewActions.push({
+        id: preset.id,
+        group: 'Preset Dashboards',
+        leftSection: <IconLayout size={16} />,
+        label: preset.label,
+        description: preset.description,
+        keywords: preset.keywords,
+        onClick: () => {
+          router.push(preset.href);
         },
       });
     });

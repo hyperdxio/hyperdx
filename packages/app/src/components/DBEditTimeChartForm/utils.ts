@@ -1,10 +1,12 @@
 import z from 'zod';
 import {
   isBuilderChartConfig,
+  isPromqlChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
+  BuilderChartConfigWithDateRange,
   ChartAlertBaseSchema,
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,
@@ -34,6 +36,9 @@ export const isQueryReady = (
   queriedConfig: ChartConfigWithDateRange | undefined,
 ) => {
   if (!queriedConfig) return false;
+  if (isPromqlChartConfig(queriedConfig)) {
+    return !!(queriedConfig.promqlExpression && queriedConfig.connection);
+  }
   if (isRawSqlChartConfig(queriedConfig)) {
     return !!(queriedConfig.sqlTemplate && queriedConfig.connection);
   }
@@ -64,7 +69,11 @@ export function seriesToFilters(select: SelectList): Filter[] {
 
   const filters: Filter[] = select
     .map(({ aggCondition, aggConditionLanguage }) => {
-      if (aggConditionLanguage != null && aggCondition != null) {
+      if (
+        aggConditionLanguage != null &&
+        aggConditionLanguage !== 'promql' &&
+        aggCondition != null
+      ) {
         return {
           type: aggConditionLanguage,
           condition: aggCondition,
@@ -216,7 +225,7 @@ export function buildChartConfigForExplanations({
           }
         : undefined;
 
-  if (!config || isRawSqlChartConfig(config)) {
+  if (!config || !isBuilderChartConfig(config)) {
     return undefined;
   }
 
@@ -227,14 +236,16 @@ export function buildChartConfigForExplanations({
   // other at runtime, so the SQL preview transforms `config` itself into
   // both queries on render and the MV indicator is suppressed for this
   // tab.  Returning `config` unchanged is intentional.
+  const builderConfig = config as BuilderChartConfigWithDateRange;
+
   if (activeTab === 'time') {
-    return convertToTimeChartConfig(config);
+    return convertToTimeChartConfig(builderConfig);
   } else if (activeTab === 'number') {
-    return convertToNumberChartConfig(config);
+    return convertToNumberChartConfig(builderConfig);
   } else if (activeTab === 'table') {
-    return convertToTableChartConfig(config);
+    return convertToTableChartConfig(builderConfig);
   } else if (activeTab === 'pie') {
-    return convertToPieChartConfig(config);
+    return convertToPieChartConfig(builderConfig);
   } else if (activeTab === 'heatmap') {
     return config;
   }

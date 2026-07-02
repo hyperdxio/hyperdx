@@ -1,13 +1,12 @@
 import React from 'react';
 
 import api from '@/api';
+import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
+import { DBTimeChart } from '@/components/DBTimeChart';
+import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
-
-import DateRangeIndicator from '../charts/DateRangeIndicator';
-import { DBTimeChart } from '../DBTimeChart';
-import MVOptimizationIndicator from '../MaterializedViews/MVOptimizationIndicator';
 
 // Mock dependencies
 jest.mock('@/hooks/useChartConfig', () => ({
@@ -31,7 +30,9 @@ jest.mock('@/api', () => ({
 
 jest.mock('@/source', () => ({
   useSource: jest.fn(),
-  useResolvedNumberFormat: jest.fn().mockReturnValue(undefined),
+  useChartNumberFormats: jest
+    .fn()
+    .mockReturnValue({ formatByColumn: new Map(), chartFormat: undefined }),
 }));
 
 jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>

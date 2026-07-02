@@ -214,15 +214,19 @@ export const getServer = () => new MockServer();
 export const getAgent = (server: MockServer) =>
   request.agent(server.getHttpServer());
 
-export const getLoggedInAgent = async (server: MockServer) => {
+export const getLoggedInAgent = async (
+  server: MockServer,
+  credentials?: { email: string; password: string },
+) => {
   const agent = getAgent(server);
+  const creds = credentials ?? MOCK_USER;
 
   await agent
     .post('/register/password')
-    .send({ ...MOCK_USER, confirmPassword: MOCK_USER.password })
+    .send({ ...creds, confirmPassword: creds.password })
     .expect(200);
 
-  const user = await findUserByEmail(MOCK_USER.email);
+  const user = await findUserByEmail(creds.email);
   const team = await getTeam(user?.team as any);
 
   if (team === null || user === null) {
@@ -231,7 +235,7 @@ export const getLoggedInAgent = async (server: MockServer) => {
 
   // login app — 303 See Other so the browser follows the redirect with GET
   // (see redirectToDashboard in middleware/auth.ts).
-  await agent.post('/login/password').send(MOCK_USER).expect(303);
+  await agent.post('/login/password').send(creds).expect(303);
 
   return {
     agent,
@@ -328,10 +332,19 @@ export const bulkInsertLogs = async (
   await bulkInsertData(`${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`, events);
 };
 
+// ScopeAttributes and Attributes are optional so existing call sites that
+// only populate ResourceAttributes keep compiling unchanged. Omitting either
+// field drops the key from the JSONEachRow payload, and ClickHouse falls back
+// to the column default — an empty Map(LowCardinality(String), String) — so
+// the on-disk row is byte-identical to today's behaviour. New tests that need
+// to exercise the cross-scope attribute hashing (see HDX-4466) can opt in by
+// passing one or both maps explicitly.
 export const bulkInsertMetricsGauge = async (
   metrics: {
     MetricName: string;
     ResourceAttributes: Record<string, string>;
+    ScopeAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
     ServiceName: string;
     TimeUnix: Date;
     Value: number;
@@ -352,6 +365,8 @@ export const bulkInsertMetricsSum = async (
     IsMonotonic: boolean;
     MetricName: string;
     ResourceAttributes: Record<string, string>;
+    ScopeAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
     ServiceName: string;
     TimeUnix: Date;
     Value: number;
@@ -370,6 +385,8 @@ export const bulkInsertMetricsHistogram = async (
   metrics: {
     MetricName: string;
     ResourceAttributes: Record<string, string>;
+    ScopeAttributes?: Record<string, string>;
+    Attributes?: Record<string, string>;
     TimeUnix: Date;
     BucketCounts: number[];
     ExplicitBounds: number[];

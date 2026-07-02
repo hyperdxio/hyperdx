@@ -12,8 +12,22 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Button, Divider, Flex, Group, Text } from '@mantine/core';
-import { IconArrowDown, IconArrowUp, IconTrash } from '@tabler/icons-react';
+import {
+  ActionIcon,
+  Button,
+  Divider,
+  Flex,
+  Group,
+  Text,
+  Tooltip,
+} from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import {
+  IconArrowDown,
+  IconArrowUp,
+  IconCopy,
+  IconTrash,
+} from '@tabler/icons-react';
 
 import { AGG_FNS } from '@/ChartUtils';
 import { AggFnSelectControlled } from '@/components/AggFnSelect';
@@ -27,7 +41,9 @@ import {
 } from '@/components/InputControlled';
 import { MetricAttributeHelperPanel } from '@/components/MetricAttributeHelperPanel';
 import { MetricNameSelect } from '@/components/MetricNameSelect';
+import { FORMAT_ICONS } from '@/components/NumberFormat';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
+import SeriesNumberFormatDrawer from '@/components/SeriesNumberFormatDrawer';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
 import {
@@ -50,10 +66,12 @@ type ChartSeriesEditorProps = {
   parentRef?: HTMLElement | null;
   onRemoveSeries: (index: number) => void;
   onSwapSeries: (from: number, to: number) => void;
+  onDuplicateSeries: (index: number) => void;
   onSubmit: () => void;
   setValue: UseFormSetValue<ChartEditorFormState>;
   showGroupBy: boolean;
   showHaving: boolean;
+  showDuplicate: boolean;
   tableName: string;
   length: number;
   tableSource?: TSource;
@@ -69,10 +87,12 @@ export function ChartSeriesEditor({
   namePrefix,
   onRemoveSeries,
   onSwapSeries,
+  onDuplicateSeries,
   onSubmit,
   setValue,
   showGroupBy,
   showHaving,
+  showDuplicate,
   tableName: _tableName,
   parentRef,
   length,
@@ -99,6 +119,18 @@ export function ChartSeriesEditor({
       if (aggFn === 'none') {
         setValue(`${namePrefix}aggFn`, 'count');
       }
+    }
+  }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
+
+  // 'increase' aggFn is only valid on Sum metrics. Reset it if the user
+  // switches to a different metric type or source kind so the backend does
+  // not error on a stale 'increase' selection.
+  useEffect(() => {
+    const isSumMetric =
+      tableSource?.kind === SourceKind.Metric &&
+      metricType === MetricsDataType.Sum;
+    if (!isSumMetric && aggFn === 'increase') {
+      setValue(`${namePrefix}aggFn`, 'sum');
     }
   }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
 
@@ -172,6 +204,16 @@ export function ChartSeriesEditor({
     [databaseName, tableName, connectionId, metricName, tableSource],
   );
 
+  const seriesNumberFormat = useWatch({
+    control,
+    name: `${namePrefix}numberFormat`,
+  });
+
+  const [
+    isSeriesNumberFormatOpen,
+    { open: openSeriesNumberFormat, close: closeSeriesNumberFormat },
+  ] = useDisclosure(false);
+
   return (
     <>
       <Divider
@@ -211,6 +253,18 @@ export function ChartSeriesEditor({
                 <IconArrowDown size={14} />
               </Button>
             )}
+            {showDuplicate && (
+              <Button
+                variant="subtle"
+                color="gray"
+                size="xxs"
+                onClick={() => onDuplicateSeries(index)}
+                title="Duplicate series"
+                data-testid="series-duplicate-button"
+              >
+                <IconCopy size={14} />
+              </Button>
+            )}
             {((index ?? -1) > 0 || length > 1) && (
               <Button
                 variant="subtle"
@@ -222,6 +276,17 @@ export function ChartSeriesEditor({
                 Remove Series
               </Button>
             )}
+            <Tooltip label="Edit series display format">
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="xs"
+                onClick={openSeriesNumberFormat}
+                aria-label="Edit series display format"
+              >
+                {FORMAT_ICONS[seriesNumberFormat?.output ?? 'number']}
+              </ActionIcon>
+            </Tooltip>
           </Group>
         }
         labelPosition="right"
@@ -240,6 +305,9 @@ export function ChartSeriesEditor({
             defaultValue={AGG_FNS[0]?.value ?? 'avg'}
             control={control}
             hideCustom={tableSource?.kind === SourceKind.Metric}
+            metricType={
+              tableSource?.kind === SourceKind.Metric ? metricType : undefined
+            }
           />
         </div>
         {tableSource?.kind === SourceKind.Metric && metricType && (
@@ -375,6 +443,17 @@ export function ChartSeriesEditor({
           onAddToGroupBy={showGroupBy ? handleAddToGroupBy : undefined}
         />
       )}
+      <SeriesNumberFormatDrawer
+        opened={isSeriesNumberFormatOpen}
+        numberFormat={seriesNumberFormat}
+        onChange={format => {
+          setValue(`${namePrefix}numberFormat`, format.numberFormat);
+          onSubmit();
+        }}
+        onClose={() => {
+          closeSeriesNumberFormat();
+        }}
+      />
     </>
   );
 }

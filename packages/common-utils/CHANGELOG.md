@@ -1,5 +1,461 @@
 # @hyperdx/common-utils
 
+## 0.21.0
+
+### Minor Changes
+
+- 5cd709020: Add UI support for configuring an external Prometheus-compatible endpoint on a
+  connection. Modify Connections model to now have a boolean
+  `isPrometheusEndpoint` field and use host for storing the host.
+- f40cf686b: feat(dashboards): add a background trend sparkline to number tiles
+
+  Number tiles can now render a faint line or area sparkline behind the value,
+  derived from a time-bucketed version of the same query, so the value's trend
+  over the selected range is visible at a glance. This is handy for SLO /
+  error-budget tiles where the burn over time matters as much as the current
+  number. The sparkline inherits the tile's color by default and can be
+  overridden to any palette token. Configure it under Display Settings >
+  Background chart on a number tile. Available on builder number tiles (raw SQL
+  number tiles return a single value with no time dimension to bucket).
+
+- 17e1eb19d: feat: Add an "external link" row-click action for dashboard table tiles
+- e03971b0: refactor(theme): rename chart palette tokens from chart-1..10 to hue-named
+  (chart-blue, chart-orange, ...) and unify the categorical palette across HyperDX
+  and ClickStack
+
+  Stored configs from the initial color picker (#2265) keep working.
+  `ChartPaletteTokenSchema` stays strict (a plain `z.enum`, so its `z.input`
+  matches `z.output` — wrapping it in `z.preprocess` would poison
+  `validateRequest`'s `req.body` inference all the way up to
+  `Dashboard.tiles[i].config.color`). Migration of legacy `chart-1` .. `chart-10`
+  happens at five complementary points so no entry or wire-format path can slip
+  through, all composing over a single shared walker
+  (`walkRawDashboardTileColors` in `common-utils`) so the per-tile traversal
+  stays in lockstep:
+
+  - **Fetch-time / write-time (React)**: `normalizeDashboardTileColors` in
+    `packages/app/src/dashboard.ts` heals dashboards on read
+    (`useDashboards` / `fetchLocalDashboards` / `fetchDashboards`) and on write
+    (`useUpdateDashboard` / `useCreateDashboard`). Unresolvable color strings
+    (stale hexes, hand-edited values, forward-rolled future tokens) are
+    preserved so the user's chosen value survives a render pass — the strict
+    server-side schema surfaces a clear error on next save instead of the
+    normalizer quietly dropping the field.
+  - **JSON import**: `DBDashboardImportPage` runs
+    `normalizeRawDashboardTileColors` on the parsed JSON _before_ the strict
+    `DashboardTemplateSchema.safeParse`, so templates exported from a
+    pre-rename deploy import cleanly.
+  - **Server-side GET response healing**: `getDashboards` / `getDashboard` in
+    `packages/api/src/controllers/dashboard.ts` rewrite legacy tile colors on
+    the way out. Pre-rename Mongo docs are served on the wire as
+    hue-named tokens so non-React HTTP clients (CI scripts, stale bundle
+    tabs during a rolling deploy, the external API) can round-trip
+    GET → PATCH without ever resurrecting `chart-N` through the strict
+    schema.
+  - **Server-side write shim**: the dashboards POST / PATCH routes mount
+    a request-body preprocessor that rewrites legacy tile colors before
+    `validateRequest` runs `ChartPaletteTokenSchema`. Catches non-React
+    HTTP callers (stale-bundle tabs during a rolling deploy, CI scripts,
+    MCP, the upcoming external-API parity work) for a one-release
+    deprecation window without weakening the schema's input/output equality.
+    The dashboard provisioner task applies the same shim before parsing
+    on-disk template files.
+  - **Render-time (belt-and-suspenders)**: `DBNumberChart` and
+    `ColorSwatchInput` also call `resolveChartPaletteToken` for tiles
+    constructed in memory between fetch and save (`ChartEditor` form
+    state, unit-test fixtures, hand-rolled `Tile` literals).
+
+  The migration preserves the HyperDX slot ordering from #2265 (slot 1 = brand
+  green, slot 2 = blue, etc.).
+
+  **ClickStack legacy color caveat:** Pre-rename ClickStack used a different slot
+  ordering than HyperDX (`--color-chart-1` was brand blue `#437eef`, not brand
+  green). The migration map uses HyperDX slot ordering, so any ClickStack
+  dashboard saved via #2265 with `color: 'chart-1'` will flip from blue to
+  Observable green after migration. We chose this trade-off deliberately over
+  branching the legacy map by active theme: `LEGACY_CHART_PALETTE_TOKEN_MAP` lives
+  in `common-utils` (shared with the API), and migration is one-shot persisted on
+  next save — theme-branching would couple common-utils to browser DOM state and
+  still produce wrong results for users whose active theme changed since the
+  original pick. Affected users can manually re-pick the desired hue via the (now
+  hue-labeled) color picker.
+
+  The categorical palette is based on Observable 10, with `chart-blue` swapped to
+  `#437eef` to match the brand link color
+  (`--click-global-color-text-link-default`); all other hues are straight from
+  Observable 10. The palette resolves identically on both themes — picking
+  `chart-blue` always renders the brand blue. Brand identity for charts moves
+  entirely into the semantic layer: `--color-chart-success` and `--color-chart-info`
+  resolve to categorical `chart-green` (`#3ca951`) and `chart-blue` (`#437eef`) on
+  both HyperDX and ClickStack, so success fills, info-level logs, and the
+  matching multi-series slots all read consistently across brands.
+
+  Internally, JS (`CATEGORICAL_HEX_BY_TOKEN` in `packages/app/src/utils.ts`) is
+  the source of truth for categorical hues — `getColorFromCSSVariable` and
+  `getColorFromCSSToken` skip `getComputedStyle` for categorical tokens since the
+  palette is unified across themes. The matching `--color-chart-{hue}` CSS vars in
+  `_tokens.scss` remain as a stylesheet-author affordance (inline `var()` use,
+  devtools inspection) and a hook for any future per-brand override. Semantic
+  tokens still resolve through `getComputedStyle` because they genuinely vary per
+  theme.
+
+### Patch Changes
+
+- 1d44098e5: fix: recover the SELECT-alias map when a query has ClickHouse-specific SQL the parser rejects
+
+  `chSqlToAliasMap` returned an empty map whenever the rendered query contained
+  SQL that node-sql-parser's Postgresql dialect cannot parse, for example a
+  sampling CTE with `greatest(CAST(total / N AS UInt32), 1)`. An empty alias map
+  drops the `WITH` clauses that define the source's select aliases, so filters on
+  aliased columns (Event Patterns, histogram, alerts) failed with `Unknown
+identifier`. It now falls back to parsing only the outer SELECT projection,
+  which is all the alias map needs, so the aliases are recovered even when the
+  rest of the statement is unparseable.
+
+- 998ea5d0: feat: Add option to fit time chart y-axis lower bound
+- ee907386: fix: Add sourceId to MCP Raw SQL Tile schema
+- 5c46215f8: Bump `@clickhouse/client*` to `1.23.0-head.fae5998.1` and fix the type
+  incompatibility it introduces.
+
+  In `@clickhouse/client*` 1.23 each platform package (`@clickhouse/client`,
+  `@clickhouse/client-web`) bundles its own copy of the shared types, so their
+  `ClickHouseSettings` types — which reference the nominally-compared `SettingsMap`
+  class — are no longer the same type as `@clickhouse/client-common`'s. The shared
+  `processClickhouseSettings()` helper produces the `client-common` flavor, so
+  assigning it into the per-platform clients' `query()` now requires an explicit
+  bridge. Guard the existing `as ClickHouseSettings` assertions at those
+  boundaries (`node.ts`, `browser.ts`, `cli`) with a scoped
+  `@typescript-eslint/no-unsafe-type-assertion` disable, matching the existing
+  "client library type mismatch" pattern. No runtime behavior changes.
+
+- 45954c318: Import ClickHouse client types from the platform packages
+  (`@clickhouse/client` / `@clickhouse/client-web`) instead of the deprecated
+  `@clickhouse/client-common`. This makes the packages forward-compatible with
+  `@clickhouse/client*` 1.23 (where `client-common` is deprecated and each
+  platform package bundles and re-exports its own copy of the shared types)
+  without bumping the pinned version. No runtime behavior changes.
+- 5a1dde4d3: fix(search): wrap date column values in a type-matching parse/convert expression when building IN/NOT IN filters, so including/excluding a timestamp value no longer fails with "Cannot convert string ... to type DateTime64" or "Type mismatch in IN ... Expected: DateTime. Got: Decimal64". Date column types are now resolved from the query result set, so aliased (`TimestampTime AS time`) and computed (`toDate(TimestampTime)`) DateTime/Date columns are also wrapped correctly when added to filters.
+- ae39bc436: fix: Correct filter handling for filter keys with special characters
+- 8261b461: fix: inline parametric aggregate function arguments instead of passing as query parameters
+- bf6e1f29: feat(charts): the time-chart series limit is now configured per chart in the Display Settings drawer instead of as a workspace-wide team setting (the team "Time Chart Series Limit" setting is removed). It is disabled by default — charts fetch every series and no `__hdx_series_limit` CTE is emitted — and is cleared back to disabled by emptying the field. The control only appears for builder line/bar charts; the limit and its Generated SQL preview now come from the chart's own config. When a limit is set, chunked time-chart queries keep a consistent top-N series set: previously each time-window chunk ranked its own top-N, so charts could render more series than the limit and adjacent windows disagreed; the ranking is now pinned to the newest chunk window for every chunk so the union across chunks equals the limit.
+- 973d1201b: fix: polish promql experience across the app
+- 677e3f71: fix: Skip rendering empty aggConditions
+- 89949b1b: Adding filters to dashboard exports. Implemented validation on dashboard imports to catch potential issues with generated JSON or manually tweaked JSON.
+- 747352f3: feat: add direct_read optimization for filters
+- 750b8afe: feat(mcp): add denoise option to clickstack_search tool
+
+  Add a `denoise` boolean parameter to the MCP `clickstack_search` tool that
+  automatically filters out high-frequency repetitive event patterns from
+  search results, mirroring the web app's "Denoise Results" feature.
+
+  When enabled, the tool samples 10k random events, mines patterns using
+  the Drain algorithm, identifies noisy patterns (>10% of sample), and
+  filters them out of result rows. Returns filtered rows plus metadata
+  listing removed patterns with estimated counts.
+
+  Extracts shared denoise constants (`DENOISE_SAMPLE_SIZE`,
+  `DENOISE_NOISE_THRESHOLD`) into `@hyperdx/common-utils` so the web app
+  and MCP server use the same values.
+
+- caba7c255: fix: Nudge agents towards macros in raw SQL tiles
+- adac913d: refactor(mcp): rename all MCP tool prefixes from `hyperdx_` to `clickstack_`
+
+  Rename the MCP server name from `hyperdx` to `clickstack` and update all 19
+  tool names (e.g. `hyperdx_search` → `clickstack_search`), along with
+  descriptions, prompts, error messages, and test references.
+
+- 1a64796c1: Removing relative imports and using path aliases
+- c74744a5: fix: fallback to body or implicit column expression when other empty
+- 03f9dd70: feat: add an optional Section field to data sources
+
+  Sources can now carry an optional free-text Section label, set from the source
+  settings form. The value is persisted and returned by GET /api/v2/sources, so
+  external API consumers can read it. This lays the groundwork for grouping and
+  searching sources by section in the source selector.
+
+- 6e0880a75: feat: Add Known Columns List setting for distributed tables
+- 81e524c2: feat(charts): cap group-by time charts to a top-N series limit to prevent browser memory exhaustion on high-cardinality group-bys. The cap defaults to 100 (the number of series rendered) and is configurable per team via a new "Time Chart Series Limit" setting; series beyond the cap remain available in the series selector.
+- da3caab43: Type JSON metadata filter attribute paths before value sampling.
+- 55a255a0a: refactor(metrics): unify AttributesHash to variadic cityHash64 across Map and
+  JSON metric schemas
+
+  Sum / Gauge / Histogram metric queries now compute AttributesHash as
+  `cityHash64(ScopeAttributes, ResourceAttributes, Attributes)` for both
+  Map(LowCardinality(String), String) and JSON attribute columns. Previously
+  the Map-schema path wrapped the three maps in `mapConcat()` before hashing,
+  and the JSON-schema path used the variadic form; the schema-detection
+  ClickHouse round-trip and the `attrHashExpr` helper / `isJsonSchema`
+  plumbing are gone.
+
+  Compatibility:
+
+  - Per-row AttributesHash values change for every Map-schema metric row,
+    but the hash is recomputed inside CTEs on every query — no materialized
+    view, projection, ALIAS column, or cache persists it, so no downstream
+    consumer is affected (audit: OSS only).
+  - Cross-scope same-key behaviour shifts: two rows that carry the same
+    logical key in different attribute scopes (e.g. `host` in
+    `ResourceAttributes` for one emission and `host` in `Attributes` for the
+    next) now hash distinctly and land in separate series. Previously the
+    mapConcat path collapsed them into one series. This only matters when an
+    OTel collector processor promotes attributes across scopes mid-stream;
+    most SDKs emit attributes in stable scopes. The new behaviour is captured
+    by an integration test in `packages/api/src/clickhouse/__tests__`.
+
+  HDX-4466.
+
+## 0.20.0
+
+### Minor Changes
+
+- feat: apply direct_read KV items optimization to SQL filters
+
+  SQL `type: 'sql'` filters on Map columns (e.g.
+  `LogAttributes['key'] IN ('a', 'b')`) now get the same `has()` /
+  `hasAny()` rewrite that Lucene filters already use. When a KV items
+  column with a `text(tokenizer=array)` skip index exists for the Map,
+  the condition is rewritten at the filter site before rendering:
+
+  - `Map['k'] = 'v'` → `has(Items, concat('k', '=', 'v'))`
+  - `Map['k'] IN ('a', 'b')` → `hasAny(Items, array(concat('k', '=', 'a'), concat('k', '=', 'b')))`
+
+  Empty-string values are left unrewritten to preserve ClickHouse's
+  missing-key semantics (`Map(String, String)['absent'] = ''`).
+
+  Also extracts `buildKvItemsLookup` from `CustomSchemaSQLSerializerV2`
+  into a shared top-level export so both the Lucene serializer and the
+  SQL filter rewriter can use the same lookup logic.
+
+- 3123db53: feat: experimental promql support
+- dcab1cb6: feat: default the direct_read map column optimization on supported ClickHouse versions
+
+  The full-text-search logs schema (`00002_otel_logs.sql`) now ships with
+  `ResourceAttributeItems`, `ScopeAttributeItems`, and `LogAttributeItems`
+  ALIAS columns plus their `text(tokenizer='array')` skip indexes. The
+  traces schema (`00005_otel_traces.sql`) similarly gains
+  `ResourceAttributeItems` and `SpanAttributeItems` ALIAS columns with
+  matching items indexes. New installs and freshly migrated tables get
+  the optimization automatically — no manual `ALTER TABLE` required.
+
+  Note: the traces table previously used only `bloom_filter` skip indexes
+  and worked on any ClickHouse version. The added `text(tokenizer='array')`
+  items indexes raise the minimum ClickHouse version required to **create**
+  the traces table to **>= 26.2**. Existing tables on older clusters are
+  unaffected (`CREATE TABLE IF NOT EXISTS` is a no-op).
+
+  At query time, the app gates the `Map['key'] = 'value'` →
+  `has(<MapItems>, concat('key', '=', 'value'))` rewrite on the connected
+  ClickHouse server version (`SELECT version()`, cached per connection).
+  The gate only applies to **ALIAS** items columns, which are computed at
+  query time and therefore depend on the server being able to perform a
+  direct_read against the underlying Map's tuple storage. The direct_read
+  feature was backported into multiple stable 26.x release lines, so the
+  gate uses a per-branch minimum:
+
+  - 26.2 line: >= 26.2.19.43
+  - 26.3 line: >= 26.3.12.3
+  - 26.4 line: >= 26.4.3.37
+  - 26.5+ : always supported
+
+  ALIAS items columns on servers below their branch's threshold continue
+  to compile filters into the original Map-subscript form.
+
+  **MATERIALIZED items columns are always used when available**, regardless
+  of ClickHouse version. MATERIALIZED columns are physically stored on
+  disk, so `has(items, ...)` reads them directly and works on any
+  ClickHouse version that supports the text index itself. Operators who
+  want the optimization on servers below the backport cutoffs can
+  `ALTER TABLE` to materialize the items columns.
+
+- 1df7583d: feat: emit Lucene conditions from sidebar/dashboard filters to enable KV items direct_read optimization on Map columns
+
+  Legacy `type: 'sql'` filters in URLs are automatically migrated to Lucene
+  on page load. The persisted `DashboardFilter.expression` in MongoDB is unchanged.
+
+### Patch Changes
+
+- a945fa07: feat(mcp): add hyperdx_event_deltas tool
+
+  Add `hyperdx_event_deltas` MCP tool that compares two row groups (target
+  vs baseline) and ranks properties by how much their value distributions
+  differ. Same algorithm as the in-app Event Deltas view.
+
+  Extract shared event-deltas algorithm from the UI into
+  `@hyperdx/common-utils/src/core/eventDeltas.ts` so it can be used by
+  both the frontend and the MCP server.
+
+- 6a5ac3e3: fix(charts): histogram bucket picks the highest-precision DateTime column when
+  Timestamp Column lists multiple columns
+
+  When a source's `Timestamp Column` listed multiple columns (e.g.
+  `"EventDate, EventTime"` for partition-pruning), the histogram bucket was
+  built from only the first token. If that token was a `Date` column, every
+  row in a day collapsed into a single bar at midnight UTC of that day.
+
+  The bucket resolver now walks the comma-split list, queries each column's
+  type via metadata, and returns the highest-precision DateTime / DateTime64
+  token. Date columns are skipped. If no DateTime-typed token is found, the
+  original first-token behavior is preserved with a `console.warn`.
+
+  The WHERE clause continues to use the multi-column form, so partition
+  pruning via the `Date` column keeps working. The same resolved column is
+  also used for the `argMin` / `argMax` / `min` / `max` time math in delta
+  expressions.
+
+  Fixes HDX-4371.
+
+- e1c4381b: fix: bare-text Lucene search now falls back from Implicit Column Expression to
+  Body Expression on log sources
+
+  Previously, a log source configured with `bodyExpression` set but
+  `implicitColumnExpression` unset threw `Can not search bare text without an
+implicit column set.` on every bare-token search, even though the row panel
+  rendered correctly using the body column.
+
+  Search now reuses the same one-way fallback that `getEventBody` already
+  implements: when no Implicit Column Expression is set, bare-text search runs
+  against the configured Body Expression. Trace sources are unchanged
+  (`spanNameExpression` is not a body equivalent for trace search).
+
+- b30dfe0a: fix: support text index on lower(Body) with no preprocessor
+- dcb85826: fix: escape colons in Lucene field names so filters on Map sub-keys containing
+  `:` (e.g. `LogAttributes['foo:bar']`) parse correctly
+
+  `filtersToQuery` now backslash-escapes `:` and `\` in the emitted Lucene field
+  name, and `parseLuceneFilter` + the SQL serializer decode those placeholders
+  when consuming the AST so the original key is restored end-to-end.
+
+- b5148c85: Dashboard table tiles configured with a row-click action now show a hover hint describing where the click will go (for example, `Search HyperDX Logs` or `Open dashboard "API Latency Drilldown"`). The cell wrapper is now a real link, so cmd-click and middle-click open the destination in a new tab, right-click shows the browser context menu with "Open in New Tab" and "Copy Link Address", and the destination URL appears in the browser status bar on hover. Keyboard users can Tab to a cell and press Enter to navigate, with a visible focus ring.
+- 04a5a925: feat: Add source scoping to dashboard filters
+- 8810ff0f: feat: Add option for force-enabling/disabling text index support
+- a8eb27dc: feat: filters reflect all values, not search aware; filters use metadata MVs if available
+
+## 0.19.1
+
+### Patch Changes
+
+- 84117a7a: fix: support CAST() form in KV items column expression parsing for direct_read optimization
+- 51abe987: fix: Event Patterns and other CTE-using queries now correctly detect Date-typed partition columns and wrap them in toDate(), fixing "No results found" against sources with a Date partition key (e.g. event_date / EventDate).
+
+## 0.19.0
+
+### Minor Changes
+
+- eb16df44: Add ability to disable data sources with improved UX
+- 143f7a79: feat: Add per-series number formats
+- 7d7269a7: feat: introducing rollup and source support for full autocomplete
+- d3a5a575: feat: add optional note field to alerts
+
+  Adds a freeform note/reason field to alerts that supports markdown formatting,
+  allowing on-call responders to document why an alert exists, threshold decision
+  history, and links to runbooks.
+
+  - New `note` field on the Alert model (optional, max 4096 chars, supports
+    markdown)
+  - Note textarea in both the saved-search alert modal and the dashboard tile
+    alert editor
+  - Notes displayed on the /alerts page in a collapsible section (hidden by
+    default) with full markdown rendering
+  - Alert tabs in the saved-search modal show a red bell firing indicator
+    alongside the webhook channel icon, matching the AlertStatusIcon pattern
+    used on dashboard tiles and the app nav
+  - The Alerts button on the search page shows a red bell icon when at least one
+    alert in the saved search is firing
+  - External API v2 updated with `note` field in OpenAPI docs
+
+- 5c6da48c: refactor(alerts/search): consolidate the saved-search → chart-config builder
+  into a single shared helper, `buildSearchChartConfig`, in
+  `@hyperdx/common-utils/core/searchChartConfig.ts`. The app search page, the
+  alert preview chart, and the scheduled alert task's `SAVED_SEARCH` branch now
+  all route through it, so `tableFilterExpression`, `implicitColumnExpression`,
+  sample-weight expressions, SELECT precedence, and the `count()` default
+  SELECT shape are applied identically by construction.
+
+  Behavior fixes that fall out of consolidation:
+
+  - The alert task and the alert preview now apply `source.tableFilterExpression`
+    on Log sources, matching what the search page already did.
+  - A latent bug in the search-page builder is fixed: a non-null `filters`
+    array no longer silently drops the `tableFilterExpression` SQL filter via
+    spread-overwrite.
+
+### Patch Changes
+
+- a5294f8d: fix: prevent false "data source not set" error on markdown dashboard tiles
+- 24699cde: fix: Infer singular quantileXXX() from MV quantilesXXXState()
+- f6a1d021: Add support for event patterns in MCP server, reduce code duplication
+- aa1a8523: feat: adds optimization for lucene rendering based on a keyvalue concatenated Array(String)
+- 022fe893: Fix issue with incorrect cache key being set in settings queries in nodejs
+- 41395ca7: External Dashboards API: tighten validation around container/tab references
+  on the v2 dashboards routes.
+
+  - Cap tile `containerId` and `tabId` at 256 characters to mirror the
+    internal `DashboardContainer` schema and the `DASHBOARD_CONTAINER_ID_MAX`
+    constant, now exported from `@hyperdx/common-utils`.
+  - Cap a single dashboard payload at 500 tiles via the new
+    `DASHBOARD_MAX_TILES` constant to keep one request from pushing tens of
+    MB into Mongo.
+  - Treat empty-string `containerId` / `tabId` on legacy Mongo docs as
+    absent on read, so dashboards predating the containers feature still
+    round-trip through the external schema's `min(1)` cap.
+  - Extract the cross-tile container/tab consistency check into a shared
+    `validateDashboardContainersConsistency` helper so the canonical
+    schema and the request body schema agree on what a valid payload is.
+  - OpenAPI now publishes the matching `maxLength` and `maxItems` bounds
+    on `DashboardContainer.id`, `DashboardContainerTab.id`, the
+    `containers` array, and the request `tiles` array.
+
+- 41395ca7: External Dashboards API: fix `PUT` round-trip when the request body omits
+  `containers`, and self-heal orphan `containerId` / `tabId` references on
+  read.
+
+  - Move tile-level container/tab reference resolution out of the request
+    body schema and into the `POST` and `PUT` handlers, so a `PUT` whose
+    body omits `containers` validates tile refs against the existing
+    dashboard's containers (the documented "preserve on omit" branch)
+    rather than against an empty fallback. Without this, a `PUT` that
+    changes only `tiles` while keeping a tile homed in a real preserved
+    container was rejected with `Tile references unknown containerId`.
+  - Split the shared validation helper into a structure-only pass
+    (`validateDashboardContainersStructure`) and a tile-ref pass
+    (`validateDashboardTileContainerRefs`) on
+    `@hyperdx/common-utils`. The composite
+    `validateDashboardContainersConsistency` now wraps both, so existing
+    callers keep their current behavior.
+  - On read, drop `tile.containerId` / `tile.tabId` when the ref does not
+    resolve to a container (or tab) in the same dashboard. A pre-existing
+    doc with an orphan ref now round-trips on `GET` as if the ref were
+    absent, so the next `PUT` validates instead of failing with
+    `Tile references unknown containerId`. Each drop is logged with the
+    dashboard id, tile id, and the offending ref.
+  - Document in the OpenAPI `PUT /api/v2/dashboards/{id}` description that
+    the endpoint does not support optimistic concurrency. Concurrent PUTs
+    may silently overwrite each other; clients should serialize edits to
+    a given dashboard.
+
+- 41395ca7: Internal refactor: move `validateDashboardContainersStructure` and
+  `validateDashboardTileContainerRefs` (and their two helper types) out
+  of `@hyperdx/common-utils/dist/types` into a new
+  `@hyperdx/common-utils/dist/dashboardValidation` module. The `types`
+  file now only contains types and type guards, matching the rest of the
+  codebase. The previously exported `validateDashboardContainersConsistency`
+  composite was only used by its own unit test and is dropped; production
+  code in the v2 dashboards router uses the two underlying helpers
+  directly. No behaviour change for callers of the external API.
+- ef571cc0: feat: heatmap charts in chart editor and dashboards
+
+  - Heatmap is now a selectable display type in the chart editor tabs
+  - Dashboard tiles render heatmaps via the shared `DBHeatmapChart` component
+  - Heatmap source picker restricted to trace sources; value/count expressions auto-populate from the source's duration expression
+  - Display Settings drawer (scale, value, count) shared across search Event Deltas, chart editor, and dashboards
+  - Click a dashboard heatmap tile to open Event Deltas with source, where clause, filters, and time range preserved
+  - Dynamic Y-axis sizing measures formatted tick labels so long labels (e.g. "1.67min") are not clipped
+
+- c2a9f96f: feat: Add more dashboard onClick linking options
+- a36c5b19: feat: Add filter templating to custom dashboard on-click
+- 9d5f14f3: feat: Add custom onClick field to external dashboards API
+- 401dff5a: feat: Support import/export for dashboard onClicks
+
 ## 0.18.1
 
 ### Patch Changes

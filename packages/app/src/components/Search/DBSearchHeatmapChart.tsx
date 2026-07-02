@@ -15,19 +15,19 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { IconSettings } from '@tabler/icons-react';
 
-import HeatmapSettingsDrawer from '@/components/HeatmapSettingsDrawer';
-import { getDurationMsExpression } from '@/source';
-import type { NumberFormat } from '@/types';
-
-import type { AddFilterFn } from '../DBDeltaChart';
-import DBDeltaChart from '../DBDeltaChart';
+import type { AddFilterFn } from '@/components/DBDeltaChart';
+import DBDeltaChart from '@/components/DBDeltaChart';
 import DBHeatmapChart, {
   ColorLegend,
   darkPalette,
   type HeatmapScaleType,
   lightPalette,
+  type SelectionBounds,
   toHeatmapChartConfig,
-} from '../DBHeatmapChart';
+} from '@/components/DBHeatmapChart';
+import HeatmapSettingsDrawer from '@/components/HeatmapSettingsDrawer';
+import { getDurationMsExpression } from '@/source';
+import type { NumberFormat } from '@/types';
 
 export function DBSearchHeatmapChart({
   chartConfig,
@@ -93,6 +93,28 @@ export function DBSearchHeatmapChart({
     prevDateRangeRef.current = key;
   }, [fromMs, toMs, setFields]);
 
+  // Mirror the URL's selection coordinates onto the heatmap so the dashed
+  // rectangle stays in sync after any uPlot recreation. Memoize on the
+  // primitive coords so the prop's identity is stable when the URL hasn't
+  // changed; otherwise the downstream useEffect would re-fire on every
+  // render. (HDX-4147)
+  const selectionBounds: SelectionBounds | null = useMemo(() => {
+    if (
+      fields.xMin == null ||
+      fields.xMax == null ||
+      fields.yMin == null ||
+      fields.yMax == null
+    ) {
+      return null;
+    }
+    return {
+      xMin: fields.xMin,
+      xMax: fields.xMax,
+      yMin: fields.yMin,
+      yMax: fields.yMax,
+    };
+  }, [fields.xMin, fields.xMax, fields.yMin, fields.yMax]);
+
   return (
     <Flex
       direction="column"
@@ -132,6 +154,7 @@ export function DBSearchHeatmapChart({
           }
           enabled={isReady}
           scaleType={scaleType}
+          selectionBounds={selectionBounds}
           onFilter={(xMin, xMax, yMin, yMax) => {
             setFields({ xMin, xMax, yMin, yMax });
           }}
