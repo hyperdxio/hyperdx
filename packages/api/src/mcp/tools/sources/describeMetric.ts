@@ -9,13 +9,11 @@ import {
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import type { McpContext } from '@/mcp/tools/types';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import type { ToolRegistrar } from '@/mcp/tools/types';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -724,13 +722,13 @@ async function describeMetricImpl(
 
 // ─── Tool registration ───────────────────────────────────────────────────────
 
-export function registerDescribeMetric(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerDescribeMetric({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_describe_metric',
     {
       title: 'Describe Metric',
@@ -750,7 +748,7 @@ export function registerDescribeMetric(
         'clickstack_describe_metric → clickstack_timeseries|clickstack_table.',
       inputSchema: describeMetricSchema,
     },
-    withToolTracing('clickstack_describe_metric', context, async rawInput => {
+    async rawInput => {
       // Re-parse explicitly: the MCP SDK callback signature widens
       // optional-field types into `unknown`, but the parser produces
       // the typed shape we need for downstream calls.
@@ -796,6 +794,6 @@ export function registerDescribeMetric(
       } finally {
         if (timeoutId !== undefined) clearTimeout(timeoutId);
       }
-    }),
+    },
   );
 }

@@ -3,7 +3,7 @@ import { resolve } from 'path';
 
 import type { McpDefinition, McpKind } from '@/harness/types';
 
-export type ScenarioSourceIds = {
+type ScenarioSourceIds = {
   tracesSourceId: string;
   logsSourceId: string;
 };
@@ -12,7 +12,7 @@ export type ScenarioSourceIds = {
  * Configuration for the HyperDX API — only needed by the `setup-hyperdx`
  * command to create Connections and Sources. Not required for running evals.
  */
-export type HyperdxApiConfig = {
+type HyperdxApiConfig = {
   apiUrl: string;
   accessKey: string;
   connectionId: string;
