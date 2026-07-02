@@ -6,13 +6,12 @@ import {
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import type { McpContext } from '@/mcp/tools/types';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
 
 import {
@@ -244,13 +243,13 @@ async function fetchMetricsForKind({
 
 // ─── Tool registration ───────────────────────────────────────────────────────
 
-export function registerListMetrics(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerListMetrics({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_list_metrics',
     {
       title: 'List Metric Names',
@@ -266,7 +265,7 @@ export function registerListMetrics(
         'clickstack_timeseries|clickstack_table.',
       inputSchema: listMetricsSchema,
     },
-    withToolTracing('clickstack_list_metrics', context, async rawInput => {
+    async rawInput => {
       // Re-parse explicitly: the MCP SDK callback signature widens
       // optional-field types into `unknown`, but the parser produces
       // the typed shape we need for downstream calls.
@@ -293,23 +292,16 @@ export function registerListMetrics(
             { teamId, sourceId: input.sourceId },
             'clickstack_list_metrics timed out',
           );
-          return {
-            isError: true as const,
-            content: [
-              {
-                type: 'text' as const,
-                text:
-                  'clickstack_list_metrics timed out. Try narrowing the time window ' +
-                  '(startTime/endTime), pinning a single `kind`, or adding a namePattern filter.',
-              },
-            ],
-          };
+          return mcpServerError(
+            'clickstack_list_metrics timed out. Try narrowing the time window ' +
+              '(startTime/endTime), pinning a single `kind`, or adding a namePattern filter.',
+          );
         }
         throw e;
       } finally {
         clearTimeout(timeoutId);
       }
-    }),
+    },
   );
 }
 
@@ -320,34 +312,19 @@ async function listMetricsImpl(
 ) {
   const source = await getSource(teamId, input.sourceId);
   if (!source) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source "${input.sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source "${input.sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
+    );
   }
   if (source.kind !== SourceKind.Metric) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source "${input.sourceId}" is a "${source.kind}" source, not a metric source. clickstack_list_metrics only works on metric sources — call clickstack_list_sources to find one whose kind is "metric".`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source "${input.sourceId}" is a "${source.kind}" source, not a metric source. clickstack_list_metrics only works on metric sources — call clickstack_list_sources to find one whose kind is "metric".`,
+    );
   }
 
   const timeRange = parseTimeRange(input.startTime, input.endTime);
   if ('error' in timeRange) {
-    return {
-      isError: true,
-      content: [{ type: 'text' as const, text: timeRange.error }],
-    };
+    return mcpUserError(timeRange.error);
   }
   const { startDate, endDate } = timeRange;
 
@@ -355,15 +332,9 @@ async function listMetricsImpl(
   // truncated or tampered cursor does not surface internals.
   const cursor = input.cursor ? decodeCursor(input.cursor) : null;
   if (input.cursor && !cursor) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: 'Invalid cursor. Omit cursor to start over, or pass the exact `nextCursor` value returned by a previous call.',
-        },
-      ],
-    };
+    return mcpUserError(
+      'Invalid cursor. Omit cursor to start over, or pass the exact `nextCursor` value returned by a previous call.',
+    );
   }
 
   // Resolve which kinds to scan, in order. When a cursor is set,
@@ -376,15 +347,9 @@ async function listMetricsImpl(
   if (startKindIdx < 0) {
     // Cursor points at a kind that's not in scope for this call —
     // safer to error than silently skip.
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Cursor references kind "${cursor!.kind}" but that kind is not in scope for this call. Drop the kind filter or pass a matching cursor.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Cursor references kind "${cursor!.kind}" but that kind is not in scope for this call. Drop the kind filter or pass a matching cursor.`,
+    );
   }
 
   const connection = await getConnectionById(
@@ -393,15 +358,7 @@ async function listMetricsImpl(
     true,
   );
   if (!connection) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Connection not found for source "${input.sourceId}".`,
-        },
-      ],
-    };
+    return mcpUserError(`Connection not found for source "${input.sourceId}".`);
   }
 
   const clickhouseClient = new ClickhouseClient({

@@ -11,7 +11,7 @@ import { isModelSubdir, isRunJson, runsRoot, safeReaddir } from './path';
 
 const QUERY_LOG_BUFFER_MS = 5_000;
 
-export type ServerQuery = {
+type ServerQuery = {
   eventTime: string;
   queryDurationMs: number;
   readRows: number;
@@ -20,7 +20,7 @@ export type ServerQuery = {
   queryPreview: string;
 };
 
-export type ToolCallTiming = {
+type ToolCallTiming = {
   index: number;
   name: string;
   wallStartTs: string;

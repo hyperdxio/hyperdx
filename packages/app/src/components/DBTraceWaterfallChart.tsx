@@ -40,7 +40,11 @@ import {
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
-import { TimelineChart } from '@/components/TimelineChart';
+import {
+  TimelineChart,
+  TimelineMinimap,
+  type TimelineViewportController,
+} from '@/components/TimelineChart';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
@@ -1004,8 +1008,22 @@ export function DBTraceWaterfallChartContainer({
   const { ref: timelineWrapperRef, height: timelineWrapperHeight } =
     useElementSize();
 
+  const [viewportController, setViewportController] =
+    useState<TimelineViewportController | null>(null);
+
+  const showMinimap =
+    !isFetching && !error && rows != null && visibleNodes.length > 0;
+
   return (
     <>
+      {showMinimap && (
+        <Box mb="md">
+          <TimelineMinimap
+            rows={timelineRows}
+            controller={viewportController}
+          />
+        </Box>
+      )}
       {isFilterExpanded && (
         <form onSubmit={handleSubmit(onSubmitFilters)}>
           <Box
@@ -1179,6 +1197,7 @@ export function DBTraceWaterfallChartContainer({
             }}
             rows={timelineRows}
             initialScrollRowIndex={initialScrollRowIndex}
+            onReady={setViewportController}
           />
         )}
       </div>

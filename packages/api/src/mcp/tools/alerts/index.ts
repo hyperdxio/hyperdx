@@ -1,18 +1,13 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-
-import type { McpContext, ToolDefinition } from '@/mcp/tools/types';
+import type { ToolDefinition, ToolRegistrar } from '@/mcp/tools/types';
 
 import { registerGetAlert } from './getAlert';
 import { registerGetWebhook } from './getWebhook';
 import { registerSaveAlert } from './saveAlert';
 
-const alertsTools: ToolDefinition = (
-  server: McpServer,
-  context: McpContext,
-) => {
-  registerGetAlert(server, context);
-  registerGetWebhook(server, context);
-  registerSaveAlert(server, context);
+const alertsTools: ToolDefinition = (registrar: ToolRegistrar) => {
+  registerGetAlert(registrar);
+  registerGetWebhook(registrar);
+  registerSaveAlert(registrar);
 };
 
 export default alertsTools;

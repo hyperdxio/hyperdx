@@ -1,8 +1,7 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import type { McpContext } from '@/mcp/tools/types';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
 
 import {
   annotateIncreaseTopNHint,
@@ -197,10 +196,10 @@ export function resolveOrderBy(
 
 // ─── Tool registration ───────────────────────────────────────────────────────
 
-export function registerTable(server: McpServer, context: McpContext) {
+export function registerTable({ context, registerTool }: ToolRegistrar) {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_table',
     {
       title: 'Aggregation Table',
@@ -231,13 +230,10 @@ export function registerTable(server: McpServer, context: McpContext) {
         'summary and exponential histogram kinds are not supported by the query renderer yet.',
       inputSchema: tableSchema,
     },
-    withToolTracing('clickstack_table', context, async input => {
+    async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: timeRange.error }],
-        };
+        return mcpUserError(timeRange.error);
       }
       const { startDate, endDate } = timeRange;
 
@@ -307,6 +303,6 @@ export function registerTable(server: McpServer, context: McpContext) {
       annotateIncreaseTopNHint(result, select, input.groupBy);
 
       return result;
-    }),
+    },
   );
 }

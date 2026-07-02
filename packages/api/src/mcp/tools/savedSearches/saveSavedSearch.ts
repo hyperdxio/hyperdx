@@ -1,5 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-
 import * as config from '@/config';
 import {
   createSavedSearch,
@@ -7,20 +5,23 @@ import {
   updateSavedSearch,
 } from '@/controllers/savedSearch';
 import { getSource } from '@/controllers/sources';
-import type { McpContext } from '@/mcp/tools/types';
-import { mcpError, validateObjectId } from '@/mcp/utils/errors';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import {
+  mcpServerError,
+  mcpUserError,
+  validateObjectId,
+} from '@/mcp/utils/errors';
 
 import { mcpSaveSavedSearchSchema } from './schemas';
 
-export function registerSaveSavedSearch(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerSaveSavedSearch({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
-  server.registerTool(
+  registerTool(
     'clickstack_save_saved_search',
     {
       title: 'Create or Update Saved Search',
@@ -30,7 +31,7 @@ export function registerSaveSavedSearch(
         'Use clickstack_list_sources to find the sourceId.',
       inputSchema: mcpSaveSavedSearchSchema,
     },
-    withToolTracing('clickstack_save_saved_search', context, async input => {
+    async input => {
       const isUpdate = !!input.id;
 
       // ── Validate ID for updates ──
@@ -42,7 +43,7 @@ export function registerSaveSavedSearch(
       // ── Validate sourceId (format validated by Zod schema, check existence) ──
       const source = await getSource(teamId, input.sourceId);
       if (!source) {
-        return mcpError('Source not found');
+        return mcpUserError('Source not found');
       }
 
       // Build the saved search data matching what the controller expects.
@@ -61,12 +62,7 @@ export function registerSaveSavedSearch(
         // Verify the saved search exists before updating.
         const existing = await getSavedSearch(teamId, input.id!);
         if (!existing) {
-          return {
-            isError: true,
-            content: [
-              { type: 'text' as const, text: 'Saved search not found' },
-            ],
-          };
+          return mcpUserError('Saved search not found');
         }
 
         const updated = await updateSavedSearch(
@@ -77,15 +73,7 @@ export function registerSaveSavedSearch(
         );
 
         if (!updated) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: 'text' as const,
-                text: 'Failed to update saved search',
-              },
-            ],
-          };
+          return mcpServerError('Failed to update saved search');
         }
 
         return {
@@ -127,6 +115,6 @@ export function registerSaveSavedSearch(
           },
         ],
       };
-    }),
+    },
   );
 }

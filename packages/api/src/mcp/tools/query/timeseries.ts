@@ -1,9 +1,8 @@
 import { FIXED_TIME_BUCKET_EXPR_ALIAS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import type { McpContext } from '@/mcp/tools/types';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
 
 import {
   annotateIncreaseTopNHint,
@@ -72,10 +71,10 @@ const timeseriesSchema = z.object({
 
 // ─── Tool registration ───────────────────────────────────────────────────────
 
-export function registerTimeseries(server: McpServer, context: McpContext) {
+export function registerTimeseries({ context, registerTool }: ToolRegistrar) {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_timeseries',
     {
       title: 'Time-Series Chart',
@@ -102,13 +101,10 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
         'summary and exponential histogram kinds are not supported by the query renderer yet.',
       inputSchema: timeseriesSchema,
     },
-    withToolTracing('clickstack_timeseries', context, async input => {
+    async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: timeRange.error }],
-        };
+        return mcpUserError(timeRange.error);
       }
       const { startDate, endDate } = timeRange;
 
@@ -222,6 +218,6 @@ export function registerTimeseries(server: McpServer, context: McpContext) {
       }
 
       return result;
-    }),
+    },
   );
 }

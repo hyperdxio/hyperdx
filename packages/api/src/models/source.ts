@@ -18,7 +18,7 @@ import { objectIdSchema } from '@/utils/zod';
 // ISource is a discriminated union (inherits from TSource) with team added
 // and connection widened to ObjectId | string for Mongoose.
 // Omit and & distribute over the union, preserving the discriminated structure.
-export const ISourceSchema = z.discriminatedUnion('kind', [
+const ISourceSchema = z.discriminatedUnion('kind', [
   LogSourceSchema.omit({ connection: true }).extend({
     team: objectIdSchema,
     connection: objectIdSchema.or(z.string()),
