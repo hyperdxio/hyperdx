@@ -67,9 +67,11 @@ talks to **two separate HyperDX API instances** running on different slots:
        branch worktree                          main worktree
 ```
 
-Eval data (synthetic traces/logs) is seeded into the ClickHouse that the eval
-config points at — typically the ClickHouse on this worktree's own slot, shared
-by both MCP servers via HyperDX Sources.
+Each slot runs its own ClickHouse instance. Eval data (synthetic traces/logs)
+must be seeded into **both** ClickHouse instances separately — the harness
+auto-seeds on first run per slot, but only into the ClickHouse that the active
+`eval.config.json` points at. See step 2 below for how `setup-hyperdx` targets
+each instance.
 
 ### 1. Start both dev stacks
 
@@ -112,6 +114,9 @@ already exist and pass the check:
 
 ```bash
 # Quick check: do saved configs exist and are the MCPs reachable?
+# NOTE: These cp commands temporarily overwrite eval.config.json with a
+# single-instance config. If you already have a combined two-MCP config,
+# you must re-run step 3 (jq merge) afterward.
 cp packages/hdx-eval/eval.config.branch.json packages/hdx-eval/eval.config.json 2>/dev/null && \
   yarn workspace @hyperdx/hdx-eval dev setup-hyperdx --check && \
   echo "Branch config OK" || echo "Branch config needs setup"
@@ -284,7 +289,7 @@ yarn workspace @hyperdx/hdx-eval viewer
 If you run `docker compose up` without sourcing `scripts/dev-env.sh` first,
 containers bind to default ports (8123, 27017) instead of slot-specific ones.
 Always use the `bash -c 'export HDX_DEV_SLOT=... && source scripts/dev-env.sh
-&& docker compose ...'` pattern shown above.
+&& docker compose ...'` pattern (see [Cleanup](#cleanup) below).
 
 ### Access keys go stale after container restarts
 
