@@ -73,12 +73,16 @@ export async function updateSource(
   const existing = await Source.findOne({ _id: sourceId, team });
   if (!existing) return null;
 
+  // Mongoose sets createdAt to now on replace unless the replacement
+  // document already carries one — preserve the original in both paths.
+  const createdAt: Date | undefined = existing.get('createdAt');
+
   // Same kind: simple update through the discriminator model
   if (existing.kind === source.kind) {
     // @ts-expect-error The findOneAndReplace method has incompatible type signatures but is actually safe
     return getModelForKind(source.kind)?.findOneAndReplace(
       { _id: sourceId, team },
-      source,
+      { ...source, ...(createdAt && { createdAt }) },
       { new: true },
     );
   }
@@ -104,7 +108,6 @@ export async function updateSource(
   // Use replaceOne on the raw collection to swap the entire document
   // in place (including the discriminator key). This is a single atomic
   // write — the document is never absent from the collection.
-  const createdAt: Date | undefined = existing.get('createdAt');
   const replacement = {
     ...parseResult.data,
     connection: new mongoose.Types.ObjectId(parseResult.data.connection),

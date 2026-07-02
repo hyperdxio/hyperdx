@@ -3349,7 +3349,8 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Unique source ID.",
+            "readOnly": true,
+            "description": "Unique source ID. Server-generated; ignored if sent in create/update requests.",
             "example": "507f1f77bcf86cd799439011"
           },
           "name": {
@@ -3556,7 +3557,8 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Unique source ID.",
+            "readOnly": true,
+            "description": "Unique source ID. Server-generated; ignored if sent in create/update requests.",
             "example": "507f1f77bcf86cd799439021"
           },
           "name": {
@@ -3788,7 +3790,8 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Unique source ID.",
+            "readOnly": true,
+            "description": "Unique source ID. Server-generated; ignored if sent in create/update requests.",
             "example": "507f1f77bcf86cd799439041"
           },
           "name": {
@@ -3868,7 +3871,8 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Unique source ID.",
+            "readOnly": true,
+            "description": "Unique source ID. Server-generated; ignored if sent in create/update requests.",
             "example": "507f1f77bcf86cd799439031"
           },
           "name": {
@@ -3940,7 +3944,8 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Unique source ID.",
+            "readOnly": true,
+            "description": "Unique source ID. Server-generated; ignored if sent in create/update requests.",
             "example": "507f1f77bcf86cd799439051"
           },
           "name": {
@@ -6207,6 +6212,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -6251,6 +6266,16 @@
                 },
                 "example": {
                   "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -6336,6 +6361,16 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Source not found",
             "content": {
@@ -6391,6 +6426,16 @@
                 },
                 "example": {
                   "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

@@ -14,6 +14,7 @@ import {
   getSources,
   updateSource,
 } from '@/controllers/sources';
+import Connection from '@/models/connection';
 import { SourceDocument } from '@/models/source';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import logger from '@/utils/logger';
@@ -92,20 +93,39 @@ function mapRequestGranularitiesToInternalFormat(
 
 // SourceSchemaNoId only requires `connection` to be a non-empty string, but
 // the Mongoose model declares it as an ObjectId ref — a non-ObjectId value
-// would surface as a 500 CastError instead of a 400. Runs after body
+// would surface as a 500 CastError instead of a 400. Also verifies the
+// connection exists and belongs to the requesting team, so a source can
+// never reference another team's ClickHouse credentials. Runs after body
 // validation so req.body is the parsed shape.
-function requireValidConnectionId(
+async function requireValidConnectionId(
   req: express.Request,
   res: express.Response,
   next: express.NextFunction,
 ) {
-  const parsed = objectIdSchema.safeParse(req.body?.connection);
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ message: 'connection must be a valid connection id' });
+  try {
+    const parsed = objectIdSchema.safeParse(req.body?.connection);
+    if (!parsed.success) {
+      return res
+        .status(400)
+        .json({ message: 'connection must be a valid connection id' });
+    }
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+    const connectionExists = await Connection.exists({
+      _id: parsed.data,
+      team: teamId,
+    });
+    if (connectionExists == null) {
+      return res
+        .status(400)
+        .json({ message: 'connection must be an existing connection id' });
+    }
+    next();
+  } catch (e) {
+    next(e);
   }
-  next();
 }
 
 function mapSourceToExternalSource(source: TSource): TSource {
@@ -348,7 +368,8 @@ function formatExternalSource(source: SourceDocument) {
  *       properties:
  *         id:
  *           type: string
- *           description: Unique source ID.
+ *           readOnly: true
+ *           description: Unique source ID. Server-generated; ignored if sent in create/update requests.
  *           example: 507f1f77bcf86cd799439011
  *         name:
  *           type: string
@@ -511,7 +532,8 @@ function formatExternalSource(source: SourceDocument) {
  *       properties:
  *         id:
  *           type: string
- *           description: Unique source ID.
+ *           readOnly: true
+ *           description: Unique source ID. Server-generated; ignored if sent in create/update requests.
  *           example: 507f1f77bcf86cd799439021
  *         name:
  *           type: string
@@ -693,7 +715,8 @@ function formatExternalSource(source: SourceDocument) {
  *       properties:
  *         id:
  *           type: string
- *           description: Unique source ID.
+ *           readOnly: true
+ *           description: Unique source ID. Server-generated; ignored if sent in create/update requests.
  *           example: 507f1f77bcf86cd799439041
  *         name:
  *           type: string
@@ -755,7 +778,8 @@ function formatExternalSource(source: SourceDocument) {
  *       properties:
  *         id:
  *           type: string
- *           description: Unique source ID.
+ *           readOnly: true
+ *           description: Unique source ID. Server-generated; ignored if sent in create/update requests.
  *           example: 507f1f77bcf86cd799439031
  *         name:
  *           type: string
@@ -811,7 +835,8 @@ function formatExternalSource(source: SourceDocument) {
  *       properties:
  *         id:
  *           type: string
- *           description: Unique source ID.
+ *           readOnly: true
+ *           description: Unique source ID. Server-generated; ignored if sent in create/update requests.
  *           example: 507f1f77bcf86cd799439051
  *         name:
  *           type: string
@@ -916,7 +941,7 @@ router.get('/', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (teamId == null) {
-      return res.sendStatus(403);
+      return res.status(403).json({ message: 'Forbidden' });
     }
 
     const sources: SourceDocument[] = await getSources(teamId.toString());
@@ -960,6 +985,12 @@ router.get('/', async (req, res, next) => {
  *               $ref: '#/components/schemas/Error'
  *             example:
  *               message: "Unauthorized access. API key is missing or invalid."
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       '404':
  *         description: Source not found
  *         content:
@@ -980,13 +1011,13 @@ router.get(
     try {
       const teamId = req.user?.team;
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
 
       const source = await getSource(teamId.toString(), req.params.id);
 
       if (source == null) {
-        return res.sendStatus(404);
+        return res.status(404).json({ message: 'Source not found' });
       }
 
       const data = formatExternalSource(source);
@@ -1049,6 +1080,12 @@ router.get(
  *               $ref: '#/components/schemas/Error'
  *             example:
  *               message: "Unauthorized access. API key is missing or invalid."
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.post(
   '/',
@@ -1061,7 +1098,7 @@ router.post(
     try {
       const teamId = req.user?.team;
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
 
       const source = await createSource(teamId.toString(), {
@@ -1137,6 +1174,12 @@ router.post(
  *               $ref: '#/components/schemas/Error'
  *             example:
  *               message: "Unauthorized access. API key is missing or invalid."
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       '404':
  *         description: Source not found
  *         content:
@@ -1160,7 +1203,7 @@ router.put(
     try {
       const teamId = req.user?.team;
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
 
       const source = await updateSource(teamId.toString(), req.params.id, {
@@ -1169,7 +1212,7 @@ router.put(
       });
 
       if (source == null) {
-        return res.sendStatus(404);
+        return res.status(404).json({ message: 'Source not found' });
       }
 
       const data = formatExternalSource(source);
@@ -1218,6 +1261,12 @@ router.put(
  *               $ref: '#/components/schemas/Error'
  *             example:
  *               message: "Unauthorized access. API key is missing or invalid."
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       '404':
  *         description: Source not found
  *         content:
@@ -1238,7 +1287,7 @@ router.delete(
     try {
       const teamId = req.user?.team;
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
 
       const deletedSource = await deleteSource(
@@ -1247,7 +1296,7 @@ router.delete(
       );
 
       if (deletedSource == null) {
-        return res.sendStatus(404);
+        return res.status(404).json({ message: 'Source not found' });
       }
 
       res.json({});

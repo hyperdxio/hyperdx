@@ -89,15 +89,18 @@ describe('External API v2 Sources CRUD', () => {
     connection: connection._id.toString(),
   });
 
-  const createOtherTeamSource = async () => {
-    const otherTeamId = new mongoose.Types.ObjectId();
-    const otherConnection = await Connection.create({
+  const createOtherTeamConnection = (otherTeamId: mongoose.Types.ObjectId) =>
+    Connection.create({
       team: otherTeamId,
       name: 'Other Team Connection',
       host: config.CLICKHOUSE_HOST,
       username: config.CLICKHOUSE_USER,
       password: config.CLICKHOUSE_PASSWORD,
     });
+
+  const createOtherTeamSource = async () => {
+    const otherTeamId = new mongoose.Types.ObjectId();
+    const otherConnection = await createOtherTeamConnection(otherTeamId);
     return LogSource.create({
       kind: SourceKind.Log,
       team: otherTeamId,
@@ -259,6 +262,21 @@ describe('External API v2 Sources CRUD', () => {
         .expect(400);
     });
 
+    it('should return 400 when connection belongs to another team', async () => {
+      const otherConnection = await createOtherTeamConnection(
+        new mongoose.Types.ObjectId(),
+      );
+
+      await authRequest('post', BASE_URL)
+        .send({
+          ...logSourceBody(),
+          connection: otherConnection._id.toString(),
+        })
+        .expect(400);
+
+      expect(await Source.findOne({ team: team._id })).toBeNull();
+    });
+
     it('should return 400 for an invalid body', async () => {
       await authRequest('post', BASE_URL)
         .send({ kind: SourceKind.Log, name: 'Missing required fields' })
@@ -330,6 +348,42 @@ describe('External API v2 Sources CRUD', () => {
       await authRequest('put', `${BASE_URL}/${logSource._id}`)
         .send({ ...logSourceBody(), connection: 'my-connection-name' })
         .expect(400);
+    });
+
+    it('should return 400 when connection belongs to another team', async () => {
+      const logSource = await LogSource.create({
+        ...logSourceBody(),
+        team: team._id,
+      });
+      const otherConnection = await createOtherTeamConnection(
+        new mongoose.Types.ObjectId(),
+      );
+
+      await authRequest('put', `${BASE_URL}/${logSource._id}`)
+        .send({
+          ...logSourceBody(),
+          connection: otherConnection._id.toString(),
+        })
+        .expect(400);
+
+      const persisted = await Source.findById(logSource._id);
+      expect(persisted!.connection.toString()).toBe(connection._id.toString());
+    });
+
+    it('should preserve createdAt on a same-kind update', async () => {
+      const logSource = await LogSource.create({
+        ...logSourceBody(),
+        team: team._id,
+      });
+      const originalCreatedAt = logSource.get('createdAt');
+      expect(originalCreatedAt).toBeInstanceOf(Date);
+
+      await authRequest('put', `${BASE_URL}/${logSource._id}`)
+        .send({ ...logSourceBody(), name: 'Updated Log Source' })
+        .expect(200);
+
+      const raw = await Source.collection.findOne({ _id: logSource._id });
+      expect(raw!.createdAt).toEqual(originalCreatedAt);
     });
 
     it("should change a source's kind", async () => {
