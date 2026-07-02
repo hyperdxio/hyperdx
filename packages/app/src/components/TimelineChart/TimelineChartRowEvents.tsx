@@ -58,7 +58,8 @@ export const TimelineChartRowEvents = memo(function (
           position: 'absolute',
           left: `${percentX}%`,
           width: `${percentWidth}%`,
-          minWidth: event.minWidthPx ?? 0,
+          minWidth:
+            event.minWidthPx != null ? `${event.minWidthPx}px` : undefined,
           height: '100%',
           padding: '1px 0',
         }}
