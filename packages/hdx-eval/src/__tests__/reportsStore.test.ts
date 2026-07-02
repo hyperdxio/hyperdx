@@ -126,4 +126,33 @@ describe('writeBatchSummary over a plugin-arm batch', () => {
       summary.scenarios[0].deltas['hyperdx/myplugin'].combinedScore,
     ).toBeCloseTo(0.1, 5);
   });
+
+  it('reuses the persisted baseline when regenerating without --baseline', () => {
+    // Simulate the run command's auto-report: explicit baseline written to
+    // the canonical _summary.json location.
+    writeBatchSummary(batchDir, join(batchDir, '_summary.md'), 'hyperdx/none');
+
+    // Regenerate with no explicit baseline: reuses the persisted one instead
+    // of falling back to the alphabetically-first column.
+    const result = writeBatchSummary(batchDir, join(batchDir, '_regen.md'));
+    const summary = JSON.parse(
+      readFileSync(result.jsonPath, 'utf8'),
+    ) as BatchSummary;
+    expect(summary.baseline).toBe('hyperdx/none');
+    expect(
+      summary.scenarios[0].deltas['hyperdx/myplugin'].combinedScore,
+    ).toBeCloseTo(0.1, 5);
+  });
+
+  it('ignores a stale persisted baseline that matches no column', () => {
+    writeFileSync(
+      join(batchDir, '_summary.json'),
+      JSON.stringify({ baseline: 'hyperdx+oldformat' }),
+    );
+    const result = writeBatchSummary(batchDir, join(batchDir, '_stale.md'));
+    const summary = JSON.parse(
+      readFileSync(result.jsonPath, 'utf8'),
+    ) as BatchSummary;
+    expect(summary.baseline).toBe('hyperdx/myplugin');
+  });
 });

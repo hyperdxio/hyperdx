@@ -351,7 +351,7 @@ program
     '--baseline <name>',
     'Column key to use as baseline in reports. Keys are the MCP name, plus ' +
       '"/<model>", "/<plugin>", or "/<model>+<plugin>" when models/plugins ' +
-      'vary (default: first mcp, first model, first plugin)',
+      'vary (default: the first listed mcp/model/plugin variants)',
   )
   .option('--runs <n>', 'Number of runs per (scenario,MCP) cell', '3')
   .option(
@@ -474,7 +474,10 @@ program
         multiModel: models.length > 1,
         multiPlugin: plugins.length > 1,
       };
-      // For baseline resolution: default to the first mcp, first model, first plugin.
+      // Default baseline: the first listed variant of each dimension (first
+      // mcp, first model, first plugin — or their defaults when a flag is
+      // omitted). The auto-report persists it in _summary.json, and `report`
+      // regenerations reuse the persisted value, so delta signs stay stable.
       const firstColumnKey = columnKeyFor(
         mcpKinds[0],
         models[0],
@@ -977,7 +980,8 @@ program
   .option('--out <path>', 'Output markdown path (default: <batch>/_summary.md)')
   .option(
     '--baseline <name>',
-    'Column key to use as baseline for delta computation (default: first column found)',
+    'Column key to use as baseline for delta computation (default: the ' +
+      "baseline recorded in the batch's _summary.json, else the first column)",
   )
   .action(
     async (batch: string, cmdOpts: { out?: string; baseline?: string }) => {

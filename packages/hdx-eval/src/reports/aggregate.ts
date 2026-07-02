@@ -107,8 +107,10 @@ export function columnKeyFor(
 export function buildAggregate(args: {
   batchDir: string;
   pairs: GradedRunPair[];
-  /** Explicit baseline column key. If not set, the first column encountered
-   *  is used. When using a single model, pass just the mcp name. */
+  /** Explicit baseline column key. Ignored when it doesn't match any column
+   *  in the batch; without a (valid) baseline the first column is used.
+   *  Callers that know the CLI variant order (the `run` command) or a
+   *  previously persisted baseline (`writeBatchSummary`) pass it here. */
   baseline?: ColumnKey;
 }): BatchSummary {
   // Detect whether this batch compares multiple models / plugins.
@@ -137,7 +139,13 @@ export function buildAggregate(args: {
     );
   }
   const columnOrder = [...columnSet].sort();
-  const baseline = args.baseline ?? columnOrder[0];
+  // Honor the requested baseline only if it actually matches a column (a
+  // persisted baseline can go stale, e.g. after a key-format change);
+  // otherwise fall back to the first column.
+  const baseline =
+    args.baseline && columnSet.has(args.baseline)
+      ? args.baseline
+      : columnOrder[0];
 
   const scenarios: ScenarioSummary[] = [];
   for (const [name, ps] of byScenario.entries()) {

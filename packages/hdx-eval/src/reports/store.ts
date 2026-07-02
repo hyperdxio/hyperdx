@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
 
 import type { GradeRecord } from '@/grading/types';
 import type { RunRecord } from '@/harness/types';
@@ -35,13 +36,34 @@ function loadGradedPairs(batchDir: string): GradedRunPair[] {
   return pairs;
 }
 
+/**
+ * Baseline recorded by a previous report at the batch's canonical
+ * `_summary.json`, if any. Lets `report` regenerations keep the baseline the
+ * `run` auto-report chose (CLI variant order), which `buildAggregate` cannot
+ * reconstruct from the run data alone.
+ */
+function persistedBaseline(batchDir: string): ColumnKey | undefined {
+  try {
+    const raw = JSON.parse(
+      readFileSync(join(batchDir, '_summary.json'), 'utf8'),
+    ) as { baseline?: unknown };
+    return typeof raw.baseline === 'string' ? raw.baseline : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function writeBatchSummary(
   batchDir: string,
   outPath: string,
   baseline?: ColumnKey,
 ): { jsonPath: string; mdPath: string; pairsCount: number } {
   const pairs = loadGradedPairs(batchDir);
-  const summary = buildAggregate({ batchDir, pairs, baseline });
+  const summary = buildAggregate({
+    batchDir,
+    pairs,
+    baseline: baseline ?? persistedBaseline(batchDir),
+  });
 
   const jsonPath = outPath.replace(/\.md$/, '.json');
   writeFileSync(jsonPath, JSON.stringify(summary, null, 2) + '\n', 'utf8');

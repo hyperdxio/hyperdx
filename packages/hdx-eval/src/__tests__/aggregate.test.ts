@@ -253,6 +253,15 @@ describe('buildAggregate', () => {
     // Delta should be clickhouse (challenger) - hyperdx (baseline)
     expect(sc.deltas['clickhouse']).toBeDefined();
     expect(sc.deltas['hyperdx']).toBeUndefined();
+
+    // A baseline that matches no column falls back to the first column
+    // instead of producing all-null deltas.
+    const fallback = buildAggregate({
+      batchDir: '/tmp/x',
+      pairs,
+      baseline: 'not-a-column',
+    });
+    expect(fallback.baseline).toBe('clickhouse');
   });
 
   it('produces an ordered, multi-scenario summary', () => {
