@@ -430,13 +430,23 @@ const mcpTileLayoutSchema = z.object({
     .max(24)
     .optional()
     .default(12)
-    .describe('Width in grid columns (1–24). Default 12'),
+    .describe(
+      'Width in grid columns (1-24; a full row is 24). Default 12. ' +
+        'Match the width to the displayType: number 6-8 (three or four KPIs per row), ' +
+        'line / stacked_bar / pie 8-12, heatmap 12, table / search 12-24 (often the full row). ' +
+        'A markdown note is usually full-width (24).',
+    ),
   h: z
     .number()
     .min(1)
     .optional()
     .default(4)
-    .describe('Height in grid rows. Default 4'),
+    .describe(
+      'Height in grid rows. Default 4. ' +
+        'Match the height to the displayType so content is not clipped: number 3-4, ' +
+        'line / stacked_bar / pie 4-6, heatmap 5-6, table / search 6-10 (taller when more rows are expected), ' +
+        'markdown 2-3 for a short note (h: 1 clips the text).',
+    ),
   id: z
     .string()
     .max(36)
