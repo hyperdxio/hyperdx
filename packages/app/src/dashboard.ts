@@ -146,7 +146,11 @@ export function useUpdateDashboard() {
         'dashboards',
       ]);
       queryClient.setQueryData<Dashboard[]>(['dashboards'], current =>
-        current?.map(d => (d.id === dashboard.id ? { ...d, ...dashboard } : d)),
+        current
+          ? current.map(d =>
+              d.id === dashboard.id ? { ...d, ...dashboard } : d,
+            )
+          : current,
       );
       return { previousDashboards };
     },
