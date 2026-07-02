@@ -1,5 +1,27 @@
 # @hyperdx/app
 
+## 2.30.0
+
+### Patch Changes
+
+- ea9b88952: Fix "Accordion.Item component was rendered with invalid value or without
+  value" error when expanding a map attribute group (e.g. LogAttributes) in the
+  search filters sidebar. Telemetry containing an empty attribute key produced a
+  filter group with an empty name, which Mantine rejects; such groups now render
+  with an `(empty)` placeholder name instead of crashing the panel.
+- 555d88a99: Fix "Add to Filters" on a value inside parsed JSON from a String column (for example `Body`) building invalid SQL. The `JSONExtractString(...)` expression the JSON viewer produces is now passed through unchanged instead of being mis-parsed as a dot-form Map sub-key and mangled into a query ClickHouse rejects.
+- 392a7749c: Hide the left nav feedback control entirely when the nav is collapsed, since the thumbs up/down icons were not usable in that state.
+- 1838a58e4: fix: brings back sessions source validation that was mysteriously deleted
+- 39e062f0a: storybook: Updates the sample rows data in TimelineChart.stories
+- 36de29f13: chore: refactor facet filter fetching logic into a custom hook
+- d1802e1c8: feat(trace): add a trace minimap above the waterfall
+- Updated dependencies [727d3274e]
+- Updated dependencies [abf5b5373]
+- Updated dependencies [bfc6fb5c7]
+- Updated dependencies [3f1e1fe4c]
+  - @hyperdx/api@2.30.0
+  - @hyperdx/common-utils@0.22.0
+
 ## 2.29.0
 
 ### Minor Changes
