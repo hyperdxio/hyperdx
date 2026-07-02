@@ -386,21 +386,36 @@ export const computeRatio = (
   return numerator / denominator;
 };
 
-export const computeResultSetRatio = (resultSet: ResponseJSON<any>) => {
+export const computeResultSetRatio = (
+  resultSet: ResponseJSON<any>,
+  operands?: { numeratorName: string; denominatorName: string },
+) => {
   const _meta = resultSet.meta ?? [];
   const _data = resultSet.data;
-  // The numerator/denominator are the two value columns. The joined meta seeds
-  // them first (see queryChartConfig), so the first two numeric columns are the
-  // ratio operands; numeric group-by dimensions (if any) come after.
-  const numericColumns = inferNumericColumn(_meta);
-  const numerator = numericColumns?.[0];
-  const denominator = numericColumns?.[1];
+  // The numerator/denominator are the two value columns. Callers that know the
+  // operands (mergeResultSets) pass them explicitly so we don't depend on
+  // column order; otherwise fall back to the first two numeric columns (numeric
+  // group-by dimensions, if any, come after the operands in the joined meta).
+  let numerator: { name: string; type: string } | undefined;
+  let denominator: { name: string; type: string } | undefined;
+  if (operands) {
+    numerator = _meta.find(m => m.name === operands.numeratorName);
+    denominator = _meta.find(m => m.name === operands.denominatorName);
+  } else {
+    const numericColumns = inferNumericColumn(_meta);
+    numerator = numericColumns?.[0];
+    denominator = numericColumns?.[1];
+  }
   if (!numerator || !denominator) {
     throw new Error(
       `Unable to compute ratio - meta information: ${JSON.stringify(_meta)}.`,
     );
   }
-  const ratioColumnName = `${numerator.name}/${denominator.name}`;
+  // Strip the collision-disambiguation suffix (see mergeResultSets) from the
+  // rendered label so a same-alias ratio reads `count(x)/count(x)`, not
+  // `count(x)/count(x)__1`.
+  const denominatorLabel = denominator.name.replace(/__\d+$/, '');
+  const ratioColumnName = `${numerator.name}/${denominatorLabel}`;
   // Carry through every non-operand column — the timestamp and any group-by
   // dimensions — so a grouped ratio renders one series per group instead of
   // collapsing into a single line.
@@ -450,6 +465,119 @@ export const computeResultSetRatio = (resultSet: ResponseJSON<any>) => {
     }),
     meta: [{ name: ratioColumnName, type: 'Float64' }, ...passthroughColumns],
   };
+};
+
+/**
+ * Joins the per-series result sets of a split metric query (one query per
+ * series) back into a single result set, merging rows that share a time bucket
+ * (and group-by dimensions, when grouped). When `isRatio` is set, the two
+ * series are divided via {@link computeResultSetRatio}.
+ *
+ * Exported so the merge — the root of the grouped-ratio fix — can be unit
+ * tested without a live ClickHouse.
+ */
+export const mergeResultSets = ({
+  resultSets,
+  isTimeSeries,
+  isRatio,
+}: {
+  resultSets: ResponseJSON<any>[];
+  isTimeSeries: boolean;
+  isRatio: boolean;
+}): ResponseJSON<any> => {
+  const metaSet = new Map<string, { name: string; type: string }>();
+  const tsBucketMap = new Map<string, Record<string, string | number>>();
+
+  // Seed metaSet with each split's value column in resultSet order, so the
+  // joined meta is [value0, value1, ..., non-value columns]. This matches the
+  // order of config.select that useChartNumberFormats indexes into.
+  //
+  // Two splits can resolve to the SAME value-column alias (e.g. a ratio of
+  // count(request) filtered / unfiltered — the alias omits the WHERE filter).
+  // If we let them share a column, the row merge below would clobber one
+  // operand with the other and the ratio would be undefined. So rename a
+  // colliding value column per split index and remember the (possibly renamed)
+  // operand name so the ratio divides the right two columns.
+  const operandNames: string[] = [];
+  const renamedResultSets = resultSets.map((resultSet, splitIdx) => {
+    const valueColumn = inferNumericColumn(resultSet.meta ?? [])?.[0];
+    if (!valueColumn) {
+      operandNames.push('');
+      return resultSet;
+    }
+    const name = metaSet.has(valueColumn.name)
+      ? `${valueColumn.name}__${splitIdx}`
+      : valueColumn.name;
+    operandNames.push(name);
+    metaSet.set(name, { ...valueColumn, name });
+    if (name === valueColumn.name) {
+      return resultSet;
+    }
+    return {
+      ...resultSet,
+      meta: (resultSet.meta ?? []).map(m =>
+        m.name === valueColumn.name ? { ...m, name } : m,
+      ),
+      data: resultSet.data.map(row => {
+        const { [valueColumn.name]: value, ...rest } = row;
+        return { ...rest, [name]: value };
+      }),
+    };
+  });
+
+  // Add other (non-value) columns to metaSet and merge rows.
+  for (const resultSet of renamedResultSets) {
+    if (Array.isArray(resultSet.meta)) {
+      for (const meta of resultSet.meta) {
+        if (!metaSet.has(meta.name)) {
+          metaSet.set(meta.name, meta);
+        }
+      }
+    }
+
+    const timestampColumn = inferTimestampColumn(resultSet.meta ?? []);
+    const numericColumn = inferNumericColumn(resultSet.meta ?? []);
+    const numericColumnName = numericColumn?.[0]?.name;
+    for (const row of resultSet.data) {
+      const _rowWithoutValue = numericColumnName
+        ? Object.fromEntries(
+            Object.entries(row).filter(([key]) => key !== numericColumnName),
+          )
+        : { ...row };
+      // When the series are grouped, two rows at the same time bucket but
+      // different group values must stay distinct — key by (bucket + group
+      // dims) via the hash of the row minus its value column. Without a
+      // group dimension this collapses to the timestamp (or a fixed key),
+      // preserving the original behavior.
+      const hasGroupCols = Object.keys(_rowWithoutValue).some(
+        key => key !== timestampColumn?.name,
+      );
+      const mergeKey = hasGroupCols
+        ? objectHash(_rowWithoutValue)
+        : timestampColumn != null
+          ? row[timestampColumn.name]
+          : isTimeSeries
+            ? objectHash(_rowWithoutValue)
+            : '__FIXED_TIMESTAMP__';
+      if (tsBucketMap.has(mergeKey)) {
+        tsBucketMap.set(mergeKey, { ...tsBucketMap.get(mergeKey), ...row });
+      } else {
+        tsBucketMap.set(mergeKey, row);
+      }
+    }
+  }
+
+  const merged: ResponseJSON<any> = {
+    meta: Array.from(metaSet.values()),
+    data: Array.from(tsBucketMap.values()),
+  };
+
+  if (isRatio) {
+    const [numeratorName, denominatorName] = operandNames.filter(Boolean);
+    // TODO: we should compute the ratio on the db side
+    return computeResultSetRatio(merged, { numeratorName, denominatorName });
+  }
+  return merged;
 };
 
 export interface QueryInputs<Format extends DataFormat> {
@@ -705,75 +833,11 @@ export abstract class BaseClickhouseClient {
     }
     // metrics -> join resultSets
     else if (isBuilderChartConfig(config) && resultSets.length > 1) {
-      const metaSet = new Map<string, { name: string; type: string }>();
-      const tsBucketMap = new Map<string, Record<string, string | number>>();
-      // Seed metaSet with each split's value column in resultSet order, so the
-      // joined meta is [value0, value1, ..., non-value columns]. This matches the
-      // order of config.select that useChartNumberFormats indexes into.
-      for (const resultSet of resultSets) {
-        const valueColumn = inferNumericColumn(resultSet.meta ?? [])?.[0];
-        if (valueColumn && !metaSet.has(valueColumn.name)) {
-          metaSet.set(valueColumn.name, valueColumn);
-        }
-      }
-      // Add other (non-value) columns to metaSet
-      for (const resultSet of resultSets) {
-        if (Array.isArray(resultSet.meta)) {
-          for (const meta of resultSet.meta) {
-            const key = meta.name;
-            if (!metaSet.has(key)) {
-              metaSet.set(key, meta);
-            }
-          }
-        }
-
-        const timestampColumn = inferTimestampColumn(resultSet.meta ?? []);
-        const numericColumn = inferNumericColumn(resultSet.meta ?? []);
-        const numericColumnName = numericColumn?.[0]?.name;
-        for (const row of resultSet.data) {
-          const _rowWithoutValue = numericColumnName
-            ? Object.fromEntries(
-                Object.entries(row).filter(
-                  ([key]) => key !== numericColumnName,
-                ),
-              )
-            : { ...row };
-          // When the series are grouped, two rows at the same time bucket but
-          // different group values must stay distinct — key by (bucket + group
-          // dims) via the hash of the row minus its value column. Without a
-          // group dimension this collapses to the timestamp (or a fixed key),
-          // preserving the original behavior.
-          const hasGroupCols = Object.keys(_rowWithoutValue).some(
-            key => key !== timestampColumn?.name,
-          );
-          const mergeKey = hasGroupCols
-            ? objectHash(_rowWithoutValue)
-            : timestampColumn != null
-              ? row[timestampColumn.name]
-              : isTimeSeries
-                ? objectHash(_rowWithoutValue)
-                : '__FIXED_TIMESTAMP__';
-          if (tsBucketMap.has(mergeKey)) {
-            const existingRow = tsBucketMap.get(mergeKey);
-            tsBucketMap.set(mergeKey, {
-              ...existingRow,
-              ...row,
-            });
-          } else {
-            tsBucketMap.set(mergeKey, row);
-          }
-        }
-      }
-
-      const isRatio =
-        config.seriesReturnType === 'ratio' && resultSets.length === 2;
-
-      const _resultSet: ResponseJSON<any> = {
-        meta: Array.from(metaSet.values()),
-        data: Array.from(tsBucketMap.values()),
-      };
-      // TODO: we should compute the ratio on the db side
-      return isRatio ? computeResultSetRatio(_resultSet) : _resultSet;
+      return mergeResultSets({
+        resultSets,
+        isTimeSeries,
+        isRatio: config.seriesReturnType === 'ratio' && resultSets.length === 2,
+      });
     }
     throw new Error('No result sets');
   }

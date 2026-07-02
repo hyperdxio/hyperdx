@@ -7,6 +7,7 @@ import {
   computeResultSetRatio,
   convertCHDataTypeToJSType,
   JSDataType,
+  mergeResultSets,
 } from '@/clickhouse';
 import { ClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';
@@ -528,6 +529,137 @@ describe('computeResultSetRatio', () => {
     // Bucket total is 100 (only acme contributes a denominator), so acme's
     // share is still well-defined rather than NaN.
     expect(result.data[0]['errors/total']).toBe(0.2); // 20 / 100
+  });
+
+  it('divides each group by the grand total when there is no timestamp column (Table/Number ratio)', () => {
+    // No timestamp column -> every row shares the '__all__' bucket, so a grouped
+    // non-time-series ratio is each group's share of the grand total across all
+    // groups. This locks that intended semantic.
+    const mockResultSet: ResponseJSON<any> = {
+      meta: [
+        { name: 'errors', type: 'UInt64' },
+        { name: 'total', type: 'UInt64' },
+        { name: 'tenant', type: 'String' },
+      ],
+      data: [
+        { errors: '20', total: '100', tenant: 'acme' },
+        { errors: '30', total: '300', tenant: 'globex' },
+      ],
+      rows: 2,
+      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
+    };
+
+    const result = computeResultSetRatio(mockResultSet);
+
+    // Grand total = 100 + 300 = 400, so each group is divided by 400.
+    expect(result.data).toEqual([
+      { 'errors/total': 0.05, tenant: 'acme' }, // 20/400
+      { 'errors/total': 0.075, tenant: 'globex' }, // 30/400
+    ]);
+  });
+});
+
+describe('mergeResultSets', () => {
+  // Two split queries (one per series) that share a group-by dimension and are
+  // NOT time-series (Table display, no timestamp column).
+  const groupedSplits = (): ResponseJSON<any>[] => [
+    {
+      meta: [
+        { name: 'errors', type: 'UInt64' },
+        { name: 'tenant', type: 'String' },
+      ],
+      data: [
+        { errors: '20', tenant: 'acme' },
+        { errors: '30', tenant: 'globex' },
+      ],
+      rows: 2,
+      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
+    },
+    {
+      meta: [
+        { name: 'total', type: 'UInt64' },
+        { name: 'tenant', type: 'String' },
+      ],
+      data: [
+        { total: '100', tenant: 'acme' },
+        { total: '200', tenant: 'globex' },
+      ],
+      rows: 2,
+      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
+    },
+  ];
+
+  it('merges the numerator and denominator rows for the same group into one row instead of clobbering', () => {
+    const merged = mergeResultSets({
+      resultSets: groupedSplits(),
+      isTimeSeries: false,
+      isRatio: false,
+    });
+
+    // Each group keeps BOTH operands (the second split does not overwrite the
+    // first) — this is the merge step the grouped-ratio fix depends on.
+    expect(merged.meta?.map(m => m.name)).toEqual([
+      'errors',
+      'total',
+      'tenant',
+    ]);
+    expect(merged.data).toEqual([
+      { errors: '20', total: '100', tenant: 'acme' },
+      { errors: '30', total: '200', tenant: 'globex' },
+    ]);
+  });
+
+  it('computes the grouped ratio end-to-end from the split result sets', () => {
+    const merged = mergeResultSets({
+      resultSets: groupedSplits(),
+      isTimeSeries: false,
+      isRatio: true,
+    });
+
+    // No timestamp -> share of the grand total (300): 20/300, 30/300.
+    expect(merged.data).toEqual([
+      { 'errors/total': 20 / 300, tenant: 'acme' },
+      { 'errors/total': 30 / 300, tenant: 'globex' },
+    ]);
+  });
+
+  it('keeps operands distinct when both splits resolve to the same value-column alias', () => {
+    // A ratio of count(request) filtered / unfiltered: the alias omits the WHERE
+    // filter, so both splits emit a `count(request)` column. They must not
+    // collapse into one column (which would make the ratio uncomputable).
+    const resultSets: ResponseJSON<any>[] = [
+      {
+        meta: [
+          { name: 'count(request)', type: 'UInt64' },
+          { name: 'timestamp', type: 'DateTime' },
+        ],
+        data: [{ 'count(request)': '5', timestamp: 't0' }],
+        rows: 1,
+        statistics: { elapsed: 0.1, rows_read: 1, bytes_read: 100 },
+      },
+      {
+        meta: [
+          { name: 'count(request)', type: 'UInt64' },
+          { name: 'timestamp', type: 'DateTime' },
+        ],
+        data: [{ 'count(request)': '20', timestamp: 't0' }],
+        rows: 1,
+        statistics: { elapsed: 0.1, rows_read: 1, bytes_read: 100 },
+      },
+    ];
+
+    const merged = mergeResultSets({
+      resultSets,
+      isTimeSeries: true,
+      isRatio: true,
+    });
+
+    // 5 / 20 — would throw "Unable to compute ratio" if the two operands
+    // collapsed into a single column. The label strips the disambiguation
+    // suffix so it reads count(request)/count(request).
+    expect(merged.data).toEqual([
+      { 'count(request)/count(request)': 0.25, timestamp: 't0' },
+    ]);
   });
 });
 
