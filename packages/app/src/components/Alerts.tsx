@@ -17,10 +17,12 @@ import { useDisclosure } from '@mantine/hooks';
 
 import api from '@/api';
 import { WebhookForm } from '@/components/TeamSettings/WebhookForm';
+import { getWebhookChannelIcon } from '@/utils/webhookIcons';
 
 type Webhook = {
   _id: string;
   name: string;
+  service?: string;
 };
 
 const WebhookChannelForm = <T extends FieldValues>({
@@ -57,6 +59,15 @@ const WebhookChannelForm = <T extends FieldValues>({
     ];
   }, [webhooks]);
 
+  // value (_id) -> service, so options and the selected value can show a logo.
+  const serviceByValue = useMemo<Record<string, string | undefined>>(() => {
+    const map: Record<string, string | undefined> = {};
+    webhooks?.data.forEach((sw: Webhook) => {
+      map[sw._id] = sw.service;
+    });
+    return map;
+  }, [webhooks]);
+
   const { field } = useController({
     control,
     name: name! as Path<T>,
@@ -90,6 +101,21 @@ const WebhookChannelForm = <T extends FieldValues>({
                 hasWebhooks ? 'Select a Webhook' : 'No Webhooks available'
               }
               data={options}
+              leftSection={
+                field.value
+                  ? getWebhookChannelIcon(serviceByValue[field.value])
+                  : undefined
+              }
+              renderOption={({ option }) =>
+                option.value ? (
+                  <Group gap="xs" wrap="nowrap">
+                    {getWebhookChannelIcon(serviceByValue[option.value])}
+                    <span>{option.label}</span>
+                  </Group>
+                ) : (
+                  <span>{option.label}</span>
+                )
+              }
               {...field}
               error={fieldState.error?.message}
             />
