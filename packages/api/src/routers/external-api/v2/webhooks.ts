@@ -42,9 +42,15 @@ function formatExternalWebhook(
     return parseResult.data;
   }
 
-  // If parsing fails, log the error and return undefined
+  // If parsing fails, log only non-sensitive identifiers and the error. The
+  // raw webhook document carries write-only headers/queryParams (auth tokens),
+  // so it must never be written to logs.
   logger.error(
-    { webhook, error: parseResult.error },
+    {
+      webhookId: String(webhook._id),
+      service: webhook.service,
+      error: parseResult.error,
+    },
     'Failed to parse webhook using externalWebhookSchema:',
   );
 

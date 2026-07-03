@@ -5,7 +5,7 @@ import logger from '@/utils/logger';
 // ponytail: offset pagination is fine for team-scoped metadata collections
 // (saved searches, webhooks, alerts) — these top out in the thousands. Switch
 // to cursor-based only if a single team's collection ever grows past ~100k rows.
-export const MAX_PAGINATION_LIMIT = 1000;
+const MAX_PAGINATION_LIMIT = 1000;
 
 // Default limit is the max: these list endpoints were previously unbounded, so
 // defaulting to the cap keeps existing non-paginating clients working while

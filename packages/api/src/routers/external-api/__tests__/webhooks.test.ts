@@ -387,6 +387,42 @@ describe('External API v2 Webhooks', () => {
         })
         .expect(400);
     });
+
+    it('should reject a header name with characters outside the HTTP token charset', async () => {
+      await authRequest('post', WEBHOOKS_BASE_URL)
+        .send({
+          ...MOCK_GENERIC_WEBHOOK,
+          headers: { 'X-Bad@Name': 'value' },
+        })
+        .expect(400);
+    });
+
+    it('should reject a header name containing a colon', async () => {
+      await authRequest('post', WEBHOOKS_BASE_URL)
+        .send({
+          ...MOCK_GENERIC_WEBHOOK,
+          headers: { 'X-Bad:Name': 'value' },
+        })
+        .expect(400);
+    });
+
+    it('should reject a header name that starts with a digit', async () => {
+      await authRequest('post', WEBHOOKS_BASE_URL)
+        .send({
+          ...MOCK_GENERIC_WEBHOOK,
+          headers: { '1-Header': 'value' },
+        })
+        .expect(400);
+    });
+
+    it('should reject an empty header name', async () => {
+      await authRequest('post', WEBHOOKS_BASE_URL)
+        .send({
+          ...MOCK_GENERIC_WEBHOOK,
+          headers: { '': 'value' },
+        })
+        .expect(400);
+    });
   });
 
   describe('PUT /api/v2/webhooks/:id', () => {
