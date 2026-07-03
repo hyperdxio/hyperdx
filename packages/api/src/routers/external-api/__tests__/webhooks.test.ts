@@ -69,7 +69,65 @@ describe('External API v2 Webhooks', () => {
       const response = await authRequest('get', WEBHOOKS_BASE_URL).expect(200);
 
       expect(response.headers['content-type']).toMatch(/application\/json/);
-      expect(response.body).toEqual({ data: [] });
+      expect(response.body).toEqual({
+        data: [],
+        meta: { total: 0, limit: 1000, offset: 0 },
+      });
+    });
+
+    it('should paginate with limit and offset and report the total', async () => {
+      for (let i = 0; i < 3; i++) {
+        await Webhook.create({
+          name: `Webhook ${i}`,
+          service: WebhookService.Slack,
+          team: team._id,
+        });
+      }
+
+      const page1 = await authRequest(
+        'get',
+        `${WEBHOOKS_BASE_URL}?limit=2&offset=0`,
+      ).expect(200);
+      expect(page1.body.data).toHaveLength(2);
+      expect(page1.body.meta).toEqual({ total: 3, limit: 2, offset: 0 });
+
+      const page2 = await authRequest(
+        'get',
+        `${WEBHOOKS_BASE_URL}?limit=2&offset=2`,
+      ).expect(200);
+      expect(page2.body.data).toHaveLength(1);
+      expect(page2.body.meta).toEqual({ total: 3, limit: 2, offset: 2 });
+
+      // Pages must be disjoint and together cover every record (stable order).
+      const pagedIds = [...page1.body.data, ...page2.body.data].map(w => w.id);
+      expect(new Set(pagedIds).size).toBe(3);
+    });
+
+    it('should return an empty page with the correct total past the end', async () => {
+      await Webhook.create({
+        name: 'Only Webhook',
+        service: WebhookService.Slack,
+        team: team._id,
+      });
+
+      const response = await authRequest(
+        'get',
+        `${WEBHOOKS_BASE_URL}?offset=100`,
+      ).expect(200);
+      expect(response.body.data).toHaveLength(0);
+      expect(response.body.meta).toEqual({
+        total: 1,
+        limit: 1000,
+        offset: 100,
+      });
+    });
+
+    it('should reject an out-of-range or non-integer limit or offset', async () => {
+      await authRequest('get', `${WEBHOOKS_BASE_URL}?limit=0`).expect(400);
+      await authRequest('get', `${WEBHOOKS_BASE_URL}?limit=5000`).expect(400);
+      await authRequest('get', `${WEBHOOKS_BASE_URL}?offset=-1`).expect(400);
+      await authRequest('get', `${WEBHOOKS_BASE_URL}?limit=abc`).expect(400);
+      await authRequest('get', `${WEBHOOKS_BASE_URL}?limit=1.5`).expect(400);
     });
 
     it('should list a Slack webhook with only Slack-allowed fields', async () => {

@@ -6,6 +6,11 @@ import Webhook from '@/models/webhook';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import logger from '@/utils/logger';
 import {
+  getPagination,
+  paginationMeta,
+  paginationQuerySchema,
+} from '@/utils/pagination';
+import {
   ExternalWebhook,
   externalWebhookCreateSchema,
   externalWebhookSchema,
@@ -185,16 +190,39 @@ function formatExternalWebhook(
  *           slack: '#/components/schemas/SlackWebhook'
  *           incidentio: '#/components/schemas/IncidentIOWebhook'
  *           generic: '#/components/schemas/GenericWebhook'
+ *     PaginationMeta:
+ *       type: object
+ *       required:
+ *         - total
+ *         - limit
+ *         - offset
+ *       properties:
+ *         total:
+ *           type: integer
+ *           description: Total number of items matching the query, ignoring pagination.
+ *           example: 142
+ *         limit:
+ *           type: integer
+ *           description: Maximum number of items returned in this page.
+ *           example: 50
+ *         offset:
+ *           type: integer
+ *           description: Number of items skipped before this page.
+ *           example: 100
  *     WebhooksListResponse:
  *       type: object
  *       required:
  *         - data
+ *         - meta
  *       properties:
  *         data:
  *           type: array
  *           description: List of webhook objects.
  *           items:
  *             $ref: '#/components/schemas/Webhook'
+ *         meta:
+ *           $ref: '#/components/schemas/PaginationMeta'
+ *           description: Pagination metadata for this result page.
  */
 
 const router = express.Router();
@@ -204,9 +232,27 @@ const router = express.Router();
  * /api/v2/webhooks:
  *   get:
  *     summary: List Webhooks
- *     description: Retrieves a list of all webhooks for the authenticated team
+ *     description: Retrieves webhooks for the authenticated team (paginated).
  *     operationId: listWebhooks
  *     tags: [Webhooks]
+ *     parameters:
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 1000
+ *           default: 1000
+ *         description: Maximum number of webhooks to return.
+ *       - name: offset
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *         description: Number of webhooks to skip before returning results.
  *     responses:
  *       '200':
  *         description: Successfully retrieved webhooks
@@ -229,24 +275,33 @@ const router = express.Router();
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    if (teamId == null) {
-      return res.sendStatus(403);
+router.get(
+  '/',
+  validateRequest({ query: paginationQuerySchema }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const { limit, offset } = getPagination(req.query);
+      const filter = { team: teamId.toString() };
+      // Sort by _id so skip/offset paging is stable across requests.
+      const [webhooks, total] = await Promise.all([
+        Webhook.find(filter).sort({ _id: 1 }).skip(offset).limit(limit),
+        Webhook.countDocuments(filter),
+      ]);
+
+      return res.json({
+        data: webhooks.map(formatExternalWebhook).filter(s => s !== undefined),
+        meta: paginationMeta({ limit, offset }, total),
+      });
+    } catch (e) {
+      next(e);
     }
-
-    const webhooks: WebhookDocument[] = await Webhook.find({
-      team: teamId.toString(),
-    });
-
-    return res.json({
-      data: webhooks.map(formatExternalWebhook).filter(s => s !== undefined),
-    });
-  } catch (e) {
-    next(e);
-  }
-});
+  },
+);
 
 /**
  * @openapi

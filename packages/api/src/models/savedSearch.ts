@@ -76,6 +76,9 @@ const savedSearchSchema = new Schema<
   },
 );
 
+// Team-scoped list/count queries (e.g. external API pagination) filter on team.
+savedSearchSchema.index({ team: 1 });
+
 savedSearchSchema.methods.toExternalJSON = function (): ExternalSavedSearch {
   return {
     id: String(this._id),

@@ -232,4 +232,7 @@ const AlertSchema = new Schema<IAlert>(
   },
 );
 
+// Team-scoped list/count queries (e.g. external API pagination) filter on team.
+AlertSchema.index({ team: 1 });
+
 export default mongoose.model<IAlert>('Alert', AlertSchema);

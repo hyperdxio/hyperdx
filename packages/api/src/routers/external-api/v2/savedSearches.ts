@@ -11,6 +11,11 @@ import {
 import { getSource } from '@/controllers/sources';
 import { SavedSearch } from '@/models/savedSearch';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
+import {
+  getPagination,
+  paginationMeta,
+  paginationQuerySchema,
+} from '@/utils/pagination';
 import { objectIdSchema } from '@/utils/zod';
 
 // External request body. Uses `sourceId` (not the internal `source`) so the
@@ -172,12 +177,18 @@ async function requireValidSourceId(
  *             type: object
  *     SavedSearchesListResponse:
  *       type: object
+ *       required:
+ *         - data
+ *         - meta
  *       properties:
  *         data:
  *           type: array
  *           description: List of saved search objects.
  *           items:
  *             $ref: '#/components/schemas/SavedSearch'
+ *         meta:
+ *           $ref: '#/components/schemas/PaginationMeta'
+ *           description: Pagination metadata for this result page.
  *     SavedSearchResponseEnvelope:
  *       type: object
  *       properties:
@@ -206,6 +217,14 @@ const router = express.Router();
  *           maximum: 1000
  *           default: 1000
  *         description: Maximum number of saved searches to return.
+ *       - name: offset
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *         description: Number of saved searches to skip before returning results.
  *     responses:
  *       '200':
  *         description: Successfully retrieved saved searches
@@ -228,11 +247,7 @@ const router = express.Router();
  */
 router.get(
   '/',
-  validateRequest({
-    query: z.object({
-      limit: z.coerce.number().int().min(1).max(1000).default(1000),
-    }),
-  }),
+  validateRequest({ query: paginationQuerySchema }),
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
@@ -240,12 +255,17 @@ router.get(
         return res.status(403).json({ message: 'Forbidden' });
       }
 
-      const savedSearches = await SavedSearch.find({
-        team: teamId.toString(),
-      }).limit(Number(req.query.limit));
+      const { limit, offset } = getPagination(req.query);
+      const filter = { team: teamId.toString() };
+      // Sort by _id so skip/offset paging is stable across requests.
+      const [savedSearches, total] = await Promise.all([
+        SavedSearch.find(filter).sort({ _id: 1 }).skip(offset).limit(limit),
+        SavedSearch.countDocuments(filter),
+      ]);
 
       return res.json({
         data: savedSearches.map(s => s.toExternalJSON()),
+        meta: paginationMeta({ limit, offset }, total),
       });
     } catch (e) {
       next(e);

@@ -495,6 +495,53 @@ describe('External API Alerts', () => {
       );
       expect(secondAlert.threshold).toBe(200);
     });
+
+    it('should paginate with limit and offset and report the total', async () => {
+      await createTestAlert({ name: 'Alert A', threshold: 100 });
+      await createTestAlert({ name: 'Alert B', threshold: 200 });
+      await createTestAlert({ name: 'Alert C', threshold: 300 });
+
+      const page1 = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}?limit=2&offset=0`,
+      ).expect(200);
+      expect(page1.body.data).toHaveLength(2);
+      expect(page1.body.meta).toEqual({ total: 3, limit: 2, offset: 0 });
+
+      const page2 = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}?limit=2&offset=2`,
+      ).expect(200);
+      expect(page2.body.data).toHaveLength(1);
+      expect(page2.body.meta).toEqual({ total: 3, limit: 2, offset: 2 });
+
+      // Pages must be disjoint and together cover every record (stable order).
+      const pagedIds = [...page1.body.data, ...page2.body.data].map(a => a.id);
+      expect(new Set(pagedIds).size).toBe(3);
+    });
+
+    it('should return an empty page with the correct total past the end', async () => {
+      await createTestAlert({ name: 'Only Alert', threshold: 100 });
+
+      const response = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}?offset=100`,
+      ).expect(200);
+      expect(response.body.data).toHaveLength(0);
+      expect(response.body.meta).toEqual({
+        total: 1,
+        limit: 1000,
+        offset: 100,
+      });
+    });
+
+    it('should reject an out-of-range or non-integer limit or offset', async () => {
+      await authRequest('get', `${ALERTS_BASE_URL}?limit=0`).expect(400);
+      await authRequest('get', `${ALERTS_BASE_URL}?limit=5000`).expect(400);
+      await authRequest('get', `${ALERTS_BASE_URL}?offset=-1`).expect(400);
+      await authRequest('get', `${ALERTS_BASE_URL}?limit=abc`).expect(400);
+      await authRequest('get', `${ALERTS_BASE_URL}?limit=1.5`).expect(400);
+    });
   });
 
   describe('Updating alerts', () => {

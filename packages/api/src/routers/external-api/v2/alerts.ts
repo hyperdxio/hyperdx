@@ -3,6 +3,7 @@ import _ from 'lodash';
 import { z } from 'zod';
 
 import {
+  countAlerts,
   createAlert,
   deleteAlert,
   getAlertById,
@@ -15,6 +16,11 @@ import {
   validateRequestWithEnhancedErrors as validateRequest,
 } from '@/utils/enhancedErrors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
+import {
+  getPagination,
+  paginationMeta,
+  paginationQuerySchema,
+} from '@/utils/pagination';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 /**
@@ -256,12 +262,18 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *
  *     AlertsListResponse:
  *       type: object
+ *       required:
+ *         - data
+ *         - meta
  *       properties:
  *         data:
  *           type: array
  *           description: List of alert objects.
  *           items:
  *             $ref: '#/components/schemas/AlertResponse'
+ *         meta:
+ *           $ref: '#/components/schemas/PaginationMeta'
+ *           description: Pagination metadata for this result page.
  *
  *     EmptyResponse:
  *       type: object
@@ -359,9 +371,27 @@ router.get(
  * /api/v2/alerts:
  *   get:
  *     summary: List Alerts
- *     description: Retrieves a list of all alerts for the authenticated team
+ *     description: Retrieves alerts for the authenticated team (paginated).
  *     operationId: listAlerts
  *     tags: [Alerts]
+ *     parameters:
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 1000
+ *           default: 1000
+ *         description: Maximum number of alerts to return.
+ *       - name: offset
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *         description: Number of alerts to skip before returning results.
  *     responses:
  *       '200':
  *         description: Successfully retrieved alerts
@@ -388,6 +418,10 @@ router.get(
  *                       dashboardId: "65f5e4a3b9e77c001a567890"
  *                       createdAt: "2023-01-01T00:00:00.000Z"
  *                       updatedAt: "2023-01-01T00:00:00.000Z"
+ *                   meta:
+ *                     total: 1
+ *                     limit: 1000
+ *                     offset: 0
  *       '401':
  *         description: Unauthorized
  *         content:
@@ -397,22 +431,31 @@ router.get(
  *             example:
  *               message: "Unauthorized access. API key is missing or invalid."
  */
-router.get('/', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    if (teamId == null) {
-      return res.sendStatus(403);
+router.get(
+  '/',
+  processRequest({ query: paginationQuerySchema }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      const { limit, offset } = getPagination(req.query);
+      const [alerts, total] = await Promise.all([
+        getAlerts(teamId, { limit, offset }),
+        countAlerts(teamId),
+      ]);
+
+      return res.json({
+        data: alerts.map(alert => translateAlertDocumentToExternalAlert(alert)),
+        meta: paginationMeta({ limit, offset }, total),
+      });
+    } catch (e) {
+      next(e);
     }
-
-    const alerts = await getAlerts(teamId);
-
-    return res.json({
-      data: alerts.map(alert => translateAlertDocumentToExternalAlert(alert)),
-    });
-  } catch (e) {
-    next(e);
-  }
-});
+  },
+);
 
 /**
  * @openapi

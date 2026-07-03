@@ -188,8 +188,20 @@ export const updateAlert = async (
   );
 };
 
-export const getAlerts = async (teamId: ObjectId) => {
-  return Alert.find({ team: teamId });
+export const getAlerts = async (
+  teamId: ObjectId,
+  { limit, offset }: { limit: number; offset: number },
+) => {
+  // Sort by _id so skip/offset paging is stable across requests (MongoDB does
+  // not guarantee natural order between separate find() calls).
+  return Alert.find({ team: teamId })
+    .sort({ _id: 1 })
+    .skip(offset)
+    .limit(limit);
+};
+
+export const countAlerts = async (teamId: ObjectId) => {
+  return Alert.countDocuments({ team: teamId });
 };
 
 export const getAlertById = async (

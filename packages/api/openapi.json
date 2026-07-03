@@ -392,6 +392,10 @@
       },
       "AlertsListResponse": {
         "type": "object",
+        "required": [
+          "data",
+          "meta"
+        ],
         "properties": {
           "data": {
             "type": "array",
@@ -399,6 +403,10 @@
             "items": {
               "$ref": "#/components/schemas/AlertResponse"
             }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta",
+            "description": "Pagination metadata for this result page."
           }
         }
       },
@@ -3198,6 +3206,10 @@
       },
       "SavedSearchesListResponse": {
         "type": "object",
+        "required": [
+          "data",
+          "meta"
+        ],
         "properties": {
           "data": {
             "type": "array",
@@ -3205,6 +3217,10 @@
             "items": {
               "$ref": "#/components/schemas/SavedSearch"
             }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta",
+            "description": "Pagination metadata for this result page."
           }
         }
       },
@@ -4387,10 +4403,36 @@
           }
         }
       },
+      "PaginationMeta": {
+        "type": "object",
+        "required": [
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "description": "Total number of items matching the query, ignoring pagination.",
+            "example": 142
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of items returned in this page.",
+            "example": 50
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Number of items skipped before this page.",
+            "example": 100
+          }
+        }
+      },
       "WebhooksListResponse": {
         "type": "object",
         "required": [
-          "data"
+          "data",
+          "meta"
         ],
         "properties": {
           "data": {
@@ -4399,6 +4441,10 @@
             "items": {
               "$ref": "#/components/schemas/Webhook"
             }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta",
+            "description": "Pagination metadata for this result page."
           }
         }
       },
@@ -4703,10 +4749,35 @@
     "/api/v2/alerts": {
       "get": {
         "summary": "List Alerts",
-        "description": "Retrieves a list of all alerts for the authenticated team",
+        "description": "Retrieves alerts for the authenticated team (paginated).",
         "operationId": "listAlerts",
         "tags": [
           "Alerts"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1000
+            },
+            "description": "Maximum number of alerts to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Number of alerts to skip before returning results."
+          }
         ],
         "responses": {
           "200": {
@@ -4738,7 +4809,12 @@
                           "createdAt": "2023-01-01T00:00:00.000Z",
                           "updatedAt": "2023-01-01T00:00:00.000Z"
                         }
-                      ]
+                      ],
+                      "meta": {
+                        "total": 1,
+                        "limit": 1000,
+                        "offset": 0
+                      }
                     }
                   }
                 }
@@ -6225,6 +6301,17 @@
               "default": 1000
             },
             "description": "Maximum number of saved searches to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Number of saved searches to skip before returning results."
           }
         ],
         "responses": {
@@ -7135,10 +7222,35 @@
     "/api/v2/webhooks": {
       "get": {
         "summary": "List Webhooks",
-        "description": "Retrieves a list of all webhooks for the authenticated team",
+        "description": "Retrieves webhooks for the authenticated team (paginated).",
         "operationId": "listWebhooks",
         "tags": [
           "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1000
+            },
+            "description": "Maximum number of webhooks to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Number of webhooks to skip before returning results."
+          }
         ],
         "responses": {
           "200": {
