@@ -10,6 +10,7 @@ const makeEvent = (overrides: Partial<TTimelineEvent>): TTimelineEvent => ({
   tooltip: '',
   color: '#fff',
   backgroundColor: '#000',
+  minWidthPx: 2,
   body: null,
   ...overrides,
 });
