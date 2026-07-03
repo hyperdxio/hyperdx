@@ -291,6 +291,25 @@ describe('External API v2 Webhooks', () => {
       expect(response.body.data[0]).not.toHaveProperty('body');
     });
 
+    it('should count a row that fails schema parse in total but omit it from data', async () => {
+      await Webhook.create({ ...MOCK_SLACK_WEBHOOK, team: team._id });
+      // Insert a malformed row directly, bypassing Mongoose validation, so it
+      // fails externalWebhookSchema parsing on read. meta.total counts every
+      // stored row (countDocuments) while data drops the unparseable one, so
+      // data.length can be less than meta.total — this documents that skew.
+      await Webhook.collection.insertOne({
+        team: team._id,
+        name: 'Broken Webhook',
+        service: 'not-a-real-service',
+      } as any);
+
+      const response = await authRequest('get', WEBHOOKS_BASE_URL).expect(200);
+
+      expect(response.body.meta.total).toBe(2);
+      expect(response.body.data).toHaveLength(1);
+      expect(response.body.data[0].name).toBe(MOCK_SLACK_WEBHOOK.name);
+    });
+
     it('should require authentication', async () => {
       await request(server.getHttpServer()).get(WEBHOOKS_BASE_URL).expect(401);
     });
@@ -371,7 +390,7 @@ describe('External API v2 Webhooks', () => {
   });
 
   describe('PUT /api/v2/webhooks/:id', () => {
-    it('should replace readable fields but preserve omitted write-only fields', async () => {
+    it('should replace readable fields but preserve omitted write-only fields when the destination is unchanged', async () => {
       const created = await Webhook.create({
         ...MOCK_GENERIC_WEBHOOK,
         team: team._id,
@@ -384,22 +403,91 @@ describe('External API v2 Webhooks', () => {
         .send({
           name: 'Renamed Generic',
           service: WebhookService.Generic,
-          url: 'https://example.com/new',
+          // Same url/service => destination unchanged => write-only fields preserved
+          url: MOCK_GENERIC_WEBHOOK.url,
         })
         .expect(200);
 
       expect(response.body.data.name).toBe('Renamed Generic');
-      expect(response.body.data.url).toBe('https://example.com/new');
+      expect(response.body.data.url).toBe(MOCK_GENERIC_WEBHOOK.url);
       // Write-only fields must not be echoed back on update either
       expect(response.body.data).not.toHaveProperty('headers');
       expect(response.body.data).not.toHaveProperty('queryParams');
 
       const stored = await Webhook.findById(created._id).lean();
-      // headers omitted => preserved (clients can never read them back)
+      // headers omitted + destination unchanged => preserved (clients can never read them back)
       expect(stored?.headers).toEqual(MOCK_GENERIC_WEBHOOK.headers);
       // readable fields omitted => cleared (full replace)
       expect(stored?.body).toBeUndefined();
       expect(stored?.description).toBeUndefined();
+    });
+
+    it('should NOT forward stored write-only secrets when the url changes', async () => {
+      // The exfiltration path: a caller who cannot read headers/queryParams
+      // back must not be able to repoint url at an endpoint they control and
+      // have the stored secret headers forwarded there on the next alert.
+      const created = await Webhook.create({
+        ...MOCK_GENERIC_WEBHOOK,
+        headers: { Authorization: 'Bearer super-secret' },
+        queryParams: { token: 'secret-token' },
+        team: team._id,
+      });
+
+      await authRequest('put', `${WEBHOOKS_BASE_URL}/${created._id}`)
+        .send({
+          name: MOCK_GENERIC_WEBHOOK.name,
+          service: WebhookService.Generic,
+          // attacker repoints the destination while omitting the secrets
+          url: 'https://attacker.example.com/steal',
+        })
+        .expect(200);
+
+      const stored = await Webhook.findById(created._id).lean();
+      // Stored secrets must be cleared, never forwarded to the new destination.
+      expect(stored?.headers).toBeUndefined();
+      expect(stored?.queryParams).toBeUndefined();
+      expect(stored?.url).toBe('https://attacker.example.com/steal');
+    });
+
+    it('should clear stored write-only secrets when the service changes', async () => {
+      const created = await Webhook.create({
+        ...MOCK_GENERIC_WEBHOOK,
+        headers: { Authorization: 'Bearer super-secret' },
+        team: team._id,
+      });
+
+      await authRequest('put', `${WEBHOOKS_BASE_URL}/${created._id}`)
+        .send({
+          name: MOCK_GENERIC_WEBHOOK.name,
+          // same url, but service changes => destination changed
+          service: WebhookService.Slack,
+          url: MOCK_GENERIC_WEBHOOK.url,
+        })
+        .expect(200);
+
+      const stored = await Webhook.findById(created._id).lean();
+      expect(stored?.headers).toBeUndefined();
+    });
+
+    it('should keep re-supplied write-only fields when the url changes', async () => {
+      const created = await Webhook.create({
+        ...MOCK_GENERIC_WEBHOOK,
+        headers: { Authorization: 'Bearer old-secret' },
+        team: team._id,
+      });
+
+      await authRequest('put', `${WEBHOOKS_BASE_URL}/${created._id}`)
+        .send({
+          name: MOCK_GENERIC_WEBHOOK.name,
+          service: WebhookService.Generic,
+          url: 'https://example.com/new-but-trusted',
+          headers: { Authorization: 'Bearer new-secret' },
+        })
+        .expect(200);
+
+      const stored = await Webhook.findById(created._id).lean();
+      // Explicitly re-supplied for the new destination => written.
+      expect(stored?.headers).toEqual({ Authorization: 'Bearer new-secret' });
     });
 
     it('should clear write-only fields when an explicit empty object is sent', async () => {

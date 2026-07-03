@@ -9,6 +9,7 @@ import {
   getLoggedInAgent,
   getServer,
 } from '@/fixtures';
+import Alert, { AlertSource, AlertState } from '@/models/alert';
 import Connection from '@/models/connection';
 import { SavedSearch } from '@/models/savedSearch';
 import { LogSource } from '@/models/source';
@@ -243,6 +244,34 @@ describe('External API v2 Saved Searches CRUD', () => {
       expect(response.body.data.where).toBe('Body:timeout');
     });
 
+    it('should reset every omitted optional field to its default (uniform full-replace)', async () => {
+      // PUT is a full replace: omitting any optional field resets it, uniformly
+      // — orderBy and filters must not be silently preserved while
+      // select/where/whereLanguage/tags reset.
+      const created = await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), whereLanguage: 'sql', where: 'x = 1' })
+        .expect(200);
+      expect(created.body.data.orderBy).toBe('Timestamp DESC');
+      expect(created.body.data.tags).toEqual(['prod']);
+
+      // Send only the required fields; every optional field is omitted.
+      const response = await authRequest(
+        'put',
+        `${BASE_URL}/${created.body.data.id}`,
+      )
+        .send({ name: 'Minimal', sourceId })
+        .expect(200);
+
+      expect(response.body.data.name).toBe('Minimal');
+      expect(response.body.data.select).toBe('');
+      expect(response.body.data.where).toBe('');
+      expect(response.body.data.whereLanguage).toBe('lucene');
+      // Previously-preserved fields must now reset too.
+      expect(response.body.data.orderBy).toBe('');
+      expect(response.body.data.tags).toEqual([]);
+      expect(response.body.data.filters).toEqual([]);
+    });
+
     it('should return 404 for another team saved search', async () => {
       const other = await createOtherTeamSavedSearch();
       await authRequest('put', `${BASE_URL}/${other._id}`)
@@ -283,6 +312,31 @@ describe('External API v2 Saved Searches CRUD', () => {
       const other = await createOtherTeamSavedSearch();
       await authRequest('delete', `${BASE_URL}/${other._id}`).expect(404);
       expect(await SavedSearch.findById(other._id)).not.toBeNull();
+    });
+
+    it('should delete alerts attached to the saved search', async () => {
+      const created = await authRequest('post', BASE_URL)
+        .send(savedSearchBody())
+        .expect(200);
+      const savedSearchId = created.body.data.id;
+
+      await Alert.create({
+        team: team._id,
+        savedSearch: savedSearchId,
+        source: AlertSource.SAVED_SEARCH,
+        threshold: 1,
+        interval: '5m',
+        state: AlertState.OK,
+        channel: { type: null },
+      });
+
+      await authRequest('delete', `${BASE_URL}/${savedSearchId}`).expect(200);
+
+      expect(await SavedSearch.findById(savedSearchId)).toBeNull();
+      // Dependent alerts must not be orphaned.
+      expect(await Alert.countDocuments({ savedSearch: savedSearchId })).toBe(
+        0,
+      );
     });
   });
 });

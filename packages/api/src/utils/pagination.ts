@@ -1,13 +1,23 @@
 import { z } from 'zod';
 
+import logger from '@/utils/logger';
+
 // ponytail: offset pagination is fine for team-scoped metadata collections
 // (saved searches, webhooks, alerts) — these top out in the thousands. Switch
 // to cursor-based only if a single team's collection ever grows past ~100k rows.
-// Default limit is the max (1000): these list endpoints were previously
-// unbounded, so defaulting to the cap keeps existing clients that don't paginate
-// backward-compatible while still bounding the response.
+export const MAX_PAGINATION_LIMIT = 1000;
+
+// Default limit is the max: these list endpoints were previously unbounded, so
+// defaulting to the cap keeps existing non-paginating clients working while
+// still bounding the response. When a team outgrows the cap, paginationMeta
+// logs the truncation (see below) so it isn't silent.
 export const paginationQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(1000).default(1000),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_PAGINATION_LIMIT)
+    .default(MAX_PAGINATION_LIMIT),
   offset: z.coerce.number().int().min(0).default(0),
 });
 
@@ -20,6 +30,22 @@ export function getPagination(query: unknown): Pagination {
   return paginationQuerySchema.parse(query ?? {});
 }
 
-export function paginationMeta({ limit, offset }: Pagination, total: number) {
+export function paginationMeta(
+  { limit, offset }: Pagination,
+  total: number,
+  resource?: string,
+) {
+  // Surface silent truncation. When the page is capped at the default max
+  // limit and more rows exist than were returned, a client that does not read
+  // meta.total and paginate silently only ever sees the first page. Log it so
+  // operators can spot teams that have outgrown the default cap rather than
+  // treating the truncation as invisible/backward-compatible. Clients that
+  // supply a smaller limit are paginating deliberately and are not warned.
+  if (limit === MAX_PAGINATION_LIMIT && total > limit + offset) {
+    logger.warn(
+      { resource, total, limit, offset },
+      'Paginated list truncated at the default max limit: more records exist than were returned. Client must read meta.total and paginate.',
+    );
+  }
   return { total, limit, offset };
 }

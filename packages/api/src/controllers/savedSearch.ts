@@ -69,12 +69,19 @@ export function updateSavedSearch(
 }
 
 export async function deleteSavedSearch(teamId: string, savedSearchId: string) {
-  const savedSearch = await SavedSearch.findOneAndDelete({
+  const savedSearch = await SavedSearch.findOne({
     _id: savedSearchId,
     team: teamId,
   });
-  if (savedSearch) {
-    await deleteSavedSearchAlerts(savedSearchId, teamId);
+  if (savedSearch == null) {
+    return null;
   }
+  // Delete dependent alerts before the parent. Without a transaction (which
+  // requires a replica set), deleting the parent first would leave orphaned
+  // alerts pointing at a now-deleted saved search if alert deletion failed.
+  // This order fails safe: a failure here leaves the saved search intact and
+  // the caller can retry.
+  await deleteSavedSearchAlerts(savedSearchId, teamId);
+  await SavedSearch.deleteOne({ _id: savedSearchId, team: teamId });
   return savedSearch;
 }

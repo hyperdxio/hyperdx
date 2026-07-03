@@ -20,15 +20,19 @@ import { objectIdSchema } from '@/utils/zod';
 
 // External request body. Uses `sourceId` (not the internal `source`) so the
 // create/update contract matches the shape returned by toExternalJSON().
+// PUT is a full replace: every optional field resets to its default when
+// omitted (uniform semantics). orderBy/filters carry defaults for the same
+// reason select/where/whereLanguage/tags do — so a read-modify-write client
+// that drops a field gets a predictable reset rather than a silent preserve.
 const savedSearchRequestSchema = z.object({
   name: z.string().trim().min(1),
   sourceId: objectIdSchema,
   select: z.string().optional().default(''),
   where: z.string().optional().default(''),
   whereLanguage: z.enum(['lucene', 'sql']).optional().default('lucene'),
-  orderBy: z.string().optional(),
+  orderBy: z.string().optional().default(''),
   tags: z.array(z.string()).optional().default([]),
-  filters: z.array(FilterSchema).optional(),
+  filters: z.array(FilterSchema).optional().default([]),
 });
 
 // Maps the validated external body to the internal controller input, renaming
@@ -265,7 +269,7 @@ router.get(
 
       return res.json({
         data: savedSearches.map(s => s.toExternalJSON()),
-        meta: paginationMeta({ limit, offset }, total),
+        meta: paginationMeta({ limit, offset }, total, 'saved-searches'),
       });
     } catch (e) {
       next(e);
@@ -412,11 +416,11 @@ router.post(
  *   put:
  *     summary: Update Saved Search
  *     description: |
- *       Updates an existing saved search. Send the full object: `name`,
- *       `sourceId`, `select`, `where`, `whereLanguage`, and `tags` are always
- *       written (they fall back to their defaults when omitted). Omitting the
- *       optional `orderBy` or `filters` leaves the stored value unchanged
- *       rather than clearing it.
+ *       Updates an existing saved search. This is a full replace: send the
+ *       full object. Every optional field (`select`, `where`, `whereLanguage`,
+ *       `orderBy`, `tags`, `filters`) is always written and falls back to its
+ *       default when omitted, so omitting a field resets it rather than
+ *       preserving the stored value.
  *     operationId: updateSavedSearch
  *     tags: [Saved Searches]
  *     parameters:

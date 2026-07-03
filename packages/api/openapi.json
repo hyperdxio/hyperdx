@@ -4455,7 +4455,7 @@
           "service",
           "url"
         ],
-        "description": "Webhook create/update body. `headers` and `queryParams` are\nwrite-only — they are accepted here but never returned by any\nread endpoint, so secrets such as auth tokens do not leak. On\nupdate (PUT), omitted readable fields (`description`, `body`) are\ncleared, while omitted `headers`/`queryParams` are preserved —\nsend an explicit `{}` to clear them.\n",
+        "description": "Webhook create/update body. `headers` and `queryParams` are\nwrite-only — they are accepted here but never returned by any\nread endpoint, so secrets such as auth tokens do not leak. On\nupdate (PUT), omitted readable fields (`description`, `body`) are\ncleared, while omitted `headers`/`queryParams` are preserved —\nsend an explicit `{}` to clear them. Exception: if the destination\n(`url` or `service`) changes, omitted `headers`/`queryParams` are\ncleared rather than preserved, so stored secrets are never forwarded\nto a new destination; re-supply them for the new destination.\n",
         "properties": {
           "name": {
             "type": "string",
@@ -6473,7 +6473,7 @@
       },
       "put": {
         "summary": "Update Saved Search",
-        "description": "Updates an existing saved search. Send the full object: `name`,\n`sourceId`, `select`, `where`, `whereLanguage`, and `tags` are always\nwritten (they fall back to their defaults when omitted). Omitting the\noptional `orderBy` or `filters` leaves the stored value unchanged\nrather than clearing it.\n",
+        "description": "Updates an existing saved search. This is a full replace: send the\nfull object. Every optional field (`select`, `where`, `whereLanguage`,\n`orderBy`, `tags`, `filters`) is always written and falls back to its\ndefault when omitted, so omitting a field resets it rather than\npreserving the stored value.\n",
         "operationId": "updateSavedSearch",
         "tags": [
           "Saved Searches"
@@ -7352,7 +7352,7 @@
     "/api/v2/webhooks/{id}": {
       "put": {
         "summary": "Update Webhook",
-        "description": "Replaces an existing webhook. Readable optional fields\n(`description`, `body`) are a full replace: omitting them clears\nthem. The write-only fields `headers` and `queryParams` are never\nreturned on read, so omitting them preserves the stored values;\nsend an explicit empty object (`{}`) to clear them.\n",
+        "description": "Replaces an existing webhook. Readable optional fields\n(`description`, `body`) are a full replace: omitting them clears\nthem. The write-only fields `headers` and `queryParams` are never\nreturned on read, so omitting them preserves the stored values;\nsend an explicit empty object (`{}`) to clear them. Exception: if the\ndestination (`url` or `service`) changes, omitted `headers`/\n`queryParams` are cleared rather than preserved so stored secrets are\nnever forwarded to a new destination.\n",
         "operationId": "updateWebhook",
         "tags": [
           "Webhooks"

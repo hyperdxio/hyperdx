@@ -295,7 +295,7 @@ router.get(
 
       return res.json({
         data: webhooks.map(formatExternalWebhook).filter(s => s !== undefined),
-        meta: paginationMeta({ limit, offset }, total),
+        meta: paginationMeta({ limit, offset }, total, 'webhooks'),
       });
     } catch (e) {
       next(e);
@@ -319,7 +319,10 @@ router.get(
  *         read endpoint, so secrets such as auth tokens do not leak. On
  *         update (PUT), omitted readable fields (`description`, `body`) are
  *         cleared, while omitted `headers`/`queryParams` are preserved —
- *         send an explicit `{}` to clear them.
+ *         send an explicit `{}` to clear them. Exception: if the destination
+ *         (`url` or `service`) changes, omitted `headers`/`queryParams` are
+ *         cleared rather than preserved, so stored secrets are never forwarded
+ *         to a new destination; re-supply them for the new destination.
  *       properties:
  *         name:
  *           type: string
@@ -454,7 +457,10 @@ router.post(
  *       (`description`, `body`) are a full replace: omitting them clears
  *       them. The write-only fields `headers` and `queryParams` are never
  *       returned on read, so omitting them preserves the stored values;
- *       send an explicit empty object (`{}`) to clear them.
+ *       send an explicit empty object (`{}`) to clear them. Exception: if the
+ *       destination (`url` or `service`) changes, omitted `headers`/
+ *       `queryParams` are cleared rather than preserved so stored secrets are
+ *       never forwarded to a new destination.
  *     operationId: updateWebhook
  *     tags: [Webhooks]
  *     parameters:
@@ -519,10 +525,19 @@ router.put(
       const { name, service, url, description, queryParams, headers, body } =
         req.body;
 
+      const existing = await Webhook.findOne({
+        _id: req.params.id,
+        team: teamId,
+      });
+      if (existing == null) {
+        return res.status(404).json({ message: 'Webhook not found' });
+      }
+
       // Readable fields are a full replace: present => $set, omitted =>
       // $unset. Write-only fields (headers/queryParams) are never returned
       // on read, so a read-modify-write client cannot re-send them — omitting
-      // them preserves the stored values; send an explicit {} to clear.
+      // them normally preserves the stored values; send an explicit {} to
+      // clear.
       const $set: Record<string, unknown> = { name, service, url };
       const $unset: Record<string, 1> = {};
       for (const [key, value] of Object.entries({ description, body })) {
@@ -532,8 +547,21 @@ router.put(
           $set[key] = value;
         }
       }
+
+      // Security: if the destination changes (url or service), do NOT preserve
+      // omitted write-only secrets. A caller who cannot read headers/queryParams
+      // back could otherwise repoint url at an endpoint they control and have
+      // the stored secret headers forwarded there when the alert fires
+      // (template.ts spreads webhook.headers into the outbound request). When
+      // the destination changes, omitted write-only fields are cleared and the
+      // caller must re-supply them for the new destination.
+      const destinationChanged =
+        url !== existing.url || service !== existing.service;
       for (const [key, value] of Object.entries({ headers, queryParams })) {
         if (value === undefined) {
+          if (destinationChanged) {
+            $unset[key] = 1;
+          }
           continue;
         }
         if (Object.keys(value).length === 0) {

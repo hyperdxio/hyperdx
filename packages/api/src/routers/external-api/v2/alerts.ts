@@ -449,7 +449,7 @@ router.get(
 
       return res.json({
         data: alerts.map(alert => translateAlertDocumentToExternalAlert(alert)),
-        meta: paginationMeta({ limit, offset }, total),
+        meta: paginationMeta({ limit, offset }, total, 'alerts'),
       });
     } catch (e) {
       next(e);
