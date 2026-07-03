@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -239,15 +240,9 @@ async function describeSourceSchema(
 ) {
   const source = await getSource(teamId, sourceId);
   if (!source) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source "${sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source "${sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
+    );
   }
 
   const meta: Record<string, unknown> = {
@@ -341,15 +336,7 @@ async function describeSourceSchema(
     true,
   );
   if (!connection) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Connection not found for source "${sourceId}".`,
-        },
-      ],
-    };
+    return mcpUserError(`Connection not found for source "${sourceId}".`);
   }
 
   const clickhouseClient = new ClickhouseClient({
@@ -687,17 +674,10 @@ export function registerDescribeSource({
             { teamId, sourceId },
             'clickstack_describe_source timed out',
           );
-          return {
-            isError: true,
-            content: [
-              {
-                type: 'text' as const,
-                text:
-                  'Schema discovery timed out. The ClickHouse server may be under load. ' +
-                  'Try again, or use clickstack_list_sources for basic source info without schema details.',
-              },
-            ],
-          };
+          return mcpServerError(
+            'Schema discovery timed out. The ClickHouse server may be under load. ' +
+              'Try again, or use clickstack_list_sources for basic source info without schema details.',
+          );
         }
         logger.warn(
           { teamId, sourceId, error: e },

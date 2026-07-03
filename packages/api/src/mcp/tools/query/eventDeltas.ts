@@ -15,9 +15,10 @@ import { z } from 'zod';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
-import { parseTimeRange } from './helpers';
+import { clickHouseErrorResult, parseTimeRange } from './helpers';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -200,30 +201,14 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
         input.target.endTime,
       );
       if ('error' in targetRange) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `target: ${targetRange.error}`,
-            },
-          ],
-        };
+        return mcpUserError(`target: ${targetRange.error}`);
       }
       const baselineRange = parseTimeRange(
         input.baseline.startTime,
         input.baseline.endTime,
       );
       if ('error' in baselineRange) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `baseline: ${baselineRange.error}`,
-            },
-          ],
-        };
+        return mcpUserError(`baseline: ${baselineRange.error}`);
       }
 
       // Refuse calls where target and baseline can't possibly produce a
@@ -240,47 +225,28 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
         targetRange.startDate.getTime() === baselineRange.startDate.getTime() &&
         targetRange.endDate.getTime() === baselineRange.endDate.getTime();
       if (sameWhere && sameWindow) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text:
-                'target and baseline are identical (same where + same time ' +
-                'window) — that yields nothing to compare. Pick distinct ' +
-                'groups: e.g. (a) before vs after a step change in time, ' +
-                '(b) failing rows vs succeeding rows, (c) slow spans ' +
-                '(Duration > X) vs fast spans (Duration <= X) in the same ' +
-                'window, or (d) one cohort vs the rest. At least one of ' +
-                '`where` or the time window must differ between the two ' +
-                'groups.',
-            },
-          ],
-        };
+        return mcpUserError(
+          'target and baseline are identical (same where + same time ' +
+            'window) — that yields nothing to compare. Pick distinct ' +
+            'groups: e.g. (a) before vs after a step change in time, ' +
+            '(b) failing rows vs succeeding rows, (c) slow spans ' +
+            '(Duration > X) vs fast spans (Duration <= X) in the same ' +
+            'window, or (d) one cohort vs the rest. At least one of ' +
+            '`where` or the time window must differ between the two ' +
+            'groups.',
+        );
       }
 
       const source = await getSource(teamId.toString(), input.sourceId);
       if (!source) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
-            },
-          ],
-        };
+        return mcpUserError(
+          `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
+        );
       }
       if (source.kind !== SourceKind.Trace && source.kind !== SourceKind.Log) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Source ${input.sourceId} is kind="${source.kind}". clickstack_event_deltas requires a trace or log source.`,
-            },
-          ],
-        };
+        return mcpUserError(
+          `Source ${input.sourceId} is kind="${source.kind}". clickstack_event_deltas requires a trace or log source.`,
+        );
       }
 
       const connection = await getConnectionById(
@@ -289,15 +255,9 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
         true,
       );
       if (!connection) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Connection not found for source: ${input.sourceId}`,
-            },
-          ],
-        };
+        return mcpUserError(
+          `Connection not found for source: ${input.sourceId}`,
+        );
       }
 
       const clickhouseClient = new ClickhouseClient({
@@ -381,15 +341,7 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
           columnMetaUnavailable = true;
         }
       } catch (e) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Failed to build sample queries: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-        };
+        return clickHouseErrorResult(e, 'Failed to build sample queries');
       }
 
       let targetRows: Record<string, any>[];
@@ -424,15 +376,7 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
         baselineRows = baselineJson.data ?? [];
       } catch (e) {
         abortController.abort();
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Failed to sample rows: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-        };
+        return clickHouseErrorResult(e, 'Failed to sample rows');
       }
 
       const ranked = rankProperties({

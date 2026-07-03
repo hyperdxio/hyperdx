@@ -44,6 +44,7 @@ import { escapeJsonString, unflattenObject } from '@/tasks/util';
 import { truncateString } from '@/utils/common';
 import { getCounter, getHistogram } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+import { withRetry } from '@/utils/retry';
 import * as slack from '@/utils/slack';
 
 // Webhook delivery is the last (and most failure-prone) hop of an alert. It
@@ -358,6 +359,13 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
   const headers = {
     'Content-Type': 'application/json', // default, will be overwritten if user has set otherwise
     ...(webhook.headers?.toJSON() ?? {}),
+    // Stable per-alert key for receivers that honour Idempotency-Key; delivery is at-least-once.
+    'Idempotency-Key': objectHash({
+      eventId: message.eventId,
+      startTime: message.startTime,
+      endTime: message.endTime,
+      state: message.state,
+    }),
   };
   // BODY
   let body = '';
@@ -386,17 +394,22 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
   }
 
   try {
-    // TODO: retries/backoff etc -> switch to request-error-tolerant api client
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: headers as Record<string, string>,
-      body,
-    });
+    const response = await withRetry(async () => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: headers as Record<string, string>,
+        body,
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText);
-    }
+      if (!res.ok) {
+        const errorText = await res.text();
+        const err = new Error(errorText) as any;
+        err.status = res.status;
+        throw err;
+      }
+
+      return res;
+    });
   } catch (e) {
     logger.error(
       {
