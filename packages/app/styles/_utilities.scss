@@ -15,6 +15,10 @@
   background-color: var(--color-bg-muted);
 }
 
+.bg-muted-subtle {
+  background-color: var(--color-bg-muted-subtle, var(--color-bg-muted));
+}
+
 .bg-muted-hover {
   &:hover {
     background-color: var(--color-bg-muted);

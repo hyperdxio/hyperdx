@@ -133,7 +133,9 @@ import useDashboardContainers, {
 } from '@/hooks/useDashboardContainers';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
-import ChartContainer from './components/charts/ChartContainer';
+import ChartContainer, {
+  ChartContainerCardHeaderProvider,
+} from './components/charts/ChartContainer';
 import DBHeatmapChart, {
   toHeatmapChartConfig,
 } from './components/DBHeatmapChart';
@@ -188,7 +190,8 @@ function HeatmapTile({
   keyPrefix,
   chartId,
   title,
-  toolbar,
+  toolbarPrefix,
+  toolbarSuffix,
   queriedConfig,
   source,
   dateRange,
@@ -197,7 +200,8 @@ function HeatmapTile({
   keyPrefix: string;
   chartId: string;
   title: React.ReactNode;
-  toolbar: React.ReactNode[];
+  toolbarPrefix: React.ReactNode[];
+  toolbarSuffix: React.ReactNode[];
   queriedConfig: BuilderChartConfigWithDateRange;
   source: TSource | undefined;
   dateRange: [Date, Date];
@@ -243,7 +247,8 @@ function HeatmapTile({
       <DBHeatmapChart
         key={`${keyPrefix}-${chartId}`}
         title={title}
-        toolbarPrefix={toolbar}
+        toolbarPrefix={toolbarPrefix}
+        toolbarSuffix={toolbarSuffix}
         config={heatmapConfig}
         scaleType={scaleType}
         enabled={enabled}
@@ -658,13 +663,15 @@ const Tile = forwardRef(
         : isPromQL
           ? displayTypeSupportsPromQLAlerts(chart.config.displayType)
           : displayTypeSupportsBuilderAlerts(chart.config.displayType);
+      const canMoveToGroup =
+        onMoveToGroup && moveTargets && moveTargets.length > 0;
       return (
         <Flex
           gap="0px"
+          align="center"
           onMouseDown={e => e.stopPropagation()}
           key="hover-toolbar"
-          my={4} // Margin to ensure that the Alert Indicator doesn't clip on non-Line/Bar display types
-          style={{ visibility: hovered ? 'visible' : 'hidden' }}
+          my={2} // Margin to ensure that the Alert Indicator doesn't clip on non-Line/Bar display types
         >
           {displayTypeSupportsAlerts && (
             <Indicator
@@ -688,113 +695,111 @@ const Tile = forwardRef(
             </Indicator>
           )}
 
-          <ActionIcon
-            data-testid={`tile-duplicate-button-${chart.id}`}
-            variant="subtle"
-            size="sm"
-            onClick={onDuplicateClick}
-            title="Duplicate"
-          >
-            <IconCopy size={14} />
-          </ActionIcon>
-          <ActionIcon
-            data-testid={`tile-fullscreen-button-${chart.id}`}
-            variant="subtle"
-            size="sm"
-            onClick={e => {
-              e.stopPropagation();
-              openFullscreen();
-            }}
-            title="View Fullscreen (f)"
-          >
-            <IconArrowsMaximize size={14} />
-          </ActionIcon>
-          <ActionIcon
-            data-testid={`tile-edit-button-${chart.id}`}
-            variant="subtle"
-            size="sm"
-            onClick={onEditClick}
-            title="Edit"
-          >
-            <IconPencil size={14} />
-          </ActionIcon>
-          {onMoveToGroup && moveTargets && moveTargets.length > 0 && (
-            <Menu width={200} position="bottom-end">
-              <Menu.Target>
-                <Tooltip label="Move to Group" position="top" withArrow>
-                  <ActionIcon
-                    data-testid={`tile-move-group-button-${chart.id}`}
-                    variant="subtle"
-                    size="sm"
-                  >
-                    <IconCornerDownRight size={14} />
-                  </ActionIcon>
-                </Tooltip>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Label>Move to Group</Menu.Label>
-                {chart.containerId && (
-                  <Menu.Item onClick={() => onMoveToGroup(undefined)}>
-                    (Ungrouped)
-                  </Menu.Item>
-                )}
-                {moveTargets
-                  .filter(
-                    t =>
-                      !(
-                        t.containerId === chart.containerId &&
-                        t.tabId === chart.tabId
-                      ),
-                  )
-                  .map(t => (
+          <Menu width={220} position="bottom-end">
+            <Menu.Target>
+              <Tooltip label="More actions" position="top" withArrow>
+                <ActionIcon
+                  data-testid={`tile-actions-button-${chart.id}`}
+                  variant="subtle"
+                  size="sm"
+                >
+                  <IconDotsVertical size={16} />
+                </ActionIcon>
+              </Tooltip>
+            </Menu.Target>
+            <Menu.Dropdown onMouseDown={e => e.stopPropagation()}>
+              <Menu.Item
+                data-testid={`tile-duplicate-button-${chart.id}`}
+                leftSection={<IconCopy size={14} />}
+                onClick={onDuplicateClick}
+              >
+                Duplicate
+              </Menu.Item>
+              <Menu.Item
+                data-testid={`tile-fullscreen-button-${chart.id}`}
+                leftSection={<IconArrowsMaximize size={14} />}
+                onClick={() => openFullscreen()}
+              >
+                View fullscreen
+              </Menu.Item>
+              <Menu.Item
+                data-testid={`tile-edit-button-${chart.id}`}
+                leftSection={<IconPencil size={14} />}
+                onClick={onEditClick}
+              >
+                Edit
+              </Menu.Item>
+              {canMoveToGroup && (
+                <>
+                  <Menu.Divider />
+                  <Menu.Label>Move to Group</Menu.Label>
+                  {chart.containerId && (
                     <Menu.Item
-                      key={`${t.containerId}-${t.tabId ?? ''}`}
-                      onClick={() => onMoveToGroup(t.containerId, t.tabId)}
+                      leftSection={<IconCornerDownRight size={14} />}
+                      onClick={() => onMoveToGroup(undefined)}
                     >
-                      {t.allTabs ? (
-                        <span>
-                          {t.allTabs.map((tab, i) => (
-                            <span key={tab.id}>
-                              {i > 0 && (
-                                <span
-                                  style={{
-                                    color: 'var(--mantine-color-dimmed)',
-                                  }}
-                                >
-                                  {' | '}
-                                </span>
-                              )}
-                              <span
-                                style={
-                                  tab.id !== t.tabId
-                                    ? {
-                                        color: 'var(--mantine-color-dimmed)',
-                                      }
-                                    : undefined
-                                }
-                              >
-                                {tab.title}
-                              </span>
-                            </span>
-                          ))}
-                        </span>
-                      ) : (
-                        t.label
-                      )}
+                      (Ungrouped)
                     </Menu.Item>
-                  ))}
-              </Menu.Dropdown>
-            </Menu>
-          )}
-          <ActionIcon
-            data-testid={`tile-delete-button-${chart.id}`}
-            variant="subtle"
-            size="sm"
-            onClick={onDeleteClick}
-            title="Delete"
-          >
-            <IconTrash size={14} />
-          </ActionIcon>
+                  )}
+                  {moveTargets
+                    .filter(
+                      t =>
+                        !(
+                          t.containerId === chart.containerId &&
+                          t.tabId === chart.tabId
+                        ),
+                    )
+                    .map(t => (
+                      <Menu.Item
+                        key={`${t.containerId}-${t.tabId ?? ''}`}
+                        leftSection={<IconCornerDownRight size={14} />}
+                        onClick={() => onMoveToGroup(t.containerId, t.tabId)}
+                      >
+                        {t.allTabs ? (
+                          <span>
+                            {t.allTabs.map((tab, i) => (
+                              <span key={tab.id}>
+                                {i > 0 && (
+                                  <span
+                                    style={{
+                                      color: 'var(--mantine-color-dimmed)',
+                                    }}
+                                  >
+                                    {' | '}
+                                  </span>
+                                )}
+                                <span
+                                  style={
+                                    tab.id !== t.tabId
+                                      ? {
+                                          color: 'var(--mantine-color-dimmed)',
+                                        }
+                                      : undefined
+                                  }
+                                >
+                                  {tab.title}
+                                </span>
+                              </span>
+                            ))}
+                          </span>
+                        ) : (
+                          t.label
+                        )}
+                      </Menu.Item>
+                    ))}
+                </>
+              )}
+              <Menu.Divider />
+              <Menu.Item
+                data-testid={`tile-delete-button-${chart.id}`}
+                color="red"
+                leftSection={<IconTrash size={14} />}
+                onClick={onDeleteClick}
+              >
+                Delete
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
         </Flex>
       );
     }, [
@@ -806,7 +811,6 @@ const Tile = forwardRef(
       chart.id,
       chart.containerId,
       chart.tabId,
-      hovered,
       onDeleteClick,
       onDuplicateClick,
       onEditClick,
@@ -815,20 +819,24 @@ const Tile = forwardRef(
     ]);
 
     const title = useMemo(
-      () => (
-        <Text size="sm" ms="xs">
-          {chart.config.name}
-        </Text>
-      ),
+      () =>
+        chart.config.name ? (
+          <Text size="sm">{chart.config.name}</Text>
+        ) : undefined,
       [chart.config.name],
     );
 
     // Render chart content (used in both tile and fullscreen views)
     const renderChartContent = useCallback(
       (hideToolbar: boolean = false, isFullscreenView: boolean = false) => {
-        const toolbar = hideToolbar
-          ? [filterWarning]
-          : [hoverToolbar, filterWarning];
+        // Tile-level actions (alert bell + kebab) render as a suffix so they
+        // sit to the right of each chart's own controls (display switcher,
+        // granularity, etc.), keeping the kebab at the far right edge.
+        const toolbarPrefixItems = [filterWarning];
+        const toolbarSuffixItems = hideToolbar ? [] : [hoverToolbar];
+        // Combined + ordered for containers that only accept `toolbarItems`
+        // (they have no chart-specific controls to interleave).
+        const toolbar = [...toolbarPrefixItems, ...toolbarSuffixItems];
         const keyPrefix = isFullscreenView ? 'fullscreen' : 'tile';
 
         // The fullscreen view is always visible, so it should always load.
@@ -890,7 +898,8 @@ const Tile = forwardRef(
                   <DBTimeChart
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
-                    toolbarPrefix={toolbar}
+                    toolbarPrefix={toolbarPrefixItems}
+                    toolbarSuffix={toolbarSuffixItems}
                     sourceId={chart.config.source}
                     showDisplaySwitcher={true}
                     enabled={chartEnabled}
@@ -912,14 +921,15 @@ const Tile = forwardRef(
                   />
                 )}
                 {effectiveQueriedConfig?.displayType === DisplayType.Table && (
-                  <Box p="xs" h="100%">
+                  <Box h="100%">
                     <DBTableChart
                       key={`${keyPrefix}-${chart.id}`}
                       title={title}
-                      toolbarPrefix={toolbar}
+                      toolbarPrefix={toolbarPrefixItems}
+                      toolbarSuffix={toolbarSuffixItems}
                       enabled={chartEnabled}
                       config={effectiveQueriedConfig}
-                      variant="muted"
+                      variant="default"
                       getRowSearchLink={
                         isBuilderChartConfig(effectiveQueriedConfig)
                           ? row =>
@@ -938,7 +948,8 @@ const Tile = forwardRef(
                   <DBNumberChart
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
-                    toolbarPrefix={toolbar}
+                    toolbarPrefix={toolbarPrefixItems}
+                    toolbarSuffix={toolbarSuffixItems}
                     enabled={chartEnabled}
                     config={effectiveQueriedConfig}
                   />
@@ -947,7 +958,8 @@ const Tile = forwardRef(
                   <DBPieChart
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
-                    toolbarPrefix={toolbar}
+                    toolbarPrefix={toolbarPrefixItems}
+                    toolbarSuffix={toolbarSuffixItems}
                     enabled={chartEnabled}
                     config={effectiveQueriedConfig}
                   />
@@ -958,7 +970,8 @@ const Tile = forwardRef(
                       keyPrefix={keyPrefix}
                       chartId={chart.id}
                       title={title}
-                      toolbar={toolbar}
+                      toolbarPrefix={toolbarPrefixItems}
+                      toolbarSuffix={toolbarSuffixItems}
                       enabled={chartEnabled}
                       queriedConfig={effectiveQueriedConfig}
                       source={source}
@@ -1010,7 +1023,7 @@ const Tile = forwardRef(
                         }}
                         isLive={false}
                         queryKeyPrefix={'search'}
-                        variant="muted"
+                        variant="default"
                         errorVariant="collapsible"
                       />
                     </ChartContainer>
@@ -1042,7 +1055,9 @@ const Tile = forwardRef(
       <>
         <div
           data-testid={`dashboard-tile-${chart.id}`}
-          className={`p-2 pt-0 ${className} d-flex flex-column bg-muted cursor-grab rounded ${
+          // `dashboard-chart-highlighted` triggers a one-shot flash animation
+          // when the tile is deep-linked via the `highlightedTileId` query param.
+          className={`pt-0 pb-2 ${className} d-flex flex-column bg-surface border cursor-grab rounded ${
             isHighlighted && 'dashboard-chart-highlighted'
           }`}
           id={`chart-${chart.id}`}
@@ -1093,10 +1108,12 @@ const Tile = forwardRef(
           )}
           <div
             ref={inViewportRef}
-            className="fs-7 text-muted flex-grow-1 overflow-hidden cursor-default"
+            className="fs-7 text-muted flex-grow-1 overflow-hidden cursor-default px-2"
             onMouseDown={e => e.stopPropagation()}
           >
-            {renderChartContent()}
+            <ChartContainerCardHeaderProvider>
+              {renderChartContent()}
+            </ChartContainerCardHeaderProvider>
           </div>
           {children}
         </div>
@@ -2824,6 +2841,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         </PageHeader>
       }
       padded
+      contentClassName="bg-muted-subtle"
       content={dashboardBody}
     />
   );
