@@ -282,7 +282,7 @@ router.get(
     try {
       const teamId = req.user?.team;
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
 
       const { limit, offset } = getPagination(req.query);

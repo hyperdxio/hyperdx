@@ -77,10 +77,12 @@ export async function deleteSavedSearch(teamId: string, savedSearchId: string) {
     return null;
   }
   // Delete dependent alerts before the parent. Without a transaction (which
-  // requires a replica set), deleting the parent first would leave orphaned
-  // alerts pointing at a now-deleted saved search if alert deletion failed.
-  // This order fails safe: a failure here leaves the saved search intact and
-  // the caller can retry.
+  // requires a replica set), the deletes are not atomic, so this order picks
+  // the least-bad partial-failure mode: if deleteSavedSearchAlerts throws,
+  // nothing is deleted and the caller can retry. If the final deleteOne throws
+  // after the alerts are gone, the search survives without its alerts —
+  // recoverable by re-creating alerts, and strictly better than the reverse
+  // order's failure mode (orphaned alerts pointing at a deleted saved search).
   await deleteSavedSearchAlerts(savedSearchId, teamId);
   await SavedSearch.deleteOne({ _id: savedSearchId, team: teamId });
   return savedSearch;
