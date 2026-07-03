@@ -3310,24 +3310,8 @@
           },
           "minGranularity": {
             "type": "string",
-            "description": "The granularity of the timestamp column",
-            "enum": [
-              "1s",
-              "15s",
-              "30s",
-              "1m",
-              "5m",
-              "15m",
-              "30m",
-              "1h",
-              "2h",
-              "6h",
-              "12h",
-              "1d",
-              "2d",
-              "7d",
-              "30d"
-            ],
+            "description": "The granularity of the timestamp column: a positive integer followed by a unit (s, m, h, d). Common values: 1s, 15s, 30s, 1m, 5m, 15m, 30m, 1h, 2h, 6h, 12h, 1d, 2d, 7d, 30d.",
+            "pattern": "^\\d+(s|m|h|d)$",
             "example": "5m"
           },
           "minDate": {
@@ -3354,7 +3338,6 @@
       "LogSource": {
         "type": "object",
         "required": [
-          "id",
           "name",
           "kind",
           "connection",
@@ -3365,7 +3348,8 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Unique source ID.",
+            "readOnly": true,
+            "description": "Unique source ID. Server-generated; ignored if sent in create/update requests.",
             "example": "507f1f77bcf86cd799439011"
           },
           "name": {
@@ -3378,6 +3362,12 @@
             "maxLength": 256,
             "description": "Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.",
             "example": "Billing"
+          },
+          "disabled": {
+            "type": "boolean",
+            "description": "When true, the source is hidden from source selectors in the UI. Defaults to false.",
+            "nullable": true,
+            "example": false
           },
           "kind": {
             "type": "string",
@@ -3548,11 +3538,11 @@
       "TraceSource": {
         "type": "object",
         "required": [
-          "id",
           "name",
           "kind",
           "connection",
           "from",
+          "defaultTableSelectExpression",
           "timestampValueExpression",
           "durationExpression",
           "durationPrecision",
@@ -3565,7 +3555,8 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Unique source ID.",
+            "readOnly": true,
+            "description": "Unique source ID. Server-generated; ignored if sent in create/update requests.",
             "example": "507f1f77bcf86cd799439021"
           },
           "name": {
@@ -3578,6 +3569,12 @@
             "maxLength": 256,
             "description": "Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.",
             "example": "Billing"
+          },
+          "disabled": {
+            "type": "boolean",
+            "description": "When true, the source is hidden from source selectors in the UI. Defaults to false.",
+            "nullable": true,
+            "example": false
           },
           "kind": {
             "type": "string",
@@ -3607,7 +3604,6 @@
           "defaultTableSelectExpression": {
             "type": "string",
             "description": "Default columns selected in search results (this can be customized per search later)",
-            "nullable": true,
             "example": "Timestamp, SpanName, ServiceName, Duration"
           },
           "timestampValueExpression": {
@@ -3780,7 +3776,6 @@
       "MetricSource": {
         "type": "object",
         "required": [
-          "id",
           "name",
           "kind",
           "connection",
@@ -3792,7 +3787,8 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Unique source ID.",
+            "readOnly": true,
+            "description": "Unique source ID. Server-generated; ignored if sent in create/update requests.",
             "example": "507f1f77bcf86cd799439041"
           },
           "name": {
@@ -3805,6 +3801,12 @@
             "maxLength": 256,
             "description": "Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.",
             "example": "Billing"
+          },
+          "disabled": {
+            "type": "boolean",
+            "description": "When true, the source is hidden from source selectors in the UI. Defaults to false.",
+            "nullable": true,
+            "example": false
           },
           "kind": {
             "type": "string",
@@ -3856,7 +3858,6 @@
       "SessionSource": {
         "type": "object",
         "required": [
-          "id",
           "name",
           "kind",
           "connection",
@@ -3866,7 +3867,8 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Unique source ID.",
+            "readOnly": true,
+            "description": "Unique source ID. Server-generated; ignored if sent in create/update requests.",
             "example": "507f1f77bcf86cd799439031"
           },
           "name": {
@@ -3879,6 +3881,12 @@
             "maxLength": 256,
             "description": "Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.",
             "example": "Billing"
+          },
+          "disabled": {
+            "type": "boolean",
+            "description": "When true, the source is hidden from source selectors in the UI. Defaults to false.",
+            "nullable": true,
+            "example": false
           },
           "kind": {
             "type": "string",
@@ -3918,6 +3926,72 @@
           }
         }
       },
+      "PromqlSource": {
+        "type": "object",
+        "description": "A source backed by a Prometheus-compatible endpoint, queried with PromQL. The referenced connection should be a Prometheus connection (isPrometheusEndpoint set to true).",
+        "required": [
+          "name",
+          "kind",
+          "connection",
+          "from",
+          "timestampValueExpression"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "readOnly": true,
+            "description": "Unique source ID. Server-generated; ignored if sent in create/update requests.",
+            "example": "507f1f77bcf86cd799439051"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name for the source.",
+            "example": "Prometheus Metrics"
+          },
+          "section": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Optional grouping label used to organize sources in the source selector. Sources that share a section value are displayed together.",
+            "example": "Billing"
+          },
+          "disabled": {
+            "type": "boolean",
+            "description": "When true, the source is hidden from source selectors in the UI. Defaults to false.",
+            "nullable": true,
+            "example": false
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "promql"
+            ],
+            "description": "Source kind discriminator. Must be \"promql\" for PromQL sources.",
+            "example": "promql"
+          },
+          "connection": {
+            "type": "string",
+            "description": "ID of the connection used by this source. Should reference a Prometheus-compatible connection.",
+            "example": "507f1f77bcf86cd799439012"
+          },
+          "from": {
+            "$ref": "#/components/schemas/SourceFrom",
+            "description": "Required by the API for all source kinds; not used when querying a Prometheus endpoint (empty strings are not accepted — use placeholder values such as \"default\")."
+          },
+          "querySettings": {
+            "type": "array",
+            "description": "Optional ClickHouse query settings applied when querying this source.",
+            "items": {
+              "$ref": "#/components/schemas/QuerySetting"
+            },
+            "nullable": true
+          },
+          "timestampValueExpression": {
+            "type": "string",
+            "description": "Required by the API for all source kinds; not used when querying a Prometheus endpoint.",
+            "example": "timestamp"
+          }
+        }
+      },
       "Source": {
         "oneOf": [
           {
@@ -3931,6 +4005,9 @@
           },
           {
             "$ref": "#/components/schemas/SessionSource"
+          },
+          {
+            "$ref": "#/components/schemas/PromqlSource"
           }
         ],
         "discriminator": {
@@ -3939,7 +4016,8 @@
             "log": "#/components/schemas/LogSource",
             "trace": "#/components/schemas/TraceSource",
             "metric": "#/components/schemas/MetricSource",
-            "session": "#/components/schemas/SessionSource"
+            "session": "#/components/schemas/SessionSource",
+            "promql": "#/components/schemas/PromqlSource"
           }
         }
       },
@@ -3952,6 +4030,15 @@
             "items": {
               "$ref": "#/components/schemas/Source"
             }
+          }
+        }
+      },
+      "SourceResponseEnvelope": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Source",
+            "description": "The source object."
           }
         }
       },
@@ -6061,6 +6148,302 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Source",
+        "description": "Creates a new source.\n\nThe request body is a source object without the `id` field. If an\n`id` is sent anyway it is silently ignored (stripped before\nvalidation — the request is never rejected because of it).\nGranularity fields\n(`materializedViews[].minGranularity` and\n`metadataMaterializedViews.granularity`) accept the same short format\nthe API returns (e.g. `5m`, `15s`, `1h`, `1d`).\n",
+        "operationId": "createSource",
+        "tags": [
+          "Sources"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Source"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully created source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Body validation failed: name: Required"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/sources/{id}": {
+      "get": {
+        "summary": "Get Source",
+        "description": "Retrieves a specific source by ID",
+        "operationId": "getSource",
+        "tags": [
+          "Sources"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Source ID",
+            "example": "507f1f77bcf86cd799439011"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceResponseEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Source not found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Source",
+        "description": "Updates an existing source. The full source object must be provided;\nthis is a replace, not a patch.\n\nThe request body is a source object without the `id` field. If an\n`id` is sent anyway it is silently ignored (stripped before\nvalidation — never a 400); the path parameter alone identifies the\nsource. Granularity fields (`materializedViews[].minGranularity` and\n`metadataMaterializedViews.granularity`) accept the same short format\nthe API returns (e.g. `5m`, `15s`, `1h`, `1d`).\n",
+        "operationId": "updateSource",
+        "tags": [
+          "Sources"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Source ID",
+            "example": "507f1f77bcf86cd799439011"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Source"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully updated source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Body validation failed: name: Required"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Source not found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Source",
+        "description": "Deletes a source",
+        "operationId": "deleteSource",
+        "tags": [
+          "Sources"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Source ID",
+            "example": "507f1f77bcf86cd799439011"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully deleted source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                },
+                "example": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Source not found"
                 }
               }
             }
