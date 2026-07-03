@@ -193,9 +193,19 @@ const router = express.Router();
  * /api/v2/saved-searches:
  *   get:
  *     summary: List Saved Searches
- *     description: Retrieves all saved searches for the authenticated team.
+ *     description: Retrieves saved searches for the authenticated team.
  *     operationId: listSavedSearches
  *     tags: [Saved Searches]
+ *     parameters:
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 1000
+ *           default: 1000
+ *         description: Maximum number of saved searches to return.
  *     responses:
  *       '200':
  *         description: Successfully retrieved saved searches
@@ -216,22 +226,32 @@ const router = express.Router();
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    if (teamId == null) {
-      return res.status(403).json({ message: 'Forbidden' });
+router.get(
+  '/',
+  validateRequest({
+    query: z.object({
+      limit: z.coerce.number().int().min(1).max(1000).default(1000),
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.status(403).json({ message: 'Forbidden' });
+      }
+
+      const savedSearches = await SavedSearch.find({
+        team: teamId.toString(),
+      }).limit(Number(req.query.limit));
+
+      return res.json({
+        data: savedSearches.map(s => s.toExternalJSON()),
+      });
+    } catch (e) {
+      next(e);
     }
-
-    const savedSearches = await SavedSearch.find({ team: teamId.toString() });
-
-    return res.json({
-      data: savedSearches.map(s => s.toExternalJSON()),
-    });
-  } catch (e) {
-    next(e);
-  }
-});
+  },
+);
 
 /**
  * @openapi

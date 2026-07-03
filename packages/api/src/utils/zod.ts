@@ -691,11 +691,29 @@ const webhookHeaderNameSchema = z
   )
   .refine(name => !/^\d/.test(name), 'Header name cannot start with a number');
 
+// eslint-disable-next-line no-control-regex
+const hasControlChars = (val: string) => /[\r\n\t\x00-\x1F\x7F]/.test(val);
+
 const webhookHeaderValueSchema = z
   .string()
-  // eslint-disable-next-line no-control-regex
-  .refine(val => !/[\r\n\t\x00-\x1F\x7F]/.test(val), {
+  .refine(val => !hasControlChars(val), {
     message: 'Header values cannot contain control characters',
+  });
+
+// Query param keys and values are written into the outbound request URL, so they
+// get the same CRLF/control-char hardening as headers. Unlike header names, query
+// keys aren't HTTP tokens, so only control chars are rejected (not a token charset).
+const webhookQueryParamKeySchema = z
+  .string()
+  .min(1, 'Query parameter name cannot be empty')
+  .refine(val => !hasControlChars(val), {
+    message: 'Query parameter names cannot contain control characters',
+  });
+
+const webhookQueryParamValueSchema = z
+  .string()
+  .refine(val => !hasControlChars(val), {
+    message: 'Query parameter values cannot contain control characters',
   });
 
 // Request body for external webhook create/update. `headers` and `queryParams`
@@ -706,7 +724,9 @@ export const externalWebhookCreateSchema = z.object({
   service: z.nativeEnum(WebhookService),
   url: z.string().url(),
   description: z.string().optional(),
-  queryParams: z.record(z.string()).optional(),
+  queryParams: z
+    .record(webhookQueryParamKeySchema, webhookQueryParamValueSchema)
+    .optional(),
   headers: z
     .record(webhookHeaderNameSchema, webhookHeaderValueSchema)
     .optional(),

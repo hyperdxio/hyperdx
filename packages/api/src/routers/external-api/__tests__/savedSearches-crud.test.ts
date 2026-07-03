@@ -141,6 +141,25 @@ describe('External API v2 Saved Searches CRUD', () => {
       expect(response.body.data[0].name).toBe('Production Errors');
     });
 
+    it('should cap the number of results with the limit param', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), name: 'First' })
+        .expect(200);
+      await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), name: 'Second' })
+        .expect(200);
+
+      const response = await authRequest('get', `${BASE_URL}?limit=1`).expect(
+        200,
+      );
+      expect(response.body.data).toHaveLength(1);
+    });
+
+    it('should reject an out-of-range limit', async () => {
+      await authRequest('get', `${BASE_URL}?limit=0`).expect(400);
+      await authRequest('get', `${BASE_URL}?limit=5000`).expect(400);
+    });
+
     it('should get a saved search by id', async () => {
       const created = await authRequest('post', BASE_URL)
         .send(savedSearchBody())

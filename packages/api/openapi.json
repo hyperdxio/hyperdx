@@ -6208,10 +6208,24 @@
     "/api/v2/saved-searches": {
       "get": {
         "summary": "List Saved Searches",
-        "description": "Retrieves all saved searches for the authenticated team.",
+        "description": "Retrieves saved searches for the authenticated team.",
         "operationId": "listSavedSearches",
         "tags": [
           "Saved Searches"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1000
+            },
+            "description": "Maximum number of saved searches to return."
+          }
         ],
         "responses": {
           "200": {

@@ -292,6 +292,24 @@ describe('External API v2 Webhooks', () => {
         })
         .expect(400);
     });
+
+    it('should reject query param values with control characters', async () => {
+      await authRequest('post', WEBHOOKS_BASE_URL)
+        .send({
+          ...MOCK_GENERIC_WEBHOOK,
+          queryParams: { token: 'line1\r\nX-Injected: evil' },
+        })
+        .expect(400);
+    });
+
+    it('should reject query param names with control characters', async () => {
+      await authRequest('post', WEBHOOKS_BASE_URL)
+        .send({
+          ...MOCK_GENERIC_WEBHOOK,
+          queryParams: { 'bad\nkey': 'value' },
+        })
+        .expect(400);
+    });
   });
 
   describe('PUT /api/v2/webhooks/:id', () => {
