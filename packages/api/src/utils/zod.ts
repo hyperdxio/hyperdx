@@ -712,5 +712,3 @@ export const externalWebhookCreateSchema = z.object({
     .optional(),
   body: z.string().optional(),
 });
-
-export type ExternalWebhookCreate = z.infer<typeof externalWebhookCreateSchema>;

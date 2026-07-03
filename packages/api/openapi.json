@@ -4241,7 +4241,7 @@
           "description": {
             "type": "string",
             "description": "Webhook description, shown in the UI",
-            "example": "Sends critical alerts to the"
+            "example": "Sends critical alerts to the #incidents channel"
           },
           "updatedAt": {
             "type": "string",
@@ -4409,7 +4409,7 @@
           "service",
           "url"
         ],
-        "description": "Webhook create/update body. `headers` and `queryParams` are\nwrite-only — they are accepted here but never returned by any\nread endpoint, so secrets such as auth tokens do not leak. On\nupdate this is a full replace (PUT): any omitted optional field is\ncleared, so re-send `headers`/`queryParams` to preserve them.\n",
+        "description": "Webhook create/update body. `headers` and `queryParams` are\nwrite-only — they are accepted here but never returned by any\nread endpoint, so secrets such as auth tokens do not leak. On\nupdate (PUT), omitted readable fields (`description`, `body`) are\ncleared, while omitted `headers`/`queryParams` are preserved —\nsend an explicit `{}` to clear them.\n",
         "properties": {
           "name": {
             "type": "string",
@@ -4435,7 +4435,7 @@
           "description": {
             "type": "string",
             "description": "Webhook description, shown in the UI.",
-            "example": "Sends critical alerts to the"
+            "example": "Sends critical alerts to the #incidents channel"
           },
           "body": {
             "type": "string",
@@ -7226,7 +7226,7 @@
     "/api/v2/webhooks/{id}": {
       "put": {
         "summary": "Update Webhook",
-        "description": "Replaces an existing webhook. This is a full replace, not a patch:\nany omitted optional field (`description`, `body`, `headers`,\n`queryParams`) is cleared. Because `headers` and `queryParams` are\nnever returned on read, re-send them to preserve their values.\n",
+        "description": "Replaces an existing webhook. Readable optional fields\n(`description`, `body`) are a full replace: omitting them clears\nthem. The write-only fields `headers` and `queryParams` are never\nreturned on read, so omitting them preserves the stored values;\nsend an explicit empty object (`{}`) to clear them.\n",
         "operationId": "updateWebhook",
         "tags": [
           "Webhooks"

@@ -182,6 +182,21 @@ describe('External API v2 Saved Searches CRUD', () => {
         .send(savedSearchBody())
         .expect(404);
     });
+
+    it('should reject a sourceId that does not belong to the team', async () => {
+      const created = await authRequest('post', BASE_URL)
+        .send(savedSearchBody())
+        .expect(200);
+
+      const otherSourceId = new mongoose.Types.ObjectId().toString();
+      const response = await authRequest(
+        'put',
+        `${BASE_URL}/${created.body.data.id}`,
+      )
+        .send({ ...savedSearchBody(), sourceId: otherSourceId })
+        .expect(400);
+      expect(response.body.message).toMatch(/existing source/i);
+    });
   });
 
   describe('DELETE /api/v2/saved-searches/:id', () => {

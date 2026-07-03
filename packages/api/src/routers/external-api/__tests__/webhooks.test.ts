@@ -295,7 +295,7 @@ describe('External API v2 Webhooks', () => {
   });
 
   describe('PUT /api/v2/webhooks/:id', () => {
-    it('should replace a webhook and clear omitted optional fields', async () => {
+    it('should replace readable fields but preserve omitted write-only fields', async () => {
       const created = await Webhook.create({
         ...MOCK_GENERIC_WEBHOOK,
         team: team._id,
@@ -314,11 +314,55 @@ describe('External API v2 Webhooks', () => {
 
       expect(response.body.data.name).toBe('Renamed Generic');
       expect(response.body.data.url).toBe('https://example.com/new');
+      // Write-only fields must not be echoed back on update either
+      expect(response.body.data).not.toHaveProperty('headers');
+      expect(response.body.data).not.toHaveProperty('queryParams');
 
-      // headers/body omitted => cleared
+      const stored = await Webhook.findById(created._id).lean();
+      // headers omitted => preserved (clients can never read them back)
+      expect(stored?.headers).toEqual(MOCK_GENERIC_WEBHOOK.headers);
+      // readable fields omitted => cleared (full replace)
+      expect(stored?.body).toBeUndefined();
+      expect(stored?.description).toBeUndefined();
+    });
+
+    it('should clear write-only fields when an explicit empty object is sent', async () => {
+      const created = await Webhook.create({
+        ...MOCK_GENERIC_WEBHOOK,
+        team: team._id,
+      });
+
+      await authRequest('put', `${WEBHOOKS_BASE_URL}/${created._id}`)
+        .send({
+          name: MOCK_GENERIC_WEBHOOK.name,
+          service: WebhookService.Generic,
+          url: MOCK_GENERIC_WEBHOOK.url,
+          headers: {},
+        })
+        .expect(200);
+
       const stored = await Webhook.findById(created._id).lean();
       expect(stored?.headers).toBeUndefined();
-      expect(stored?.body).toBeUndefined();
+    });
+
+    it('should reject renaming a webhook onto an existing service + name', async () => {
+      await Webhook.create({
+        ...MOCK_SLACK_WEBHOOK,
+        team: team._id,
+      });
+      const created = await Webhook.create({
+        ...MOCK_SLACK_WEBHOOK,
+        name: 'Another Slack Webhook',
+        team: team._id,
+      });
+
+      const response = await authRequest(
+        'put',
+        `${WEBHOOKS_BASE_URL}/${created._id}`,
+      )
+        .send({ ...MOCK_SLACK_WEBHOOK })
+        .expect(400);
+      expect(response.body.message).toMatch(/already exists/i);
     });
 
     it('should return 404 for a webhook belonging to another team', async () => {

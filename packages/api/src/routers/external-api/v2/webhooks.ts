@@ -79,7 +79,7 @@ function formatExternalWebhook(
  *         description:
  *           type: string
  *           description: Webhook description, shown in the UI
- *           example: Sends critical alerts to the #incidents channel
+ *           example: "Sends critical alerts to the #incidents channel"
  *         updatedAt:
  *           type: string
  *           format: date-time
@@ -262,8 +262,9 @@ router.get('/', async (req, res, next) => {
  *         Webhook create/update body. `headers` and `queryParams` are
  *         write-only — they are accepted here but never returned by any
  *         read endpoint, so secrets such as auth tokens do not leak. On
- *         update this is a full replace (PUT): any omitted optional field is
- *         cleared, so re-send `headers`/`queryParams` to preserve them.
+ *         update (PUT), omitted readable fields (`description`, `body`) are
+ *         cleared, while omitted `headers`/`queryParams` are preserved —
+ *         send an explicit `{}` to clear them.
  *       properties:
  *         name:
  *           type: string
@@ -282,7 +283,7 @@ router.get('/', async (req, res, next) => {
  *         description:
  *           type: string
  *           description: Webhook description, shown in the UI.
- *           example: Sends critical alerts to the #incidents channel
+ *           example: "Sends critical alerts to the #incidents channel"
  *         body:
  *           type: string
  *           description: Optional request body template (generic webhooks).
@@ -360,10 +361,6 @@ router.post(
       const { name, service, url, description, queryParams, headers, body } =
         req.body;
 
-      if (await Webhook.findOne({ team: teamId, service, name })) {
-        return res.status(400).json({ message: DUPLICATE_WEBHOOK_MESSAGE });
-      }
-
       const webhook = await Webhook.create({
         team: teamId,
         name,
@@ -398,10 +395,11 @@ router.post(
  *   put:
  *     summary: Update Webhook
  *     description: |
- *       Replaces an existing webhook. This is a full replace, not a patch:
- *       any omitted optional field (`description`, `body`, `headers`,
- *       `queryParams`) is cleared. Because `headers` and `queryParams` are
- *       never returned on read, re-send them to preserve their values.
+ *       Replaces an existing webhook. Readable optional fields
+ *       (`description`, `body`) are a full replace: omitting them clears
+ *       them. The write-only fields `headers` and `queryParams` are never
+ *       returned on read, so omitting them preserves the stored values;
+ *       send an explicit empty object (`{}`) to clear them.
  *     operationId: updateWebhook
  *     tags: [Webhooks]
  *     parameters:
@@ -466,22 +464,24 @@ router.put(
       const { name, service, url, description, queryParams, headers, body } =
         req.body;
 
-      // Full replace: fields present in the body are $set; omitted optional
-      // fields are $unset. Map fields (headers/queryParams) require $unset to
-      // be cleared — $set with undefined does not remove them.
+      // Readable fields are a full replace: present => $set, omitted =>
+      // $unset. Write-only fields (headers/queryParams) are never returned
+      // on read, so a read-modify-write client cannot re-send them — omitting
+      // them preserves the stored values; send an explicit {} to clear.
       const $set: Record<string, unknown> = { name, service, url };
       const $unset: Record<string, 1> = {};
-      for (const [key, value] of Object.entries({
-        description,
-        body,
-        headers,
-        queryParams,
-      })) {
-        const isEmptyMap =
-          value != null &&
-          typeof value === 'object' &&
-          Object.keys(value).length === 0;
-        if (value === undefined || isEmptyMap) {
+      for (const [key, value] of Object.entries({ description, body })) {
+        if (value === undefined) {
+          $unset[key] = 1;
+        } else {
+          $set[key] = value;
+        }
+      }
+      for (const [key, value] of Object.entries({ headers, queryParams })) {
+        if (value === undefined) {
+          continue;
+        }
+        if (Object.keys(value).length === 0) {
           $unset[key] = 1;
         } else {
           $set[key] = value;
