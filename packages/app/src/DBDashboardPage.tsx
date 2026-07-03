@@ -76,6 +76,7 @@ import {
   IconAlertTriangle,
   IconArrowsMaximize,
   IconBell,
+  IconBellPlus,
   IconChartBar,
   IconChevronsDown,
   IconChevronsUp,
@@ -673,27 +674,42 @@ const Tile = forwardRef(
           key="hover-toolbar"
           my={2} // Margin to ensure that the Alert Indicator doesn't clip on non-Line/Bar display types
         >
-          {displayTypeSupportsAlerts && (
-            <Indicator
-              size={alert?.state === AlertState.OK ? 6 : 8}
-              zIndex={1}
-              color={alertIndicatorColor}
-              processing={alert?.state === AlertState.ALERT}
-              label={!alert && <span className="fs-8">+</span>}
-              mr={4}
-            >
+          {displayTypeSupportsAlerts &&
+            (alert ? (
+              // Existing alert: bell with a colored status dot indicator.
+              <Indicator
+                size={alert.state === AlertState.OK ? 6 : 8}
+                zIndex={1}
+                color={alertIndicatorColor}
+                processing={alert.state === AlertState.ALERT}
+                mr={4}
+              >
+                <Tooltip label={alertTooltip} withArrow>
+                  <ActionIcon
+                    data-testid={`tile-alerts-button-${chart.id}`}
+                    variant="subtle"
+                    size="sm"
+                    onClick={onEditClick}
+                  >
+                    <IconBell size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              </Indicator>
+            ) : (
+              // No alert yet: a dedicated "bell +" icon reads clearly on any
+              // background, unlike an overlaid indicator badge.
               <Tooltip label={alertTooltip} withArrow>
                 <ActionIcon
                   data-testid={`tile-alerts-button-${chart.id}`}
                   variant="subtle"
                   size="sm"
                   onClick={onEditClick}
+                  mr={4}
                 >
-                  <IconBell size={16} />
+                  <IconBellPlus size={16} />
                 </ActionIcon>
               </Tooltip>
-            </Indicator>
-          )}
+            ))}
 
           <Menu width={220} position="bottom-end">
             <Menu.Target>
@@ -1057,7 +1073,7 @@ const Tile = forwardRef(
           data-testid={`dashboard-tile-${chart.id}`}
           // `dashboard-chart-highlighted` triggers a one-shot flash animation
           // when the tile is deep-linked via the `highlightedTileId` query param.
-          className={`pt-0 pb-2 ${className} d-flex flex-column bg-surface border cursor-grab rounded ${
+          className={`pt-0 pb-2 ${className} d-flex flex-column bg-body border cursor-grab rounded ${
             isHighlighted && 'dashboard-chart-highlighted'
           }`}
           id={`chart-${chart.id}`}
@@ -2841,7 +2857,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         </PageHeader>
       }
       padded
-      contentClassName="bg-muted-subtle"
+      contentClassName="bg-sunken"
       content={dashboardBody}
     />
   );

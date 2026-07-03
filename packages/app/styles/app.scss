@@ -244,6 +244,15 @@ button:focus-visible {
   opacity: 1;
 }
 
+// Mantine's default Tabs variant draws a full-width underline beneath the tab
+// list via a ::before pseudo-element. Dashboard groups already have their own
+// border plus a white-header / muted-body split, so this line is redundant.
+// Scoped to the list's ::before so the active-tab indicator (a separate
+// element that reuses --tab-border-color) is left intact.
+.dashboard-group-tabs-list::before {
+  display: none !important;
+}
+
 // custom overrides for jsontree
 .react-json-tree {
   & > ul {
