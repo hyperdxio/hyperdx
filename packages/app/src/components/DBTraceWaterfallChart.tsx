@@ -979,7 +979,7 @@ export function DBTraceWaterfallChartContainer({
                 type,
               }),
               body: <span>{displayText}</span>,
-              minWidthPx: 2,
+              minWidthPx: type === SourceKind.Log ? 10 : 2,
               isError,
               markers,
               showDuration: type !== SourceKind.Log,
