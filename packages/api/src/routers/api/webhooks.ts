@@ -11,7 +11,7 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import { AlertState } from '@/models/alert';
+import Alert, { AlertState } from '@/models/alert';
 import Webhook, { WebhookService } from '@/models/webhook';
 import {
   handleSendGenericWebhook,
@@ -354,6 +354,13 @@ router.delete(
       if (teamId == null) {
         return res.sendStatus(403);
       }
+
+      // Null the channel on referencing alerts so they don't fire WEBHOOK_ERROR on every tick.
+      await Alert.updateMany(
+        { 'channel.webhookId': req.params.id, team: teamId },
+        { $set: { channel: { type: null } } },
+      );
+
       await Webhook.findOneAndDelete({ _id: req.params.id, team: teamId });
       res.json({});
     } catch (err) {
