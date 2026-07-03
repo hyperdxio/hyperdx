@@ -3054,6 +3054,169 @@
           }
         }
       },
+      "SavedSearch": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "sourceId"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "readOnly": true,
+            "description": "Unique saved search ID. Server-generated.",
+            "example": "507f1f77bcf86cd799439011"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name for the saved search.",
+            "example": "Production Errors"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the source this saved search queries.",
+            "example": "507f1f77bcf86cd799439012"
+          },
+          "select": {
+            "type": "string",
+            "description": "Comma-separated list of column expressions to display. Empty uses the source default.",
+            "example": "Timestamp, ServiceName, Body"
+          },
+          "where": {
+            "type": "string",
+            "description": "Row filter expression. The language is controlled by whereLanguage.",
+            "example": "SeverityText:ERROR"
+          },
+          "whereLanguage": {
+            "type": "string",
+            "enum": [
+              "lucene",
+              "sql"
+            ],
+            "description": "Language used for the where filter.",
+            "example": "lucene"
+          },
+          "orderBy": {
+            "type": "string",
+            "description": "ORDER BY expression. Empty uses the source default.",
+            "example": "Timestamp DESC"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags used to organize saved searches."
+          },
+          "filters": {
+            "type": "array",
+            "description": "Structured pinned filters applied to the search.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "teamId": {
+            "type": "string",
+            "readOnly": true,
+            "description": "ID of the team that owns the saved search.",
+            "example": "507f1f77bcf86cd799439013"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true,
+            "description": "Creation timestamp.",
+            "example": "2025-01-01T00:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true,
+            "description": "Last update timestamp.",
+            "example": "2025-06-15T10:30:00.000Z"
+          }
+        }
+      },
+      "SavedSearchInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "sourceId"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the saved search.",
+            "example": "Production Errors"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the source to query. Must belong to the team.",
+            "example": "507f1f77bcf86cd799439012"
+          },
+          "select": {
+            "type": "string",
+            "description": "Comma-separated list of column expressions to display. Empty uses the source default.",
+            "example": "Timestamp, ServiceName, Body"
+          },
+          "where": {
+            "type": "string",
+            "description": "Row filter expression. The language is controlled by whereLanguage.",
+            "example": "SeverityText:ERROR"
+          },
+          "whereLanguage": {
+            "type": "string",
+            "enum": [
+              "lucene",
+              "sql"
+            ],
+            "default": "lucene",
+            "description": "Language used for the where filter.",
+            "example": "lucene"
+          },
+          "orderBy": {
+            "type": "string",
+            "description": "ORDER BY expression. Empty uses the source default.",
+            "example": "Timestamp DESC"
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags used to organize saved searches.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "filters": {
+            "type": "array",
+            "description": "Structured pinned filters applied to the search.",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "SavedSearchesListResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "description": "List of saved search objects.",
+            "items": {
+              "$ref": "#/components/schemas/SavedSearch"
+            }
+          }
+        }
+      },
+      "SavedSearchResponseEnvelope": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SavedSearch",
+            "description": "The saved search object."
+          }
+        }
+      },
       "SearchRequest": {
         "type": "object",
         "required": [
@@ -4236,6 +4399,74 @@
             "items": {
               "$ref": "#/components/schemas/Webhook"
             }
+          }
+        }
+      },
+      "WebhookInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "service",
+          "url"
+        ],
+        "description": "Webhook create/update body. `headers` and `queryParams` are\nwrite-only — they are accepted here but never returned by any\nread endpoint, so secrets such as auth tokens do not leak. On\nupdate this is a full replace (PUT): any omitted optional field is\ncleared, so re-send `headers`/`queryParams` to preserve them.\n",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Webhook name. Must be unique per service within the team.",
+            "example": "Production Alerts"
+          },
+          "service": {
+            "type": "string",
+            "enum": [
+              "slack",
+              "incidentio",
+              "generic"
+            ],
+            "description": "Webhook service type.",
+            "example": "slack"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Webhook destination URL.",
+            "example": "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+          },
+          "description": {
+            "type": "string",
+            "description": "Webhook description, shown in the UI.",
+            "example": "Sends critical alerts to the"
+          },
+          "body": {
+            "type": "string",
+            "description": "Optional request body template (generic webhooks).",
+            "example": "{\"alert\": \"{{title}}\", \"severity\": \"{{level}}\"}"
+          },
+          "headers": {
+            "type": "object",
+            "description": "Write-only. Custom HTTP headers sent with the webhook request. Never returned on read.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "Authorization": "Bearer secret-token"
+            }
+          },
+          "queryParams": {
+            "type": "object",
+            "description": "Write-only. Query parameters appended to the webhook URL. Never returned on read.",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WebhookResponseEnvelope": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Webhook",
+            "description": "The webhook object."
           }
         }
       }
@@ -5974,6 +6205,317 @@
         }
       }
     },
+    "/api/v2/saved-searches": {
+      "get": {
+        "summary": "List Saved Searches",
+        "description": "Retrieves all saved searches for the authenticated team.",
+        "operationId": "listSavedSearches",
+        "tags": [
+          "Saved Searches"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved saved searches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchesListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Saved Search",
+        "description": "Creates a new saved search.",
+        "operationId": "createSavedSearch",
+        "tags": [
+          "Saved Searches"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedSearchInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully created saved search",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/saved-searches/{id}": {
+      "get": {
+        "summary": "Get Saved Search",
+        "description": "Retrieves a specific saved search by ID.",
+        "operationId": "getSavedSearch",
+        "tags": [
+          "Saved Searches"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Saved search ID",
+            "example": "507f1f77bcf86cd799439011"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved saved search",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchResponseEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Saved search not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Saved Search",
+        "description": "Updates an existing saved search. Send the full object: `name`,\n`sourceId`, `select`, `where`, `whereLanguage`, and `tags` are always\nwritten (they fall back to their defaults when omitted). Omitting the\noptional `orderBy` or `filters` leaves the stored value unchanged\nrather than clearing it.\n",
+        "operationId": "updateSavedSearch",
+        "tags": [
+          "Saved Searches"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Saved search ID",
+            "example": "507f1f77bcf86cd799439011"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedSearchInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully updated saved search",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Saved search not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Saved Search",
+        "description": "Deletes a saved search and any alerts attached to it.",
+        "operationId": "deleteSavedSearch",
+        "tags": [
+          "Saved Searches"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Saved search ID",
+            "example": "507f1f77bcf86cd799439011"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully deleted saved search",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                },
+                "example": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Saved search not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/search": {
       "post": {
         "summary": "Search Raw Logs and Traces",
@@ -6610,6 +7152,213 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Webhook",
+        "description": "Creates a new webhook for the authenticated team.",
+        "operationId": "createWebhook",
+        "tags": [
+          "Webhooks"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully created webhook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request or duplicate webhook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/webhooks/{id}": {
+      "put": {
+        "summary": "Update Webhook",
+        "description": "Replaces an existing webhook. This is a full replace, not a patch:\nany omitted optional field (`description`, `body`, `headers`,\n`queryParams`) is cleared. Because `headers` and `queryParams` are\nnever returned on read, re-send them to preserve their values.\n",
+        "operationId": "updateWebhook",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Webhook ID",
+            "example": "507f1f77bcf86cd799439011"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully updated webhook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request or duplicate webhook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Webhook not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Webhook",
+        "description": "Deletes a webhook.",
+        "operationId": "deleteWebhook",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Webhook ID",
+            "example": "507f1f77bcf86cd799439011"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully deleted webhook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                },
+                "example": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Webhook not found",
             "content": {
               "application/json": {
                 "schema": {

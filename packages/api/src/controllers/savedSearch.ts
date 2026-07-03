@@ -76,4 +76,5 @@ export async function deleteSavedSearch(teamId: string, savedSearchId: string) {
   if (savedSearch) {
     await deleteSavedSearchAlerts(savedSearchId, teamId);
   }
+  return savedSearch;
 }

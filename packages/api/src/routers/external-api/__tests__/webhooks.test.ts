@@ -237,4 +237,136 @@ describe('External API v2 Webhooks', () => {
       await request(server.getHttpServer()).get(WEBHOOKS_BASE_URL).expect(401);
     });
   });
+
+  describe('POST /api/v2/webhooks', () => {
+    it('should require authentication', async () => {
+      await request(server.getHttpServer())
+        .post(WEBHOOKS_BASE_URL)
+        .send(MOCK_SLACK_WEBHOOK)
+        .expect(401);
+    });
+
+    it('should create a Slack webhook and never return sensitive fields', async () => {
+      const response = await authRequest('post', WEBHOOKS_BASE_URL)
+        .send(MOCK_GENERIC_WEBHOOK)
+        .expect(200);
+
+      expect(response.body.data).toMatchObject({
+        id: expect.any(String),
+        name: MOCK_GENERIC_WEBHOOK.name,
+        service: WebhookService.Generic,
+        url: MOCK_GENERIC_WEBHOOK.url,
+        body: MOCK_GENERIC_WEBHOOK.body,
+      });
+      // Write-only fields must not be echoed back
+      expect(response.body.data).not.toHaveProperty('headers');
+      expect(response.body.data).not.toHaveProperty('queryParams');
+
+      // ...but they should be persisted
+      const stored = await Webhook.findById(response.body.data.id).lean();
+      expect(stored?.headers).toBeDefined();
+    });
+
+    it('should reject a duplicate service + name', async () => {
+      await authRequest('post', WEBHOOKS_BASE_URL)
+        .send(MOCK_SLACK_WEBHOOK)
+        .expect(200);
+
+      const response = await authRequest('post', WEBHOOKS_BASE_URL)
+        .send(MOCK_SLACK_WEBHOOK)
+        .expect(400);
+      expect(response.body.message).toMatch(/already exists/i);
+    });
+
+    it('should reject an invalid url', async () => {
+      await authRequest('post', WEBHOOKS_BASE_URL)
+        .send({ ...MOCK_SLACK_WEBHOOK, url: 'not-a-url' })
+        .expect(400);
+    });
+
+    it('should reject header values with control characters', async () => {
+      await authRequest('post', WEBHOOKS_BASE_URL)
+        .send({
+          ...MOCK_GENERIC_WEBHOOK,
+          headers: { 'X-Bad': 'line1\nline2' },
+        })
+        .expect(400);
+    });
+  });
+
+  describe('PUT /api/v2/webhooks/:id', () => {
+    it('should replace a webhook and clear omitted optional fields', async () => {
+      const created = await Webhook.create({
+        ...MOCK_GENERIC_WEBHOOK,
+        team: team._id,
+      });
+
+      const response = await authRequest(
+        'put',
+        `${WEBHOOKS_BASE_URL}/${created._id}`,
+      )
+        .send({
+          name: 'Renamed Generic',
+          service: WebhookService.Generic,
+          url: 'https://example.com/new',
+        })
+        .expect(200);
+
+      expect(response.body.data.name).toBe('Renamed Generic');
+      expect(response.body.data.url).toBe('https://example.com/new');
+
+      // headers/body omitted => cleared
+      const stored = await Webhook.findById(created._id).lean();
+      expect(stored?.headers).toBeUndefined();
+      expect(stored?.body).toBeUndefined();
+    });
+
+    it('should return 404 for a webhook belonging to another team', async () => {
+      const otherTeamId = new ObjectId();
+      const created = await Webhook.create({
+        ...MOCK_SLACK_WEBHOOK,
+        team: otherTeamId,
+      });
+
+      await authRequest('put', `${WEBHOOKS_BASE_URL}/${created._id}`)
+        .send(MOCK_SLACK_WEBHOOK)
+        .expect(404);
+    });
+
+    it('should return 404 for a non-existent webhook', async () => {
+      await authRequest('put', `${WEBHOOKS_BASE_URL}/${new ObjectId()}`)
+        .send(MOCK_SLACK_WEBHOOK)
+        .expect(404);
+    });
+  });
+
+  describe('DELETE /api/v2/webhooks/:id', () => {
+    it('should delete a webhook', async () => {
+      const created = await Webhook.create({
+        ...MOCK_SLACK_WEBHOOK,
+        team: team._id,
+      });
+
+      await authRequest('delete', `${WEBHOOKS_BASE_URL}/${created._id}`).expect(
+        200,
+      );
+
+      expect(await Webhook.findById(created._id)).toBeNull();
+    });
+
+    it('should return 404 for a webhook belonging to another team', async () => {
+      const otherTeamId = new ObjectId();
+      const created = await Webhook.create({
+        ...MOCK_SLACK_WEBHOOK,
+        team: otherTeamId,
+      });
+
+      await authRequest('delete', `${WEBHOOKS_BASE_URL}/${created._id}`).expect(
+        404,
+      );
+
+      // untouched
+      expect(await Webhook.findById(created._id)).not.toBeNull();
+    });
+  });
 });

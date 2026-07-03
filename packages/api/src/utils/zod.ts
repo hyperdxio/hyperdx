@@ -678,3 +678,39 @@ export const externalWebhookSchema = z.discriminatedUnion('service', [
 ]);
 
 export type ExternalWebhook = z.infer<typeof externalWebhookSchema>;
+
+// ponytail: header name/value validators mirror the ones in the internal
+// webhooks router; not extracted to a shared module to avoid entangling this
+// with that router's redaction logic. Keep in sync if the rules change.
+const webhookHeaderNameSchema = z
+  .string()
+  .min(1, 'Header name cannot be empty')
+  .regex(
+    /^[!#$%&'*+\-.0-9A-Z^_`a-z|~]+$/,
+    "Invalid header name. Only alphanumeric characters and !#$%&'*+-.^_`|~ are allowed",
+  )
+  .refine(name => !/^\d/.test(name), 'Header name cannot start with a number');
+
+const webhookHeaderValueSchema = z
+  .string()
+  // eslint-disable-next-line no-control-regex
+  .refine(val => !/[\r\n\t\x00-\x1F\x7F]/.test(val), {
+    message: 'Header values cannot contain control characters',
+  });
+
+// Request body for external webhook create/update. `headers` and `queryParams`
+// are write-only: accepted here but never echoed back by externalWebhookSchema,
+// so provider integrations can configure secrets without them leaking on read.
+export const externalWebhookCreateSchema = z.object({
+  name: z.string().trim().min(1),
+  service: z.nativeEnum(WebhookService),
+  url: z.string().url(),
+  description: z.string().optional(),
+  queryParams: z.record(z.string()).optional(),
+  headers: z
+    .record(webhookHeaderNameSchema, webhookHeaderValueSchema)
+    .optional(),
+  body: z.string().optional(),
+});
+
+export type ExternalWebhookCreate = z.infer<typeof externalWebhookCreateSchema>;
