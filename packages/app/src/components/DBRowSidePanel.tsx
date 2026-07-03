@@ -4,7 +4,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import { add } from 'date-fns';
@@ -39,6 +38,7 @@ import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
 
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
+import useSidePanelStack, { reconcileTab } from '@/hooks/useSidePanelStack';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import { KeyboardShortcutsModal } from '@/LogSidePanelElements';
 import { getEventBody, useSource } from '@/source';
@@ -47,7 +47,7 @@ import { SearchConfig } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { formatDistanceToNowStrictShort } from '@/utils';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
-import { parseAsJsonEncoded } from '@/utils/queryParsers';
+import { parseAsJsonEncoded, parseAsStringEncoded } from '@/utils/queryParsers';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
@@ -61,6 +61,7 @@ import {
   useRowData,
 } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
+import { NavEntry, SourceFrame, Tab } from './DBRowSidePanel.types';
 import { DBRowSidePanelErrorState } from './DBRowSidePanelErrorState';
 import DBRowSidePanelHeader from './DBRowSidePanelHeader';
 import { DBSessionPanel, useSessionId } from './DBSessionPanel';
@@ -104,17 +105,6 @@ export type RowSidePanelContextProps = {
 };
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});
-
-enum Tab {
-  Overview = 'overview',
-  Parsed = 'parsed',
-  Debug = 'debug',
-  Trace = 'trace',
-  ServiceMap = 'serviceMap',
-  Context = 'context',
-  Replay = 'replay',
-  Infrastructure = 'infrastructure',
-}
 
 function SidePanelHeaderActions({
   onClose,
@@ -187,25 +177,6 @@ function SidePanelHeaderActions({
   );
 }
 
-/** A same-source row navigation (e.g. surrounding-context drilldown). */
-type NavEntry = {
-  rowId: string;
-  aliasWith?: WithClause[];
-  label: string;
-  sourceKind?: SourceKind;
-  originTab?: Tab;
-};
-
-/** A cross-source navigation frame (e.g. log → trace via "View Trace") */
-type SourceFrame = {
-  sourceId: string;
-  rowId: string;
-  aliasWith?: WithClause[];
-  label: string;
-  sourceKind?: SourceKind;
-  originTab?: Tab;
-};
-
 const SPAN_KIND_LABELS: Record<string, string> = {
   '1': 'Internal',
   '2': 'Server',
@@ -239,9 +210,6 @@ type DBRowSidePanelInnerProps = DBRowSidePanelProps & {
   onNavigateToParent?: () => void;
 };
 
-const EMPTY_SOURCE_STACK: SourceFrame[] = [];
-const EMPTY_NAV_STACK: NavEntry[] = [];
-
 export const DBRowSidePanelInner = ({
   rowId: initialRowId,
   aliasWith: initialAliasWith,
@@ -252,26 +220,35 @@ export const DBRowSidePanelInner = ({
   parentBreadcrumbs,
   onNavigateToParent,
 }: DBRowSidePanelInnerProps) => {
-  const [sourceStack, setSourceStack] = useQueryState(
-    'sidePanelSourceStack',
-    parseAsJsonEncoded<SourceFrame[]>().withDefault(EMPTY_SOURCE_STACK),
-  );
-
-  const [navStack, setNavStack] = useQueryState(
-    'sidePanelNavStack',
-    parseAsJsonEncoded<NavEntry[]>().withDefault(EMPTY_NAV_STACK),
-  );
+  const {
+    sourceStack,
+    navStack,
+    tab: persistedTab,
+    pushSource,
+    pushNav,
+    popOne,
+    truncateTo,
+    setTab,
+  } = useSidePanelStack({ initialRowId });
 
   const activeSourceFrame =
     sourceStack.length > 0 ? sourceStack[sourceStack.length - 1] : null;
 
   // Resolve the leaf source (cross-source navigation). Intermediate frames only
   // need their stored label/kind for breadcrumbs.
-  const { data: activeStackSource } = useSource({
+  const {
+    data: activeStackSource,
+    isLoading: isStackSourceLoading,
+    isSuccess: isStackSourceSettled,
+  } = useSource({
     id: activeSourceFrame?.sourceId ?? null,
   });
-  const isResolvingSource =
-    activeSourceFrame != null && activeStackSource == null;
+  const isResolvingSource = activeSourceFrame != null && isStackSourceLoading;
+
+  const isStackSourceMissing =
+    activeSourceFrame != null &&
+    isStackSourceSettled &&
+    activeStackSource == null;
   const source = activeStackSource ?? rootSource;
 
   const baseRowId = activeSourceFrame?.rowId ?? initialRowId;
@@ -281,9 +258,12 @@ export const DBRowSidePanelInner = ({
   const resolvedRowId = leafNav?.rowId ?? baseRowId;
   const resolvedAliasWith = leafNav?.aliasWith ?? baseAliasWith;
 
-  // Avoid querying the (transiently wrong) root source with a leaf row id.
-  const activeRowId = isResolvingSource ? undefined : resolvedRowId;
-  const activeAliasWith = isResolvingSource ? undefined : resolvedAliasWith;
+  // Avoid querying the (transiently wrong or unavailable) root source with a
+  // leaf row id while the leaf source is still loading or can no longer be
+  // resolved.
+  const skipRowQuery = isResolvingSource || isStackSourceMissing;
+  const activeRowId = skipRowQuery ? undefined : resolvedRowId;
+  const activeAliasWith = skipRowQuery ? undefined : resolvedAliasWith;
 
   const {
     data: rowData,
@@ -297,12 +277,13 @@ export const DBRowSidePanelInner = ({
     aliasWith: activeAliasWith,
   });
 
+  const hasActiveStacks = activeSourceFrame != null || leafNav != null;
+
   const parentContext = useContext(RowSidePanelContext);
   // Nested rows shouldn't inherit the parent table's row config.
-  const dbSqlRowTableConfig =
-    sourceStack.length > 0 || navStack.length > 0
-      ? undefined
-      : parentContext.dbSqlRowTableConfig;
+  const dbSqlRowTableConfig = hasActiveStacks
+    ? undefined
+    : parentContext.dbSqlRowTableConfig;
 
   const hasOverviewPanel = useMemo(() => {
     if (isLogSource(source) || isTraceSource(source)) {
@@ -331,11 +312,6 @@ export const DBRowSidePanelInner = ({
       ? Tab.Overview
       : Tab.Parsed;
 
-  const [queryTab, setQueryTab] = useQueryState(
-    'sidePanelTab',
-    parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(defaultTab),
-  );
-
   const handleNavigateToRow = useCallback(
     (
       rowId: string,
@@ -343,127 +319,44 @@ export const DBRowSidePanelInner = ({
       label: string,
       sourceKind?: SourceKind,
     ) => {
-      setNavStack(prev => [
-        ...prev,
-        { rowId, aliasWith, label, sourceKind, originTab: queryTab },
-      ]);
+      // Same-source drilldown (e.g. surrounding context) → jump to this
+      // source's default tab.
+      pushNav({ rowId, aliasWith, label, sourceKind }, defaultTab);
     },
-    [setNavStack, queryTab],
+    [pushNav, defaultTab],
   );
 
   const handleSourceStackPush = useCallback(
     (frame: SourceFrame) => {
-      setSourceStack(prev => [...prev, { ...frame, originTab: queryTab }]);
-      setNavStack([]);
+      // Cross-source push (e.g. "View Trace") → jump to the destination
+      // source's default tab.
+      const destinationTab =
+        frame.sourceKind === SourceKind.Trace ? Tab.Trace : Tab.Overview;
+      pushSource(frame, destinationTab);
     },
-    [setSourceStack, setNavStack, queryTab],
+    [pushSource],
   );
 
   const handlePanelBack = useCallback(() => {
-    if (navStack.length > 0) {
-      // Returning from a same-source drilldown — restore the tab the user was
-      // on before drilling into the row we're leaving (e.g. back to
-      // Surrounding Context after viewing a related row).
-      const restoreTab = navStack[navStack.length - 1]?.originTab;
-      setNavStack(prev => prev.slice(0, -1));
-      if (restoreTab) {
-        setQueryTab(restoreTab);
+    // Pop one level (nav → source), restoring the tab active before that level
+    // was entered. When the trail is empty, leave the panel: hand off to an
+    // embedding parent (session) or close.
+    if (popOne() === 'none') {
+      if (onNavigateToParent) {
+        onNavigateToParent();
+      } else {
+        onClose();
       }
-    } else if (sourceStack.length > 0) {
-      // Returning from a cross-source drilldown (e.g. "View Trace") — restore
-      // the tab the user was on before pushing that source.
-      const restoreTab = sourceStack[sourceStack.length - 1]?.originTab;
-      setSourceStack(prev => prev.slice(0, -1));
-      setNavStack([]);
-      if (restoreTab) {
-        setQueryTab(restoreTab);
-      }
-    } else if (onNavigateToParent) {
-      onNavigateToParent();
-    } else {
-      onClose();
     }
-  }, [
-    navStack,
-    sourceStack,
-    onNavigateToParent,
-    onClose,
-    setNavStack,
-    setSourceStack,
-    setQueryTab,
-  ]);
+  }, [popOne, onNavigateToParent, onClose]);
 
-  // Esc pops one level (nav → source → parent → close), mirroring the Back
-  // button. Disabled when embedded (e.g. in SessionSidePanel), where the
-  // parent owns Esc — otherwise both handlers fire on a single keypress.
-  useHotkeys(['esc'], handlePanelBack, { enabled: !onNavigateToParent });
+  useHotkeys(['esc'], handlePanelBack);
 
   const handleBreadcrumbNavigation = useCallback(
-    (sourceLevel: number, navLevel: number) => {
-      // Restore the tab that was active at the level we're returning to: the
-      // first source frame being dropped, or — if we're staying within the same
-      // source — the first nav entry being dropped.
-      let restoreTab: Tab | undefined;
-      if (sourceLevel < sourceStack.length) {
-        restoreTab = sourceStack[sourceLevel]?.originTab;
-      } else if (navLevel < navStack.length) {
-        restoreTab = navStack[navLevel]?.originTab;
-      }
-      setSourceStack(prev => prev.slice(0, sourceLevel));
-      setNavStack(prev => prev.slice(0, navLevel));
-      if (restoreTab) {
-        setQueryTab(restoreTab);
-      }
-    },
-    [setSourceStack, setNavStack, navStack, sourceStack, setQueryTab],
+    (sourceLevel: number, navLevel: number) =>
+      truncateTo(sourceLevel, navLevel),
+    [truncateTo],
   );
-
-  // Jump to the destination's default tab when a frame is *pushed* onto either
-  // stack (e.g. push a trace source → Trace). The refs are seeded to the
-  // *initial* (possibly URL-restored) stack lengths so this does not clobber a
-  // `sidePanelTab` value present in the URL on first mount.
-  const prevSourceStackLengthRef = useRef(sourceStack.length);
-  const prevNavStackLengthRef = useRef(navStack.length);
-  useEffect(() => {
-    const sourcePushed = sourceStack.length > prevSourceStackLengthRef.current;
-    const navPushed = navStack.length > prevNavStackLengthRef.current;
-
-    // Only *pushes* jump to the destination's default tab. Pops and breadcrumb
-    // truncations are handled by the navigation handlers, which restore the
-    // tab the user was on before drilling in (see `originTab`).
-    if (sourcePushed) {
-      const leafKind = sourceStack[sourceStack.length - 1].sourceKind;
-      setQueryTab(leafKind === SourceKind.Trace ? Tab.Trace : Tab.Overview);
-    } else if (navPushed) {
-      const navDefault = sourceIsTrace
-        ? Tab.Trace
-        : hasOverviewPanel
-          ? Tab.Overview
-          : Tab.Parsed;
-      setQueryTab(navDefault);
-    }
-
-    prevSourceStackLengthRef.current = sourceStack.length;
-    prevNavStackLengthRef.current = navStack.length;
-  }, [sourceStack, navStack, setQueryTab, sourceIsTrace, hasOverviewPanel]);
-
-  // Reset to the default tab and clear drilldowns when a *different* root event
-  // is opened. Seeded with the first-render rowId so a genuine deep-link (rowId
-  // + stacks both restored from the URL) is preserved, while a later change of
-  // the *root* rowId (e.g. undefined → clicked row, or switching to a different
-  // event) clears stale drilldown stacks.
-  const prevInitialRowIdRef = useRef<string | undefined | null>(initialRowId);
-  useEffect(() => {
-    if (initialRowId !== prevInitialRowIdRef.current) {
-      setSourceStack([]);
-      setNavStack([]);
-      setQueryTab(null);
-    }
-    prevInitialRowIdRef.current = initialRowId;
-  }, [initialRowId, setSourceStack, setNavStack, setQueryTab]);
-
-  const displayedTab = queryTab;
-  const setTab = setQueryTab;
 
   const normalizedRow = rowData?.data?.[0];
   const timestampValue = normalizedRow?.['__hdx_timestamp'];
@@ -490,16 +383,11 @@ export const DBRowSidePanelInner = ({
   >(undefined);
 
   useEffect(() => {
-    if (
-      mainContent != null &&
-      initialMainContent == null &&
-      sourceStack.length === 0 &&
-      navStack.length === 0
-    ) {
+    if (mainContent != null && initialMainContent == null && !hasActiveStacks) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setInitialMainContent(mainContent);
     }
-  }, [mainContent, initialMainContent, sourceStack.length, navStack.length]);
+  }, [mainContent, initialMainContent, hasActiveStacks]);
 
   const highlightedAttributeValues = useMemo(() => {
     const attributeExpressions: NonNullable<
@@ -658,7 +546,9 @@ export const DBRowSidePanelInner = ({
       items.push(...parentBreadcrumbs);
     }
 
-    const hasStack = sourceStack.length > 0 || navStack.length > 0;
+    const crumbSourceStack = sourceStack;
+    const crumbNavStack = navStack;
+    const hasStack = crumbSourceStack.length > 0 || crumbNavStack.length > 0;
     const rootLabel =
       initialMainContent ||
       (rootSource.kind === SourceKind.Trace ? 'Trace' : 'Log');
@@ -671,9 +561,9 @@ export const DBRowSidePanelInner = ({
       });
     }
 
-    sourceStack.forEach((entry, i) => {
-      const isLeafSource = i === sourceStack.length - 1;
-      const isCurrent = isLeafSource && navStack.length === 0;
+    crumbSourceStack.forEach((entry, i) => {
+      const isLeafSource = i === crumbSourceStack.length - 1;
+      const isCurrent = isLeafSource && crumbNavStack.length === 0;
       items.push({
         label: entry.label,
         sourceKind: entry.sourceKind,
@@ -683,14 +573,14 @@ export const DBRowSidePanelInner = ({
       });
     });
 
-    navStack.forEach((entry, i) => {
-      const isCurrent = i === navStack.length - 1;
+    crumbNavStack.forEach((entry, i) => {
+      const isCurrent = i === crumbNavStack.length - 1;
       items.push({
         label: entry.label,
         sourceKind: entry.sourceKind,
         onClick: isCurrent
           ? undefined
-          : () => handleBreadcrumbNavigation(sourceStack.length, i + 1),
+          : () => handleBreadcrumbNavigation(crumbSourceStack.length, i + 1),
       });
     });
 
@@ -714,8 +604,59 @@ export const DBRowSidePanelInner = ({
     parentBreadcrumbs,
   ]);
 
+  const availableTabs = useMemo<Tab[]>(() => {
+    const tabs: Tab[] = [];
+    if (hasOverviewPanel && !sourceIsTrace) tabs.push(Tab.Overview);
+    if (!sourceIsTrace) tabs.push(Tab.Parsed);
+    if (sourceIsTrace) tabs.push(Tab.Trace);
+    if (enableServiceMap) tabs.push(Tab.ServiceMap);
+    tabs.push(Tab.Context);
+    if (rumSessionId != null) tabs.push(Tab.Replay);
+    if (hasK8sContext) tabs.push(Tab.Infrastructure);
+    return tabs;
+  }, [
+    hasOverviewPanel,
+    sourceIsTrace,
+    enableServiceMap,
+    rumSessionId,
+    hasK8sContext,
+  ]);
+
+  const displayedTab = reconcileTab(persistedTab, availableTabs, defaultTab);
+
   if (isRowLoading || isResolvingSource) {
     return <div className={styles.loadingState}>Loading...</div>;
+  }
+
+  // The leaf cross-source frame points at a source that no longer resolves
+  // (deleted / renamed / another workspace via a shared link). Render an
+  // explicit message that keeps the breadcrumb trail, Back, and Close controls
+  // working instead of hanging on an indefinite "Loading...".
+  if (isStackSourceMissing) {
+    return (
+      <>
+        <Box px="sm" pt="sm" pb="xs">
+          <Flex align="center" justify="space-between" gap="sm" mb={8}>
+            <SidePanelBreadcrumbs
+              items={allBreadcrumbs}
+              onBack={handlePanelBack}
+            />
+            <SidePanelHeaderActions
+              onClose={onClose}
+              isFullWidth={isFullWidth}
+              onToggleFullWidth={onToggleFullWidth}
+            />
+          </Flex>
+        </Box>
+        <Box p="sm" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <Text size="sm" c="dimmed">
+            This source is no longer available. It may have been deleted,
+            renamed, or belong to a different workspace. Use the back button or
+            the breadcrumbs above to return.
+          </Text>
+        </Box>
+      </>
+    );
   }
 
   if (!isRowSuccess) {
@@ -851,6 +792,7 @@ export const DBRowSidePanelInner = ({
                     rowId: traceSpanRowId,
                     label: mainContent || 'Log',
                     sourceKind: traceSourceData.kind as SourceKind,
+                    aliasWith: [],
                   });
                 }
               }}
@@ -1112,6 +1054,10 @@ export default function DBRowSidePanelErrorBoundary({
     'sidePanelNavStack',
     parseAsJsonEncoded<NavEntry[]>(),
   );
+  const [, setStackRootParam] = useQueryState(
+    'sidePanelStackRoot',
+    parseAsStringEncoded,
+  );
 
   const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
 
@@ -1120,6 +1066,7 @@ export default function DBRowSidePanelErrorBoundary({
     setSidePanelTab(null);
     setSourceStackParam(null);
     setNavStackParam(null);
+    setStackRootParam(null);
     // Clear waterfall search state on close, so that filters don't
     // persist when reopening another trace.
     clearTraceWaterfallSearchState();
@@ -1128,6 +1075,7 @@ export default function DBRowSidePanelErrorBoundary({
     setSidePanelTab,
     setSourceStackParam,
     setNavStackParam,
+    setStackRootParam,
     onClose,
     clearTraceWaterfallSearchState,
   ]);
@@ -1161,6 +1109,18 @@ export default function DBRowSidePanelErrorBoundary({
           <ErrorBoundary
             fallbackRender={error => (
               <Stack>
+                <Group justify="flex-end" p="xs">
+                  <Button
+                    variant="subtle"
+                    color="gray"
+                    size="compact-sm"
+                    leftSection={<IconX size={14} />}
+                    onClick={_onClose}
+                    aria-label="Close"
+                  >
+                    Close
+                  </Button>
+                </Group>
                 <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
                   An error occurred while rendering this event.
                 </div>

@@ -105,9 +105,11 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
       });
 
       await test.step('Pressing Escape returns to the session event list within the same drawer', async () => {
-        // SessionSidePanel owns the Esc hotkey: when an event is selected it
-        // pops back to the session root (handleNavigateBack) instead of closing
-        // the whole drawer.
+        // With an event open, the embedded DBRowSidePanelInner owns Esc and pops
+        // one level at a time; at the event root it hands back to the session
+        // (onNavigateToParent), so a single Esc returns to the session event
+        // list instead of closing the whole drawer. (The parent's own Esc is
+        // disabled while an event is selected to avoid a double-fire.)
         await page.keyboard.press('Escape');
 
         // The event detail TabBar collapses back to the session event list.

@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { useQueryState } from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { z } from 'zod';
 import {
   DateRange,
   SearchCondition,
@@ -9,6 +10,7 @@ import {
   SourceKind,
   TSessionSource,
   TTraceSource,
+  WithClauseSchema,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -53,7 +55,18 @@ import styles from '@/../styles/LogSidePanel.module.scss';
 type SelectedEvent = {
   rowId: string;
   aliasWith: WithClause[];
+  sessionId: string;
 };
+
+const sessionEventSchema = z.object({
+  rowId: z.string(),
+  aliasWith: z.array(WithClauseSchema),
+  sessionId: z.string(),
+});
+
+const sessionEventParser = parseAsJsonEncoded<SelectedEvent>(
+  sessionEventSchema.parse,
+);
 
 export default function SessionSidePanel({
   traceSource,
@@ -81,10 +94,20 @@ export default function SessionSidePanel({
   // survives reload and shared links. Deeper navigation (View Trace,
   // surrounding context) is handled by `DBRowSidePanelInner`, which persists
   // its own state to the shared `sidePanel*` params below.
-  const [selectedEvent, setSelectedEvent] = useQueryState(
+  const [persistedEvent, setSelectedEvent] = useQueryState(
     'sessionPanelEvent',
-    parseAsJsonEncoded<SelectedEvent>(),
+    sessionEventParser,
   );
+
+  // Read-time ownership gate: a persisted event belongs to the session it was
+  // opened in. If the user clicks a different session card (which updates the
+  // session params without going through this drawer's handlers), the old event
+  // is simply not selected — it can never render inside the wrong session,
+  // regardless of remount timing. No evict effect required.
+  const selectedEvent =
+    persistedEvent != null && persistedEvent.sessionId === sessionId
+      ? persistedEvent
+      : null;
 
   // The embedded `DBRowSidePanelInner` owns these shared params. We clear them
   // whenever the session-level selection changes so a stale inner stack can't
@@ -92,6 +115,7 @@ export default function SessionSidePanel({
   const [, setSourceStackParam] = useQueryState('sidePanelSourceStack');
   const [, setNavStackParam] = useQueryState('sidePanelNavStack');
   const [, setSidePanelTab] = useQueryState('sidePanelTab');
+  const [, setStackRootParam] = useQueryState('sidePanelStackRoot');
 
   const { size, setSize, startResize } = useResizable(
     INITIAL_DRAWER_WIDTH_PERCENT,
@@ -107,7 +131,13 @@ export default function SessionSidePanel({
     setSourceStackParam(null);
     setNavStackParam(null);
     setSidePanelTab(null);
-  }, [setSourceStackParam, setNavStackParam, setSidePanelTab]);
+    setStackRootParam(null);
+  }, [
+    setSourceStackParam,
+    setNavStackParam,
+    setSidePanelTab,
+    setStackRootParam,
+  ]);
 
   const handleBackToSession = useCallback(() => {
     setSelectedEvent(null);
@@ -117,9 +147,9 @@ export default function SessionSidePanel({
   const handleEventNavigate = useCallback(
     (rowId: string, aliasWith: WithClause[]) => {
       clearInnerNavigation();
-      setSelectedEvent({ rowId, aliasWith });
+      setSelectedEvent({ rowId, aliasWith, sessionId });
     },
-    [setSelectedEvent, clearInnerNavigation],
+    [setSelectedEvent, clearInnerNavigation, sessionId],
   );
 
   // X / Esc-at-root closes the whole panel and clears the session-panel params.
@@ -129,16 +159,7 @@ export default function SessionSidePanel({
     onClose();
   }, [setSelectedEvent, clearInnerNavigation, onClose]);
 
-  // Back pops to the session root; X always closes the whole panel.
-  const handleNavigateBack = useCallback(() => {
-    if (selectedEvent) {
-      handleBackToSession();
-    } else {
-      handleClose();
-    }
-  }, [selectedEvent, handleBackToSession, handleClose]);
-
-  useHotkeys(['esc'], handleNavigateBack);
+  useHotkeys(['esc'], handleClose, { enabled: !selectedEvent });
 
   const shareSession = useCallback(async () => {
     const ok = await copyTextToClipboard(window.location.href);
@@ -200,6 +221,18 @@ export default function SessionSidePanel({
               <ErrorBoundary
                 fallbackRender={error => (
                   <Stack>
+                    <Group justify="flex-end" p="xs">
+                      <Button
+                        variant="subtle"
+                        color="gray"
+                        size="compact-sm"
+                        leftSection={<IconX size={14} />}
+                        onClick={handleClose}
+                        aria-label="Close"
+                      >
+                        Close
+                      </Button>
+                    </Group>
                     <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
                       An error occurred while rendering this event.
                     </div>
@@ -233,7 +266,7 @@ export default function SessionSidePanel({
                 <Flex align="center" justify="space-between" gap="sm" mb={8}>
                   <SidePanelBreadcrumbs
                     items={breadcrumbs}
-                    onBack={handleNavigateBack}
+                    onBack={handleClose}
                   />
                   <Group gap="xs" align="center" wrap="nowrap">
                     <Button

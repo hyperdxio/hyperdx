@@ -13,6 +13,27 @@ jest.mock('../SessionSubpanel', () => ({
   default: () => <div data-testid="session-subpanel-mock" />,
 }));
 
+jest.mock('@/components/DBRowSidePanel', () => {
+  const ReactActual = jest.requireActual('react');
+  return {
+    __esModule: true,
+    DBRowSidePanelInner: (props: { rowId: string }) => (
+      <div data-testid="event-view-mock">{props.rowId}</div>
+    ),
+    RowSidePanelContext: ReactActual.createContext({}),
+  };
+});
+
+// Controllable state for the `sessionPanelEvent` query param so tests can
+// simulate a value left in the URL by a previously selected session.
+const mockNuqs: {
+  sessionPanelEvent: unknown;
+  setSessionPanelEvent: jest.Mock;
+} = {
+  sessionPanelEvent: null,
+  setSessionPanelEvent: jest.fn(),
+};
+
 jest.mock('nuqs', () => {
   const actual = jest.requireActual('nuqs');
   // eslint-disable-next-line @typescript-eslint/no-empty-function
@@ -20,7 +41,10 @@ jest.mock('nuqs', () => {
   return {
     ...actual,
     // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
-    useQueryState: () => [null, noop],
+    useQueryState: (key: string) =>
+      key === 'sessionPanelEvent'
+        ? [mockNuqs.sessionPanelEvent, mockNuqs.setSessionPanelEvent]
+        : [null, noop],
   };
 });
 
@@ -83,6 +107,8 @@ describe('SessionSidePanel - Share Session', () => {
   beforeEach(() => {
     mockedCopy.mockReset();
     mockedShow.mockReset();
+    mockNuqs.sessionPanelEvent = null;
+    mockNuqs.setSessionPanelEvent.mockReset();
     setLocationHref('/sessions?sessionSource=src&from=1&to=2');
   });
 
@@ -125,5 +151,51 @@ describe('SessionSidePanel - Share Session', () => {
         message: CLIPBOARD_ERROR_MESSAGE,
       }),
     );
+  });
+});
+
+describe('SessionSidePanel - persisted event session ownership', () => {
+  beforeEach(() => {
+    mockNuqs.sessionPanelEvent = null;
+    mockNuqs.setSessionPanelEvent.mockReset();
+    setLocationHref('/sessions?sessionSource=src&from=1&to=2');
+  });
+
+  it('renders a persisted event that belongs to the current session', () => {
+    mockNuqs.sessionPanelEvent = {
+      rowId: 'row-current',
+      aliasWith: [],
+      sessionId: 'sid-abc',
+    };
+
+    renderPanel();
+
+    // The event view is shown and the param is left untouched.
+    expect(screen.getByTestId('event-view-mock')).toHaveTextContent(
+      'row-current',
+    );
+    expect(
+      screen.queryByTestId('session-subpanel-mock'),
+    ).not.toBeInTheDocument();
+    expect(mockNuqs.setSessionPanelEvent).not.toHaveBeenCalled();
+  });
+
+  it('ignores a persisted event owned by a different session', () => {
+    // Simulates: opened an event in another session, then clicked this session
+    // card (which only updates sid/sfrom/sto and remounts the drawer).
+    mockNuqs.sessionPanelEvent = {
+      rowId: 'row-stale',
+      aliasWith: [],
+      sessionId: 'some-other-session',
+    };
+
+    renderPanel();
+
+    // The stale event must NOT render inside the newly selected session; the
+    // read-time ownership gate falls back to the session root. Correctness does
+    // not depend on any evict effect firing, so the param may harmlessly linger
+    // in the URL (it can never render for the wrong session).
+    expect(screen.getByTestId('session-subpanel-mock')).toBeInTheDocument();
+    expect(screen.queryByTestId('event-view-mock')).not.toBeInTheDocument();
   });
 });
