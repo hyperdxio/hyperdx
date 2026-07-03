@@ -207,7 +207,8 @@ describe('webhooks router', () => {
       source: 'logs',
       groupBy: 'test',
       interval: '5m',
-      condition: { type: 'presence', is: 'above', threshold: 1 },
+      threshold: 1,
+      thresholdType: 'above',
     });
 
     // 3. Delete the webhook
