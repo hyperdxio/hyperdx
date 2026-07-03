@@ -872,7 +872,7 @@ export const DBRowSidePanelInner = ({
         data-testid="side-panel-tabs"
         className="fs-8 mt-2"
         items={[
-          ...(hasOverviewPanel
+          ...(hasOverviewPanel && !sourceIsTrace
             ? [
                 {
                   text: 'Overview',
@@ -880,10 +880,14 @@ export const DBRowSidePanelInner = ({
                 },
               ]
             : []),
-          {
-            text: 'Column Values',
-            value: Tab.Parsed,
-          },
+          ...(!sourceIsTrace
+            ? [
+                {
+                  text: 'Column Values',
+                  value: Tab.Parsed,
+                },
+              ]
+            : []),
           ...(sourceIsTrace
             ? [
                 {
