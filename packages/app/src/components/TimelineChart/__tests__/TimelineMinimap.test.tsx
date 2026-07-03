@@ -49,6 +49,7 @@ const rows = [
         tooltip: '',
         color: '#fff',
         backgroundColor: 'rgb(10, 20, 30)',
+        minWidthPx: 2,
         body: null,
       },
       {
@@ -58,6 +59,7 @@ const rows = [
         tooltip: '',
         color: '#fff',
         backgroundColor: 'rgb(40, 50, 60)',
+        minWidthPx: 2,
         body: null,
       },
     ],
