@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
+import Alert from '@/models/alert';
 import Webhook, { WebhookService } from '@/models/webhook';
 import * as template from '@/tasks/checkAlerts/template';
 
@@ -184,6 +185,37 @@ describe('webhooks router', () => {
     // Verify webhook was deleted
     const deletedWebhook = await Webhook.findById(webhook._id);
     expect(deletedWebhook).toBeNull();
+  });
+
+  it('DELETE /:id - cascades to referencing alerts by nulling their channel', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    // 1. Create a webhook
+    const webhook = await Webhook.create({
+      ...MOCK_WEBHOOK,
+      team: team._id,
+    });
+
+    // 2. Create an alert pointing to that webhook
+    const alert = await Alert.create({
+      team: team._id,
+      name: 'Test Alert',
+      channel: {
+        type: 'webhook',
+        webhookId: webhook._id.toString(),
+      },
+      source: 'logs',
+      groupBy: 'test',
+      interval: '5m',
+      condition: { type: 'presence', is: 'above', threshold: 1 },
+    });
+
+    // 3. Delete the webhook
+    await agent.delete(`/webhooks/${webhook._id}`).expect(200);
+
+    // 4. Assert the alert's channel was nulled out
+    const updatedAlert = await Alert.findById(alert._id);
+    expect(updatedAlert?.channel?.type).toBeNull();
   });
 
   it('DELETE /:id - returns 200 when webhook does not exist', async () => {
