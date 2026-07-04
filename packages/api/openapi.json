@@ -4589,6 +4589,16 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Alert not found",
             "content": {
@@ -4670,6 +4680,16 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Alert not found",
             "content": {
@@ -4733,6 +4753,16 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Alert not found",
             "content": {
@@ -4749,7 +4779,7 @@
     "/api/v2/alerts": {
       "get": {
         "summary": "List Alerts",
-        "description": "Retrieves alerts for the authenticated team (paginated).",
+        "description": "Retrieves alerts for the authenticated team (paginated). Results are capped at `limit` (default and maximum 1000). When more records exist than are returned, `meta.total` exceeds `data.length`; clients with large collections must page with `limit`/`offset` to retrieve them all.",
         "operationId": "listAlerts",
         "tags": [
           "Alerts"
@@ -4833,6 +4863,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -4885,6 +4925,16 @@
           },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -6284,7 +6334,7 @@
     "/api/v2/saved-searches": {
       "get": {
         "summary": "List Saved Searches",
-        "description": "Retrieves saved searches for the authenticated team.",
+        "description": "Retrieves saved searches for the authenticated team (paginated). Results are capped at `limit` (default and maximum 1000). When more records exist than are returned, `meta.total` exceeds `data.length`; clients with large collections must page with `limit`/`offset` to retrieve them all.",
         "operationId": "listSavedSearches",
         "tags": [
           "Saved Searches"
@@ -7222,7 +7272,7 @@
     "/api/v2/webhooks": {
       "get": {
         "summary": "List Webhooks",
-        "description": "Retrieves webhooks for the authenticated team (paginated).",
+        "description": "Retrieves webhooks for the authenticated team (paginated). Results are capped at `limit` (default and maximum 1000). When more records exist than are returned, `meta.total` exceeds `data.length`; clients with large collections must page with `limit`/`offset` to retrieve them all.",
         "operationId": "listWebhooks",
         "tags": [
           "Webhooks"
@@ -7422,6 +7472,16 @@
           },
           "404": {
             "description": "Webhook not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Webhook was modified concurrently; retry with current state",
             "content": {
               "application/json": {
                 "schema": {

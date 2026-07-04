@@ -17,6 +17,12 @@ import {
   handleSendGenericWebhook,
   handleSendSlackWebhook,
 } from '@/tasks/checkAlerts/template';
+import {
+  webhookHeaderNameSchema,
+  webhookHeaderValueSchema,
+  webhookQueryParamKeySchema,
+  webhookQueryParamValueSchema,
+} from '@/utils/zod';
 
 const router = express.Router();
 
@@ -132,23 +138,6 @@ router.get(
   },
 );
 
-const httpHeaderNameValidator = z
-  .string()
-  .min(1, 'Header name cannot be empty')
-  .regex(
-    /^[!#$%&'*+\-.0-9A-Z^_`a-z|~]+$/,
-    "Invalid header name. Only alphanumeric characters and !#$%&'*+-.^_`|~ are allowed",
-  )
-  .refine(name => !name.match(/^\d/), 'Header name cannot start with a number');
-
-// Validation for header values: no control characters allowed
-const httpHeaderValueValidator = z
-  .string()
-  // eslint-disable-next-line no-control-regex
-  .refine(val => !/[\r\n\t\x00-\x1F\x7F]/.test(val), {
-    message: 'Header values cannot contain control characters',
-  });
-
 router.post(
   '/',
   validateRequest({
@@ -156,10 +145,12 @@ router.post(
       body: z.string().optional(),
       description: z.string().optional(),
       headers: z
-        .record(httpHeaderNameValidator, httpHeaderValueValidator)
+        .record(webhookHeaderNameSchema, webhookHeaderValueSchema)
         .optional(),
       name: z.string(),
-      queryParams: z.record(z.string()).optional(),
+      queryParams: z
+        .record(webhookQueryParamKeySchema, webhookQueryParamValueSchema)
+        .optional(),
       service: z.nativeEnum(WebhookService),
       url: z.string().url(),
     }),
@@ -213,10 +204,12 @@ router.put(
       body: z.string().optional(),
       description: z.string().optional(),
       headers: z
-        .record(httpHeaderNameValidator, httpHeaderValueValidator)
+        .record(webhookHeaderNameSchema, webhookHeaderValueSchema)
         .optional(),
       name: z.string(),
-      queryParams: z.record(z.string()).optional(),
+      queryParams: z
+        .record(webhookQueryParamKeySchema, webhookQueryParamValueSchema)
+        .optional(),
       service: z.nativeEnum(WebhookService),
       url: z.string().url(),
     }),
@@ -368,9 +361,11 @@ router.post(
     body: z.object({
       body: z.string().optional(),
       headers: z
-        .record(httpHeaderNameValidator, httpHeaderValueValidator)
+        .record(webhookHeaderNameSchema, webhookHeaderValueSchema)
         .optional(),
-      queryParams: z.record(z.string()).optional(),
+      queryParams: z
+        .record(webhookQueryParamKeySchema, webhookQueryParamValueSchema)
+        .optional(),
       service: z.nativeEnum(WebhookService),
       url: z.string().url(),
       webhookId: z

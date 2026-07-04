@@ -639,6 +639,15 @@ describe('External API Alerts', () => {
       const deletedAlert = listResponse.body.data.find(a => a.id === alert.id);
       expect(deletedAlert).toBeUndefined();
     });
+
+    it('should return 404 with a JSON body when deleting a non-existent alert', async () => {
+      const nonExistentId = new ObjectId().toString();
+      const response = await authRequest(
+        'delete',
+        `${ALERTS_BASE_URL}/${nonExistentId}`,
+      ).expect(404);
+      expect(response.body).toEqual({ message: 'Alert not found' });
+    });
   });
 
   describe('Input validation', () => {

@@ -330,6 +330,12 @@ const router = express.Router();
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       '404':
  *         description: Alert not found
  *         content:
@@ -348,13 +354,13 @@ router.get(
     try {
       const teamId = req.user?.team;
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
 
       const alert = await getAlertById(req.params.id, teamId);
 
       if (alert == null) {
-        return res.sendStatus(404);
+        return res.status(404).json({ message: 'Alert not found' });
       }
 
       return res.json({
@@ -371,7 +377,11 @@ router.get(
  * /api/v2/alerts:
  *   get:
  *     summary: List Alerts
- *     description: Retrieves alerts for the authenticated team (paginated).
+ *     description: >-
+ *       Retrieves alerts for the authenticated team (paginated). Results are
+ *       capped at `limit` (default and maximum 1000). When more records exist
+ *       than are returned, `meta.total` exceeds `data.length`; clients with
+ *       large collections must page with `limit`/`offset` to retrieve them all.
  *     operationId: listAlerts
  *     tags: [Alerts]
  *     parameters:
@@ -430,6 +440,12 @@ router.get(
  *               $ref: '#/components/schemas/Error'
  *             example:
  *               message: "Unauthorized access. API key is missing or invalid."
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.get(
   '/',
@@ -438,7 +454,7 @@ router.get(
     try {
       const teamId = req.user?.team;
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
 
       const { limit, offset } = getPagination(req.query);
@@ -499,6 +515,12 @@ router.get(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       '500':
  *         description: Server error or validation failure
  *         content:
@@ -515,7 +537,7 @@ router.post(
     const teamId = req.user?.team;
     const userId = req.user?._id;
     if (teamId == null || userId == null) {
-      return res.sendStatus(403);
+      return res.status(403).json({ message: 'Forbidden' });
     }
     try {
       const alertInput = req.body;
@@ -582,6 +604,12 @@ router.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       '404':
  *         description: Alert not found
  *         content:
@@ -608,7 +636,7 @@ router.put(
       const teamId = req.user?.team;
 
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
       const { id } = req.params;
 
@@ -618,7 +646,7 @@ router.put(
       const alert = await updateAlert(id, teamId, alertInput);
 
       if (alert == null) {
-        return res.sendStatus(404);
+        return res.status(404).json({ message: 'Alert not found' });
       }
 
       res.json({
@@ -660,6 +688,12 @@ router.put(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       '404':
  *         description: Alert not found
  *         content:
@@ -679,11 +713,14 @@ router.delete(
       const teamId = req.user?.team;
       const { id: alertId } = req.params;
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
 
-      await deleteAlert(alertId, teamId);
-      res.sendStatus(200);
+      const { deletedCount } = await deleteAlert(alertId, teamId);
+      if (deletedCount === 0) {
+        return res.status(404).json({ message: 'Alert not found' });
+      }
+      res.json({});
     } catch (e) {
       next(e);
     }

@@ -208,7 +208,11 @@ const router = express.Router();
  * /api/v2/saved-searches:
  *   get:
  *     summary: List Saved Searches
- *     description: Retrieves saved searches for the authenticated team.
+ *     description: >-
+ *       Retrieves saved searches for the authenticated team (paginated). Results
+ *       are capped at `limit` (default and maximum 1000). When more records exist
+ *       than are returned, `meta.total` exceeds `data.length`; clients with large
+ *       collections must page with `limit`/`offset` to retrieve them all.
  *     operationId: listSavedSearches
  *     tags: [Saved Searches]
  *     parameters:

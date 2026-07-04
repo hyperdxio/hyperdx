@@ -120,6 +120,28 @@ describe('External API v2 Saved Searches CRUD', () => {
       expect(response.body.message).toMatch(/existing source/i);
     });
 
+    it('should reject a real source owned by another team (cross-team)', async () => {
+      // A source that genuinely exists but belongs to a different team must be
+      // rejected the same as a non-existent one — requireValidSourceId scopes
+      // the lookup to the caller's team, preventing cross-team references.
+      const otherTeamSource = await LogSource.create({
+        kind: SourceKind.Log,
+        team: new mongoose.Types.ObjectId(),
+        name: 'Other Team Logs',
+        from: { databaseName: DEFAULT_DATABASE, tableName: DEFAULT_LOGS_TABLE },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+        connection: new mongoose.Types.ObjectId(),
+      });
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          sourceId: otherTeamSource._id.toString(),
+        })
+        .expect(400);
+      expect(response.body.message).toMatch(/existing source/i);
+    });
+
     it('should reject a malformed sourceId', async () => {
       await authRequest('post', BASE_URL)
         .send({ ...savedSearchBody(), sourceId: 'not-an-id' })

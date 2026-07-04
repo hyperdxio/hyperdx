@@ -679,10 +679,11 @@ export const externalWebhookSchema = z.discriminatedUnion('service', [
 
 export type ExternalWebhook = z.infer<typeof externalWebhookSchema>;
 
-// ponytail: header name/value validators mirror the ones in the internal
-// webhooks router; not extracted to a shared module to avoid entangling this
-// with that router's redaction logic. Keep in sync if the rules change.
-const webhookHeaderNameSchema = z
+// Shared webhook header/query-param validators. Exported so the internal
+// webhooks router (routers/api/webhooks.ts) uses the exact same rules — a single
+// source of truth prevents the CRLF/control-char hardening from drifting between
+// the internal and external APIs.
+export const webhookHeaderNameSchema = z
   .string()
   .min(1, 'Header name cannot be empty')
   .regex(
@@ -694,7 +695,7 @@ const webhookHeaderNameSchema = z
 // eslint-disable-next-line no-control-regex
 const hasControlChars = (val: string) => /[\r\n\t\x00-\x1F\x7F]/.test(val);
 
-const webhookHeaderValueSchema = z
+export const webhookHeaderValueSchema = z
   .string()
   .refine(val => !hasControlChars(val), {
     message: 'Header values cannot contain control characters',
@@ -703,14 +704,14 @@ const webhookHeaderValueSchema = z
 // Query param keys and values are written into the outbound request URL, so they
 // get the same CRLF/control-char hardening as headers. Unlike header names, query
 // keys aren't HTTP tokens, so only control chars are rejected (not a token charset).
-const webhookQueryParamKeySchema = z
+export const webhookQueryParamKeySchema = z
   .string()
   .min(1, 'Query parameter name cannot be empty')
   .refine(val => !hasControlChars(val), {
     message: 'Query parameter names cannot contain control characters',
   });
 
-const webhookQueryParamValueSchema = z
+export const webhookQueryParamValueSchema = z
   .string()
   .refine(val => !hasControlChars(val), {
     message: 'Query parameter values cannot contain control characters',

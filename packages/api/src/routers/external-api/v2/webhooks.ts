@@ -238,7 +238,11 @@ const router = express.Router();
  * /api/v2/webhooks:
  *   get:
  *     summary: List Webhooks
- *     description: Retrieves webhooks for the authenticated team (paginated).
+ *     description: >-
+ *       Retrieves webhooks for the authenticated team (paginated). Results are
+ *       capped at `limit` (default and maximum 1000). When more records exist
+ *       than are returned, `meta.total` exceeds `data.length`; clients with
+ *       large collections must page with `limit`/`offset` to retrieve them all.
  *     operationId: listWebhooks
  *     tags: [Webhooks]
  *     parameters:
@@ -514,6 +518,12 @@ router.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       '409':
+ *         description: Webhook was modified concurrently; retry with current state
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.put(
   '/:id',
@@ -580,13 +590,36 @@ router.put(
       const updateOp: Record<string, unknown> =
         Object.keys($unset).length > 0 ? { $set, $unset } : { $set };
 
+      // The destinationChanged decision above (whether to preserve or clear
+      // omitted write-only secrets) was computed from the `existing` snapshot,
+      // which is not atomic with the write below. Pin the update to the
+      // snapshotted url/service so a concurrent PUT that changes the
+      // destination in between cannot leave a secret configured for one
+      // destination attached to a different url. If they changed, reject with
+      // 409 and let the caller retry against the current state.
       const webhook = await Webhook.findOneAndUpdate(
-        { _id: req.params.id, team: teamId },
+        {
+          _id: req.params.id,
+          team: teamId,
+          url: existing.url,
+          service: existing.service,
+        },
         updateOp,
         { new: true },
       );
 
       if (webhook == null) {
+        // Distinguish a concurrent-modification conflict from a real 404.
+        const stillExists = await Webhook.exists({
+          _id: req.params.id,
+          team: teamId,
+        });
+        if (stillExists != null) {
+          return res.status(409).json({
+            message:
+              'Webhook was modified concurrently; please retry with the current state',
+          });
+        }
         return res.status(404).json({ message: 'Webhook not found' });
       }
 

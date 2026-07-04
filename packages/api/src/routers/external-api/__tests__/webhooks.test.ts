@@ -458,6 +458,26 @@ describe('External API v2 Webhooks', () => {
       expect(stored?.description).toBeUndefined();
     });
 
+    it('should preserve omitted queryParams when the destination is unchanged', async () => {
+      const created = await Webhook.create({
+        ...MOCK_GENERIC_WEBHOOK,
+        queryParams: { token: 'secret-token' },
+        team: team._id,
+      });
+
+      await authRequest('put', `${WEBHOOKS_BASE_URL}/${created._id}`)
+        .send({
+          name: 'Renamed Generic',
+          service: WebhookService.Generic,
+          // Same url/service => destination unchanged => write-only fields preserved
+          url: MOCK_GENERIC_WEBHOOK.url,
+        })
+        .expect(200);
+
+      const stored = await Webhook.findById(created._id).lean();
+      expect(stored?.queryParams).toEqual({ token: 'secret-token' });
+    });
+
     it('should NOT forward stored write-only secrets when the url changes', async () => {
       // The exfiltration path: a caller who cannot read headers/queryParams
       // back must not be able to repoint url at an endpoint they control and
