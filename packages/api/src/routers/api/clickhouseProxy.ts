@@ -92,6 +92,13 @@ router.post(
   }),
   async (req, res) => {
     const { host, username, password } = req.body;
+
+    // Restrict to http/https to prevent file://, gopher://, etc.
+    const parsedHost = new URL(host);
+    if (parsedHost.protocol !== 'http:' && parsedHost.protocol !== 'https:') {
+      return res.status(400).json({ success: false, error: 'Invalid protocol' });
+    }
+
     const startedAt = performance.now();
     try {
       const result = await fetch(`${host}/?query=SELECT 1`, {
@@ -108,10 +115,11 @@ router.post(
           outcome: 'error',
           durationMs: performance.now() - startedAt,
         });
-        const errorText = await result.text();
+        // Do not reflect the raw response body to avoid leaking internal
+        // service responses in case of a misconfigured or SSRF host.
         return res.status(result.status).json({
           success: false,
-          error: errorText || 'Error connecting to ClickHouse server',
+          error: 'Error connecting to ClickHouse server',
         });
       }
       const data = await result.json();
