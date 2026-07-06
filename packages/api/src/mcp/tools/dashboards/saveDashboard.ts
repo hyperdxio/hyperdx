@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 import * as config from '@/config';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { mcpError } from '@/mcp/utils/errors';
+import { mcpUserError } from '@/mcp/utils/errors';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import {
   cleanupDashboardAlerts,
@@ -159,15 +159,9 @@ async function createDashboard({
     filters: stripFilterIds(inputFilters),
   });
   if (!parsed.success) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Validation error: ${JSON.stringify(parsed.error.errors)}`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Validation error: ${JSON.stringify(parsed.error.errors)}`,
+    );
   }
 
   const { tiles, filters, containers: parsedContainers } = parsed.data;
@@ -175,7 +169,7 @@ async function createDashboard({
 
   const sqlFilterSourceError = getRawSqlMissingSourceError(tilesWithId);
   if (sqlFilterSourceError) {
-    return mcpError(sqlFilterSourceError);
+    return mcpUserError(sqlFilterSourceError);
   }
 
   const validationError = await validateDashboardTiles({
@@ -185,10 +179,7 @@ async function createDashboard({
     containers: parsedContainers ?? [],
   });
   if (validationError) {
-    return {
-      isError: true,
-      content: [{ type: 'text' as const, text: validationError }],
-    };
+    return mcpUserError(validationError);
   }
 
   const macroWarnings = getRawSqlTileMacroWarnings(tilesWithId);
@@ -264,15 +255,9 @@ async function updateDashboard({
     filters: assignFilterIds(inputFilters),
   });
   if (!parsed.success) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Validation error: ${JSON.stringify(parsed.error.errors)}`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Validation error: ${JSON.stringify(parsed.error.errors)}`,
+    );
   }
 
   const { tiles, filters, containers: parsedContainers } = parsed.data;
@@ -280,7 +265,7 @@ async function updateDashboard({
 
   const sqlFilterSourceError = getRawSqlMissingSourceError(tilesWithId);
   if (sqlFilterSourceError) {
-    return mcpError(sqlFilterSourceError);
+    return mcpUserError(sqlFilterSourceError);
   }
 
   const existingDashboard = await Dashboard.findOne(
@@ -289,10 +274,7 @@ async function updateDashboard({
   ).lean();
 
   if (!existingDashboard) {
-    return {
-      isError: true,
-      content: [{ type: 'text' as const, text: 'Dashboard not found' }],
-    };
+    return mcpUserError('Dashboard not found');
   }
 
   const effectiveContainers =
@@ -305,10 +287,7 @@ async function updateDashboard({
     containers: effectiveContainers,
   });
   if (validationError) {
-    return {
-      isError: true,
-      content: [{ type: 'text' as const, text: validationError }],
-    };
+    return mcpUserError(validationError);
   }
 
   const macroWarnings = getRawSqlTileMacroWarnings(tilesWithId);
@@ -365,10 +344,7 @@ async function updateDashboard({
   );
 
   if (!updatedDashboard) {
-    return {
-      isError: true,
-      content: [{ type: 'text' as const, text: 'Dashboard not found' }],
-    };
+    return mcpUserError('Dashboard not found');
   }
 
   await cleanupDashboardAlerts({

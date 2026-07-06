@@ -3136,7 +3136,8 @@ describe('checkAlerts', () => {
             status: 200,
             text: jest.fn().mockResolvedValue(''),
           })
-          .mockResolvedValueOnce({
+          // withRetry retries a 500 up to 3 times; mock all attempts
+          .mockResolvedValue({
             ok: false,
             status: 500,
             text: jest.fn().mockResolvedValue('resolve send failed'),
@@ -3408,9 +3409,9 @@ describe('checkAlerts', () => {
         expect(histories.length).toBe(2);
         expect(histories.every(h => h.state === AlertState.ALERT)).toBe(true);
 
-        // Each group attempted to send a webhook and each one failed, so there
-        // should be exactly one WEBHOOK_ERROR per group (two total).
-        expect(fetchMock).toHaveBeenCalledTimes(2);
+        // Each group attempted to send a webhook and each one failed. withRetry
+        // retries up to 3 times per group (2 groups × 3 attempts = 6 total calls).
+        expect(fetchMock).toHaveBeenCalledTimes(6);
         expect(updated!.executionErrors).toBeDefined();
         expect(updated!.executionErrors!.length).toBe(2);
         expect(
@@ -3748,11 +3749,14 @@ describe('checkAlerts', () => {
         body: JSON.stringify({
           text: `http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000&highlightedTileId=17quud | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1`,
         }),
-        headers: {
+        // Idempotency-Key is always injected last (cannot be overridden by user headers)
+        // and is a stable objectHash of {eventId, startTime, endTime, state}.
+        headers: expect.objectContaining({
           'Content-Type': 'application/json',
           'X-Custom-Header': 'custom-value',
           Authorization: 'Bearer test-token',
-        },
+          'Idempotency-Key': expect.any(String),
+        }),
       });
     });
 

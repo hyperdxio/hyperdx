@@ -2,6 +2,7 @@ import { escapeRegExp } from 'lodash';
 
 import * as config from '@/config';
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
 import logger from '@/utils/logger';
 
@@ -31,15 +32,9 @@ export function registerSearchDashboards({
       const hasTags = Array.isArray(tags) && tags.length > 0;
 
       if (!hasQuery && !hasTags) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: 'Provide at least one of: query (non-empty string) or tags (non-empty array).',
-            },
-          ],
-        };
+        return mcpUserError(
+          'Provide at least one of: query (non-empty string) or tags (non-empty array).',
+        );
       }
 
       const filter: Record<string, unknown> = { team: teamId };
@@ -92,15 +87,9 @@ export function registerSearchDashboards({
           { err, teamId, query, tags },
           'clickstack_search_dashboards: query failed',
         );
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Search failed: ${err instanceof Error ? err.message : String(err)}`,
-            },
-          ],
-        };
+        return mcpServerError(
+          `Search failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     },
   );
