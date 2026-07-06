@@ -593,7 +593,6 @@ export class DashboardPage {
    * fullscreen / Edit / Delete items (which now live inside the menu).
    */
   async openTileActionsMenu(tileIndex: number) {
-    await this.hoverOverTile(tileIndex);
     await this.page
       .locator('[data-testid^="tile-actions-button-"]')
       .nth(tileIndex)

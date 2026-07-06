@@ -211,6 +211,9 @@ button:focus-visible {
 
 .react-grid-item > .react-resizable-handle {
   padding: 0;
+  // Drop react-resizable's default corner glyph (a low-opacity SVG angle it
+  // sets via background-image); we render our own grip below instead.
+  background-image: none;
 
   // Modern dotted grip: a triangular cluster of dots tucked into the corner.
   &::after {
