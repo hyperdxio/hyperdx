@@ -18,7 +18,6 @@ import { useDisclosure, useLocalStorage } from '@mantine/hooks';
 import {
   IconArrowBarToLeft,
   IconBell,
-  IconChartDots,
   IconDeviceFloppy,
   IconDeviceLaptop,
   IconLayoutGrid,
@@ -69,12 +68,6 @@ type NavLinkConfig = {
 };
 
 const NAV_LINKS: NavLinkConfig[] = [
-  {
-    id: 'chart',
-    label: 'Chart Explorer',
-    href: '/chart',
-    icon: <IconChartDots size={16} />,
-  },
   {
     id: 'alerts',
     label: 'Alerts',

@@ -24,11 +24,6 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
           contentTestId: 'search-page',
         },
         {
-          testId: 'nav-link-chart',
-          href: '/chart',
-          contentTestId: 'chart-explorer-page',
-        },
-        {
           testId: 'nav-link-sessions',
           href: '/sessions',
           contentTestId: 'sessions-page',

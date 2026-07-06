@@ -126,7 +126,7 @@ export const useSpotlightActions = () => {
         description: 'Explore your data',
         keywords: ['graph', 'metrics'],
         onClick: () => {
-          router.push('/chart');
+          router.push('/search?mode=chart');
         },
       },
       {

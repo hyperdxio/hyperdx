@@ -1,7 +1,4 @@
-import { useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
-import Head from 'next/head';
-import { parseAsJson, useQueryState } from 'nuqs';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { SavedChartConfig, SourceKind } from '@hyperdx/common-utils/dist/types';
@@ -23,28 +20,17 @@ import {
   IconInfoCircle,
 } from '@tabler/icons-react';
 
-import api from '@/api';
-import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
-import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { InputControlled } from '@/components/InputControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { useChartAssistant } from '@/hooks/ai';
-import { withAppNav } from '@/layout';
-import { useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
 
-import OnboardingModal from './components/OnboardingModal';
-
-// Autocomplete can focus on column/map keys
-
-// Sampled field discovery and full field discovery
-
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
-
-function AIAssistant({
+/**
+ * Natural-language chart builder. Extracted from the former standalone Chart
+ * Explorer page so it can be embedded in the unified Explore page's chart mode.
+ */
+export default function ChartExplorerAIAssistant({
   setConfig,
   onTimeRangeSelect,
   submitRef,
@@ -199,69 +185,3 @@ function AIAssistant({
     </Box>
   );
 }
-
-function DBChartExplorerPage() {
-  const brandName = useBrandDisplayName();
-  const {
-    searchedTimeRange,
-    displayedTimeInputValue,
-    setDisplayedTimeInputValue,
-    onSearch,
-    onTimeRangeSelect,
-  } = useNewTimeQuery({
-    initialDisplayValue: 'Past 1h',
-    initialTimeRange: defaultTimeRange,
-    // showRelativeInterval: isLive,
-  });
-
-  const submitRef = useRef<(() => void) | undefined>(undefined);
-  const { data: sources } = useSources();
-  const { data: me } = api.useMe();
-
-  const [chartConfig, setChartConfig] = useQueryState(
-    'config',
-    parseAsJson<SavedChartConfig>().withDefault({
-      ...DEFAULT_CHART_CONFIG,
-      source: sources?.[0]?.id ?? '',
-      connection: sources?.[0]?.connection,
-    }),
-  );
-
-  return (
-    <Box data-testid="chart-explorer-page" p="sm">
-      <Head>
-        <title>Chart Explorer - {brandName}</title>
-      </Head>
-      <OnboardingModal />
-      <AIAssistant
-        setConfig={setChartConfig}
-        onTimeRangeSelect={onTimeRangeSelect}
-        submitRef={submitRef}
-        aiAssistantEnabled={me?.aiAssistantEnabled ?? false}
-      />
-      <EditTimeChartForm
-        data-testid="chart-explorer-form"
-        chartConfig={chartConfig}
-        setChartConfig={config => {
-          setChartConfig(config);
-        }}
-        dateRange={searchedTimeRange}
-        setDisplayedTimeInputValue={setDisplayedTimeInputValue}
-        displayedTimeInputValue={displayedTimeInputValue}
-        onTimeRangeSearch={onSearch}
-        onTimeRangeSelect={onTimeRangeSelect}
-        submitRef={submitRef}
-        autoRun
-      />
-    </Box>
-  );
-}
-
-const DBChartExplorerPageDynamic = dynamic(async () => DBChartExplorerPage, {
-  ssr: false,
-});
-
-// @ts-ignore
-DBChartExplorerPageDynamic.getLayout = withAppNav;
-
-export default DBChartExplorerPageDynamic;

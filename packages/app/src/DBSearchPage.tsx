@@ -86,9 +86,11 @@ import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
+import api from '@/api';
 import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
+import ChartExplorerAIAssistant from '@/components/ChartExplorerAIAssistant';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
@@ -978,6 +980,7 @@ export function DBSearchPage() {
   );
 
   const { data: sources } = useSources();
+  const { data: me } = api.useMe();
   const [lastSelectedSourceId, setLastSelectedSourceId] = useLocalStorage(
     'hdx-last-selected-source-id',
     '',
@@ -2651,6 +2654,12 @@ export function DBSearchPage() {
                   p="sm"
                   style={{ overflow: 'auto' }}
                 >
+                  <ChartExplorerAIAssistant
+                    setConfig={setChartModeConfig}
+                    onTimeRangeSelect={onTimeRangeSelect}
+                    submitRef={chartModeSubmitRef}
+                    aiAssistantEnabled={me?.aiAssistantEnabled ?? false}
+                  />
                   <EditTimeChartForm
                     data-testid="explore-chart-form"
                     chartConfig={chartModeConfig}
