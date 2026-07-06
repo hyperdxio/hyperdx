@@ -136,6 +136,7 @@ import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer, {
   ChartContainerCardHeaderProvider,
+  DASHBOARD_TILE_PADDING_INLINE,
 } from './components/charts/ChartContainer';
 import DBHeatmapChart, {
   toHeatmapChartConfig,
@@ -1127,7 +1128,8 @@ const Tile = forwardRef(
           )}
           <div
             ref={inViewportRef}
-            className="fs-7 text-muted flex-grow-1 overflow-hidden cursor-default px-2"
+            className="fs-7 text-muted flex-grow-1 overflow-hidden cursor-default"
+            style={{ paddingInline: DASHBOARD_TILE_PADDING_INLINE }}
             onMouseDown={e => e.stopPropagation()}
           >
             <ChartContainerCardHeaderProvider>

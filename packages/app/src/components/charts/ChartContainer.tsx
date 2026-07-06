@@ -27,7 +27,13 @@ export function ChartContainerCardHeaderProvider({
   );
 }
 
-const HEADER_SPACING = 'calc(var(--mantine-spacing-md) * 0.5)';
+// Horizontal padding a dashboard tile applies to its content. The card header
+// bleeds its separator to the tile edge by cancelling exactly this inset, so
+// the tile must consume the same value (see DASHBOARD_TILE_PADDING_INLINE usage
+// in DBDashboardPage) instead of a matching `.px-2` utility that could drift.
+export const DASHBOARD_TILE_PADDING_INLINE =
+  'calc(var(--mantine-spacing-md) * 0.5)';
+const HEADER_SPACING = DASHBOARD_TILE_PADDING_INLINE;
 const HEADER_SPACING_SLIM = 'calc(var(--mantine-spacing-md) * 0.25)';
 
 function ChartContainer({
