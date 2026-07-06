@@ -11,7 +11,9 @@ selected at run time.
 
 ## Prerequisites
 
-- **`yarn dev` running** on at least one worktree (ClickHouse, MongoDB, API)
+- **`yarn dev` running** on at least one worktree — this handles
+  `yarn install`, `yarn build:common-utils`, Docker containers (ClickHouse,
+  MongoDB), and the API server. See `agent_docs/development.md` for setup.
 - **`claude` CLI installed** (the harness spawns it in streaming JSON mode)
 - **`ANTHROPIC_API_KEY`** or **`AI_API_KEY`** in `.env.local` at the monorepo
   root (for `run` and `grade` commands)
@@ -28,7 +30,7 @@ stack is using — you can find this in the banner printed by `yarn dev`.
 
 ```bash
 # Set the slot for your session (must match the running dev stack)
-export HDX_DEV_SLOT=80
+export HDX_DEV_SLOT=98
 
 # 1. One-time setup: register eval account + create Sources + write config
 yarn workspace @hyperdx/hdx-eval dev setup-hyperdx
