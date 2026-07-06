@@ -138,8 +138,6 @@ export default function DashboardContainer({
       <ActionIcon
         variant="subtle"
         size="sm"
-        tabIndex={showControls ? 0 : -1}
-        style={hoverControlStyle}
         onClick={onAddTile}
         data-testid={`group-add-tile-${container.id}`}
       >
@@ -154,8 +152,6 @@ export default function DashboardContainer({
         <ActionIcon
           variant="subtle"
           size="sm"
-          tabIndex={showControls ? 0 : -1}
-          style={hoverControlStyle}
           data-testid={`group-menu-${container.id}`}
         >
           <IconDotsVertical size={14} />
@@ -211,8 +207,6 @@ export default function DashboardContainer({
       style={{
         cursor: 'grab',
         flexShrink: 0,
-        opacity: showControls ? 1 : 0,
-        transition: 'opacity 150ms',
       }}
       data-testid={`group-drag-handle-${container.id}`}
     >
@@ -247,6 +241,7 @@ export default function DashboardContainer({
       onMouseLeave={() => setHovered(false)}
       mt={8}
       style={{
+        backgroundColor: 'var(--color-bg-body)',
         border: bordered ? '1px solid var(--color-border)' : undefined,
         borderRadius: bordered ? 4 : undefined,
       }}
@@ -364,7 +359,16 @@ export default function DashboardContainer({
         </Flex>
       )}
       {!isCollapsed && (
-        <Box>{children(hasTabs ? resolvedActiveTabId : undefined)}</Box>
+        <Box
+          className="bg-sunken"
+          p="xs"
+          style={{
+            borderBottomLeftRadius: bordered ? 4 : undefined,
+            borderBottomRightRadius: bordered ? 4 : undefined,
+          }}
+        >
+          {children(hasTabs ? resolvedActiveTabId : undefined)}
+        </Box>
       )}
       <Modal
         data-testid="group-delete-modal"
