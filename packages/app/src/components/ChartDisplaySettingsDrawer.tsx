@@ -227,6 +227,7 @@ export default function ChartDisplaySettingsDrawer({
               name="compareToPreviousPeriod"
               size="xs"
               label="Compare to Previous Period"
+              data-testid="compare-to-previous-period-checkbox"
               description={
                 previousDateRange && (
                   <>
@@ -349,7 +350,12 @@ export default function ChartDisplaySettingsDrawer({
           <Button type="submit" variant="secondary" onClick={resetToDefaults}>
             Reset to Defaults
           </Button>
-          <Button type="submit" variant="primary" onClick={applyChanges}>
+          <Button
+            type="submit"
+            variant="primary"
+            onClick={applyChanges}
+            data-testid="display-settings-apply-button"
+          >
             Apply
           </Button>
         </Group>
