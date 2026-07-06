@@ -25,7 +25,6 @@ import {
   NumberInput,
   ScrollArea,
   Stack,
-  Tabs,
   Text,
   TextInput,
   Tooltip,
@@ -48,7 +47,6 @@ import {
   IconSitemap,
 } from '@tabler/icons-react';
 
-import { IS_CLICKHOUSE_BUILD } from '@/config';
 import {
   useColumns,
   useGetValuesDistribution,
@@ -1063,9 +1061,7 @@ const DBSearchPageFiltersComponent = ({
   isLive,
   chartConfig,
   analysisMode,
-  setAnalysisMode,
   sourceId,
-  showDelta,
   denoiseResults,
   setDenoiseResults,
   setFilterRange,
@@ -1074,11 +1070,9 @@ const DBSearchPageFiltersComponent = ({
   onCollapse,
 }: {
   analysisMode: 'results' | 'delta' | 'pattern' | 'chart';
-  setAnalysisMode: (mode: 'results' | 'delta' | 'pattern' | 'chart') => void;
   isLive: boolean;
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId?: string;
-  showDelta: boolean;
   denoiseResults: boolean;
   setDenoiseResults: (denoiseResults: boolean) => void;
   setFilterRange: (key: string, range: { min: number; max: number }) => void;
@@ -1661,37 +1655,6 @@ const DBSearchPageFiltersComponent = ({
               )}
             </Group>
           </Flex>
-          <Tabs
-            value={analysisMode}
-            onChange={value =>
-              setAnalysisMode(
-                value as 'results' | 'delta' | 'pattern' | 'chart',
-              )
-            }
-            orientation="vertical"
-            w="100%"
-            placement="right"
-          >
-            <Tabs.List w="100%">
-              <Tabs.Tab value="results" size="xs" h="24px">
-                <Text size="xs">Results Table</Text>
-              </Tabs.Tab>
-              <Tabs.Tab value="chart" size="xs" h="24px">
-                <Text size="xs">Chart</Text>
-              </Tabs.Tab>
-              {showDelta && (
-                <Tabs.Tab value="delta" size="xs" h="24px">
-                  <Text size="xs">Event Deltas</Text>
-                </Tabs.Tab>
-              )}
-              {!IS_CLICKHOUSE_BUILD && (
-                <Tabs.Tab value="pattern" size="xs" h="24px">
-                  <Text size="xs">Event Patterns</Text>
-                </Tabs.Tab>
-              )}
-            </Tabs.List>
-          </Tabs>
-
           {isSharedFiltersVisible && (
             <SharedFiltersSection
               hasSharedFacets={sharedFacets.length > 0}

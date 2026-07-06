@@ -61,6 +61,7 @@ import {
   Group,
   Modal,
   Paper,
+  SegmentedControl,
   Select,
   Stack,
   Text,
@@ -110,7 +111,7 @@ import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_CLICKHOUSE_BUILD, IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { withAppNav } from '@/layout';
@@ -1022,6 +1023,46 @@ export function DBSearchPage() {
         (searchedConfig.whereLanguage as 'sql' | 'lucene') ?? 'lucene',
     } as SavedChartConfig),
   );
+
+  // In chart mode the page-level source + query bar is the single source of
+  // truth, so merge the committed search source/where into the chart config
+  // (the builder hides its own source selector to avoid duplicate controls).
+  const chartModeEffectiveConfig = useMemo(
+    () =>
+      ({
+        ...chartModeConfig,
+        source: searchedConfig.source ?? chartModeConfig.source,
+        where: searchedConfig.where ?? '',
+        whereLanguage:
+          (searchedConfig.whereLanguage as 'sql' | 'lucene') ??
+          chartModeConfig.whereLanguage ??
+          'lucene',
+      }) as SavedChartConfig,
+    [
+      chartModeConfig,
+      searchedConfig.source,
+      searchedConfig.where,
+      searchedConfig.whereLanguage,
+    ],
+  );
+
+  // Delta analysis needs a trace source with a duration expression.
+  const showDelta = !!(searchedSource?.kind === SourceKind.Trace
+    ? searchedSource.durationExpression
+    : undefined);
+  const analysisModeOptions = useMemo(() => {
+    const opts = [
+      { label: 'Events', value: 'results' },
+      { label: 'Chart', value: 'chart' },
+    ];
+    if (showDelta) {
+      opts.push({ label: 'Deltas', value: 'delta' });
+    }
+    if (!IS_CLICKHOUSE_BUILD) {
+      opts.push({ label: 'Patterns', value: 'pattern' });
+    }
+    return opts;
+  }, [showDelta]);
 
   const [patternColumn, setPatternColumn] = useQueryState(
     'patternColumn',
@@ -2121,7 +2162,19 @@ export function DBSearchPage() {
         className={searchPageStyles.searchForm}
       >
         {/* <DevTool control={control} /> */}
-        <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
+        <Flex gap="sm" px="sm" pt="sm" wrap="nowrap" align="center">
+          <SegmentedControl
+            size="xs"
+            data={analysisModeOptions}
+            value={analysisMode}
+            onChange={value =>
+              setAnalysisMode(
+                value as 'results' | 'delta' | 'pattern' | 'chart',
+              )
+            }
+            data-testid="analysis-mode-control"
+            style={{ flexShrink: 0 }}
+          />
           <SourceSelectControlled
             key={`${savedSearchId}`}
             size="xs"
@@ -2144,34 +2197,38 @@ export function DBSearchPage() {
             open={isSourceSchemaPreviewOpen}
             onClose={() => setIsSourceSchemaPreviewOpen(false)}
           />
-          <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
-            <SQLInlineEditorControlled
-              tableConnection={inputSourceTableConnection}
-              control={control}
-              name="select"
-              defaultValue={defaultSearchConfig.select}
-              placeholder={defaultSearchConfig.select || 'SELECT Columns'}
-              onSubmit={onSubmit}
-              label="SELECT"
-              size="xs"
-              allowMultiline
-              dateRange={searchedTimeRange}
-              sourceId={inputSource}
-            />
-          </Box>
-          <Box style={{ maxWidth: 400, width: '20%' }}>
-            <SQLInlineEditorControlled
-              tableConnection={inputSourceTableConnection}
-              control={control}
-              name="orderBy"
-              defaultValue={defaultSearchConfig.orderBy}
-              onSubmit={onSubmit}
-              label="ORDER BY"
-              size="xs"
-              dateRange={searchedTimeRange}
-              sourceId={inputSource}
-            />
-          </Box>
+          {analysisMode !== 'chart' && (
+            <>
+              <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
+                <SQLInlineEditorControlled
+                  tableConnection={inputSourceTableConnection}
+                  control={control}
+                  name="select"
+                  defaultValue={defaultSearchConfig.select}
+                  placeholder={defaultSearchConfig.select || 'SELECT Columns'}
+                  onSubmit={onSubmit}
+                  label="SELECT"
+                  size="xs"
+                  allowMultiline
+                  dateRange={searchedTimeRange}
+                  sourceId={inputSource}
+                />
+              </Box>
+              <Box style={{ maxWidth: 400, width: '20%' }}>
+                <SQLInlineEditorControlled
+                  tableConnection={inputSourceTableConnection}
+                  control={control}
+                  name="orderBy"
+                  defaultValue={defaultSearchConfig.orderBy}
+                  onSubmit={onSubmit}
+                  label="ORDER BY"
+                  size="xs"
+                  dateRange={searchedTimeRange}
+                  sourceId={inputSource}
+                />
+              </Box>
+            </>
+          )}
           <>
             {!savedSearchId ? (
               <Button
@@ -2326,21 +2383,15 @@ export function DBSearchPage() {
                 height: '100%',
               }}
             >
-              {!isFilterSidebarCollapsed && (
+              {!isFilterSidebarCollapsed && analysisMode !== 'chart' && (
                 <ErrorBoundary message="Unable to render search filters">
                   <DBSearchPageFilters
                     denoiseResults={denoiseResults}
                     setDenoiseResults={setDenoiseResults}
                     isLive={isLive}
                     analysisMode={analysisMode}
-                    setAnalysisMode={setAnalysisMode}
                     chartConfig={filtersChartConfig}
                     sourceId={inputSourceObj?.id}
-                    showDelta={
-                      !!(searchedSource?.kind === SourceKind.Trace
-                        ? searchedSource.durationExpression
-                        : undefined)
-                    }
                     onColumnToggle={toggleColumn}
                     displayedColumns={displayedColumns}
                     onCollapse={() => setIsFilterSidebarCollapsed(true)}
@@ -2662,14 +2713,13 @@ export function DBSearchPage() {
                   />
                   <EditTimeChartForm
                     data-testid="explore-chart-form"
-                    chartConfig={chartModeConfig}
+                    chartConfig={chartModeEffectiveConfig}
                     setChartConfig={setChartModeConfig}
                     dateRange={searchedTimeRange}
-                    displayedTimeInputValue={displayedTimeInputValue}
-                    setDisplayedTimeInputValue={setDisplayedTimeInputValue}
-                    onTimeRangeSearch={onSearch}
                     onTimeRangeSelect={onTimeRangeSelect}
                     submitRef={chartModeSubmitRef}
+                    hideSourceSelect
+                    hideNameInput
                     autoRun
                   />
                 </Box>

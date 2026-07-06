@@ -66,6 +66,10 @@ type ChartEditorControlsProps = {
   onSubmit: (suppressErrorNotification?: boolean) => void;
   openDisplaySettings: () => void;
   openHeatmapSettings: () => void;
+  // When embedded in the Explore page's chart mode, the source is driven by the
+  // page-level source selector, so the builder hides its own to avoid a
+  // duplicate control.
+  hideSourceSelect?: boolean;
 };
 
 export function ChartEditorControls({
@@ -95,6 +99,7 @@ export function ChartEditorControls({
   onSubmit,
   openDisplaySettings,
   openHeatmapSettings,
+  hideSourceSelect = false,
 }: ChartEditorControlsProps) {
   const canAddSeries =
     displayType !== DisplayType.Pie &&
@@ -108,30 +113,32 @@ export function ChartEditorControls({
   return (
     <>
       <Flex mb="md" align="center" justify="space-between">
-        <Group>
-          <Text pe="md" size="sm">
-            Data Source
-          </Text>
-          <SourceSelectControlled
-            size="xs"
-            control={control}
-            name="source"
-            data-testid="source-selector"
-            allowedSourceKinds={
-              displayType === DisplayType.Heatmap
-                ? [...HEATMAP_ALLOWED_SOURCE_KINDS]
-                : undefined
-            }
-            onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
-            isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(tableSource)}
-          />
-          <SourceSchemaPreview
-            source={tableSource}
-            controlled
-            open={isSourceSchemaPreviewOpen}
-            onClose={() => setIsSourceSchemaPreviewOpen(false)}
-          />
-        </Group>
+        {!hideSourceSelect && (
+          <Group>
+            <Text pe="md" size="sm">
+              Data Source
+            </Text>
+            <SourceSelectControlled
+              size="xs"
+              control={control}
+              name="source"
+              data-testid="source-selector"
+              allowedSourceKinds={
+                displayType === DisplayType.Heatmap
+                  ? [...HEATMAP_ALLOWED_SOURCE_KINDS]
+                  : undefined
+              }
+              onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+              isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(tableSource)}
+            />
+            <SourceSchemaPreview
+              source={tableSource}
+              controlled
+              open={isSourceSchemaPreviewOpen}
+              onClose={() => setIsSourceSchemaPreviewOpen(false)}
+            />
+          </Group>
+        )}
         <Group>
           {tableSource &&
             activeTab !== 'search' &&

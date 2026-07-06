@@ -105,6 +105,10 @@ type EditTimeChartFormProps = {
   submitRef?: React.MutableRefObject<(() => void) | undefined>;
   isDashboardForm?: boolean;
   autoRun?: boolean;
+  // Embedded in the Explore page's chart mode: the page owns the source and
+  // name, so the builder hides its own duplicate controls.
+  hideSourceSelect?: boolean;
+  hideNameInput?: boolean;
 };
 
 /** Populate form state with the standard heatmap series + duration numberFormat. */
@@ -143,6 +147,8 @@ export default function EditTimeChartForm({
   submitRef,
   isDashboardForm = false,
   autoRun = false,
+  hideSourceSelect = false,
+  hideNameInput = false,
 }: EditTimeChartFormProps) {
   const formValue: ChartEditorFormState = useMemo(
     () => convertSavedChartConfigToFormState(chartConfig),
@@ -724,17 +730,21 @@ export default function EditTimeChartForm({
           )}
         />
         <Flex align="center" gap="sm" mb="sm">
-          <Text size="sm" className="text-nowrap">
-            Chart Name
-          </Text>
-          <InputControlled
-            name="name"
-            control={control}
-            flex={1}
-            type="text"
-            placeholder="My Chart Name"
-            data-testid="chart-name-input"
-          />
+          {!hideNameInput && (
+            <>
+              <Text size="sm" className="text-nowrap">
+                Chart Name
+              </Text>
+              <InputControlled
+                name="name"
+                control={control}
+                flex={1}
+                type="text"
+                placeholder="My Chart Name"
+                data-testid="chart-name-input"
+              />
+            </>
+          )}
           {isRawSqlDisplayType(displayType) && (
             <Controller
               control={control}
@@ -821,6 +831,7 @@ export default function EditTimeChartForm({
             onSubmit={onSubmit}
             openDisplaySettings={openDisplaySettings}
             openHeatmapSettings={openHeatmapSettings}
+            hideSourceSelect={hideSourceSelect}
           />
         )}
         <ChartActionBar
