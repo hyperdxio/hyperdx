@@ -84,6 +84,10 @@ function ChartContainer({
                 flex: 1,
                 flexShrink: 1,
                 overflow: 'hidden',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflowWrap: 'break-word',
               }}
             >
               {title}
