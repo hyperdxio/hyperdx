@@ -21,8 +21,12 @@ import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import { parseTimeRange } from '@/mcp/tools/query/helpers';
+import {
+  clickHouseErrorResult,
+  parseTimeRange,
+} from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -157,35 +161,20 @@ export function registerTraceBreakdown({
 
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
-        return {
-          isError: true as const,
-          content: [{ type: 'text' as const, text: timeRange.error }],
-        };
+        return mcpUserError(timeRange.error);
       }
       const { startDate, endDate } = timeRange;
 
       const source = await getSource(teamId.toString(), input.sourceId);
       if (!source) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
-            },
-          ],
-        };
+        return mcpUserError(
+          `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
+        );
       }
       if (source.kind !== SourceKind.Trace) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Source ${input.sourceId} is kind="${source.kind}". clickstack_trace_top_time_consuming_operations requires a source of kind="trace".`,
-            },
-          ],
-        };
+        return mcpUserError(
+          `Source ${input.sourceId} is kind="${source.kind}". clickstack_trace_top_time_consuming_operations requires a source of kind="trace".`,
+        );
       }
 
       const connection = await getConnectionById(
@@ -194,15 +183,9 @@ export function registerTraceBreakdown({
         true,
       );
       if (!connection) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Connection not found for source: ${input.sourceId}`,
-            },
-          ],
-        };
+        return mcpUserError(
+          `Connection not found for source: ${input.sourceId}`,
+        );
       }
 
       // Source-configured SQL expressions. These are trusted (set by the
@@ -310,15 +293,11 @@ LIMIT {topN:UInt32}
         ).json()) ?? { data: [] };
         rows = json.data ?? [];
       } catch (e) {
-        return {
-          isError: true as const,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Failed to compute breakdown: ${e instanceof Error ? e.message : String(e)}. The parentFilter must be valid ClickHouse SQL referencing columns on the trace table (e.g. ServiceName = 'X' AND SpanName = 'Y').`,
-            },
-          ],
-        };
+        return clickHouseErrorResult(e, {
+          prefix: 'Failed to compute breakdown',
+          suffix:
+            "The parentFilter must be valid ClickHouse SQL referencing columns on the trace table (e.g. ServiceName = 'X' AND SpanName = 'Y').",
+        });
       }
 
       // Normalise numerics — ClickHouse JSON sometimes returns strings for

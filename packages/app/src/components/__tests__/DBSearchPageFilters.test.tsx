@@ -654,6 +654,15 @@ describe('FilterGroup', () => {
 
     expect(screen.getAllByTestId(/filter-checkbox-.+-input/)).toHaveLength(3);
   });
+
+  // https://github.com/hyperdxio/hyperdx/issues/2576 — an empty map attribute
+  // key (e.g. LogAttributes['']) yields an empty name, which Mantine rejects
+  // as an Accordion.Item value and crashes the filter panel.
+  it('should render a placeholder instead of crashing when name is empty', () => {
+    renderWithMantine(<FilterGroup {...defaultProps} name="" />);
+
+    expect(screen.getByText('(empty)')).toBeInTheDocument();
+  });
 });
 
 describe('NestedFilterGroup', () => {
