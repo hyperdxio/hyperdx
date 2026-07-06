@@ -355,11 +355,17 @@ router.delete(
         return res.sendStatus(403);
       }
 
-      // Null the channel on referencing alerts so they don't fire WEBHOOK_ERROR on every tick.
-      await Alert.updateMany(
-        { 'channel.webhookId': req.params.id, team: teamId },
-        { $set: { channel: { type: null } } },
-      );
+      // Block deletion when alerts still reference this webhook.
+      // The user must reassign or delete those alerts first.
+      const referencingAlertCount = await Alert.countDocuments({
+        'channel.webhookId': req.params.id,
+        team: teamId,
+      });
+      if (referencingAlertCount > 0) {
+        return res.status(409).json({
+          message: `Cannot delete webhook: ${referencingAlertCount} alert(s) still reference it. Please update or remove those alerts first.`,
+        });
+      }
 
       await Webhook.findOneAndDelete({ _id: req.params.id, team: teamId });
       res.json({});
