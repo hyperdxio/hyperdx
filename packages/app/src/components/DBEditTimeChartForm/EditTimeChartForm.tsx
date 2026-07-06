@@ -604,20 +604,26 @@ export default function EditTimeChartForm({
       // (the user never chose a format), leave it unset so render-time
       // auto-detection keeps driving the format from the datasource.
       if (numberFormat !== undefined) {
-        setValue('numberFormat', numberFormat);
+        setValue('numberFormat', numberFormat, { shouldDirty: true });
       }
-      setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
-      setValue('fillNulls', fillNulls);
-      setValue('compareToPreviousPeriod', compareToPreviousPeriod);
-      setValue('fitYAxisToData', fitYAxisToData);
-      setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
+      setValue('alignDateRangeToGranularity', alignDateRangeToGranularity, {
+        shouldDirty: true,
+      });
+      setValue('fillNulls', fillNulls, { shouldDirty: true });
+      setValue('compareToPreviousPeriod', compareToPreviousPeriod, {
+        shouldDirty: true,
+      });
+      setValue('fitYAxisToData', fitYAxisToData, { shouldDirty: true });
+      setValue('groupByColumnsOnLeft', groupByColumnsOnLeft, {
+        shouldDirty: true,
+      });
       // Persist `null` (not undefined) when cleared so the disabled state
       // survives JSON round-tripping through the URL query state; otherwise
       // the dropped key lets RHF's `values` sync restore the stale value.
-      setValue('seriesLimit', seriesLimit ?? null);
-      setValue('color', color);
-      setValue('colorRules', colorRules);
-      setValue('backgroundChart', backgroundChart);
+      setValue('seriesLimit', seriesLimit ?? null, { shouldDirty: true });
+      setValue('color', color, { shouldDirty: true });
+      setValue('colorRules', colorRules, { shouldDirty: true });
+      setValue('backgroundChart', backgroundChart, { shouldDirty: true });
       onSubmit();
     },
     [setValue, onSubmit],
@@ -625,9 +631,13 @@ export default function EditTimeChartForm({
 
   const handleUpdateHeatmapSettings = useCallback(
     (data: HeatmapSettingsValues) => {
-      setValue('series.0.valueExpression', data.value);
-      setValue('series.0.countExpression', data.count || 'count()');
-      setValue('series.0.heatmapScaleType', data.scaleType);
+      setValue('series.0.valueExpression', data.value, { shouldDirty: true });
+      setValue('series.0.countExpression', data.count || 'count()', {
+        shouldDirty: true,
+      });
+      setValue('series.0.heatmapScaleType', data.scaleType, {
+        shouldDirty: true,
+      });
       onSubmit();
       closeHeatmapSettings();
     },
