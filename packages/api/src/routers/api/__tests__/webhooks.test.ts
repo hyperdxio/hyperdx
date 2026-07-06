@@ -212,9 +212,7 @@ describe('webhooks router', () => {
     });
 
     // 3. Attempt to delete — should be blocked
-    const response = await agent
-      .delete(`/webhooks/${webhook._id}`)
-      .expect(409);
+    const response = await agent.delete(`/webhooks/${webhook._id}`).expect(409);
 
     expect(response.body.message).toContain('1 alert(s) still reference it');
 
