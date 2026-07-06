@@ -252,7 +252,13 @@ export default function DashboardContainer({
           value={resolvedActiveTabId}
           onChange={val => val && onTabChange(val)}
         >
-          <Flex align="center" px="sm" gap={6} mih={headerHeight}>
+          <Flex
+            align="center"
+            px="sm"
+            gap={6}
+            mih={headerHeight}
+            style={{ borderBottom: '1px solid var(--color-border)' }}
+          >
             {dragHandle}
             {chevron}
             <GroupTabBar
