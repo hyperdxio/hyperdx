@@ -56,6 +56,49 @@ export function decodeAgentCapabilities(capabilities: unknown): string[] {
   );
 }
 
+// RemoteConfigStatuses enum from opamp.proto. protobufjs decodes enum fields to
+// their raw numeric wire value, so map back to a fixed set of names. This is an
+// allowlist on purpose: the status is agent-supplied on an unauthenticated
+// endpoint and used as a metric label, so anything outside the known values is
+// bucketed to 'unknown' to keep time-series cardinality bounded.
+const REMOTE_CONFIG_STATUS_NAMES: Record<number, string> = {
+  0: 'UNSET',
+  1: 'APPLIED',
+  2: 'APPLYING',
+  3: 'FAILED',
+};
+
+/**
+ * Map a decoded RemoteConfigStatuses value (numeric or already a string) to its
+ * bounded name. Returns undefined when no status was reported; unknown values
+ * bucket to 'unknown' so the result is always safe as a metric dimension.
+ */
+export function remoteConfigStatusName(status: unknown): string | undefined {
+  if (status == null) {
+    return undefined;
+  }
+  if (typeof status === 'string') {
+    // Accept a known name as-is; bucket anything else.
+    return Object.values(REMOTE_CONFIG_STATUS_NAMES).includes(status)
+      ? status
+      : 'unknown';
+  }
+  const n = toSafeNumber(status);
+  if (n == null) {
+    return 'unknown';
+  }
+  return REMOTE_CONFIG_STATUS_NAMES[n] ?? 'unknown';
+}
+
+/**
+ * Cap an agent-supplied string before it becomes a span attribute. Agent input
+ * is bounded only by the request body limit (~10MB), so unbounded strings would
+ * amplify trace ingestion/export cost on an unauthenticated endpoint.
+ */
+export function truncateAttr(value: string, max = 512): string {
+  return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
 /**
  * Extract a scalar value for `key` from an OpAMP AgentDescription attribute
  * list (OTel-style key/value pairs). Returns undefined if the key is absent.

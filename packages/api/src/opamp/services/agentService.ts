@@ -1,7 +1,10 @@
 import { trace } from '@opentelemetry/api';
 
 import { Agent, agentStore } from '@/opamp/models/agent';
-import { toSafeNumber } from '@/opamp/utils/agentTelemetry';
+import {
+  remoteConfigStatusName,
+  toSafeNumber,
+} from '@/opamp/utils/agentTelemetry';
 import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
@@ -12,6 +15,18 @@ const agentStatusCounter = getCounter('hyperdx.opamp.agent_status_reports', {
   description:
     'Count of processed OpAMP agent status reports, labeled by status (new, updated).',
 });
+// Whether the config we previously pushed actually applied on the agent. Only
+// bumped on a genuine status *transition* (not every heartbeat), so it counts
+// apply outcomes rather than report volume. The `status` label is mapped
+// through a fixed allowlist (see remoteConfigStatusName), keeping it bounded
+// even though the value is agent-supplied on an unauthenticated endpoint.
+const opampConfigApplicationsCounter = getCounter(
+  'hyperdx.opamp.remote_config_applications',
+  {
+    description:
+      'Count of OpAMP remote config apply status transitions reported by agents, labeled by the new status (UNSET, APPLIED, APPLYING, FAILED, unknown).',
+  },
+);
 
 export class AgentService {
   /**
@@ -33,6 +48,7 @@ export class AgentService {
       let agent = agentStore.getAgent(instanceUid);
       const isNewAgent = !agent;
       const previousSequenceNum = agent?.sequenceNum;
+      const previousRemoteConfigStatus = agent?.remoteConfigStatus?.status;
 
       if (!agent) {
         // New agent, create a new record
@@ -87,6 +103,16 @@ export class AgentService {
         if (prev != null && curr != null) {
           activeSpan?.setAttribute('opamp.agent.sequence_gap', curr - prev);
         }
+      }
+
+      // Count a remote-config apply outcome only when the reported status
+      // actually changed, so persistent heartbeats don't inflate the metric.
+      const currentStatus = remoteConfigStatusName(
+        agent.remoteConfigStatus?.status,
+      );
+      const priorStatus = remoteConfigStatusName(previousRemoteConfigStatus);
+      if (currentStatus && currentStatus !== priorStatus) {
+        opampConfigApplicationsCounter.add(1, { status: currentStatus });
       }
 
       return agent;

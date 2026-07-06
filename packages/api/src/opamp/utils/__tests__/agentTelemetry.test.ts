@@ -2,7 +2,9 @@ import type { AgentAttribute } from '@/opamp/models/agent';
 import {
   decodeAgentCapabilities,
   getAgentAttribute,
+  remoteConfigStatusName,
   toSafeNumber,
+  truncateAttr,
 } from '@/opamp/utils/agentTelemetry';
 
 describe('agentTelemetry', () => {
@@ -75,6 +77,42 @@ describe('agentTelemetry', () => {
     it('returns undefined for a missing key or missing list', () => {
       expect(getAgentAttribute(attrs, 'host.arch')).toBeUndefined();
       expect(getAgentAttribute(undefined, 'service.name')).toBeUndefined();
+    });
+  });
+
+  describe('remoteConfigStatusName', () => {
+    it('maps known numeric enum values to names', () => {
+      expect(remoteConfigStatusName(0)).toBe('UNSET');
+      expect(remoteConfigStatusName(1)).toBe('APPLIED');
+      expect(remoteConfigStatusName(2)).toBe('APPLYING');
+      expect(remoteConfigStatusName(3)).toBe('FAILED');
+    });
+
+    it('buckets unknown/out-of-range values to "unknown" (bounded label)', () => {
+      expect(remoteConfigStatusName(99)).toBe('unknown');
+      expect(remoteConfigStatusName('APPLIED_MALICIOUS_LABEL')).toBe('unknown');
+      expect(remoteConfigStatusName({})).toBe('unknown');
+    });
+
+    it('accepts an already-mapped name string', () => {
+      expect(remoteConfigStatusName('FAILED')).toBe('FAILED');
+    });
+
+    it('returns undefined when no status was reported', () => {
+      expect(remoteConfigStatusName(undefined)).toBeUndefined();
+      expect(remoteConfigStatusName(null)).toBeUndefined();
+    });
+  });
+
+  describe('truncateAttr', () => {
+    it('leaves short strings unchanged', () => {
+      expect(truncateAttr('otelcol 0.154.0')).toBe('otelcol 0.154.0');
+    });
+
+    it('caps long strings and marks truncation', () => {
+      const out = truncateAttr('x'.repeat(1000), 512);
+      expect(out).toHaveLength(513); // 512 + ellipsis
+      expect(out.endsWith('…')).toBe(true);
     });
   });
 });

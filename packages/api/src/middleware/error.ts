@@ -13,12 +13,10 @@ const apiErrorCounter = getCounter('hyperdx.api.errors', {
 });
 
 // raw-body / body-parser attach a bounded string `type` on parse failures
-// (e.g. 'request.aborted', 'entity.too.large', 'entity.parse.failed') and set
-// code 'ECONNABORTED' when the client hangs up mid-body. Both are bounded,
-// low-cardinality values safe to use as a metric dimension.
+// (e.g. 'request.aborted', 'entity.too.large', 'entity.parse.failed'). This is
+// a bounded, low-cardinality value safe to use as a metric dimension.
 type BodyParserError = {
   type?: unknown;
-  code?: unknown;
   received?: unknown;
   expected?: unknown;
 };
@@ -32,10 +30,14 @@ const bodyParserErrorType = (err: unknown): string | undefined => {
  * A client that disconnects mid-request (aborted upload, LB read timeout,
  * collector restart) is not a server fault. We classify it as operational so
  * it stays out of the non-operational error signal and off the error log.
+ *
+ * We key strictly on body-parser's `type === 'request.aborted'` — deliberately
+ * NOT on `code === 'ECONNABORTED'`, which is not scoped to the incoming request
+ * (axios uses it for outbound request timeouts) and would otherwise silently
+ * downgrade real server errors from any route.
  */
-export const isClientDisconnect = (err: unknown): boolean =>
-  bodyParserErrorType(err) === 'request.aborted' ||
-  (err as BodyParserError)?.code === 'ECONNABORTED';
+const isClientDisconnect = (err: unknown): boolean =>
+  bodyParserErrorType(err) === 'request.aborted';
 
 // WARNING: need to keep the 4th arg for express to identify it as an error-handling middleware function
 export const appErrorHandler = (
@@ -51,7 +53,12 @@ export const appErrorHandler = (
   apiErrorCounter.add(1, {
     operational,
     status_code: statusCode,
-    error_type: parserErrorType ?? err.name ?? 'unknown',
+    // `err.name` on our BaseError subclasses is the constructor's first arg,
+    // which is routinely an interpolated message (e.g. "Team not found for
+    // user <id>") — unbounded. The class name is bounded; note BaseError's
+    // setPrototypeOf collapses its subclasses to "BaseError" (the granular
+    // distinction comes from status_code above).
+    error_type: parserErrorType ?? err.constructor?.name ?? 'unknown',
   });
 
   // Attach connection-level context to the active span so a single trace shows

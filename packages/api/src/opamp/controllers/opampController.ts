@@ -7,7 +7,9 @@ import { agentService } from '@/opamp/services/agentService';
 import {
   decodeAgentCapabilities,
   getAgentAttribute,
+  remoteConfigStatusName,
   toSafeNumber,
+  truncateAttr,
 } from '@/opamp/utils/agentTelemetry';
 import {
   createRemoteConfig,
@@ -43,16 +45,6 @@ const opampRemoteConfigsCounter = getCounter('hyperdx.opamp.remote_configs', {
   description:
     'Count of OpAMP remote collector configs sent back to agents in a ServerToAgent response.',
 });
-// Whether the config we previously pushed actually applied on the agent. This
-// is the fleet-health signal for remote config: a spike in FAILED means agents
-// are rejecting what we sent. Status is a bounded enum, safe as a metric label.
-const opampConfigApplicationsCounter = getCounter(
-  'hyperdx.opamp.remote_config_applications',
-  {
-    description:
-      'Count of OpAMP remote config apply results reported by agents, labeled by status (UNSET, APPLIED, APPLYING, FAILED).',
-  },
-);
 
 type CollectorConfig = {
   extensions: Record<string, any>;
@@ -470,11 +462,14 @@ export class OpampController {
             if (health.lastError) {
               span.setAttribute(
                 'opamp.agent.health_last_error',
-                health.lastError,
+                truncateAttr(String(health.lastError)),
               );
             }
             if (health.status) {
-              span.setAttribute('opamp.agent.health_status', health.status);
+              span.setAttribute(
+                'opamp.agent.health_status',
+                truncateAttr(String(health.status)),
+              );
             }
             const startNano = toSafeNumber(health.startTimeUnixNano);
             if (startNano && startNano > 0) {
@@ -488,7 +483,12 @@ export class OpampController {
           // Process the agent status
           const agent = agentService.processAgentStatus(agentToServer);
 
-          span.setAttribute('opamp.agent.capabilities', agent.capabilities);
+          // capabilities is a uint64 → decodes to a Long; coerce so the OTel
+          // SDK accepts it (a raw Long would be silently dropped).
+          const capabilities = toSafeNumber(agent.capabilities);
+          if (capabilities != null) {
+            span.setAttribute('opamp.agent.capabilities', capabilities);
+          }
           const capabilityFlags = decodeAgentCapabilities(agent.capabilities);
           if (capabilityFlags.length > 0) {
             span.setAttribute(
@@ -506,26 +506,31 @@ export class OpampController {
           for (const [spanKey, otelKey] of AGENT_DESCRIPTION_SPAN_ATTRS) {
             const value = getAgentAttribute(descriptionAttributes, otelKey);
             if (value != null) {
-              span.setAttribute(spanKey, value);
+              // Description values are agent-supplied; cap the string ones.
+              span.setAttribute(
+                spanKey,
+                typeof value === 'string' ? truncateAttr(value) : value,
+              );
             }
           }
 
-          const remoteConfigStatus = agent.remoteConfigStatus?.status;
+          // status is an enum decoded to its raw numeric value; map to a bounded
+          // name (see remoteConfigStatusName). The apply-outcome counter lives in
+          // the service, where the previous status is available to detect a real
+          // transition rather than counting every heartbeat.
+          const remoteConfigStatus = remoteConfigStatusName(
+            agent.remoteConfigStatus?.status,
+          );
           if (remoteConfigStatus) {
             span.setAttribute(
               'opamp.agent.remote_config_status',
               remoteConfigStatus,
             );
-            opampConfigApplicationsCounter.add(1, {
-              status: remoteConfigStatus,
-            });
           }
-          // errorMessage is bounded agent output — fine on a span attribute,
-          // but never as a metric label.
           if (agent.remoteConfigStatus?.errorMessage) {
             span.setAttribute(
               'opamp.agent.remote_config_error',
-              agent.remoteConfigStatus.errorMessage,
+              truncateAttr(agent.remoteConfigStatus.errorMessage),
             );
           }
           // The config the agent last applied — compared against the hash we
