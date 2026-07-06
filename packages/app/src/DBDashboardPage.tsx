@@ -599,6 +599,9 @@ const Tile = forwardRef(
       if (alert.silenced?.at) {
         return 'yellow';
       }
+      if (alert.state === AlertState.PENDING) {
+        return 'orange';
+      }
       return 'red';
     }, [alert]);
 
