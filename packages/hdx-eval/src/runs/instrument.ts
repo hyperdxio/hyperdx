@@ -2,15 +2,16 @@ import type { ClickHouseClient } from '@clickhouse/client';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
-import { createEvalClient, defaultClickHouseUrl } from '../clickhouse/client';
-import { scenarioTables } from '../clickhouse/schema';
-import type { RunRecord } from '../harness/types';
-import { SCENARIO_NAMES } from '../scenarios';
+import { createEvalClient, defaultClickHouseUrl } from '@/clickhouse/client';
+import { scenarioTables } from '@/clickhouse/schema';
+import type { RunRecord } from '@/harness/types';
+import { SCENARIO_NAMES } from '@/scenarios';
+
 import { isModelSubdir, isRunJson, runsRoot, safeReaddir } from './path';
 
 const QUERY_LOG_BUFFER_MS = 5_000;
 
-export type ServerQuery = {
+type ServerQuery = {
   eventTime: string;
   queryDurationMs: number;
   readRows: number;
@@ -19,7 +20,7 @@ export type ServerQuery = {
   queryPreview: string;
 };
 
-export type ToolCallTiming = {
+type ToolCallTiming = {
   index: number;
   name: string;
   wallStartTs: string;

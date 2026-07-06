@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import type { EvalConfig } from '../hyperdx/config';
+import type { EvalConfig } from '@/hyperdx/config';
+
 import { allowedToolsPattern, buildMcpConfig } from './mcpConfig';
 import { buildSettings, deniedToolsFor } from './settingsFile';
 import {
@@ -29,6 +30,9 @@ export type SpawnOptions = {
    *  `hypothesis` variant allows the Task tool so the agent can spawn
    *  subagents. Default 'baseline'. */
   promptVariant?: PromptVariant;
+  /** Tool name substrings to remove from the denied-tools list.
+   *  Comes from `Scenario.allowedToolPatterns`. */
+  allowedToolPatterns?: string[];
 };
 
 export type SpawnResult = {
@@ -54,7 +58,11 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
   const promptVariant: PromptVariant = opts.promptVariant ?? 'baseline';
   writeFileSync(
     settingsPath,
-    JSON.stringify(buildSettings(mcpDef, promptVariant, tempdir), null, 2),
+    JSON.stringify(
+      buildSettings(mcpDef, promptVariant, tempdir, opts.allowedToolPatterns),
+      null,
+      2,
+    ),
   );
 
   const argv = [
@@ -64,7 +72,7 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
     '--allowedTools',
     `${allowedToolsPattern(mcpDef)},Read(${tempdir}/*)`,
     '--disallowedTools',
-    deniedToolsFor(promptVariant, mcpDef).join(','),
+    deniedToolsFor(promptVariant, mcpDef, opts.allowedToolPatterns).join(','),
     '--dangerously-skip-permissions',
     '--setting-sources',
     'local',

@@ -27,7 +27,12 @@ import {
   IconTextWrap,
 } from '@tabler/icons-react';
 
-import HyperJson, { GetLineActions, LineAction } from '@/components/HyperJson';
+import HyperJson, {
+  FormatLeafValue,
+  GetLineActions,
+  LineAction,
+} from '@/components/HyperJson';
+import { useFormatTime } from '@/useFormatTime';
 import { mergePath } from '@/utils';
 import {
   CLIPBOARD_ERROR_MESSAGE,
@@ -348,6 +353,7 @@ export function DBRowJsonViewer({
   // `Map['key']` instead of the array `Map[N+1]`. HDX-4369.
   mapColumns?: string[];
 }) {
+  const formatTime = useFormatTime();
   const {
     onPropertyAddClick,
     generateSearchUrl,
@@ -378,6 +384,29 @@ export function DBRowJsonViewer({
     return filterObjectRecursively(cleanedData, debouncedFilter);
   }, [data, debouncedFilter, jsonOptions.filterBlanks]);
 
+  const formatLeafValue = useCallback<FormatLeafValue>(
+    ({ keyName, keyPath, value }) => {
+      if (
+        keyPath.length !== 1 ||
+        (keyName !== 'Timestamp' && keyName !== 'TimestampTime')
+      ) {
+        return undefined;
+      }
+
+      if (typeof value !== 'string' || value.length === 0) {
+        return undefined;
+      }
+
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return undefined;
+      }
+
+      return formatTime(date, { format: 'withMs' });
+    },
+    [formatTime],
+  );
+
   const getLineActions = useCallback<GetLineActions>(
     ({ keyPath, value, isInParsedJson, parsedJsonRootPath }) => {
       const actions: LineAction[] = [];
@@ -385,12 +414,15 @@ export function DBRowJsonViewer({
       const isJsonColumn =
         keyPath.length > 0 && jsonColumns?.includes(keyPath[0]);
 
-      // Add to Filters action (strings only)
+      // Add to Filters action
       // FIXME: TOTAL HACK To disallow adding timestamp to filters
       if (
         onPropertyAddClick != null &&
-        typeof value === 'string' &&
-        value &&
+        (typeof value === 'string' ||
+          typeof value === 'number' ||
+          typeof value === 'boolean') &&
+        value !== '' &&
+        value != null &&
         fieldPath != 'Timestamp' &&
         fieldPath != 'TimestampTime'
       ) {
@@ -403,11 +435,19 @@ export function DBRowJsonViewer({
 
             // Handle parsed JSON from string columns using JSONExtractString
             if (isInParsedJson && parsedJsonRootPath) {
+              let jsonExtractFn: JSONExtractFn = 'JSONExtractString';
+
+              if (typeof value === 'number') {
+                jsonExtractFn = 'JSONExtractFloat';
+              } else if (typeof value === 'boolean') {
+                jsonExtractFn = 'JSONExtractBool';
+              }
+
               const jsonQuery = buildJSONExtractQuery(
                 keyPath,
                 parsedJsonRootPath,
                 jsonColumns,
-                'JSONExtractString',
+                jsonExtractFn,
                 mapColumns,
               );
               if (jsonQuery) {
@@ -425,10 +465,16 @@ export function DBRowJsonViewer({
                 : fieldPath;
             }
 
-            onPropertyAddClick(filterFieldPath, value);
+            onPropertyAddClick(
+              filterFieldPath,
+              (filterFieldPath.startsWith('toString(') ||
+              typeof value !== 'boolean'
+                ? String(value)
+                : value) as string,
+            );
             notifications.show({
               color: 'green',
-              message: `Added "${fieldPath} = ${value}" to filters`,
+              message: `Added "${fieldPath} = ${String(value)}" to filters`,
             });
           },
         });
@@ -661,6 +707,7 @@ export function DBRowJsonViewer({
           <HyperJson
             data={rowData}
             getLineActions={getLineActions}
+            formatLeafValue={formatLeafValue}
             {...jsonOptions}
           />
         ) : (

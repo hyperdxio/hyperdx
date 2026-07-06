@@ -896,17 +896,21 @@ export async function timeFilterExpr({
         );
       }
 
-      const startTimeCond = includedDataInterval
+      const rawStartBound = includedDataInterval
         ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: startTime }}), INTERVAL ${includedDataInterval}) - INTERVAL ${includedDataInterval}`
-        : toStartOf
-          ? chSql`${toStartOf.function}(fromUnixTimestamp64Milli(${{ Int64: startTime }})${toStartOf.formattedRemainingArgs})`
-          : chSql`fromUnixTimestamp64Milli(${{ Int64: startTime }})`;
+        : chSql`fromUnixTimestamp64Milli(${{ Int64: startTime }})`;
 
-      const endTimeCond = includedDataInterval
+      const rawEndBound = includedDataInterval
         ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: endTime }}), INTERVAL ${includedDataInterval}) + INTERVAL ${includedDataInterval}`
-        : toStartOf
-          ? chSql`${toStartOf.function}(fromUnixTimestamp64Milli(${{ Int64: endTime }})${toStartOf.formattedRemainingArgs})`
-          : chSql`fromUnixTimestamp64Milli(${{ Int64: endTime }})`;
+        : chSql`fromUnixTimestamp64Milli(${{ Int64: endTime }})`;
+
+      const startTimeCond = toStartOf
+        ? chSql`${toStartOf.function}(${rawStartBound}${toStartOf.formattedRemainingArgs})`
+        : rawStartBound;
+
+      const endTimeCond = toStartOf
+        ? chSql`${toStartOf.function}(${rawEndBound}${toStartOf.formattedRemainingArgs})`
+        : rawEndBound;
 
       const isDateType = columnMeta?.type === 'Date' || isToDateExpr;
 

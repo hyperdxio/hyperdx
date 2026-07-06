@@ -37,17 +37,22 @@ const nextConfig = {
     '@opentelemetry/auto-instrumentations-node',
     '@hyperdx/node-opentelemetry',
     '@hyperdx/instrumentation-sentry-node',
+    // Outside of Vercel preview deployments, the `/api/[...all]` catch-all
+    // proxies to a separately-deployed API service and never imports the
+    // `@hyperdx/api` package at runtime. Mark it (and its subpaths) as a
+    // CommonJS external so production app builds (Docker fullstack image,
+    // standalone Next output) stay byte-for-byte equivalent to today and
+    // do not pull in passport-saml, mongoose, AWS SDK, etc.
+    ...(process.env.HDX_PREVIEW_INLINE_API !== 'true' ? ['@hyperdx/api'] : []),
   ],
   typescript: {
     tsconfigPath: 'tsconfig.build.json',
   },
-  // NOTE: Using Webpack instead of Turbopack (Next.js 16 default)
+  // Dev uses Turbopack; production build uses Webpack (--webpack).
   // Reason: Turbopack has CSS module parsing issues with nested :global syntax
   // used in styles/SearchPage.module.scss and other SCSS files.
-  // The --webpack flag is added to dev and build scripts in package.json.
-  // TODO: Re-evaluate when Turbopack CSS module support improves
-  // Ignore otel pkgs warnings
-  // https://github.com/open-telemetry/opentelemetry-js/issues/4173#issuecomment-1822938936
+  // TODO: single bundler when Turbopack CSS is solid.
+  // Ignore otel warnings (Webpack): https://github.com/open-telemetry/opentelemetry-js/issues/4173#issuecomment-1822938936
   webpack: (
     config,
     { buildId, dev, isServer, defaultLoaders, nextRuntime, webpack },
@@ -55,12 +60,6 @@ const nextConfig = {
     if (isServer) {
       config.ignoreWarnings = [{ module: /opentelemetry/ }];
 
-      // Outside of Vercel preview deployments, the `/api/[...all]` catch-all
-      // proxies to a separately-deployed API service and never imports the
-      // `@hyperdx/api` package at runtime. Mark it (and its subpaths) as a
-      // CommonJS external so production app builds (Docker fullstack image,
-      // standalone Next output) stay byte-for-byte equivalent to today and
-      // do not pull in passport-saml, mongoose, AWS SDK, etc.
       if (process.env.HDX_PREVIEW_INLINE_API !== 'true') {
         config.externals = [
           ...(config.externals ?? []),

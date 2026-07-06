@@ -225,7 +225,7 @@ export function buildChartConfigForExplanations({
           }
         : undefined;
 
-  if (!config || isRawSqlChartConfig(config) || isPromqlChartConfig(config)) {
+  if (!config || !isBuilderChartConfig(config)) {
     return undefined;
   }
 

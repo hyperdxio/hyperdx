@@ -11,12 +11,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
 import { useClickhouseClient } from '@/clickhouse';
-
 import {
   getGranularityAlignedTimeWindows,
   useQueriedChartConfig,
-} from '../useChartConfig';
-import { useMVOptimizationExplanation } from '../useMVOptimizationExplanation';
+} from '@/hooks/useChartConfig';
+import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 
 // Mock DEFAULT_TIME_WINDOWS_SECONDS to remove the 15m window
 jest.mock('@/utils/searchWindows', () => {

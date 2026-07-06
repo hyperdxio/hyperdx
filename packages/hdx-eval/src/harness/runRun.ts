@@ -1,4 +1,6 @@
-import { type EvalConfig, getMcpDefinition } from '../hyperdx/config';
+import { type EvalConfig, getMcpDefinition } from '@/hyperdx/config';
+import type { Scenario } from '@/scenarios/types';
+
 import { runClaude } from './claudeSpawn';
 import type { ParsedEvent } from './streamParser';
 import { buildSystemPrompt } from './systemPrompt';
@@ -12,7 +14,8 @@ import type {
 
 export type RunCellOptions = {
   config: EvalConfig;
-  scenario: string;
+  /** The full scenario object (provides hooks for custom behavior). */
+  scenario: Scenario;
   agentPrompt: string;
   mcp: McpKind;
   model: string;
@@ -34,6 +37,9 @@ export async function runCell(opts: RunCellOptions): Promise<RunRecord> {
   const startedAtMs = Date.now();
   const promptVariant: PromptVariant = opts.promptVariant ?? 'baseline';
   const mcpDef = getMcpDefinition(opts.config, opts.mcp);
+
+  // Use scenario's custom system prompt builder if provided,
+  // otherwise fall back to the default investigation prompt.
   const systemPromptAppend = buildSystemPrompt(
     opts.scenario,
     opts.anchorTimeIso,
@@ -43,7 +49,7 @@ export async function runCell(opts: RunCellOptions): Promise<RunRecord> {
 
   const result = await runClaude({
     config: opts.config,
-    scenario: opts.scenario,
+    scenario: opts.scenario.name,
     mcp: opts.mcp,
     mcpDef,
     model: opts.model,
@@ -53,6 +59,7 @@ export async function runCell(opts: RunCellOptions): Promise<RunRecord> {
     systemPromptAppend,
     apiKey: opts.apiKey,
     promptVariant,
+    allowedToolPatterns: opts.scenario.allowedToolPatterns,
   });
 
   const endedAtIso = new Date().toISOString();
@@ -63,7 +70,7 @@ export async function runCell(opts: RunCellOptions): Promise<RunRecord> {
     stderr: result.stderr,
     exitCode: result.exitCode,
     timedOut: result.timedOut,
-    scenario: opts.scenario,
+    scenario: opts.scenario.name,
     agentPrompt: opts.agentPrompt,
     systemPromptAppend,
     mcp: opts.mcp,

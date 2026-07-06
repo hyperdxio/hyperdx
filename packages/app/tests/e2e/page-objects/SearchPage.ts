@@ -123,6 +123,10 @@ export class SearchPage {
     }
   }
 
+  async saveSourceForm() {
+    await this.page.getByRole('button', { name: 'Save Source' }).click();
+  }
+
   /**
    * Perform a search with the given query
    */
@@ -231,6 +235,15 @@ export class SearchPage {
    */
   getSearchResultsTable() {
     return this.page.locator('[data-testid="search-results-table"]');
+  }
+
+  /**
+   * Locator for the results table's error state (rendered by ChartErrorState
+   * when the underlying ClickHouse query fails). Assert `toHaveCount(0)` to
+   * confirm the results loaded without error.
+   */
+  getTableError() {
+    return this.page.getByText(/Error loading/i);
   }
 
   /**

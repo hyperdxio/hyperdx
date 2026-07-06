@@ -1,13 +1,48 @@
-import { scenarioTables } from '../clickhouse/schema';
+import { scenarioTables } from '@/clickhouse/schema';
+import type { Scenario } from '@/scenarios/types';
+
 import type { PromptVariant } from './types';
 
+/**
+ * Build the system prompt for a scenario run.
+ *
+ * If the scenario provides a `buildSystemPrompt` hook, it is called instead
+ * of the default investigation prompt. This lets new scenario kinds (dashboard,
+ * alert, etc.) define their own instructions without modifying this file.
+ */
 export function buildSystemPrompt(
-  scenario: string,
+  scenario: Scenario,
   anchorTimeIso?: string,
   variant: PromptVariant = 'baseline',
   maxTurns?: number,
 ): string {
-  const { traces, logs } = scenarioTables(scenario);
+  // Scenario-provided custom system prompt — used by dashboard-build, etc.
+  if (scenario.buildSystemPrompt) {
+    const tables = scenarioTables(scenario.name);
+    return scenario.buildSystemPrompt({
+      tables,
+      anchorTimeIso,
+      maxTurns,
+      variant,
+    });
+  }
+
+  // Default: SRE investigation prompt.
+  return buildInvestigationSystemPrompt(
+    scenario.name,
+    anchorTimeIso,
+    variant,
+    maxTurns,
+  );
+}
+
+function buildInvestigationSystemPrompt(
+  scenarioName: string,
+  anchorTimeIso?: string,
+  variant: PromptVariant = 'baseline',
+  maxTurns?: number,
+): string {
+  const { traces, logs } = scenarioTables(scenarioName);
   const sharedSchema = '';
   //   `These follow the standard OpenTelemetry ClickHouse schema:
   // - traces have Timestamp DateTime64(9), TraceId, SpanId, ParentSpanId,

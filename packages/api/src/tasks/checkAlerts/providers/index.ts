@@ -10,10 +10,9 @@ import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
+import { AggregatedAlertHistory } from '@/tasks/checkAlerts';
 import DefaultAlertProvider from '@/tasks/checkAlerts/providers/default';
 import logger from '@/utils/logger';
-
-import { AggregatedAlertHistory } from '..';
 
 export enum AlertTaskType {
   SAVED_SEARCH,
@@ -33,6 +32,9 @@ export type PopulatedAlertChannel = { type: 'webhook' } & { channel: IWebhook };
 export type AlertDetails = {
   alert: IAlert;
   previousMap: Map<string, AggregatedAlertHistory>; // Map of alertId||group -> history for group-by alerts
+  // For multi-window alerts (numConsecutiveWindows > 1): the recent per-group
+  // history (alertId||group -> histories, newest-first).
+  recentHistoryMap?: Map<string, AggregatedAlertHistory[]>;
 } & (
   | {
       taskType: AlertTaskType.SAVED_SEARCH;

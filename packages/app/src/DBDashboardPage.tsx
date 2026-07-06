@@ -22,6 +22,7 @@ import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
+  displayTypeSupportsPromQLAlerts,
   displayTypeSupportsRawSqlAlerts,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -592,6 +593,9 @@ const Tile = forwardRef(
       if (alert.silenced?.at) {
         return 'yellow';
       }
+      if (alert.state === AlertState.PENDING) {
+        return 'orange';
+      }
       return 'red';
     }, [alert]);
 
@@ -651,9 +655,12 @@ const Tile = forwardRef(
 
     const hoverToolbar = useMemo(() => {
       const isRawSql = isRawSqlSavedChartConfig(chart.config);
+      const isPromQL = isPromqlSavedChartConfig(chart.config);
       const displayTypeSupportsAlerts = isRawSql
         ? displayTypeSupportsRawSqlAlerts(chart.config.displayType)
-        : displayTypeSupportsBuilderAlerts(chart.config.displayType);
+        : isPromQL
+          ? displayTypeSupportsPromQLAlerts(chart.config.displayType)
+          : displayTypeSupportsBuilderAlerts(chart.config.displayType);
       return (
         <Flex
           gap="0px"

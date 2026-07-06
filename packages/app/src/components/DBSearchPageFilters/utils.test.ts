@@ -1,10 +1,32 @@
 import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
 import {
+  cleanClickHouseExpression,
   getFilterStateEntry,
   groupFacetsByBaseName,
   toClickHouseKeyExpression,
+  toQuotedClickHouseKeyExpression,
 } from './utils';
+
+describe('cleanClickHouseExpression', () => {
+  it('strips backticks from a bare quoted identifier', () => {
+    expect(cleanClickHouseExpression('`service-name`')).toBe('service-name');
+  });
+
+  it('unwraps toString() and strips inner backticks', () => {
+    expect(
+      cleanClickHouseExpression('toString(ResourceAttributes.`hdx`.`sdk`)'),
+    ).toBe('ResourceAttributes.hdx.sdk');
+  });
+
+  it('leaves a plain identifier unchanged', () => {
+    expect(cleanClickHouseExpression('ServiceName')).toBe('ServiceName');
+  });
+
+  it('strips the quoted root of a bracket-form Map key', () => {
+    expect(cleanClickHouseExpression("`my-map`['k']")).toBe("my-map['k']");
+  });
+});
 
 describe('groupFacetsByBaseName — dot/bracket de-duplication', () => {
   it('collapses bracket-form and dot-form entries for the same logical key', () => {
@@ -157,5 +179,145 @@ describe('toClickHouseKeyExpression', () => {
     expect(toClickHouseKeyExpression('LogAttributes.42.foo')).toBe(
       "LogAttributes['42.foo']",
     );
+  });
+
+  // HDX-4427: "Add to Filters" on a value inside parsed JSON from a String
+  // column builds a JSONExtract* function call as the filter key. These are
+  // already valid ClickHouse expressions and must pass through untouched.
+  // Previously the dot inside the quoted JSON path argument made
+  // parseMapFieldName treat the whole expression as a dot-form Map sub-key, and
+  // mergePath mangled it into invalid SQL like
+  // `JSONExtractString(Body, 'app['user.currency')']`.
+  describe('raw SQL function-call expression keys (parsed-JSON "Add to Filters")', () => {
+    it.each([
+      "JSONExtractString(Body, 'app.user.currency')",
+      "JSONExtractString(Body, 'app', 'user.currency')",
+      "JSONExtractString(Body, 'level')",
+      "JSONExtractFloat(Body, 'metrics.latency')",
+      "JSONExtractBool(Body, 'flags.enabled')",
+      "JSONExtractString(LogAttributes['weird.key.payload'], 'abc.def.jqk/abcd')",
+    ])('leaves the JSON-extract expression %s unchanged', key => {
+      expect(toClickHouseKeyExpression(key)).toBe(key);
+    });
+
+    // The guard generalizes the previous `startsWith('toString(')` special case,
+    // so a toString() wrapper with no bracket access still passes through.
+    it('leaves a toString() wrapper without bracket access unchanged', () => {
+      expect(toClickHouseKeyExpression('toString(Body)')).toBe(
+        'toString(Body)',
+      );
+    });
+  });
+});
+
+describe('toQuotedClickHouseKeyExpression', () => {
+  const knownColumns = new Set([
+    'ServiceName',
+    'my column',
+    'LogAttributes',
+    'service-name',
+    'my-map',
+  ]);
+
+  it('leaves a valid bare column unchanged', () => {
+    expect(toQuotedClickHouseKeyExpression('ServiceName', knownColumns)).toBe(
+      'ServiceName',
+    );
+  });
+
+  it('quotes a column only when it needs it', () => {
+    expect(toQuotedClickHouseKeyExpression('service-name', knownColumns)).toBe(
+      '`service-name`',
+    );
+    expect(toQuotedClickHouseKeyExpression('my column', knownColumns)).toBe(
+      '`my column`',
+    );
+  });
+
+  it('converts a dot-form map sub-key to bracket form (valid root unquoted)', () => {
+    expect(
+      toQuotedClickHouseKeyExpression('LogAttributes.host', knownColumns),
+    ).toBe("LogAttributes['host']");
+  });
+
+  it('quotes only the root of a bracket map access that needs it', () => {
+    expect(toQuotedClickHouseKeyExpression("my-map['k']", knownColumns)).toBe(
+      "`my-map`['k']",
+    );
+    expect(
+      toQuotedClickHouseKeyExpression("LogAttributes['k']", knownColumns),
+    ).toBe("LogAttributes['k']");
+  });
+
+  it('leaves already-backticked JSON path segments untouched, quoting only a bare root that needs it', () => {
+    // Backtick-form JSON paths short-circuit toClickHouseKeyExpression, so they
+    // reach the dotted-segment branch: already-quoted segments are preserved.
+    expect(
+      toQuotedClickHouseKeyExpression('Body.`json`.`field`', knownColumns),
+    ).toBe('Body.`json`.`field`');
+  });
+
+  it('is idempotent on an already-quoted key', () => {
+    expect(
+      toQuotedClickHouseKeyExpression('`service-name`', knownColumns),
+    ).toBe('`service-name`');
+    expect(
+      toQuotedClickHouseKeyExpression(
+        toQuotedClickHouseKeyExpression('service-name', knownColumns),
+        new Set(['service-name']),
+      ),
+    ).toBe('`service-name`');
+  });
+
+  // HDX-4427: the JSONExtract* key from a parsed-JSON "Add to Filters" reaches
+  // toQuotedClickHouseKeyExpression via escapeFilterStateKeys. It is not a known
+  // column and is already valid SQL, so it must pass through unquoted/unmangled.
+  it('leaves a JSON-extract function-call key unchanged', () => {
+    expect(
+      toQuotedClickHouseKeyExpression(
+        "JSONExtractString(Body, 'app.user.currency')",
+        new Set(['Body']),
+      ),
+    ).toBe("JSONExtractString(Body, 'app.user.currency')");
+  });
+
+  describe('with knownColumns (schema-aware)', () => {
+    it('quotes a flat column whose name contains dots as a single identifier', () => {
+      const cols = new Set(['__hdx_materialized_k8s.cluster.name']);
+      expect(
+        toQuotedClickHouseKeyExpression(
+          '__hdx_materialized_k8s.cluster.name',
+          cols,
+        ),
+      ).toBe('`__hdx_materialized_k8s.cluster.name`');
+    });
+
+    it('leaves a valid flat column name unquoted', () => {
+      const cols = new Set(['ServiceName']);
+      expect(toQuotedClickHouseKeyExpression('ServiceName', cols)).toBe(
+        'ServiceName',
+      );
+    });
+
+    it('still treats a dotted key as Map access when it is NOT a known column', () => {
+      const cols = new Set(['LogAttributes']);
+      expect(toQuotedClickHouseKeyExpression('LogAttributes.host', cols)).toBe(
+        "LogAttributes['host']",
+      );
+    });
+
+    it('does not affect bracket-form map access for a known map column', () => {
+      const cols = new Set(['LogAttributes']);
+      expect(
+        toQuotedClickHouseKeyExpression("LogAttributes['host']", cols),
+      ).toBe("LogAttributes['host']");
+    });
+
+    it('does not affect bracket-form map access with a dot in the key', () => {
+      const cols = new Set(['LogAttributes']);
+      expect(
+        toQuotedClickHouseKeyExpression("LogAttributes['host.name']", cols),
+      ).toBe("LogAttributes['host.name']");
+    });
   });
 });

@@ -1,7 +1,7 @@
 import { readdirSync, statSync } from 'fs';
 import { resolve } from 'path';
 
-import type { McpKind } from '../harness/types';
+import type { McpKind } from '@/harness/types';
 
 export function runsRoot(): string {
   return resolve(__dirname, '..', '..', 'runs');

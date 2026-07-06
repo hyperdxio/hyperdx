@@ -48,7 +48,7 @@ export const SESSION_TABLE_EXPRESSIONS = {
   implicitColumnExpression: 'Body',
 } as const;
 
-export const JSON_SESSION_TABLE_EXPRESSIONS = {
+const JSON_SESSION_TABLE_EXPRESSIONS = {
   ...SESSION_TABLE_EXPRESSIONS,
   timestampValueExpression: 'Timestamp',
 } as const;

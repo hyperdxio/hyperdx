@@ -5,7 +5,7 @@
  * map — the goal is high body cardinality with stable identifiable
  * templates.
  */
-import type { SeededRng } from '../rng/seeded';
+import type { SeededRng } from '@/rng/seeded';
 
 // ─── Severity ────────────────────────────────────────────────────────────
 //

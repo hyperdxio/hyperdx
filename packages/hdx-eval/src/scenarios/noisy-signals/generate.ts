@@ -1,4 +1,4 @@
-import { makeLog } from '../../generators/logs';
+import { makeLog } from '@/generators/logs';
 import {
   analyticsEventLog,
   backgroundLog,
@@ -22,9 +22,14 @@ import {
   spreadTimestamp,
   subscriptionMetricLog,
   upstreamHealthProbeLog,
-} from '../../generators/templates';
-import type { LogRow } from '../../generators/types';
-import type { GenerateContext, Scenario, ScenarioBatch } from '../types';
+} from '@/generators/templates';
+import type { LogRow } from '@/generators/types';
+import type {
+  GenerateContext,
+  Scenario,
+  ScenarioBatch,
+} from '@/scenarios/types';
+
 import groundTruth from './ground-truth.json';
 
 const HISTORY_WINDOW_MS = 60 * 60 * 1000;
