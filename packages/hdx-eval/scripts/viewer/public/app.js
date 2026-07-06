@@ -221,16 +221,37 @@
 
   // ----- rendering: sidebar nav -----
 
+  /** Base model name of a cell (plugin-arm cells store `model/plugin` in `model`). */
+  function cellModel(c) {
+    if (!c.model) return null;
+    return c.plugin ? c.model.split('/')[0] : c.model;
+  }
+
   /** True when the current batch has more than one distinct model across cells. */
   function isMultiModel() {
     const models = new Set();
-    for (const c of state.cells) if (c.model) models.add(c.model);
+    for (const c of state.cells) {
+      const m = cellModel(c);
+      if (m) models.add(m);
+    }
     return models.size > 1;
   }
 
-  /** Heading for a cell: matches the columnKeyFor logic in aggregate.ts. */
+  /** True when the current batch has more than one distinct plugin arm. */
+  function isMultiPlugin() {
+    const plugins = new Set();
+    for (const c of state.cells) plugins.add(c.plugin || 'none');
+    return plugins.size > 1;
+  }
+
+  /** Heading for a cell: matches the columnKeyFor logic in aggregate.ts —
+   *  the MCP name, plus `/` and the varying dimensions joined with `+`. */
   function cellHeading(c) {
-    return c.model && isMultiModel() ? `${c.mcp}/${c.model}` : c.mcp;
+    const varying = [];
+    const model = cellModel(c);
+    if (model && isMultiModel()) varying.push(model);
+    if (isMultiPlugin()) varying.push(c.plugin || 'none');
+    return varying.length > 0 ? `${c.mcp}/${varying.join('+')}` : c.mcp;
   }
 
   function renderNav() {

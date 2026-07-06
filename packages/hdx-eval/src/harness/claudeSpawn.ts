@@ -12,7 +12,12 @@ import {
   type ParsedEvent,
   parseStreamLine,
 } from './streamParser';
-import type { McpDefinition, McpKind, PromptVariant } from './types';
+import type {
+  McpDefinition,
+  McpKind,
+  PluginDefinition,
+  PromptVariant,
+} from './types';
 
 export type SpawnOptions = {
   config: EvalConfig;
@@ -33,6 +38,9 @@ export type SpawnOptions = {
   /** Tool name substrings to remove from the denied-tools list.
    *  Comes from `Scenario.allowedToolPatterns`. */
   allowedToolPatterns?: string[];
+  /** When set, load this Claude Code plugin into the isolated agent session
+   *  via `--plugin-url`/`--plugin-dir`. Undefined for the no-plugin baseline. */
+  pluginDef?: PluginDefinition;
 };
 
 export type SpawnResult = {
@@ -44,6 +52,19 @@ export type SpawnResult = {
   argv: string[];
   tempdir: string;
 };
+
+/**
+ * CLI args that load a plugin into the isolated agent session: `--plugin-url`
+ * for `url` definitions, `--plugin-dir` for `dir` definitions, and no args
+ * for the no-plugin baseline (`def` undefined).
+ */
+export function pluginCliArgs(def?: PluginDefinition): string[] {
+  return def?.url
+    ? ['--plugin-url', def.url]
+    : def?.dir
+      ? ['--plugin-dir', def.dir]
+      : [];
+}
 
 export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
   const tempdir = mkdtempSync(join(tmpdir(), 'hdx-eval-'));
@@ -65,6 +86,9 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
     ),
   );
 
+  // Load a plugin for this arm, if any
+  const pluginArgs = pluginCliArgs(opts.pluginDef);
+
   const argv = [
     '-p',
     '--mcp-config',
@@ -73,6 +97,7 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
     `${allowedToolsPattern(mcpDef)},Read(${tempdir}/*)`,
     '--disallowedTools',
     deniedToolsFor(promptVariant, mcpDef, opts.allowedToolPatterns).join(','),
+    ...pluginArgs,
     '--dangerously-skip-permissions',
     '--setting-sources',
     'local',
