@@ -155,6 +155,9 @@ const makeAlert = (alert: AlertInput, userId?: ObjectId): Partial<IAlert> => {
     // Chart alerts
     dashboard: alert.dashboardId as unknown as ObjectId,
     tileId: alert.tileId,
+
+    // Multi-window alerting
+    numConsecutiveWindows: alert.numConsecutiveWindows ?? null,
   };
 };
 

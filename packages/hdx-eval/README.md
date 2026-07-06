@@ -161,10 +161,57 @@ anonymize the MCP identity for fair LLM judging.
 | Section | Required | Purpose |
 |---|---|---|
 | `mcps` | yes | MCP registry (see above) |
+| `plugins` | no | Claude Code plugin registry (see [Plugins](#plugins)) |
 | `scenarios` | no | Per-scenario HyperDX Source IDs (populated by `setup-hyperdx`) |
 | `hyperdxApi` | no | HyperDX API URL + access key (used only by `setup-hyperdx`) |
 | `clickhouse` | no | ClickHouse connection for `seed`, `drop`, `runs-instrument` commands |
 | `anchorTime` | no | Fixed "now" anchor (ISO 8601). Auto-generated and saved on first `run`. See [Anchor Time](#anchor-time). |
+
+### Plugins
+
+You can test a [Claude Code plugin](https://code.claude.com/docs/en/plugins) as
+a comparison variable — for example a plugin that installs a hook. Define
+plugins under the top-level `plugins` key, then select them with `--plugin`:
+
+```json
+{
+  "plugins": {
+    "myplugin": {
+      "label": "My Plugin",
+      "url": "https://example.com/my-plugin.zip"
+    },
+    "dev-plugin": {
+      "label": "Dev Plugin",
+      "dir": "/absolute/path/to/my-plugin"
+    }
+  }
+}
+```
+
+| Field   | Required           | Notes                                              |
+| ------- | ------------------ | -------------------------------------------------- |
+| `label` | yes                | Human-readable label for reports/CLI output        |
+| `url`   | one of `url`/`dir` | URL to a plugin `.zip` (loaded via `--plugin-url`) |
+| `dir`   | one of `url`/`dir` | Local plugin directory (loaded via `--plugin-dir`) |
+
+Each entry must set **exactly one** of `url` or `dir`.
+
+`--plugin` works like `--mcp` and `--model`: the variants are the names you pass
+(comma-separated), and the literal `none` is the no-plugin variant. When
+`--plugin` is omitted the default is the single `none` variant, so behavior is
+unchanged.
+
+- `--plugin myplugin` — run **only** the plugin variant. The plugin doesn't
+  vary, so the column key is just `<mcp>`.
+- `--plugin none,myplugin` — run **both** the no-plugin baseline and the plugin
+  variant (column keys `<mcp>/none` and `<mcp>/myplugin`), so the report shows
+  the plugin variant as a challenger with per-metric deltas vs. the no-plugin
+  baseline. The baseline defaults to the first variant (`none` here); override
+  with `--baseline`.
+- `--plugin none,a,b` — compare several plugins against no-plugin at once.
+
+Each named plugin is loaded into the isolated agent session via `--plugin-url`
+(for `url`) or `--plugin-dir` (for `dir`).
 
 ### Example: HTTP MCP (HyperDX)
 
@@ -260,6 +307,7 @@ dev run <scenario> --mcp hyperdx            # single MCP
 dev run <scenario> --mcp hyperdx-main,hyperdx-feature  # compare two
 dev run <scenario> --mcp all                # all enabled MCPs (default)
 dev run <scenario> --baseline hyperdx-main  # set baseline for delta reports
+dev run <scenario> --plugin none,myplugin   # compare no-plugin baseline vs plugin variant
 dev run <scenario> --runs 5                 # 5 runs per cell
 dev run <scenario> --model claude-opus-4-6
 dev run <scenario> --max-turns 20           # default: 15
@@ -322,9 +370,9 @@ Combined score = `0.4 * programmatic + 0.6 * judge - toolErrorPenalty`
 
 ### Baseline + Challengers
 
-Reports use a **baseline + challengers** model. One MCP is designated as the
-baseline (default: first MCP alphabetically, or set explicitly with
-`--baseline`). All other MCPs show deltas relative to it:
+Reports use a **baseline + challengers** model. One column is designated as the
+baseline (default: the first mcp/model/plugin set, or set explicitly with
+`--baseline <column-key>`). All other columns show deltas relative to it:
 
 ```
 | Metric         | hyperdx-main | hyperdx-feature | Δ (hyperdx-feature) |
