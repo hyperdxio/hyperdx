@@ -1,4 +1,7 @@
+import { trace } from '@opentelemetry/api';
+
 import { Agent, agentStore } from '@/opamp/models/agent';
+import { toSafeNumber } from '@/opamp/utils/agentTelemetry';
 import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
@@ -29,6 +32,7 @@ export class AgentService {
       // Get the existing agent or create a new one
       let agent = agentStore.getAgent(instanceUid);
       const isNewAgent = !agent;
+      const previousSequenceNum = agent?.sequenceNum;
 
       if (!agent) {
         // New agent, create a new record
@@ -71,6 +75,19 @@ export class AgentService {
       agentStore.upsertAgent(agent);
 
       agentStatusCounter.add(1, { status: isNewAgent ? 'new' : 'updated' });
+      // Surface new-vs-existing on the active handler span too, so a single
+      // trace shows whether this was a first-contact report.
+      const activeSpan = trace.getActiveSpan();
+      activeSpan?.setAttribute('opamp.agent.is_new', isNewAgent);
+      // Sequence numbers increment by 1 per message; a gap != 1 flags a missed
+      // report or an agent restart.
+      if (!isNewAgent) {
+        const prev = toSafeNumber(previousSequenceNum);
+        const curr = toSafeNumber(sequenceNum);
+        if (prev != null && curr != null) {
+          activeSpan?.setAttribute('opamp.agent.sequence_gap', curr - prev);
+        }
+      }
 
       return agent;
     } catch (error) {
