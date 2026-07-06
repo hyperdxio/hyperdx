@@ -17,6 +17,7 @@ import { formatDistanceToNow } from 'date-fns';
 import {
   parseAsBoolean,
   parseAsInteger,
+  parseAsJson,
   parseAsString,
   parseAsStringEnum,
   useQueryState,
@@ -43,6 +44,7 @@ import {
   DisplayType,
   Filter,
   isTraceSource,
+  SavedChartConfig,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -84,9 +86,11 @@ import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
+import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
+import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
@@ -993,11 +997,27 @@ export function DBSearchPage() {
 
   const [analysisMode, setAnalysisMode] = useQueryState(
     'mode',
-    parseAsStringEnum<'results' | 'delta' | 'pattern'>([
+    parseAsStringEnum<'results' | 'delta' | 'pattern' | 'chart'>([
       'results',
       'delta',
       'pattern',
+      'chart',
     ]).withDefault('results'),
+  );
+
+  // Chart-mode ("Chart" tab) state: a standalone SavedChartConfig seeded from
+  // the current search so the events query carries over into the chart builder.
+  const chartModeSubmitRef = useRef<(() => void) | undefined>(undefined);
+  const [chartModeConfig, setChartModeConfig] = useQueryState(
+    'chartConfig',
+    parseAsJson<SavedChartConfig>().withDefault({
+      ...DEFAULT_CHART_CONFIG,
+      source: searchedConfig.source ?? sources?.[0]?.id ?? '',
+      connection: searchedSource?.connection ?? sources?.[0]?.connection ?? '',
+      where: searchedConfig.where ?? '',
+      whereLanguage:
+        (searchedConfig.whereLanguage as 'sql' | 'lucene') ?? 'lucene',
+    } as SavedChartConfig),
   );
 
   const [patternColumn, setPatternColumn] = useQueryState(
@@ -1017,7 +1037,11 @@ export function DBSearchPage() {
   );
 
   useEffect(() => {
-    if (analysisMode === 'delta' || analysisMode === 'pattern') {
+    if (
+      analysisMode === 'delta' ||
+      analysisMode === 'pattern' ||
+      analysisMode === 'chart'
+    ) {
       setIsLive(false);
     }
   }, [analysisMode, setIsLive]);
@@ -2283,7 +2307,7 @@ export function DBSearchPage() {
         style={{ overflow: 'hidden', height: '100%' }}
         className="bg-body"
       >
-        {!queryReady ? (
+        {!queryReady && analysisMode !== 'chart' ? (
           <EmptyState
             h="100%"
             icon={<IconStack2 size={32} />}
@@ -2618,6 +2642,28 @@ export function DBSearchPage() {
                     </Box>
                   )}
                 </Flex>
+              )}
+              {analysisMode === 'chart' && (
+                <Box
+                  flex="1"
+                  mih="0"
+                  miw={0}
+                  p="sm"
+                  style={{ overflow: 'auto' }}
+                >
+                  <EditTimeChartForm
+                    data-testid="explore-chart-form"
+                    chartConfig={chartModeConfig}
+                    setChartConfig={setChartModeConfig}
+                    dateRange={searchedTimeRange}
+                    displayedTimeInputValue={displayedTimeInputValue}
+                    setDisplayedTimeInputValue={setDisplayedTimeInputValue}
+                    onTimeRangeSearch={onSearch}
+                    onTimeRangeSelect={onTimeRangeSelect}
+                    submitRef={chartModeSubmitRef}
+                    autoRun
+                  />
+                </Box>
               )}
             </div>
           </>

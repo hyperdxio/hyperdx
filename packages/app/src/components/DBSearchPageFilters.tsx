@@ -1073,8 +1073,8 @@ const DBSearchPageFiltersComponent = ({
   displayedColumns,
   onCollapse,
 }: {
-  analysisMode: 'results' | 'delta' | 'pattern';
-  setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
+  analysisMode: 'results' | 'delta' | 'pattern' | 'chart';
+  setAnalysisMode: (mode: 'results' | 'delta' | 'pattern' | 'chart') => void;
   isLive: boolean;
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId?: string;
@@ -1664,7 +1664,9 @@ const DBSearchPageFiltersComponent = ({
           <Tabs
             value={analysisMode}
             onChange={value =>
-              setAnalysisMode(value as 'results' | 'delta' | 'pattern')
+              setAnalysisMode(
+                value as 'results' | 'delta' | 'pattern' | 'chart',
+              )
             }
             orientation="vertical"
             w="100%"
@@ -1673,6 +1675,9 @@ const DBSearchPageFiltersComponent = ({
             <Tabs.List w="100%">
               <Tabs.Tab value="results" size="xs" h="24px">
                 <Text size="xs">Results Table</Text>
+              </Tabs.Tab>
+              <Tabs.Tab value="chart" size="xs" h="24px">
+                <Text size="xs">Chart</Text>
               </Tabs.Tab>
               {showDelta && (
                 <Tabs.Tab value="delta" size="xs" h="24px">

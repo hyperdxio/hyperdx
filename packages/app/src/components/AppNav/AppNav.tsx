@@ -381,9 +381,9 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           className={styles.scrollContainer}
         >
           <div style={{ width: navWidth }} className={styles.navLinks}>
-            {/* Search */}
+            {/* Explore (unified search + chart) */}
             <AppNavLink
-              label="Search"
+              label="Explore"
               icon={<IconTable size={16} />}
               href="/search"
               isActive={pathname === '/search'}
