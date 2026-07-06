@@ -3,14 +3,14 @@
  * Tolerant of unknown event shapes — passes through as Unknown.
  */
 
-export type Usage = {
+type Usage = {
   input_tokens?: number;
   output_tokens?: number;
   cache_creation_input_tokens?: number;
   cache_read_input_tokens?: number;
 };
 
-export type SystemInitEvent = {
+type SystemInitEvent = {
   kind: 'system_init';
   sessionId?: string;
   model?: string;
@@ -18,20 +18,20 @@ export type SystemInitEvent = {
   raw: unknown;
 };
 
-export type AssistantMessageEvent = {
+type AssistantMessageEvent = {
   kind: 'assistant_message';
   content: unknown[];
   usage?: Usage;
   raw: unknown;
 };
 
-export type UserMessageEvent = {
+type UserMessageEvent = {
   kind: 'user_message';
   content: unknown[];
   raw: unknown;
 };
 
-export type ResultEvent = {
+type ResultEvent = {
   kind: 'result';
   subtype?: string;
   isError: boolean;
@@ -42,7 +42,7 @@ export type ResultEvent = {
   raw: unknown;
 };
 
-export type UnknownEvent = {
+type UnknownEvent = {
   kind: 'unknown';
   type?: string;
   raw: unknown;

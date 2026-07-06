@@ -42,6 +42,7 @@ import ContextSubpanel from './ContextSidePanel';
 import DBInfraPanel from './DBInfraPanel';
 import { RowDataPanel, rowHasK8sContext, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
+import { DBRowSidePanelErrorState } from './DBRowSidePanelErrorState';
 import { DBSessionPanel, useSessionId } from './DBSessionPanel';
 import DBTracePanel from './DBTracePanel';
 import { INITIAL_DRAWER_WIDTH_PERCENT } from './DrawerUtils';
@@ -120,6 +121,8 @@ const DBRowSidePanel = ({
     data: rowData,
     isLoading: isRowLoading,
     isSuccess: isRowSuccess,
+    isError: isRowError,
+    error: rowError,
   } = useRowData({
     source,
     rowId,
@@ -308,6 +311,13 @@ const DBRowSidePanel = ({
   }
 
   if (!isRowSuccess) {
+    if (isRowError && rowError) {
+      return (
+        <Box p="sm" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <DBRowSidePanelErrorState error={rowError} source={source} />
+        </Box>
+      );
+    }
     return <div className={styles.loadingState}>Error loading row data</div>;
   }
 

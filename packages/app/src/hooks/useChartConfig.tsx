@@ -338,8 +338,8 @@ export function useQueriedChartConfig(
           end: endSec,
           step: stepStr,
           connectionId: config.connection,
-          database: config.from?.databaseName ?? 'default',
-          table: config.from?.tableName ?? 'otel_metrics_ts',
+          database: config.from?.databaseName,
+          table: config.from?.tableName,
         });
 
         if (resp.status !== 'success' || !resp.data) {
@@ -460,7 +460,7 @@ export function useQueriedChartConfig(
 
 export function useRenderedSqlChartConfig(
   config: ChartConfigWithOptDateRange,
-  options?: UseQueryOptions<string>,
+  options?: Partial<UseQueryOptions<string>>,
 ) {
   const { enabled = true } = options ?? {};
 

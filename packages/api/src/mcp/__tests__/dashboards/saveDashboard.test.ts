@@ -833,6 +833,91 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       expect(saved.tiles[0].config.colorRules).toBeUndefined();
     });
 
+    it('should round-trip number-tile backgroundChart through save and get', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const numberConfig = {
+        displayType: 'number',
+        sourceId,
+        select: [{ aggFn: 'count' }],
+        color: 'chart-green',
+        backgroundChart: { type: 'area', color: 'chart-blue' },
+      };
+
+      const saveResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Number Background Chart',
+          tiles: [{ name: 'Number', config: numberConfig }],
+        },
+      );
+      expect(saveResult.isError).toBeFalsy();
+      const saved = JSON.parse(getFirstText(saveResult));
+      expect(saved.tiles[0].config).toMatchObject(numberConfig);
+
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        {
+          id: saved.id,
+        },
+      );
+      expect(getResult.isError).toBeFalsy();
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.tiles[0].config).toMatchObject(numberConfig);
+    });
+
+    it('should reject a number-tile backgroundChart type outside line/area', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'Bad BackgroundChart',
+        tiles: [
+          {
+            name: 'Number',
+            config: {
+              displayType: 'number',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              backgroundChart: { type: 'bar' },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBe(true);
+    });
+
+    it('should drop backgroundChart on a raw SQL number tile', async () => {
+      // The raw SQL number tile schema has no backgroundChart (builder-only;
+      // a raw SQL tile returns a single value with no time dimension to
+      // bucket), so a sent value is stripped on save.
+      const connectionId = ctx.connection._id.toString();
+      const saveResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'SQL Number Background Chart',
+          tiles: [
+            {
+              name: 'SLO',
+              config: {
+                configType: 'sql',
+                displayType: 'number',
+                connectionId,
+                sqlTemplate: 'SELECT 0.99 AS value LIMIT 1',
+                color: 'chart-success',
+                backgroundChart: { type: 'line' },
+              },
+            },
+          ],
+        },
+      );
+      expect(saveResult.isError).toBeFalsy();
+      const saved = JSON.parse(getFirstText(saveResult));
+      expect(saved.tiles[0].config.color).toBe('chart-success');
+      expect(saved.tiles[0].config.backgroundChart).toBeUndefined();
+    });
+
     it('should preserve display fields on builder tiles through save, get, update, and re-get', async () => {
       const sourceId = ctx.traceSource._id.toString();
       const numberFormat = {
@@ -2091,6 +2176,53 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
           },
         ],
       });
+    });
+
+    it('should round-trip a table tile with an external onClick link', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'OnClick external link',
+        tiles: [
+          {
+            name: 'Top Services',
+            x: 0,
+            y: 0,
+            w: 12,
+            h: 6,
+            config: {
+              displayType: 'table',
+              sourceId,
+              groupBy: "ResourceAttributes['service.name']",
+              select: [{ aggFn: 'count' }],
+              onClick: {
+                type: 'external',
+                urlTemplate:
+                  'https://grafana.example.com/d/abc?var-service={{ServiceName}}',
+              },
+            },
+          },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.tiles[0].config.onClick).toEqual({
+        type: 'external',
+        urlTemplate:
+          'https://grafana.example.com/d/abc?var-service={{ServiceName}}',
+      });
+
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        {
+          id: output.id,
+        },
+      );
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.tiles[0].config.onClick).toEqual(
+        output.tiles[0].config.onClick,
+      );
     });
 
     it('should round-trip a templated dashboard onClick (mode=template)', async () => {

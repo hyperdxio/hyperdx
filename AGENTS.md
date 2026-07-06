@@ -29,7 +29,9 @@ This is a **monorepo** with six packages:
 - `packages/hdx-eval` - AI eval framework for benchmarking MCP servers against
   observability scenarios. Generates deterministic synthetic telemetry, spawns
   agents, and grades with programmatic checks + LLM-as-judge. See its
-  [`README.md`](packages/hdx-eval/README.md) for setup and usage.
+  [`README.md`](packages/hdx-eval/README.md) for setup and usage, and
+  [`agent_docs/evals.md`](agent_docs/evals.md) for the dual-slot A/B
+  comparison workflow.
 
 **Data flow**: Apps → OpenTelemetry Collector → ClickHouse (telemetry data) /
 MongoDB (configuration/metadata)
@@ -61,6 +63,8 @@ directory:
 - `agent_docs/development.md` - Development workflows, testing, and common tasks
 - `agent_docs/code_style.md` - Code patterns and best practices (read only when
   actively coding)
+- `agent_docs/observability.md` - Instrumentation standards (tracing, metrics,
+  context) and the shared helpers (read when adding or changing a feature)
 
 **Package-specific guides** (read when working on that package):
 
@@ -86,6 +90,12 @@ before stopping.
    `secondary`, `danger`) - see `agent_docs/code_style.md` for required patterns
 6. **Testing**: Tests live in `__tests__/` directories; use Jest for
    unit/integration tests
+7. **Observability**: This is an observability product - instrument new code as
+   you write it. Every team-scoped operation must carry team/user context
+   (`setBusinessContext`), countable log events should also emit a metric, and
+   spans/metric attributes must stay low-cardinality. Use the shared helpers in
+   `packages/api/src/utils/instrumentation.ts`. See
+   [`agent_docs/observability.md`](agent_docs/observability.md).
 
 ## Running Tests
 

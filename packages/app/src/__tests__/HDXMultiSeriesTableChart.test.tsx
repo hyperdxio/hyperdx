@@ -193,6 +193,64 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
     });
   });
 
+  describe('external link path', () => {
+    it('renders the cell as a plain <a target="_blank"> for external actions', () => {
+      const getRowAction = jest.fn().mockReturnValue({
+        url: 'https://grafana.example.com/d/abc?svc=web',
+        description: 'https://grafana.example.com/d/abc?svc=web',
+        external: true,
+      });
+
+      renderWithMantine(
+        <Table
+          data={baseData}
+          columns={baseColumns}
+          getRowAction={getRowAction}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+      const links = screen.getAllByTestId('dashboard-table-row-action');
+      expect(links.length).toBeGreaterThan(0);
+      links.forEach(link => {
+        expect(link.tagName).toBe('A');
+        expect(link.getAttribute('data-shape')).toBe('external-link');
+        expect(link.getAttribute('href')).toBe(
+          'https://grafana.example.com/d/abc?svc=web',
+        );
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+      });
+    });
+
+    it('renders the trailing arrow hint as an external anchor opening in a new tab', () => {
+      const getRowAction = jest.fn().mockReturnValue({
+        url: 'https://grafana.example.com/d/abc?svc=web',
+        description: 'https://grafana.example.com/d/abc?svc=web',
+        external: true,
+      });
+
+      renderWithMantine(
+        <Table
+          data={baseData}
+          columns={baseColumns}
+          getRowAction={getRowAction}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+      const hint = screen.getByTestId('row-action-hint');
+      expect(hint.tagName).toBe('A');
+      expect(hint.getAttribute('target')).toBe('_blank');
+      expect(hint.getAttribute('rel')).toBe('noopener noreferrer');
+      expect(hint.getAttribute('href')).toBe(
+        'https://grafana.example.com/d/abc?svc=web',
+      );
+    });
+  });
+
   describe('getRowAction failure path', () => {
     it('renders the cell as a <button> when the row resolution failed and wires onClickError', async () => {
       const user = userEvent.setup();

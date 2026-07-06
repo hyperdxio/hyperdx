@@ -15,6 +15,7 @@ import {
 import { getSource } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { Api404Error, Api500Error } from '@/utils/errors';
+import { withOperationMetrics } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
 
@@ -92,30 +93,36 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
 
       logger.info(prompt);
 
-      try {
-        const result = await generateText({
-          model,
-          output: Output.object({
-            schema: AssistantLineTableConfigSchema,
-          }),
-          experimental_telemetry: { isEnabled: true },
-          prompt,
-        });
+      // The AI generation call is the externally-dependent, latency-defining
+      // part of the assistant, so it carries the SLO signal. Source lookup /
+      // validation above are client-side concerns and intentionally excluded.
+      const chartConfig = await withOperationMetrics(
+        'ai.assistant',
+        async () => {
+          try {
+            const result = await generateText({
+              model,
+              output: Output.object({
+                schema: AssistantLineTableConfigSchema,
+              }),
+              experimental_telemetry: { isEnabled: true },
+              prompt,
+            });
 
-        const chartConfig = getChartConfigFromResolvedConfig(
-          result.output,
-          source,
-        );
+            return getChartConfigFromResolvedConfig(result.output, source);
+          } catch (err) {
+            if (err instanceof APICallError) {
+              throw new Api500Error(
+                `AI Provider Error. Status: ${err.statusCode}. Message: ${err.message}`,
+              );
+            }
+            throw err;
+          }
+        },
+        { source_kind: source.kind },
+      );
 
-        return res.json(chartConfig);
-      } catch (err) {
-        if (err instanceof APICallError) {
-          throw new Api500Error(
-            `AI Provider Error. Status: ${err.statusCode}. Message: ${err.message}`,
-          );
-        }
-        throw err;
-      }
+      return res.json(chartConfig);
     } catch (e) {
       next(e);
     }

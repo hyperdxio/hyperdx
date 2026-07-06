@@ -55,6 +55,7 @@ import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
+  isPromqlDisplayType,
   isRawSqlDisplayType,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
@@ -210,7 +211,8 @@ export default function EditTimeChartForm({
   const chartConfigAlert = chartConfig.alert;
   const isRawSqlInput =
     configType === 'sql' && isRawSqlDisplayType(displayType);
-  const isPromqlInput = configType === 'promql';
+  const isPromqlInput =
+    configType === 'promql' && isPromqlDisplayType(displayType);
 
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;

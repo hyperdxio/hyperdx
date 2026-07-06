@@ -6,6 +6,7 @@ import {
   timeFilterExpr,
 } from '@/core/renderChartConfig';
 import {
+  BuilderChartConfig,
   ChartConfigWithOptDateRange,
   DisplayType,
   MetricsDataType,
@@ -551,7 +552,7 @@ describe('renderChartConfig', () => {
         );
 
       // Two chunked windows of the same chart (most recent window first,
-      // older windows are end-exclusive — mirrors fetchDataInChunks).
+      // older windows are end-exclusive, mirroring fetchDataInChunks).
       const recentChunk = await renderWindow(
         [new Date('2025-02-12T18:00:00Z'), rankingRange[1]],
         true,
@@ -561,7 +562,7 @@ describe('renderChartConfig', () => {
         false,
       );
 
-      // The CTE end is the first `) SELECT` — the outer query starts there.
+      // The CTE end is the first `) SELECT`; the outer query starts there.
       const cteOf = (sql: string) => {
         const start = sql.indexOf('`__hdx_series_limit` AS (');
         const end = sql.indexOf(') SELECT ');
@@ -666,7 +667,7 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain('__hdx_series_limit');
-      // Each column gets its own NULL check, split on the top-level comma — not
+      // Each column gets its own NULL check, split on the top-level comma, not
       // the comma inside Map['...'].
       expect(sql).toMatch(
         /LogAttributes\[['"]agentToServer\.capabilities['"]\]\s+IS\s+NOT\s+NULL/,
@@ -1211,6 +1212,61 @@ describe('renderChartConfig', () => {
       expect(
         mockMetadata.getMaterializedColumnsLookupTable,
       ).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Event Patterns query with select-alias filter (HDX-1879)', () => {
+    // The Event Patterns view rebuilds the SELECT (sampled body + timestamp,
+    // ORDER BY rand() LIMIT) instead of reusing the results-table SELECT. When
+    // the user filters on a column the source exposes only under an alias
+    // (e.g. `ServiceName as service`), that alias is out of scope in the
+    // rebuilt query unless its definition is carried through `with`. Threading
+    // the source's alias map into the pattern config defines the alias in a
+    // WITH clause so the filter resolves.
+    const patternConfig = (
+      withClauses: BuilderChartConfig['with'],
+    ): ChartConfigWithOptDateRange => ({
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'otel_logs' },
+      with: withClauses,
+      select: 'Body as __hdx_pattern_field, Timestamp as __hdx_timestamp',
+      where: "service = 'api'",
+      whereLanguage: 'sql',
+      orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+      limit: { limit: 10000 },
+      timestampValueExpression: 'Timestamp',
+      dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+    });
+
+    it('defines the select alias in a WITH clause so the filter resolves', async () => {
+      const generatedSql = await renderChartConfig(
+        patternConfig([
+          { name: 'service', sql: chSql`ServiceName`, isSubquery: false },
+        ]),
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+
+      // Alias is defined in the rebuilt pattern query...
+      expect(sql).toContain('(ServiceName) AS service');
+      // ...and the filter still references it.
+      expect(sql).toContain("service = 'api'");
+    });
+
+    it('omits the alias definition when no alias map is threaded (the bug)', async () => {
+      const generatedSql = await renderChartConfig(
+        patternConfig(undefined),
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+
+      // Without the threaded WITH clauses the alias is undefined, so the
+      // filter references a `service` column that does not exist in the
+      // rebuilt SELECT (ClickHouse rejects this with "Unknown identifier").
+      expect(sql).not.toContain('AS service');
+      expect(sql).toContain("service = 'api'");
     });
   });
 
@@ -2038,6 +2094,17 @@ describe('renderChartConfig', () => {
         dateRangeStartInclusive: false,
         dateRangeEndInclusive: false,
         expected: `(toDate(timestamp) >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toDate(timestamp) <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))AND(timestamp > fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()}))`,
+      },
+      {
+        description:
+          'wraps includedDataInterval-expanded bound in toStartOf when PK has toStartOfHour(col) — prevents dropping rows whose hour is before the raw expanded start',
+        timestampValueExpression: 'timestamp, toStartOfHour(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 04:00:00Z'),
+          new Date('2025-02-12 04:20:00Z'),
+        ],
+        includedDataInterval: '5 minute',
+        expected: `(timestamp >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:00:00Z').getTime()}), INTERVAL 5 minute) - INTERVAL 5 minute AND timestamp <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:20:00Z').getTime()}), INTERVAL 5 minute) + INTERVAL 5 minute)AND(toStartOfHour(timestamp) >= toStartOfHour(toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:00:00Z').getTime()}), INTERVAL 5 minute) - INTERVAL 5 minute) AND toStartOfHour(timestamp) <= toStartOfHour(toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:20:00Z').getTime()}), INTERVAL 5 minute) + INTERVAL 5 minute))`,
       },
     ];
 
@@ -3225,7 +3292,7 @@ describe('renderChartConfig', () => {
         undefined,
       );
 
-      // PromQL configs return empty SQL — queries go through the Prometheus API route
+      // PromQL configs return empty SQL; queries go through the Prometheus API route
       expect(generatedSql.sql).toBe('');
       expect(generatedSql.params).toEqual({});
     });
