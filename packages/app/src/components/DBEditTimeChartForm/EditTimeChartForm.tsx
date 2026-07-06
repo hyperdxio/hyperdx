@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Controller,
+  type Path,
   useFieldArray,
   useForm,
   type UseFormSetValue,
@@ -587,6 +588,20 @@ export default function EditTimeChartForm({
   // Need to force a rerender on change as the modal will not be mounted when initially rendered
   const [parentRef, setParentRef] = useState<HTMLElement | null>(null);
 
+  // Helper: only pass shouldDirty when the incoming value actually differs
+  // from what the form already holds. The display-settings drawer emits
+  // normalised defaults (false, null, 0) on every Apply, but the form's
+  // defaultValues may store those fields as undefined. A blanket
+  // `shouldDirty: true` would deep-differ against undefined and fire the
+  // unsaved-changes modal on a no-op Apply.
+  const didChange = useCallback(
+    (name: Path<ChartEditorFormState>, next: unknown) => {
+      const current = getValues(name);
+      return JSON.stringify(current ?? null) !== JSON.stringify(next ?? null);
+    },
+    [getValues],
+  );
+
   const handleUpdateDisplaySettings = useCallback(
     ({
       numberFormat,
@@ -604,44 +619,68 @@ export default function EditTimeChartForm({
       // (the user never chose a format), leave it unset so render-time
       // auto-detection keeps driving the format from the datasource.
       if (numberFormat !== undefined) {
-        setValue('numberFormat', numberFormat, { shouldDirty: true });
+        setValue('numberFormat', numberFormat, {
+          shouldDirty: didChange('numberFormat', numberFormat),
+        });
       }
       setValue('alignDateRangeToGranularity', alignDateRangeToGranularity, {
-        shouldDirty: true,
+        shouldDirty: didChange(
+          'alignDateRangeToGranularity',
+          alignDateRangeToGranularity,
+        ),
       });
-      setValue('fillNulls', fillNulls, { shouldDirty: true });
+      setValue('fillNulls', fillNulls, {
+        shouldDirty: didChange('fillNulls', fillNulls),
+      });
       setValue('compareToPreviousPeriod', compareToPreviousPeriod, {
-        shouldDirty: true,
+        shouldDirty: didChange(
+          'compareToPreviousPeriod',
+          compareToPreviousPeriod,
+        ),
       });
-      setValue('fitYAxisToData', fitYAxisToData, { shouldDirty: true });
+      setValue('fitYAxisToData', fitYAxisToData, {
+        shouldDirty: didChange('fitYAxisToData', fitYAxisToData),
+      });
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft, {
-        shouldDirty: true,
+        shouldDirty: didChange('groupByColumnsOnLeft', groupByColumnsOnLeft),
       });
       // Persist `null` (not undefined) when cleared so the disabled state
       // survives JSON round-tripping through the URL query state; otherwise
       // the dropped key lets RHF's `values` sync restore the stale value.
-      setValue('seriesLimit', seriesLimit ?? null, { shouldDirty: true });
-      setValue('color', color, { shouldDirty: true });
-      setValue('colorRules', colorRules, { shouldDirty: true });
-      setValue('backgroundChart', backgroundChart, { shouldDirty: true });
+      const normalizedSeriesLimit = seriesLimit ?? null;
+      setValue('seriesLimit', normalizedSeriesLimit, {
+        shouldDirty: didChange('seriesLimit', normalizedSeriesLimit),
+      });
+      setValue('color', color, {
+        shouldDirty: didChange('color', color),
+      });
+      setValue('colorRules', colorRules, {
+        shouldDirty: didChange('colorRules', colorRules),
+      });
+      setValue('backgroundChart', backgroundChart, {
+        shouldDirty: didChange('backgroundChart', backgroundChart),
+      });
       onSubmit();
     },
-    [setValue, onSubmit],
+    [setValue, didChange, onSubmit],
   );
 
   const handleUpdateHeatmapSettings = useCallback(
     (data: HeatmapSettingsValues) => {
-      setValue('series.0.valueExpression', data.value, { shouldDirty: true });
-      setValue('series.0.countExpression', data.count || 'count()', {
-        shouldDirty: true,
+      const countExpr = data.count || 'count()';
+      setValue('series.0.valueExpression', data.value, {
+        shouldDirty: didChange('series.0.valueExpression', data.value),
+      });
+      setValue('series.0.countExpression', countExpr, {
+        shouldDirty: didChange('series.0.countExpression', countExpr),
       });
       setValue('series.0.heatmapScaleType', data.scaleType, {
-        shouldDirty: true,
+        shouldDirty: didChange('series.0.heatmapScaleType', data.scaleType),
       });
       onSubmit();
       closeHeatmapSettings();
     },
-    [setValue, onSubmit, closeHeatmapSettings],
+    [setValue, didChange, onSubmit, closeHeatmapSettings],
   );
 
   const heatmapValueExpression = useWatch({
