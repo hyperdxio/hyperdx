@@ -70,7 +70,7 @@ interface ChartDisplaySettingsDrawerProps {
   /** 'sql' for raw SQL chart configs; anything else is treated as a builder config. */
   configType?: 'sql' | 'builder' | 'promql';
   previousDateRange?: [Date, Date];
-  onChange: (settings: ChartConfigDisplaySettings) => void;
+  onChange: (settings: ChartConfigDisplaySettings, isDirty: boolean) => void;
   onClose: () => void;
   isPerSeriesNumberFormatAllowed?: boolean;
 }
@@ -150,13 +150,17 @@ export default function ChartDisplaySettingsDrawer({
       // instead of freezing the drawer's inferred fallback into the config.
       const numberFormatExplicit =
         settings.numberFormat != null || dirtyFields.numberFormat != null;
-      onChange({
-        ...rest,
-        numberFormat: numberFormatExplicit
-          ? formValues.numberFormat
-          : undefined,
-        colorRules: colorRules ? stripLocalIds(colorRules) : undefined,
-      });
+      const hasDirtyFields = Object.keys(dirtyFields).length > 0;
+      onChange(
+        {
+          ...rest,
+          numberFormat: numberFormatExplicit
+            ? formValues.numberFormat
+            : undefined,
+          colorRules: colorRules ? stripLocalIds(colorRules) : undefined,
+        },
+        hasDirtyFields,
+      );
     })();
     onClose();
   }, [onChange, handleSubmit, onClose, settings.numberFormat, dirtyFields]);

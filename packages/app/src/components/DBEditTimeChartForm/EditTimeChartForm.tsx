@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Controller,
-  type Path,
   useFieldArray,
   useForm,
   type UseFormSetValue,
@@ -193,8 +192,15 @@ export default function EditTimeChartForm({
     [insertSeries, getValues],
   );
 
+  // Track whether sub-form changes (display settings, heatmap settings) have
+  // been applied. These bypass RHF's dirty tracking, so we latch here: once
+  // set, only a parent reset (new tile opened) clears it via onDirtyChange.
+  const subFormDirty = useRef(false);
+
   useEffect(() => {
-    onDirtyChange?.(isDirty);
+    // Don't let RHF's isDirty=false clear the flag after sub-form changes
+    // were applied (RHF resets isDirty when its `values` prop re-syncs).
+    onDirtyChange?.(isDirty || subFormDirty.current);
   }, [isDirty, onDirtyChange]);
 
   const select = useWatch({ control, name: 'select' });
@@ -588,99 +594,63 @@ export default function EditTimeChartForm({
   // Need to force a rerender on change as the modal will not be mounted when initially rendered
   const [parentRef, setParentRef] = useState<HTMLElement | null>(null);
 
-  // Helper: only pass shouldDirty when the incoming value actually differs
-  // from what the form already holds. The display-settings drawer emits
-  // normalised defaults (false, null, 0) on every Apply, but the form's
-  // defaultValues may store those fields as undefined. A blanket
-  // `shouldDirty: true` would deep-differ against undefined and fire the
-  // unsaved-changes modal on a no-op Apply.
-  const didChange = useCallback(
-    (name: Path<ChartEditorFormState>, next: unknown) => {
-      const current = getValues(name);
-      return JSON.stringify(current ?? null) !== JSON.stringify(next ?? null);
-    },
-    [getValues],
-  );
-
   const handleUpdateDisplaySettings = useCallback(
-    ({
-      numberFormat,
-      alignDateRangeToGranularity,
-      fillNulls,
-      compareToPreviousPeriod,
-      fitYAxisToData,
-      groupByColumnsOnLeft,
-      seriesLimit,
-      color,
-      colorRules,
-      backgroundChart,
-    }: ChartConfigDisplaySettings) => {
+    (
+      {
+        numberFormat,
+        alignDateRangeToGranularity,
+        fillNulls,
+        compareToPreviousPeriod,
+        fitYAxisToData,
+        groupByColumnsOnLeft,
+        seriesLimit,
+        color,
+        colorRules,
+        backgroundChart,
+      }: ChartConfigDisplaySettings,
+      isDirty: boolean,
+    ) => {
       // Only persist an explicit numberFormat. When the drawer emits undefined
       // (the user never chose a format), leave it unset so render-time
       // auto-detection keeps driving the format from the datasource.
       if (numberFormat !== undefined) {
-        setValue('numberFormat', numberFormat, {
-          shouldDirty: didChange('numberFormat', numberFormat),
-        });
+        setValue('numberFormat', numberFormat);
       }
-      setValue('alignDateRangeToGranularity', alignDateRangeToGranularity, {
-        shouldDirty: didChange(
-          'alignDateRangeToGranularity',
-          alignDateRangeToGranularity,
-        ),
-      });
-      setValue('fillNulls', fillNulls, {
-        shouldDirty: didChange('fillNulls', fillNulls),
-      });
-      setValue('compareToPreviousPeriod', compareToPreviousPeriod, {
-        shouldDirty: didChange(
-          'compareToPreviousPeriod',
-          compareToPreviousPeriod,
-        ),
-      });
-      setValue('fitYAxisToData', fitYAxisToData, {
-        shouldDirty: didChange('fitYAxisToData', fitYAxisToData),
-      });
-      setValue('groupByColumnsOnLeft', groupByColumnsOnLeft, {
-        shouldDirty: didChange('groupByColumnsOnLeft', groupByColumnsOnLeft),
-      });
+      setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
+      setValue('fillNulls', fillNulls);
+      setValue('compareToPreviousPeriod', compareToPreviousPeriod);
+      setValue('fitYAxisToData', fitYAxisToData);
+      setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
       // Persist `null` (not undefined) when cleared so the disabled state
       // survives JSON round-tripping through the URL query state; otherwise
       // the dropped key lets RHF's `values` sync restore the stale value.
-      const normalizedSeriesLimit = seriesLimit ?? null;
-      setValue('seriesLimit', normalizedSeriesLimit, {
-        shouldDirty: didChange('seriesLimit', normalizedSeriesLimit),
-      });
-      setValue('color', color, {
-        shouldDirty: didChange('color', color),
-      });
-      setValue('colorRules', colorRules, {
-        shouldDirty: didChange('colorRules', colorRules),
-      });
-      setValue('backgroundChart', backgroundChart, {
-        shouldDirty: didChange('backgroundChart', backgroundChart),
-      });
+      setValue('seriesLimit', seriesLimit ?? null);
+      setValue('color', color);
+      setValue('colorRules', colorRules);
+      setValue('backgroundChart', backgroundChart);
+      // Display settings live in a separate drawer form, so RHF can't track
+      // them. Latch dirty state only when the drawer reports actual changes.
+      if (isDirty) {
+        subFormDirty.current = true;
+        onDirtyChange?.(true);
+      }
       onSubmit();
     },
-    [setValue, didChange, onSubmit],
+    [setValue, onDirtyChange, onSubmit],
   );
 
   const handleUpdateHeatmapSettings = useCallback(
     (data: HeatmapSettingsValues) => {
-      const countExpr = data.count || 'count()';
-      setValue('series.0.valueExpression', data.value, {
-        shouldDirty: didChange('series.0.valueExpression', data.value),
-      });
-      setValue('series.0.countExpression', countExpr, {
-        shouldDirty: didChange('series.0.countExpression', countExpr),
-      });
-      setValue('series.0.heatmapScaleType', data.scaleType, {
-        shouldDirty: didChange('series.0.heatmapScaleType', data.scaleType),
-      });
+      setValue('series.0.valueExpression', data.value);
+      setValue('series.0.countExpression', data.count || 'count()');
+      setValue('series.0.heatmapScaleType', data.scaleType);
+      // Heatmap settings are applied outside RHF's change tracking.
+      subFormDirty.current = true;
+      onDirtyChange?.(true);
       onSubmit();
       closeHeatmapSettings();
     },
-    [setValue, didChange, onSubmit, closeHeatmapSettings],
+    [setValue, onDirtyChange, onSubmit, closeHeatmapSettings],
   );
 
   const heatmapValueExpression = useWatch({
