@@ -2,4 +2,4 @@
 "@hyperdx/api": patch
 ---
 
-Fix: Cascade-null alert channels when a webhook is deleted to prevent silent WEBHOOK_ERRORs.
+Fix: Block webhook deletion when one or more alerts still reference it, prompting the user to reassign or remove those alerts first.
