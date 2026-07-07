@@ -33,16 +33,24 @@ const boundedFilterSchema = z.union([
   }),
 ]);
 
-const bodySchema = z.object({
-  name: z.string().min(1).max(1024),
-  sourceId: objectIdSchema,
-  where: z.string().max(8192).default(''),
-  whereLanguage: SearchConditionLanguageSchema,
-  select: z.string().max(4096).default(''),
-  orderBy: z.string().max(1024).optional(),
-  tags: z.array(z.string().max(32)).max(50).default([]),
-  filters: z.array(boundedFilterSchema).max(100).optional(),
-});
+const bodySchema = z
+  .object({
+    name: z.string().min(1).max(1024),
+    sourceId: objectIdSchema,
+    where: z.string().max(8192).default(''),
+    whereLanguage: SearchConditionLanguageSchema,
+    select: z.string().max(4096).default(''),
+    orderBy: z.string().max(1024).optional(),
+    tags: z.array(z.string().max(32)).max(50).default([]),
+    filters: z.array(boundedFilterSchema).max(100).optional(),
+  })
+  .refine(
+    data => !(data.where && data.where.length > 0 && !data.whereLanguage),
+    {
+      message: 'whereLanguage is required when where is non-empty',
+      path: ['whereLanguage'],
+    },
+  );
 
 // Fields that are optional on the body and therefore cleared (rather than
 // merged) when omitted from a PUT request. See the PUT handler for details.
@@ -342,7 +350,7 @@ router.get('/', async (req, res, next) => {
  *         content:
  *           application/json:
  *             schema:
- *               \$ref: '#/components/schemas/Error'
+ *               $ref: '#/components/schemas/Error'
  *       '404':
  *         description: Saved search not found
  *         content:
@@ -411,7 +419,7 @@ router.get(
  *         content:
  *           application/json:
  *             schema:
- *               \$ref: '#/components/schemas/Error'
+ *               $ref: '#/components/schemas/Error'
  */
 router.post(
   '/',
@@ -513,7 +521,7 @@ router.post(
  *         content:
  *           application/json:
  *             schema:
- *               \$ref: '#/components/schemas/Error'
+ *               $ref: '#/components/schemas/Error'
  *       '404':
  *         description: Saved search not found
  *         content:
@@ -617,7 +625,7 @@ router.put(
  *         content:
  *           application/json:
  *             schema:
- *               \$ref: '#/components/schemas/Error'
+ *               $ref: '#/components/schemas/Error'
  *       '404':
  *         description: Saved search not found
  *         content:

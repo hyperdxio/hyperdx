@@ -373,6 +373,41 @@ describe('External API v2 Saved Searches', () => {
         .expect(400);
     });
 
+    it('rejects a filter with an over-length condition', async () => {
+      await authRequest('post', BASE_URL)
+        .send({
+          name: 'Long filter',
+          sourceId,
+          whereLanguage: 'lucene',
+          filters: [{ type: 'lucene', condition: 'a'.repeat(8193) }],
+        })
+        .expect(400);
+    });
+
+    it('rejects a sql_ast filter with over-length left/right', async () => {
+      await authRequest('post', BASE_URL)
+        .send({
+          name: 'Long sql_ast',
+          sourceId,
+          whereLanguage: 'sql',
+          filters: [
+            {
+              type: 'sql_ast',
+              operator: '=',
+              left: 'a'.repeat(8193),
+              right: 'x',
+            },
+          ],
+        })
+        .expect(400);
+    });
+
+    it('rejects non-empty where without whereLanguage', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ name: 'No lang', sourceId, where: 'level:error' })
+        .expect(400);
+    });
+
     it('requires authentication', async () => {
       await request(server.getHttpServer())
         .post(BASE_URL)
@@ -391,7 +426,12 @@ describe('External API v2 Saved Searches', () => {
       });
 
       const res = await authRequest('put', `${BASE_URL}/${doc._id}`)
-        .send({ name: 'Updated', sourceId, where: 'level:error' })
+        .send({
+          name: 'Updated',
+          sourceId,
+          where: 'level:error',
+          whereLanguage: 'lucene',
+        })
         .expect(200);
 
       expect(res.body.data).toMatchObject({
