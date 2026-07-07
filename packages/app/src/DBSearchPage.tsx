@@ -982,6 +982,26 @@ export function DBSearchPage() {
     id: searchedConfig.source,
     kinds: [SourceKind.Log, SourceKind.Trace],
   });
+
+  const { data: searchedSourceColumns } = useColumns(
+    {
+      databaseName: searchedSource?.from?.databaseName ?? '',
+      tableName: searchedSource?.from?.tableName ?? '',
+      connectionId: searchedSource?.connection ?? '',
+    },
+    { enabled: !!searchedSource },
+  );
+  const showMs = useMemo(() => {
+    if (!searchedSource || !searchedSourceColumns) return true;
+    const tsParts = splitAndTrimWithBracket(
+      searchedSource.timestampValueExpression,
+    );
+    return tsParts.some(part => {
+      const colMeta = searchedSourceColumns.find(c => c.name === part);
+      return colMeta?.type?.startsWith('DateTime64') ?? false;
+    });
+  }, [searchedSource, searchedSourceColumns]);
+
   const directTraceSource =
     directTraceId != null && searchedSource?.kind === SourceKind.Trace
       ? searchedSource
@@ -1107,6 +1127,7 @@ export function DBSearchPage() {
       showRelativeInterval: isLive ?? true,
       setDisplayedTimeInputValue,
       updateInput: !isLive,
+      showMs,
     });
 
   // Sync url state back with form state
@@ -2223,6 +2244,7 @@ export function DBSearchPage() {
               onRelativeSearch={onTimePickerRelativeSearch}
               showLive={analysisMode === 'results'}
               isLiveMode={isLive}
+              showMs={showMs}
               // Default to relative time mode if the user has made changes to interval and reloaded.
               defaultRelativeTimeMode={
                 isLive && interval !== LIVE_TAIL_DURATION_MS

@@ -43,8 +43,10 @@ const modeAtom = atomWithStorage<TimePickerMode>(
   TimePickerMode.Range,
 );
 
-const DATE_INPUT_PLACEHOLDER = 'YYYY-MM-DD HH:mm:ss';
-const DATE_INPUT_FORMAT = 'YYYY-MM-DD HH:mm:ss';
+const DATE_INPUT_PLACEHOLDER_MS = 'YYYY-MM-DD HH:mm:ss.SSS';
+const DATE_INPUT_FORMAT_MS = 'YYYY-MM-DD HH:mm:ss.SSS';
+const DATE_INPUT_PLACEHOLDER_SEC = 'YYYY-MM-DD HH:mm:ss';
+const DATE_INPUT_FORMAT_SEC = 'YYYY-MM-DD HH:mm:ss';
 
 /** Ensure a value is a Date object (Mantine v9 DateInput returns strings). */
 const toDate = (v: Date | string | null): Date | null =>
@@ -75,8 +77,8 @@ const DateInputCmp = ({
     size="xs"
     highlightToday
     withTime
-    placeholder={DATE_INPUT_PLACEHOLDER}
-    valueFormat={DATE_INPUT_FORMAT}
+    placeholder={DATE_INPUT_PLACEHOLDER_MS}
+    valueFormat={DATE_INPUT_FORMAT_MS}
     variant="filled"
     dateParser={dateParser}
     onKeyDown={e => {
@@ -105,6 +107,7 @@ const TimePickerComponent = ({
   showLive = false,
   isLiveMode = false,
   defaultRelativeTimeMode = false,
+  showMs = true,
   width = 350,
   size = 'sm',
 }: {
@@ -116,12 +119,18 @@ const TimePickerComponent = ({
   showLive?: boolean;
   isLiveMode?: boolean;
   defaultRelativeTimeMode?: boolean;
+  showMs?: boolean;
   width?: number | string;
   size?: 'xs' | 'sm';
 }) => {
   const {
     userPreferences: { timeFormat },
   } = useUserPreferences();
+
+  const dateInputPlaceholder = showMs
+    ? DATE_INPUT_PLACEHOLDER_MS
+    : DATE_INPUT_PLACEHOLDER_SEC;
+  const dateInputFormat = showMs ? DATE_INPUT_FORMAT_MS : DATE_INPUT_FORMAT_SEC;
 
   const [opened, { close, toggle }] = useDisclosure(false);
 
@@ -189,8 +198,13 @@ const TimePickerComponent = ({
       if (!from || !to) {
         return;
       }
-      const formatStr =
-        timeFormat === '24h' ? 'MMM d HH:mm:ss' : 'MMM d h:mm:ss a';
+      const formatStr = showMs
+        ? timeFormat === '24h'
+          ? 'MMM d HH:mm:ss.SSS'
+          : 'MMM d h:mm:ss.SSS a'
+        : timeFormat === '24h'
+          ? 'MMM d HH:mm:ss'
+          : 'MMM d h:mm:ss a';
       const rangeStr = [from, to]
         .map(d => d && format(d, formatStr))
         .join(' - ');
@@ -435,6 +449,8 @@ const TimePickerComponent = ({
                     popoverProps={dateComponentPopoverProps}
                     maxDate={today}
                     mb="xs"
+                    placeholder={dateInputPlaceholder}
+                    valueFormat={dateInputFormat}
                     {...form.getInputProps('startDate')}
                   />
                   <H>End time</H>
@@ -443,6 +459,8 @@ const TimePickerComponent = ({
                     maxDate={today}
                     minDate={form.values.startDate ?? undefined}
                     disabled={isRelative}
+                    placeholder={dateInputPlaceholder}
+                    valueFormat={dateInputFormat}
                     {...form.getInputProps('endDate')}
                   />
                 </>
@@ -454,6 +472,8 @@ const TimePickerComponent = ({
                     popoverProps={dateComponentPopoverProps}
                     maxDate={today}
                     mb="xs"
+                    placeholder={dateInputPlaceholder}
+                    valueFormat={dateInputFormat}
                     {...form.getInputProps('startDate')}
                   />
                   <H>Duration ±</H>

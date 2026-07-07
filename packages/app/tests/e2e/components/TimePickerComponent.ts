@@ -183,14 +183,14 @@ export class TimePickerComponent {
    * the single DateInput is also the first (and only).
    */
   get startDateInput() {
-    return this.pickerPopover.getByPlaceholder('YYYY-MM-DD HH:mm:ss').nth(0);
+    return this.pickerPopover.getByPlaceholder(/^YYYY-MM-DD HH:mm:ss/).nth(0);
   }
 
   /**
    * Locator for the End time DateInput. Only present in Range mode.
    */
   get endDateInput() {
-    return this.pickerPopover.getByPlaceholder('YYYY-MM-DD HH:mm:ss').nth(1);
+    return this.pickerPopover.getByPlaceholder(/^YYYY-MM-DD HH:mm:ss/).nth(1);
   }
 
   /**

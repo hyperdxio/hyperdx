@@ -38,8 +38,12 @@ test.describe('Custom Time Range', { tag: '@custom-time-range' }, () => {
     });
 
     await test.step('Inputs retain the typed values before applying', async () => {
-      await expect(searchPage.timePicker.startDateInput).toHaveValue(start);
-      await expect(searchPage.timePicker.endDateInput).toHaveValue(end);
+      await expect(searchPage.timePicker.startDateInput).toHaveValue(
+        `${start}.000`,
+      );
+      await expect(searchPage.timePicker.endDateInput).toHaveValue(
+        `${end}.000`,
+      );
     });
 
     await test.step('Apply and confirm times propagate to the picker input', async () => {
@@ -73,8 +77,12 @@ test.describe('Custom Time Range', { tag: '@custom-time-range' }, () => {
 
     await test.step('Reopen picker and verify inputs still show typed times', async () => {
       await searchPage.timePicker.open();
-      await expect(searchPage.timePicker.startDateInput).toHaveValue(start);
-      await expect(searchPage.timePicker.endDateInput).toHaveValue(end);
+      await expect(searchPage.timePicker.startDateInput).toHaveValue(
+        `${start}.000`,
+      );
+      await expect(searchPage.timePicker.endDateInput).toHaveValue(
+        `${end}.000`,
+      );
     });
   });
 
