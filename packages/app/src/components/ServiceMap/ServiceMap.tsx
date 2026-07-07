@@ -2,17 +2,27 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import dagre from '@dagrejs/dagre';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { TTraceSource } from '@hyperdx/common-utils/dist/types';
-import { Box, Center, Code, Loader, Text } from '@mantine/core';
+import {
+  Box,
+  Center,
+  Code,
+  Loader,
+  SegmentedControl,
+  Text,
+} from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   applyEdgeChanges,
   applyNodeChanges,
+  Background,
+  BackgroundVariant,
   Controls,
   Edge,
   EdgeChange,
   EdgeTypes,
   Node,
   NodeChange,
+  Panel,
   Position,
   ReactFlow,
   ReactFlowProvider,
@@ -21,9 +31,21 @@ import {
 
 import { SQLPreview } from '@/components/ChartSQLPreview';
 import useServiceMap, { ServiceAggregation } from '@/hooks/useServiceMap';
+import { useResolvedColorScheme } from '@/useUserPreferences';
 
 import ServiceMapEdge, { ServiceMapEdgeData } from './ServiceMapEdge';
+import ServiceMapLegend from './ServiceMapLegend';
+import {
+  ServiceMapMetricContext,
+  ServiceMapMetricMax,
+} from './ServiceMapMetricContext';
 import ServiceMapNode, { ServiceMapNodeData } from './ServiceMapNode';
+import {
+  getServiceMetricValue,
+  SERVICE_MAP_METRIC_LABEL,
+  SERVICE_MAP_METRICS,
+  ServiceMapMetric,
+} from './utils';
 
 import styles from './ServiceMap.module.scss';
 
@@ -91,6 +113,8 @@ function ServiceMapPresentation({
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const { fitView } = useReactFlow();
+  const colorScheme = useResolvedColorScheme();
+  const [metric, setMetric] = useState<ServiceMapMetric>('errorRate');
 
   // Fit the data to the viewport whenever input service information changes
   useEffect(() => {
@@ -109,17 +133,26 @@ function ServiceMapPresentation({
     [],
   );
 
-  const { maxErrorPercentage, maxThroughput } = useMemo(() => {
-    let maxError = 0;
-    let maxTput = 0;
+  // Graph-wide max for each metric, used to normalize per-node color intensity
+  // (and to size nodes by throughput). Recomputed only when the data changes,
+  // never when the user switches the coloring metric.
+  const metricMax = useMemo<ServiceMapMetricMax>(() => {
+    const max: ServiceMapMetricMax = {
+      errorRate: 0,
+      latency: 0,
+      throughput: 0,
+    };
     for (const service of services?.values() ?? []) {
-      maxError = Math.max(service.incomingRequests.errorPercentage, maxError);
-      const throughput =
-        service.incomingRequests.totalRequests + service.outgoingRequests;
-      maxTput = Math.max(throughput, maxTput);
+      for (const m of SERVICE_MAP_METRICS) {
+        max[m] = Math.max(max[m], getServiceMetricValue(service, m));
+      }
     }
-    return { maxErrorPercentage: maxError, maxThroughput: maxTput };
+    return max;
   }, [services]);
+
+  // Latency coloring is only meaningful when the source exposes duration data;
+  // otherwise every node reports 0 and the option is disabled.
+  const hasLatencyData = metricMax.latency > 0;
 
   useEffect(() => {
     const nodes: Node<ServiceMapNodeData>[] =
@@ -129,8 +162,7 @@ function ServiceMapPresentation({
           ...service,
           dateRange,
           source,
-          maxErrorPercentage,
-          maxThroughput,
+          maxThroughput: metricMax.throughput,
           isSingleTrace,
           onFocusService,
         },
@@ -179,8 +211,7 @@ function ServiceMapPresentation({
     services,
     dateRange,
     source,
-    maxErrorPercentage,
-    maxThroughput,
+    metricMax.throughput,
     isSingleTrace,
     onFocusService,
   ]);
@@ -239,21 +270,52 @@ function ServiceMapPresentation({
 
   return (
     <div className={styles.container}>
-      <ReactFlow
-        style={{ backgroundColor: 'inherit' }}
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        fitView
-        colorMode="dark"
-        // TODO: Financially support react-flow if possible
-        proOptions={{ hideAttribution: true }}
-      >
-        <Controls showInteractive={false} />
-      </ReactFlow>
+      <ServiceMapMetricContext.Provider value={{ metric, metricMax }}>
+        <ReactFlow
+          style={{ backgroundColor: 'inherit' }}
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          colorMode={colorScheme}
+          // TODO: Financially support react-flow if possible
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={20}
+            size={1.5}
+            color="var(--color-border-emphasis)"
+          />
+          <Panel position="top-right">
+            <div className={styles.panel}>
+              <SegmentedControl
+                size="xs"
+                value={metric}
+                onChange={value => setMetric(value as ServiceMapMetric)}
+                data={SERVICE_MAP_METRICS.map(m => ({
+                  value: m,
+                  label: SERVICE_MAP_METRIC_LABEL[m],
+                  disabled: m === 'latency' && !hasLatencyData,
+                }))}
+                data-testid="service-map-metric-toggle"
+              />
+              <ServiceMapLegend
+                metric={metric}
+                metricMax={metricMax}
+                source={source}
+                dateRange={dateRange}
+                isSingleTrace={isSingleTrace}
+              />
+            </div>
+          </Panel>
+          <Controls showInteractive={false} />
+        </ReactFlow>
+      </ServiceMapMetricContext.Provider>
     </div>
   );
 }

@@ -1,18 +1,24 @@
+import { useContext } from 'react';
 import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 import { Handle, Node, NodeProps, NodeToolbar, Position } from '@xyflow/react';
 
 import { ServiceAggregation } from '@/hooks/useServiceMap';
 
+import { ServiceMapMetricContext } from './ServiceMapMetricContext';
 import ServiceMapTooltip from './ServiceMapTooltip';
-import { deriveDisplayMetrics, getNodeColors, getNodeSize } from './utils';
+import {
+  deriveDisplayMetrics,
+  getNodeColors,
+  getNodeSize,
+  getServiceMetricValue,
+} from './utils';
 
 import styles from './ServiceMap.module.scss';
 
 export type ServiceMapNodeData = ServiceAggregation & {
   dateRange: [Date, Date];
   source: TTraceSource;
-  maxErrorPercentage: number;
   // Largest total throughput (incoming + outgoing) across all nodes, used to
   // scale node size.
   maxThroughput: number;
@@ -38,16 +44,18 @@ export default function ServiceMapNode(
     outgoingRequests,
     source,
     dateRange,
-    maxErrorPercentage,
     maxThroughput,
     isSingleTrace,
     onFocusService,
   } = data;
 
+  const { metric, metricMax } = useContext(ServiceMapMetricContext);
+
   const { backgroundColor, borderColor } = getNodeColors(
-    errorPercentage,
-    maxErrorPercentage,
+    getServiceMetricValue(data, metric),
+    metricMax[metric],
     props.selected,
+    metric,
   );
 
   // Fallback matches the schema default (3 = ms); in practice the field is
