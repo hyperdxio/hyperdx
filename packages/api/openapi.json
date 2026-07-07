@@ -3148,6 +3148,7 @@
           "name": {
             "type": "string",
             "description": "Display name for the saved search.",
+            "maxLength": 1024,
             "example": "Production errors"
           },
           "sourceId": {
@@ -3158,6 +3159,7 @@
           "where": {
             "type": "string",
             "description": "Search condition/filter expression.",
+            "maxLength": 8192,
             "example": "SeverityText:ERROR"
           },
           "whereLanguage": {
@@ -3167,24 +3169,28 @@
               "sql",
               "promql"
             ],
-            "description": "Language used to interpret the `where` expression.",
+            "description": "Language used to interpret the `where` expression. Required when `where` is non-empty.",
             "example": "lucene"
           },
           "select": {
             "type": "string",
             "description": "Comma-separated list of columns to select.",
+            "maxLength": 4096,
             "example": "Timestamp,Body,ServiceName"
           },
           "orderBy": {
             "type": "string",
             "description": "Ordering expression.",
+            "maxLength": 1024,
             "example": "Timestamp DESC"
           },
           "tags": {
             "type": "array",
             "description": "Tags associated with the saved search.",
+            "maxItems": 50,
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 32
             },
             "example": [
               "errors",
@@ -3194,13 +3200,14 @@
           "filters": {
             "type": "array",
             "description": "Structured filters applied to the saved search.",
+            "maxItems": 100,
             "items": {
               "$ref": "#/components/schemas/SavedSearchFilter"
             }
           },
           "teamId": {
             "type": "string",
-            "description": "ID of the team that owns the saved search.",
+            "description": "ID of the team that owns the saved search. To query alerts linked to this saved search, use GET /api/v2/alerts and filter by savedSearchId.",
             "example": "507f1f77bcf86cd799439011"
           },
           "createdAt": {
@@ -3227,6 +3234,7 @@
           "name": {
             "type": "string",
             "description": "Display name for the saved search.",
+            "maxLength": 1024,
             "example": "Production errors"
           },
           "sourceId": {
@@ -3237,6 +3245,7 @@
           "where": {
             "type": "string",
             "description": "Search condition/filter expression. Defaults to an empty string when omitted.",
+            "maxLength": 8192,
             "example": "SeverityText:ERROR"
           },
           "whereLanguage": {
@@ -3246,24 +3255,28 @@
               "sql",
               "promql"
             ],
-            "description": "Language used to interpret the `where` expression.",
+            "description": "Language used to interpret the `where` expression. Required when `where` is non-empty.",
             "example": "lucene"
           },
           "select": {
             "type": "string",
             "description": "Comma-separated list of columns to select. Defaults to an empty string when omitted.",
+            "maxLength": 4096,
             "example": "Timestamp,Body,ServiceName"
           },
           "orderBy": {
             "type": "string",
             "description": "Ordering expression.",
+            "maxLength": 1024,
             "example": "Timestamp DESC"
           },
           "tags": {
             "type": "array",
             "description": "Tags associated with the saved search. Defaults to an empty array when omitted.",
+            "maxItems": 50,
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 32
             },
             "example": [
               "errors",
@@ -3273,6 +3286,7 @@
           "filters": {
             "type": "array",
             "description": "Structured filters applied to the saved search.",
+            "maxItems": 100,
             "items": {
               "$ref": "#/components/schemas/SavedSearchFilter"
             }
@@ -3281,7 +3295,7 @@
       },
       "UpdateSavedSearchRequest": {
         "type": "object",
-        "description": "Full replacement of a saved search (PUT semantics). `name` and\n`sourceId` are required. `where`, `select` and `tags` default to\nempty values when omitted. `whereLanguage`, `orderBy` and `filters`\nare cleared when omitted.\n",
+        "description": "Full replacement of a saved search (PUT semantics). `name` and\n`sourceId` are required. `where`, `select` and `tags` default to\nempty values when omitted. `whereLanguage`, `orderBy` and `filters`\nare cleared when omitted. Changing `sourceId` does not validate that\nexisting `where`/`select`/`filters` are compatible with the new source schema.\n",
         "required": [
           "name",
           "sourceId"
@@ -3289,6 +3303,7 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 1024,
             "example": "Production errors"
           },
           "sourceId": {
@@ -3297,6 +3312,7 @@
           },
           "where": {
             "type": "string",
+            "maxLength": 8192,
             "example": "SeverityText:ERROR"
           },
           "whereLanguage": {
@@ -3306,20 +3322,25 @@
               "sql",
               "promql"
             ],
+            "description": "Required when `where` is non-empty.",
             "example": "lucene"
           },
           "select": {
             "type": "string",
+            "maxLength": 4096,
             "example": "Timestamp,Body,ServiceName"
           },
           "orderBy": {
             "type": "string",
+            "maxLength": 1024,
             "example": "Timestamp DESC"
           },
           "tags": {
             "type": "array",
+            "maxItems": 50,
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 32
             },
             "example": [
               "errors",
@@ -3328,6 +3349,7 @@
           },
           "filters": {
             "type": "array",
+            "maxItems": 100,
             "items": {
               "$ref": "#/components/schemas/SavedSearchFilter"
             }

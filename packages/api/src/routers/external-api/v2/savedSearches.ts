@@ -6,6 +6,7 @@ import { z } from 'zod';
 import {
   createSavedSearch,
   deleteSavedSearch,
+  replaceSavedSearch,
 } from '@/controllers/savedSearch';
 import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
@@ -35,7 +36,7 @@ const boundedFilterSchema = z.union([
 
 const bodySchema = z
   .object({
-    name: z.string().min(1).max(1024),
+    name: z.string().trim().min(1).max(1024),
     sourceId: objectIdSchema,
     where: z.string().max(8192).default(''),
     whereLanguage: SearchConditionLanguageSchema,
@@ -129,6 +130,7 @@ const router = express.Router();
  *         name:
  *           type: string
  *           description: Display name for the saved search.
+ *           maxLength: 1024
  *           example: Production errors
  *         sourceId:
  *           type: string
@@ -137,34 +139,40 @@ const router = express.Router();
  *         where:
  *           type: string
  *           description: Search condition/filter expression.
+ *           maxLength: 8192
  *           example: "SeverityText:ERROR"
  *         whereLanguage:
  *           type: string
  *           enum: [lucene, sql, promql]
- *           description: Language used to interpret the `where` expression.
+ *           description: Language used to interpret the `where` expression. Required when `where` is non-empty.
  *           example: lucene
  *         select:
  *           type: string
  *           description: Comma-separated list of columns to select.
+ *           maxLength: 4096
  *           example: "Timestamp,Body,ServiceName"
  *         orderBy:
  *           type: string
  *           description: Ordering expression.
+ *           maxLength: 1024
  *           example: "Timestamp DESC"
  *         tags:
  *           type: array
  *           description: Tags associated with the saved search.
+ *           maxItems: 50
  *           items:
  *             type: string
+ *             maxLength: 32
  *           example: ["errors", "production"]
  *         filters:
  *           type: array
  *           description: Structured filters applied to the saved search.
+ *           maxItems: 100
  *           items:
  *             $ref: '#/components/schemas/SavedSearchFilter'
  *         teamId:
  *           type: string
- *           description: ID of the team that owns the saved search.
+ *           description: ID of the team that owns the saved search. To query alerts linked to this saved search, use GET /api/v2/alerts and filter by savedSearchId.
  *           example: 507f1f77bcf86cd799439011
  *         createdAt:
  *           type: string
@@ -185,6 +193,7 @@ const router = express.Router();
  *         name:
  *           type: string
  *           description: Display name for the saved search.
+ *           maxLength: 1024
  *           example: Production errors
  *         sourceId:
  *           type: string
@@ -193,29 +202,35 @@ const router = express.Router();
  *         where:
  *           type: string
  *           description: Search condition/filter expression. Defaults to an empty string when omitted.
+ *           maxLength: 8192
  *           example: "SeverityText:ERROR"
  *         whereLanguage:
  *           type: string
  *           enum: [lucene, sql, promql]
- *           description: Language used to interpret the `where` expression.
+ *           description: Language used to interpret the `where` expression. Required when `where` is non-empty.
  *           example: lucene
  *         select:
  *           type: string
  *           description: Comma-separated list of columns to select. Defaults to an empty string when omitted.
+ *           maxLength: 4096
  *           example: "Timestamp,Body,ServiceName"
  *         orderBy:
  *           type: string
  *           description: Ordering expression.
+ *           maxLength: 1024
  *           example: "Timestamp DESC"
  *         tags:
  *           type: array
  *           description: Tags associated with the saved search. Defaults to an empty array when omitted.
+ *           maxItems: 50
  *           items:
  *             type: string
+ *             maxLength: 32
  *           example: ["errors", "production"]
  *         filters:
  *           type: array
  *           description: Structured filters applied to the saved search.
+ *           maxItems: 100
  *           items:
  *             $ref: '#/components/schemas/SavedSearchFilter'
  *     UpdateSavedSearchRequest:
@@ -224,37 +239,46 @@ const router = express.Router();
  *         Full replacement of a saved search (PUT semantics). `name` and
  *         `sourceId` are required. `where`, `select` and `tags` default to
  *         empty values when omitted. `whereLanguage`, `orderBy` and `filters`
- *         are cleared when omitted.
+ *         are cleared when omitted. Changing `sourceId` does not validate that
+ *         existing `where`/`select`/`filters` are compatible with the new source schema.
  *       required:
  *         - name
  *         - sourceId
  *       properties:
  *         name:
  *           type: string
+ *           maxLength: 1024
  *           example: Production errors
  *         sourceId:
  *           type: string
  *           example: 507f1f77bcf86cd799439013
  *         where:
  *           type: string
+ *           maxLength: 8192
  *           example: "SeverityText:ERROR"
  *         whereLanguage:
  *           type: string
  *           enum: [lucene, sql, promql]
+ *           description: Required when `where` is non-empty.
  *           example: lucene
  *         select:
  *           type: string
+ *           maxLength: 4096
  *           example: "Timestamp,Body,ServiceName"
  *         orderBy:
  *           type: string
+ *           maxLength: 1024
  *           example: "Timestamp DESC"
  *         tags:
  *           type: array
+ *           maxItems: 50
  *           items:
  *             type: string
+ *             maxLength: 32
  *           example: ["errors", "production"]
  *         filters:
  *           type: array
+ *           maxItems: 100
  *           items:
  *             $ref: '#/components/schemas/SavedSearchFilter'
  *     SavedSearchResponseEnvelope:
@@ -543,6 +567,14 @@ router.put(
 
       const { name, sourceId, where, select, tags } = req.body;
 
+      // Existence-first: return 404 before checking sourceId ownership so a
+      // request targeting a non-existent search doesn't leak 400 hints.
+      const existing = await SavedSearch.findOne({
+        _id: req.params.id,
+        team: teamId,
+      });
+      if (existing == null) return res.sendStatus(404);
+
       if (!(await isSourceOwnedByTeam(teamId, sourceId))) {
         return res.status(400).json({ message: 'sourceId not found' });
       }
@@ -551,7 +583,7 @@ router.put(
       // Optional fields that were omitted from the request are explicitly
       // unset (cleared) so the stored document deterministically matches the
       // request body rather than depending on ODM undefined handling.
-      const $set: Record<string, unknown> = {
+      const fieldsToSet: Record<string, unknown> = {
         name,
         source: sourceId,
         where,
@@ -559,22 +591,20 @@ router.put(
         tags,
         updatedBy: userId,
       };
-      const $unset: Record<string, ''> = {};
+      const unsetFields: string[] = [];
       for (const field of CLEARABLE_ON_REPLACE) {
         if (req.body[field] === undefined) {
-          $unset[field] = '';
+          unsetFields.push(field);
         } else {
-          $set[field] = req.body[field];
+          fieldsToSet[field] = req.body[field];
         }
       }
 
-      const doc = await SavedSearch.findOneAndUpdate(
-        { _id: req.params.id, team: teamId },
-        {
-          $set,
-          ...(Object.keys($unset).length > 0 ? { $unset } : {}),
-        },
-        { new: true },
+      const doc = await replaceSavedSearch(
+        teamId.toString(),
+        req.params.id,
+        fieldsToSet,
+        unsetFields,
       );
       if (doc == null) return res.sendStatus(404);
 

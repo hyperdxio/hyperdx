@@ -408,6 +408,12 @@ describe('External API v2 Saved Searches', () => {
         .expect(400);
     });
 
+    it('rejects whitespace-only name', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ name: '   ', sourceId })
+        .expect(400);
+    });
+
     it('requires authentication', async () => {
       await request(server.getHttpServer())
         .post(BASE_URL)
@@ -594,6 +600,40 @@ describe('External API v2 Saved Searches', () => {
 
       const stored = await SavedSearch.findById(doc._id);
       expect(stored?.updatedBy?.toString()).toBe(user._id.toString());
+    });
+
+    it('rejects non-empty where without whereLanguage on PUT', async () => {
+      const doc = await SavedSearch.create({
+        team: team._id,
+        source: new ObjectId(sourceId),
+        name: 'Original',
+      });
+      await authRequest('put', `${BASE_URL}/${doc._id}`)
+        .send({ name: 'Updated', sourceId, where: 'level:error' })
+        .expect(400);
+    });
+
+    it('persists filters: [] as empty array (not unset)', async () => {
+      const doc = await SavedSearch.create({
+        team: team._id,
+        source: new ObjectId(sourceId),
+        name: 'Has Filters',
+        filters: [{ type: 'lucene', condition: 'x' }],
+      });
+
+      const res = await authRequest('put', `${BASE_URL}/${doc._id}`)
+        .send({ name: 'Empty Filters', sourceId, filters: [] })
+        .expect(200);
+
+      expect(res.body.data.filters).toEqual([]);
+      const stored = await SavedSearch.findById(doc._id);
+      expect(stored?.filters).toEqual([]);
+    });
+
+    it('returns 404 before 400 when search does not exist and sourceId is invalid', async () => {
+      await authRequest('put', `${BASE_URL}/${new ObjectId()}`)
+        .send({ name: 'Ghost', sourceId: new ObjectId().toString() })
+        .expect(404);
     });
 
     it('requires authentication', async () => {

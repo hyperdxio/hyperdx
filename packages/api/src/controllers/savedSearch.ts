@@ -78,3 +78,28 @@ export async function deleteSavedSearch(teamId: string, savedSearchId: string) {
   }
   return savedSearch;
 }
+
+/**
+ * Full-replace update for a saved search. Sets the provided fields and
+ * explicitly $unsets the fields listed in `unsetFields` so that omitted
+ * optional fields are deterministically cleared rather than left stale.
+ */
+export function replaceSavedSearch(
+  teamId: string,
+  savedSearchId: string,
+  fieldsToSet: Record<string, unknown>,
+  unsetFields: string[],
+) {
+  const $unset: Record<string, ''> = {};
+  for (const field of unsetFields) {
+    $unset[field] = '';
+  }
+  return SavedSearch.findOneAndUpdate(
+    { _id: savedSearchId, team: teamId },
+    {
+      $set: fieldsToSet,
+      ...(unsetFields.length > 0 ? { $unset } : {}),
+    },
+    { new: true },
+  );
+}
