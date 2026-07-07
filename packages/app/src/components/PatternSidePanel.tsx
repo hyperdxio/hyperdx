@@ -176,8 +176,6 @@ export default function PatternSidePanel({
               rowId={selectedRowWhere.where}
               aliasWith={selectedRowWhere.aliasWith}
               onClose={handleCloseRowSidePanel}
-              isNestedPanel={true}
-              breadcrumbPath={[{ label: 'Pattern Overview' }]}
             />
           )}
         </div>

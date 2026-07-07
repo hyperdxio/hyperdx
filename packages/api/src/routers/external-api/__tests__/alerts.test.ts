@@ -223,6 +223,7 @@ describe('External API Alerts', () => {
           name: 'Format Test Alert',
           message: 'This is a test alert for format verification',
           note: null,
+          numConsecutiveWindows: null,
           threshold: 123,
           interval: '15m',
           source: AlertSource.TILE,
@@ -1230,6 +1231,106 @@ describe('External API Alerts', () => {
       expect(match.executionErrors).toHaveLength(1);
       expect(match.executionErrors[0].type).toBe(AlertErrorType.WEBHOOK_ERROR);
       expect(match.executionErrors[0].message).toBe('webhook delivery failed');
+    });
+  });
+
+  describe('Consecutive-window alerting (numConsecutiveWindows)', () => {
+    it('should create an alert with numConsecutiveWindows and return it', async () => {
+      const { alert } = await createTestAlert({ numConsecutiveWindows: 3 });
+
+      expect(alert.numConsecutiveWindows).toBe(3);
+    });
+
+    it('should default numConsecutiveWindows to null when not provided', async () => {
+      const { alert } = await createTestAlert();
+
+      expect(alert.numConsecutiveWindows).toBeNull();
+    });
+
+    it('should reject numConsecutiveWindows below 1', async () => {
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          numConsecutiveWindows: 0,
+        })
+        .expect(400);
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should return numConsecutiveWindows on GET by id', async () => {
+      const { alert } = await createTestAlert({ numConsecutiveWindows: 5 });
+
+      const getResponse = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      ).expect(200);
+
+      expect(getResponse.body.data.numConsecutiveWindows).toBe(5);
+    });
+
+    it('should return numConsecutiveWindows on the list endpoint', async () => {
+      const { alert } = await createTestAlert({ numConsecutiveWindows: 4 });
+
+      const listResponse = await authRequest('get', ALERTS_BASE_URL).expect(
+        200,
+      );
+
+      const match = listResponse.body.data.find((a: any) => a.id === alert.id);
+      expect(match).toBeDefined();
+      expect(match.numConsecutiveWindows).toBe(4);
+    });
+
+    it('should update an alert to set numConsecutiveWindows', async () => {
+      const { alert, alertInput } = await createTestAlert();
+
+      expect(alert.numConsecutiveWindows).toBeNull();
+
+      await authRequest('put', `${ALERTS_BASE_URL}/${alert.id}`)
+        .send({ ...alertInput, numConsecutiveWindows: 2 })
+        .expect(200);
+
+      const getResponse = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      ).expect(200);
+
+      expect(getResponse.body.data.numConsecutiveWindows).toBe(2);
+    });
+
+    it('should update an alert to clear numConsecutiveWindows (null)', async () => {
+      const { alert, alertInput } = await createTestAlert({
+        numConsecutiveWindows: 3,
+      });
+
+      expect(alert.numConsecutiveWindows).toBe(3);
+
+      await authRequest('put', `${ALERTS_BASE_URL}/${alert.id}`)
+        .send({ ...alertInput, numConsecutiveWindows: null })
+        .expect(200);
+
+      const getResponse = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      ).expect(200);
+
+      expect(getResponse.body.data.numConsecutiveWindows).toBeNull();
     });
   });
 });
