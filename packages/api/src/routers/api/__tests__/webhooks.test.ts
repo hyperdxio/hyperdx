@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
+import Alert from '@/models/alert';
 import Webhook, { WebhookService } from '@/models/webhook';
 import * as template from '@/tasks/checkAlerts/template';
 
@@ -184,6 +185,75 @@ describe('webhooks router', () => {
     // Verify webhook was deleted
     const deletedWebhook = await Webhook.findById(webhook._id);
     expect(deletedWebhook).toBeNull();
+  });
+
+  it('DELETE /:id - returns 409 when alerts still reference the webhook', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    // 1. Create a webhook
+    const webhook = await Webhook.create({
+      ...MOCK_WEBHOOK,
+      team: team._id,
+    });
+
+    // 2. Create an alert pointing to that webhook
+    await Alert.create({
+      team: team._id,
+      name: 'Test Alert',
+      channel: {
+        type: 'webhook',
+        webhookId: webhook._id.toString(),
+      },
+      source: 'logs',
+      groupBy: 'test',
+      interval: '5m',
+      threshold: 1,
+      thresholdType: 'above',
+    });
+
+    // 3. Attempt to delete — should be blocked
+    const response = await agent.delete(`/webhooks/${webhook._id}`).expect(409);
+
+    expect(response.body.message).toContain('1 alert(s) still reference it');
+
+    // 4. Webhook should still exist
+    const stillExists = await Webhook.findById(webhook._id);
+    expect(stillExists).not.toBeNull();
+  });
+
+  it('DELETE /:id - succeeds after referencing alerts are removed', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    const webhook = await Webhook.create({
+      ...MOCK_WEBHOOK,
+      team: team._id,
+    });
+
+    const alert = await Alert.create({
+      team: team._id,
+      name: 'Test Alert',
+      channel: {
+        type: 'webhook',
+        webhookId: webhook._id.toString(),
+      },
+      source: 'logs',
+      groupBy: 'test',
+      interval: '5m',
+      threshold: 1,
+      thresholdType: 'above',
+    });
+
+    // First attempt should fail
+    await agent.delete(`/webhooks/${webhook._id}`).expect(409);
+
+    // Remove the alert
+    await Alert.findByIdAndDelete(alert._id);
+
+    // Now deletion should succeed
+    await agent.delete(`/webhooks/${webhook._id}`).expect(200);
+
+    const deleted = await Webhook.findById(webhook._id);
+    expect(deleted).toBeNull();
   });
 
   it('DELETE /:id - returns 200 when webhook does not exist', async () => {
