@@ -19,9 +19,8 @@ import {
   useReactFlow,
 } from '@xyflow/react';
 
+import { SQLPreview } from '@/components/ChartSQLPreview';
 import useServiceMap, { ServiceAggregation } from '@/hooks/useServiceMap';
-
-import { SQLPreview } from '../ChartSQLPreview';
 
 import ServiceMapEdge, { ServiceMapEdgeData } from './ServiceMapEdge';
 import ServiceMapNode, { ServiceMapNodeData } from './ServiceMapNode';

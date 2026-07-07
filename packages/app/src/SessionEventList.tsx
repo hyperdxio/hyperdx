@@ -20,7 +20,7 @@ import { SessionRow, sessionRowSchema } from './utils/sessions';
 import { useFormatTime } from './useFormatTime';
 import { formatmmss, getShortUrl } from './utils';
 
-import styles from '../styles/SessionSubpanelV2.module.scss';
+import styles from '@styles/SessionSubpanelV2.module.scss';
 
 type SessionEvent = {
   id: string;

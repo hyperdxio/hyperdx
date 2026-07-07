@@ -9,9 +9,9 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
-import { gradeBatch } from '../grading/grade';
-import type { GradeRecord } from '../grading/types';
-import type { RunRecord } from '../harness/types';
+import { gradeBatch } from '@/grading/grade';
+import type { GradeRecord } from '@/grading/types';
+import type { RunRecord } from '@/harness/types';
 
 function buildRun(args: {
   scenario: string;
@@ -24,6 +24,7 @@ function buildRun(args: {
     scenario: args.scenario,
     mcp: 'hyperdx',
     model: 'claude-sonnet-4-6',
+    plugin: 'none',
     runIndex: 0,
     seed: 42,
     startedAt: '2026-05-10T00:00:00.000Z',
@@ -165,5 +166,70 @@ describe('gradeBatch tool-error penalty', () => {
     // 1.0 - 0.2 = 0.8.
     expect(grade.programmatic.score).toBeCloseTo(1, 5);
     expect(grade.combinedScore).toBeCloseTo(0.8, 5);
+  });
+
+  it('grades runs stored in the current <mcp>/<model>/<plugin>/ layout', async () => {
+    const batchDir = join(tmpRoot, 'plugin-layout');
+    const run = buildRun({
+      scenario: 'error-root-cause',
+      toolCalls: [{ name: 'mcp__hyperdx__hyperdx_query', isError: false }],
+      finalAnswer: ANSWER,
+    });
+    run.plugin = 'myplugin';
+    const dir = join(
+      batchDir,
+      'error-root-cause',
+      'hyperdx',
+      'claude-sonnet-4-6',
+      'myplugin',
+    );
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, '0.json'), JSON.stringify(run, null, 2));
+
+    const result = await gradeBatch(batchDir, { skipJudge: true });
+    expect(result.errors).toHaveLength(0);
+    expect(result.graded).toHaveLength(1);
+    expect(result.graded[0].programmatic.score).toBeCloseTo(1, 5);
+    // The grade sidecar lands next to the run file, inside the plugin dir.
+    const sidecar = JSON.parse(
+      readFileSync(join(dir, '0.grade.json'), 'utf8'),
+    ) as { runId: string };
+    expect(sidecar.runId).toBe(run.runId);
+  });
+
+  it('labels log lines with the plugin column key when plugin arms vary', async () => {
+    const batchDir = join(tmpRoot, 'plugin-arm-labels');
+    for (const plugin of ['none', 'myplugin']) {
+      const run = buildRun({
+        scenario: 'error-root-cause',
+        toolCalls: [{ name: 'mcp__hyperdx__hyperdx_query', isError: false }],
+        finalAnswer: ANSWER,
+      });
+      run.plugin = plugin;
+      const dir = join(
+        batchDir,
+        'error-root-cause',
+        'hyperdx',
+        'claude-sonnet-4-6',
+        plugin,
+      );
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, '0.json'), JSON.stringify(run, null, 2));
+    }
+
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    let lines: string[] = [];
+    try {
+      await gradeBatch(batchDir, { skipJudge: true });
+      lines = logSpy.mock.calls.map(c => String(c[0]));
+    } finally {
+      logSpy.mockRestore();
+    }
+    expect(lines.some(l => l.includes('error-root-cause/hyperdx/none/0'))).toBe(
+      true,
+    );
+    expect(
+      lines.some(l => l.includes('error-root-cause/hyperdx/myplugin/0')),
+    ).toBe(true);
   });
 });

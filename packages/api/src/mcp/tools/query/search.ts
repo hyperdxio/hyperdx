@@ -1,11 +1,10 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 import { denoiseSearchResults } from './denoise';
 import { buildTile, parseTimeRange, runConfigTile } from './helpers';
 import {
@@ -56,10 +55,10 @@ const searchSchema = z.object({
 
 // ─── Tool registration ───────────────────────────────────────────────────────
 
-export function registerSearch(server: McpServer, context: McpContext) {
+export function registerSearch({ context, registerTool }: ToolRegistrar) {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_search',
     {
       title: 'Search Events',
@@ -76,13 +75,10 @@ export function registerSearch(server: McpServer, context: McpContext) {
         "Map attributes use bracket syntax: SpanAttributes['http.method'].",
       inputSchema: searchSchema,
     },
-    withToolTracing('clickstack_search', context, async input => {
+    async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: timeRange.error }],
-        };
+        return mcpUserError(timeRange.error);
       }
       const { startDate, endDate } = timeRange;
 
@@ -220,6 +216,6 @@ export function registerSearch(server: McpServer, context: McpContext) {
           },
         ],
       };
-    }),
+    },
   );
 }

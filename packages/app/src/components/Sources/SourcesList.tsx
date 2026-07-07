@@ -20,6 +20,7 @@ import {
   IconAlertCircle,
   IconChevronDown,
   IconChevronUp,
+  IconFolder,
   IconPlus,
   IconRefresh,
   IconServer,
@@ -201,6 +202,12 @@ export function SourcesList({
                 <Text size={subtextSize} c="dimmed" mt={4}>
                   <Group gap="xs">
                     {capitalizeFirstLetter(s.kind)}
+                    {s.section && (
+                      <Group gap={4}>
+                        <IconFolder size={iconSize} />
+                        {s.section}
+                      </Group>
+                    )}
                     <Group gap={4}>
                       <IconServer size={iconSize} />
                       {connections?.find(c => c.id === s.connection)?.name}

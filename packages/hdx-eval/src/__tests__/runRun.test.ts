@@ -1,11 +1,11 @@
-import { assembleRecord } from '../harness/runRun';
-import type { ParsedEvent } from '../harness/streamParser';
+import { assembleRecord } from '@/harness/runRun';
+import type { ParsedEvent } from '@/harness/streamParser';
 
 function event(raw: object): ParsedEvent | null {
   // Round-trip through the JSON parser so we exercise the same code path
   // the runtime would.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { parseStreamLine } = require('../harness/streamParser');
+  const { parseStreamLine } = require('@/harness/streamParser');
   return parseStreamLine(JSON.stringify(raw));
 }
 
@@ -19,6 +19,7 @@ const baseInput = {
   systemPromptAppend: 'sys',
   mcp: 'hyperdx' as const,
   model: 'claude-sonnet-4-6',
+  plugin: 'none',
   runIndex: 0,
   seed: 42,
   startedAtIso: '2026-05-09T10:00:00.000Z',
@@ -97,6 +98,21 @@ describe('assembleRecord', () => {
     expect(record.tools.map(t => t.name)).toEqual([
       'mcp__hyperdx__hyperdx_query',
     ]);
+    expect(record.plugin).toBe('none');
+  });
+
+  it('propagates the plugin arm into the record and the runId', () => {
+    const record = assembleRecord({
+      ...baseInput,
+      plugin: 'myplugin',
+      events: [],
+      exitCode: 0,
+      timedOut: false,
+    });
+    expect(record.plugin).toBe('myplugin');
+    // The runId disambiguates arms, so same-index runs from different
+    // plugin arms never collide.
+    expect(record.runId).toContain('-myplugin-0');
   });
 
   it('marks termination as max_turns when result subtype indicates it', () => {

@@ -1,15 +1,21 @@
-import type { GradeRecord } from '../grading/types';
-import type { RunRecord } from '../harness/types';
-import { buildAggregate, type GradedRunPair } from '../reports/aggregate';
-import { renderMarkdownReport } from '../reports/markdown';
+import type { GradeRecord } from '@/grading/types';
+import type { RunRecord } from '@/harness/types';
+import { buildAggregate, type GradedRunPair } from '@/reports/aggregate';
+import { renderMarkdownReport } from '@/reports/markdown';
 
-function pair(scenario: string, mcp: string, i: number): GradedRunPair {
+function pair(
+  scenario: string,
+  mcp: string,
+  i: number,
+  plugin = 'none',
+): GradedRunPair {
   const run: RunRecord = {
     schemaVersion: 1,
-    runId: `${scenario}-${mcp}-${i}`,
+    runId: `${scenario}-${mcp}-${plugin}-${i}`,
     scenario,
     mcp,
     model: 'claude-sonnet-4-6',
+    plugin,
     runIndex: i,
     seed: 42,
     startedAt: '2026-05-09T07:50:00.000Z',
@@ -112,5 +118,43 @@ describe('renderMarkdownReport', () => {
   it('shows MCPs and baseline in the header', () => {
     expect(md).toContain('MCPs: clickhouse, hyperdx');
     expect(md).toContain('Baseline: clickhouse');
+  });
+});
+
+describe('renderMarkdownReport with plugin arms', () => {
+  const summary = buildAggregate({
+    batchDir: '/tmp/2026-05-09T07-50-58-566Z',
+    pairs: [
+      pair('error-root-cause', 'hyperdx', 0),
+      pair('error-root-cause', 'hyperdx', 0, 'myplugin'),
+    ],
+  });
+  const md = renderMarkdownReport(summary);
+
+  it('uses plugin column keys and the mcp/plugin format hint in the header', () => {
+    expect(md).toContain(
+      'Columns: hyperdx/myplugin, hyperdx/none  _(mcp/plugin)_',
+    );
+    expect(md).toContain('Baseline: hyperdx/myplugin');
+  });
+
+  it('renders a delta column for the challenger plugin arm', () => {
+    expect(md).toContain('Δ (hyperdx/none)');
+  });
+});
+
+describe('renderMarkdownReport with model and plugin arms', () => {
+  const modelPair = pair('error-root-cause', 'hyperdx', 0);
+  modelPair.run.model = 'claude-haiku-4-5';
+  const summary = buildAggregate({
+    batchDir: '/tmp/2026-05-09T07-50-58-566Z',
+    pairs: [modelPair, pair('error-root-cause', 'hyperdx', 0, 'myplugin')],
+  });
+  const md = renderMarkdownReport(summary);
+
+  it('uses the mcp/model+plugin format hint when both vary', () => {
+    expect(md).toContain('_(mcp/model+plugin)_');
+    expect(md).toContain('hyperdx/claude-haiku-4-5+none');
+    expect(md).toContain('hyperdx/claude-sonnet-4-6+myplugin');
   });
 });

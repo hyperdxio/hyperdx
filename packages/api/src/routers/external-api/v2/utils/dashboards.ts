@@ -325,6 +325,12 @@ const convertToExternalTileChartConfig = (
         // response, keeping it within the palette-token enum.
         color: resolveChartPaletteToken(config.color),
         colorRules: toExternalColorRules(config.colorRules),
+        // Pass `backgroundChart` through as-is: it shipped after the hue
+        // rename, so its optional `color` can only hold a hue-named token (no
+        // legacy normalization needed). Builder number tiles only; raw SQL
+        // number tiles never persist it (see the schema). Absent resolves to
+        // undefined and is omitted from the response.
+        backgroundChart: config.backgroundChart,
       };
     case DisplayType.Pie:
       return {
@@ -695,6 +701,10 @@ export function convertToInternalTileConfig(
           // them when absent.
           color: externalConfig.color,
           colorRules: externalConfig.colorRules,
+          // Builder number tiles only; `_.omitBy(_.isNil)` below drops it when
+          // absent. The input schema validates the nested color as a hue-only
+          // palette token, so it passes through directly.
+          backgroundChart: externalConfig.backgroundChart,
           name,
         } satisfies BuilderSavedChartConfig;
         break;

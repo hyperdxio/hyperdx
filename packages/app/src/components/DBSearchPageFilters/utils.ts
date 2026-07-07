@@ -1,5 +1,6 @@
 // Utility functions for parsing and grouping map-like field names
 
+import SqlString from 'sqlstring';
 import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
 import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
@@ -141,12 +142,19 @@ export function getFilterStateEntry(
   );
 }
 
+// A key that begins with `identifier(` is a raw SQL function call (e.g.
+// `toString(...)`, `JSONExtractString(...)`), not a column name or a dot-form
+// Map sub-key, so it is already a valid ClickHouse expression.
+const isSqlFunctionCallExpression = (key: string): boolean =>
+  /^[A-Za-z_]\w*\(/.test(key);
+
 // Coerce a filterState key into a ClickHouse expression suitable for raw SQL.
 // A dot-form Map sub-key like `LogAttributes.host.name` is rewritten to bracket
 // form `LogAttributes['host.name']` via `mergePath` so the conversion stays
 // consistent with the keys produced by the facet-discovery path. Bracket form,
-// backtick-quoted JSON paths, `toString(...)` wrappers, and plain column names
-// are returned unchanged. Use this when handing a filterState key off to a SQL
+// backtick-quoted JSON paths, raw SQL function-call expressions
+// (`toString(...)`, `JSONExtractString(...)`), and plain column names are
+// returned unchanged. Use this when handing a filterState key off to a SQL
 // caller (e.g. "Load more" via metadata.getKeyValues), since `setFilterValue`
 // normalizes Map sub-keys to dot form which ClickHouse cannot resolve as map
 // access.
@@ -161,7 +169,12 @@ export function toClickHouseKeyExpression(key: string): string {
     key.includes("['") ||
     key.includes('["') ||
     key.includes('`') ||
-    key.startsWith('toString(')
+    // "Add to Filters" on a value inside parsed JSON from a String column builds
+    // a function-call key (e.g. JSONExtractString(Body, 'app.user.currency'));
+    // it must pass through untouched. Without this, parseMapFieldName splits on
+    // the dot inside the quoted argument and mergePath mangles it into the
+    // invalid `JSONExtractString(Body, 'app['user.currency')']`. HDX-4427.
+    isSqlFunctionCallExpression(key)
   ) {
     return key;
   }
@@ -172,4 +185,51 @@ export function toClickHouseKeyExpression(key: string): string {
     [],
     [parsed.baseName],
   );
+}
+
+/**
+ * Quote a single identifier if it isn't already a valid bare ClickHouse identifier.
+ * @param id - The identifier to quote
+ * @returns The quoted identifier if needed, otherwise the original identifier
+ */
+function quoteIdentifierIfNeeded(id: string): string {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(id)
+    ? id
+    : SqlString.escapeId(id, true);
+}
+
+/**
+ * Coerce a filterState key into a ClickHouse expression suitable for raw SQL,
+ * backtick-quoting identifiers with special characters.
+ *
+ * `knownColumns` is the set of real top-level column names on the table. Only
+ * keys matching a known column or accessing a map key of a known column will
+ * be quoted.
+ */
+export function toQuotedClickHouseKeyExpression(
+  key: string,
+  knownColumns: Set<string>,
+): string {
+  // A whole-key match against a real column wins: quote the entire name as one
+  // identifier (handles flat columns whose name contains dots/hyphens/etc.).
+  if (knownColumns.has(key)) {
+    return quoteIdentifierIfNeeded(key);
+  }
+
+  // Normalize dot-form (ResourceAttributes.host.name) to map access form (ResourceAttributes['host.name'])
+  const expr = toClickHouseKeyExpression(key);
+
+  // Already quoted: leave untouched
+  if (expr.startsWith('`') || expr.startsWith('"')) {
+    return expr;
+  }
+
+  // Quote a map column name and leave the property path untouched, e.g. `LogAttributes`['host.name'].
+  const path = parseKeyPath(expr);
+  if (path.length >= 2 && knownColumns.has(path[0])) {
+    const bracketStart = expr.indexOf('[');
+    return `${quoteIdentifierIfNeeded(path[0])}${expr.slice(bracketStart)}`;
+  }
+
+  return expr;
 }

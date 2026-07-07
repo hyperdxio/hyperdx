@@ -29,16 +29,22 @@
     },
     "packages/hdx-eval": {
       "project": ["src/**/*.ts"],
-      "ignoreDependencies": ["tsx"]
+      "ignoreDependencies": ["tsx"],
+      "ignoreBinaries": ["claude"]
     }
   },
-  "ignore": ["scripts/dev-portal/**", ".github/scripts/**"],
-  "ignoreBinaries": ["make", "migrate", "playwright"],
+  "ignore": [
+    "scripts/dev-portal/**",
+    ".github/scripts/**",
+    "docker/hyperdx/**"
+  ],
+  "ignoreBinaries": ["make", "migrate"],
   "ignoreDependencies": [
     "@dotenvx/dotenvx",
     "concurrently",
     "dotenv",
     "babel-plugin-react-compiler"
   ],
+  "include": ["nsExports"],
   "exclude": ["enumMembers", "duplicates"]
 }

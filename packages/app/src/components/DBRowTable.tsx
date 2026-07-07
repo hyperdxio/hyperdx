@@ -124,7 +124,7 @@ import {
 } from './ExpandableRowTable';
 import LogLevel from './LogLevel';
 
-import styles from '../../styles/LogTable.module.scss';
+import styles from '@styles/LogTable.module.scss';
 
 type Row = Record<string, any> & { duration: number };
 type AccessorFn = (row: Row, column: string) => any;
@@ -1520,10 +1520,14 @@ function DBSqlRowTableComponent({
   enableSmallFirstWindow,
   tableId,
   errorVariant,
+  onResolvedColumnsChange,
 }: {
   config: BuilderChartConfigWithDateRange;
   sourceId?: string;
-  onRowDetailsClick?: (rowWhere: RowWhereResult) => void;
+  onRowDetailsClick?: (
+    rowWhere: RowWhereResult,
+    row: Record<string, any>,
+  ) => void;
   highlightedLineId?: string;
   queryKeyPrefix?: string;
   enabled?: boolean;
@@ -1546,6 +1550,7 @@ function DBSqlRowTableComponent({
   enableSmallFirstWindow?: boolean;
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
+  onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
@@ -1705,7 +1710,7 @@ function DBSqlRowTableComponent({
 
   const _onRowDetailsClick = useCallback(
     (row: Record<string, any>) => {
-      return onRowDetailsClick?.(getRowWhere(row));
+      return onRowDetailsClick?.(getRowWhere(row), row);
     },
     [onRowDetailsClick, getRowWhere],
   );
@@ -1715,6 +1720,14 @@ function DBSqlRowTableComponent({
       onError(error);
     }
   }, [isError, onError, error]);
+
+  // Surface the result-set column types upward.
+  // `data?.meta` keeps a stable identity per query result.
+  useEffect(() => {
+    if (data?.meta != null && data.meta.length > 0) {
+      onResolvedColumnsChange?.(data.meta);
+    }
+  }, [data?.meta, onResolvedColumnsChange]);
 
   const { data: source } = useSource({ id: sourceId });
   const patternColumn = columns[columns.length - 1];

@@ -1,18 +1,26 @@
-import { type EvalConfig, getMcpDefinition } from '../hyperdx/config';
+import {
+  type EvalConfig,
+  getMcpDefinition,
+  getPluginDefinition,
+} from '@/hyperdx/config';
+import type { Scenario } from '@/scenarios/types';
+
 import { runClaude } from './claudeSpawn';
 import type { ParsedEvent } from './streamParser';
 import { buildSystemPrompt } from './systemPrompt';
-import type {
-  McpKind,
-  PromptVariant,
-  RunRecord,
-  Termination,
-  ToolCallRecord,
+import {
+  type McpKind,
+  PLUGIN_NONE,
+  type PromptVariant,
+  type RunRecord,
+  type Termination,
+  type ToolCallRecord,
 } from './types';
 
 export type RunCellOptions = {
   config: EvalConfig;
-  scenario: string;
+  /** The full scenario object (provides hooks for custom behavior). */
+  scenario: Scenario;
   agentPrompt: string;
   mcp: McpKind;
   model: string;
@@ -27,13 +35,24 @@ export type RunCellOptions = {
   /** Prompt variant — 'baseline' (default) or 'hypothesis' (forces
    *  hypothesis-enumeration + parallel Task subagents). */
   promptVariant?: PromptVariant;
+  /** Plugin key — a key in the config `plugins` map, or `PLUGIN_NONE`
+   *  (default) for the no-plugin baseline. */
+  plugin?: string;
 };
 
 export async function runCell(opts: RunCellOptions): Promise<RunRecord> {
   const startedAtIso = new Date().toISOString();
   const startedAtMs = Date.now();
   const promptVariant: PromptVariant = opts.promptVariant ?? 'baseline';
+  const plugin = opts.plugin ?? PLUGIN_NONE;
   const mcpDef = getMcpDefinition(opts.config, opts.mcp);
+  const pluginDef =
+    plugin === PLUGIN_NONE
+      ? undefined
+      : getPluginDefinition(opts.config, plugin);
+
+  // Use scenario's custom system prompt builder if provided,
+  // otherwise fall back to the default investigation prompt.
   const systemPromptAppend = buildSystemPrompt(
     opts.scenario,
     opts.anchorTimeIso,
@@ -43,7 +62,7 @@ export async function runCell(opts: RunCellOptions): Promise<RunRecord> {
 
   const result = await runClaude({
     config: opts.config,
-    scenario: opts.scenario,
+    scenario: opts.scenario.name,
     mcp: opts.mcp,
     mcpDef,
     model: opts.model,
@@ -53,6 +72,8 @@ export async function runCell(opts: RunCellOptions): Promise<RunRecord> {
     systemPromptAppend,
     apiKey: opts.apiKey,
     promptVariant,
+    allowedToolPatterns: opts.scenario.allowedToolPatterns,
+    pluginDef,
   });
 
   const endedAtIso = new Date().toISOString();
@@ -63,11 +84,12 @@ export async function runCell(opts: RunCellOptions): Promise<RunRecord> {
     stderr: result.stderr,
     exitCode: result.exitCode,
     timedOut: result.timedOut,
-    scenario: opts.scenario,
+    scenario: opts.scenario.name,
     agentPrompt: opts.agentPrompt,
     systemPromptAppend,
     mcp: opts.mcp,
     model: opts.model,
+    plugin,
     runIndex: opts.runIndex,
     seed: opts.seed,
     startedAtIso,
@@ -86,6 +108,7 @@ type AssembleInput = {
   systemPromptAppend: string;
   mcp: McpKind;
   model: string;
+  plugin: string;
   runIndex: number;
   seed: number;
   startedAtIso: string;
@@ -176,10 +199,11 @@ export function assembleRecord(input: AssembleInput): RunRecord {
 
   return {
     schemaVersion: 1,
-    runId: `${input.startedAtIso}-${input.scenario}-${input.mcp}-${input.runIndex}`,
+    runId: `${input.startedAtIso}-${input.scenario}-${input.mcp}-${input.plugin}-${input.runIndex}`,
     scenario: input.scenario,
     mcp: input.mcp,
     model: input.model,
+    plugin: input.plugin,
     runIndex: input.runIndex,
     seed: input.seed,
     startedAt: input.startedAtIso,

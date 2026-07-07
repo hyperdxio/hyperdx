@@ -31,7 +31,7 @@ import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import { useGetKeyValues, useTableMetadata } from './hooks/useMetadata';
 import { getEventBody } from './source';
 
-import styles from '../styles/LogSidePanel.module.scss';
+import styles from '@styles/LogSidePanel.module.scss';
 
 const CHART_HEIGHT = 300;
 const defaultTimeRange = parseTimeQuery('Past 1h', false);
@@ -205,8 +205,6 @@ function PodLogs({
           sourceId={logSource.id}
           config={tableConfig}
           isLive={false}
-          isNestedPanel
-          breadcrumbPath={[{ label: 'Pods' }]}
           queryKeyPrefix="k8s-dashboard-pod-logs"
         />
       </Card.Section>
@@ -460,7 +458,6 @@ export default function PodDetailsSidePanel({
               rowId={rowId}
               aliasWith={aliasWith}
               onClose={handleCloseRowSidePanel}
-              isNestedPanel={true}
             />
           )}
         </div>

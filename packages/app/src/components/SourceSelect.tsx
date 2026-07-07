@@ -22,12 +22,13 @@ import {
 import SelectControlled from '@/components/SelectControlled';
 import {
   SOURCE_KIND_ICONS,
+  sourceSelectFilter,
   useFilteredSortedSourceItems,
   useSourceKindMap,
 } from '@/components/sourceSelectUtils';
 import { useSources } from '@/source';
 
-import styles from '../../styles/SourceSelectControlled.module.scss';
+import styles from '@styles/SourceSelectControlled.module.scss';
 
 interface SourceManagementMenuProps {
   hasSelection: boolean;
@@ -206,6 +207,7 @@ function SourceSelectControlledComponent({
     sources: data,
     allowedSourceKinds,
     connectionId,
+    groupBySection: true,
   });
 
   const hasSelection = !!selectedSourceId;
@@ -222,12 +224,19 @@ function SourceSelectControlledComponent({
       <SelectControlled
         {...props}
         data={sourceItems}
-        comboboxProps={{ withinPortal: false, ...comboboxProps }}
+        comboboxProps={{
+          withinPortal: false,
+          width: 'max-content',
+          position: 'bottom-start',
+          ...comboboxProps,
+        }}
         classNames={{
           input: styles.sourceSelectInput,
           groupLabel: styles.groupLabel,
+          dropdown: styles.sourceSelectDropdown,
         }}
         renderOption={renderOption}
+        filter={sourceSelectFilter}
         searchable
         placeholder="Data Source"
         leftSection={leftIcon}

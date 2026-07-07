@@ -15,7 +15,7 @@ export type TTimelineEvent = {
   color: string;
   backgroundColor: string;
   body: React.ReactNode;
-  minWidthPerc?: number;
+  minWidthPx: number;
   isError?: boolean;
   markers?: TTimelineSpanEventMarker[];
   showDuration?: boolean;
@@ -37,7 +37,7 @@ export const TimelineChartRowEvents = memo(function (
 
     const percentWidth = Math.max(
       ((event.end - event.start) / maxVal) * 100,
-      event.minWidthPerc ?? 0,
+      0,
     );
 
     const durationMs = event.end - event.start;
@@ -53,6 +53,7 @@ export const TimelineChartRowEvents = memo(function (
           position: 'absolute',
           left: `${percentX}%`,
           width: `${percentWidth}%`,
+          minWidth: `${event.minWidthPx}px`,
           height: '100%',
           padding: '1px 0',
         }}

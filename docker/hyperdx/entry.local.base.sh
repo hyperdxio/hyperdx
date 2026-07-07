@@ -18,7 +18,10 @@ export MONGO_URI="mongodb://db:27017/hyperdx"
 export OPAMP_SERVER_URL="http://127.0.0.1:${OPAMP_PORT}"
 export CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT="${CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT:-ch-server:9363}"
 
-export HYPERDX_IMAGE=$([[ "${IS_LOCAL_APP_MODE}" == "DANGEROUSLY_is_local_app_mode💀" ]] && echo "all-in-one" || echo "all-in-one-noauth")
+# These values must match the strings compared against in packages/api/src/config.ts
+# (IS_LOCAL_IMAGE / IS_ALL_IN_ONE_IMAGE). The auth variant must report
+# "all-in-one-auth" so that the INGESTION_API_KEY bootstrap path is enabled.
+export HYPERDX_IMAGE=$([[ "${IS_LOCAL_APP_MODE}" == "DANGEROUSLY_is_local_app_mode💀" ]] && echo "all-in-one-noauth" || echo "all-in-one-auth")
 export EXPRESS_SESSION_SECRET="hyperdx is cool 👋"
 # IS_LOCAL_APP_MODE should be set by the calling script
 # Default to dangerous mode if not set
@@ -65,6 +68,8 @@ echo "ClickHouse is ready!"
 
 # Start Otel Collector with entrypoint script for template rendering and log rotation
 /otel-entrypoint.sh /usr/local/bin/opampsupervisor > /var/log/otel-collector.log 2>&1 &
+
+node /etc/local/refresh-env.js
 
 # Start HyperDX app
 ./node_modules/.bin/concurrently \

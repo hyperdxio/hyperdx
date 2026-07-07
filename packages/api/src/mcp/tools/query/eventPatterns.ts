@@ -1,8 +1,8 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
+
 import { parseTimeRange } from './helpers';
 import { runEventPatterns } from './runEventPatterns';
 import {
@@ -62,10 +62,13 @@ const eventPatternsSchema = z.object({
 
 // ─── Tool registration ───────────────────────────────────────────────────────
 
-export function registerEventPatterns(server: McpServer, context: McpContext) {
+export function registerEventPatterns({
+  context,
+  registerTool,
+}: ToolRegistrar) {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_event_patterns',
     {
       title: 'Event Pattern Mining',
@@ -88,13 +91,10 @@ export function registerEventPatterns(server: McpServer, context: McpContext) {
         '  - clickstack_table: aggregated metrics / counts / top-N',
       inputSchema: eventPatternsSchema,
     },
-    withToolTracing('clickstack_event_patterns', context, async input => {
+    async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: timeRange.error }],
-        };
+        return mcpUserError(timeRange.error);
       }
       const { startDate, endDate } = timeRange;
 
@@ -112,6 +112,6 @@ export function registerEventPatterns(server: McpServer, context: McpContext) {
           trendBuckets: input.trendBuckets,
         },
       );
-    }),
+    },
   );
 }

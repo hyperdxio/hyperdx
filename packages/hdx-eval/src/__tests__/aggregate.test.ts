@@ -1,6 +1,10 @@
-import type { GradeRecord } from '../grading/types';
-import type { RunRecord } from '../harness/types';
-import { buildAggregate, type GradedRunPair } from '../reports/aggregate';
+import type { GradeRecord } from '@/grading/types';
+import type { RunRecord } from '@/harness/types';
+import {
+  buildAggregate,
+  columnKeyFor,
+  type GradedRunPair,
+} from '@/reports/aggregate';
 
 function pair(args: {
   scenario: string;
@@ -11,13 +15,16 @@ function pair(args: {
   toolCalls: number;
   outputTokens: number;
   durationMs: number;
+  model?: string;
+  plugin?: string;
 }): GradedRunPair {
   const run: RunRecord = {
     schemaVersion: 1,
     runId: `${args.scenario}-${args.mcp}-${args.i}`,
     scenario: args.scenario,
     mcp: args.mcp,
-    model: 'claude-sonnet-4-6',
+    model: args.model ?? 'claude-sonnet-4-6',
+    plugin: args.plugin ?? 'none',
     runIndex: args.i,
     seed: 42,
     startedAt: '2026-05-09T07:50:00.000Z',
@@ -93,6 +100,66 @@ function pair(args: {
   };
   return { run, grade };
 }
+
+describe('columnKeyFor', () => {
+  it('is just the mcp name when neither models nor plugins vary', () => {
+    expect(
+      columnKeyFor('hyperdx', 'opus', 'none', {
+        multiModel: false,
+        multiPlugin: false,
+      }),
+    ).toBe('hyperdx');
+    // A single shared plugin is also omitted.
+    expect(
+      columnKeyFor('hyperdx', 'opus', 'myplugin', {
+        multiModel: false,
+        multiPlugin: false,
+      }),
+    ).toBe('hyperdx');
+  });
+
+  it('appends the model after "/" when models vary', () => {
+    expect(
+      columnKeyFor('hyperdx', 'opus', 'none', {
+        multiModel: true,
+        multiPlugin: false,
+      }),
+    ).toBe('hyperdx/opus');
+  });
+
+  it('appends the plugin after "/" when plugins vary, rendering the no-plugin arm as "none"', () => {
+    expect(
+      columnKeyFor('hyperdx', 'opus', 'myplugin', {
+        multiModel: false,
+        multiPlugin: true,
+      }),
+    ).toBe('hyperdx/myplugin');
+    expect(
+      columnKeyFor('hyperdx', 'opus', 'none', {
+        multiModel: false,
+        multiPlugin: true,
+      }),
+    ).toBe('hyperdx/none');
+  });
+
+  it('joins model and plugin with "+" when both vary', () => {
+    expect(
+      columnKeyFor('hyperdx', 'opus', 'myplugin', {
+        multiModel: true,
+        multiPlugin: true,
+      }),
+    ).toBe('hyperdx/opus+myplugin');
+  });
+
+  it('sanitizes model and plugin segments so keys match directory names', () => {
+    expect(
+      columnKeyFor('hyperdx', 'claude-sonnet-4.5', 'my.plugin', {
+        multiModel: true,
+        multiPlugin: true,
+      }),
+    ).toBe('hyperdx/claude-sonnet-4-5+my-plugin');
+  });
+});
 
 describe('buildAggregate', () => {
   it('groups by scenario and computes per-cell means with baseline delta', () => {
@@ -186,6 +253,15 @@ describe('buildAggregate', () => {
     // Delta should be clickhouse (challenger) - hyperdx (baseline)
     expect(sc.deltas['clickhouse']).toBeDefined();
     expect(sc.deltas['hyperdx']).toBeUndefined();
+
+    // A baseline that matches no column falls back to the first column
+    // instead of producing all-null deltas.
+    const fallback = buildAggregate({
+      batchDir: '/tmp/x',
+      pairs,
+      baseline: 'not-a-column',
+    });
+    expect(fallback.baseline).toBe('clickhouse');
   });
 
   it('produces an ordered, multi-scenario summary', () => {
@@ -305,5 +381,71 @@ describe('buildAggregate', () => {
     expect(sc.cells['hyperdx/claude-haiku-4-5'].n).toBe(1);
     // Deltas: challenger vs baseline (first alphabetically)
     expect(sc.deltas['hyperdx/claude-sonnet-4-6']?.combinedScore).toBeDefined();
+  });
+
+  it('appends the plugin after "/" when multiple plugin arms are present', () => {
+    const base = {
+      scenario: 'error-root-cause',
+      mcp: 'hyperdx',
+      programmaticScore: 1,
+      judgeScore: 0.9,
+      toolCalls: 10,
+      outputTokens: 3000,
+      durationMs: 40_000,
+    };
+    const pairs: GradedRunPair[] = [
+      pair({ ...base, i: 0, plugin: 'none' }),
+      pair({ ...base, i: 1, plugin: 'myplugin' }),
+    ];
+    const summary = buildAggregate({ batchDir: '/tmp/x', pairs });
+    expect(summary.multiModel).toBe(false);
+    expect(summary.multiPlugin).toBe(true);
+    // The no-plugin arm renders as the literal "none".
+    expect(summary.columnOrder).toEqual(['hyperdx/myplugin', 'hyperdx/none']);
+    const sc = summary.scenarios[0];
+    expect(sc.cells['hyperdx/none']).toBeDefined();
+    expect(sc.cells['hyperdx/myplugin']).toBeDefined();
+  });
+
+  it('joins varying model and plugin with "+" when both vary', () => {
+    const base = {
+      scenario: 'error-root-cause',
+      mcp: 'hyperdx',
+      programmaticScore: 1,
+      judgeScore: 0.9,
+      toolCalls: 10,
+      outputTokens: 3000,
+      durationMs: 40_000,
+    };
+    const pairs: GradedRunPair[] = [
+      pair({ ...base, i: 0, model: 'claude-sonnet-4-6', plugin: 'none' }),
+      pair({ ...base, i: 1, model: 'claude-haiku-4-5', plugin: 'myplugin' }),
+    ];
+    const summary = buildAggregate({ batchDir: '/tmp/x', pairs });
+    expect(summary.multiModel).toBe(true);
+    expect(summary.multiPlugin).toBe(true);
+    expect(summary.columnOrder).toEqual([
+      'hyperdx/claude-haiku-4-5+myplugin',
+      'hyperdx/claude-sonnet-4-6+none',
+    ]);
+  });
+
+  it('omits a single shared plugin from column keys', () => {
+    const base = {
+      scenario: 'error-root-cause',
+      programmaticScore: 1,
+      judgeScore: 0.9,
+      toolCalls: 10,
+      outputTokens: 3000,
+      durationMs: 40_000,
+      plugin: 'myplugin',
+    };
+    const pairs: GradedRunPair[] = [
+      pair({ ...base, mcp: 'hyperdx', i: 0 }),
+      pair({ ...base, mcp: 'clickhouse', i: 0 }),
+    ];
+    const summary = buildAggregate({ batchDir: '/tmp/x', pairs });
+    expect(summary.multiPlugin).toBe(false);
+    expect(summary.columnOrder).toEqual(['clickhouse', 'hyperdx']);
   });
 });

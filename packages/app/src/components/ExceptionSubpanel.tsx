@@ -18,7 +18,7 @@ import { useSourceMappedFrame } from '@/useSourceMappedFrame';
 
 import { Table, TableCellButton } from './Table';
 
-import styles from '../../styles/LogSidePanel.module.scss';
+import styles from '@styles/LogSidePanel.module.scss';
 
 // https://github.com/TanStack/table/discussions/3192#discussioncomment-3873093
 const UNDEFINED_WIDTH = 99999;

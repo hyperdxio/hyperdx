@@ -1,15 +1,16 @@
-import { allowedToolsPattern, buildMcpConfig } from '../harness/mcpConfig';
+import { pluginCliArgs } from '@/harness/claudeSpawn';
+import { allowedToolsPattern, buildMcpConfig } from '@/harness/mcpConfig';
 import {
   buildSettings,
   DENIED_BUILT_IN_TOOLS,
   deniedToolsFor,
-} from '../harness/settingsFile';
-import type { McpDefinition } from '../harness/types';
+} from '@/harness/settingsFile';
+import type { McpDefinition } from '@/harness/types';
 import {
   configMcpNames,
   enabledMcpNames,
   type EvalConfig,
-} from '../hyperdx/config';
+} from '@/hyperdx/config';
 
 const hyperdxDef: McpDefinition = {
   type: 'http',
@@ -185,5 +186,24 @@ describe('enabledMcpNames', () => {
 
   it('treats missing enabled field as true', () => {
     expect(enabledMcpNames(cfg)).toContain('alpha');
+  });
+});
+
+describe('pluginCliArgs', () => {
+  it('returns --plugin-url args for a url plugin', () => {
+    expect(
+      pluginCliArgs({ label: 'P', url: 'https://example.com/p.zip' }),
+    ).toEqual(['--plugin-url', 'https://example.com/p.zip']);
+  });
+
+  it('returns --plugin-dir args for a dir plugin', () => {
+    expect(pluginCliArgs({ label: 'P', dir: '/abs/path/to/plugin' })).toEqual([
+      '--plugin-dir',
+      '/abs/path/to/plugin',
+    ]);
+  });
+
+  it('returns no args for the no-plugin baseline', () => {
+    expect(pluginCliArgs(undefined)).toEqual([]);
   });
 });
