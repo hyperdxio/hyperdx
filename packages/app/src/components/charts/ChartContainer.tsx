@@ -1,5 +1,8 @@
 import { createContext, use } from 'react';
-import { Group, Stack } from '@mantine/core';
+import { ActionIcon, Group, Popover, Stack, Tooltip } from '@mantine/core';
+import { IconDotsVertical } from '@tabler/icons-react';
+
+import styles from './ChartContainer.module.scss';
 
 interface ChartContainerProps {
   title?: React.ReactNode;
@@ -55,6 +58,7 @@ function ChartContainer({
         w="100%"
         gap={cardHeader ? 'xs' : undefined}
         style={{ flexGrow: 1 }}
+        className={styles.root}
       >
         {showHeader && (
           <Group
@@ -93,9 +97,40 @@ function ChartContainer({
               {title}
             </span>
             {toolbarItems && (
-              <Group flex={0} wrap="nowrap" gap={5}>
-                {toolbarItems}
-              </Group>
+              <>
+                {/* Normal toolbar: visible at wider sizes */}
+                <Group
+                  flex={0}
+                  wrap="nowrap"
+                  gap={5}
+                  className={styles.toolbarNormal}
+                >
+                  {toolbarItems}
+                </Group>
+                {/* Collapsed toolbar: single ⋮ icon at narrow sizes */}
+                <div className={styles.toolbarCollapsed}>
+                  <Popover width={200} position="bottom-end">
+                    <Popover.Target>
+                      <Tooltip
+                        label="Tile actions"
+                        position="top"
+                        withArrow
+                      >
+                        <ActionIcon variant="subtle" size="sm">
+                          <IconDotsVertical size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </Popover.Target>
+                    <Popover.Dropdown
+                      onMouseDown={e => e.stopPropagation()}
+                    >
+                      <Group gap={5} justify="center">
+                        {toolbarItems}
+                      </Group>
+                    </Popover.Dropdown>
+                  </Popover>
+                </div>
+              </>
             )}
           </Group>
         )}
