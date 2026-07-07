@@ -3082,6 +3082,7 @@
               },
               "condition": {
                 "type": "string",
+                "maxLength": 8192,
                 "description": "Filter expression in the language given by type.",
                 "example": "SeverityText:ERROR"
               }
@@ -3117,11 +3118,13 @@
               },
               "left": {
                 "type": "string",
+                "maxLength": 8192,
                 "description": "Left-hand column or expression.",
                 "example": "ServiceName"
               },
               "right": {
                 "type": "string",
+                "maxLength": 8192,
                 "description": "Right-hand literal or expression.",
                 "example": "'checkout'"
               }

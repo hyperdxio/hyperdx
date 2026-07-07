@@ -185,6 +185,27 @@ describe('External API v2 Saved Searches CRUD', () => {
         })
         .expect(400);
     });
+
+    it('should reject a filter expression that exceeds the length cap', async () => {
+      // Guards against bypassing the `where` length cap by relocating a huge
+      // expression into an otherwise-uncapped filter condition.
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [{ type: 'lucene', condition: 'x'.repeat(8 * 1024 + 1) }],
+        })
+        .expect(400);
+    });
+
+    it.each([
+      ['select', 4 * 1024],
+      ['where', 8 * 1024],
+      ['orderBy', 1024],
+    ])('should reject %s longer than its cap', async (field, cap) => {
+      await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), [field]: 'x'.repeat(cap + 1) })
+        .expect(400);
+    });
   });
 
   describe('GET /api/v2/saved-searches', () => {

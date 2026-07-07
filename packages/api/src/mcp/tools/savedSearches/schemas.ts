@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { objectIdSchema } from '@/utils/zod';
+import { objectIdSchema, tagsSchema } from '@/utils/zod';
 
 // ---------------------------------------------------------------------------
 // MCP-compatible Zod schemas for saved search tools.
@@ -62,10 +62,7 @@ export const mcpSaveSavedSearchSchema = z.object({
   sourceId: objectIdSchema.describe(
     'Source ID — call clickstack_list_sources to find available sources.',
   ),
-  tags: z
-    .array(z.string())
-    .optional()
-    .describe('Tags for organizing saved searches.'),
+  tags: tagsSchema.describe('Tags for organizing saved searches.'),
   filters: z
     .array(mcpFilterSchema)
     .optional()

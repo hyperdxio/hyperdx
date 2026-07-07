@@ -23,6 +23,25 @@ import { objectIdSchema, tagsSchema } from '@/utils/zod';
 // concern; 100 is far above any realistic UI-built search.
 const MAX_SAVED_SEARCH_FILTERS = 100;
 
+// FilterSchema (shared, used by reads) leaves its expression strings unbounded.
+// Cap them here on the write path to the same size as `where` — otherwise the
+// `where`/`select` length caps are trivially bypassed by relocating a huge
+// expression into filters[].condition/left/right.
+const MAX_FILTER_EXPR_LENGTH = 8 * 1024;
+
+const boundedFilterSchema = FilterSchema.superRefine((filter, ctx) => {
+  const expressions =
+    'condition' in filter ? [filter.condition] : [filter.left, filter.right];
+  for (const expr of expressions) {
+    if (expr.length > MAX_FILTER_EXPR_LENGTH) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `filter expression must be at most ${MAX_FILTER_EXPR_LENGTH} characters`,
+      });
+    }
+  }
+});
+
 // External request body. Uses `sourceId` (not the internal `source`) so the
 // create/update contract matches the shape returned by toExternalJSON().
 // PUT is a full replace: every optional field resets to its default when
@@ -47,7 +66,10 @@ const savedSearchRequestSchema = z.object({
   whereLanguage: z.enum(['lucene', 'sql']).optional().default('lucene'),
   orderBy: z.string().max(1024).optional().default(''),
   tags: tagsSchema.default([]),
-  filters: z.array(FilterSchema).max(MAX_SAVED_SEARCH_FILTERS).default([]),
+  filters: z
+    .array(boundedFilterSchema)
+    .max(MAX_SAVED_SEARCH_FILTERS)
+    .default([]),
 });
 
 // Maps the validated external body to the internal controller input, renaming
@@ -105,6 +127,7 @@ async function requireValidSourceId(
  *               description: Language of the condition expression.
  *             condition:
  *               type: string
+ *               maxLength: 8192
  *               description: Filter expression in the language given by type.
  *               example: "SeverityText:ERROR"
  *         - type: object
@@ -124,10 +147,12 @@ async function requireValidSourceId(
  *               description: Comparison operator.
  *             left:
  *               type: string
+ *               maxLength: 8192
  *               description: Left-hand column or expression.
  *               example: ServiceName
  *             right:
  *               type: string
+ *               maxLength: 8192
  *               description: Right-hand literal or expression.
  *               example: "'checkout'"
  *     SavedSearch:
