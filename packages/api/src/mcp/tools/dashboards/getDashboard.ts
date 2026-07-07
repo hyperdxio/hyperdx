@@ -4,7 +4,7 @@ import { z } from 'zod';
 import * as config from '@/config';
 import { getDashboards } from '@/controllers/dashboard';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { validateObjectId } from '@/mcp/utils/errors';
+import { mcpUserError, validateObjectId } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
 
@@ -54,10 +54,7 @@ export function registerGetDashboard({
 
       const dashboard = await Dashboard.findOne({ _id: id, team: teamId });
       if (!dashboard) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Dashboard not found' }],
-        };
+        return mcpUserError('Dashboard not found');
       }
       return {
         content: [

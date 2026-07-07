@@ -589,10 +589,21 @@ export class DashboardPage {
   }
 
   /**
+   * Open a tile's actions (kebab) menu, revealing the Duplicate / View
+   * fullscreen / Edit / Delete items (which now live inside the menu).
+   */
+  async openTileActionsMenu(tileIndex: number) {
+    await this.page
+      .locator('[data-testid^="tile-actions-button-"]')
+      .nth(tileIndex)
+      .click();
+  }
+
+  /**
    * Edit a tile
    */
   async editTile(tileIndex: number) {
-    await this.hoverOverTile(tileIndex);
+    await this.openTileActionsMenu(tileIndex);
     await this.getTileButton('edit').click();
   }
 
@@ -600,7 +611,7 @@ export class DashboardPage {
    * Duplicate a tile
    */
   async duplicateTile(tileIndex: number) {
-    await this.hoverOverTile(tileIndex);
+    await this.openTileActionsMenu(tileIndex);
     await this.getTileButton('duplicate').click();
 
     const confirmButton = this.page.locator(
@@ -613,7 +624,7 @@ export class DashboardPage {
    * Delete a tile
    */
   async deleteTile(tileIndex: number) {
-    await this.hoverOverTile(tileIndex);
+    await this.openTileActionsMenu(tileIndex);
     await this.getTileButton('delete').click();
 
     const confirmButton = this.page.locator(
@@ -1267,7 +1278,7 @@ export class DashboardPage {
    * Waits for the fullscreen modal's TimePicker to appear before returning.
    */
   async openFullscreenForTile(index: number) {
-    await this.hoverOverTile(index);
+    await this.openTileActionsMenu(index);
     const fullscreenBtn = this.page
       .locator('[data-testid^="tile-fullscreen-button-"]')
       .first();
