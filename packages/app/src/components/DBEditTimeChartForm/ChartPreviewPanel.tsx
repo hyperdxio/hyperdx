@@ -31,7 +31,11 @@ import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import PatternTable from '@/components/PatternTable';
-import { getEventBody, getFirstTimestampValueExpression } from '@/source';
+import {
+  getEventBody,
+  getFirstTimestampValueExpression,
+  isSingleExpression,
+} from '@/source';
 import {
   orderByStringToSortingState,
   sortingStateToOrderByString,
@@ -323,13 +327,14 @@ export function ChartPreviewPanel({
               }}
               bodyValueExpression={
                 // Prefer the user's custom pattern expression (stored in
-                // queriedConfig.select) when set. Ignore multi-column
-                // strings (containing commas) — those are stale
-                // defaultTableSelectExpression values from pre-fix saved
-                // tiles, not a single pattern expression.
+                // queriedConfig.select) when set. Reject multi-column
+                // strings — those are stale defaultTableSelectExpression
+                // values from pre-fix saved tiles, not a single pattern
+                // expression. Uses bracket-aware splitting so expressions
+                // like COALESCE(a, b) are correctly treated as single.
                 (typeof queriedConfig.select === 'string' &&
                 queriedConfig.select.length > 0 &&
-                !queriedConfig.select.includes(',')
+                isSingleExpression(queriedConfig.select)
                   ? queriedConfig.select
                   : undefined) ??
                 getEventBody(tableSource) ??

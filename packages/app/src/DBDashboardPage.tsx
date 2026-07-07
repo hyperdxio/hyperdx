@@ -173,6 +173,7 @@ import { withAppNav } from './layout';
 import {
   getEventBody,
   getFirstTimestampValueExpression,
+  isSingleExpression,
   useSource,
   useSources,
 } from './source';
@@ -1075,13 +1076,15 @@ const Tile = forwardRef(
                         }}
                         bodyValueExpression={
                           // Prefer the user's custom pattern expression
-                          // (stored in select) when set. Ignore
-                          // multi-column strings (containing commas) —
-                          // those are stale defaultTableSelectExpression
-                          // values, not a single pattern expression.
+                          // (stored in select) when set. Reject
+                          // multi-column strings — those are stale
+                          // defaultTableSelectExpression values, not a
+                          // single pattern expression. Uses bracket-aware
+                          // splitting so expressions like COALESCE(a, b)
+                          // are correctly treated as single.
                           (typeof effectiveQueriedConfig.select === 'string' &&
                           effectiveQueriedConfig.select.length > 0 &&
-                          !effectiveQueriedConfig.select.includes(',')
+                          isSingleExpression(effectiveQueriedConfig.select)
                             ? effectiveQueriedConfig.select
                             : undefined) ??
                           (source ? (getEventBody(source) ?? '') : '')

@@ -426,7 +426,7 @@ const convertToExternalTileChartConfig = (
         displayType: config.displayType,
         sourceId,
         select: stringValueOrDefault(config.select, ''),
-        where: config.where,
+        where: stringValueOrDefault(config.where, ''),
         whereLanguage: config.whereLanguage ?? 'lucene',
       };
     case undefined:
