@@ -5,9 +5,8 @@ import {
   appendSelectWithAdditionalKeys,
   RawLogTable,
 } from '@/components/DBRowTable';
+import * as useChartConfigModule from '@/hooks/useChartConfig';
 import { RowWhereResult } from '@/hooks/useRowWhere';
-
-import * as useChartConfigModule from '../../hooks/useChartConfig';
 
 const mockRowWhereResult: RowWhereResult = { where: '', aliasWith: [] };
 

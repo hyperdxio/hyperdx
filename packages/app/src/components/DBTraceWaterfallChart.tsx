@@ -1,4 +1,11 @@
-import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import _, { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
 import SqlString from 'sqlstring';
@@ -19,13 +26,12 @@ import {
   Center,
   Chip,
   Code,
-  Divider,
   Group,
   Kbd,
   Text,
   Tooltip,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useElementSize } from '@mantine/hooks';
 import {
   IconChevronDown,
   IconChevronRight,
@@ -34,9 +40,12 @@ import {
 
 import { ContactSupportText } from '@/components/ContactSupportText';
 import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
-import { TimelineChart } from '@/components/TimelineChart';
+import {
+  TimelineChart,
+  TimelineMinimap,
+  type TimelineViewportController,
+} from '@/components/TimelineChart';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
-import useResizable from '@/hooks/useResizable';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import {
@@ -63,7 +72,6 @@ import {
 import { DBHighlightedAttributesList } from './DBHighlightedAttributesList';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
-import resizeStyles from '@/../styles/ResizablePanel.module.scss';
 
 export type SpanRow = {
   Body: string;
@@ -451,7 +459,6 @@ export function DBTraceWaterfallChartContainer({
   };
   emptyState?: ReactNode;
 }) {
-  const { size, startResize } = useResizable(30, 'bottom');
   const formatTime = useFormatTime();
 
   const {
@@ -569,23 +576,46 @@ export function DBTraceWaterfallChartContainer({
     logRowsMeta,
   ]);
 
+  // Auto-select the originating span once when the panel opens — but only if
+  // nothing is already selected. Two cases must NOT trigger a (re-)select:
+  //   - the user explicitly cleared the selection (closing the span detail), and
+  //   - a selection was restored from the URL on load (deep link / reload).
+  // We mark the hint applied as soon as a selection exists or we apply it
+  // ourselves, so it never fires twice for the same hint; it re-fires only when
+  // the hint genuinely changes (different originating span / trace).
+  const appliedHighlightHintRef = useRef<string | null>(null);
   useEffect(() => {
-    if (initialRowHighlightHint && onClick && highlightedRowWhere == null) {
-      const initialRowHighlightIndex = rows.findIndex(row => {
-        return (
-          row.Timestamp === initialRowHighlightHint.timestamp &&
-          row.SpanId === initialRowHighlightHint.spanId &&
-          row.Body === initialRowHighlightHint.body
-        );
-      });
+    if (!initialRowHighlightHint || !onClick) {
+      return;
+    }
 
-      if (initialRowHighlightIndex !== -1) {
-        onClick?.({
-          id: rows[initialRowHighlightIndex].id,
-          type: rows[initialRowHighlightIndex].type ?? '',
-          aliasWith: rows[initialRowHighlightIndex].aliasWith,
-        });
-      }
+    const hintKey = `${initialRowHighlightHint.timestamp}|${initialRowHighlightHint.spanId}|${initialRowHighlightHint.body}`;
+    if (appliedHighlightHintRef.current === hintKey) {
+      return;
+    }
+
+    // A selection already exists (restored from the URL, or user-chosen). Honor
+    // it and record the hint so we never override it — now or later.
+    if (highlightedRowWhere != null) {
+      appliedHighlightHintRef.current = hintKey;
+      return;
+    }
+
+    const initialRowHighlightIndex = rows.findIndex(row => {
+      return (
+        row.Timestamp === initialRowHighlightHint.timestamp &&
+        row.SpanId === initialRowHighlightHint.spanId &&
+        row.Body === initialRowHighlightHint.body
+      );
+    });
+
+    if (initialRowHighlightIndex !== -1) {
+      appliedHighlightHintRef.current = hintKey;
+      onClick({
+        id: rows[initialRowHighlightIndex].id,
+        type: rows[initialRowHighlightIndex].type ?? '',
+        aliasWith: rows[initialRowHighlightIndex].aliasWith,
+      });
     }
   }, [initialRowHighlightHint, rows, onClick, highlightedRowWhere]);
 
@@ -949,7 +979,7 @@ export function DBTraceWaterfallChartContainer({
                 type,
               }),
               body: <span>{displayText}</span>,
-              minWidthPerc: 1,
+              minWidthPx: type === SourceKind.Log ? 10 : 2,
               isError,
               markers,
               showDuration: type !== SourceKind.Log,
@@ -975,10 +1005,25 @@ export function DBTraceWaterfallChartContainer({
     return v.id === highlightedRowWhere;
   });
 
-  const heightPx = (size / 100) * window.innerHeight;
+  const { ref: timelineWrapperRef, height: timelineWrapperHeight } =
+    useElementSize();
+
+  const [viewportController, setViewportController] =
+    useState<TimelineViewportController | null>(null);
+
+  const showMinimap =
+    !isFetching && !error && rows != null && visibleNodes.length > 0;
 
   return (
     <>
+      {showMinimap && (
+        <Box mb="md">
+          <TimelineMinimap
+            rows={timelineRows}
+            controller={viewportController}
+          />
+        </Box>
+      )}
       {isFilterExpanded && (
         <form onSubmit={handleSubmit(onSubmitFilters)}>
           <Box
@@ -1103,10 +1148,11 @@ export function DBTraceWaterfallChartContainer({
         <DBHighlightedAttributesList attributes={highlightedAttributeValues} />
       )}
       <div
+        ref={timelineWrapperRef}
         style={{
           position: 'relative',
           overflow: 'hidden',
-          maxHeight: `${heightPx}px`,
+          flex: 1,
         }}
       >
         {isFetching ? (
@@ -1139,7 +1185,7 @@ export function DBTraceWaterfallChartContainer({
           )
         ) : (
           <TimelineChart
-            maxHeight={heightPx}
+            maxHeight={timelineWrapperHeight}
             rowHeight={22}
             labelWidth={300}
             onEventClick={event => {
@@ -1151,15 +1197,10 @@ export function DBTraceWaterfallChartContainer({
             }}
             rows={timelineRows}
             initialScrollRowIndex={initialScrollRowIndex}
+            onReady={setViewportController}
           />
         )}
       </div>
-      <Divider
-        mt="md"
-        className={resizeStyles.resizeYHandle}
-        onMouseDown={startResize}
-        style={{ position: 'relative', bottom: 0 }}
-      />
     </>
   );
 }

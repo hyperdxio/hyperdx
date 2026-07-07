@@ -1,484 +1,264 @@
-import { aggregateServiceMapData, SpanAggregationRow } from '../useServiceMap';
+import {
+  aggregateServiceMapData,
+  SpanAggregationRow,
+} from '@/hooks/useServiceMap';
+
+// Convenience builders for the GROUPING SETS row shapes.
+function nodeRow(
+  serverServiceName: string,
+  requestCount: number,
+  errorCount: number,
+  latency?: { p50: number; p95: number; p99: number },
+): SpanAggregationRow {
+  return {
+    serverServiceName,
+    isNodeLevel: true,
+    requestCount,
+    errorCount,
+    ...latency,
+  };
+}
+
+function edgeRow(
+  serverServiceName: string,
+  clientServiceName: string | undefined,
+  requestCount: number,
+  errorCount: number,
+  latency?: { p50: number; p95: number; p99: number },
+): SpanAggregationRow {
+  return {
+    serverServiceName,
+    clientServiceName,
+    isNodeLevel: false,
+    requestCount,
+    errorCount,
+    ...latency,
+  };
+}
 
 describe('aggregateServiceMapData', () => {
   describe('basic aggregation', () => {
-    it('should return empty map for empty input', () => {
-      const result = aggregateServiceMapData([]);
-      expect(result.size).toBe(0);
+    it('returns an empty map for empty input', () => {
+      expect(aggregateServiceMapData([]).size).toBe(0);
     });
 
-    it('should aggregate single service with single status', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          requestCount: 100,
-        },
-      ];
-
-      const result = aggregateServiceMapData(data);
+    it('builds a service from a node-level row', () => {
+      const result = aggregateServiceMapData([nodeRow('api-service', 100, 0)]);
 
       expect(result.size).toBe(1);
-      expect(result.has('api-service')).toBe(true);
-
       const service = result.get('api-service')!;
       expect(service.serviceName).toBe('api-service');
       expect(service.incomingRequests.totalRequests).toBe(100);
-      expect(service.incomingRequests.requestCountByStatus.get('Ok')).toBe(100);
+      expect(service.incomingRequests.errorCount).toBe(0);
       expect(service.incomingRequests.errorPercentage).toBe(0);
       expect(service.incomingRequestsByClient.size).toBe(0);
     });
 
-    it('should aggregate multiple rows for same service and status', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          requestCount: 100,
-        },
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          requestCount: 50,
-        },
-      ];
+    it('uses the node-level row as the rolled-up total (no client summing)', () => {
+      // Node-level totals come straight from the rolled-up row, independent of
+      // the per-edge rows.
+      const result = aggregateServiceMapData([
+        nodeRow('api-service', 150, 15),
+        edgeRow('api-service', 'web', 100, 10),
+        edgeRow('api-service', 'worker', 50, 5),
+      ]);
 
-      const result = aggregateServiceMapData(data);
-
-      expect(result.size).toBe(1);
       const service = result.get('api-service')!;
       expect(service.incomingRequests.totalRequests).toBe(150);
-      expect(service.incomingRequests.requestCountByStatus.get('Ok')).toBe(150);
+      expect(service.incomingRequests.errorCount).toBe(15);
+      expect(service.incomingRequestsByClient.size).toBe(2);
     });
+  });
 
-    it('should aggregate multiple status codes for same service', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          requestCount: 100,
-        },
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Error',
-          requestCount: 10,
-        },
-      ];
-
-      const result = aggregateServiceMapData(data);
-
-      expect(result.size).toBe(1);
-      const service = result.get('api-service')!;
-      expect(service.incomingRequests.totalRequests).toBe(110);
-      expect(service.incomingRequests.requestCountByStatus.get('Ok')).toBe(100);
-      expect(service.incomingRequests.requestCountByStatus.get('Error')).toBe(
+  describe('error percentage', () => {
+    it('computes errorPercentage from errorCount / totalRequests', () => {
+      const result = aggregateServiceMapData([nodeRow('api-service', 100, 10)]);
+      expect(result.get('api-service')!.incomingRequests.errorPercentage).toBe(
         10,
       );
     });
 
-    it('should aggregate multiple services', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          requestCount: 100,
-        },
-        {
-          serverServiceName: 'db-service',
-          serverStatusCode: 'Ok',
-          requestCount: 200,
-        },
-      ];
-
-      const result = aggregateServiceMapData(data);
-
-      expect(result.size).toBe(2);
-      expect(result.has('api-service')).toBe(true);
-      expect(result.has('db-service')).toBe(true);
-      expect(result.get('api-service')!.incomingRequests.totalRequests).toBe(
+    it('is 100 when all requests error', () => {
+      const result = aggregateServiceMapData([nodeRow('api-service', 30, 30)]);
+      expect(result.get('api-service')!.incomingRequests.errorPercentage).toBe(
         100,
       );
-      expect(result.get('db-service')!.incomingRequests.totalRequests).toBe(
-        200,
-      );
+    });
+
+    it('avoids division by zero for zero-request services', () => {
+      // A client-only node, created from an edge row, has no incoming requests.
+      const result = aggregateServiceMapData([
+        edgeRow('api-service', 'web', 100, 0),
+      ]);
+      const web = result.get('web')!;
+      expect(web.incomingRequests.totalRequests).toBe(0);
+      expect(web.incomingRequests.errorPercentage).toBe(0);
     });
   });
 
-  describe('error percentage calculation', () => {
-    it('should calculate error percentage correctly', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          requestCount: 70,
-        },
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Unset',
-          requestCount: 20,
-        },
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Error',
-          requestCount: 10,
-        },
-      ];
-
-      const result = aggregateServiceMapData(data);
-      const service = result.get('api-service')!;
-
-      expect(service.incomingRequests.totalRequests).toBe(100);
-      expect(service.incomingRequests.errorPercentage).toBe(10);
-    });
-
-    it('should calculate 0% error when no errors', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          requestCount: 100,
-        },
-      ];
-
-      const result = aggregateServiceMapData(data);
-      const service = result.get('api-service')!;
-
-      expect(service.incomingRequests.errorPercentage).toBe(0);
-    });
-
-    it('should calculate 100% error when all errors', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Error',
-          requestCount: 100,
-        },
-      ];
-
-      const result = aggregateServiceMapData(data);
-      const service = result.get('api-service')!;
-
-      expect(service.incomingRequests.errorPercentage).toBe(100);
-    });
-
-    it('should calculate precise error percentages', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          requestCount: 97,
-        },
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Error',
-          requestCount: 3,
-        },
-      ];
-
-      const result = aggregateServiceMapData(data);
-      const service = result.get('api-service')!;
-
-      expect(service.incomingRequests.errorPercentage).toBe(3);
-    });
-
-    it('should handle 0 total requests without division by zero', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          clientServiceName: 'client-service',
-          requestCount: 100,
-        },
-      ];
-
-      const result = aggregateServiceMapData(data);
-
-      // client-service is added but has no incoming requests
-      const clientService = result.get('client-service')!;
-      expect(clientService.incomingRequests.totalRequests).toBe(0);
-      expect(clientService.incomingRequests.errorPercentage).toBe(0);
-    });
-  });
-
-  describe('client service aggregation', () => {
-    it('should aggregate requests by client service', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          clientServiceName: 'web-service',
-          requestCount: 100,
-        },
-      ];
-
-      const result = aggregateServiceMapData(data);
+  describe('edges (per-client stats)', () => {
+    it('records per-client stats and creates the client node', () => {
+      const result = aggregateServiceMapData([
+        nodeRow('api-service', 100, 0),
+        edgeRow('api-service', 'web-service', 100, 0),
+      ]);
 
       expect(result.size).toBe(2);
-      expect(result.has('api-service')).toBe(true);
       expect(result.has('web-service')).toBe(true);
 
       const service = result.get('api-service')!;
-      expect(service.incomingRequests.totalRequests).toBe(100);
-      expect(service.incomingRequestsByClient.size).toBe(1);
-      expect(service.incomingRequestsByClient.has('web-service')).toBe(true);
-
-      const clientStats = service.incomingRequestsByClient.get('web-service')!;
-      expect(clientStats.totalRequests).toBe(100);
-      expect(clientStats.requestCountByStatus.get('Ok')).toBe(100);
+      const fromWeb = service.incomingRequestsByClient.get('web-service')!;
+      expect(fromWeb.totalRequests).toBe(100);
     });
 
-    it('should aggregate multiple clients calling same service', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          clientServiceName: 'web-service',
-          requestCount: 100,
-        },
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          clientServiceName: 'mobile-service',
-          requestCount: 50,
-        },
-      ];
+    it('supports multiple clients calling the same service', () => {
+      const result = aggregateServiceMapData([
+        nodeRow('api-service', 150, 0),
+        edgeRow('api-service', 'web', 100, 0),
+        edgeRow('api-service', 'mobile', 50, 5),
+      ]);
 
-      const result = aggregateServiceMapData(data);
-
-      expect(result.size).toBe(3); // api-service, web-service, mobile-service
       const service = result.get('api-service')!;
-      expect(service.incomingRequests.totalRequests).toBe(150);
       expect(service.incomingRequestsByClient.size).toBe(2);
-
-      const webStats = service.incomingRequestsByClient.get('web-service')!;
-      expect(webStats.totalRequests).toBe(100);
-
-      const mobileStats =
-        service.incomingRequestsByClient.get('mobile-service')!;
-      expect(mobileStats.totalRequests).toBe(50);
+      expect(
+        service.incomingRequestsByClient.get('mobile')!.errorPercentage,
+      ).toBe(10);
     });
 
-    it('should aggregate multiple requests from same client with different status codes', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          clientServiceName: 'web-service',
-          requestCount: 90,
-        },
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Error',
-          clientServiceName: 'web-service',
-          requestCount: 10,
-        },
-      ];
-
-      const result = aggregateServiceMapData(data);
-      const service = result.get('api-service')!;
-      const clientStats = service.incomingRequestsByClient.get('web-service')!;
-
-      expect(clientStats.totalRequests).toBe(100);
-      expect(clientStats.requestCountByStatus.get('Ok')).toBe(90);
-      expect(clientStats.requestCountByStatus.get('Error')).toBe(10);
-      expect(clientStats.errorPercentage).toBe(10);
-    });
-
-    it('should handle mix of requests with and without client service names', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          clientServiceName: 'web-service',
-          requestCount: 100,
-        },
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          requestCount: 50, // No client service (uninstrumented)
-        },
-      ];
-
-      const result = aggregateServiceMapData(data);
+    it('ignores edge rows from uninstrumented (null) clients', () => {
+      // These are already counted in the node-level total; no edge is drawn.
+      const result = aggregateServiceMapData([
+        nodeRow('api-service', 100, 0),
+        edgeRow('api-service', undefined, 40, 0),
+      ]);
 
       const service = result.get('api-service')!;
-      expect(service.incomingRequests.totalRequests).toBe(150);
-      expect(service.incomingRequestsByClient.size).toBe(1);
-      expect(service.incomingRequestsByClient.has('web-service')).toBe(true);
+      expect(service.incomingRequestsByClient.size).toBe(0);
+      expect(result.size).toBe(1);
     });
 
-    it('should create client service entry even if client has no incoming requests', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          clientServiceName: 'web-service',
-          requestCount: 100,
-        },
-      ];
+    it('builds a chain A -> B -> C', () => {
+      const result = aggregateServiceMapData([
+        nodeRow('B', 100, 0),
+        edgeRow('B', 'A', 100, 0),
+        nodeRow('C', 80, 0),
+        edgeRow('C', 'B', 80, 0),
+      ]);
 
-      const result = aggregateServiceMapData(data);
-
-      expect(result.has('web-service')).toBe(true);
-      const clientService = result.get('web-service')!;
-      expect(clientService.serviceName).toBe('web-service');
-      expect(clientService.incomingRequests.totalRequests).toBe(0);
-      expect(clientService.incomingRequestsByClient.size).toBe(0);
-      expect(clientService.incomingRequests.errorPercentage).toBe(0);
+      expect(new Set(result.keys())).toEqual(new Set(['A', 'B', 'C']));
+      expect(result.get('B')!.incomingRequestsByClient.has('A')).toBe(true);
+      expect(result.get('C')!.incomingRequestsByClient.has('B')).toBe(true);
+      // A is a leaf client with no incoming traffic.
+      expect(result.get('A')!.incomingRequests.totalRequests).toBe(0);
     });
   });
 
-  describe('complex scenarios', () => {
-    it('should handle service chain (A -> B -> C)', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'service-b',
-          serverStatusCode: 'Ok',
-          clientServiceName: 'service-a',
-          requestCount: 100,
-        },
-        {
-          serverServiceName: 'service-c',
-          serverStatusCode: 'Ok',
-          clientServiceName: 'service-b',
-          requestCount: 100,
-        },
-      ];
+  describe('outgoing throughput', () => {
+    it('rolls edge volume up to the caller as outgoingRequests', () => {
+      const result = aggregateServiceMapData([
+        nodeRow('api', 100, 0),
+        edgeRow('api', 'web', 100, 0),
+      ]);
 
-      const result = aggregateServiceMapData(data);
-
-      expect(result.size).toBe(3);
-
-      // Service A (no incoming requests)
-      const serviceA = result.get('service-a')!;
-      expect(serviceA.incomingRequests.totalRequests).toBe(0);
-
-      // Service B (receives from A, calls C)
-      const serviceB = result.get('service-b')!;
-      expect(serviceB.incomingRequests.totalRequests).toBe(100);
-      expect(serviceB.incomingRequestsByClient.has('service-a')).toBe(true);
-
-      // Service C (receives from B)
-      const serviceC = result.get('service-c')!;
-      expect(serviceC.incomingRequests.totalRequests).toBe(100);
-      expect(serviceC.incomingRequestsByClient.has('service-b')).toBe(true);
+      // web calls api 100x -> web has 100 outgoing, 0 incoming.
+      expect(result.get('web')!.outgoingRequests).toBe(100);
+      expect(result.get('web')!.incomingRequests.totalRequests).toBe(0);
+      // api receives but makes no calls of its own here.
+      expect(result.get('api')!.outgoingRequests).toBe(0);
     });
 
-    it('should handle multiple clients with different error rates', () => {
-      const data: SpanAggregationRow[] = [
-        // Client 1: 10% error rate
+    it('sums outgoing across multiple callees', () => {
+      const result = aggregateServiceMapData([
+        nodeRow('api', 100, 0),
+        edgeRow('api', 'gateway', 100, 0),
+        nodeRow('db', 60, 0),
+        edgeRow('db', 'gateway', 60, 0),
+      ]);
+
+      // gateway calls api (100) and db (60) -> 160 outgoing.
+      expect(result.get('gateway')!.outgoingRequests).toBe(160);
+    });
+
+    it('accumulates both incoming and outgoing for a mid-chain service', () => {
+      // A -> B -> C : B receives 100 and makes 80.
+      const result = aggregateServiceMapData([
+        nodeRow('B', 100, 0),
+        edgeRow('B', 'A', 100, 0),
+        nodeRow('C', 80, 0),
+        edgeRow('C', 'B', 80, 0),
+      ]);
+
+      expect(result.get('B')!.incomingRequests.totalRequests).toBe(100);
+      expect(result.get('B')!.outgoingRequests).toBe(80);
+      expect(result.get('A')!.outgoingRequests).toBe(100);
+      expect(result.get('C')!.outgoingRequests).toBe(0);
+    });
+  });
+
+  describe('latency percentiles', () => {
+    it('passes through percentiles and flags hasLatency', () => {
+      const result = aggregateServiceMapData([
+        nodeRow('api-service', 100, 0, { p50: 5, p95: 20, p99: 50 }),
+      ]);
+
+      const stats = result.get('api-service')!.incomingRequests;
+      expect(stats.p50).toBe(5);
+      expect(stats.p95).toBe(20);
+      expect(stats.p99).toBe(50);
+      expect(stats.hasLatency).toBe(true);
+    });
+
+    it('marks hasLatency false and zeroes percentiles when absent', () => {
+      const stats = aggregateServiceMapData([
+        nodeRow('api-service', 100, 0),
+      ]).get('api-service')!.incomingRequests;
+      expect(stats.hasLatency).toBe(false);
+      expect(stats.p50).toBe(0);
+      expect(stats.p95).toBe(0);
+      expect(stats.p99).toBe(0);
+    });
+
+    it('flags hasLatency from p50 even when p95/p99 are absent', () => {
+      // statsFromRow keys hasLatency off p50; missing p95/p99 default to 0.
+      const result = aggregateServiceMapData([
         {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          clientServiceName: 'client-1',
-          requestCount: 90,
-        },
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Error',
-          clientServiceName: 'client-1',
+          serverServiceName: 'api',
+          isNodeLevel: true,
           requestCount: 10,
+          errorCount: 0,
+          p50: 5,
         },
-        // Client 2: 50% error rate
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          clientServiceName: 'client-2',
-          requestCount: 50,
-        },
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Error',
-          clientServiceName: 'client-2',
-          requestCount: 50,
-        },
-      ];
-
-      const result = aggregateServiceMapData(data);
-      const service = result.get('api-service')!;
-
-      // Overall error rate: 60 errors out of 200 = 30%
-      expect(service.incomingRequests.totalRequests).toBe(200);
-      expect(service.incomingRequests.errorPercentage).toBe(30);
-
-      // Client 1: 10% error rate
-      const client1Stats = service.incomingRequestsByClient.get('client-1')!;
-      expect(client1Stats.errorPercentage).toBe(10);
-
-      // Client 2: 50% error rate
-      const client2Stats = service.incomingRequestsByClient.get('client-2')!;
-      expect(client2Stats.errorPercentage).toBe(50);
+      ]);
+      const stats = result.get('api')!.incomingRequests;
+      expect(stats.hasLatency).toBe(true);
+      expect(stats.p50).toBe(5);
+      expect(stats.p95).toBe(0);
+      expect(stats.p99).toBe(0);
     });
 
-    it('should handle large request counts', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          requestCount: 1_000_000,
-        },
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Error',
-          requestCount: 1_000,
-        },
-      ];
+    it('records per-edge percentiles independently of the node', () => {
+      const result = aggregateServiceMapData([
+        nodeRow('api-service', 100, 0, { p50: 5, p95: 20, p99: 50 }),
+        edgeRow('api-service', 'web', 100, 0, { p50: 8, p95: 30, p99: 60 }),
+      ]);
 
-      const result = aggregateServiceMapData(data);
-      const service = result.get('api-service')!;
-
-      expect(service.incomingRequests.totalRequests).toBe(1_001_000);
-      expect(service.incomingRequests.errorPercentage).toBeCloseTo(0.0999, 4);
-    });
-
-    it('should handle different status code strings', () => {
-      const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          requestCount: 50,
-        },
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Error',
-          requestCount: 10,
-        },
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Unset',
-          requestCount: 40,
-        },
-      ];
-
-      const result = aggregateServiceMapData(data);
-      const service = result.get('api-service')!;
-
-      expect(service.incomingRequests.totalRequests).toBe(100);
-      expect(service.incomingRequests.requestCountByStatus.get('Ok')).toBe(50);
-      expect(service.incomingRequests.requestCountByStatus.get('Error')).toBe(
-        10,
-      );
-      expect(service.incomingRequests.requestCountByStatus.get('Unset')).toBe(
-        40,
-      );
-      expect(service.incomingRequests.errorPercentage).toBe(10);
+      const fromWeb = result
+        .get('api-service')!
+        .incomingRequestsByClient.get('web')!;
+      expect(fromWeb.p95).toBe(30);
+      expect(fromWeb.hasLatency).toBe(true);
     });
   });
 
   describe('data structure integrity', () => {
-    it('should not mutate input data', () => {
+    it('does not mutate the input rows', () => {
       const data: SpanAggregationRow[] = [
-        {
-          serverServiceName: 'api-service',
-          serverStatusCode: 'Ok',
-          requestCount: 100,
-        },
+        nodeRow('api-service', 100, 10, { p50: 1, p95: 2, p99: 3 }),
+        edgeRow('api-service', 'web', 100, 10),
       ];
-
-      const originalData = JSON.parse(JSON.stringify(data));
+      const original = JSON.parse(JSON.stringify(data));
       aggregateServiceMapData(data);
-
-      expect(data).toEqual(originalData);
+      expect(data).toEqual(original);
     });
   });
 });

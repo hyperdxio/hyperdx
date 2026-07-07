@@ -8,10 +8,19 @@ import {
   convertToNumberChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
+  findNearestSeriesKey,
   formatResponseForPieChart,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
-import { COLORS, getChartColorError } from '@/utils';
+import { COLORS } from '@/utils';
+
+// Anchor info/error to concrete hexes rather than `getChartColorInfo()` /
+// `getChartColorError()` so a regression that breaks the helpers can't
+// move expected and actual in lockstep. Keep in sync with
+// `_chart-categorical-tokens.scss` (`chart-semantic-tokens` mixin) and
+// `SEMANTIC_CHART_PALETTE` in `packages/app/src/utils.ts`.
+const SEMANTIC_INFO_HEX = '#437eef';
+const SEMANTIC_ERROR_HEX = '#ff725c';
 
 describe('ChartUtils', () => {
   describe('formatResponseForTimeChart', () => {
@@ -306,7 +315,7 @@ describe('ChartUtils', () => {
 
       expect(actual.lineData).toEqual([
         {
-          color: COLORS[0],
+          color: SEMANTIC_INFO_HEX,
           dataKey: 'info',
           currentPeriodKey: 'info',
           previousPeriodKey: 'info (previous)',
@@ -315,7 +324,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: COLORS[0],
+          color: SEMANTIC_INFO_HEX,
           dataKey: 'debug',
           currentPeriodKey: 'debug',
           previousPeriodKey: 'debug (previous)',
@@ -324,7 +333,7 @@ describe('ChartUtils', () => {
           isDashed: false,
         },
         {
-          color: getChartColorError(),
+          color: SEMANTIC_ERROR_HEX,
           dataKey: 'error',
           currentPeriodKey: 'error',
           previousPeriodKey: 'error (previous)',
@@ -798,6 +807,37 @@ describe('ChartUtils', () => {
 
       expect(granularityFromFunction).toBe('5 minute');
     });
+
+    // seriesLimit lives on the builder member of the ChartConfigWithDateRange
+    // union, so narrow the result before reading it. The per-tile value is
+    // read from the config itself (no team override anymore).
+    const seriesLimitOf = (seriesLimit?: number | null) =>
+      (
+        convertToTimeChartConfig({
+          granularity: '5 minute',
+          dateRange: [
+            new Date('2025-11-26T00:00:00Z'),
+            new Date('2025-11-27T00:00:00Z'),
+          ],
+          ...(seriesLimit !== undefined ? { seriesLimit } : {}),
+        } as BuilderChartConfigWithDateRange) as BuilderChartConfigWithDateRange
+      ).seriesLimit;
+
+    it('omits seriesLimit (capping disabled) when the tile has no limit', () => {
+      expect(seriesLimitOf()).toBeUndefined();
+    });
+
+    it('normalizes a cleared (null) seriesLimit to undefined (disabled)', () => {
+      expect(seriesLimitOf(null)).toBeUndefined();
+    });
+
+    it('uses the tile seriesLimit when provided', () => {
+      expect(seriesLimitOf(5)).toBe(5);
+    });
+
+    it('passes a large tile seriesLimit through unbounded', () => {
+      expect(seriesLimitOf(100000)).toBe(100000);
+    });
   });
 
   describe('convertToNumberChartConfig', () => {
@@ -1020,6 +1060,62 @@ describe('ChartUtils', () => {
       expect(result).toEqual([
         { label: 'svc', value: 5, color: 'color-0-svc' },
       ]);
+    });
+  });
+
+  describe('findNearestSeriesKey', () => {
+    it('returns the series whose captured Y is nearest the pointer', () => {
+      const seriesY = new Map([
+        ['a', 100],
+        ['b', 50],
+        ['c', 10],
+      ]);
+      expect(findNearestSeriesKey(seriesY, ['a', 'b', 'c'], 48, 30)).toBe('b');
+    });
+
+    it('returns undefined when no series is within maxDistancePx', () => {
+      const seriesY = new Map([
+        ['a', 100],
+        ['b', 50],
+      ]);
+      expect(
+        findNearestSeriesKey(seriesY, ['a', 'b'], 200, 30),
+      ).toBeUndefined();
+    });
+
+    it('includes a series exactly at maxDistancePx', () => {
+      const seriesY = new Map([['a', 100]]);
+      expect(findNearestSeriesKey(seriesY, ['a'], 70, 30)).toBe('a');
+    });
+
+    it('returns undefined when pointerY is undefined', () => {
+      const seriesY = new Map([['a', 100]]);
+      expect(
+        findNearestSeriesKey(seriesY, ['a'], undefined, 30),
+      ).toBeUndefined();
+    });
+
+    it('returns undefined when the captured map is undefined', () => {
+      expect(findNearestSeriesKey(undefined, ['a'], 100, 30)).toBeUndefined();
+    });
+
+    it('returns undefined when there are no candidate keys', () => {
+      const seriesY = new Map([['a', 100]]);
+      expect(findNearestSeriesKey(seriesY, [], 100, 30)).toBeUndefined();
+    });
+
+    it('skips candidates absent from the captured map', () => {
+      const seriesY = new Map([['b', 105]]);
+      expect(findNearestSeriesKey(seriesY, ['a', 'b'], 100, 30)).toBe('b');
+    });
+
+    it('resolves ties to the first candidate', () => {
+      const seriesY = new Map([
+        ['a', 90],
+        ['b', 110],
+      ]);
+      // pointer 100 is 10px from both 'a' (90) and 'b' (110)
+      expect(findNearestSeriesKey(seriesY, ['a', 'b'], 100, 30)).toBe('a');
     });
   });
 });

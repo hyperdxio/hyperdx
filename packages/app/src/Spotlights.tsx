@@ -15,8 +15,8 @@ import {
 } from '@tabler/icons-react';
 
 import { useBrandDisplayName, useLogomark } from './theme/ThemeProvider';
-import api from './api';
 import { IS_K8S_DASHBOARD_ENABLED } from './config';
+import { useDashboards } from './dashboard';
 import { useSavedSearches } from './savedSearch';
 
 import '@mantine/spotlight/styles.css';
@@ -27,7 +27,7 @@ export const useSpotlightActions = () => {
   const logomark = useLogomark({ size: 16 });
 
   const { data: logViewsData } = useSavedSearches();
-  const { data: dashboardsData } = api.useDashboards();
+  const { data: dashboardsData } = useDashboards();
 
   const actions = React.useMemo<SpotlightActionData[]>(() => {
     const logViews = logViewsData ?? [];

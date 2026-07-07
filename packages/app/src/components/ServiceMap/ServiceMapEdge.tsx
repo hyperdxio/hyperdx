@@ -8,10 +8,16 @@ import {
 } from '@xyflow/react';
 
 import ServiceMapTooltip from './ServiceMapTooltip';
+import { deriveDisplayMetrics } from './utils';
 
 export type ServiceMapEdgeData = {
   totalRequests: number;
   errorPercentage: number;
+  // Latency percentiles (raw duration units) for this client→server call.
+  p50: number;
+  p95: number;
+  p99: number;
+  hasLatency: boolean;
   dateRange: [Date, Date];
   source: TTraceSource;
   serviceName: string;
@@ -30,11 +36,22 @@ export default function ServiceMapEdge(
   const {
     totalRequests,
     errorPercentage,
+    p50,
+    p95,
+    p99,
+    hasLatency,
     dateRange,
     serviceName,
     source,
     isSingleTrace,
   } = props.data;
+
+  const { latencyMs, requestsPerSecond } = deriveDisplayMetrics(
+    { totalRequests, p50, p95, p99, hasLatency },
+    source,
+    dateRange,
+    isSingleTrace,
+  );
 
   return (
     <>
@@ -48,6 +65,8 @@ export default function ServiceMapEdge(
         <ServiceMapTooltip
           totalRequests={totalRequests}
           errorPercentage={errorPercentage}
+          latencyMs={latencyMs}
+          requestsPerSecond={requestsPerSecond}
           source={source}
           dateRange={dateRange}
           serviceName={serviceName}

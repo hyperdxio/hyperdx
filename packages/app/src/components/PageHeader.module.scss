@@ -14,7 +14,51 @@
   padding: 0 var(--mantine-spacing-sm);
   position: sticky;
   top: 0;
-  z-index: 100;
+
+  /* Top-level drawers in this app are rendered at z-index 10
+     (`contextZIndex + 10` from `ZIndexContext`, see e.g. `DBRowSidePanel`).
+     Sit 8 below that so the drawer overlay always covers the page chrome,
+     while the header still floats above normal scrolling content. */
+  z-index: 2;
+}
+
+/* Applied automatically when a `stickyRow` is provided: the chrome scrolls
+   away with the page and the `stickyRow` below becomes the only pinned bar.
+   The chrome's bottom border and bottom padding are also dropped — the
+   sticky row owns both the separator and the breathing room between page
+   chrome and scrolling content, so doubling up creates a visible gap. */
+.notSticky {
+  position: static;
+  top: auto;
+  z-index: auto;
+  border-bottom: none;
+  padding-block-end: 0;
+}
+
+/* Sibling of `.header`. Pinned to the top of the scroll container; styled
+   to match the header (body background + bottom border) so chart/list
+   content scrolls cleanly underneath. Vertical padding adapts to the
+   "stuck" state via `.stickyRowAttached` — see below. */
+.stickyRow {
+  background-color: var(--color-bg-body);
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--mantine-spacing-sm);
+  position: sticky;
+  top: 0;
+
+  /* Match `.header` — sit 8 below the top-level drawer z-index (10) so
+     drawer overlays always cover this row. */
+  z-index: 2;
+}
+
+/* Applied when the sticky row sits directly under chrome AND is not
+   currently stuck. In that state we drop the row's `padding-top` so the
+   chrome and sticky row read as one continuous block (the chrome's own
+   bottom edge already provides spacing). As soon as the row sticks at
+   `top: 0`, this class is removed and the row's normal `sm` top padding
+   takes over, giving the toolbar breathing room from the viewport edge. */
+.stickyRowAttached {
+  padding-top: 0;
 }
 
 /* Breadcrumbs row + toolbar row inside one sticky header */

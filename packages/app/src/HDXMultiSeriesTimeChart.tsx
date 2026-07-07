@@ -1,4 +1,12 @@
-import { memo, useCallback, useId, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import cx from 'classnames';
 import { add, isSameSecond, sub } from 'date-fns';
 import { withErrorBoundary } from 'react-error-boundary';
@@ -20,7 +28,8 @@ import {
 import { AxisDomain } from 'recharts/types/util/types';
 import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import { Popover } from '@mantine/core';
+import { Button, Popover, Tooltip as MantineTooltip } from '@mantine/core';
+import { IconZoomReset } from '@tabler/icons-react';
 
 import type { NumberFormat } from '@/types';
 import { COLORS, formatNumber, truncateMiddle } from '@/utils';
@@ -29,12 +38,22 @@ import {
   ChartTooltipContainer,
   ChartTooltipItem,
 } from './components/charts/ChartTooltip';
-import { LineData, toStartOfInterval } from './ChartUtils';
+import {
+  findNearestSeriesKey,
+  LineData,
+  MAX_TIME_CHART_SERIES,
+  toStartOfInterval,
+} from './ChartUtils';
 import { FormatTime, useFormatTime } from './useFormatTime';
 
-import styles from '../styles/HDXLineChart.module.scss';
+import styles from '@styles/HDXLineChart.module.scss';
 
 const MAX_LEGEND_ITEMS = 4;
+
+// Vertical pixel distance within which a series' line counts as "near" the
+// cursor for tooltip highlighting. Beyond this, no row is emphasized so the
+// tooltip is not misleading when the pointer is in empty space.
+const NEAREST_SERIES_MAX_DISTANCE_PX = 30;
 
 const Y_AXIS_WIDTH = 40;
 const SINGLE_POINT_BAR_RIGHT_PADDING = 10;
@@ -56,10 +75,14 @@ export const TooltipItem = memo(
     p,
     previous,
     numberFormat,
+    highlighted,
+    dimmed,
   }: {
     p: TooltipPayload;
     previous?: TooltipPayload;
     numberFormat?: NumberFormat;
+    highlighted?: boolean;
+    dimmed?: boolean;
   }) => {
     return (
       <ChartTooltipItem
@@ -71,6 +94,8 @@ export const TooltipItem = memo(
         strokeDasharray={p.strokeDasharray}
         opacity={p.opacity}
         previous={previous?.value}
+        highlighted={highlighted}
+        dimmed={dimmed}
       />
     );
   },
@@ -81,6 +106,8 @@ type HDXLineChartTooltipProps = {
   previousPeriodOffsetSeconds?: number;
   numberFormat?: NumberFormat;
   numberFormatByKey: Map<string, NumberFormat>;
+  /** Per-series active-point pixel Y, captured by the Area active dots. */
+  activePointYByKeyRef: React.MutableRefObject<Map<string, number>>;
 } & Record<string, any>;
 
 const HDXLineChartTooltip = withErrorBoundary(
@@ -93,6 +120,7 @@ const HDXLineChartTooltip = withErrorBoundary(
       numberFormatByKey,
       lineDataMap,
       previousPeriodOffsetSeconds,
+      activePointYByKeyRef,
     } = props;
     const typedPayload = payload as TooltipPayload[];
 
@@ -116,6 +144,26 @@ const HDXLineChartTooltip = withErrorBoundary(
           )}
         </>
       );
+
+      // `coordinate.y` is the cursor's pixel Y; compare it to each series'
+      // active-dot pixel Y to bold the nearest line. The active dots wrote
+      // their positions earlier in this same render (Recharts renders
+      // graphical items before the tooltip), so the capture is current.
+      const pointerY: number | undefined = props.coordinate?.y;
+      // eslint-disable-next-line react-hooks/refs
+      const activePointYByKey = activePointYByKeyRef?.current ?? undefined;
+      // Only disambiguate when there is more than one series; a single-series
+      // tooltip has nothing to map back to a line.
+      const nearestSeriesKey =
+        typedPayload.length > 1
+          ? findNearestSeriesKey(
+              activePointYByKey,
+              typedPayload.map(p => p.dataKey),
+              pointerY,
+              NEAREST_SERIES_MAX_DISTANCE_PX,
+            )
+          : undefined;
+
       return (
         <ChartTooltipContainer header={header}>
           {payload
@@ -138,6 +186,10 @@ const HDXLineChartTooltip = withErrorBoundary(
                   p={p}
                   numberFormat={numberFormatForKey}
                   previous={previousPayload}
+                  highlighted={p.dataKey === nearestSeriesKey}
+                  dimmed={
+                    nearestSeriesKey != null && p.dataKey !== nearestSeriesKey
+                  }
                 />
               );
             })}
@@ -317,7 +369,7 @@ const LegendRenderer = memo<{
   );
 });
 
-export const HARD_LINES_LIMIT = 60;
+export const HARD_LINES_LIMIT = MAX_TIME_CHART_SERIES;
 
 const StackedBarWithOverlap = (props: BarProps) => {
   const { x, y, width, height, fill } = props;
@@ -332,6 +384,84 @@ const StackedBarWithOverlap = (props: BarProps) => {
     />
   );
 };
+
+type CaptureActiveDotProps = {
+  /** Shared ref the tooltip reads to find the series nearest the cursor. */
+  captureRef: React.MutableRefObject<Map<string, number>>;
+  cx?: number;
+  cy?: number;
+  dataKey?: string | number;
+  r?: number;
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+};
+
+/**
+ * Active dot for an Area series. Records the active point's pixel Y (`cy`)
+ * into `captureRef`, keyed by dataKey, then draws the same dot Recharts
+ * renders by default. Recharts clones this element with the active-point
+ * props (cx, cy, dataKey, r, fill, stroke, strokeWidth) during the render
+ * that precedes the tooltip, so the ref is current when the tooltip reads
+ * it to find the series nearest the cursor.
+ */
+function CaptureActiveDot({
+  captureRef,
+  cx,
+  cy,
+  dataKey,
+  r,
+  fill,
+  stroke,
+  strokeWidth,
+}: CaptureActiveDotProps) {
+  if (dataKey != null && typeof cy === 'number' && Number.isFinite(cy)) {
+    // Written synchronously during render so the tooltip, which Recharts
+    // renders after the graphical items in the same commit, reads the
+    // current frame's positions rather than the previous frame's.
+    // eslint-disable-next-line react-hooks/refs
+    captureRef.current.set(String(dataKey), cy);
+  }
+  if (typeof cx !== 'number' || typeof cy !== 'number') {
+    return null;
+  }
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={r}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+    />
+  );
+}
+
+/**
+ * Compute the unique set of hexes referenced by `<linearGradient>` defs
+ * inside MemoChart. Exported so a unit test can pin the dedup-and-union
+ * behavior without standing up a full recharts render (which jsdom
+ * struggles with at the container-sized SVG layer).
+ *
+ * Includes every categorical hex up front so any positional `<Area>`
+ * fill resolves, then unions in semantic hexes returned by the
+ * `getChartColor{Info,Success,Warning,Error}` helpers; those land in
+ * `lineData[].color` and would otherwise be missing a matching def.
+ * `undefined` colors are filtered so `c.replace('#', '')` can't throw
+ * on a future caller that leaves a series color unset.
+ */
+export function collectMemoChartGradientHexes(
+  lineData: { color?: string }[],
+): string[] {
+  return Array.from(
+    new Set([
+      ...COLORS,
+      ...lineData
+        .map(ld => ld.color)
+        .filter((c): c is string => typeof c === 'string'),
+    ]),
+  );
+}
 
 export const MemoChart = memo(function MemoChart({
   graphResults,
@@ -354,6 +484,7 @@ export const MemoChart = memo(function MemoChart({
   onToggleSeries,
   granularity,
   dateRangeEndInclusive = true,
+  fitYAxisToData = false,
 }: {
   graphResults: any[];
   setIsClickActive: (v: any) => void;
@@ -375,11 +506,31 @@ export const MemoChart = memo(function MemoChart({
   onToggleSeries?: (seriesName: string, isShiftKey?: boolean) => void;
   granularity: string;
   dateRangeEndInclusive?: boolean;
+  /**
+   * When true, the y-axis lower bound is the minimum of the displayed data
+   * (with padding) instead of zero.
+   **/
+  fitYAxisToData?: boolean;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
 
   const [isHovered, setIsHovered] = useState(false);
+
+  // Filled by each Area's active dot with the series' active-point pixel Y,
+  // keyed by dataKey, so the tooltip can bold the series nearest the cursor.
+  // Read during the same render that draws the active dots.
+  const activePointYByKeyRef = useRef<Map<string, number>>(new Map());
+
+  // Key of the series whose line is nearest the cursor, lifted into state so
+  // the chart can emphasize that line (thicker stroke) and fade the rest.
+  // Set from the chart's mouse-move using the pixel Y the active dots captured
+  // on the prior frame; the one-frame lag is imperceptible and settles as soon
+  // as the pointer stops. The tooltip derives the same nearest row itself,
+  // same-frame, for its own bolding and dimming.
+  const [nearestSeriesKey, setNearestSeriesKey] = useState<
+    string | undefined
+  >();
 
   const ChartComponent = useMemo(
     () => (displayType === DisplayType.StackedBar ? BarChart : AreaChart), // LineChart;
@@ -398,6 +549,15 @@ export const MemoChart = memo(function MemoChart({
         // If no selection, show all series
         return !hasSelection || selectedSeriesNames.has(seriesName);
       });
+
+    // When a series is nearest the cursor (only meaningful with more than one
+    // line shown), thicken its line and fade the others so the eye lands on
+    // the same series the tooltip bolds. Mirrors the legend's selected style
+    // (thicker stroke) with a gentle fade that keeps the rest readable.
+    const hasNearest =
+      limitedGroupKeys.length > 1 &&
+      nearestSeriesKey != null &&
+      limitedGroupKeys.includes(nearestSeriesKey);
 
     return limitedGroupKeys.map(key => {
       const lineDataIndex = lineData.findIndex(ld => ld.dataKey === key);
@@ -424,6 +584,11 @@ export const MemoChart = memo(function MemoChart({
           type="monotone"
           stroke={color}
           fillOpacity={1}
+          strokeWidth={hasNearest && key === nearestSeriesKey ? 2.5 : undefined}
+          strokeOpacity={
+            hasNearest && key !== nearestSeriesKey ? 0.5 : undefined
+          }
+          activeDot={<CaptureActiveDot captureRef={activePointYByKeyRef} />}
           {...(isHovered
             ? { fill: 'none', strokeDasharray }
             : {
@@ -436,25 +601,41 @@ export const MemoChart = memo(function MemoChart({
         />
       );
     });
-  }, [lineData, displayType, id, isHovered, selectedSeriesNames]);
+  }, [
+    lineData,
+    displayType,
+    id,
+    isHovered,
+    selectedSeriesNames,
+    nearestSeriesKey,
+  ]);
 
   const yAxisDomain: AxisDomain = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
 
-    if (!hasSelection) {
-      // No selection, let Recharts auto-calculate based on all data
+    // Fitting the y-axis lower bound to the data only applies to line charts.
+    // Bar charts are always anchored at zero so the bar lengths stay
+    // proportional to their values.
+    const shouldFitYAxis =
+      fitYAxisToData && displayType !== DisplayType.StackedBar;
+
+    // The data min/max is only needed to either zoom into a selection or to
+    // fit the lower bound to the data. When neither applies, let Recharts
+    // auto-calculate the upper bound while pinning the lower bound to zero.
+    if (!hasSelection && !shouldFitYAxis) {
       return [0, 'auto'];
     }
 
-    // When series are selected, calculate domain based only on visible series
+    // Calculate domain based on visible series (all series when there's no
+    // explicit selection).
     let minValue = Infinity;
     let maxValue = -Infinity;
 
     graphResults.forEach(dataPoint => {
       lineData.forEach(ld => {
         const seriesName = ld.displayName || ld.dataKey;
-        // Only consider selected series
-        if (selectedSeriesNames.has(seriesName)) {
+        // Only consider visible series
+        if (!hasSelection || selectedSeriesNames.has(seriesName)) {
           const value = dataPoint[ld.dataKey];
           if (typeof value === 'number' && !isNaN(value)) {
             minValue = Math.min(minValue, value);
@@ -466,15 +647,27 @@ export const MemoChart = memo(function MemoChart({
 
     // If we found valid values, return them with some padding
     if (minValue !== Infinity && maxValue !== -Infinity) {
-      const padding = (maxValue - minValue) * 0.1; // 10% padding
-      return [
-        Math.max(0, minValue - padding), // Don't go below 0
-        maxValue + padding,
-      ];
+      const padding = (maxValue - minValue) * 0.05; // 5% padding
+      // When fitting to data, allow the lower bound to follow the data
+      // minimum; otherwise keep it pinned at zero. The 5% padding must not
+      // drag the axis below zero unless the data itself is negative, so
+      // clamp at zero whenever the minimum is non-negative.
+      const lowerBound =
+        shouldFitYAxis && minValue < 0
+          ? minValue - padding
+          : Math.max(0, minValue - padding);
+      const upperBound = maxValue + padding;
+      return [lowerBound, upperBound];
     }
 
     return ['auto', 'auto'];
-  }, [graphResults, lineData, selectedSeriesNames]);
+  }, [
+    graphResults,
+    lineData,
+    selectedSeriesNames,
+    fitYAxisToData,
+    displayType,
+  ]);
 
   const sizeRef = useRef<[number, number]>([0, 0]);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -529,6 +722,46 @@ export const MemoChart = memo(function MemoChart({
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
   const mouseDownPosRef = useRef<number | null>(null);
 
+  // Tracks the time range that was displayed before the user brushed to zoom
+  // in, so a "Reset zoom" control can restore it (mirrors Highcharts). It holds
+  // the earliest pre-zoom range across consecutive zoom-ins so resetting jumps
+  // all the way back to where zooming started.
+  const [zoomOrigin, setZoomOrigin] = useState<[Date, Date] | null>(null);
+  // Set right before we trigger our own brush-zoom so the dateRange effect can
+  // tell an internal zoom apart from an external time-range change.
+  const justZoomedRef = useRef(false);
+  const prevDateRangeRef = useRef<[number, number] | null>(null);
+
+  // Clear the reset-zoom affordance whenever the time range changes for a
+  // reason other than our own brush-zoom (e.g. the time picker or live tail),
+  // so the button never restores a stale range. Compared by value because
+  // `dateRange` can be a fresh array reference even when unchanged.
+  useEffect(() => {
+    const from = dateRange[0].getTime();
+    const to = dateRange[1].getTime();
+    const prev = prevDateRangeRef.current;
+    const changed = prev == null || prev[0] !== from || prev[1] !== to;
+    prevDateRangeRef.current = [from, to];
+
+    if (!changed) {
+      return;
+    }
+    if (justZoomedRef.current) {
+      justZoomedRef.current = false;
+      return;
+    }
+    setZoomOrigin(null);
+  }, [dateRange]);
+
+  const handleResetZoom = useCallback(() => {
+    if (zoomOrigin == null) {
+      return;
+    }
+    const [start, end] = zoomOrigin;
+    setZoomOrigin(null);
+    onTimeRangeSelect?.(new Date(start.getTime()), new Date(end.getTime()));
+  }, [zoomOrigin, onTimeRangeSelect]);
+
   const lineDataMap = useMemo(() => {
     const map: { [key: string]: LineData } = {};
     lineData.forEach(ld => {
@@ -560,210 +793,272 @@ export const MemoChart = memo(function MemoChart({
   }, [dateRange, granularity, dateRangeEndInclusive, displayType]);
 
   return (
-    <ResponsiveContainer
-      width="100%"
-      height="100%"
-      minWidth={0}
-      onResize={(width, height) => {
-        const w = width ?? 1;
-        sizeRef.current = [w, height ?? 1];
-        setContainerWidth(prev => (prev === w ? prev : w));
-      }}
-      className={isLoading ? 'effect-pulse' : ''}
-    >
-      <ChartComponent
-        width={500}
-        height={300}
-        data={graphResults}
-        syncId="hdx"
-        syncMethod="value"
-        barSize={singlePointBarSize}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => {
-          setIsHovered(false);
-
-          setHighlightStart(undefined);
-          setHighlightEnd(undefined);
-          mouseDownPosRef.current = null;
-        }}
-        onMouseDown={e => {
-          if (e != null && e.chartX != null && e.chartY != null) {
-            setHighlightStart(e.activeLabel);
-            mouseDownPosRef.current = e.chartX;
-          }
-        }}
-        onMouseMove={e => {
-          setIsHovered(true);
-
-          if (highlightStart != null) {
-            setHighlightEnd(e.activeLabel);
-            setIsClickActive(undefined); // Clear out any click state as we're highlighting
-          }
-        }}
-        onMouseUp={e => {
-          const MIN_DRAG_DISTANCE = 20; // Minimum horizontal drag distance in pixels
-          let dragDistance = 0;
-
-          if (mouseDownPosRef.current != null && e?.chartX != null) {
-            dragDistance = Math.abs(e.chartX - mouseDownPosRef.current);
-          }
-
-          if (e?.activeLabel != null && highlightStart === e.activeLabel) {
-            // If it's just a click, don't zoom
-            setHighlightStart(undefined);
-            setHighlightEnd(undefined);
-            mouseDownPosRef.current = null;
-          } else if (
-            highlightStart != null &&
-            highlightEnd != null &&
-            dragDistance >= MIN_DRAG_DISTANCE
-          ) {
-            try {
-              onTimeRangeSelect?.(
-                new Date(
-                  Number.parseInt(
-                    highlightStart <= highlightEnd
-                      ? highlightStart
-                      : highlightEnd,
-                  ) * 1000,
-                ),
-                new Date(
-                  Number.parseInt(
-                    highlightEnd >= highlightStart
-                      ? highlightEnd
-                      : highlightStart,
-                  ) * 1000,
-                ),
-              );
-            } catch (e) {
-              console.error('failed to highlight range', e);
-            }
-            setHighlightStart(undefined);
-            setHighlightEnd(undefined);
-            mouseDownPosRef.current = null;
-          } else {
-            // Drag was too short, clear the highlight
-            setHighlightStart(undefined);
-            setHighlightEnd(undefined);
-            mouseDownPosRef.current = null;
-          }
-        }}
-        onClick={(state, e) => {
-          if (
-            state != null &&
-            state.chartX != null &&
-            state.chartY != null &&
-            state.activeLabel != null &&
-            // If we didn't drag and highlight yet
-            highlightStart == null
-          ) {
-            setIsClickActive({
-              x: state.chartX,
-              y: state.chartY,
-              activeLabel: state.activeLabel,
-              xPerc: state.chartX / sizeRef.current[0],
-              yPerc: state.chartY / sizeRef.current[1],
-              activePayload: state.activePayload,
-            });
-          } else {
-            // We clicked on the chart but outside of a line
-            setIsClickActive(undefined);
-          }
-
-          // TODO: Properly detect clicks outside of the fake tooltip
-          e.stopPropagation();
-        }}
-      >
-        <defs>
-          {COLORS.map(c => {
-            return (
-              <linearGradient
-                key={c}
-                id={`time-chart-lin-grad-${id}-${c.replace('#', '').toLowerCase()}`}
-                x1="0"
-                y1="0"
-                x2="0"
-                y2="1"
-              >
-                <stop offset="0%" stopColor={c} stopOpacity={0.15} />
-                <stop offset="10%" stopColor={c} stopOpacity={0.003} />
-              </linearGradient>
-            );
-          })}
-        </defs>
-        {isHovered && (
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-        )}
-        <XAxis
-          dataKey={timestampKey ?? 'ts_bucket'}
-          domain={xAxisDomain}
-          interval="preserveStartEnd"
-          scale="time"
-          type="number"
-          tickFormatter={xTickFormatter}
-          minTickGap={100}
-          tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
-        />
-        <YAxis
-          width={Y_AXIS_WIDTH}
-          minTickGap={25}
-          tickFormatter={tickFormatter}
-          tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
-          domain={yAxisDomain}
-        />
-        {lines}
-        {isClickActive == null && (
-          <Tooltip
-            content={
-              <HDXLineChartTooltip
-                numberFormat={fallbackNumberFormat}
-                numberFormatByKey={tooltipNumberFormatsByKey}
-                lineDataMap={lineDataMap}
-                previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
-              />
-            }
-            wrapperStyle={{
-              zIndex: 1,
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {onTimeRangeSelect != null && zoomOrigin != null ? (
+        <MantineTooltip label="Reset to the range before zooming in" withArrow>
+          <Button
+            variant="secondary"
+            size="compact-xs"
+            leftSection={<IconZoomReset size={14} />}
+            onClick={handleResetZoom}
+            style={{
+              position: 'absolute',
+              top: 4,
+              right: 8,
+              zIndex: 2,
             }}
-          />
-        )}
-        {referenceLines}
-        {highlightStart && highlightEnd ? (
-          <ReferenceArea
-            // yAxisId="1"
-            x1={highlightStart}
-            x2={highlightEnd}
-            strokeOpacity={0.3}
-          />
-        ) : null}
-        {showLegend && (
-          <Legend
-            iconSize={10}
-            verticalAlign="bottom"
-            content={
-              <LegendRenderer
-                lineDataMap={lineDataMap}
-                allLineData={lineData}
-                selectedSeries={selectedSeriesNames || new Set()}
-                onToggleSeries={onToggleSeries}
-              />
+          >
+            Reset zoom
+          </Button>
+        </MantineTooltip>
+      ) : null}
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        minWidth={0}
+        onResize={(width, height) => {
+          const w = width ?? 1;
+          sizeRef.current = [w, height ?? 1];
+          setContainerWidth(prev => (prev === w ? prev : w));
+        }}
+        className={isLoading ? 'effect-pulse' : ''}
+      >
+        <ChartComponent
+          width={500}
+          height={300}
+          data={graphResults}
+          syncId="hdx"
+          syncMethod="value"
+          barSize={singlePointBarSize}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => {
+            setIsHovered(false);
+            setNearestSeriesKey(undefined);
+
+            setHighlightStart(undefined);
+            setHighlightEnd(undefined);
+            mouseDownPosRef.current = null;
+          }}
+          onMouseDown={e => {
+            if (e != null && e.chartX != null && e.chartY != null) {
+              setHighlightStart(e.activeLabel);
+              mouseDownPosRef.current = e.chartX;
             }
-            offset={-100}
+          }}
+          onMouseMove={e => {
+            setIsHovered(true);
+
+            // Track which series' line is nearest the cursor so the lines can
+            // emphasize it. The active dots captured their pixel Y on the prior
+            // frame; comparing the pointer's chartY picks the nearest line. Skip
+            // while a click-frozen tooltip is shown, matching the tooltip, and
+            // only set state when the key changes to keep re-renders rare.
+            const activePointYByKey = activePointYByKeyRef.current;
+            const nextNearest =
+              isClickActive == null &&
+              activePointYByKey.size > 1 &&
+              e?.chartY != null
+                ? findNearestSeriesKey(
+                    activePointYByKey,
+                    Array.from(activePointYByKey.keys()),
+                    e.chartY,
+                    NEAREST_SERIES_MAX_DISTANCE_PX,
+                  )
+                : undefined;
+            setNearestSeriesKey(prev =>
+              prev === nextNearest ? prev : nextNearest,
+            );
+
+            if (highlightStart != null) {
+              setHighlightEnd(e.activeLabel);
+              setIsClickActive(undefined); // Clear out any click state as we're highlighting
+            }
+          }}
+          onMouseUp={e => {
+            const MIN_DRAG_DISTANCE = 20; // Minimum horizontal drag distance in pixels
+            let dragDistance = 0;
+
+            if (mouseDownPosRef.current != null && e?.chartX != null) {
+              dragDistance = Math.abs(e.chartX - mouseDownPosRef.current);
+            }
+
+            if (e?.activeLabel != null && highlightStart === e.activeLabel) {
+              // If it's just a click, don't zoom
+              setHighlightStart(undefined);
+              setHighlightEnd(undefined);
+              mouseDownPosRef.current = null;
+            } else if (
+              highlightStart != null &&
+              highlightEnd != null &&
+              dragDistance >= MIN_DRAG_DISTANCE
+            ) {
+              try {
+                // Remember the range we're zooming away from so "Reset zoom" can
+                // restore it. Keep the earliest origin across consecutive zooms.
+                const originStart = dateRange[0];
+                const originEnd = dateRange[1];
+                setZoomOrigin(prev => prev ?? [originStart, originEnd]);
+                justZoomedRef.current = true;
+                onTimeRangeSelect?.(
+                  new Date(
+                    Number.parseInt(
+                      highlightStart <= highlightEnd
+                        ? highlightStart
+                        : highlightEnd,
+                    ) * 1000,
+                  ),
+                  new Date(
+                    Number.parseInt(
+                      highlightEnd >= highlightStart
+                        ? highlightEnd
+                        : highlightStart,
+                    ) * 1000,
+                  ),
+                );
+              } catch (e) {
+                console.error('failed to highlight range', e);
+                justZoomedRef.current = false;
+                setZoomOrigin(null);
+              }
+              setHighlightStart(undefined);
+              setHighlightEnd(undefined);
+              mouseDownPosRef.current = null;
+            } else {
+              // Drag was too short, clear the highlight
+              setHighlightStart(undefined);
+              setHighlightEnd(undefined);
+              mouseDownPosRef.current = null;
+            }
+          }}
+          onClick={(state, e) => {
+            if (
+              state != null &&
+              state.chartX != null &&
+              state.chartY != null &&
+              state.activeLabel != null &&
+              // If we didn't drag and highlight yet
+              highlightStart == null
+            ) {
+              setIsClickActive({
+                x: state.chartX,
+                y: state.chartY,
+                activeLabel: state.activeLabel,
+                xPerc: state.chartX / sizeRef.current[0],
+                yPerc: state.chartY / sizeRef.current[1],
+                activePayload: state.activePayload,
+              });
+              // The click-frozen tooltip hides the live tooltip, so drop any
+              // line emphasis to match.
+              setNearestSeriesKey(undefined);
+            } else {
+              // We clicked on the chart but outside of a line
+              setIsClickActive(undefined);
+            }
+
+            // TODO: Properly detect clicks outside of the fake tooltip
+            e.stopPropagation();
+          }}
+        >
+          <defs>
+            {/* Gradient defs cover every hex that any <Area> fill may reference.
+              `COLORS` (the unified categorical palette) is included up-front
+              as a baseline; semantic colors returned by the
+              `getChartColor{Info,Success,Warning,Error}` helpers can also
+              appear in `lineData[].color` (e.g. info-level log series
+              resolve to `--color-chart-info`, chart blue `#437eef`, on both
+              brands, which matches categorical slot 0). Union them here so the
+              referenced `url(#time-chart-lin-grad-…)` always exists. */}
+            {collectMemoChartGradientHexes(lineData).map(c => {
+              return (
+                <linearGradient
+                  key={c}
+                  id={`time-chart-lin-grad-${id}-${c.replace('#', '').toLowerCase()}`}
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  <stop offset="0%" stopColor={c} stopOpacity={0.15} />
+                  <stop offset="10%" stopColor={c} stopOpacity={0.003} />
+                </linearGradient>
+              );
+            })}
+          </defs>
+          {isHovered && (
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+          )}
+          <XAxis
+            dataKey={timestampKey ?? 'ts_bucket'}
+            domain={xAxisDomain}
+            interval="preserveStartEnd"
+            scale="time"
+            type="number"
+            tickFormatter={xTickFormatter}
+            minTickGap={100}
+            tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
           />
-        )}
-        {/** Needs to be at the bottom to prevent re-rendering */}
-        {isClickActive != null ? (
-          <ReferenceLine x={isClickActive.activeLabel} stroke="#ccc" />
-        ) : null}
-        {logReferenceTimestamp != null ? (
-          <ReferenceLine
-            x={logReferenceTimestamp}
-            stroke="#ff5d5b"
-            strokeDasharray="3 3"
-            label="Event"
+          <YAxis
+            width={Y_AXIS_WIDTH}
+            minTickGap={25}
+            tickFormatter={tickFormatter}
+            tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
+            domain={yAxisDomain}
           />
-        ) : null}
-      </ChartComponent>
-    </ResponsiveContainer>
+          {lines}
+          {isClickActive == null && (
+            <Tooltip
+              content={
+                <HDXLineChartTooltip
+                  numberFormat={fallbackNumberFormat}
+                  numberFormatByKey={tooltipNumberFormatsByKey}
+                  lineDataMap={lineDataMap}
+                  previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+                  activePointYByKeyRef={activePointYByKeyRef}
+                />
+              }
+              wrapperStyle={{
+                zIndex: 1,
+              }}
+            />
+          )}
+          {referenceLines}
+          {highlightStart && highlightEnd ? (
+            <ReferenceArea
+              // yAxisId="1"
+              x1={highlightStart}
+              x2={highlightEnd}
+              strokeOpacity={0.3}
+            />
+          ) : null}
+          {showLegend && (
+            <Legend
+              iconSize={10}
+              verticalAlign="bottom"
+              content={
+                <LegendRenderer
+                  lineDataMap={lineDataMap}
+                  allLineData={lineData}
+                  selectedSeries={selectedSeriesNames || new Set()}
+                  onToggleSeries={onToggleSeries}
+                />
+              }
+              offset={-100}
+            />
+          )}
+          {/** Needs to be at the bottom to prevent re-rendering */}
+          {isClickActive != null ? (
+            <ReferenceLine x={isClickActive.activeLabel} stroke="#ccc" />
+          ) : null}
+          {logReferenceTimestamp != null ? (
+            <ReferenceLine
+              x={logReferenceTimestamp}
+              stroke="#ff5d5b"
+              strokeDasharray="3 3"
+              label="Event"
+            />
+          ) : null}
+        </ChartComponent>
+      </ResponsiveContainer>
+    </div>
   );
 });

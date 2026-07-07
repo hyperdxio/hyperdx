@@ -968,6 +968,26 @@
   white-space: nowrap !important;
 }
 
+// Word break — needed for cells in wrap mode so long URLs/identifiers
+// without whitespace can break instead of overflowing into the next column.
+.text-break {
+  word-wrap: break-word !important;
+  word-break: break-word !important;
+}
+
+// Vertical alignment — applies to table cells (and inline/inline-block).
+.align-top {
+  vertical-align: top !important;
+}
+
+.align-middle {
+  vertical-align: middle !important;
+}
+
+.align-bottom {
+  vertical-align: bottom !important;
+}
+
 // Font size utilities
 .fs-1 {
   font-size: 2.5rem !important; // 40px

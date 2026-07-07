@@ -1,23 +1,20 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import * as config from '@/config';
 import { getSavedSearch } from '@/controllers/savedSearch';
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError, validateObjectId } from '@/mcp/utils/errors';
 import { SavedSearch } from '@/models/savedSearch';
 
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
-
-export function registerGetSavedSearch(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerGetSavedSearch({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
-  server.registerTool(
-    'hyperdx_get_saved_search',
+  registerTool(
+    'clickstack_get_saved_search',
     {
       title: 'Get Saved Search(es)',
       description:
@@ -34,7 +31,7 @@ export function registerGetSavedSearch(
           ),
       }),
     },
-    withToolTracing('hyperdx_get_saved_search', context, async ({ id }) => {
+    async ({ id }) => {
       // ── List all saved searches (slim query — only fetch the fields we need) ──
       if (!id) {
         const savedSearches = await SavedSearch.find(
@@ -55,19 +52,12 @@ export function registerGetSavedSearch(
       }
 
       // ── Get single saved search ──
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Invalid saved search ID' }],
-        };
-      }
+      const idError = validateObjectId(id, 'saved search ID');
+      if (idError) return idError;
 
       const savedSearch = await getSavedSearch(teamId, id);
       if (!savedSearch) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Saved search not found' }],
-        };
+        return mcpUserError('Saved search not found');
       }
 
       return {
@@ -87,6 +77,6 @@ export function registerGetSavedSearch(
           },
         ],
       };
-    }),
+    },
   );
 }

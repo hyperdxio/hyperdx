@@ -48,7 +48,7 @@ export const SESSION_TABLE_EXPRESSIONS = {
   implicitColumnExpression: 'Body',
 } as const;
 
-export const JSON_SESSION_TABLE_EXPRESSIONS = {
+const JSON_SESSION_TABLE_EXPRESSIONS = {
   ...SESSION_TABLE_EXPRESSIONS,
   timestampValueExpression: 'Timestamp',
 } as const;
@@ -81,10 +81,10 @@ export function getDisplayedTimestampValueExpression(eventModel: TSource) {
 export function getEventBody(eventModel: TSource) {
   let expression: string | undefined;
   if (eventModel.kind === SourceKind.Trace) {
-    expression = eventModel.spanNameExpression ?? undefined;
+    expression = eventModel.spanNameExpression || undefined;
   } else if (eventModel.kind === SourceKind.Log) {
     expression =
-      eventModel.bodyExpression ?? eventModel.implicitColumnExpression;
+      eventModel.bodyExpression || eventModel.implicitColumnExpression;
   }
   const multiExpr = splitAndTrimWithBracket(expression ?? '');
   return multiExpr.length === 1 ? expression : multiExpr[0];

@@ -159,20 +159,23 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       const dashboardTiles = dashboardPage.getTiles();
       await expect(dashboardTiles).toHaveCount(2, { timeout: 10000 });
 
-      // Hover over first tile to reveal action buttons
+      // The alert affordance lives directly in the always-visible tile header.
       await dashboardPage.hoverOverTile(0);
+      await expect(dashboardPage.getTileButton('alerts')).toBeVisible();
 
-      // Verify all action buttons are visible
-      const buttons: Array<'edit' | 'duplicate' | 'delete' | 'alerts'> = [
+      // Edit / duplicate / delete now live inside the tile actions (kebab) menu.
+      await dashboardPage.openTileActionsMenu(0);
+      const menuButtons: Array<'edit' | 'duplicate' | 'delete'> = [
         'edit',
         'duplicate',
         'delete',
-        'alerts',
       ];
-      for (const button of buttons) {
-        const buttonLocator = dashboardPage.getTileButton(button);
-        await expect(buttonLocator).toBeVisible();
+      for (const button of menuButtons) {
+        await expect(dashboardPage.getTileButton(button)).toBeVisible();
       }
+
+      // Close the menu so it doesn't intercept subsequent interactions.
+      await dashboardPage.page.keyboard.press('Escape');
     });
 
     await test.step('Test duplicate tile', async () => {
@@ -338,20 +341,23 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       const dashboardTiles = dashboardPage.getTiles();
       await expect(dashboardTiles).toHaveCount(1, { timeout: 10000 });
 
-      // Hover over first tile to reveal action buttons
+      // The alert affordance lives directly in the always-visible tile header.
       await dashboardPage.hoverOverTile(0);
+      await expect(dashboardPage.getTileButton('alerts')).toBeVisible();
 
-      // Verify all action buttons are visible
-      const buttons: Array<'edit' | 'duplicate' | 'delete' | 'alerts'> = [
+      // Edit / duplicate / delete now live inside the tile actions (kebab) menu.
+      await dashboardPage.openTileActionsMenu(0);
+      const menuButtons: Array<'edit' | 'duplicate' | 'delete'> = [
         'edit',
         'duplicate',
         'delete',
-        'alerts',
       ];
-      for (const button of buttons) {
-        const buttonLocator = dashboardPage.getTileButton(button);
-        await expect(buttonLocator).toBeVisible();
+      for (const button of menuButtons) {
+        await expect(dashboardPage.getTileButton(button)).toBeVisible();
       }
+
+      // Close the menu so it doesn't intercept subsequent interactions.
+      await dashboardPage.page.keyboard.press('Escape');
     });
 
     let dashboardUrl: string;
@@ -991,7 +997,8 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
 
     await test.step('Verify tile can be edited when source is missing', async () => {
-      await dashboardPage.hoverOverTile(0);
+      // Edit now lives inside the tile actions (kebab) menu.
+      await dashboardPage.openTileActionsMenu(0);
 
       const editButton = dashboardPage.getTileButton('edit');
       await expect(editButton).toBeVisible();
@@ -1484,6 +1491,36 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         await expect(dashboardPage.timePicker.input).toHaveValue(
           mainTimePickerValueBefore,
         );
+      });
+    },
+  );
+
+  test(
+    'should navigate to the dashboard listing page after deleting a dashboard',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const uniqueName = `E2E Delete Nav Dashboard ${ts}`;
+
+      await test.step('Create a new saved dashboard', async () => {
+        await dashboardsListPage.goto();
+        await dashboardsListPage.createNewDashboard();
+        await dashboardPage.editDashboardName(uniqueName);
+      });
+
+      await test.step('Delete the dashboard via the dashboard menu', async () => {
+        await dashboardPage.deleteDashboard();
+      });
+
+      await test.step('Verify navigation to the dashboards listing page', async () => {
+        await expect(page).toHaveURL(/\/dashboards\/list/);
+        await expect(dashboardsListPage.pageContainer).toBeVisible();
+      });
+
+      await test.step('Verify the deleted dashboard is not listed', async () => {
+        await expect(
+          dashboardsListPage.getDashboardCard(uniqueName),
+        ).toBeHidden();
       });
     },
   );

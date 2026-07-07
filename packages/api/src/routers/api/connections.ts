@@ -6,7 +6,7 @@ import {
   createConnection,
   deleteConnection,
   getConnectionById,
-  getConnections,
+  getConnectionsByTeam,
   updateConnection,
 } from '@/controllers/connection';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
@@ -15,7 +15,9 @@ const router = express.Router();
 
 router.get('/', async (req, res, next) => {
   try {
-    const connections = await getConnections();
+    const { teamId } = getNonNullUserWithTeam(req);
+
+    const connections = await getConnectionsByTeam(teamId.toString());
 
     res.json(connections.map(c => c.toJSON({ virtuals: true })));
   } catch (e) {
@@ -65,7 +67,6 @@ router.put(
         return;
       }
 
-      // Build the base connection update
       const shouldUnsetPrefix =
         req.body.hyperdxSettingPrefix === null ||
         req.body.hyperdxSettingPrefix === '';
@@ -80,7 +81,6 @@ router.put(
           : {
               password: connection.password,
             }),
-        // Only include hyperdxSettingPrefix if it's a valid string
         ...(!shouldUnsetPrefix && hyperdxSettingPrefix
           ? { hyperdxSettingPrefix }
           : {}),

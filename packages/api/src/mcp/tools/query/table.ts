@@ -1,22 +1,26 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
+
 import {
+  annotateIncreaseTopNHint,
   buildTile,
   mergeWhereIntoSelectItems,
   parseTimeRange,
   runConfigTile,
 } from './helpers';
 import {
+  applyMetricSelectDefaults,
   endTimeSchema,
   groupBySchema,
   MCP_AGG_FN_OPTIONS,
+  McpSelectItem,
   mcpSelectItemSchema,
   orderBySchema,
   sourceIdSchema,
   startTimeSchema,
+  validateMetricSelectItems,
   whereLanguageSchema,
   whereSchema,
 } from './schemas';
@@ -61,10 +65,45 @@ const tableSchema = z.object({
 // ─── orderBy resolution ──────────────────────────────────────────────────────
 
 /** Aggregation function names that ClickHouse cannot resolve as bare identifiers in ORDER BY.
- *  'none' is excluded — it passes a raw expression through unchanged and has no synthesizable form. */
+ *  Excluded:
+ *  - 'none' passes a raw expression through unchanged and has no synthesizable form.
+ *  - 'increase' is a metric-only renderer marker that compiles to a multi-CTE
+ *    sum(Rate) pipeline — there is no standalone SQL function to synthesize.
+ *    The renderer auto-aliases the resulting column; agents should orderBy by alias. */
 const AGG_FN_NAMES: ReadonlySet<string> = new Set(
-  MCP_AGG_FN_OPTIONS.filter(fn => fn !== 'none'),
+  MCP_AGG_FN_OPTIONS.filter(fn => fn !== 'none' && fn !== 'increase'),
 );
+
+/** A bare ClickHouse identifier: a letter or underscore followed by word chars.
+ *  Anything outside this shape (spaces, punctuation, leading digit) must be
+ *  quoted to be valid in ORDER BY. */
+const BARE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** Strip one layer of surrounding double-quote or backtick quoting, if present. */
+function stripIdentifierQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith('`') && trimmed.endsWith('`')))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+/**
+ * Quote an alias for use in ORDER BY when it is not a bare identifier.
+ * Aliases are emitted into SELECT as `AS "alias"`, so we mirror that with
+ * double-quote identifier quoting (escaping embedded double quotes). Bare
+ * identifiers are returned unquoted to keep the common case readable.
+ */
+function quoteAliasForOrderBy(alias: string): string {
+  if (BARE_IDENTIFIER.test(alias)) {
+    return alias;
+  }
+  return `"${alias.replace(/"/g, '""')}"`;
+}
 
 /**
  * Resolve an orderBy value that matches a bare aggregation function name
@@ -77,9 +116,11 @@ const AGG_FN_NAMES: ReadonlySet<string> = new Set(
  * the ClickHouse expression (e.g. `count()`) when no alias is set.
  *
  * Resolution order:
- *   1. If orderBy matches a select item's alias exactly → keep as-is
- *   2. If orderBy matches an aggFn name → use that item's alias if set,
- *      otherwise synthesize the ClickHouse expression (e.g. `count()`)
+ *   1. If orderBy matches a select item's alias → emit the canonical alias,
+ *      quoting it when it is not a bare identifier (e.g. `"P95 Latency"`)
+ *   2. If orderBy matches an aggFn name → use that item's alias if set
+ *      (quoted as needed), otherwise synthesize the ClickHouse expression
+ *      (e.g. `count()`)
  *   3. Otherwise → pass through unchanged
  */
 /** @internal Exported for testing only. */
@@ -100,15 +141,20 @@ export function resolveOrderBy(
   const identifier = dirMatch ? dirMatch[1] : orderBy;
   const direction = dirMatch ? ` ${dirMatch[2].toUpperCase()}` : '';
 
-  const lower = identifier.toLowerCase();
+  // Agents may pass the alias already quoted (per the orderBy docs) or bare.
+  // Strip any surrounding quotes before matching so both forms resolve, then
+  // re-quote on output based on the canonical alias.
+  const lower = stripIdentifierQuotes(identifier).toLowerCase();
 
   // Already matches an alias? Return the canonical alias case so
   // ClickHouse's case-sensitive identifier resolution works correctly.
+  // Multi-word / special-character aliases are quoted so the emitted
+  // ORDER BY is valid SQL even when the agent passed the alias unquoted.
   const aliasMatch = selectItems.find(
     s => s.alias && s.alias.toLowerCase() === lower,
   );
-  if (aliasMatch) {
-    return `${aliasMatch.alias}${direction}`;
+  if (aliasMatch && aliasMatch.alias) {
+    return `${quoteAliasForOrderBy(aliasMatch.alias)}${direction}`;
   }
 
   // Matches an aggFn name? Resolve to that item's alias or synthesize.
@@ -117,7 +163,7 @@ export function resolveOrderBy(
     if (match) {
       // Prefer the explicit alias if set
       if (match.alias) {
-        return `${match.alias}${direction}`;
+        return `${quoteAliasForOrderBy(match.alias)}${direction}`;
       }
 
       // Synthesize the ClickHouse expression so ORDER BY works
@@ -150,18 +196,18 @@ export function resolveOrderBy(
 
 // ─── Tool registration ───────────────────────────────────────────────────────
 
-export function registerTable(server: McpServer, context: McpContext) {
+export function registerTable({ context, registerTool }: ToolRegistrar) {
   const { teamId } = context;
 
-  server.registerTool(
-    'hyperdx_table',
+  registerTool(
+    'clickstack_table',
     {
       title: 'Aggregation Table',
       description:
         'Compute aggregated metrics as a table, single number, or pie chart. ' +
         'Use this for grouped aggregations, top-N queries, single-value KPIs, ' +
         'or proportional breakdowns.\n\n' +
-        'Requires sourceId — call hyperdx_list_sources then hyperdx_describe_source first.\n\n' +
+        'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
         'Use the top-level "where" to scope the entire query (e.g. filter by service). ' +
         'Each select item can also have its own "where" for per-metric cohort ' +
         'comparisons (compiles to <aggFn>If(...)). Both can be used together.\n\n' +
@@ -170,25 +216,51 @@ export function registerTable(server: McpServer, context: McpContext) {
         'Map attributes work in groupBy and valueExpression, including ' +
         "toFloat64OrZero(SpanAttributes['key']).\n\n" +
         'Shape auto-upgrade: if shape is "number" or "pie" but select has >1 item, ' +
-        'it is transparently upgraded to "table".',
+        'it is transparently upgraded to "table".\n\n' +
+        '── METRIC SOURCES ──\n' +
+        'When sourceId is a metric source, each select item MUST set ' +
+        'metricType ("gauge"|"sum"|"histogram") and metricName (the OTel metric name). ' +
+        'valueExpression defaults to "Value" — set it explicitly only to transform the value.\n' +
+        'Discovery: clickstack_describe_source returns a per-kind metric-name sample; ' +
+        'clickstack_list_metrics paginates the full catalog; clickstack_describe_metric ' +
+        'returns attribute keys + sampled values for a single metric.\n' +
+        'Per kind: gauge uses last_value/avg/min/max; sum uses aggFn:"increase" for counter increase ' +
+        '(top-N capped at 20 groups when combined with groupBy), or sum/avg on the rate; ' +
+        'histogram uses aggFn:"quantile" + level for percentiles, or aggFn:"count" for total bucket count.\n' +
+        'summary and exponential histogram kinds are not supported by the query renderer yet.',
       inputSchema: tableSchema,
     },
-    withToolTracing('hyperdx_table', context, async input => {
+    async input => {
       const timeRange = parseTimeRange(input.startTime, input.endTime);
       if ('error' in timeRange) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: timeRange.error }],
-        };
+        return mcpUserError(timeRange.error);
       }
       const { startDate, endDate } = timeRange;
+
+      // Cast to the concrete `McpSelectItem[]` because Zod 3.x widens
+      // optional-field inference at the MCP-SDK tool boundary; the
+      // runtime parser still produces the correct shape.
+      const rawSelect = input.select as McpSelectItem[];
+
+      // Validate cross-field constraints (metric rules, level/quantile,
+      // valueExpression presence) and surface friendly errors before we
+      // touch ClickHouse.
+      const validation = validateMetricSelectItems(rawSelect);
+      if (validation) return validation;
+
+      // Default valueExpression="Value" for metric items BEFORE we call
+      // buildTile, because the external dashboard tile schema's
+      // superRefine rejects non-count aggregations with empty
+      // valueExpression and agents normally omit the field on metric
+      // queries.
+      const select = applyMetricSelectDefaults(rawSelect);
 
       // Auto-upgrade shape when select has multiple items but shape is
       // single-value (number/pie). This is the #1 Zod error class from agents.
       let displayType: 'table' | 'number' | 'pie' = input.shape;
       if (
         (displayType === 'number' || displayType === 'pie') &&
-        input.select.length > 1
+        select.length > 1
       ) {
         displayType = 'table';
       }
@@ -197,11 +269,7 @@ export function registerTable(server: McpServer, context: McpContext) {
       // of the aggCondition for every metric. Table/line/number/pie display
       // types don't have a chart-level where — filtering is per-select-item.
       const { items: selectItems, warnings: mergeWarnings } =
-        mergeWhereIntoSelectItems(
-          input.select,
-          input.where,
-          input.whereLanguage,
-        );
+        mergeWhereIntoSelectItems(select, input.where, input.whereLanguage);
 
       const tile = buildTile('MCP Table', 12, 4, {
         displayType,
@@ -230,7 +298,11 @@ export function registerTable(server: McpServer, context: McpContext) {
         }
       }
 
+      // Surface the increase+groupBy top-N cap so the agent knows results
+      // may be truncated to 20 groups.
+      annotateIncreaseTopNHint(result, select, input.groupBy);
+
       return result;
-    }),
+    },
   );
 }

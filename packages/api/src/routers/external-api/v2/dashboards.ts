@@ -4,28 +4,18 @@ import { z } from 'zod';
 
 import { deleteDashboard } from '@/controllers/dashboard';
 import Dashboard, { IDashboard } from '@/models/dashboard';
-import { validateRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
+import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { ExternalDashboardTileWithId, objectIdSchema } from '@/utils/zod';
 
 import {
   cleanupDashboardAlerts,
-  collectTileContainerRefIssues,
   convertExternalFiltersToInternal,
   convertExternalTilesToInternal,
   convertToExternalDashboard,
   createDashboardBodySchema,
-  fetchSourcesForValidation,
-  filterChangedHeatmapTiles,
-  getHeatmapTilesWithIncompatibleSources,
-  getInvalidOnClickSearchSources,
-  getMissingConnections,
-  getMissingOnClickDashboards,
-  getMissingSources,
-  isConfigTile,
-  isRawSqlExternalTileConfig,
   resolveSavedQueryLanguage,
-  SourceForValidation,
   updateDashboardBodySchema,
+  validateDashboardTiles,
 } from './utils/dashboards';
 
 /**
@@ -44,29 +34,6 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
   savedFilterValues: 1,
   containers: 1,
 } as const;
-
-function getSourceConnectionMismatches(
-  sources: SourceForValidation[],
-  tiles: ExternalDashboardTileWithId[],
-): string[] {
-  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
-
-  const sourcesWithInvalidConnections: string[] = [];
-  for (const tile of tiles) {
-    if (
-      isConfigTile(tile) &&
-      isRawSqlExternalTileConfig(tile.config) &&
-      tile.config.sourceId
-    ) {
-      const source = sourceById.get(tile.config.sourceId);
-      if (source && source.connection.toString() !== tile.config.connectionId) {
-        sourcesWithInvalidConnections.push(tile.config.sourceId);
-      }
-    }
-  }
-
-  return sourcesWithInvalidConnections;
-}
 
 /**
  * @openapi
@@ -154,6 +121,142 @@ function getSourceConnectionMismatches(
  *           type: string
  *           description: Custom unit label.
  *           example: "ms"
+ *
+ *     ChartPaletteToken:
+ *       type: string
+ *       enum: [chart-blue, chart-orange, chart-red, chart-cyan, chart-green, chart-pink, chart-purple, chart-light-blue, chart-brown, chart-gray, chart-success, chart-warning, chart-error]
+ *       description: >
+ *         Palette token used to color a number tile. Tokens reflow across
+ *         light and dark themes, so raw hex values are not accepted.
+ *       example: "chart-red"
+ *     BackgroundChart:
+ *       type: object
+ *       required:
+ *         - type
+ *       description: >
+ *         Optional background trend sparkline drawn behind a number tile's
+ *         value, derived from a time-bucketed version of the tile's query.
+ *         Builder number tiles only (raw SQL number tiles have no time
+ *         dimension to bucket).
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [line, area]
+ *           description: Sparkline shape.
+ *           example: "line"
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: >
+ *             Optional palette-token override for the sparkline. When unset
+ *             the sparkline inherits the tile's static color.
+ *     NumericColorCondition:
+ *       type: object
+ *       required:
+ *         - operator
+ *         - value
+ *         - color
+ *       description: Color rule comparing the displayed value against a single numeric bound.
+ *       properties:
+ *         operator:
+ *           type: string
+ *           enum: [gt, gte, lt, lte]
+ *           description: Numeric comparison operator.
+ *           example: "gt"
+ *         value:
+ *           type: number
+ *           description: >
+ *             Numeric bound the displayed value is compared against. Only
+ *             finite numbers are accepted (Infinity and NaN are rejected).
+ *           example: 100
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: Color applied when the rule matches.
+ *         label:
+ *           type: string
+ *           maxLength: 40
+ *           description: Optional label describing the rule.
+ *           example: "High"
+ *     BetweenColorCondition:
+ *       type: object
+ *       required:
+ *         - operator
+ *         - value
+ *         - color
+ *       description: Color rule matching when the displayed value falls within an inclusive range.
+ *       properties:
+ *         operator:
+ *           type: string
+ *           enum: [between]
+ *           description: Range comparison operator.
+ *           example: "between"
+ *         value:
+ *           type: array
+ *           minItems: 2
+ *           maxItems: 2
+ *           items:
+ *             type: number
+ *           description: >
+ *             Inclusive [min, max] range. Both bounds must be finite numbers.
+ *           example: [100, 500]
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: Color applied when the rule matches.
+ *         label:
+ *           type: string
+ *           maxLength: 40
+ *           description: Optional label describing the rule.
+ *           example: "Warning"
+ *     EqualityColorCondition:
+ *       type: object
+ *       required:
+ *         - operator
+ *         - value
+ *         - color
+ *       description: Color rule matching when the displayed value equals (eq) or does not equal (neq) a number or string.
+ *       properties:
+ *         operator:
+ *           type: string
+ *           enum: [eq, neq]
+ *           description: Equality comparison operator.
+ *           example: "eq"
+ *         value:
+ *           oneOf:
+ *             - type: number
+ *             - type: string
+ *               maxLength: 200
+ *           description: >
+ *             A finite number, or a string up to 200 characters, to compare
+ *             for equality.
+ *           example: "OK"
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: Color applied when the rule matches.
+ *         label:
+ *           type: string
+ *           maxLength: 40
+ *           description: Optional label describing the rule.
+ *           example: "Healthy"
+ *     NumberTileColorCondition:
+ *       description: >
+ *         A single conditional color rule for a number tile. Rules are
+ *         evaluated in order and the last matching rule wins. When no rule
+ *         matches, the static color applies, then the default text color.
+ *         The number-tile editor surfaces numeric and equality operators
+ *         only.
+ *       oneOf:
+ *         - $ref: '#/components/schemas/NumericColorCondition'
+ *         - $ref: '#/components/schemas/BetweenColorCondition'
+ *         - $ref: '#/components/schemas/EqualityColorCondition'
+ *       discriminator:
+ *         propertyName: operator
+ *         mapping:
+ *           gt: '#/components/schemas/NumericColorCondition'
+ *           gte: '#/components/schemas/NumericColorCondition'
+ *           lt: '#/components/schemas/NumericColorCondition'
+ *           lte: '#/components/schemas/NumericColorCondition'
+ *           between: '#/components/schemas/BetweenColorCondition'
+ *           eq: '#/components/schemas/EqualityColorCondition'
+ *           neq: '#/components/schemas/EqualityColorCondition'
  *
  *     TimeChartSeries:
  *       type: object
@@ -512,6 +615,13 @@ function getSourceConnectionMismatches(
  *           type: boolean
  *           description: Fill missing time buckets with zero instead of leaving gaps.
  *           default: true
+ *         fitYAxisToData:
+ *           type: boolean
+ *           description: >
+ *             Set the y-axis lower bound to the minimum of the displayed data
+ *             instead of zero, making small fluctuations between series easier
+ *             to see.
+ *           default: false
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
@@ -653,6 +763,22 @@ function getSourceConnectionMismatches(
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: Optional static color applied to the displayed number.
+ *         colorRules:
+ *           type: array
+ *           maxItems: 10
+ *           description: >
+ *             Ordered conditional color rules evaluated against the displayed
+ *             value (last match wins). Falls back to color, then the default
+ *             text color when no rule matches.
+ *           items:
+ *             $ref: '#/components/schemas/NumberTileColorCondition'
+ *         backgroundChart:
+ *           $ref: '#/components/schemas/BackgroundChart'
+ *           description: >
+ *             Optional background trend sparkline drawn behind the value.
  *
  *     PieBuilderChartConfig:
  *       type: object
@@ -868,6 +994,13 @@ function getSourceConnectionMismatches(
  *               type: boolean
  *               description: Expand date range boundaries to the query granularity interval.
  *               default: true
+ *             fitYAxisToData:
+ *               type: boolean
+ *               description: >
+ *                 Set the y-axis lower bound to the minimum of the displayed
+ *                 data instead of zero, making small fluctuations between
+ *                 series easier to see.
+ *               default: false
  *
  *     BarRawSqlChartConfig:
  *       description: Raw SQL configuration for a stacked-bar time-series chart.
@@ -921,6 +1054,11 @@ function getSourceConnectionMismatches(
  *               enum: [number]
  *               description: Display as a single big-number chart.
  *               example: "number"
+ *             color:
+ *               $ref: '#/components/schemas/ChartPaletteToken'
+ *               description: >
+ *                 Optional static color applied to the displayed number. Raw
+ *                 SQL number tiles do not support conditional colorRules.
  *
  *     PieRawSqlChartConfig:
  *       description: Raw SQL configuration for a pie chart.
@@ -1077,6 +1215,27 @@ function getSourceConnectionMismatches(
  *           items:
  *             $ref: '#/components/schemas/OnClickFilterTemplate'
  *
+ *     OnClickExternal:
+ *       type: object
+ *       required: [type, urlTemplate]
+ *       description: >
+ *         Link-out that navigates to an arbitrary external URL (e.g. a Grafana
+ *         or Langfuse dashboard). The rendered URL must be an absolute http(s) URL.
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [external]
+ *           description: OnClick variant discriminator. Must be "external" for external link-outs.
+ *           example: "external"
+ *         urlTemplate:
+ *           type: string
+ *           minLength: 1
+ *           description: >
+ *             Handlebars template rendered against the clicked row; supports
+ *             `{{column}}` variables. The rendered value must be an absolute
+ *             http(s) URL.
+ *           example: "https://example.com/d/abc?var-service={{ServiceName}}"
+ *
  *     OnClick:
  *       description: >
  *         Link-out configuration applied when a user clicks a row of a table tile.
@@ -1086,11 +1245,13 @@ function getSourceConnectionMismatches(
  *       oneOf:
  *         - $ref: '#/components/schemas/OnClickSearch'
  *         - $ref: '#/components/schemas/OnClickDashboard'
+ *         - $ref: '#/components/schemas/OnClickExternal'
  *       discriminator:
  *         propertyName: type
  *         mapping:
  *           search: '#/components/schemas/OnClickSearch'
  *           dashboard: '#/components/schemas/OnClickDashboard'
+ *           external: '#/components/schemas/OnClickExternal'
  *
  *     TableChartConfig:
  *       description: >
@@ -1770,6 +1931,127 @@ router.get(
 
 /**
  * @openapi
+ * /api/v2/dashboards/validate:
+ *   post:
+ *     summary: Validate Dashboard
+ *     description: |
+ *       Validates a dashboard body against the same schema and tile rules used
+ *       by POST /api/v2/dashboards. The dashboard is **never persisted**. Use
+ *       this endpoint at plan time (e.g. from a Terraform provider) to check
+ *       that a dashboard configuration is valid before applying it.
+ *     operationId: validateDashboard
+ *     tags: [Dashboards]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateDashboardRequest'
+ *     responses:
+ *       '200':
+ *         description: |
+ *           Validation result. HTTP 200 is always returned for valid **and**
+ *           invalid bodies — a non-200 response means the request itself
+ *           failed (auth, server error, etc.).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [valid, errors, normalized]
+ *               properties:
+ *                 valid:
+ *                   type: boolean
+ *                   description: True when the body passes all validation rules.
+ *                 errors:
+ *                   type: array
+ *                   description: Validation errors. Empty when valid is true.
+ *                   items:
+ *                     type: object
+ *                     required: [path, message]
+ *                     properties:
+ *                       path:
+ *                         type: string
+ *                         description: Dot-separated field path, or empty string for top-level errors.
+ *                       message:
+ *                         type: string
+ *                         description: Human-readable error description.
+ *                 normalized:
+ *                   type: object
+ *                   nullable: true
+ *                   description: |
+ *                     The parsed dashboard body with defaults applied (no
+ *                     persistence, so no server-assigned tile IDs). Populated
+ *                     when valid is true, null when valid is false.
+ *             examples:
+ *               valid:
+ *                 summary: Valid dashboard body
+ *                 value:
+ *                   valid: true
+ *                   errors: []
+ *                   normalized:
+ *                     name: "My Dashboard"
+ *                     tiles: []
+ *               invalid:
+ *                 summary: Invalid dashboard body
+ *                 value:
+ *                   valid: false
+ *                   errors:
+ *                     - path: "name"
+ *                       message: "Required"
+ *                   normalized: null
+ *       '401':
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Unauthorized access. API key is missing or invalid."
+ */
+router.post('/validate', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.sendStatus(403);
+    }
+
+    const parsed = createDashboardBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.json({
+        valid: false,
+        errors: parsed.error.issues.map(i => ({
+          path: i.path.join('.'),
+          message: i.message,
+        })),
+        normalized: null,
+      });
+    }
+
+    const { tiles, filters, containers } = parsed.data;
+    // Cast: createDashboardBodySchema tiles have optional `id`; the validator
+    // only reads sourceId/config — the cast is safe for a no-persist call.
+    const validationError = await validateDashboardTiles({
+      teamId: teamId.toString(),
+      tiles: tiles as ExternalDashboardTileWithId[],
+      filters,
+      containers: containers ?? [],
+    });
+    if (validationError) {
+      return res.json({
+        valid: false,
+        errors: [{ path: '', message: validationError }],
+        normalized: null,
+      });
+    }
+
+    return res.json({ valid: true, errors: [], normalized: parsed.data });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
+ * @openapi
  * /api/v2/dashboards:
  *   post:
  *     summary: Create Dashboard
@@ -1922,90 +2204,14 @@ router.post(
         containers,
       } = req.body;
 
-      // Tile-level container/tab ref resolution: container structure
-      // (duplicate ids, tab uniqueness) was checked by the body schema;
-      // tile-resolution runs here against the request body's containers
-      // (POST has no existing dashboard to fall back to).
-      const tileRefIssues = collectTileContainerRefIssues(
-        containers ?? [],
+      const validationError = await validateDashboardTiles({
+        teamId: teamId.toString(),
         tiles,
-      );
-      if (tileRefIssues.length > 0) {
-        return res.status(400).json({
-          message: tileRefIssues.join('; '),
-        });
-      }
-
-      // Hoist the source fetch so the source-derived validators
-      // (missing sources, source/connection mismatch, heatmap source
-      // kind) reuse one query result instead of each re-running
-      // `getSources(team)`. onClick helpers stay separate because
-      // they own their own dashboard lookup as well as a sources
-      // lookup; firing them inside the same Promise.all keeps the
-      // request latency unchanged.
-      const [
-        sources,
-        missingConnections,
-        missingOnClickDashboards,
-        invalidOnClickSearchSources,
-      ] = await Promise.all([
-        fetchSourcesForValidation(teamId),
-        getMissingConnections(teamId, tiles),
-        getMissingOnClickDashboards(teamId, tiles),
-        getInvalidOnClickSearchSources(teamId, tiles),
-      ]);
-
-      const missingSources = getMissingSources(sources, tiles, filters);
-      const sourceConnectionMismatches = getSourceConnectionMismatches(
-        sources,
-        tiles,
-      );
-      const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
-        sources,
-        tiles,
-      );
-
-      if (missingSources.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following source IDs: ${missingSources.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (missingConnections.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following connection IDs: ${missingConnections.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (sourceConnectionMismatches.length > 0) {
-        return res.status(400).json({
-          message: `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (heatmapNonTraceSources.length > 0) {
-        return res.status(400).json({
-          message: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (missingOnClickDashboards.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (invalidOnClickSearchSources.length > 0) {
-        return res.status(400).json({
-          message: `The following onClick search source IDs are not log or trace sources: ${invalidOnClickSearchSources.join(
-            ', ',
-          )}`,
-        });
+        filters,
+        containers: containers ?? [],
+      });
+      if (validationError) {
+        return res.status(400).json({ message: validationError });
       }
 
       const internalTiles = convertExternalTilesToInternal(tiles);
@@ -2212,121 +2418,34 @@ router.put(
         containers,
       } = req.body ?? {};
 
-      // Hoist the source fetch and the existing-dashboard read so the
-      // source-derived validators reuse one query result and the
-      // heatmap source-kind check can scope itself to tiles whose
-      // sourceId/displayType actually changed in this request (a
-      // source whose `kind` was changed after the dashboard was
-      // originally accepted shouldn't wedge unrelated edits). onClick
-      // helpers stay separate because they own their own dashboard
-      // lookup as well as a sources lookup; firing them inside the
-      // same Promise.all keeps the request latency unchanged.
-      const [
-        sources,
-        missingConnections,
-        missingOnClickDashboards,
-        invalidOnClickSearchSources,
-        existingDashboard,
-      ] = await Promise.all([
-        fetchSourcesForValidation(teamId),
-        getMissingConnections(teamId, tiles),
-        getMissingOnClickDashboards(teamId, tiles),
-        getInvalidOnClickSearchSources(teamId, tiles),
-        Dashboard.findOne(
-          { _id: dashboardId, team: teamId },
-          { tiles: 1, filters: 1, containers: 1 },
-        ).lean(),
-      ]);
+      const existingDashboard = await Dashboard.findOne(
+        { _id: dashboardId, team: teamId },
+        { tiles: 1, filters: 1, containers: 1 },
+      ).lean();
 
-      const missingSources = getMissingSources(sources, tiles, filters);
-      const sourceConnectionMismatches = getSourceConnectionMismatches(
-        sources,
+      if (existingDashboard == null) {
+        return res.sendStatus(404);
+      }
+
+      const effectiveContainers =
+        containers ?? existingDashboard.containers ?? [];
+      const validationError = await validateDashboardTiles({
+        teamId: teamId.toString(),
         tiles,
-      );
-      const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
-        sources,
-        filterChangedHeatmapTiles(tiles, existingDashboard?.tiles ?? []),
-      );
-
-      if (missingSources.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following source IDs: ${missingSources.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (missingConnections.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following connection IDs: ${missingConnections.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (sourceConnectionMismatches.length > 0) {
-        return res.status(400).json({
-          message: `The following source IDs do not match the specified connections: ${sourceConnectionMismatches.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (heatmapNonTraceSources.length > 0) {
-        return res.status(400).json({
-          message: `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (missingOnClickDashboards.length > 0) {
-        return res.status(400).json({
-          message: `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(
-            ', ',
-          )}`,
-        });
-      }
-      if (invalidOnClickSearchSources.length > 0) {
-        return res.status(400).json({
-          message: `The following onClick search source IDs are not log or trace sources: ${invalidOnClickSearchSources.join(
-            ', ',
-          )}`,
-        });
+        filters,
+        existingTiles: existingDashboard.tiles ?? [],
+        containers: effectiveContainers,
+      });
+      if (validationError) {
+        return res.status(400).json({ message: validationError });
       }
 
-      // PUT performs a read-modify-write on the dashboard doc with no
-      // optimistic-concurrency check (no `If-Match` / `updatedAt`
-      // guard). Concurrent PUTs may silently overwrite each other,
-      // which can leave orphan tile->container refs on layout-shape
-      // edits. The endpoint contract is at-most-one-writer; the
-      // OpenAPI description above documents this. Adding ETag-style
-      // concurrency would be a breaking change to the request shape
-      // and is tracked separately. `existingDashboard` is fetched in
-      // the hoisted Promise.all above and reused here for tile-ref
-      // resolution against the effective container set.
       const existingTileIds = new Set(
-        (existingDashboard?.tiles ?? []).map((t: { id: string }) => t.id),
+        (existingDashboard.tiles ?? []).map((t: { id: string }) => t.id),
       );
       const existingFilterIds = new Set(
-        (existingDashboard?.filters ?? []).map((f: { id: string }) => f.id),
+        (existingDashboard.filters ?? []).map((f: { id: string }) => f.id),
       );
-
-      // Tile-level container/tab ref resolution: container structure
-      // was checked by the body schema; tile-resolution runs here
-      // against the effective container set so an omitted `containers`
-      // body field (which preserves the existing array on write) is
-      // resolved against the doc's existing containers rather than an
-      // empty fallback. Without this, a PUT that updates only `tiles`
-      // and leaves a tile pointing at a real preserved container
-      // would be rejected with "Tile references unknown containerId".
-      const effectiveContainers =
-        containers ?? existingDashboard?.containers ?? [];
-      const tileRefIssues = collectTileContainerRefIssues(
-        effectiveContainers,
-        tiles,
-      );
-      if (tileRefIssues.length > 0) {
-        return res.status(400).json({
-          message: tileRefIssues.join('; '),
-        });
-      }
 
       const internalTiles = convertExternalTilesToInternal(
         tiles,

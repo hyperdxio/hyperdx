@@ -22,7 +22,12 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconArrowDown, IconArrowUp, IconTrash } from '@tabler/icons-react';
+import {
+  IconArrowDown,
+  IconArrowUp,
+  IconCopy,
+  IconTrash,
+} from '@tabler/icons-react';
 
 import { AGG_FNS } from '@/ChartUtils';
 import { AggFnSelectControlled } from '@/components/AggFnSelect';
@@ -36,7 +41,9 @@ import {
 } from '@/components/InputControlled';
 import { MetricAttributeHelperPanel } from '@/components/MetricAttributeHelperPanel';
 import { MetricNameSelect } from '@/components/MetricNameSelect';
+import { FORMAT_ICONS } from '@/components/NumberFormat';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
+import SeriesNumberFormatDrawer from '@/components/SeriesNumberFormatDrawer';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
 import {
@@ -44,9 +51,6 @@ import {
   useFetchMetricResourceAttrs,
 } from '@/hooks/useFetchMetricResourceAttrs';
 import { getMetricTableName } from '@/utils';
-
-import { FORMAT_ICONS } from '../NumberFormat';
-import SeriesNumberFormatDrawer from '../SeriesNumberFormatDrawer';
 
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']
@@ -62,10 +66,12 @@ type ChartSeriesEditorProps = {
   parentRef?: HTMLElement | null;
   onRemoveSeries: (index: number) => void;
   onSwapSeries: (from: number, to: number) => void;
+  onDuplicateSeries: (index: number) => void;
   onSubmit: () => void;
   setValue: UseFormSetValue<ChartEditorFormState>;
   showGroupBy: boolean;
   showHaving: boolean;
+  showDuplicate: boolean;
   tableName: string;
   length: number;
   tableSource?: TSource;
@@ -81,10 +87,12 @@ export function ChartSeriesEditor({
   namePrefix,
   onRemoveSeries,
   onSwapSeries,
+  onDuplicateSeries,
   onSubmit,
   setValue,
   showGroupBy,
   showHaving,
+  showDuplicate,
   tableName: _tableName,
   parentRef,
   length,
@@ -243,6 +251,18 @@ export function ChartSeriesEditor({
                 title="Move down"
               >
                 <IconArrowDown size={14} />
+              </Button>
+            )}
+            {showDuplicate && (
+              <Button
+                variant="subtle"
+                color="gray"
+                size="xxs"
+                onClick={() => onDuplicateSeries(index)}
+                title="Duplicate series"
+                data-testid="series-duplicate-button"
+              >
+                <IconCopy size={14} />
               </Button>
             )}
             {((index ?? -1) > 0 || length > 1) && (

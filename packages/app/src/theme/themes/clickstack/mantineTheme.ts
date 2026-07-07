@@ -15,8 +15,8 @@ import {
   Tooltip,
 } from '@mantine/core';
 
-import variantClasses from '../../../../styles/variants.module.scss';
-import componentClasses from '../components.module.scss';
+import componentClasses from '@/theme/themes/components.module.scss';
+import variantClasses from '@styles/variants.module.scss';
 
 /**
  * ClickStack Theme
@@ -251,7 +251,7 @@ const makeTheme = ({
           baseVars['--button-bg'] = 'var(--color-primary-button-bg)';
           baseVars['--button-hover'] = 'var(--color-primary-button-bg-hover)';
           baseVars['--button-color'] = 'var(--color-primary-button-text)';
-          baseVars['--button-color-hover'] = 'var(--color-primary-button-text)';
+          baseVars['--button-hover-color'] = 'var(--color-primary-button-text)';
         }
 
         if (props.variant === 'secondary') {

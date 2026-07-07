@@ -26,7 +26,7 @@ type FilterSourceKey = {
   sourceId: string;
   metricType?: string;
   where: string;
-  whereLanguage: 'sql' | 'lucene' | 'promql';
+  whereLanguage: 'sql' | 'lucene';
 };
 
 const filterToKey = (filter: DashboardFilter): string =>
@@ -217,29 +217,42 @@ export function useDashboardFilterValues({
 
   // Map results by filter ID instead of expression so that two filters with
   // the same expression but different sources/WHERE clauses get distinct values.
-  const flattenedData = useMemo(
-    () =>
-      new Map(
-        results.flatMap(({ isLoading, data = [] }, resultIndex) => {
-          const call = calls[resultIndex];
-          return data.flatMap(({ key: expression, value }) => {
-            const keyIndex = call.keys.indexOf(expression);
-            const filterIds = call.filterIds?.[keyIndex] ?? [];
-            const entry = {
-              values: value.map(v => v.toString()),
-              isLoading,
-            };
-            return filterIds.map(
-              filterId => [filterId, entry] as [string, typeof entry],
-            );
-          });
-        }),
-      ),
-    [results, calls],
-  );
+  //
+  // We iterate over the *requested* keys (not just the returned rows) so that a
+  // filter whose query returned no rows — or failed outright — still gets an
+  // entry (with empty `values`). Without this, such filters would be missing
+  // from the map entirely, and any consumer that derives "is still loading"
+  // from the entry's absence would leave the control stuck disabled forever.
+  // Failed filter IDs are tracked separately so callers can surface a warning
+  // while keeping the control interactive.
+  const { data: flattenedData, erroredFilterIds } = useMemo(() => {
+    const map = new Map<string, { values: string[]; isLoading: boolean }>();
+    const errored = new Set<string>();
+    results.forEach((result, resultIndex) => {
+      const call = calls[resultIndex];
+      if (!call) return;
+      const { isLoading, isError, data = [] } = result;
+      const valuesByExpression = new Map<string, string[]>(
+        data.map(({ key, value }) => [key, value.map(v => v.toString())]),
+      );
+      call.keys.forEach((expression, keyIndex) => {
+        const filterIds = call.filterIds?.[keyIndex] ?? [];
+        const values = valuesByExpression.get(expression) ?? [];
+        for (const filterId of filterIds) {
+          map.set(filterId, { values, isLoading });
+          if (isError) {
+            errored.add(filterId);
+          }
+        }
+      });
+    });
+    return { data: map, erroredFilterIds: errored };
+  }, [results, calls]);
 
   return {
     data: flattenedData,
+    /** Filter IDs whose key-values query failed. */
+    erroredFilterIds,
     isLoading: isLoadingOptimizedCalls || results.every(r => r.isLoading),
     isFetching: isFetchingOptimizedCalls || results.some(r => r.isFetching),
     isError: results.some(r => r.isError),

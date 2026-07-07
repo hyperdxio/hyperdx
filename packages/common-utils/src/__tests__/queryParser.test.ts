@@ -494,19 +494,6 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     expect(actualSql).toBe(expectedSql);
   });
 
-  it('"Add to Filters" repro: JSON column path + value with colons and slashes emits valid SQL', async () => {
-    const lucene =
-      'ResourceAttributesJSON.endpoint:"grpc://auth-svc:50051/Verify"';
-    const builder = new SearchQueryBuilder(lucene, serializer);
-    const actualSql = await builder.build();
-    expect(actualSql).toContain(
-      'toString(`ResourceAttributesJSON`.`endpoint`)',
-    );
-    expect(actualSql).toContain('grpc://auth-svc:50051/Verify');
-    expect(actualSql).not.toContain('http_COLON_');
-    expect(actualSql).not.toContain('HDX_COLON');
-  });
-
   describe('CustomSchemaSQLSerializerV2: implicit column falls back to bodyExpression', () => {
     // Symmetric counterpart to the one-way fallback in
     // `getEventBody` (packages/app/src/source.ts): a log source admin who
@@ -2132,6 +2119,66 @@ describe('CustomSchemaSQLSerializerV2 - Array and Nested Fields', () => {
       expect(actualEnglish).toBe(english);
     },
   );
+});
+
+describe('genEnglishExplanation', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+  metadata.getColumn = jest.fn().mockImplementation(async () => undefined);
+  metadata.getMaterializedColumnsLookupTable = jest
+    .fn()
+    .mockImplementation(async () => new Map());
+
+  const databaseName = 'testName';
+  const tableName = 'testTable';
+  const connectionId = 'testId';
+  const query = 'bar';
+
+  it('serializes to english when table, database, and connection are present', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName, databaseName, connectionId },
+      metadata,
+    });
+    expect(actual).toBe('event has whole word bar');
+  });
+
+  it('falls back to the raw message when tableName is missing', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName: '', databaseName, connectionId },
+      metadata,
+    });
+    expect(actual).toBe(`Message containing ${query}`);
+  });
+
+  it('falls back to the raw message when databaseName is missing', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName, databaseName: '', connectionId },
+      metadata,
+    });
+    expect(actual).toBe(`Message containing ${query}`);
+  });
+
+  it('falls back to the raw message when connectionId is missing', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName, databaseName, connectionId: '' },
+      metadata,
+    });
+    expect(actual).toBe(`Message containing ${query}`);
+  });
+
+  it('falls back to the raw message when all table connection fields are missing', async () => {
+    const actual = await genEnglishExplanation({
+      query,
+      tableConnection: { tableName: '', databaseName: '', connectionId: '' },
+      metadata,
+    });
+    expect(actual).toBe(`Message containing ${query}`);
+  });
 });
 
 describe('parseKvItemsExpression', () => {

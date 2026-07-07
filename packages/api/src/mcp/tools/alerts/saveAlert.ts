@@ -1,5 +1,4 @@
 import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import mongoose from 'mongoose';
 
 import * as config from '@/config';
@@ -9,12 +8,16 @@ import {
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import {
+  mcpServerError,
+  mcpUserError,
+  validateObjectId,
+} from '@/mcp/utils/errors';
 import { type AlertChannel, AlertSource } from '@/models/alert';
 import { BaseError } from '@/utils/errors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
 
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 import {
   type McpSaveAlertInput,
   mcpSaveAlertSchema,
@@ -32,15 +35,15 @@ function toAlertChannel(ch: McpSaveAlertInput['channel']): AlertChannel {
   };
 }
 
-export function registerSaveAlert(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerSaveAlert({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
-  server.registerTool(
-    'hyperdx_save_alert',
+  registerTool(
+    'clickstack_save_alert',
     {
       title: 'Create or Update Alert',
       description:
@@ -49,23 +52,18 @@ export function registerSaveAlert(
         'metric crosses a threshold. A webhook notification channel is required.',
       inputSchema: mcpSaveAlertSchema,
     },
-    withToolTracing('hyperdx_save_alert', context, async input => {
+    async input => {
       // ── Runtime cross-field validation ──
       const validationError = validateSaveAlertInput(input);
       if (validationError) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: validationError }],
-        };
+        return mcpUserError(validationError);
       }
 
       // ── Validate ID for updates (early return narrows input.id to string) ──
       const alertId = input.id;
-      if (alertId != null && !mongoose.Types.ObjectId.isValid(alertId)) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Invalid alert ID' }],
-        };
+      if (alertId != null) {
+        const idError = validateObjectId(alertId, 'alert ID');
+        if (idError) return idError;
       }
 
       // Build the alert input matching the shape expected by controllers.
@@ -102,10 +100,7 @@ export function registerSaveAlert(
             : e instanceof Error
               ? e.message
               : String(e);
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: msg }],
-        };
+        return e instanceof BaseError ? mcpUserError(msg) : mcpServerError(msg);
       }
 
       const mongoUserId = new mongoose.Types.ObjectId(userId);
@@ -114,10 +109,7 @@ export function registerSaveAlert(
       if (alertId) {
         const updated = await updateAlert(alertId, mongoTeamId, alertInput);
         if (!updated) {
-          return {
-            isError: true,
-            content: [{ type: 'text' as const, text: 'Alert not found' }],
-          };
+          return mcpUserError('Alert not found');
         }
         return {
           content: [
@@ -157,6 +149,6 @@ export function registerSaveAlert(
           },
         ],
       };
-    }),
+    },
   );
 }

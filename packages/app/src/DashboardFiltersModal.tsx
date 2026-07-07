@@ -37,12 +37,14 @@ import SearchWhereInput, {
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
 import { SourceMultiSelectControlled } from './components/SourceMultiSelect';
-import SourceSchemaPreview from './components/SourceSchemaPreview';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { useSource, useSources } from './source';
 import { getMetricTableName } from './utils';
 
-import styles from '../styles/DashboardFiltersModal.module.scss';
+import styles from '@styles/DashboardFiltersModal.module.scss';
 
 const MODAL_SIZE = 'md';
 
@@ -119,7 +121,9 @@ const DashboardFilterEditForm = ({
   }, [filter, reset]);
 
   const sourceId = useWatch({ control, name: 'source' });
-  const { data: source } = useSource({ id: sourceId });
+  const { data: source } = useSource({
+    id: sourceId,
+  });
 
   const metricType = useWatch({ control, name: 'sourceMetricType' });
   const tableName = source && getMetricTableName(source, metricType);
@@ -139,6 +143,8 @@ const DashboardFilterEditForm = ({
   const [modalContentRef, setModalContentRef] = useState<HTMLElement | null>(
     null,
   );
+  const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
+    useState(false);
 
   return (
     <Modal
@@ -183,10 +189,21 @@ const DashboardFilterEditForm = ({
                 data-testid="source-selector"
                 rules={{ required: true }}
                 comboboxProps={{ withinPortal: true }}
-                sourceSchemaPreview={
-                  <SourceSchemaPreview source={source} variant="text" />
-                }
+                onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+                isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(source)}
                 disabled={!!presetSource}
+                allowedSourceKinds={[
+                  SourceKind.Log,
+                  SourceKind.Trace,
+                  SourceKind.Session,
+                  SourceKind.Metric,
+                ]}
+              />
+              <SourceSchemaPreview
+                source={source}
+                controlled
+                open={isSourceSchemaPreviewOpen}
+                onClose={() => setIsSourceSchemaPreviewOpen(false)}
               />
             </CustomInputWrapper>
             {!presetSource && (
@@ -200,6 +217,12 @@ const DashboardFilterEditForm = ({
                   data-testid="applies-to-source-selector"
                   comboboxProps={{ withinPortal: true }}
                   placeholder="All sources"
+                  allowedSourceKinds={[
+                    SourceKind.Log,
+                    SourceKind.Trace,
+                    SourceKind.Session,
+                    SourceKind.Metric,
+                  ]}
                 />
               </CustomInputWrapper>
             )}

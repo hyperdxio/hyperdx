@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/cli",
-  "version": "0.4.1",
+  "version": "0.5.1",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -39,9 +39,8 @@
     "dev:unit": "NODE_OPTIONS=--experimental-vm-modules jest --watchAll --runInBand"
   },
   "devDependencies": {
-    "@clickhouse/client": "^1.12.1",
-    "@clickhouse/client-common": "^1.12.1",
-    "@hyperdx/common-utils": "^0.19.0",
+    "@clickhouse/client": "1.23.0-head.fae5998.1",
+    "@hyperdx/common-utils": "^0.21.0",
     "@jest/globals": "^30.2.0",
     "@types/crypto-js": "^4.2.2",
     "@types/jest": "^29.5.14",

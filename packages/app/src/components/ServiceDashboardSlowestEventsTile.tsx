@@ -1,17 +1,16 @@
 import { pick } from 'lodash';
-import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   type Filter,
   pickSampleWeightExpressionProps,
   type TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Code, Group, Text } from '@mantine/core';
+import { Group, Text } from '@mantine/core';
 
 import { ChartBox } from '@/components/ChartBox';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useServiceDashboardExpressions } from '@/serviceDashboard';
 
-import { SQLPreview } from './ChartSQLPreview';
+import ChartErrorState from './charts/ChartErrorState';
 import DBSqlRowTableWithSideBar from './DBSqlRowTableWithSidebar';
 
 export default function SlowestEventsTile({
@@ -77,32 +76,7 @@ export default function SlowestEventsTile({
           Loading Chart Data...
         </div>
       ) : isError ? (
-        <div className="h-100 w-100 align-items-center justify-content-center text-muted">
-          <Text ta="center" size="sm" mt="sm">
-            Error loading chart, please check your query or try again later.
-          </Text>
-          <Box mt="sm">
-            <Text my="sm" size="sm" ta="center">
-              Error Message:
-            </Text>
-            <Code
-              block
-              style={{
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {error.message}
-            </Code>
-            {error instanceof ClickHouseQueryError && (
-              <>
-                <Text my="sm" size="sm" ta="center">
-                  Sent Query:
-                </Text>
-                <SQLPreview data={error?.query} />
-              </>
-            )}
-          </Box>
-        </div>
+        <ChartErrorState error={error} />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           No data found within time range.
@@ -112,8 +86,6 @@ export default function SlowestEventsTile({
         expressions && (
           <>
             <DBSqlRowTableWithSideBar
-              isNestedPanel
-              breadcrumbPath={[{ label: 'Endpoint' }]}
               sourceId={source.id}
               config={{
                 source: source.id,

@@ -1,4 +1,8 @@
-import { calculateInterval, renderMs } from '../utils';
+import {
+  calculateInterval,
+  getMaxEventValue,
+  renderMs,
+} from '@/components/TimelineChart/utils';
 
 describe('renderMs', () => {
   it('formats sub-second values as ms', () => {
@@ -52,8 +56,9 @@ describe('calculateInterval', () => {
     expect(calculateInterval(10)).toBe(1);
   });
 
-  it('returns 2x magnitude for value 25', () => {
-    expect(calculateInterval(25)).toBe(2);
+  it('snaps up to 5x magnitude for value 25', () => {
+    // value/10 = 2.5 → smallest fitting bucket is 5 (snap up), giving 5 ticks
+    expect(calculateInterval(25)).toBe(5);
   });
 
   it('returns 5x magnitude for value 50', () => {
@@ -74,5 +79,58 @@ describe('calculateInterval', () => {
 
   it('returns magnitude 100 for value 1000', () => {
     expect(calculateInterval(1000)).toBe(100);
+  });
+
+  it('never produces more than maxTicks steps', () => {
+    for (const [value, maxTicks] of [
+      [1000, 10],
+      [1000, 5],
+      [1000, 2],
+      [1000, 1],
+      [37, 6],
+      [250, 3],
+    ] as const) {
+      const interval = calculateInterval(value, maxTicks);
+      expect(Math.floor(value / interval)).toBeLessThanOrEqual(maxTicks);
+    }
+  });
+
+  it('thins ticks as the budget shrinks', () => {
+    // A tighter tick budget must yield a coarser (>=) interval.
+    expect(calculateInterval(1000, 5)).toBeGreaterThanOrEqual(
+      calculateInterval(1000, 10),
+    );
+    expect(calculateInterval(1000, 2)).toBeGreaterThanOrEqual(
+      calculateInterval(1000, 5),
+    );
+  });
+
+  it('returns a safe fallback for non-positive ranges', () => {
+    expect(calculateInterval(0)).toBe(1);
+    expect(calculateInterval(-5)).toBe(1);
+  });
+});
+
+describe('getMaxEventValue', () => {
+  it('returns the max event end plus 10% padding', () => {
+    const rows = [
+      { events: [{ end: 100 }, { end: 250 }] },
+      { events: [{ end: 300 }] },
+    ];
+    expect(getMaxEventValue(rows)).toBeCloseTo(330);
+  });
+
+  it('ignores rows with no events and finds the global max', () => {
+    const rows = [
+      { events: [] },
+      { events: [{ end: 50 }] },
+      { events: [{ end: 10 }, { end: 500 }] },
+    ];
+    expect(getMaxEventValue(rows)).toBeCloseTo(550);
+  });
+
+  it('returns 0 for empty input', () => {
+    expect(getMaxEventValue([])).toBe(0);
+    expect(getMaxEventValue([{ events: [] }])).toBe(0);
   });
 });

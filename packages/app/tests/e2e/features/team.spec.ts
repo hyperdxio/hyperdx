@@ -20,6 +20,7 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
     await test.step('Verify team settings tabs are visible', async () => {
       await expect(teamPage.dataTab).toBeVisible();
       await expect(teamPage.teamTab).toBeVisible();
+      await expect(teamPage.apiAndAgentsTab).toBeVisible();
       await expect(teamPage.integrationsTab).toBeVisible();
       await expect(teamPage.advancedTab).toBeVisible();
     });
@@ -63,18 +64,29 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
       }
     });
 
+    await test.step('Verify API & Agents tab sections are visible', async () => {
+      await teamPage.openApiAndAgentsTab();
+      await expect(teamPage.apiKeys).toBeVisible();
+      await expect(teamPage.mcpServer).toBeVisible();
+    });
+
+    await test.step('Verify API & Agents tab headings exist', async () => {
+      await expect(
+        teamPage.apiKeys.getByText('API Keys', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        teamPage.mcpServer.getByText('Connect your AI Agents', { exact: true }),
+      ).toBeVisible();
+    });
+
     await test.step('Verify integrations tab sections are visible', async () => {
       await teamPage.openIntegrationsTab();
       await expect(teamPage.integrations).toBeVisible();
-      await expect(teamPage.apiKeys).toBeVisible();
     });
 
-    await test.step('Verify integrations tab headings exist', async () => {
+    await test.step('Verify integrations tab heading exists', async () => {
       await expect(
         teamPage.integrations.getByText('Integrations', { exact: true }),
-      ).toBeVisible();
-      await expect(
-        teamPage.apiKeys.getByText('API Keys', { exact: true }),
       ).toBeVisible();
     });
 
@@ -142,7 +154,7 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
 
   test('should display API keys', async () => {
     await test.step('Scroll to API keys section', async () => {
-      await teamPage.openIntegrationsTab();
+      await teamPage.openApiAndAgentsTab();
       await teamPage.apiKeys.scrollIntoViewIfNeeded();
     });
 
@@ -162,7 +174,7 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
 
   test('should open and cancel rotate API key modal', async () => {
     await test.step('Open rotate API key modal', async () => {
-      await teamPage.openIntegrationsTab();
+      await teamPage.openApiAndAgentsTab();
       await teamPage.clickRotateApiKey();
     });
 

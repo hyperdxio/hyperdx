@@ -18,7 +18,7 @@ import useRowWhere, { RowWhereResult } from '@/hooks/useRowWhere';
 import { getFirstTimestampValueExpression } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
-import styles from '../../styles/LogSidePanel.module.scss';
+import styles from '@styles/LogSidePanel.module.scss';
 
 export default function PatternSidePanel({
   isOpen,
@@ -176,8 +176,6 @@ export default function PatternSidePanel({
               rowId={selectedRowWhere.where}
               aliasWith={selectedRowWhere.aliasWith}
               onClose={handleCloseRowSidePanel}
-              isNestedPanel={true}
-              breadcrumbPath={[{ label: 'Pattern Overview' }]}
             />
           )}
         </div>

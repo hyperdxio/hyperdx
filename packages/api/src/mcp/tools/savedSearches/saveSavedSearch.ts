@@ -1,6 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import mongoose from 'mongoose';
-
 import * as config from '@/config';
 import {
   createSavedSearch,
@@ -8,52 +5,45 @@ import {
   updateSavedSearch,
 } from '@/controllers/savedSearch';
 import { getSource } from '@/controllers/sources';
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import {
+  mcpServerError,
+  mcpUserError,
+  validateObjectId,
+} from '@/mcp/utils/errors';
 
-import { withToolTracing } from '../../utils/tracing';
-import type { McpContext } from '../types';
 import { mcpSaveSavedSearchSchema } from './schemas';
 
-export function registerSaveSavedSearch(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerSaveSavedSearch({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
-  server.registerTool(
-    'hyperdx_save_saved_search',
+  registerTool(
+    'clickstack_save_saved_search',
     {
       title: 'Create or Update Saved Search',
       description:
         'Create a new saved search (omit id) or update an existing one (provide id). ' +
         'A saved search stores a reusable query against a data source. ' +
-        'Use hyperdx_list_sources to find the sourceId.',
+        'Use clickstack_list_sources to find the sourceId.',
       inputSchema: mcpSaveSavedSearchSchema,
     },
-    withToolTracing('hyperdx_save_saved_search', context, async input => {
+    async input => {
       const isUpdate = !!input.id;
 
       // ── Validate ID for updates ──
-      if (isUpdate && !mongoose.Types.ObjectId.isValid(input.id!)) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Invalid saved search ID' }],
-        };
+      if (isUpdate) {
+        const idError = validateObjectId(input.id!, 'saved search ID');
+        if (idError) return idError;
       }
 
-      // ── Validate sourceId ──
-      if (!mongoose.Types.ObjectId.isValid(input.sourceId)) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Invalid sourceId' }],
-        };
-      }
+      // ── Validate sourceId (format validated by Zod schema, check existence) ──
       const source = await getSource(teamId, input.sourceId);
       if (!source) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Source not found' }],
-        };
+        return mcpUserError('Source not found');
       }
 
       // Build the saved search data matching what the controller expects.
@@ -72,12 +62,7 @@ export function registerSaveSavedSearch(
         // Verify the saved search exists before updating.
         const existing = await getSavedSearch(teamId, input.id!);
         if (!existing) {
-          return {
-            isError: true,
-            content: [
-              { type: 'text' as const, text: 'Saved search not found' },
-            ],
-          };
+          return mcpUserError('Saved search not found');
         }
 
         const updated = await updateSavedSearch(
@@ -88,15 +73,7 @@ export function registerSaveSavedSearch(
         );
 
         if (!updated) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: 'text' as const,
-                text: 'Failed to update saved search',
-              },
-            ],
-          };
+          return mcpServerError('Failed to update saved search');
         }
 
         return {
@@ -138,6 +115,6 @@ export function registerSaveSavedSearch(
           },
         ],
       };
-    }),
+    },
   );
 }

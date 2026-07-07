@@ -39,7 +39,7 @@ exports[`renderChartConfig histogram metric queries count should generate a coun
             AggregationTemporality,
             toStartOfInterval(toDateTime(TimeUnix), INTERVAL 2 minute) AS \`__hdx_time_bucket\`,
             [ResourceAttributes['host']] AS group,
-            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+            cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS attr_hash,
             cityHash64(ExplicitBounds) AS bounds_hash,
             toInt64(Count) AS current_count,
             lagInFrame(toNullable(current_count), 1, NULL) OVER (
@@ -70,7 +70,7 @@ exports[`renderChartConfig histogram metric queries count should generate a coun
             AggregationTemporality,
             toStartOfInterval(toDateTime(TimeUnix), INTERVAL 2 minute) AS \`__hdx_time_bucket\`,
             
-            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+            cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS attr_hash,
             cityHash64(ExplicitBounds) AS bounds_hash,
             toInt64(Count) AS current_count,
             lagInFrame(toNullable(current_count), 1, NULL) OVER (
@@ -101,7 +101,7 @@ exports[`renderChartConfig histogram metric queries count should generate a coun
             AggregationTemporality,
             TimeUnix AS \`__hdx_time_bucket\`,
             
-            cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+            cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS attr_hash,
             cityHash64(ExplicitBounds) AS bounds_hash,
             toInt64(Count) AS current_count,
             lagInFrame(toNullable(current_count), 1, NULL) OVER (
@@ -161,7 +161,7 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
                   ExplicitBounds,
                   ResourceAttributes,
                   Attributes,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+                  cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS attr_hash,
                   cityHash64(ExplicitBounds) AS bounds_hash,
                   CAST(BucketCounts AS Array(Int64)) counts
               FROM default.otel_metrics_histogram
@@ -245,7 +245,7 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
                   ExplicitBounds,
                   ResourceAttributes,
                   Attributes,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+                  cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS attr_hash,
                   cityHash64(ExplicitBounds) AS bounds_hash,
                   CAST(BucketCounts AS Array(Int64)) counts
               FROM default.otel_metrics_histogram
@@ -329,7 +329,7 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
                   ExplicitBounds,
                   ResourceAttributes,
                   Attributes,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+                  cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS attr_hash,
                   cityHash64(ExplicitBounds) AS bounds_hash,
                   CAST(BucketCounts AS Array(Int64)) counts
               FROM default.otel_metrics_histogram
@@ -413,7 +413,7 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
                   ExplicitBounds,
                   ResourceAttributes,
                   Attributes,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+                  cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS attr_hash,
                   cityHash64(ExplicitBounds) AS bounds_hash,
                   CAST(BucketCounts AS Array(Int64)) counts
               FROM default.otel_metrics_histogram
@@ -497,7 +497,7 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
                   ExplicitBounds,
                   ResourceAttributes,
                   Attributes,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS attr_hash,
+                  cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS attr_hash,
                   cityHash64(ExplicitBounds) AS bounds_hash,
                   CAST(BucketCounts AS Array(Int64)) counts
               FROM default.otel_metrics_histogram
@@ -549,7 +549,7 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
 "WITH Source AS (
                 SELECT
                   *,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+                  cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash,
                   IF(
                     AggregationTemporality = 1,
                     Value, -- DELTA: Value is already the per-interval increase
@@ -624,7 +624,7 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
 "WITH Source AS (
             SELECT
               *,
-              cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash
+              cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash
             FROM default.otel_metrics_gauge
             WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) AND ((MetricName IN ('k8s.pod.cpu.utilization', 'k8s.pod.cpu.usage')))
           ),Bucketed AS (
@@ -657,7 +657,7 @@ exports[`renderChartConfig k8s semantic convention migrations should handle metr
 "WITH Source AS (
             SELECT
               *,
-              cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash
+              cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash
             FROM default.otel_metrics_gauge
             WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) AND ((MetricName = 'some.regular.metric'))
           ),Bucketed AS (
@@ -724,7 +724,7 @@ exports[`renderChartConfig should generate sql for a single gauge metric 1`] = `
 "WITH Source AS (
             SELECT
               *,
-              cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash
+              cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash
             FROM default.otel_metrics_gauge
             WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) AND ((MetricName = 'nodejs.event_loop.utilization'))
           ),Bucketed AS (
@@ -755,7 +755,7 @@ exports[`renderChartConfig should generate sql for a single gauge metric with a 
 "WITH Source AS (
             SELECT
               *,
-              cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash
+              cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash
             FROM default.otel_metrics_gauge
             WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) AND ((MetricName = 'nodejs.event_loop.utilization'))
           ),Bucketed AS (
@@ -788,7 +788,7 @@ exports[`renderChartConfig should generate sql for a single sum metric 1`] = `
 "WITH Source AS (
                 SELECT
                   *,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+                  cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash,
                   IF(
                     AggregationTemporality = 1,
                     Value, -- DELTA: Value is already the per-interval increase
@@ -863,7 +863,7 @@ exports[`renderChartConfig should generate sql for a sum metric with aggFn=incre
 "WITH Source AS (
                 SELECT
                   *,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+                  cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash,
                   IF(
                     AggregationTemporality = 1,
                     Value, -- DELTA: Value is already the per-interval increase
@@ -938,7 +938,7 @@ exports[`renderChartConfig should limit aggFn=increase + groupBy to the top 20 g
 "WITH Source AS (
                 SELECT
                   *,
-                  cityHash64(mapConcat(ScopeAttributes, ResourceAttributes, Attributes)) AS AttributesHash,
+                  cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS AttributesHash,
                   IF(
                     AggregationTemporality = 1,
                     Value, -- DELTA: Value is already the per-interval increase

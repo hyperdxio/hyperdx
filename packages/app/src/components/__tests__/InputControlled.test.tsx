@@ -2,7 +2,10 @@ import React from 'react';
 import { useForm } from 'react-hook-form';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 
-import { InputControlled, PasswordInputControlled } from '../InputControlled';
+import {
+  InputControlled,
+  PasswordInputControlled,
+} from '@/components/InputControlled';
 
 // Test wrapper component that provides form context
 function TestForm({ children }: { children: React.ReactElement }) {

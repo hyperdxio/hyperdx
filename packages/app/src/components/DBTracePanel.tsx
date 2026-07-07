@@ -1,45 +1,161 @@
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
+import { z } from 'zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   isLogSource,
   isTraceSource,
   SourceKind,
+  TSource,
+  WithClauseSchema,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
+  Box,
   Button,
-  Center,
   Divider,
   Flex,
   Group,
-  Paper,
   Stack,
   Text,
+  Tooltip,
 } from '@mantine/core';
-import { IconPencil } from '@tabler/icons-react';
+import { IconPencil, IconX } from '@tabler/icons-react';
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
+import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
-import { RowDataPanel } from './DBRowDataPanel';
+import DBInfraPanel from './DBInfraPanel';
+import { RowDataPanel, rowHasK8sContext, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
-import SourceSchemaPreview from './SourceSchemaPreview';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
 
-const eventRowWhereParser = parseAsJsonEncoded<{
+import resizeStyles from '@/../styles/ResizablePanel.module.scss';
+
+type EventRowWhere = {
   id: string;
   type: string;
   aliasWith: WithClause[];
-}>();
+  // The trace this span selection was made in. Used to gate a selection left in
+  // the URL from a previous trace so it can't render against a different one.
+  traceId?: string;
+};
 
-enum Tab {
+// Validate the persisted span selection so a stale / hand-edited `eventRowWhere`
+// (valid JSON but wrong shape) resolves to null instead of feeding a malformed
+// row id into the span detail query.
+const eventRowWhereSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  aliasWith: z.array(WithClauseSchema),
+  traceId: z.string().optional(),
+});
+const eventRowWhereParser = parseAsJsonEncoded<EventRowWhere>(
+  eventRowWhereSchema.parse,
+);
+
+enum SpanDetailTab {
   Overview = 'overview',
   Parsed = 'parsed',
+  Infrastructure = 'infrastructure',
+}
+
+// Renders the inline detail for the currently-selected span. Mounted only while
+// a span is selected, so it can call useRowData with a real source rather than
+// the parent passing a placeholder when nothing is selected. Owns the active
+// tab, which resets to Overview when the panel is closed and reopened.
+function SpanDetailPanel({
+  source,
+  rowId,
+  aliasWith,
+  onClose,
+}: {
+  source: TSource;
+  rowId: string;
+  aliasWith?: WithClause[];
+  onClose: () => void;
+}) {
+  const [displayedTab, setDisplayedTab] = useState<SpanDetailTab>(
+    SpanDetailTab.Overview,
+  );
+
+  const { data: rowData } = useRowData({ source, rowId, aliasWith });
+  const normalizedRow = rowData?.data?.[0];
+
+  const hasK8sContext = useMemo(
+    () => rowHasK8sContext(source, normalizedRow),
+    [source, normalizedRow],
+  );
+
+  // If the selected span loses k8s context (e.g. switching spans) while the
+  // Infrastructure tab is active, fall back to Overview so we don't show a
+  // blank panel. Derived rather than synced via an effect.
+  const effectiveTab =
+    displayedTab === SpanDetailTab.Infrastructure && !hasK8sContext
+      ? SpanDetailTab.Overview
+      : displayedTab;
+
+  return (
+    <>
+      <div style={{ position: 'relative' }}>
+        <TabBar
+          className="fs-8"
+          items={[
+            {
+              text: 'Overview',
+              value: SpanDetailTab.Overview,
+            },
+            {
+              text: 'Column Values',
+              value: SpanDetailTab.Parsed,
+            },
+            ...(hasK8sContext
+              ? [
+                  {
+                    text: 'Infrastructure',
+                    value: SpanDetailTab.Infrastructure,
+                  },
+                ]
+              : []),
+          ]}
+          activeItem={effectiveTab}
+          onClick={(v: any) => setDisplayedTab(v)}
+        />
+        <Tooltip label="Close" position="bottom">
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="sm"
+            onClick={onClose}
+            aria-label="Close span details"
+            style={{ position: 'absolute', right: 0, top: 0 }}
+          >
+            <IconX size={16} />
+          </ActionIcon>
+        </Tooltip>
+      </div>
+      {effectiveTab === SpanDetailTab.Overview && (
+        <RowOverviewPanel source={source} rowId={rowId} aliasWith={aliasWith} />
+      )}
+      {effectiveTab === SpanDetailTab.Parsed && (
+        <RowDataPanel source={source} rowId={rowId} aliasWith={aliasWith} />
+      )}
+      {effectiveTab === SpanDetailTab.Infrastructure && hasK8sContext && (
+        <Box style={{ overflowY: 'auto' }}>
+          <DBInfraPanel source={source} rowData={normalizedRow} />
+        </Box>
+      )}
+    </>
+  );
 }
 
 export default function DBTracePanel({
@@ -108,6 +224,25 @@ export default function DBTracePanel({
     eventRowWhereParser,
   );
 
+  // A persisted span selection belongs to the trace it was made in. Gate it by
+  // the current `traceId` at *read* time so a selection left in the URL from a
+  // previous trace (e.g. after "View Trace" opened a different trace, or an old
+  // shared link) can never render against this trace's waterfall — no matter how
+  // the panel was (re)mounted.
+  const selectedSpan =
+    eventRowWhere != null && eventRowWhere.traceId === traceId
+      ? eventRowWhere
+      : null;
+
+  // Stamp the current trace onto every selection so the gate above can tell it
+  // apart from a stale one.
+  const selectSpan = useCallback(
+    (where: { id: string; type: string; aliasWith: WithClause[] }) => {
+      setEventRowWhere({ ...where, traceId });
+    },
+    [setEventRowWhere, traceId],
+  );
+
   const {
     control: traceIdControl,
     handleSubmit: traceIdHandleSubmit,
@@ -133,21 +268,45 @@ export default function DBTracePanel({
 
   const [showTraceIdInput, setShowTraceIdInput] = useState(false);
 
-  // Reset highlighted row when trace ID changes
-  // otherwise we'll show stale span details
+  // Tidy the URL: drop a selection that belongs to a different trace. Purely
+  // cosmetic — the read-time `selectedSpan` gate already prevents a foreign
+  // selection from rendering; this just keeps the param from lingering.
   useEffect(() => {
-    return () => {
+    if (eventRowWhere != null && eventRowWhere.traceId !== traceId) {
       setEventRowWhere(null);
-    };
-  }, [traceId, setEventRowWhere]);
+    }
+  }, [eventRowWhere, traceId, setEventRowWhere]);
 
-  const sourceSchemaPreview = useMemo(() => {
-    return <SourceSchemaPreview source={childSourceData} variant="text" />;
-  }, [childSourceData]);
+  const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
+    useState(false);
 
-  const [displayedTab, setDisplayedTab] = useState<Tab>(Tab.Overview);
+  // Parent owns the horizontal split sizing; the waterfall lives on the left
+  // and the selected span's detail renders inline on the right.
+  const { size: rightPanelSize, startResize: startHorizontalResize } =
+    useResizable(35, 'right');
+
+  const handleCloseSpanDetails = useCallback(() => {
+    setEventRowWhere(null);
+  }, [setEventRowWhere]);
+
+  const selectedSpanSource = useMemo(() => {
+    if (!selectedSpan) return null;
+    if (selectedSpan.type === SourceKind.Log && logSourceData) {
+      return logSourceData;
+    }
+    return traceSourceData;
+  }, [selectedSpan, logSourceData, traceSourceData]);
+
   return (
-    <div data-testid={dataTestId}>
+    <div
+      data-testid={dataTestId}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        minHeight: 0,
+      }}
+    >
       <Flex align="center" justify="space-between" mb="sm">
         <Flex align="center">
           <Text size="xs" me="xs">
@@ -177,7 +336,16 @@ export default function DBTracePanel({
             control={control}
             name="source"
             size="xs"
-            sourceSchemaPreview={sourceSchemaPreview}
+            onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+            isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(
+              childSourceData,
+            )}
+          />
+          <SourceSchemaPreview
+            source={childSourceData}
+            controlled
+            open={isSourceSchemaPreviewOpen}
+            onClose={() => setIsSourceSchemaPreviewOpen(false)}
           />
         </Group>
       </Flex>
@@ -228,70 +396,67 @@ export default function DBTracePanel({
         </Stack>
       )}
       <Divider my="sm" />
-      {traceSourceData?.kind === SourceKind.Trace && traceId && (
-        <DBTraceWaterfallChartContainer
-          traceTableSource={traceSourceData}
-          logTableSource={logSourceData}
-          traceId={traceId}
-          dateRange={dateRange}
-          focusDate={focusDate}
-          highlightedRowWhere={eventRowWhere?.id}
-          onClick={setEventRowWhere}
-          initialRowHighlightHint={initialRowHighlightHint}
-          emptyState={emptyState}
-        />
-      )}
-      {traceSourceData != null && eventRowWhere != null && (
-        <>
-          <Text size="sm" my="sm">
-            Event Details
-          </Text>
-          <TabBar
-            className="fs-8 mt-2"
-            items={[
-              {
-                text: 'Overview',
-                value: Tab.Overview,
-              },
-              {
-                text: 'Column Values',
-                value: Tab.Parsed,
-              },
-            ]}
-            activeItem={displayedTab}
-            onClick={(v: any) => setDisplayedTab(v)}
+      {/* Inline resizable split view: waterfall (left) + span detail (right) */}
+      <div
+        style={{
+          display: 'flex',
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+        }}
+      >
+        <div
+          style={{
+            flex: selectedSpan ? `${100 - rightPanelSize} 1 0` : '1 1 100%',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            minWidth: 0,
+          }}
+        >
+          {traceSourceData?.kind === SourceKind.Trace && traceId && (
+            <DBTraceWaterfallChartContainer
+              traceTableSource={traceSourceData}
+              logTableSource={logSourceData}
+              traceId={traceId}
+              dateRange={dateRange}
+              focusDate={focusDate}
+              highlightedRowWhere={selectedSpan?.id}
+              onClick={selectSpan}
+              initialRowHighlightHint={initialRowHighlightHint}
+              emptyState={emptyState}
+            />
+          )}
+        </div>
+
+        {selectedSpan != null && (
+          <Box
+            className={resizeStyles.resizeHandleInline}
+            onMouseDown={startHorizontalResize}
           />
-          {displayedTab === Tab.Overview && (
-            <RowOverviewPanel
-              source={
-                eventRowWhere?.type === SourceKind.Log && logSourceData
-                  ? logSourceData
-                  : traceSourceData
-              }
-              rowId={eventRowWhere?.id}
-              aliasWith={eventRowWhere?.aliasWith}
-            />
+        )}
+
+        {traceSourceData != null &&
+          selectedSpan != null &&
+          selectedSpanSource != null && (
+            <div
+              style={{
+                flex: `${rightPanelSize} 1 0`,
+                overflow: 'auto',
+                minWidth: 300,
+                borderLeft: '1px solid var(--color-border)',
+                paddingLeft: 'var(--mantine-spacing-sm)',
+              }}
+            >
+              <SpanDetailPanel
+                source={selectedSpanSource}
+                rowId={selectedSpan.id}
+                aliasWith={selectedSpan.aliasWith}
+                onClose={handleCloseSpanDetails}
+              />
+            </div>
           )}
-          {displayedTab === Tab.Parsed && (
-            <RowDataPanel
-              source={
-                eventRowWhere?.type === SourceKind.Log && logSourceData
-                  ? logSourceData
-                  : traceSourceData
-              }
-              rowId={eventRowWhere?.id}
-              aliasWith={eventRowWhere?.aliasWith}
-            />
-          )}
-        </>
-      )}
-      {traceSourceData != null && !eventRowWhere && traceId && (
-        <Paper shadow="xs" p="xl" mt="md">
-          <Center mih={100}>
-            <Text size="sm">Please select a span above to view details.</Text>
-          </Center>
-        </Paper>
-      )}
+      </div>
     </div>
   );
 }

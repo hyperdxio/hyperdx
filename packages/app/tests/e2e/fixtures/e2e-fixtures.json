@@ -56,6 +56,79 @@
       "sessionSourceId": "E2E Sessions"
     },
     {
+      "id": "E2E Traces MV",
+      "kind": "trace",
+      "name": "E2E Traces MV",
+      "connection": "local",
+      "from": { "databaseName": "default", "tableName": "e2e_otel_traces" },
+      "timestampValueExpression": "Timestamp",
+      "defaultTableSelectExpression": "Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName",
+      "serviceNameExpression": "ServiceName",
+      "eventAttributesExpression": "SpanAttributes",
+      "resourceAttributesExpression": "ResourceAttributes",
+      "traceIdExpression": "TraceId",
+      "spanIdExpression": "SpanId",
+      "implicitColumnExpression": "SpanName",
+      "durationExpression": "Duration",
+      "durationPrecision": 9,
+      "parentSpanIdExpression": "ParentSpanId",
+      "spanKindExpression": "SpanKind",
+      "spanNameExpression": "SpanName",
+      "statusCodeExpression": "StatusCode",
+      "statusMessageExpression": "StatusMessage",
+      "spanEventsValueExpression": "Events",
+      "materializedViews": [
+        {
+          "databaseName": "default",
+          "tableName": "e2e_otel_traces_1m",
+          "dimensionColumns": "ServiceName, StatusCode",
+          "minGranularity": "1 minute",
+          "timestampColumn": "Timestamp",
+          "aggregatedColumns": [
+            { "aggFn": "count", "mvColumn": "count" },
+            {
+              "aggFn": "avg",
+              "sourceColumn": "Duration",
+              "mvColumn": "avg__Duration"
+            },
+            {
+              "aggFn": "max",
+              "sourceColumn": "Duration",
+              "mvColumn": "max__Duration"
+            },
+            {
+              "aggFn": "quantile",
+              "sourceColumn": "Duration",
+              "mvColumn": "quantile__Duration"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "E2E Traces MV AutoPopulate",
+      "kind": "trace",
+      "name": "E2E Traces MV AutoPopulate",
+      "connection": "local",
+      "from": { "databaseName": "default", "tableName": "e2e_otel_traces" },
+      "timestampValueExpression": "Timestamp",
+      "defaultTableSelectExpression": "Timestamp, ServiceName, StatusCode, round(Duration / 1e6), SpanName",
+      "serviceNameExpression": "ServiceName",
+      "eventAttributesExpression": "SpanAttributes",
+      "resourceAttributesExpression": "ResourceAttributes",
+      "traceIdExpression": "TraceId",
+      "spanIdExpression": "SpanId",
+      "implicitColumnExpression": "SpanName",
+      "durationExpression": "Duration",
+      "durationPrecision": 9,
+      "parentSpanIdExpression": "ParentSpanId",
+      "spanKindExpression": "SpanKind",
+      "spanNameExpression": "SpanName",
+      "statusCodeExpression": "StatusCode",
+      "statusMessageExpression": "StatusMessage",
+      "spanEventsValueExpression": "Events"
+    },
+    {
       "id": "E2E Metrics",
       "kind": "metric",
       "name": "E2E Metrics",
@@ -109,6 +182,50 @@
       "spanIdExpression": "SpanId",
       "implicitColumnExpression": "Body",
       "displayedTimestampValueExpression": "Timestamp"
+    },
+    {
+      "id": "E2E Interesting Filter Keys",
+      "kind": "log",
+      "name": "E2E Interesting Filter Keys",
+      "connection": "local",
+      "from": {
+        "databaseName": "default",
+        "tableName": "otel_logs_interesting_filter_keys"
+      },
+      "timestampValueExpression": "Timestamp",
+      "defaultTableSelectExpression": "Timestamp, ServiceName, Body",
+      "serviceNameExpression": "ServiceName",
+      "severityTextExpression": "SeverityText",
+      "resourceAttributesExpression": "ResourceAttributes",
+      "traceIdExpression": "TraceId",
+      "spanIdExpression": "SpanId",
+      "implicitColumnExpression": "Body",
+      "displayedTimestampValueExpression": "Timestamp"
+    },
+    {
+      "id": "E2E Metadata MV Logs",
+      "kind": "log",
+      "name": "E2E Metadata MV Logs",
+      "connection": "local",
+      "from": {
+        "databaseName": "default",
+        "tableName": "e2e_otel_logs_metadata_mv"
+      },
+      "timestampValueExpression": "Timestamp",
+      "defaultTableSelectExpression": "Timestamp, ServiceName, SeverityText, Body",
+      "serviceNameExpression": "ServiceName",
+      "severityTextExpression": "SeverityText",
+      "eventAttributesExpression": "LogAttributes",
+      "resourceAttributesExpression": "ResourceAttributes",
+      "traceIdExpression": "TraceId",
+      "spanIdExpression": "SpanId",
+      "implicitColumnExpression": "Body",
+      "displayedTimestampValueExpression": "Timestamp",
+      "metadataMaterializedViews": {
+        "keyRollupTable": "e2e_otel_logs_key_rollup_15m",
+        "kvRollupTable": "e2e_otel_logs_kv_rollup_15m",
+        "granularity": "15 minute"
+      }
     }
   ]
 }

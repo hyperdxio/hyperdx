@@ -1,5 +1,50 @@
 # @hyperdx/cli
 
+## 0.5.1
+
+### Patch Changes
+
+- 5c46215f8: Bump `@clickhouse/client*` to `1.23.0-head.fae5998.1` and fix the type
+  incompatibility it introduces.
+
+  In `@clickhouse/client*` 1.23 each platform package (`@clickhouse/client`,
+  `@clickhouse/client-web`) bundles its own copy of the shared types, so their
+  `ClickHouseSettings` types — which reference the nominally-compared `SettingsMap`
+  class — are no longer the same type as `@clickhouse/client-common`'s. The shared
+  `processClickhouseSettings()` helper produces the `client-common` flavor, so
+  assigning it into the per-platform clients' `query()` now requires an explicit
+  bridge. Guard the existing `as ClickHouseSettings` assertions at those
+  boundaries (`node.ts`, `browser.ts`, `cli`) with a scoped
+  `@typescript-eslint/no-unsafe-type-assertion` disable, matching the existing
+  "client library type mismatch" pattern. No runtime behavior changes.
+
+- 45954c318: Import ClickHouse client types from the platform packages
+  (`@clickhouse/client` / `@clickhouse/client-web`) instead of the deprecated
+  `@clickhouse/client-common`. This makes the packages forward-compatible with
+  `@clickhouse/client*` 1.23 (where `client-common` is deprecated and each
+  platform package bundles and re-exports its own copy of the shared types)
+  without bumping the pinned version. No runtime behavior changes.
+- 1a64796c1: Removing relative imports and using path aliases
+
+## 0.5.0
+
+### Minor Changes
+
+- 3123db53: feat: experimental promql support
+
+### Patch Changes
+
+- b20275c9: fix(cli): exit with non-zero code when `upload-sourcemaps` fails
+
+  The `upload-sourcemaps` command now exits with code 1 when uploads fail
+  (missing source maps, pre-signed URL request failure, authentication failure,
+  or any per-file upload failure after retries). Previously these failures were
+  logged to stderr but the process exited cleanly with code 0, causing CI
+  pipelines to treat failed uploads as successes.
+
+- 19cd7c91: fix: only use pk and row uniqueness to look up a row
+- 8810ff0f: feat: Add option for force-enabling/disabling text index support
+
 ## 0.4.1
 
 ### Patch Changes

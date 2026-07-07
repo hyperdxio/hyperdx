@@ -1,10 +1,11 @@
-import type { OnClickDashboard, OnClickSearch } from '../../types';
 import {
   describeOnClick,
   renderOnClickDashboard,
+  renderOnClickExternal,
   renderOnClickSearch,
   validateOnClickTemplate,
-} from '../linkUrlBuilder';
+} from '@/core/linkUrlBuilder';
+import type { OnClickDashboard, OnClickExternal, OnClickSearch } from '@/types';
 
 const dateRange: [Date, Date] = [
   new Date('2026-01-01T00:00:00Z'),
@@ -244,7 +245,7 @@ describe('renderOnClickSearch', () => {
       const params = new URLSearchParams(result.url.split('?')[1]);
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
-      ).toEqual([{ type: 'lucene', condition: 'ServiceName:"MyService"' }]);
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('MyService')" }]);
     }
   });
 
@@ -278,9 +279,7 @@ describe('renderOnClickSearch', () => {
       const params = new URLSearchParams(result.url.split('?')[1]);
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
-      ).toEqual([
-        { type: 'lucene', condition: '(ServiceName:"A" OR ServiceName:"B")' },
-      ]);
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('A', 'B')" }]);
     }
   });
 
@@ -315,8 +314,8 @@ describe('renderOnClickSearch', () => {
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
       ).toEqual([
-        { type: 'lucene', condition: 'ServiceName:"MyService"' },
-        { type: 'lucene', condition: 'SeverityText:"error"' },
+        { type: 'sql', condition: "ServiceName IN ('MyService')" },
+        { type: 'sql', condition: "SeverityText IN ('error')" },
       ]);
     }
   });
@@ -346,7 +345,7 @@ describe('renderOnClickSearch', () => {
       const params = new URLSearchParams(result.url.split('?')[1]);
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
-      ).toEqual([{ type: 'lucene', condition: 'ServiceName:"O\'Malley"' }]);
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('O''Malley')" }]);
     }
   });
 
@@ -376,7 +375,7 @@ describe('renderOnClickSearch', () => {
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
       ).toEqual([
-        { type: 'lucene', condition: 'FilePath:"C:\\\\path\\\\to\\\\file"' },
+        { type: 'sql', condition: "FilePath IN ('C:\\\\path\\\\to\\\\file')" },
       ]);
     }
   });
@@ -408,8 +407,8 @@ describe('renderOnClickSearch', () => {
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
       ).toEqual([
         {
-          type: 'lucene',
-          condition: 'SpanAttributes.url:"/users%2F42"',
+          type: 'sql',
+          condition: "SpanAttributes['url'] IN ('/users%2F42')",
         },
       ]);
     }
@@ -678,7 +677,7 @@ describe('renderOnClickDashboard', () => {
       const params = new URLSearchParams(result.url.split('?')[1]);
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
-      ).toEqual([{ type: 'lucene', condition: 'ServiceName:"MyService"' }]);
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('MyService')" }]);
     }
   });
 
@@ -712,9 +711,7 @@ describe('renderOnClickDashboard', () => {
       const params = new URLSearchParams(result.url.split('?')[1]);
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
-      ).toEqual([
-        { type: 'lucene', condition: '(ServiceName:"A" OR ServiceName:"B")' },
-      ]);
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('A', 'B')" }]);
     }
   });
 
@@ -749,8 +746,8 @@ describe('renderOnClickDashboard', () => {
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
       ).toEqual([
-        { type: 'lucene', condition: 'ServiceName:"MyService"' },
-        { type: 'lucene', condition: 'SeverityText:"error"' },
+        { type: 'sql', condition: "ServiceName IN ('MyService')" },
+        { type: 'sql', condition: "SeverityText IN ('error')" },
       ]);
     }
   });
@@ -780,7 +777,7 @@ describe('renderOnClickDashboard', () => {
       const params = new URLSearchParams(result.url.split('?')[1]);
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
-      ).toEqual([{ type: 'lucene', condition: 'ServiceName:"O\'Malley"' }]);
+      ).toEqual([{ type: 'sql', condition: "ServiceName IN ('O''Malley')" }]);
     }
   });
 
@@ -810,7 +807,7 @@ describe('renderOnClickDashboard', () => {
       expect(
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
       ).toEqual([
-        { type: 'lucene', condition: 'FilePath:"C:\\\\path\\\\to\\\\file"' },
+        { type: 'sql', condition: "FilePath IN ('C:\\\\path\\\\to\\\\file')" },
       ]);
     }
   });
@@ -842,8 +839,8 @@ describe('renderOnClickDashboard', () => {
         JSON.parse(decodeURIComponent(params.get('filters') ?? '')),
       ).toEqual([
         {
-          type: 'lucene',
-          condition: 'SpanAttributes.url:"/users%2F42"',
+          type: 'sql',
+          condition: "SpanAttributes['url'] IN ('/users%2F42')",
         },
       ]);
     }
@@ -872,6 +869,183 @@ describe('renderOnClickDashboard', () => {
     expect(result.ok).toBe(false);
     if (!result.ok)
       expect(result.error).toBe("Row has no column 'MissingColumn'");
+  });
+});
+
+describe('renderOnClickExternal', () => {
+  it('renders a static absolute https URL', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate: 'https://grafana.example.com/d/abc',
+    };
+    const result = renderOnClickExternal({ onClick, row: {} });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.url).toBe('https://grafana.example.com/d/abc');
+    }
+  });
+
+  it('renders a templated URL from row columns', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate:
+        'https://grafana.example.com/d/abc?var-service={{ServiceName}}',
+    };
+    const result = renderOnClickExternal({
+      onClick,
+      row: { ServiceName: 'checkout' },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.url).toBe(
+        'https://grafana.example.com/d/abc?var-service=checkout',
+      );
+    }
+  });
+
+  it('allows http URLs', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate: 'http://internal-tool.local/runbook',
+    };
+    const result = renderOnClickExternal({ onClick, row: {} });
+    expect(result.ok).toBe(true);
+  });
+
+  it('trims surrounding whitespace from the rendered URL', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate: '  https://example.com/{{Path}}  ',
+    };
+    const result = renderOnClickExternal({
+      onClick,
+      row: { Path: 'page' },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.url).toBe('https://example.com/page');
+    }
+  });
+
+  it('errors when the template references a missing column', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate: 'https://example.com/{{MissingColumn}}',
+    };
+    const result = renderOnClickExternal({ onClick, row: {} });
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toBe("Row has no column 'MissingColumn'");
+  });
+
+  it('errors when the rendered URL is empty', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate: '{{Blank}}',
+    };
+    const result = renderOnClickExternal({
+      onClick,
+      row: { Blank: '' },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe('External link URL is empty');
+  });
+
+  it('percent-encodes a column value so it cannot inject extra query params', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate:
+        'https://grafana.example.com/d/abc?var-service={{ServiceName}}',
+    };
+    const result = renderOnClickExternal({
+      onClick,
+      row: { ServiceName: 'checkout&admin=true' },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.url).toBe(
+        'https://grafana.example.com/d/abc?var-service=checkout%26admin%3Dtrue',
+      );
+      // The injected "&admin=true" must NOT become a separate query param.
+      const parsed = new URL(result.url);
+      expect(parsed.searchParams.get('var-service')).toBe(
+        'checkout&admin=true',
+      );
+      expect(parsed.searchParams.has('admin')).toBe(false);
+    }
+  });
+
+  it('percent-encodes path-traversal and fragment characters in a column value', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate: 'https://example.com/service/{{ServiceName}}',
+    };
+    const result = renderOnClickExternal({
+      onClick,
+      row: { ServiceName: '../../etc/passwd#frag' },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.url).toBe(
+        'https://example.com/service/..%2F..%2Fetc%2Fpasswd%23frag',
+      );
+      const parsed = new URL(result.url);
+      expect(parsed.pathname).toBe('/service/..%2F..%2Fetc%2Fpasswd%23frag');
+      expect(parsed.hash).toBe('');
+    }
+  });
+
+  it('does not encode the template author\u2019s own URL structure', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate: 'https://example.com/d/abc?a={{A}}&b={{B}}#section={{C}}',
+    };
+    const result = renderOnClickExternal({
+      onClick,
+      row: { A: 'x y', B: 'p/q', C: 'z' },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.url).toBe(
+        'https://example.com/d/abc?a=x%20y&b=p%2Fq#section=z',
+      );
+      const parsed = new URL(result.url);
+      expect(parsed.searchParams.get('a')).toBe('x y');
+      expect(parsed.searchParams.get('b')).toBe('p/q');
+      expect(parsed.hash).toBe('#section=z');
+    }
+  });
+
+  it('rejects a javascript: scheme to prevent XSS', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+
+      urlTemplate: 'javascript:alert(1)',
+    };
+    const result = renderOnClickExternal({ onClick, row: {} });
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toContain('must be an absolute http(s) URL');
+  });
+
+  it('rejects relative URLs', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate: '/dashboards/123',
+    };
+    const result = renderOnClickExternal({ onClick, row: {} });
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toContain('must be an absolute http(s) URL');
+  });
+
+  it('rejects non-http(s) schemes like data:', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate: 'data:text/html,<script>alert(1)</script>',
+    };
+    const result = renderOnClickExternal({ onClick, row: {} });
+    expect(result.ok).toBe(false);
   });
 });
 
@@ -953,6 +1127,22 @@ describe('validateOnClickTemplate', () => {
     };
     expect(() => validateOnClickTemplate(onClick)).not.toThrow();
   });
+
+  it('accepts a valid external url template', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate: 'https://example.com/{{ServiceName}}',
+    };
+    expect(() => validateOnClickTemplate(onClick)).not.toThrow();
+  });
+
+  it('throws when the external url template has invalid syntax', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate: 'https://example.com/{{#if',
+    };
+    expect(() => validateOnClickTemplate(onClick)).toThrow();
+  });
 });
 
 describe('describeOnClick', () => {
@@ -1025,5 +1215,15 @@ describe('describeOnClick', () => {
     expect(
       describeOnClick({ onClick, sourceNamesById, dashboardNamesById }),
     ).toBe('Open dashboard');
+  });
+
+  it('describes an external link action', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate: 'https://example.com/{{ServiceName}}',
+    };
+    expect(
+      describeOnClick({ onClick, sourceNamesById, dashboardNamesById }),
+    ).toBe('Open external link');
   });
 });

@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import classNames from 'classnames';
 
 import styles from './PageHeader.module.scss';
@@ -45,6 +46,21 @@ export type PageHeaderProps = {
   children?: React.ReactNode;
   className?: string;
   'data-testid'?: string;
+  /**
+   * Single-row content that should be the only sticky element on the
+   * page. When provided, the rest of the header (`breadcrumbs`,
+   * `title` / `leading` / `actions`, `children`) becomes non-sticky
+   * chrome that scrolls away, and this row is pinned to the top of the
+   * scroll container instead.
+   *
+   * Use this for pages that have a tall header (e.g. dashboards with
+   * breadcrumbs + an editable name + a query toolbar) where only a
+   * specific row — typically the controls users keep reaching for while
+   * scrolling, like the query toolbar — should remain visible.
+   *
+   * When omitted, the header behaves as a single sticky block.
+   */
+  stickyRow?: React.ReactNode;
 };
 
 export function PageHeader({
@@ -55,20 +71,36 @@ export function PageHeader({
   children,
   className,
   'data-testid': testId,
+  stickyRow,
 }: PageHeaderProps) {
   const hasToolbar = title != null || leading != null || actions != null;
   const hasBreadcrumbs = breadcrumbs != null;
+  const hasStickyRow = stickyRow != null;
 
-  if (!hasToolbar && !hasBreadcrumbs) {
-    return (
-      <header
-        className={classNames(styles.header, className)}
-        data-testid={testId}
-      >
-        {children}
-      </header>
+  // Detect when the sticky row reaches `top: 0` of the scroll container.
+  // `IntersectionObserver` with `rootMargin: -1px` at the top fires the
+  // moment the row's top edge is clipped by the viewport (i.e. it has
+  // become stuck). We use this to swap the row's `padding-top` between
+  // "attached to chrome" (no top padding, tight at rest) and "stuck"
+  // (standard top padding so the toolbar isn't flush with the edge).
+  const stickyRowRef = useRef<HTMLDivElement>(null);
+  const [isStuck, setIsStuck] = useState(false);
+  useEffect(() => {
+    const node = stickyRowRef.current;
+    if (!node || !hasStickyRow) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsStuck(entry.intersectionRatio < 1),
+      { threshold: [1], rootMargin: '-1px 0px 0px 0px' },
     );
-  }
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasStickyRow]);
+  // When a `stickyRow` is provided, the chrome above it scrolls with the
+  // page. The chrome and the sticky row render as siblings (Fragment) so
+  // the sticky row's containing block is the page layout root rather
+  // than the chrome `<header>`, which lets it stay pinned for the full
+  // length of the page rather than only the height of the header.
+  const chromeStickyClass = hasStickyRow ? styles.notSticky : undefined;
 
   const toolbarInner = (
     <>
@@ -80,36 +112,75 @@ export function PageHeader({
     </>
   );
 
-  if (hasBreadcrumbs && hasToolbar) {
-    return (
+  const chrome =
+    !hasToolbar && !hasBreadcrumbs ? (
+      // Only render the chrome `<header>` if there's something to put in
+      // it. A page with only a `stickyRow` (no breadcrumbs, no title)
+      // skips the empty chrome entirely.
+      children != null ? (
+        <header
+          className={classNames(styles.header, chromeStickyClass, className)}
+          data-testid={testId}
+        >
+          {children}
+        </header>
+      ) : null
+    ) : hasBreadcrumbs && hasToolbar ? (
       <header
-        className={classNames(styles.header, styles.headerStacked, className)}
+        className={classNames(
+          styles.header,
+          styles.headerStacked,
+          chromeStickyClass,
+          className,
+        )}
         data-testid={testId}
       >
         <div className={styles.breadcrumbsRow}>{breadcrumbs}</div>
         <div className={styles.toolbarRow}>{toolbarInner}</div>
       </header>
-    );
-  }
-
-  if (hasBreadcrumbs && !hasToolbar) {
-    return (
+    ) : hasBreadcrumbs && !hasToolbar ? (
       <header
-        className={classNames(styles.header, styles.headerStacked, className)}
+        className={classNames(
+          styles.header,
+          styles.headerStacked,
+          chromeStickyClass,
+          className,
+        )}
         data-testid={testId}
       >
         <div className={styles.breadcrumbsRow}>{breadcrumbs}</div>
         {children}
       </header>
+    ) : (
+      <header
+        className={classNames(styles.header, chromeStickyClass, className)}
+        data-testid={testId}
+      >
+        {toolbarInner}
+      </header>
     );
-  }
+
+  if (!hasStickyRow) return chrome;
 
   return (
-    <header
-      className={classNames(styles.header, className)}
-      data-testid={testId}
-    >
-      {toolbarInner}
-    </header>
+    <>
+      {chrome}
+      <div
+        ref={stickyRowRef}
+        className={classNames(
+          styles.stickyRow,
+          // While the row is in its at-rest position directly under
+          // chrome, drop its `padding-top` so the chrome's bottom edge
+          // and the toolbar read as one continuous block. Once stuck,
+          // the standard padding kicks back in so the toolbar isn't
+          // flush against the viewport edge.
+          chrome != null && !isStuck && styles.stickyRowAttached,
+        )}
+        data-stuck={isStuck ? 'true' : undefined}
+        data-testid="page-header-sticky-row"
+      >
+        {stickyRow}
+      </div>
+    </>
   );
 }

@@ -1,0 +1,61 @@
+import { buildSystemPrompt } from '@/harness/systemPrompt';
+import { getScenario } from '@/scenarios';
+import type { Scenario, SystemPromptContext } from '@/scenarios/types';
+
+describe('buildSystemPrompt', () => {
+  it('includes scenario-specific table names', () => {
+    const p = buildSystemPrompt(getScenario('error-root-cause'));
+    expect(p).toContain('default.eval_error_root_cause_otel_traces');
+    expect(p).toContain('default.eval_error_root_cause_otel_logs');
+  });
+
+  it('includes generic tool-environment guidance', () => {
+    const p1 = buildSystemPrompt(getScenario('latency-spike'));
+    const p2 = buildSystemPrompt(getScenario('noisy-signals'));
+    // Both prompts should explain tool environment and Read availability
+    for (const p of [p1, p2]) {
+      expect(p).toContain('TOOL ENVIRONMENT');
+      expect(p).toContain('Read tool');
+      expect(p).toContain('oversized tool responses');
+    }
+  });
+
+  it('asks for service, operation, root cause, and ruled-out section', () => {
+    const p = buildSystemPrompt(getScenario('error-root-cause'));
+    expect(p.toLowerCase()).toContain('service');
+    expect(p.toLowerCase()).toContain('operation');
+    expect(p.toLowerCase()).toContain('root cause');
+    expect(p.toLowerCase()).toContain("what's not the cause");
+  });
+
+  it('includes anchor time when provided', () => {
+    const p = buildSystemPrompt(
+      getScenario('error-root-cause'),
+      '2026-01-15T10:00:00.000Z',
+    );
+    expect(p).toContain('FIXED CURRENT TIME');
+    expect(p).toContain('2026-01-15T10:00:00.000Z');
+  });
+
+  it('includes hypothesis playbook when variant is hypothesis', () => {
+    const p = buildSystemPrompt(
+      getScenario('error-root-cause'),
+      undefined,
+      'hypothesis',
+    );
+    expect(p).toContain('INVESTIGATION GUIDANCE');
+    expect(p).toContain('hypotheses');
+  });
+
+  it('uses custom buildSystemPrompt hook when provided', () => {
+    const customPrompt = 'You are a custom scenario agent.';
+    const fakeScenario: Scenario = {
+      ...getScenario('error-root-cause'),
+      buildSystemPrompt: (_ctx: SystemPromptContext) => customPrompt,
+    };
+    const p = buildSystemPrompt(fakeScenario);
+    expect(p).toBe(customPrompt);
+    // Should NOT contain investigation-specific content
+    expect(p).not.toContain("What's not the cause");
+  });
+});

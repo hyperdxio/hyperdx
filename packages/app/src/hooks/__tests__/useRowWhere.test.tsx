@@ -5,7 +5,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderHook } from '@testing-library/react';
 
-import useRowWhere, { processRowToWhereClause } from '../useRowWhere';
+import useRowWhere, { processRowToWhereClause } from '@/hooks/useRowWhere';
 
 // Mock crypto-js/md5
 jest.mock('crypto-js/md5');

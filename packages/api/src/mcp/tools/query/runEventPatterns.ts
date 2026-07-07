@@ -6,42 +6,18 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import { minePatterns } from '@hyperdx/common-utils/dist/drain';
 import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
-import { clickHouseErrorResult } from './helpers';
-
-// ─── Source helpers ──────────────────────────────────────────────────────────
-
-interface SourceBodyFields {
-  kind: string;
-  spanNameExpression?: string;
-  bodyExpression?: string;
-  implicitColumnExpression?: string;
-}
-
-/**
- * Resolve the body column expression for pattern mining from a source.
- * Mirrors the web app's getEventBody() logic (packages/app/src/source.ts).
- */
-function resolveBodyExpression(source: SourceBodyFields): string | undefined {
-  let expression: string | undefined;
-  if (source.kind === SourceKind.Trace) {
-    expression = source.spanNameExpression;
-  } else if (source.kind === SourceKind.Log) {
-    expression = source.bodyExpression ?? source.implicitColumnExpression;
-  }
-  if (!expression) return undefined;
-  const multiExpr = splitAndTrimWithBracket(expression);
-  return multiExpr.length === 1 ? expression : multiExpr[0];
-}
-
-/** Reject bodyExpression values containing SQL-unsafe characters. */
-// eslint-disable-next-line no-useless-escape
-const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
+import {
+  clickHouseErrorResult,
+  resolveBodyExpression,
+  SAFE_BODY_EXPR_CHARS,
+} from './helpers';
 
 // ─── Event pattern mining ────────────────────────────────────────────────────
 
@@ -66,15 +42,9 @@ export async function runEventPatterns(
   // ── Resolve source & connection ──
   const source = await getSource(teamId, sourceId);
   if (!source) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source not found: ${sourceId}. Call hyperdx_list_sources to discover available source IDs.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source not found: ${sourceId}. Call clickstack_list_sources to discover available source IDs.`,
+    );
   }
 
   const connection = await getConnectionById(
@@ -83,15 +53,9 @@ export async function runEventPatterns(
     true,
   );
   if (!connection) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Connection not found for source: ${sourceId}. Call hyperdx_list_sources to discover available source IDs.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Connection not found for source: ${sourceId}. Call clickstack_list_sources to discover available source IDs.`,
+    );
   }
 
   // ── Determine body column ──
@@ -102,36 +66,22 @@ export async function runEventPatterns(
   if (options?.bodyExpression) {
     const parts = splitAndTrimWithBracket(options.bodyExpression);
     if (parts.length !== 1 || !SAFE_BODY_EXPR_CHARS.test(parts[0])) {
-      return {
-        isError: true as const,
-        content: [
-          {
-            type: 'text' as const,
-            text:
-              'bodyExpression must be a single column expression ' +
-              '(e.g. "Body", "SpanName", "SpanAttributes[\'http.url\']"). ' +
-              'Multiple expressions, function calls, or sub-queries are not allowed.',
-          },
-        ],
-      };
+      return mcpUserError(
+        'bodyExpression must be a single column expression ' +
+          '(e.g. "Body", "SpanName", "SpanAttributes[\'http.url\']"). ' +
+          'Multiple expressions, function calls, or sub-queries are not allowed.',
+      );
     }
     bodyColumn = parts[0];
   } else {
     bodyColumn = resolveBodyExpression(source);
   }
   if (!bodyColumn) {
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text:
-            'Could not determine body column for pattern mining. ' +
-            'This source may not have a body/spanName expression configured. ' +
-            'Try specifying bodyExpression explicitly.',
-        },
-      ],
-    };
+    return mcpUserError(
+      'Could not determine body column for pattern mining. ' +
+        'This source may not have a body/spanName expression configured. ' +
+        'Try specifying bodyExpression explicitly.',
+    );
   }
 
   const clickhouseClient = new ClickhouseClient({
@@ -272,21 +222,13 @@ export async function runEventPatterns(
     }));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return {
-      isError: true as const,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Pattern mining failed: ${message}`,
-        },
-      ],
-    };
+    return mcpServerError(`Pattern mining failed: ${message}`);
   }
 
   // ── Format response ──
   // Convert trend timestamps to ISO strings, extract sample body texts,
   // and build a whereSnippet per pattern so the agent can drill into
-  // matching events via a follow-up hyperdx_search query.
+  // matching events via a follow-up clickstack_search query.
   const sampledCount = sampleRows.length;
   const slicedPatterns = rawPatterns.slice(0, topN);
 
@@ -349,7 +291,7 @@ export async function runEventPatterns(
       (trendBuckets > 0
         ? 'trend.count is similarly extrapolated from sample bucket counts. '
         : '') +
-      'Use whereSnippet as the "where" parameter in a hyperdx_search call to browse matching raw events.',
+      'Use whereSnippet as the "where" parameter in a clickstack_search call to browse matching raw events.',
   };
 
   const { data: trimmedOutput, isTrimmed } = trimToolResponse(output);

@@ -73,12 +73,24 @@ export class SearchPage {
     this.sourceSelector = page.getByTestId('source-selector');
   }
 
-  get createNewSourceItem() {
-    return this.page.getByRole('option', { name: 'Create New Source' });
+  get sourceActionsMenu() {
+    return this.page.getByTestId('source-actions-menu');
   }
 
-  get editSourcesItem() {
-    return this.page.getByRole('option', { name: 'Edit Sources' });
+  get createNewSourceItem() {
+    return this.page.getByRole('menuitem', { name: 'Create new source' });
+  }
+
+  get editSourceItem() {
+    return this.page.getByRole('menuitem', { name: 'Edit source' });
+  }
+
+  get manageSourcesItem() {
+    return this.page.getByRole('menuitem', { name: 'Manage sources' });
+  }
+
+  get viewSchemaItem() {
+    return this.page.getByRole('menuitem', { name: 'View schema' });
   }
 
   /**
@@ -98,8 +110,8 @@ export class SearchPage {
   }
 
   async openEditSourceModal() {
-    await this.sourceSelector.click();
-    await this.editSourcesItem.click();
+    await this.sourceActionsMenu.click();
+    await this.editSourceItem.click();
   }
 
   async sourceModalShowOptionalFields() {
@@ -109,6 +121,10 @@ export class SearchPage {
     if (await optionalFieldsButton.isVisible()) {
       await optionalFieldsButton.click();
     }
+  }
+
+  async saveSourceForm() {
+    await this.page.getByRole('button', { name: 'Save Source' }).click();
   }
 
   /**
@@ -219,6 +235,15 @@ export class SearchPage {
    */
   getSearchResultsTable() {
     return this.page.locator('[data-testid="search-results-table"]');
+  }
+
+  /**
+   * Locator for the results table's error state (rendered by ChartErrorState
+   * when the underlying ClickHouse query fails). Assert `toHaveCount(0)` to
+   * confirm the results loaded without error.
+   */
+  getTableError() {
+    return this.page.getByText(/Error loading/i);
   }
 
   /**

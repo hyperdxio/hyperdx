@@ -287,6 +287,8 @@ function DBTimeChartComponent({
     fillNulls,
   } = useTimeChartSettings(config);
 
+  const { data: me, isLoading: isLoadingMe } = api.useMe();
+
   const queriedConfig = useMemo(
     () => convertToTimeChartConfig(config),
     [config],
@@ -299,7 +301,6 @@ function DBTimeChartComponent({
   const { data: mvOptimizationData } =
     useMVOptimizationExplanation(builderQueriedConfig);
 
-  const { data: me, isLoading: isLoadingMe } = api.useMe();
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
     useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
@@ -740,6 +741,7 @@ function DBTimeChartComponent({
             onToggleSeries={handleToggleSeries}
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
+            fitYAxisToData={queriedConfig.fitYAxisToData}
           />
         </>
       )}

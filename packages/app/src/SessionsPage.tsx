@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { sub } from 'date-fns';
 import {
@@ -52,7 +53,7 @@ import { useSource, useSources } from './source';
 import { FormatTime } from './useFormatTime';
 import { formatDistanceToNowStrictShort } from './utils';
 
-import styles from '../styles/SessionsPage.module.scss';
+import styles from '@styles/SessionsPage.module.scss';
 
 function SessionCard({
   email,
@@ -226,7 +227,7 @@ const appliedConfigMap = {
   where: parseAsString.withDefault(''),
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
 };
-export default function SessionsPage() {
+function SessionsPage() {
   const brandName = useBrandDisplayName();
   const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
 
@@ -493,7 +494,14 @@ export default function SessionsPage() {
   );
 }
 
-SessionsPage.getLayout = withAppNav;
+const SessionsPageDynamic = dynamic(async () => SessionsPage, {
+  ssr: false,
+});
+
+// @ts-expect-error for getLayout
+SessionsPageDynamic.getLayout = withAppNav;
+
+export default SessionsPageDynamic;
 
 function SessionSetupInstructions() {
   const brandName = useBrandDisplayName();

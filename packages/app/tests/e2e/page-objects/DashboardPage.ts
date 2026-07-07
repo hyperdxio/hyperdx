@@ -84,8 +84,10 @@ export class DashboardPage {
   private readonly confirmCancelButton: Locator;
   private readonly confirmConfirmButton: Locator;
   private readonly dashboardMenuButton: Locator;
+  private readonly deleteDashboardMenuItem: Locator;
   private readonly saveDefaultQueryAndFiltersMenuItem: Locator;
   private readonly removeDefaultQueryAndFiltersMenuItem: Locator;
+  private readonly exportDashboardMenuItem: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -131,11 +133,17 @@ export class DashboardPage {
     this.confirmCancelButton = page.getByTestId('confirm-cancel-button');
     this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
     this.dashboardMenuButton = page.getByTestId('dashboard-menu-button');
+    this.deleteDashboardMenuItem = page.getByRole('menuitem', {
+      name: 'Delete Dashboard',
+    });
     this.saveDefaultQueryAndFiltersMenuItem = page.getByTestId(
       'save-default-query-filters-menu-item',
     );
     this.removeDefaultQueryAndFiltersMenuItem = page.getByTestId(
       'remove-default-query-filters-menu-item',
+    );
+    this.exportDashboardMenuItem = page.getByTestId(
+      'export-dashboard-menu-item',
     );
   }
 
@@ -537,6 +545,22 @@ export class DashboardPage {
   }
 
   /**
+   * Add a tile bound to an explicit source. Unlike addTileWithConfig (which
+   * relies on the editor's default source), this selects a known source so the
+   * exported tile carries a deterministic source name that auto-maps on import.
+   */
+  async addTileWithSource(chartName: string, sourceName: string) {
+    await this.addTile();
+    await expect(this.chartEditor.nameInput).toBeVisible();
+    await this.chartEditor.waitForDataToLoad();
+    await this.chartEditor.setChartName(chartName);
+    await this.chartEditor.selectSource(sourceName);
+    await this.chartEditor.runQuery(false);
+    await this.chartEditor.save();
+    await expect(this.getTiles()).toHaveCount(1, { timeout: 10000 });
+  }
+
+  /**
    * Get all dashboard tiles
    */
   getTiles() {
@@ -565,10 +589,21 @@ export class DashboardPage {
   }
 
   /**
+   * Open a tile's actions (kebab) menu, revealing the Duplicate / View
+   * fullscreen / Edit / Delete items (which now live inside the menu).
+   */
+  async openTileActionsMenu(tileIndex: number) {
+    await this.page
+      .locator('[data-testid^="tile-actions-button-"]')
+      .nth(tileIndex)
+      .click();
+  }
+
+  /**
    * Edit a tile
    */
   async editTile(tileIndex: number) {
-    await this.hoverOverTile(tileIndex);
+    await this.openTileActionsMenu(tileIndex);
     await this.getTileButton('edit').click();
   }
 
@@ -576,7 +611,7 @@ export class DashboardPage {
    * Duplicate a tile
    */
   async duplicateTile(tileIndex: number) {
-    await this.hoverOverTile(tileIndex);
+    await this.openTileActionsMenu(tileIndex);
     await this.getTileButton('duplicate').click();
 
     const confirmButton = this.page.locator(
@@ -589,7 +624,7 @@ export class DashboardPage {
    * Delete a tile
    */
   async deleteTile(tileIndex: number) {
-    await this.hoverOverTile(tileIndex);
+    await this.openTileActionsMenu(tileIndex);
     await this.getTileButton('delete').click();
 
     const confirmButton = this.page.locator(
@@ -614,6 +649,30 @@ export class DashboardPage {
   async removeSavedQueryAndFiltersDefaults() {
     await this.dashboardMenuButton.click();
     await this.removeDefaultQueryAndFiltersMenuItem.click();
+  }
+
+  async deleteDashboard() {
+    await this.dashboardMenuButton.click();
+    await this.deleteDashboardMenuItem.click();
+  }
+
+  /**
+   * Export the current dashboard via the dashboard menu and return the parsed
+   * JSON that was downloaded. The export triggers a client-side anchor download
+   * (see `downloadObjectAsJson` in DBDashboardPage), so we capture the
+   * Playwright download event and read its stream.
+   */
+  async exportDashboard(): Promise<Record<string, any>> {
+    await this.dashboardMenuButton.click();
+    const downloadPromise = this.page.waitForEvent('download');
+    await this.exportDashboardMenuItem.click();
+    const download = await downloadPromise;
+    const stream = await download.createReadStream();
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(Buffer.from(chunk));
+    }
+    return JSON.parse(Buffer.concat(chunks).toString('utf-8'));
   }
 
   /**
@@ -759,6 +818,87 @@ export class DashboardPage {
 
   getFilterSelectByName(name: string) {
     return this.page.getByTestId(`dashboard-filter-select-${name}`);
+  }
+
+  /**
+   * Create a Number tile that counts events from `sourceName`. The tile editor's
+   * default aggregation is "Count of Events", so no agg configuration is needed.
+   * Leaves exactly one tile on the dashboard.
+   */
+  async addNumberTile(name: string, sourceName: string) {
+    await this.addTile();
+    await expect(this.chartEditor.nameInput).toBeVisible();
+    await this.chartEditor.waitForDataToLoad();
+    await this.chartEditor.setChartType(DisplayType.Number);
+    await this.chartEditor.setChartName(name);
+    await this.chartEditor.selectSource(sourceName);
+    await this.chartEditor.runQuery(false);
+    await this.chartEditor.save();
+    await expect(this.getTiles()).toHaveCount(1, { timeout: 10000 });
+  }
+
+  /** Locator for the rendered value of a Number tile. */
+  getNumberTileValue(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).getByTestId('number-chart-value');
+  }
+
+  /** Locator for a tile's error state (rendered by ChartErrorState). */
+  getTileError(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).getByText(/Error loading/i);
+  }
+
+  /**
+   * Add a dashboard filter whose key is an arbitrary column expression. Unlike
+   * `fillFilterForm`, the expression is inserted via `insertText` so CodeMirror's
+   * bracket/quote auto-closing does not corrupt expressions containing `[`, `'`,
+   * or backticks. Assumes the Edit Filters modal is already open; leaves it open
+   * (on the filters list) so multiple filters can be added in sequence.
+   */
+  async addCustomFilter(name: string, sourceName: string, expression: string) {
+    await this.addFiltersButton.click();
+    const nameInput = this.page.getByTestId('filter-name-input');
+    await nameInput.waitFor({ state: 'visible', timeout: 10000 });
+    await nameInput.fill(name);
+    await this.filtersSourceSelector.click();
+    await this.page
+      .getByRole('option', { name: sourceName, exact: true })
+      .click();
+    const editor = getSqlEditor(this.page, 'expression');
+    await editor.click();
+    await this.page.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    );
+    await this.page.keyboard.press('Backspace');
+    await this.page.keyboard.insertText(expression);
+    // Blur the SQL editor before saving so its CodeMirror autocomplete tooltip
+    // closes — left open it overlaps the save button and makes the click flake
+    // on "element is not stable".
+    await nameInput.click();
+    const saveButton = this.page.getByTestId('save-filter-button');
+    await expect(saveButton).toBeEnabled();
+    await saveButton.click();
+    // Wait for the filter to actually land in the list before returning, so a
+    // slow save doesn't race the next add (which would silently drop a filter).
+    await this.getFilterItemByName(name).waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /**
+   * Toggle a value in a dashboard filter's multi-select. Selecting an unselected
+   * value applies it; calling again with the same value clears it. Closes the
+   * dropdown afterward so the rest of the dashboard is interactable.
+   */
+  async toggleFilterValue(filterName: string, value: string) {
+    const select = this.getFilterSelectByName(filterName);
+    await select.waitFor({ state: 'visible', timeout: 15000 });
+    await select.scrollIntoViewIfNeeded();
+    await select.click();
+    const option = this.page.getByRole('option', { name: value, exact: true });
+    await option.waitFor({ state: 'visible', timeout: 15000 });
+    await option.click();
+    await this.page.keyboard.press('Escape');
   }
 
   async clickFilterOption(filterName: string, option: string) {
@@ -971,6 +1111,71 @@ export class DashboardPage {
   }
 
   /**
+   * Return the first row's action element (anchor or button) of a table
+   * tile. Carries `data-testid="dashboard-table-row-action"`. Useful for
+   * asserting on rendered link attributes (href / target / rel / data-shape)
+   * without triggering navigation — e.g. external links open a new tab.
+   */
+  getFirstRowActionLink(tileIndex = 0): Locator {
+    return this.getTile(tileIndex)
+      .locator('table tbody tr')
+      .first()
+      .locator('[data-testid="dashboard-table-row-action"]')
+      .first();
+  }
+
+  /**
+   * Return the first data row (<tr data-index>) of the table in the
+   * given tile. Used for hover-based interactions (e.g. tooltip tests).
+   */
+  getFirstTableRow(tileIndex = 0): Locator {
+    return this.getTile(tileIndex)
+      .locator('table tbody tr[data-index]')
+      .first();
+  }
+
+  /**
+   * Locator for the trailing arrow hint element rendered in the last
+   * cell of clickable rows. The icon (arrow-up-right) carries
+   * `data-testid="row-action-hint"` and is the trigger element for the
+   * anchored Mantine Tooltip describing the row's onClick destination.
+   */
+  getRowActionHint(tileIndex = 0): Locator {
+    return this.getTile(tileIndex)
+      .locator('table tbody tr[data-index]')
+      .first()
+      .getByTestId('row-action-hint');
+  }
+
+  /**
+   * Hover the first data row of a table tile, then hover its trailing
+   * arrow hint so the anchored Mantine Tooltip opens. Returns the
+   * tooltip locator so callers can assert on the description text.
+   *
+   * The arrow icon (`data-testid="row-action-hint"`) is hidden
+   * (`opacity: 0`) until the row is hovered. Hovering the row reveals
+   * the icon via the `.tableRow:hover .rowActionHint` CSS rule. The
+   * Mantine Tooltip wrapping the icon then opens when the cursor moves
+   * to the icon itself, rendering its label in a portal at the body.
+   *
+   * The returned locator narrows the role match by name so the assertion
+   * does not collide with header-cell or resize-handle tooltips that
+   * may also live in the portal at the moment of the check
+   * (Search-suggestion onClick wording, dashboard-open wording, etc.).
+   */
+  async hoverFirstTableRowAndGetTooltip(tileIndex = 0): Promise<Locator> {
+    const row = this.getFirstTableRow(tileIndex);
+    await row.hover();
+    const hint = this.getRowActionHint(tileIndex);
+    // Hover the icon directly so the anchored Tooltip's mouseEnter
+    // listener fires; row-hover alone only fades the icon in.
+    await hint.hover();
+    const tooltip = this.page.getByRole('tooltip', { name: /Search|Open/ });
+    await tooltip.waitFor({ state: 'visible', timeout: 5000 });
+    return tooltip;
+  }
+
+  /**
    * Locator for the Mantine toast raised by useOnClickLinkBuilder when the
    * configured onClick action fails (unknown source, missing row column, etc).
    */
@@ -1073,7 +1278,7 @@ export class DashboardPage {
    * Waits for the fullscreen modal's TimePicker to appear before returning.
    */
   async openFullscreenForTile(index: number) {
-    await this.hoverOverTile(index);
+    await this.openTileActionsMenu(index);
     const fullscreenBtn = this.page
       .locator('[data-testid^="tile-fullscreen-button-"]')
       .first();

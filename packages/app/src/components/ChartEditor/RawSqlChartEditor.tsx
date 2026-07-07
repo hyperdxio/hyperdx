@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
 import {
   TableConnection,
@@ -20,7 +20,13 @@ import {
 import { Box, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { IconBell, IconHelpCircle } from '@tabler/icons-react';
 
+import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
+import { OnClickFormButton } from '@/components/DBEditTimeChartForm/OnClickForm/OnClickFormButton';
 import { TileAlertEditor } from '@/components/DBEditTimeChartForm/TileAlertEditor';
+import SourceSchemaPreview, {
+  isSourceSchemaPreviewEnabled,
+} from '@/components/SourceSchemaPreview';
+import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLEditorControlled } from '@/components/SQLEditor/SQLEditor';
 import { type SQLCompletion } from '@/components/SQLEditor/utils';
 import { IS_LOCAL_MODE } from '@/config';
@@ -28,11 +34,6 @@ import useResizable from '@/hooks/useResizable';
 import { useSources } from '@/source';
 import { getAllMetricTables, usePrevious } from '@/utils';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
-
-import { ConnectionSelectControlled } from '../ConnectionSelect';
-import { OnClickFormButton } from '../DBEditTimeChartForm/OnClickForm/OnClickFormButton';
-import SourceSchemaPreview from '../SourceSchemaPreview';
-import { SourceSelectControlled } from '../SourceSelect';
 
 import { SQL_PLACEHOLDERS } from './constants';
 import { RawSqlChartInstructions } from './RawSqlChartInstructions';
@@ -137,9 +138,8 @@ export default function RawSqlChartEditor({
     return [...paramCompletions, ...macroCompletions];
   }, [displayType]);
 
-  const sourceSchemaPreview = useMemo(() => {
-    return <SourceSchemaPreview source={sourceObject} variant="text" />;
-  }, [sourceObject]);
+  const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
+    useState(false);
 
   const tableConnections: TableConnection[] = useMemo(() => {
     if (!sources) return [];
@@ -206,7 +206,14 @@ export default function RawSqlChartEditor({
             size="xs"
             clearable
             placeholder="None"
-            sourceSchemaPreview={sourceSchemaPreview}
+            onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+            isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(sourceObject)}
+          />
+          <SourceSchemaPreview
+            source={sourceObject}
+            controlled
+            open={isSourceSchemaPreviewOpen}
+            onClose={() => setIsSourceSchemaPreviewOpen(false)}
           />
         </Group>
         <Group gap="xs">
@@ -254,6 +261,7 @@ export default function RawSqlChartEditor({
           placeholder={placeholderSQl}
           tableConnections={tableConnections}
           additionalCompletions={additionalCompletions}
+          onSubmit={onSubmit}
         />
         <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
       </Box>

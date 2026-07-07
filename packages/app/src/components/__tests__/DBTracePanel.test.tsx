@@ -2,7 +2,7 @@ import React from 'react';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
-import DBTracePanel from '../DBTracePanel';
+import DBTracePanel from '@/components/DBTracePanel';
 
 let mockSources: Record<string, any> = {};
 
@@ -36,9 +36,23 @@ jest.mock('../SourceSelect', () => ({
   SourceSelectControlled: () => <div>source select</div>,
 }));
 
+// useRowData runs unconditionally (for the Infrastructure tab / k8s detection)
+// and would otherwise need a QueryClient provider; stub it for this unit test.
+jest.mock('../DBRowDataPanel', () => ({
+  useRowData: () => ({ data: undefined }),
+  RowDataPanel: () => <div>row data panel</div>,
+}));
+
+jest.mock('../DBInfraPanel', () => ({
+  __esModule: true,
+  default: () => <div>infra panel</div>,
+}));
+
 jest.mock('../SourceSchemaPreview', () => ({
   __esModule: true,
   default: () => <div />,
+  isSourceSchemaPreviewEnabled: () => false,
+  getSourceSchemaTables: () => [],
 }));
 
 describe('DBTracePanel', () => {
