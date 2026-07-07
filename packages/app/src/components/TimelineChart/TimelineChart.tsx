@@ -403,7 +403,7 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
   );
 
   return (
-    <Flex mah={maxHeight} direction="column">
+    <Flex h={maxHeight} mah={maxHeight} direction="column">
       <Flex justify="end" mb="sm">
         <Text>
           <Kbd>⌘/Ctrl</Kbd> + <Kbd>scroll</Kbd> to zoom
