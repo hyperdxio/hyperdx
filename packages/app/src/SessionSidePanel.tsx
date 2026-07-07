@@ -19,7 +19,6 @@ import {
   Drawer,
   Flex,
   Group,
-  Stack,
   Text,
   Tooltip,
 } from '@mantine/core';
@@ -29,6 +28,7 @@ import { IconLink, IconX } from '@tabler/icons-react';
 import {
   DBRowSidePanelInner,
   RowSidePanelContext,
+  SidePanelErrorFallback,
 } from '@/components/DBRowSidePanel';
 import {
   DrawerFullWidthToggle,
@@ -46,6 +46,7 @@ import {
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
 import { ZIndexContext } from '@/zIndex';
 
+import useSidePanelStack from './hooks/useSidePanelStack';
 import { Session } from './sessions';
 import SessionSubpanel from './SessionSubpanel';
 import { formatDistanceToNowStrictShort } from './utils';
@@ -109,14 +110,6 @@ export default function SessionSidePanel({
       ? persistedEvent
       : null;
 
-  // The embedded `DBRowSidePanelInner` owns these shared params. We clear them
-  // whenever the session-level selection changes so a stale inner stack can't
-  // leak across events or sessions.
-  const [, setSourceStackParam] = useQueryState('sidePanelSourceStack');
-  const [, setNavStackParam] = useQueryState('sidePanelNavStack');
-  const [, setSidePanelTab] = useQueryState('sidePanelTab');
-  const [, setStackRootParam] = useQueryState('sidePanelStackRoot');
-
   const { size, setSize, startResize } = useResizable(
     INITIAL_DRAWER_WIDTH_PERCENT,
   );
@@ -127,37 +120,29 @@ export default function SessionSidePanel({
 
   const sessionLabel = session?.userEmail || `Anonymous Session ${sessionId}`;
 
-  const clearInnerNavigation = useCallback(() => {
-    setSourceStackParam(null);
-    setNavStackParam(null);
-    setSidePanelTab(null);
-    setStackRootParam(null);
-  }, [
-    setSourceStackParam,
-    setNavStackParam,
-    setSidePanelTab,
-    setStackRootParam,
-  ]);
+  const sidePanelStack = useSidePanelStack({
+    initialRowId: selectedEvent?.rowId,
+  });
 
   const handleBackToSession = useCallback(() => {
     setSelectedEvent(null);
-    clearInnerNavigation();
-  }, [setSelectedEvent, clearInnerNavigation]);
+    sidePanelStack.clearTrail();
+  }, [setSelectedEvent, sidePanelStack]);
 
   const handleEventNavigate = useCallback(
     (rowId: string, aliasWith: WithClause[]) => {
-      clearInnerNavigation();
+      sidePanelStack.clearTrail();
       setSelectedEvent({ rowId, aliasWith, sessionId });
     },
-    [setSelectedEvent, clearInnerNavigation, sessionId],
+    [setSelectedEvent, sidePanelStack, sessionId],
   );
 
   // X / Esc-at-root closes the whole panel and clears the session-panel params.
   const handleClose = useCallback(() => {
     setSelectedEvent(null);
-    clearInnerNavigation();
+    sidePanelStack.clearTrail();
     onClose();
-  }, [setSelectedEvent, clearInnerNavigation, onClose]);
+  }, [setSelectedEvent, sidePanelStack, onClose]);
 
   useHotkeys(['esc'], handleClose, { enabled: !selectedEvent });
 
@@ -207,7 +192,7 @@ export default function SessionSidePanel({
         },
       }}
     >
-      <ZIndexContext.Provider value={zIndex}>
+      <ZIndexContext value={zIndex}>
         <div
           className={styles.panel}
           data-testid="session-side-panel"
@@ -215,37 +200,22 @@ export default function SessionSidePanel({
         >
           <Box className={styles.panelDragBar} onMouseDown={startResize} />
           {selectedEvent ? (
-            <RowSidePanelContext.Provider
+            <RowSidePanelContext
               value={{ isChildModalOpen: false, source: traceSource }}
             >
               <ErrorBoundary
-                fallbackRender={error => (
-                  <Stack>
-                    <Group justify="flex-end" p="xs">
-                      <Button
-                        variant="subtle"
-                        color="gray"
-                        size="compact-sm"
-                        leftSection={<IconX size={14} />}
-                        onClick={handleClose}
-                        aria-label="Close"
-                      >
-                        Close
-                      </Button>
-                    </Group>
-                    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-                      An error occurred while rendering this event.
-                    </div>
-                    <div className="px-2 py-1 m-2 fs-7 font-monospace bg-body p-4">
-                      {error?.error?.message}
-                    </div>
-                  </Stack>
+                fallbackRender={fallbackProps => (
+                  <SidePanelErrorFallback
+                    {...fallbackProps}
+                    onClose={handleClose}
+                  />
                 )}
               >
                 <DBRowSidePanelInner
                   source={traceSource}
                   rowId={selectedEvent.rowId}
                   aliasWith={selectedEvent.aliasWith}
+                  sidePanelStack={sidePanelStack}
                   onClose={handleClose}
                   onNavigateToParent={handleBackToSession}
                   isFullWidth={isFullWidth}
@@ -259,7 +229,7 @@ export default function SessionSidePanel({
                   ]}
                 />
               </ErrorBoundary>
-            </RowSidePanelContext.Provider>
+            </RowSidePanelContext>
           ) : (
             <>
               <Box px="sm" pt="sm" pb="xs">
@@ -325,7 +295,7 @@ export default function SessionSidePanel({
             </>
           )}
         </div>
-      </ZIndexContext.Provider>
+      </ZIndexContext>
     </Drawer>
   );
 }

@@ -8,8 +8,7 @@ import {
 } from 'react';
 import { add } from 'date-fns';
 import { isString } from 'lodash';
-import { parseAsStringEnum, useQueryState } from 'nuqs';
-import { ErrorBoundary } from 'react-error-boundary';
+import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import SqlString from 'sqlstring';
 import {
@@ -38,7 +37,10 @@ import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
 
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
-import useSidePanelStack, { reconcileTab } from '@/hooks/useSidePanelStack';
+import useSidePanelStack, {
+  reconcileTab,
+  SidePanelStack,
+} from '@/hooks/useSidePanelStack';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import { KeyboardShortcutsModal } from '@/LogSidePanelElements';
 import { getEventBody, useSource } from '@/source';
@@ -47,7 +49,6 @@ import { SearchConfig } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { formatDistanceToNowStrictShort } from '@/utils';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
-import { parseAsJsonEncoded, parseAsStringEncoded } from '@/utils/queryParsers';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
@@ -61,7 +62,7 @@ import {
   useRowData,
 } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
-import { NavEntry, SourceFrame, Tab } from './DBRowSidePanel.types';
+import { SourceFrame, Tab } from './DBRowSidePanel.types';
 import { DBRowSidePanelErrorState } from './DBRowSidePanelErrorState';
 import DBRowSidePanelHeader from './DBRowSidePanelHeader';
 import { DBSessionPanel, useSessionId } from './DBSessionPanel';
@@ -208,6 +209,7 @@ type DBRowSidePanelInnerProps = DBRowSidePanelProps & {
   persistStacksInUrl?: boolean;
   parentBreadcrumbs?: BreadcrumbItem[];
   onNavigateToParent?: () => void;
+  sidePanelStack: SidePanelStack;
 };
 
 export const DBRowSidePanelInner = ({
@@ -219,6 +221,7 @@ export const DBRowSidePanelInner = ({
   onToggleFullWidth,
   parentBreadcrumbs,
   onNavigateToParent,
+  sidePanelStack,
 }: DBRowSidePanelInnerProps) => {
   const {
     sourceStack,
@@ -229,7 +232,7 @@ export const DBRowSidePanelInner = ({
     popOne,
     truncateTo,
     setTab,
-  } = useSidePanelStack({ initialRowId });
+  } = sidePanelStack;
 
   const activeSourceFrame =
     sourceStack.length > 0 ? sourceStack[sourceStack.length - 1] : null;
@@ -1024,6 +1027,33 @@ export const DBRowSidePanelInner = ({
   );
 };
 
+export const SidePanelErrorFallback = ({
+  error,
+  onClose,
+}: FallbackProps & { onClose: () => void }) => (
+  <Stack>
+    <Group justify="flex-end" p="xs">
+      <Button
+        variant="subtle"
+        color="gray"
+        size="compact-sm"
+        leftSection={<IconX size={14} />}
+        onClick={onClose}
+        aria-label="Close"
+      >
+        Close
+      </Button>
+    </Group>
+    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+      An error occurred while rendering this event.
+    </div>
+
+    <div className="px-2 py-1 m-2 fs-7 font-monospace bg-body p-4">
+      {error?.message}
+    </div>
+  </Stack>
+);
+
 export default function DBRowSidePanelErrorBoundary({
   onClose,
   rowId,
@@ -1042,43 +1072,18 @@ export default function DBRowSidePanelErrorBoundary({
     setSize(isFullWidth ? INITIAL_DRAWER_WIDTH_PERCENT : 100);
   }, [isFullWidth, setSize]);
 
-  const [, setSidePanelTab] = useQueryState(
-    'sidePanelTab',
-    parseAsStringEnum<Tab>(Object.values(Tab)),
-  );
-  const [, setSourceStackParam] = useQueryState(
-    'sidePanelSourceStack',
-    parseAsJsonEncoded<SourceFrame[]>(),
-  );
-  const [, setNavStackParam] = useQueryState(
-    'sidePanelNavStack',
-    parseAsJsonEncoded<NavEntry[]>(),
-  );
-  const [, setStackRootParam] = useQueryState(
-    'sidePanelStackRoot',
-    parseAsStringEncoded,
-  );
-
   const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
+
+  const sidePanelStack = useSidePanelStack({ initialRowId: rowId });
 
   const _onClose = useCallback(() => {
     // Reset the tab and navigation stacks so re-opening the drawer starts fresh.
-    setSidePanelTab(null);
-    setSourceStackParam(null);
-    setNavStackParam(null);
-    setStackRootParam(null);
+    sidePanelStack.clearTrail();
     // Clear waterfall search state on close, so that filters don't
     // persist when reopening another trace.
     clearTraceWaterfallSearchState();
     onClose();
-  }, [
-    setSidePanelTab,
-    setSourceStackParam,
-    setNavStackParam,
-    setStackRootParam,
-    onClose,
-    clearTraceWaterfallSearchState,
-  ]);
+  }, [sidePanelStack, onClose, clearTraceWaterfallSearchState]);
 
   return (
     <Drawer
@@ -1103,45 +1108,26 @@ export default function DBRowSidePanelErrorBoundary({
       }}
       zIndex={drawerZIndex}
     >
-      <ZIndexContext.Provider value={drawerZIndex}>
+      <ZIndexContext value={drawerZIndex}>
         <div className={styles.panel} data-testid="row-side-panel">
           <Box className={styles.panelDragBar} onMouseDown={startResize} />
           <ErrorBoundary
-            fallbackRender={error => (
-              <Stack>
-                <Group justify="flex-end" p="xs">
-                  <Button
-                    variant="subtle"
-                    color="gray"
-                    size="compact-sm"
-                    leftSection={<IconX size={14} />}
-                    onClick={_onClose}
-                    aria-label="Close"
-                  >
-                    Close
-                  </Button>
-                </Group>
-                <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-                  An error occurred while rendering this event.
-                </div>
-
-                <div className="px-2 py-1 m-2 fs-7 font-monospace bg-body p-4">
-                  {error?.error?.message}
-                </div>
-              </Stack>
+            fallbackRender={fallbackProps => (
+              <SidePanelErrorFallback {...fallbackProps} onClose={_onClose} />
             )}
           >
             <DBRowSidePanelInner
               source={source}
               rowId={rowId}
               aliasWith={aliasWith}
+              sidePanelStack={sidePanelStack}
               onClose={_onClose}
               isFullWidth={isFullWidth}
               onToggleFullWidth={toggleFullWidth}
             />
           </ErrorBoundary>
         </div>
-      </ZIndexContext.Provider>
+      </ZIndexContext>
     </Drawer>
   );
 }

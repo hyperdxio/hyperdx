@@ -192,22 +192,36 @@ export default function useSidePanelStack({
   const setTab = useCallback((next: Tab) => setQueryTab(next), [setQueryTab]);
 
   const clearTrail = useCallback(() => {
-    setSourceStack(null);
-    setNavStack(null);
-    setStackRoot(null);
-    setQueryTab(null);
+    setSourceStack(null); // sidePanelSourceStack
+    setNavStack(null); // sidePanelNavStack
+    setStackRoot(null); // sidePanelStackRoot
+    setQueryTab(null); // sidePanelTab
   }, [setSourceStack, setNavStack, setStackRoot, setQueryTab]);
 
-  return {
-    sourceStack,
-    navStack,
-    isStale,
-    tab,
-    pushSource,
-    pushNav,
-    popOne,
-    truncateTo,
-    setTab,
-    clearTrail,
-  };
+  return useMemo(
+    () => ({
+      sourceStack,
+      navStack,
+      isStale,
+      tab,
+      pushSource,
+      pushNav,
+      popOne,
+      truncateTo,
+      setTab,
+      clearTrail,
+    }),
+    [
+      clearTrail,
+      isStale,
+      navStack,
+      popOne,
+      pushNav,
+      pushSource,
+      setTab,
+      sourceStack,
+      tab,
+      truncateTo,
+    ],
+  );
 }
