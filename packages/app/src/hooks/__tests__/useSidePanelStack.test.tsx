@@ -189,6 +189,38 @@ describe('useSidePanelStack', () => {
     ]);
     expect(setterFor('sidePanelStackRoot')).toHaveBeenCalledWith('root-1');
     expect(setterFor('sidePanelTab')).toHaveBeenCalledWith(Tab.Parsed);
+    // Re-persists the effective source stack (empty here) so a nav push never
+    // leaves a source stack it did not own behind.
+    expect(setterFor('sidePanelSourceStack')).toHaveBeenCalledWith([]);
+  });
+
+  it('pushNav on a stale trail clears the stale source stack it revives', () => {
+    // A leftover source stack owned by a different row is still in the URL.
+    seedParam('sidePanelSourceStack', [FRAME]);
+    seedParam('sidePanelStackRoot', 'old-root');
+    const { result } = renderHook(() =>
+      useSidePanelStack({ initialRowId: 'new-root' }),
+    );
+
+    act(() =>
+      result.current.pushNav(
+        { rowId: 'ctx-row', aliasWith: [], label: 'Related' },
+        Tab.Parsed,
+      ),
+    );
+
+    // The stale source stack is overwritten with the effective (empty) stack, so
+    // stamping the new owner below can't revive the old source frame.
+    expect(setterFor('sidePanelSourceStack')).toHaveBeenCalledWith([]);
+    expect(setterFor('sidePanelNavStack')).toHaveBeenCalledWith([
+      {
+        rowId: 'ctx-row',
+        aliasWith: [],
+        label: 'Related',
+        originTab: undefined,
+      },
+    ]);
+    expect(setterFor('sidePanelStackRoot')).toHaveBeenCalledWith('new-root');
   });
 
   it('popOne pops the nav leaf first, restoring its originTab', () => {

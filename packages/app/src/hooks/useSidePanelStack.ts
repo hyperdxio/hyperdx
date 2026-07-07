@@ -141,11 +141,21 @@ export default function useSidePanelStack({
 
   const pushNav = useCallback(
     (entry: NavEntry, destinationTab: Tab) => {
+      setSourceStack(sourceStack);
       setNavStack([...navStack, { ...entry, originTab: tab ?? undefined }]);
       setStackRoot(initialRowId ?? null);
       setQueryTab(destinationTab);
     },
-    [navStack, tab, initialRowId, setNavStack, setStackRoot, setQueryTab],
+    [
+      sourceStack,
+      navStack,
+      tab,
+      initialRowId,
+      setSourceStack,
+      setNavStack,
+      setStackRoot,
+      setQueryTab,
+    ],
   );
 
   const popOne = useCallback((): 'nav' | 'source' | 'none' => {
