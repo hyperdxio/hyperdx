@@ -24,7 +24,7 @@ import {
   splitAndTrimWithBracket,
 } from '@/core/utils';
 import { isBuilderChartConfig } from '@/guards';
-import { ChartConfigWithOptDateRange, QuerySettings } from '@/types';
+import { ChartConfigWithOptDateRange, QuerySettings, RatioMode } from '@/types';
 
 // export @clickhouse/client-common types
 export type {
@@ -388,24 +388,18 @@ export const computeRatio = (
 
 export const computeResultSetRatio = (
   resultSet: ResponseJSON<any>,
-  operands?: { numeratorName: string; denominatorName: string },
+  // The numerator/denominator value columns. Passed explicitly by the only
+  // caller (mergeResultSets) so we don't depend on column order — group-by
+  // dimensions can be numeric and would otherwise be mistaken for an operand.
+  operands: { numeratorName: string; denominatorName: string },
+  // How a grouped ratio divides; see RatioModeSchema. Defaults to per-group.
+  // Has no effect on ungrouped ratios (one row per bucket).
+  mode: RatioMode = 'per_group',
 ) => {
   const _meta = resultSet.meta ?? [];
   const _data = resultSet.data;
-  // The numerator/denominator are the two value columns. Callers that know the
-  // operands (mergeResultSets) pass them explicitly so we don't depend on
-  // column order; otherwise fall back to the first two numeric columns (numeric
-  // group-by dimensions, if any, come after the operands in the joined meta).
-  let numerator: { name: string; type: string } | undefined;
-  let denominator: { name: string; type: string } | undefined;
-  if (operands) {
-    numerator = _meta.find(m => m.name === operands.numeratorName);
-    denominator = _meta.find(m => m.name === operands.denominatorName);
-  } else {
-    const numericColumns = inferNumericColumn(_meta);
-    numerator = numericColumns?.[0];
-    denominator = numericColumns?.[1];
-  }
+  const numerator = _meta.find(m => m.name === operands.numeratorName);
+  const denominator = _meta.find(m => m.name === operands.denominatorName);
   if (!numerator || !denominator) {
     throw new Error(
       `Unable to compute ratio - meta information: ${JSON.stringify(_meta)}.`,
@@ -422,32 +416,17 @@ export const computeResultSetRatio = (
   const passthroughColumns = _meta.filter(
     m => m.name !== numerator.name && m.name !== denominator.name,
   );
-  const timestampColumn = inferTimestampColumn(_meta);
 
-  // Share-of-total semantics: each group's denominator is the total of the
-  // denominator column across ALL groups in the same time bucket. So a grouped
-  // ratio shows each group's contribution to the overall ratio (the lines sum
-  // to the ungrouped value) rather than each group's own in-group rate. With no
-  // grouping there's one row per bucket, so the bucket total equals that row's
-  // denominator and the result is unchanged.
-  const bucketKey = (row: Record<string, any>) =>
-    timestampColumn ? String(row[timestampColumn.name]) : '__all__';
-  const totalDenominatorByBucket = new Map<string, number>();
-  for (const row of _data) {
-    const denominatorValue = row[denominator.name];
-    // A group missing from the denominator split has an undefined value;
-    // castToNumber returns it as-is and Number.isNaN(undefined) is false, so
-    // guard explicitly or it would poison the whole bucket total with NaN.
-    const denom =
-      denominatorValue == null ? NaN : castToNumber(denominatorValue);
-    if (!Number.isNaN(denom)) {
-      const key = bucketKey(row);
-      totalDenominatorByBucket.set(
-        key,
-        (totalDenominatorByBucket.get(key) ?? 0) + denom,
-      );
-    }
-  }
+  // per_group: each row is divided by its own denominator (each group's own
+  // rate). share_of_total: each row is divided by the total of the denominator
+  // column across ALL groups in the same time bucket, so the grouped lines
+  // decompose the blended rate and sum to the ungrouped value. For an ungrouped
+  // ratio there's one row per bucket, so the bucket total equals that row's own
+  // denominator and both modes coincide.
+  const denominatorForRow =
+    mode === 'share_of_total'
+      ? buildBucketTotalDenominator(_data, _meta, denominator.name)
+      : (row: Record<string, any>) => row[denominator.name] ?? NaN;
 
   return {
     ...resultSet,
@@ -455,9 +434,8 @@ export const computeResultSetRatio = (
       // A group absent from the (filtered) numerator query contributes zero, not
       // "no data" — so a zero-error group reads 0%, not N/A.
       const numeratorValue = row[numerator.name] ?? 0;
-      const bucketTotal = totalDenominatorByBucket.get(bucketKey(row));
       return {
-        [ratioColumnName]: computeRatio(numeratorValue, bucketTotal ?? NaN),
+        [ratioColumnName]: computeRatio(numeratorValue, denominatorForRow(row)),
         ...Object.fromEntries(
           passthroughColumns.map(c => [c.name, row[c.name]]),
         ),
@@ -465,6 +443,33 @@ export const computeResultSetRatio = (
     }),
     meta: [{ name: ratioColumnName, type: 'Float64' }, ...passthroughColumns],
   };
+};
+
+// Builds a per-row lookup returning the total of the denominator column across
+// all rows sharing a time bucket (share-of-total mode). Rows with no timestamp
+// column all share one bucket, so a non-time-series grouped ratio becomes each
+// group's share of the grand total.
+const buildBucketTotalDenominator = (
+  data: Record<string, any>[],
+  meta: { name: string; type: string }[],
+  denominatorName: string,
+) => {
+  const timestampColumn = inferTimestampColumn(meta);
+  const bucketKey = (row: Record<string, any>) =>
+    timestampColumn ? String(row[timestampColumn.name]) : '__all__';
+  const totalByBucket = new Map<string, number>();
+  for (const row of data) {
+    const value = row[denominatorName];
+    // A group missing from the denominator split has an undefined value;
+    // castToNumber returns it as-is and Number.isNaN(undefined) is false, so
+    // guard explicitly or it would poison the whole bucket total with NaN.
+    const denom = value == null ? NaN : castToNumber(value);
+    if (!Number.isNaN(denom)) {
+      const key = bucketKey(row);
+      totalByBucket.set(key, (totalByBucket.get(key) ?? 0) + denom);
+    }
+  }
+  return (row: Record<string, any>) => totalByBucket.get(bucketKey(row)) ?? NaN;
 };
 
 /**
@@ -480,10 +485,12 @@ export const mergeResultSets = ({
   resultSets,
   isTimeSeries,
   isRatio,
+  ratioMode,
 }: {
   resultSets: ResponseJSON<any>[];
   isTimeSeries: boolean;
   isRatio: boolean;
+  ratioMode?: RatioMode;
 }): ResponseJSON<any> => {
   const metaSet = new Map<string, { name: string; type: string }>();
   const tsBucketMap = new Map<string, Record<string, string | number>>();
@@ -575,7 +582,11 @@ export const mergeResultSets = ({
   if (isRatio) {
     const [numeratorName, denominatorName] = operandNames.filter(Boolean);
     // TODO: we should compute the ratio on the db side
-    return computeResultSetRatio(merged, { numeratorName, denominatorName });
+    return computeResultSetRatio(
+      merged,
+      { numeratorName, denominatorName },
+      ratioMode,
+    );
   }
   return merged;
 };
@@ -837,6 +848,7 @@ export abstract class BaseClickhouseClient {
         resultSets,
         isTimeSeries,
         isRatio: config.seriesReturnType === 'ratio' && resultSets.length === 2,
+        ratioMode: config.ratioMode,
       });
     }
     throw new Error('No result sets');

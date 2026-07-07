@@ -61,6 +61,7 @@ type ChartEditorControlsProps = {
   displayType: DisplayType;
   activeTab: string;
   seriesReturnType: ChartEditorFormState['seriesReturnType'];
+  ratioMode: ChartEditorFormState['ratioMode'];
   alert: ChartEditorFormState['alert'];
   isRawSqlInput: boolean;
   dashboardId?: string;
@@ -90,6 +91,7 @@ export function ChartEditorControls({
   displayType,
   activeTab,
   seriesReturnType,
+  ratioMode,
   alert,
   isRawSqlInput,
   dashboardId,
@@ -117,6 +119,11 @@ export function ChartEditorControls({
     () => buildGroupByConnectionProps({ tableSource, series, tableConnection }),
     [tableSource, series, tableConnection],
   );
+
+  // Grouped ratios can divide two ways (see RatioModeSchema); the mode toggle
+  // is only meaningful when a Group By is set, so gate it on a non-empty value.
+  const groupBy = useWatch({ control, name: 'groupBy' });
+  const hasGroupBy = typeof groupBy === 'string' && groupBy.trim().length > 0;
 
   return (
     <>
@@ -334,6 +341,30 @@ export function ChartEditorControls({
                   checked={seriesReturnType === 'ratio'}
                 />
               )}
+              {/* Grouped ratios divide per-group by default; this opts into
+                  share-of-total (each group's contribution to the blended
+                  rate). No effect on ungrouped ratios, so only shown with a
+                  Group By set. */}
+              {fields.length === 2 &&
+                seriesReturnType === 'ratio' &&
+                hasGroupBy && (
+                  <Switch
+                    label="Share of total"
+                    size="sm"
+                    color="gray"
+                    variant="subtle"
+                    onClick={() => {
+                      setValue(
+                        'ratioMode',
+                        ratioMode === 'share_of_total'
+                          ? 'per_group'
+                          : 'share_of_total',
+                      );
+                      onSubmit();
+                    }}
+                    checked={ratioMode === 'share_of_total'}
+                  />
+                )}
               {(displayType === DisplayType.Line ||
                 displayType === DisplayType.StackedBar ||
                 displayType === DisplayType.Number) &&
