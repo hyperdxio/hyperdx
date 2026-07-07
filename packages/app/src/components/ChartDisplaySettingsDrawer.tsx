@@ -231,7 +231,6 @@ export default function ChartDisplaySettingsDrawer({
               name="compareToPreviousPeriod"
               size="xs"
               label="Compare to Previous Period"
-              data-testid="compare-to-previous-period-checkbox"
               description={
                 previousDateRange && (
                   <>

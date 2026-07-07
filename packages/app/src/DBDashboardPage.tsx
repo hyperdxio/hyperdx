@@ -1188,11 +1188,15 @@ const EditTileModal = ({
   const confirm = useConfirm();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+  // Reset dirty state only when a *different* tile is opened, not on every
+  // chart-object reference change (onSubmit recreates the chart object with
+  // the same id, which would clear dirty state after display-settings Apply).
+  const chartId = chart?.id;
   useEffect(() => {
-    if (chart != null) {
+    if (chartId != null) {
       setHasUnsavedChanges(false);
     }
-  }, [chart]);
+  }, [chartId]);
 
   const handleClose = useCallback(() => {
     if (isSaving) return;

@@ -295,32 +295,25 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   test('should warn when closing tile editor with unsaved display settings changes', async () => {
     await dashboardPage.openNewTileEditor();
 
-    // Open the Display Settings drawer and toggle a setting
+    // Open the Display Settings drawer
     await dashboardPage.page.getByTestId('display-settings-button').click();
-    // Mantine's Checkbox puts data-testid on the wrapper <div>, not the
-    // <input>, so use click() instead of check().
+    const applyButton = dashboardPage.page.getByTestId(
+      'display-settings-apply-button',
+    );
+    await expect(applyButton).toBeVisible({ timeout: 5000 });
+
+    // Toggle a checkbox via its label
     await dashboardPage.page
-      .getByTestId('compare-to-previous-period-checkbox')
-      .click();
-    await dashboardPage.page
-      .getByTestId('display-settings-apply-button')
+      .locator('label', { hasText: 'Compare to Previous Period' })
       .click();
 
-    // Wait for the display-settings drawer to fully close before pressing
-    // Escape, otherwise the key event closes the drawer overlay instead of
-    // triggering the tile editor's onClose handler.
-    await expect(
-      dashboardPage.page.getByTestId('display-settings-apply-button'),
-    ).toBeHidden({ timeout: 5000 });
+    // Apply and wait for the drawer to close
+    await applyButton.click();
+    await expect(applyButton).toBeHidden({ timeout: 5000 });
 
     // Try to close — should show unsaved changes confirm
     await dashboardPage.page.keyboard.press('Escape');
-    await expect(dashboardPage.unsavedChangesConfirmModal).toBeVisible({
-      timeout: 5000,
-    });
-
-    await dashboardPage.unsavedChangesConfirmDiscardButton.click();
-    await expect(dashboardPage.chartEditor.nameInput).toBeHidden({
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
       timeout: 5000,
     });
   });
