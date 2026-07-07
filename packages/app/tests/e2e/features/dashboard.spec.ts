@@ -304,9 +304,16 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       .getByTestId('display-settings-apply-button')
       .click();
 
+    // Wait for the display-settings drawer to fully close before pressing
+    // Escape, otherwise the key event closes the drawer overlay instead of
+    // triggering the tile editor's onClose handler.
+    await expect(
+      dashboardPage.page.getByTestId('display-settings-apply-button'),
+    ).toBeHidden({ timeout: 5000 });
+
     // Try to close — should show unsaved changes confirm
     await dashboardPage.page.keyboard.press('Escape');
-    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeVisible({
       timeout: 5000,
     });
 
