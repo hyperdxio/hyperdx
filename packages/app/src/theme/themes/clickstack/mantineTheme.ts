@@ -251,7 +251,8 @@ const makeTheme = ({
           baseVars['--button-bg'] = 'var(--color-primary-button-bg)';
           baseVars['--button-hover'] = 'var(--color-primary-button-bg-hover)';
           baseVars['--button-color'] = 'var(--color-primary-button-text)';
-          baseVars['--button-color-hover'] = 'var(--color-primary-button-text)';
+          baseVars['--button-hover-color'] =
+            'var(--color-primary-button-text)';
         }
 
         if (props.variant === 'secondary') {
