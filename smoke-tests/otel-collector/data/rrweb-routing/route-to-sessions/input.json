@@ -1,0 +1,63 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "rrweb-routing"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "route-to-sessions"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "rrweb-test-service"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999590000000000",
+              "body": {
+                "stringValue": "session replay event"
+              },
+              "attributes": [
+                {
+                  "key": "rr-web.event",
+                  "value": {
+                    "stringValue": "2"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1901999590000000001",
+              "body": {
+                "stringValue": "ordinary application log"
+              },
+              "attributes": [
+                {
+                  "key": "request.id",
+                  "value": {
+                    "stringValue": "req-789"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

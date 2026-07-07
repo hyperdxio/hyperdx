@@ -47,6 +47,16 @@
       "brandTerms": ["ClickHouse MCP", "clickhouse"]
     }
   },
+  "plugins": {
+    "myplugin": {
+      "label": "My Plugin",
+      "url": "https://example.com/my-plugin.zip"
+    },
+    "dev-plugin": {
+      "label": "Dev Plugin (local)",
+      "dir": "/absolute/path/to/my-plugin"
+    }
+  },
   "scenarios": {
     "error-root-cause": {
       "tracesSourceId": "mongo-objectid",

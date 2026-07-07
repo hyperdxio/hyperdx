@@ -7,11 +7,11 @@ import { scenarioTables } from '@/clickhouse/schema';
 import type { RunRecord } from '@/harness/types';
 import { SCENARIO_NAMES } from '@/scenarios';
 
-import { isModelSubdir, isRunJson, runsRoot, safeReaddir } from './path';
+import { getRunFilesInBatch, runsRoot } from './path';
 
 const QUERY_LOG_BUFFER_MS = 5_000;
 
-export type ServerQuery = {
+type ServerQuery = {
   eventTime: string;
   queryDurationMs: number;
   readRows: number;
@@ -20,7 +20,7 @@ export type ServerQuery = {
   queryPreview: string;
 };
 
-export type ToolCallTiming = {
+type ToolCallTiming = {
   index: number;
   name: string;
   wallStartTs: string;
@@ -283,34 +283,12 @@ export async function instrumentBatch(
   });
   try {
     const out: TimingRecord[] = [];
-    for (const scenario of safeReaddir(resolved)) {
-      if (!SCENARIO_NAMES.includes(scenario)) continue;
-      const sceneDir = join(resolved, scenario);
-      for (const mcp of safeReaddir(sceneDir)) {
-        const mcpDir = join(sceneDir, mcp);
-        for (const entry of safeReaddir(mcpDir)) {
-          if (isRunJson(entry)) {
-            // Legacy layout: <scenario>/<mcp>/<index>.json
-            const timing = await instrumentRun({
-              runPath: join(mcpDir, entry),
-              client,
-            });
-            out.push(timing);
-          } else if (isModelSubdir(mcpDir, entry)) {
-            // New layout: <scenario>/<mcp>/<model>/<index>.json
-            const modelDir = join(mcpDir, entry);
-            for (const file of safeReaddir(modelDir)) {
-              if (isRunJson(file)) {
-                const timing = await instrumentRun({
-                  runPath: join(modelDir, file),
-                  client,
-                });
-                out.push(timing);
-              }
-            }
-          }
-        }
-      }
+    const runPaths = getRunFilesInBatch(resolved, {
+      scenarioFilter: s => SCENARIO_NAMES.includes(s),
+    });
+    for (const runPath of runPaths) {
+      const timing = await instrumentRun({ runPath, client });
+      out.push(timing);
     }
     return out;
   } finally {

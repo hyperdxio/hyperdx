@@ -30,6 +30,7 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconHelpCircle,
+  IconHourglass,
   IconInfoCircleFilled,
   IconNote,
   IconSearch,
@@ -213,6 +214,11 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
             Alert
           </Badge>
         )}
+        {alert.state === AlertState.PENDING && (
+          <Badge variant="light" color="orange">
+            Pending
+          </Badge>
+        )}
         {alert.state === AlertState.OK && <Badge variant="light">Ok</Badge>}
         {alert.state === AlertState.DISABLED && (
           <Badge variant="light" color="gray">
@@ -269,6 +275,9 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
 
 function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
   const alarmAlerts = alerts.filter(alert => alert.state === AlertState.ALERT);
+  const pendingAlerts = alerts.filter(
+    alert => alert.state === AlertState.PENDING,
+  );
   const okData = alerts.filter(alert => alert.state === AlertState.OK);
 
   return (
@@ -279,6 +288,16 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
             <IconAlertTriangle size={14} /> Triggered
           </Group>
           {alarmAlerts.map(alert => (
+            <AlertDetails key={alert._id} alert={alert} />
+          ))}
+        </div>
+      )}
+      {pendingAlerts.length > 0 && (
+        <div>
+          <Group className={styles.sectionHeader}>
+            <IconHourglass size={14} /> Pending
+          </Group>
+          {pendingAlerts.map(alert => (
             <AlertDetails key={alert._id} alert={alert} />
           ))}
         </div>

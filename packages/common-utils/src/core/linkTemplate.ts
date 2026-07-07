@@ -76,6 +76,35 @@ export function renderLinkTemplate(
   }
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function stringifyAndEncode(value: unknown): unknown {
+  if (typeof value === 'string') return encodeURIComponent(value);
+  if (Array.isArray(value) || isPlainObject(value)) {
+    return encodeURIComponent(JSON.stringify(value));
+  }
+  return value;
+}
+
+/**
+ * Render a template that produces a URL. Identical to {@link renderLinkTemplate}
+ * except that interpolated context (column) values are URL-encoded.
+ */
+export function renderUrlTemplate(
+  template: string,
+  ctx: Record<string, unknown>,
+): string {
+  const encoded: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(ctx)) {
+    encoded[key] = stringifyAndEncode(value);
+  }
+  return renderLinkTemplate(template, encoded);
+}
+
 export const clearLinkTemplateCache = () => {
   compiledTemplateCache.clear();
 };

@@ -589,10 +589,21 @@ export class DashboardPage {
   }
 
   /**
+   * Open a tile's actions (kebab) menu, revealing the Duplicate / View
+   * fullscreen / Edit / Delete items (which now live inside the menu).
+   */
+  async openTileActionsMenu(tileIndex: number) {
+    await this.page
+      .locator('[data-testid^="tile-actions-button-"]')
+      .nth(tileIndex)
+      .click();
+  }
+
+  /**
    * Edit a tile
    */
   async editTile(tileIndex: number) {
-    await this.hoverOverTile(tileIndex);
+    await this.openTileActionsMenu(tileIndex);
     await this.getTileButton('edit').click();
   }
 
@@ -600,7 +611,7 @@ export class DashboardPage {
    * Duplicate a tile
    */
   async duplicateTile(tileIndex: number) {
-    await this.hoverOverTile(tileIndex);
+    await this.openTileActionsMenu(tileIndex);
     await this.getTileButton('duplicate').click();
 
     const confirmButton = this.page.locator(
@@ -613,7 +624,7 @@ export class DashboardPage {
    * Delete a tile
    */
   async deleteTile(tileIndex: number) {
-    await this.hoverOverTile(tileIndex);
+    await this.openTileActionsMenu(tileIndex);
     await this.getTileButton('delete').click();
 
     const confirmButton = this.page.locator(
@@ -1100,6 +1111,20 @@ export class DashboardPage {
   }
 
   /**
+   * Return the first row's action element (anchor or button) of a table
+   * tile. Carries `data-testid="dashboard-table-row-action"`. Useful for
+   * asserting on rendered link attributes (href / target / rel / data-shape)
+   * without triggering navigation — e.g. external links open a new tab.
+   */
+  getFirstRowActionLink(tileIndex = 0): Locator {
+    return this.getTile(tileIndex)
+      .locator('table tbody tr')
+      .first()
+      .locator('[data-testid="dashboard-table-row-action"]')
+      .first();
+  }
+
+  /**
    * Return the first data row (<tr data-index>) of the table in the
    * given tile. Used for hover-based interactions (e.g. tooltip tests).
    */
@@ -1253,7 +1278,7 @@ export class DashboardPage {
    * Waits for the fullscreen modal's TimePicker to appear before returning.
    */
   async openFullscreenForTile(index: number) {
-    await this.hoverOverTile(index);
+    await this.openTileActionsMenu(index);
     const fullscreenBtn = this.page
       .locator('[data-testid^="tile-fullscreen-button-"]')
       .first();

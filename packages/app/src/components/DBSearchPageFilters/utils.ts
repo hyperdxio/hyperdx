@@ -142,12 +142,19 @@ export function getFilterStateEntry(
   );
 }
 
+// A key that begins with `identifier(` is a raw SQL function call (e.g.
+// `toString(...)`, `JSONExtractString(...)`), not a column name or a dot-form
+// Map sub-key, so it is already a valid ClickHouse expression.
+const isSqlFunctionCallExpression = (key: string): boolean =>
+  /^[A-Za-z_]\w*\(/.test(key);
+
 // Coerce a filterState key into a ClickHouse expression suitable for raw SQL.
 // A dot-form Map sub-key like `LogAttributes.host.name` is rewritten to bracket
 // form `LogAttributes['host.name']` via `mergePath` so the conversion stays
 // consistent with the keys produced by the facet-discovery path. Bracket form,
-// backtick-quoted JSON paths, `toString(...)` wrappers, and plain column names
-// are returned unchanged. Use this when handing a filterState key off to a SQL
+// backtick-quoted JSON paths, raw SQL function-call expressions
+// (`toString(...)`, `JSONExtractString(...)`), and plain column names are
+// returned unchanged. Use this when handing a filterState key off to a SQL
 // caller (e.g. "Load more" via metadata.getKeyValues), since `setFilterValue`
 // normalizes Map sub-keys to dot form which ClickHouse cannot resolve as map
 // access.
@@ -162,7 +169,12 @@ export function toClickHouseKeyExpression(key: string): string {
     key.includes("['") ||
     key.includes('["') ||
     key.includes('`') ||
-    key.startsWith('toString(')
+    // "Add to Filters" on a value inside parsed JSON from a String column builds
+    // a function-call key (e.g. JSONExtractString(Body, 'app.user.currency'));
+    // it must pass through untouched. Without this, parseMapFieldName splits on
+    // the dot inside the quoted argument and mergePath mangles it into the
+    // invalid `JSONExtractString(Body, 'app['user.currency')']`. HDX-4427.
+    isSqlFunctionCallExpression(key)
   ) {
     return key;
   }

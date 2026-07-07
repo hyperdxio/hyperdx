@@ -1,6 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-
-import type { McpContext, ToolDefinition } from '@/mcp/tools/types';
+import type { ToolDefinition, ToolRegistrar } from '@/mcp/tools/types';
 
 import { registerDeleteDashboard } from './deleteDashboard';
 import { registerGetDashboard } from './getDashboard';
@@ -12,17 +10,14 @@ import { registerSearchDashboards } from './searchDashboards';
 
 export * from './schemas';
 
-const dashboardsTools: ToolDefinition = (
-  server: McpServer,
-  context: McpContext,
-) => {
-  registerGetDashboard(server, context);
-  registerGetDashboardTile(server, context);
-  registerSaveDashboard(server, context);
-  registerPatchDashboard(server, context);
-  registerDeleteDashboard(server, context);
-  registerSearchDashboards(server, context);
-  registerQueryTile(server, context);
+const dashboardsTools: ToolDefinition = (registrar: ToolRegistrar) => {
+  registerGetDashboard(registrar);
+  registerGetDashboardTile(registrar);
+  registerSaveDashboard(registrar);
+  registerPatchDashboard(registrar);
+  registerDeleteDashboard(registrar);
+  registerSearchDashboards(registrar);
+  registerQueryTile(registrar);
 };
 
 export default dashboardsTools;

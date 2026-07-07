@@ -1,5 +1,14 @@
 import { Agent, agentStore } from '@/opamp/models/agent';
+import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+
+// Tracks whether a status report came from an agent we had not seen before
+// (`new`) or an existing one (`updated`). Low-cardinality enum, safe as a
+// metric attribute (see agent_docs/observability.md).
+const agentStatusCounter = getCounter('hyperdx.opamp.agent_status_reports', {
+  description:
+    'Count of processed OpAMP agent status reports, labeled by status (new, updated).',
+});
 
 export class AgentService {
   /**
@@ -19,6 +28,7 @@ export class AgentService {
 
       // Get the existing agent or create a new one
       let agent = agentStore.getAgent(instanceUid);
+      const isNewAgent = !agent;
 
       if (!agent) {
         // New agent, create a new record
@@ -59,6 +69,8 @@ export class AgentService {
 
       // Update the agent in the store
       agentStore.upsertAgent(agent);
+
+      agentStatusCounter.add(1, { status: isNewAgent ? 'new' : 'updated' });
 
       return agent;
     } catch (error) {
