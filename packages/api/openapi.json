@@ -3066,6 +3066,72 @@
           }
         }
       },
+      "SavedSearchFilter": {
+        "description": "A structured filter applied to the saved search. Either a\nlanguage-based condition or a SQL AST comparison.\n",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "condition"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "lucene",
+                  "sql"
+                ],
+                "description": "Language used to interpret `condition`.",
+                "example": "lucene"
+              },
+              "condition": {
+                "type": "string",
+                "description": "The filter condition expression.",
+                "example": "level:error"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "operator",
+              "left",
+              "right"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "sql_ast"
+                ],
+                "example": "sql_ast"
+              },
+              "operator": {
+                "type": "string",
+                "enum": [
+                  "=",
+                  "<",
+                  ">",
+                  "!=",
+                  "<=",
+                  ">="
+                ],
+                "example": "="
+              },
+              "left": {
+                "type": "string",
+                "example": "ServiceName"
+              },
+              "right": {
+                "type": "string",
+                "example": "'api'"
+              }
+            }
+          }
+        ]
+      },
       "SavedSearch": {
         "type": "object",
         "required": [
@@ -3129,7 +3195,7 @@
             "type": "array",
             "description": "Structured filters applied to the saved search.",
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/SavedSearchFilter"
             }
           },
           "teamId": {
@@ -3208,7 +3274,7 @@
             "type": "array",
             "description": "Structured filters applied to the saved search.",
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/SavedSearchFilter"
             }
           }
         }
@@ -3263,7 +3329,7 @@
           "filters": {
             "type": "array",
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/SavedSearchFilter"
             }
           }
         }

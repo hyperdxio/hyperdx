@@ -92,6 +92,31 @@ describe('External API v2 Saved Searches', () => {
       expect(res.body.data[0]).not.toHaveProperty('_id');
     });
 
+    it('returns saved searches sorted by name ascending', async () => {
+      await SavedSearch.create({
+        team: team._id,
+        source: new ObjectId(sourceId),
+        name: 'Zebra',
+      });
+      await SavedSearch.create({
+        team: team._id,
+        source: new ObjectId(sourceId),
+        name: 'Apple',
+      });
+      await SavedSearch.create({
+        team: team._id,
+        source: new ObjectId(sourceId),
+        name: 'Mango',
+      });
+
+      const res = await authRequest('get', BASE_URL).expect(200);
+      expect(res.body.data.map((s: { name: string }) => s.name)).toEqual([
+        'Apple',
+        'Mango',
+        'Zebra',
+      ]);
+    });
+
     it('does not return saved searches from another team', async () => {
       await SavedSearch.create({
         team: team._id,
@@ -263,6 +288,41 @@ describe('External API v2 Saved Searches', () => {
       expect(stored?.tags).toEqual([]);
     });
 
+    it('accepts, persists and returns filters', async () => {
+      const filters = [
+        { type: 'lucene', condition: 'level:error' },
+        { type: 'sql', condition: "ServiceName = 'api'" },
+      ];
+
+      const res = await authRequest('post', BASE_URL)
+        .send({ name: 'With Filters', sourceId, filters })
+        .expect(200);
+
+      // Round-trips through toExternalJSON on the create response...
+      expect(res.body.data.filters).toEqual(filters);
+
+      // ...is persisted...
+      const stored = await SavedSearch.findById(res.body.data.id);
+      expect(stored?.filters).toEqual(filters);
+
+      // ...and round-trips through a subsequent GET.
+      const getRes = await authRequest(
+        'get',
+        `${BASE_URL}/${res.body.data.id}`,
+      ).expect(200);
+      expect(getRes.body.data.filters).toEqual(filters);
+    });
+
+    it('rejects malformed filters', async () => {
+      await authRequest('post', BASE_URL)
+        .send({
+          name: 'Bad filters',
+          sourceId,
+          filters: [{ type: 'not-a-valid-type', condition: 'x' }],
+        })
+        .expect(400);
+    });
+
     it('requires authentication', async () => {
       await request(server.getHttpServer())
         .post(BASE_URL)
@@ -372,6 +432,43 @@ describe('External API v2 Saved Searches', () => {
       // Optional fields are cleared (unset), not merged.
       expect(stored?.whereLanguage == null).toBe(true);
       expect(stored?.orderBy == null).toBe(true);
+    });
+
+    it('persists explicitly-provided optional fields on replace', async () => {
+      const doc = await SavedSearch.create({
+        team: team._id,
+        source: new ObjectId(sourceId),
+        name: 'Original',
+      });
+
+      const filters = [{ type: 'lucene', condition: 'level:warn' }];
+      const res = await authRequest('put', `${BASE_URL}/${doc._id}`)
+        .send({
+          name: 'Replaced',
+          sourceId,
+          where: 'level:error',
+          whereLanguage: 'sql',
+          orderBy: 'Timestamp ASC',
+          select: 'Body',
+          tags: ['a', 'b'],
+          filters,
+        })
+        .expect(200);
+
+      expect(res.body.data).toMatchObject({
+        name: 'Replaced',
+        where: 'level:error',
+        whereLanguage: 'sql',
+        orderBy: 'Timestamp ASC',
+        select: 'Body',
+        tags: ['a', 'b'],
+        filters,
+      });
+
+      const stored = await SavedSearch.findById(doc._id);
+      expect(stored?.whereLanguage).toBe('sql');
+      expect(stored?.orderBy).toBe('Timestamp ASC');
+      expect(stored?.filters).toEqual(filters);
     });
 
     it('persists updatedBy audit metadata on update', async () => {

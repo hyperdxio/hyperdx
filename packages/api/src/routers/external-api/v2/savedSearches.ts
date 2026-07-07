@@ -56,6 +56,46 @@ const router = express.Router();
  * @openapi
  * components:
  *   schemas:
+ *     SavedSearchFilter:
+ *       description: |
+ *         A structured filter applied to the saved search. Either a
+ *         language-based condition or a SQL AST comparison.
+ *       oneOf:
+ *         - type: object
+ *           required:
+ *             - type
+ *             - condition
+ *           properties:
+ *             type:
+ *               type: string
+ *               enum: [lucene, sql]
+ *               description: Language used to interpret `condition`.
+ *               example: lucene
+ *             condition:
+ *               type: string
+ *               description: The filter condition expression.
+ *               example: "level:error"
+ *         - type: object
+ *           required:
+ *             - type
+ *             - operator
+ *             - left
+ *             - right
+ *           properties:
+ *             type:
+ *               type: string
+ *               enum: [sql_ast]
+ *               example: sql_ast
+ *             operator:
+ *               type: string
+ *               enum: ['=', '<', '>', '!=', '<=', '>=']
+ *               example: "="
+ *             left:
+ *               type: string
+ *               example: ServiceName
+ *             right:
+ *               type: string
+ *               example: "'api'"
  *     SavedSearch:
  *       type: object
  *       required:
@@ -102,7 +142,7 @@ const router = express.Router();
  *           type: array
  *           description: Structured filters applied to the saved search.
  *           items:
- *             type: object
+ *             $ref: '#/components/schemas/SavedSearchFilter'
  *         teamId:
  *           type: string
  *           description: ID of the team that owns the saved search.
@@ -158,7 +198,7 @@ const router = express.Router();
  *           type: array
  *           description: Structured filters applied to the saved search.
  *           items:
- *             type: object
+ *             $ref: '#/components/schemas/SavedSearchFilter'
  *     UpdateSavedSearchRequest:
  *       type: object
  *       description: |
@@ -197,7 +237,7 @@ const router = express.Router();
  *         filters:
  *           type: array
  *           items:
- *             type: object
+ *             $ref: '#/components/schemas/SavedSearchFilter'
  *     SavedSearchResponseEnvelope:
  *       type: object
  *       properties:
