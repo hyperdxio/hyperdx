@@ -14,6 +14,7 @@ export enum AlertState {
   DISABLED = 'DISABLED',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
+  PENDING = 'PENDING',
 }
 
 export interface IAlertError {
@@ -83,6 +84,9 @@ export interface IAlert {
     at: Date;
     until: Date;
   };
+
+  // Multi-window alerting: fire only after N violations in M consecutive windows
+  numConsecutiveWindows?: number | null;
 
   // Errors recorded during the most recent execution
   executionErrors?: IAlertError[];
@@ -189,6 +193,11 @@ const AlertSchema = new Schema<IAlert>(
     tileId: {
       type: String,
       required: false,
+    },
+    numConsecutiveWindows: {
+      type: Number,
+      required: false,
+      min: 1,
     },
     silenced: {
       required: false,

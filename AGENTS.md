@@ -29,7 +29,9 @@ This is a **monorepo** with six packages:
 - `packages/hdx-eval` - AI eval framework for benchmarking MCP servers against
   observability scenarios. Generates deterministic synthetic telemetry, spawns
   agents, and grades with programmatic checks + LLM-as-judge. See its
-  [`README.md`](packages/hdx-eval/README.md) for setup and usage.
+  [`README.md`](packages/hdx-eval/README.md) for setup and usage, and
+  [`agent_docs/evals.md`](agent_docs/evals.md) for the dual-slot A/B
+  comparison workflow.
 
 **Data flow**: Apps → OpenTelemetry Collector → ClickHouse (telemetry data) /
 MongoDB (configuration/metadata)

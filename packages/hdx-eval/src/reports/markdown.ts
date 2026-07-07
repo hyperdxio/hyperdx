@@ -15,8 +15,12 @@ export function renderMarkdownReport(summary: BatchSummary): string {
   if (summary.baseline) {
     lines.push(`Baseline: ${summary.baseline}`);
   }
-  if (summary.multiModel) {
-    lines.push(`Columns: ${columns.join(', ')}  _(mcp/model)_`);
+  const varying = [
+    ...(summary.multiModel ? ['model'] : []),
+    ...(summary.multiPlugin ? ['plugin'] : []),
+  ];
+  if (varying.length > 0) {
+    lines.push(`Columns: ${columns.join(', ')}  _(mcp/${varying.join('+')})_`);
   } else {
     lines.push(`MCPs: ${columns.join(', ')}`);
   }

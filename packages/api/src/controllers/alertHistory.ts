@@ -18,14 +18,24 @@ type GroupedAlertHistory = {
   lastValues: IAlertHistory['lastValues'][];
 };
 
+function groupStateToOverallState(states: string[]): AlertState {
+  if (states.includes(AlertState.ALERT)) {
+    return AlertState.ALERT;
+  }
+
+  if (states.includes(AlertState.PENDING)) {
+    return AlertState.PENDING;
+  }
+
+  return AlertState.OK;
+}
+
 function mapGroupedHistories(
   groupedHistories: GroupedAlertHistory[],
 ): Omit<IAlertHistory, 'alert'>[] {
   return groupedHistories.map(group => ({
     createdAt: group._id,
-    state: group.states.includes(AlertState.ALERT)
-      ? AlertState.ALERT
-      : AlertState.OK,
+    state: groupStateToOverallState(group.states),
     counts: group.counts,
     lastValues: group.lastValues
       .flat()
