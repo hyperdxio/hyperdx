@@ -41,10 +41,13 @@ jest.mock('nuqs', () => {
   return {
     ...actual,
     // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
-    useQueryState: (key: string) =>
+    useQueryState: (key: string, parser?: { defaultValue?: unknown }) =>
       key === 'sessionPanelEvent'
         ? [mockNuqs.sessionPanelEvent, mockNuqs.setSessionPanelEvent]
-        : [null, noop],
+        : // Mirror real nuqs: a parser built with `.withDefault(...)` never
+          // yields null. Honor its defaultValue so hooks like
+          // useSidePanelStack read empty arrays, not null.
+          [parser?.defaultValue ?? null, noop],
   };
 });
 

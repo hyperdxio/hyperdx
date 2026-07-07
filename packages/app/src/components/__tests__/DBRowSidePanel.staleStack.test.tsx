@@ -1,4 +1,5 @@
 import React from 'react';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { render } from '@testing-library/react';
 
@@ -130,8 +131,14 @@ jest.mock('@/useFormatTime', () => ({
 // NOTE: this import is intentionally placed after the mock factories above,
 // which close over the `mock*` helpers declared at the top of this file.
 import { DBRowSidePanelInner } from '@/components/DBRowSidePanel';
+import useSidePanelStack from '@/hooks/useSidePanelStack';
 
-const ROOT_SOURCE = { id: 'log-src', kind: 'log', traceSourceId: 'trace-src' };
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+const ROOT_SOURCE = {
+  id: 'log-src',
+  kind: 'log',
+  traceSourceId: 'trace-src',
+} as TSource;
 
 const TRACE_FRAME = {
   sourceId: 'trace-src',
@@ -141,15 +148,23 @@ const TRACE_FRAME = {
   sourceKind: 'trace',
 };
 
+function InnerHarness({ rowId }: { rowId: string }) {
+  const sidePanelStack = useSidePanelStack({ initialRowId: rowId });
+  return (
+    <DBRowSidePanelInner
+      source={ROOT_SOURCE}
+      rowId={rowId}
+      aliasWith={[]}
+      onClose={jest.fn()}
+      sidePanelStack={sidePanelStack}
+    />
+  );
+}
+
 function renderInner(rowId: string) {
   return render(
     <MantineProvider>
-      <DBRowSidePanelInner
-        source={ROOT_SOURCE as any}
-        rowId={rowId}
-        aliasWith={[]}
-        onClose={jest.fn()}
-      />
+      <InnerHarness rowId={rowId} />
     </MantineProvider>,
   );
 }
@@ -216,12 +231,7 @@ describe('DBRowSidePanelInner — stale stack handling (HDX-3942 "Stale Stack Re
     // clicked another row in the same table); the trail is stale and ignored.
     rerender(
       <MantineProvider>
-        <DBRowSidePanelInner
-          source={ROOT_SOURCE as any}
-          rowId="root-2"
-          aliasWith={[]}
-          onClose={jest.fn()}
-        />
+        <InnerHarness rowId="root-2" />
       </MantineProvider>,
     );
 
