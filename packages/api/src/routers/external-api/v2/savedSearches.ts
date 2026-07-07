@@ -1,4 +1,4 @@
-import { SearchConditionLanguageSchema } from '@hyperdx/common-utils/dist/types';
+import { SearchConditionTrimmedLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import mongoose from 'mongoose';
 import { z } from 'zod';
@@ -39,7 +39,7 @@ const bodySchema = z
     name: z.string().trim().min(1).max(1024),
     sourceId: objectIdSchema,
     where: z.string().max(8192).default(''),
-    whereLanguage: SearchConditionLanguageSchema,
+    whereLanguage: SearchConditionTrimmedLanguageSchema,
     select: z.string().max(4096).default(''),
     orderBy: z.string().max(1024).optional(),
     tags: z.array(z.string().max(32)).max(50).default([]),
@@ -53,9 +53,16 @@ const bodySchema = z
     },
   );
 
+// Infer the body shape so CLEARABLE_ON_REPLACE is tied to actual schema keys.
+type BodyOutput = z.output<typeof bodySchema>;
+
 // Fields that are optional on the body and therefore cleared (rather than
 // merged) when omitted from a PUT request. See the PUT handler for details.
-const CLEARABLE_ON_REPLACE = ['whereLanguage', 'orderBy', 'filters'] as const;
+const CLEARABLE_ON_REPLACE: readonly (keyof BodyOutput)[] = [
+  'whereLanguage',
+  'orderBy',
+  'filters',
+] as const;
 
 /**
  * Verifies that `sourceId` refers to a source owned by `teamId`. Returns true
@@ -131,6 +138,7 @@ const router = express.Router();
  *           type: string
  *           description: Display name for the saved search.
  *           maxLength: 1024
+ *           minLength: 1
  *           example: Production errors
  *         sourceId:
  *           type: string
@@ -143,7 +151,7 @@ const router = express.Router();
  *           example: "SeverityText:ERROR"
  *         whereLanguage:
  *           type: string
- *           enum: [lucene, sql, promql]
+ *           enum: [lucene, sql]
  *           description: Language used to interpret the `where` expression. Required when `where` is non-empty.
  *           example: lucene
  *         select:
@@ -194,6 +202,7 @@ const router = express.Router();
  *           type: string
  *           description: Display name for the saved search.
  *           maxLength: 1024
+ *           minLength: 1
  *           example: Production errors
  *         sourceId:
  *           type: string
@@ -206,7 +215,7 @@ const router = express.Router();
  *           example: "SeverityText:ERROR"
  *         whereLanguage:
  *           type: string
- *           enum: [lucene, sql, promql]
+ *           enum: [lucene, sql]
  *           description: Language used to interpret the `where` expression. Required when `where` is non-empty.
  *           example: lucene
  *         select:
@@ -248,6 +257,7 @@ const router = express.Router();
  *         name:
  *           type: string
  *           maxLength: 1024
+ *           minLength: 1
  *           example: Production errors
  *         sourceId:
  *           type: string
@@ -258,7 +268,7 @@ const router = express.Router();
  *           example: "SeverityText:ERROR"
  *         whereLanguage:
  *           type: string
- *           enum: [lucene, sql, promql]
+ *           enum: [lucene, sql]
  *           description: Required when `where` is non-empty.
  *           example: lucene
  *         select:

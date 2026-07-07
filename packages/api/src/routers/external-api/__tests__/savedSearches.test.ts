@@ -545,9 +545,9 @@ describe('External API v2 Saved Searches', () => {
         .expect(200);
 
       const stored = await SavedSearch.findById(doc._id);
-      expect(stored?.filters == null || stored?.filters.length === 0).toBe(
-        true,
-      );
+      expect(
+        stored?.filters === undefined || stored?.filters.length === 0,
+      ).toBe(true);
     });
 
     it('persists explicitly-provided optional fields on replace', async () => {
@@ -600,6 +600,42 @@ describe('External API v2 Saved Searches', () => {
 
       const stored = await SavedSearch.findById(doc._id);
       expect(stored?.updatedBy?.toString()).toBe(user._id.toString());
+    });
+
+    it('preserves createdBy and createdAt across PUT replace', async () => {
+      const doc = await SavedSearch.create({
+        team: team._id,
+        source: new ObjectId(sourceId),
+        name: 'Original',
+        createdBy: user._id,
+      });
+      const originalCreatedAt = doc.createdAt;
+
+      await authRequest('put', `${BASE_URL}/${doc._id}`)
+        .send({ name: 'Replaced', sourceId })
+        .expect(200);
+
+      const stored = await SavedSearch.findById(doc._id);
+      expect(stored?.createdBy?.toString()).toBe(user._id.toString());
+      expect(stored?.createdAt.toISOString()).toBe(
+        originalCreatedAt.toISOString(),
+      );
+    });
+
+    it('rejects whereLanguage: promql', async () => {
+      const doc = await SavedSearch.create({
+        team: team._id,
+        source: new ObjectId(sourceId),
+        name: 'Original',
+      });
+      await authRequest('put', `${BASE_URL}/${doc._id}`)
+        .send({
+          name: 'PromQL',
+          sourceId,
+          where: 'up{job="api"}',
+          whereLanguage: 'promql',
+        })
+        .expect(400);
     });
 
     it('rejects non-empty where without whereLanguage on PUT', async () => {

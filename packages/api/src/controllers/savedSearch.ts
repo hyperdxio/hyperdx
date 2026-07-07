@@ -69,14 +69,13 @@ export function updateSavedSearch(
 }
 
 export async function deleteSavedSearch(teamId: string, savedSearchId: string) {
-  const savedSearch = await SavedSearch.findOneAndDelete({
+  // Delete referencing alerts first so a failure after this step doesn't
+  // orphan them (the search still exists and a retry will succeed).
+  await deleteSavedSearchAlerts(savedSearchId, teamId);
+  return SavedSearch.findOneAndDelete({
     _id: savedSearchId,
     team: teamId,
   });
-  if (savedSearch) {
-    await deleteSavedSearchAlerts(savedSearchId, teamId);
-  }
-  return savedSearch;
 }
 
 /**
@@ -87,7 +86,7 @@ export async function deleteSavedSearch(teamId: string, savedSearchId: string) {
 export function replaceSavedSearch(
   teamId: string,
   savedSearchId: string,
-  fieldsToSet: Record<string, unknown>,
+  fieldsToSet: Partial<SavedSearchWithoutId & { updatedBy?: string }>,
   unsetFields: string[],
 ) {
   const $unset: Record<string, ''> = {};

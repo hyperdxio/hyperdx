@@ -3149,6 +3149,7 @@
             "type": "string",
             "description": "Display name for the saved search.",
             "maxLength": 1024,
+            "minLength": 1,
             "example": "Production errors"
           },
           "sourceId": {
@@ -3166,8 +3167,7 @@
             "type": "string",
             "enum": [
               "lucene",
-              "sql",
-              "promql"
+              "sql"
             ],
             "description": "Language used to interpret the `where` expression. Required when `where` is non-empty.",
             "example": "lucene"
@@ -3235,6 +3235,7 @@
             "type": "string",
             "description": "Display name for the saved search.",
             "maxLength": 1024,
+            "minLength": 1,
             "example": "Production errors"
           },
           "sourceId": {
@@ -3252,8 +3253,7 @@
             "type": "string",
             "enum": [
               "lucene",
-              "sql",
-              "promql"
+              "sql"
             ],
             "description": "Language used to interpret the `where` expression. Required when `where` is non-empty.",
             "example": "lucene"
@@ -3304,6 +3304,7 @@
           "name": {
             "type": "string",
             "maxLength": 1024,
+            "minLength": 1,
             "example": "Production errors"
           },
           "sourceId": {
@@ -3319,8 +3320,7 @@
             "type": "string",
             "enum": [
               "lucene",
-              "sql",
-              "promql"
+              "sql"
             ],
             "description": "Required when `where` is non-empty.",
             "example": "lucene"
