@@ -43,6 +43,10 @@ export function registerListSources({
           timestampColumn: s.timestampValueExpression,
         };
 
+        if (s.section) {
+          meta.section = s.section;
+        }
+
         if ('eventAttributesExpression' in s && s.eventAttributesExpression) {
           meta.eventAttributesColumn = s.eventAttributesExpression;
         }

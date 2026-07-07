@@ -48,7 +48,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       description: Alert source type.
  *     AlertState:
  *       type: string
- *       enum: [ALERT, OK, INSUFFICIENT_DATA, DISABLED]
+ *       enum: [ALERT, OK, INSUFFICIENT_DATA, DISABLED, PENDING]
  *       description: Current alert state.
  *     AlertChannelType:
  *       type: string
@@ -192,6 +192,12 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           minLength: 1
  *           maxLength: 4096
  *           example: "Threshold raised from 50 to 100 on 2026-01-15. See [runbook](https://wiki.example.com/runbook)."
+ *         numConsecutiveWindows:
+ *           type: integer
+ *           minimum: 1
+ *           nullable: true
+ *           description: Fire the alert only after its condition has been met for this many consecutive evaluation windows. While the condition is met but fewer than this many consecutive windows have violated, the alert is in the PENDING state.
+ *           example: 3
  *
  *     AlertResponse:
  *       allOf:
@@ -322,6 +328,7 @@ const router = express.Router();
  *                     teamId: "65f5e4a3b9e77c001a345678"
  *                     tileId: "65f5e4a3b9e77c001a901234"
  *                     dashboardId: "65f5e4a3b9e77c001a567890"
+ *                     numConsecutiveWindows: 3
  *                     createdAt: "2023-03-15T10:20:30.000Z"
  *                     updatedAt: "2023-03-15T14:25:10.000Z"
  *       '401':
@@ -502,6 +509,7 @@ router.get(
  *                   webhookId: "65f5e4a3b9e77c001a789012"
  *                 name: "Error Spike Alert"
  *                 message: "Error rate has exceeded 100 in the last hour"
+ *                 numConsecutiveWindows: 3
  *     responses:
  *       '200':
  *         description: Successfully created alert

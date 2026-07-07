@@ -4,6 +4,7 @@
 // readability. Reformatting all separators is out of scope here.
 import {
   AggregateFunctionSchema,
+  BackgroundChartSchema,
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_CONTAINERS,
@@ -63,6 +64,15 @@ const rawSqlNumberTileColorDescription =
   '"chart-blue" or "chart-success". Valid only when displayType is ' +
   '"number", ignored otherwise. Raw SQL number tiles do not support ' +
   'conditional colorRules.';
+
+const numberTileBackgroundChartDescription =
+  'Optional background trend sparkline drawn behind the number, derived ' +
+  'from a time-bucketed version of the same query (useful for SLO / ' +
+  'error-budget tiles where the trend over the window matters). ' +
+  '{ type, color? }: type is "line" or "area"; color is an optional ' +
+  'palette token override (the sparkline inherits the tile color when ' +
+  'unset). Builder number tiles only; raw SQL number tiles have no time ' +
+  'dimension to bucket. Example: { type: "area", color: "chart-blue" }.';
 
 const mcpNumberFormatSchema = z.object({
   output: z
@@ -601,6 +611,9 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
       .max(10)
       .optional()
       .describe(numberTileColorRulesDescription),
+    backgroundChart: BackgroundChartSchema.optional().describe(
+      numberTileBackgroundChartDescription,
+    ),
   }),
 });
 

@@ -32,6 +32,9 @@ export type PopulatedAlertChannel = { type: 'webhook' } & { channel: IWebhook };
 export type AlertDetails = {
   alert: IAlert;
   previousMap: Map<string, AggregatedAlertHistory>; // Map of alertId||group -> history for group-by alerts
+  // For multi-window alerts (numConsecutiveWindows > 1): the recent per-group
+  // history (alertId||group -> histories, newest-first).
+  recentHistoryMap?: Map<string, AggregatedAlertHistory[]>;
 } & (
   | {
       taskType: AlertTaskType.SAVED_SEARCH;
