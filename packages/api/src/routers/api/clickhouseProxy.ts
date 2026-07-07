@@ -11,6 +11,7 @@ import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { validateRequestHeaders } from '@/middleware/validation';
 import { recordOperationOutcome } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+import { isPrivateIp } from '@/utils/validators';
 import { objectIdSchema } from '@/utils/zod';
 
 // SLO operations for the ClickHouse proxy. Both paths swallow their errors
@@ -97,6 +98,12 @@ router.post(
     const parsedHost = new URL(host);
     if (parsedHost.protocol !== 'http:' && parsedHost.protocol !== 'https:') {
       return res.status(400).json({ success: false, error: 'Invalid protocol' });
+    }
+    const hostname = parsedHost.hostname.replace(/^\[|\]$/g, '');
+    if (isPrivateIp(hostname)) {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Invalid host' });
     }
 
     const startedAt = performance.now();

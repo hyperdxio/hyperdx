@@ -43,6 +43,7 @@ import {
 import { escapeJsonString, unflattenObject } from '@/tasks/util';
 import { truncateString } from '@/utils/common';
 import { getCounter, getHistogram } from '@/utils/instrumentation';
+import { isPrivateIp } from '@/utils/validators';
 import logger from '@/utils/logger';
 import { withRetry } from '@/utils/retry';
 import * as slack from '@/utils/slack';
@@ -219,35 +220,6 @@ const notifyChannel = async ({
   }
 };
 
-// Returns true for private/reserved IPv4 and IPv6 addresses that must not be
-// reachable from outbound webhook requests (SSRF protection).
-function isPrivateIp(ip: string): boolean {
-  // IPv4
-  if (
-    /^127\./.test(ip) || // loopback
-    /^10\./.test(ip) || // RFC 1918
-    /^172\.(1[6-9]|2\d|3[01])\./.test(ip) || // RFC 1918
-    /^192\.168\./.test(ip) || // RFC 1918
-    /^169\.254\./.test(ip) || // link-local / AWS metadata
-    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip) || // RFC 6598
-    /^0\./.test(ip) || // "this" network
-    /^(22[4-9]|23\d)\./.test(ip) || // multicast
-    /^(25[0-5]|24[0-9]|2[0-3][0-9])\./.test(ip) // reserved/broadcast ≥ 240.x
-  ) {
-    return true;
-  }
-  // IPv6
-  if (
-    ip === '::1' || // loopback
-    /^fe80:/i.test(ip) || // link-local
-    /^fc00:/i.test(ip) || // ULA
-    /^fd/i.test(ip) || // ULA
-    /^fd00:ec2::/i.test(ip) // AWS metadata IPv6
-  ) {
-    return true;
-  }
-  return false;
-}
 
 const blacklistedWebhookHosts = (() => {
   const map = new Map<string, string>();
