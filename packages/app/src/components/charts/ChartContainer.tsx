@@ -155,19 +155,13 @@ function ChartContainer({
                   <div className={styles.toolbarCollapsed}>
                     <Menu width={220} position="bottom-end">
                       <Menu.Target>
-                        <Tooltip
-                          label="Tile actions"
-                          position="top"
-                          withArrow
-                        >
+                        <Tooltip label="Tile actions" position="top" withArrow>
                           <ActionIcon variant="subtle" size="sm">
                             <IconDotsVertical size={16} />
                           </ActionIcon>
                         </Tooltip>
                       </Menu.Target>
-                      <Menu.Dropdown
-                        onMouseDown={e => e.stopPropagation()}
-                      >
+                      <Menu.Dropdown onMouseDown={e => e.stopPropagation()}>
                         {hasInlineItems && (
                           <div className={styles.inlineSection}>
                             <Group
