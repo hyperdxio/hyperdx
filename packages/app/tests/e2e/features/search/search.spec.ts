@@ -53,7 +53,7 @@ test.describe('Search', { tag: '@search' }, () => {
       });
 
       await test.step('Navigate through all side panel tabs', async () => {
-        const tabs = ['parsed', 'trace', 'context', 'overview'];
+        const tabs = ['parsed', 'context', 'overview'];
 
         // Use side panel component to navigate tabs
         for (const tabName of tabs) {
@@ -104,7 +104,11 @@ test.describe('Search', { tag: '@search' }, () => {
       });
 
       await test.step('Navigate through all side panel tabs', async () => {
-        const tabs = ['trace', 'context', 'infrastructure', 'overview'];
+        // Logs sources no longer render a Trace tab (it's gated behind
+        // source.kind === Trace). For a Kubernetes log row the available tabs
+        // are Surrounding Context (always present), Infrastructure (k8s
+        // context) and Overview.
+        const tabs = ['context', 'infrastructure', 'overview'];
 
         // Use side panel component with proper waiting
         for (const tabName of tabs) {
@@ -154,10 +158,10 @@ test.describe('Search', { tag: '@search' }, () => {
       });
 
       await test.step('Infrastructure tab is not offered', async () => {
-        // The tab bar rendered (an always-present tab is visible), but the gate
-        // omits Infrastructure because the row carries no k8s correlation
-        // attributes.
-        await expect(searchPage.sidePanel.getTab('trace')).toBeVisible();
+        // The tab bar rendered (the always-present Column Values tab is
+        // visible), but the gate omits Infrastructure because the row carries
+        // no k8s correlation attributes.
+        await expect(searchPage.sidePanel.getTab('parsed')).toBeVisible();
         await expect(searchPage.sidePanel.getTab('infrastructure')).toHaveCount(
           0,
         );

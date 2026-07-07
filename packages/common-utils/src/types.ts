@@ -1221,34 +1221,30 @@ export const CteChartConfigSchema = z.intersection(
 
 export type CteChartConfig = z.infer<typeof CteChartConfigSchema>;
 
+export const WithClauseSchema = z.object({
+  name: z.string(),
+
+  // Need to specify either a sql or chartConfig instance. To avoid
+  // the schema falling into an any type, the fields are separate
+  // and listed as optional.
+  sql: ChSqlSchema.optional(),
+  chartConfig: CteChartConfigSchema.optional(),
+
+  // If true, it'll render as WITH ident AS (subquery)
+  // If false, it'll be a "variable" ex. WITH (sql) AS ident
+  // where sql can be any expression, ex. a constant string
+  // see: https://clickhouse.com/docs/sql-reference/statements/select/with#syntax
+  // default assume true
+  isSubquery: z.boolean().optional(),
+});
+
 // The `with` CTE property needs to be defined at this level, just above the
 // non-recursive chart config so that it can reference a complete chart config
 // schema. This structure does mean that we cannot nest `with` clauses but does
 // ensure the type system can catch more issues in the build pipeline.
 const BuilderChartConfigSchema = z.intersection(
   z.intersection(_ChartConfigSchema, SelectSQLStatementSchema),
-  z
-    .object({
-      with: z.array(
-        z.object({
-          name: z.string(),
-
-          // Need to specify either a sql or chartConfig instance. To avoid
-          // the schema falling into an any type, the fields are separate
-          // and listed as optional.
-          sql: ChSqlSchema.optional(),
-          chartConfig: CteChartConfigSchema.optional(),
-
-          // If true, it'll render as WITH ident AS (subquery)
-          // If false, it'll be a "variable" ex. WITH (sql) AS ident
-          // where sql can be any expression, ex. a constant string
-          // see: https://clickhouse.com/docs/sql-reference/statements/select/with#syntax
-          // default assume true
-          isSubquery: z.boolean().optional(),
-        }),
-      ),
-    })
-    .partial(),
+  z.object({ with: z.array(WithClauseSchema) }).partial(),
 );
 
 export type BuilderChartConfig = z.infer<typeof BuilderChartConfigSchema>;
