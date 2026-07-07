@@ -361,6 +361,21 @@ describe('External API v2 Webhooks', () => {
         .expect(400);
     });
 
+    it.each(['headers', 'queryParams', 'body'])(
+      'should reject %s on a slack webhook (unsupported by the service)',
+      async field => {
+        const payload =
+          field === 'body'
+            ? { ...MOCK_SLACK_WEBHOOK, body: '{"text": "hi"}' }
+            : { ...MOCK_SLACK_WEBHOOK, [field]: { 'X-Custom': 'value' } };
+
+        const response = await authRequest('post', WEBHOOKS_BASE_URL)
+          .send(payload)
+          .expect(400);
+        expect(JSON.stringify(response.body)).toMatch(/not supported/i);
+      },
+    );
+
     it('should reject header values with control characters', async () => {
       await authRequest('post', WEBHOOKS_BASE_URL)
         .send({

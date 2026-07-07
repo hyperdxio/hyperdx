@@ -152,6 +152,39 @@ describe('External API v2 Saved Searches CRUD', () => {
       const { name, ...rest } = savedSearchBody();
       await authRequest('post', BASE_URL).send(rest).expect(400);
     });
+
+    it('should reject more than 50 tags', async () => {
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          tags: Array.from({ length: 51 }, (_, i) => `tag-${i}`),
+        })
+        .expect(400);
+    });
+
+    it('should reject a tag longer than 32 characters', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), tags: ['x'.repeat(33)] })
+        .expect(400);
+    });
+
+    it('should reject a name longer than 1024 characters', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), name: 'x'.repeat(1025) })
+        .expect(400);
+    });
+
+    it('should reject more than 100 filters', async () => {
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: Array.from({ length: 101 }, () => ({
+            type: 'lucene',
+            condition: 'SeverityText:ERROR',
+          })),
+        })
+        .expect(400);
+    });
   });
 
   describe('GET /api/v2/saved-searches', () => {

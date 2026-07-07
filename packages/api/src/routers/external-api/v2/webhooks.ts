@@ -324,9 +324,14 @@ router.get(
  *         - service
  *         - url
  *       description: |
- *         Webhook create/update body. `headers` and `queryParams` are
- *         write-only — they are accepted here but never returned by any
- *         read endpoint, so secrets such as auth tokens do not leak. On
+ *         Webhook create/update body. `body`, `headers`, and `queryParams`
+ *         only take effect for services that issue a templated HTTP request
+ *         (`generic`, `incidentio`). The `slack` service posts a fixed payload
+ *         to its incoming-webhook URL and ignores them, so supplying any of
+ *         these fields on a `slack` webhook is rejected. `headers` and
+ *         `queryParams` are write-only — they are accepted here but never
+ *         returned by any read endpoint, so secrets such as auth tokens do
+ *         not leak. On
  *         update (PUT), omitted readable fields (`description`, `body`) are
  *         cleared, while omitted `headers`/`queryParams` are preserved —
  *         send an explicit `{}` to clear them. Exception: if the destination
@@ -354,18 +359,18 @@ router.get(
  *           example: "Sends critical alerts to the #incidents channel"
  *         body:
  *           type: string
- *           description: Optional request body template (generic webhooks).
+ *           description: Optional request body template. Only for generic/incidentio; rejected for slack.
  *           example: '{"alert": "{{title}}", "severity": "{{level}}"}'
  *         headers:
  *           type: object
- *           description: Write-only. Custom HTTP headers sent with the webhook request. Never returned on read.
+ *           description: Write-only. Custom HTTP headers sent with the webhook request. Never returned on read. Only for generic/incidentio; rejected for slack.
  *           additionalProperties:
  *             type: string
  *           example:
  *             Authorization: Bearer secret-token
  *         queryParams:
  *           type: object
- *           description: Write-only. Query parameters appended to the webhook URL. Never returned on read.
+ *           description: Write-only. Query parameters appended to the webhook URL. Never returned on read. Only for generic/incidentio; rejected for slack.
  *           additionalProperties:
  *             type: string
  *     WebhookResponseEnvelope:

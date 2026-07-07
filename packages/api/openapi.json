@@ -3062,6 +3062,73 @@
           }
         }
       },
+      "SavedSearchFilter": {
+        "description": "A single structured pinned filter applied to the search. Either a text-condition filter (Lucene or SQL) or a structured SQL AST comparison.",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "condition"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "lucene",
+                  "sql"
+                ],
+                "description": "Language of the condition expression."
+              },
+              "condition": {
+                "type": "string",
+                "description": "Filter expression in the language given by type.",
+                "example": "SeverityText:ERROR"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "operator",
+              "left",
+              "right"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "sql_ast"
+                ],
+                "description": "Marks a structured SQL AST comparison."
+              },
+              "operator": {
+                "type": "string",
+                "enum": [
+                  "=",
+                  "<",
+                  ">",
+                  "!=",
+                  "<=",
+                  ">="
+                ],
+                "description": "Comparison operator."
+              },
+              "left": {
+                "type": "string",
+                "description": "Left-hand column or expression.",
+                "example": "ServiceName"
+              },
+              "right": {
+                "type": "string",
+                "description": "Right-hand literal or expression.",
+                "example": "'checkout'"
+              }
+            }
+          }
+        ]
+      },
       "SavedSearch": {
         "type": "object",
         "required": [
@@ -3112,17 +3179,30 @@
           },
           "tags": {
             "type": "array",
+            "maxItems": 50,
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 32
             },
-            "description": "Tags used to organize saved searches."
+            "description": "Tags used to organize saved searches.",
+            "example": [
+              "production",
+              "errors"
+            ]
           },
           "filters": {
             "type": "array",
+            "maxItems": 100,
             "description": "Structured pinned filters applied to the search.",
             "items": {
-              "type": "object"
-            }
+              "$ref": "#/components/schemas/SavedSearchFilter"
+            },
+            "example": [
+              {
+                "type": "lucene",
+                "condition": "SeverityText:ERROR"
+              }
+            ]
           },
           "teamId": {
             "type": "string",
@@ -3155,6 +3235,7 @@
         "properties": {
           "name": {
             "type": "string",
+            "maxLength": 1024,
             "description": "Display name for the saved search.",
             "example": "Production Errors"
           },
@@ -3165,11 +3246,13 @@
           },
           "select": {
             "type": "string",
+            "maxLength": 4096,
             "description": "Comma-separated list of column expressions to display. Empty uses the source default.",
             "example": "Timestamp, ServiceName, Body"
           },
           "where": {
             "type": "string",
+            "maxLength": 8192,
             "description": "Row filter expression. The language is controlled by whereLanguage.",
             "example": "SeverityText:ERROR"
           },
@@ -3185,22 +3268,36 @@
           },
           "orderBy": {
             "type": "string",
+            "maxLength": 1024,
             "description": "ORDER BY expression. Empty uses the source default.",
             "example": "Timestamp DESC"
           },
           "tags": {
             "type": "array",
+            "maxItems": 50,
             "description": "Tags used to organize saved searches.",
             "items": {
-              "type": "string"
-            }
+              "type": "string",
+              "maxLength": 32
+            },
+            "example": [
+              "production",
+              "errors"
+            ]
           },
           "filters": {
             "type": "array",
+            "maxItems": 100,
             "description": "Structured pinned filters applied to the search.",
             "items": {
-              "type": "object"
-            }
+              "$ref": "#/components/schemas/SavedSearchFilter"
+            },
+            "example": [
+              {
+                "type": "lucene",
+                "condition": "SeverityText:ERROR"
+              }
+            ]
           }
         }
       },
@@ -4455,7 +4552,7 @@
           "service",
           "url"
         ],
-        "description": "Webhook create/update body. `headers` and `queryParams` are\nwrite-only — they are accepted here but never returned by any\nread endpoint, so secrets such as auth tokens do not leak. On\nupdate (PUT), omitted readable fields (`description`, `body`) are\ncleared, while omitted `headers`/`queryParams` are preserved —\nsend an explicit `{}` to clear them. Exception: if the destination\n(`url` or `service`) changes, omitted `headers`/`queryParams` are\ncleared rather than preserved, so stored secrets are never forwarded\nto a new destination; re-supply them for the new destination.\n",
+        "description": "Webhook create/update body. `body`, `headers`, and `queryParams`\nonly take effect for services that issue a templated HTTP request\n(`generic`, `incidentio`). The `slack` service posts a fixed payload\nto its incoming-webhook URL and ignores them, so supplying any of\nthese fields on a `slack` webhook is rejected. `headers` and\n`queryParams` are write-only — they are accepted here but never\nreturned by any read endpoint, so secrets such as auth tokens do\nnot leak. On\nupdate (PUT), omitted readable fields (`description`, `body`) are\ncleared, while omitted `headers`/`queryParams` are preserved —\nsend an explicit `{}` to clear them. Exception: if the destination\n(`url` or `service`) changes, omitted `headers`/`queryParams` are\ncleared rather than preserved, so stored secrets are never forwarded\nto a new destination; re-supply them for the new destination.\n",
         "properties": {
           "name": {
             "type": "string",
@@ -4485,12 +4582,12 @@
           },
           "body": {
             "type": "string",
-            "description": "Optional request body template (generic webhooks).",
+            "description": "Optional request body template. Only for generic/incidentio; rejected for slack.",
             "example": "{\"alert\": \"{{title}}\", \"severity\": \"{{level}}\"}"
           },
           "headers": {
             "type": "object",
-            "description": "Write-only. Custom HTTP headers sent with the webhook request. Never returned on read.",
+            "description": "Write-only. Custom HTTP headers sent with the webhook request. Never returned on read. Only for generic/incidentio; rejected for slack.",
             "additionalProperties": {
               "type": "string"
             },
@@ -4500,7 +4597,7 @@
           },
           "queryParams": {
             "type": "object",
-            "description": "Write-only. Query parameters appended to the webhook URL. Never returned on read.",
+            "description": "Write-only. Query parameters appended to the webhook URL. Never returned on read. Only for generic/incidentio; rejected for slack.",
             "additionalProperties": {
               "type": "string"
             }

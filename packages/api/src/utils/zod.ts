@@ -16,6 +16,7 @@ import {
   OnClickSearchSchema,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
+  tagsSchema,
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
   WebhookService,
@@ -130,7 +131,9 @@ const chartSeriesSchema = z.discriminatedUnion('type', [
 
 type ChartSeries = z.infer<typeof chartSeriesSchema>;
 
-export const tagsSchema = z.array(z.string().max(32)).max(50).optional();
+// Re-exported from common-utils so existing `@/utils/zod` importers keep working
+// while the canonical definition lives in the shared package.
+export { tagsSchema };
 
 export const externalDashboardFilterSchemaWithId = DashboardFilterSchema.omit({
   source: true,
@@ -717,19 +720,41 @@ export const webhookQueryParamValueSchema = z
     message: 'Query parameter values cannot contain control characters',
   });
 
+// Fields that only take effect for services that issue a templated HTTP request
+// (generic, incident.io). Slack posts a fixed Block Kit payload to its incoming
+// webhook URL and ignores headers/queryParams/body entirely (see
+// handleSendSlackWebhook in tasks/checkAlerts/template.ts), so supplying them on
+// a slack webhook is rejected rather than silently dropped.
+const SLACK_UNSUPPORTED_FIELDS = ['headers', 'queryParams', 'body'] as const;
+
 // Request body for external webhook create/update. `headers` and `queryParams`
 // are write-only: accepted here but never echoed back by externalWebhookSchema,
 // so provider integrations can configure secrets without them leaking on read.
-export const externalWebhookCreateSchema = z.object({
-  name: z.string().trim().min(1),
-  service: z.nativeEnum(WebhookService),
-  url: z.string().url(),
-  description: z.string().optional(),
-  queryParams: z
-    .record(webhookQueryParamKeySchema, webhookQueryParamValueSchema)
-    .optional(),
-  headers: z
-    .record(webhookHeaderNameSchema, webhookHeaderValueSchema)
-    .optional(),
-  body: z.string().optional(),
-});
+export const externalWebhookCreateSchema = z
+  .object({
+    name: z.string().trim().min(1),
+    service: z.nativeEnum(WebhookService),
+    url: z.string().url(),
+    description: z.string().optional(),
+    queryParams: z
+      .record(webhookQueryParamKeySchema, webhookQueryParamValueSchema)
+      .optional(),
+    headers: z
+      .record(webhookHeaderNameSchema, webhookHeaderValueSchema)
+      .optional(),
+    body: z.string().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.service !== WebhookService.Slack) {
+      return;
+    }
+    for (const field of SLACK_UNSUPPORTED_FIELDS) {
+      if (val[field] !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: `${field} is not supported for the slack webhook service`,
+        });
+      }
+    }
+  });

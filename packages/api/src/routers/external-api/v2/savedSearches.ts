@@ -16,7 +16,12 @@ import {
   paginationMeta,
   paginationQuerySchema,
 } from '@/utils/pagination';
-import { objectIdSchema } from '@/utils/zod';
+import { objectIdSchema, tagsSchema } from '@/utils/zod';
+
+// Cap the number of pinned filters a single saved search can carry. Filters are
+// applied per query, so an unbounded array is both a storage and a query-cost
+// concern; 100 is far above any realistic UI-built search.
+const MAX_SAVED_SEARCH_FILTERS = 100;
 
 // External request body. Uses `sourceId` (not the internal `source`) so the
 // create/update contract matches the shape returned by toExternalJSON().
@@ -24,15 +29,25 @@ import { objectIdSchema } from '@/utils/zod';
 // omitted (uniform semantics). orderBy/filters carry defaults for the same
 // reason select/where/whereLanguage/tags do — so a read-modify-write client
 // that drops a field gets a predictable reset rather than a silent preserve.
+// String/array fields are size-capped to mirror the other external API schemas
+// (see search.ts, dashboards) and to bound request/storage size.
 const savedSearchRequestSchema = z.object({
-  name: z.string().trim().min(1),
+  name: z.string().trim().min(1).max(1024),
   sourceId: objectIdSchema,
-  select: z.string().optional().default(''),
-  where: z.string().optional().default(''),
+  select: z
+    .string()
+    .max(4 * 1024)
+    .optional()
+    .default(''),
+  where: z
+    .string()
+    .max(8 * 1024)
+    .optional()
+    .default(''),
   whereLanguage: z.enum(['lucene', 'sql']).optional().default('lucene'),
-  orderBy: z.string().optional().default(''),
-  tags: z.array(z.string()).optional().default([]),
-  filters: z.array(FilterSchema).optional().default([]),
+  orderBy: z.string().max(1024).optional().default(''),
+  tags: tagsSchema.default([]),
+  filters: z.array(FilterSchema).max(MAX_SAVED_SEARCH_FILTERS).default([]),
 });
 
 // Maps the validated external body to the internal controller input, renaming
@@ -73,6 +88,48 @@ async function requireValidSourceId(
  * @openapi
  * components:
  *   schemas:
+ *     SavedSearchFilter:
+ *       description: >-
+ *         A single structured pinned filter applied to the search. Either a
+ *         text-condition filter (Lucene or SQL) or a structured SQL AST
+ *         comparison.
+ *       oneOf:
+ *         - type: object
+ *           required:
+ *             - type
+ *             - condition
+ *           properties:
+ *             type:
+ *               type: string
+ *               enum: [lucene, sql]
+ *               description: Language of the condition expression.
+ *             condition:
+ *               type: string
+ *               description: Filter expression in the language given by type.
+ *               example: "SeverityText:ERROR"
+ *         - type: object
+ *           required:
+ *             - type
+ *             - operator
+ *             - left
+ *             - right
+ *           properties:
+ *             type:
+ *               type: string
+ *               enum: [sql_ast]
+ *               description: Marks a structured SQL AST comparison.
+ *             operator:
+ *               type: string
+ *               enum: ["=", "<", ">", "!=", "<=", ">="]
+ *               description: Comparison operator.
+ *             left:
+ *               type: string
+ *               description: Left-hand column or expression.
+ *               example: ServiceName
+ *             right:
+ *               type: string
+ *               description: Right-hand literal or expression.
+ *               example: "'checkout'"
  *     SavedSearch:
  *       type: object
  *       required:
@@ -112,14 +169,21 @@ async function requireValidSourceId(
  *           example: Timestamp DESC
  *         tags:
  *           type: array
+ *           maxItems: 50
  *           items:
  *             type: string
+ *             maxLength: 32
  *           description: Tags used to organize saved searches.
+ *           example: ["production", "errors"]
  *         filters:
  *           type: array
+ *           maxItems: 100
  *           description: Structured pinned filters applied to the search.
  *           items:
- *             type: object
+ *             $ref: '#/components/schemas/SavedSearchFilter'
+ *           example:
+ *             - type: lucene
+ *               condition: "SeverityText:ERROR"
  *         teamId:
  *           type: string
  *           readOnly: true
@@ -145,6 +209,7 @@ async function requireValidSourceId(
  *       properties:
  *         name:
  *           type: string
+ *           maxLength: 1024
  *           description: Display name for the saved search.
  *           example: Production Errors
  *         sourceId:
@@ -153,10 +218,12 @@ async function requireValidSourceId(
  *           example: 507f1f77bcf86cd799439012
  *         select:
  *           type: string
+ *           maxLength: 4096
  *           description: Comma-separated list of column expressions to display. Empty uses the source default.
  *           example: Timestamp, ServiceName, Body
  *         where:
  *           type: string
+ *           maxLength: 8192
  *           description: Row filter expression. The language is controlled by whereLanguage.
  *           example: "SeverityText:ERROR"
  *         whereLanguage:
@@ -167,18 +234,26 @@ async function requireValidSourceId(
  *           example: lucene
  *         orderBy:
  *           type: string
+ *           maxLength: 1024
  *           description: ORDER BY expression. Empty uses the source default.
  *           example: Timestamp DESC
  *         tags:
  *           type: array
+ *           maxItems: 50
  *           description: Tags used to organize saved searches.
  *           items:
  *             type: string
+ *             maxLength: 32
+ *           example: ["production", "errors"]
  *         filters:
  *           type: array
+ *           maxItems: 100
  *           description: Structured pinned filters applied to the search.
  *           items:
- *             type: object
+ *             $ref: '#/components/schemas/SavedSearchFilter'
+ *           example:
+ *             - type: lucene
+ *               condition: "SeverityText:ERROR"
  *     SavedSearchesListResponse:
  *       type: object
  *       required:
