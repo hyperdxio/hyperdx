@@ -6,6 +6,7 @@ import {
   BuilderChartConfigWithOptTimestamp,
   ChartConfigWithDateRange,
   ChartConfigWithOptTimestamp,
+  DisplayType,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -29,7 +30,8 @@ import DBSqlRowTableWithSideBar from '@/components/DBSqlRowTableWithSidebar';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
-import { getFirstTimestampValueExpression } from '@/source';
+import PatternTable from '@/components/PatternTable';
+import { getEventBody, getFirstTimestampValueExpression } from '@/source';
 import {
   orderByStringToSortingState,
   sortingStateToOrderByString,
@@ -288,6 +290,64 @@ export function ChartPreviewPanel({
               enabled
               isLive={false}
               queryKeyPrefix={'search'}
+            />
+          </div>
+        )}
+      {queryReady &&
+        tableSource &&
+        queriedConfig != null &&
+        isBuilderChartConfig(queriedConfig) &&
+        activeTab === 'event_patterns' && (
+          <div
+            className="flex-grow-1 d-flex flex-column"
+            style={{ height: 400 }}
+          >
+            <PatternTable
+              source={tableSource}
+              config={{
+                ...queriedConfig,
+                // Override source-specific fields from the live source so
+                // switching sources doesn't query the stale table/connection
+                // or stale defaultTableSelectExpression columns.
+                from: tableSource.from,
+                connection: tableSource.connection,
+                timestampValueExpression: tableSource.timestampValueExpression,
+                // PatternTable's usePatterns hook overrides `select` with
+                // pattern-specific columns, so clear the stale
+                // defaultTableSelectExpression to prevent old-source columns
+                // (e.g. SeverityText from a log source) from leaking through.
+                select: '',
+                displayType: DisplayType.Table,
+                dateRange,
+                granularity: undefined,
+              }}
+              bodyValueExpression={
+                // Prefer the user's custom pattern expression (stored in
+                // queriedConfig.select) when set. Ignore multi-column
+                // strings (containing commas) — those are stale
+                // defaultTableSelectExpression values from pre-fix saved
+                // tiles, not a single pattern expression.
+                (typeof queriedConfig.select === 'string' &&
+                queriedConfig.select.length > 0 &&
+                !queriedConfig.select.includes(',')
+                  ? queriedConfig.select
+                  : undefined) ??
+                getEventBody(tableSource) ??
+                ''
+              }
+              totalCountConfig={{
+                ...queriedConfig,
+                from: tableSource.from,
+                connection: tableSource.connection,
+                timestampValueExpression: tableSource.timestampValueExpression,
+                displayType: DisplayType.Table,
+                dateRange,
+                select: 'count() as total',
+                groupBy: undefined,
+                orderBy: undefined,
+                granularity: undefined,
+              }}
+              totalCountQueryKeyPrefix="chart-editor-patterns"
             />
           </div>
         )}

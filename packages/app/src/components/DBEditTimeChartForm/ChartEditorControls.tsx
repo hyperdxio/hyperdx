@@ -32,6 +32,7 @@ import SourceSchemaPreview, {
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { IS_LOCAL_MODE } from '@/config';
+import { getEventBody } from '@/source';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { OnClickFormButton } from './OnClickForm/OnClickFormButton';
@@ -136,6 +137,7 @@ export function ChartEditorControls({
           {tableSource &&
             activeTab !== 'search' &&
             activeTab !== 'heatmap' &&
+            activeTab !== 'event_patterns' &&
             chartConfigForExplanations &&
             isBuilderChartConfig(chartConfigForExplanations) && (
               <MVOptimizationIndicator
@@ -153,6 +155,31 @@ export function ChartEditorControls({
           onSubmit={onSubmit}
           onOpenDisplaySettings={openHeatmapSettings}
         />
+      ) : displayType === DisplayType.EventPatterns ? (
+        <Flex gap="xs" direction="column">
+          <SQLInlineEditorControlled
+            tableConnection={tableConnection}
+            control={control}
+            name="select"
+            placeholder={
+              tableSource
+                ? `Default (${getEventBody(tableSource) ?? 'Body'}) — column name or expression`
+                : 'Default — column name or expression'
+            }
+            onSubmit={onSubmit}
+            label="Pattern Expression"
+          />
+          <SearchWhereInput
+            tableConnection={tableConnection}
+            control={control}
+            name="where"
+            onSubmit={onSubmit}
+            onLanguageChange={(lang: 'sql' | 'lucene') =>
+              setValue('whereLanguage', lang)
+            }
+            showLabel={false}
+          />
+        </Flex>
       ) : displayType !== DisplayType.Search && Array.isArray(select) ? (
         <>
           {fields.map((field, index) => (

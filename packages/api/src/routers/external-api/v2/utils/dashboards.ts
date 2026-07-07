@@ -247,6 +247,7 @@ const convertToExternalTileChartConfig = (
       case DisplayType.Search:
       case DisplayType.Markdown:
       case DisplayType.Heatmap:
+      case DisplayType.EventPatterns:
         logger.error(
           { config },
           'Error converting chart config to external chart - unsupported display type for raw SQL config',
@@ -420,6 +421,14 @@ const convertToExternalTileChartConfig = (
         numberFormat: config.numberFormat,
       };
     }
+    case DisplayType.EventPatterns:
+      return {
+        displayType: config.displayType,
+        sourceId,
+        select: stringValueOrDefault(config.select, ''),
+        where: config.where,
+        whereLanguage: config.whereLanguage ?? 'lucene',
+      };
     case undefined:
       logger.error(
         { config },
@@ -783,6 +792,15 @@ export function convertToInternalTileConfig(
         internalConfig = {
           ...pick(externalConfig, ['select', 'where']),
           displayType: DisplayType.Search,
+          source: externalConfig.sourceId,
+          name,
+          whereLanguage: externalConfig.whereLanguage ?? 'lucene',
+        } satisfies BuilderSavedChartConfig;
+        break;
+      case 'event_patterns':
+        internalConfig = {
+          ...pick(externalConfig, ['select', 'where']),
+          displayType: DisplayType.EventPatterns,
           source: externalConfig.sourceId,
           name,
           whereLanguage: externalConfig.whereLanguage ?? 'lucene',

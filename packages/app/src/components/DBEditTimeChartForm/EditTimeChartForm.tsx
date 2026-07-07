@@ -32,6 +32,7 @@ import {
 import { useDisclosure, usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconBracketsContain,
   IconChartLine,
   IconChartPie,
   IconGrid3x3,
@@ -57,6 +58,7 @@ import {
   convertSavedChartConfigToFormState,
   isPromqlDisplayType,
   isRawSqlDisplayType,
+  isStringSelectDisplayType,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
 import type { HeatmapScaleType } from '@/components/DBHeatmapChart';
@@ -488,7 +490,10 @@ export default function EditTimeChartForm({
       prevDisplayTypeRef.current = displayType;
       prevConfigTypeRef.current = configType;
 
-      if (displayType === DisplayType.Search && typeof select !== 'string') {
+      if (
+        isStringSelectDisplayType(displayType) &&
+        typeof select !== 'string'
+      ) {
         setValue('select', '');
         setValue('series', []);
       } else if (displayType === DisplayType.Heatmap) {
@@ -712,6 +717,12 @@ export default function EditTimeChartForm({
                   leftSection={<IconGrid3x3 size={16} />}
                 >
                   Heatmap
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.EventPatterns}
+                  leftSection={<IconBracketsContain size={16} />}
+                >
+                  Patterns
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Markdown}
