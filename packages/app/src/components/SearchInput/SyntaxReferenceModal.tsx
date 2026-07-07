@@ -32,6 +32,10 @@ const SQL_SECTIONS: Section[] = [
         desc: 'Substring search (case-insensitive)',
       },
       {
+        expr: "Body LIKE '%timeout%'",
+        desc: 'Substring match (case-sensitive)',
+      },
+      {
         expr: "hasAllTokens(Body, 'connection timeout')",
         desc: 'Full-text search (requires text index)',
       },
@@ -39,8 +43,6 @@ const SQL_SECTIONS: Section[] = [
         expr: "ServiceName LIKE 'auth-%'",
         desc: 'Prefix wildcard (case-sensitive)',
       },
-      { expr: "SpanName LIKE '%checkout%'", desc: 'Substring match' },
-      { expr: "Body ILIKE '%error%'", desc: 'Case-insensitive substring' },
       {
         expr: "match(SpanName, '^/api/(checkout|payment)/.*')",
         desc: 'Regular expression',
@@ -60,7 +62,7 @@ const SQL_SECTIONS: Section[] = [
       },
       {
         expr: "ServiceName IN ('api', 'worker')",
-        desc: 'Match multiple values',
+        desc: 'Match one of multiple values',
       },
       { expr: "ServiceName != 'healthcheck'", desc: 'Exclude a value' },
       {
@@ -75,8 +77,8 @@ const SQL_SECTIONS: Section[] = [
   {
     title: 'Existence & absence',
     rows: [
-      { expr: 'isNotNull(StatusCode)', desc: 'Field exists / is not null' },
-      { expr: 'isNull(Body)', desc: 'Field is absent / null' },
+      { expr: 'notEmpty(StatusCode)', desc: 'Field exists / is not null' },
+      { expr: 'empty(Body)', desc: 'Field is absent / null' },
     ],
   },
   {
@@ -84,11 +86,11 @@ const SQL_SECTIONS: Section[] = [
     rows: [
       {
         expr: "LogAttributes['http.method'] = 'POST'",
-        desc: 'Access map/attribute column by key',
+        desc: 'Map attribute access',
       },
       {
-        expr: "ResourceAttributes['service.env'] = 'prod'",
-        desc: 'Resource attribute filter',
+        expr: "LogAttributes.http.method = 'POST'",
+        desc: 'JSON attribute access',
       },
     ],
   },
@@ -97,7 +99,7 @@ const SQL_SECTIONS: Section[] = [
     rows: [
       {
         expr: "has(Events.Name, 'exception')",
-        desc: 'Array column contains value (traces)',
+        desc: 'Array column contains value',
       },
     ],
   },
@@ -107,14 +109,17 @@ const LUCENE_SECTIONS: Section[] = [
   {
     title: 'String matching',
     rows: [
-      { expr: 'ServiceName:api', desc: 'Exact match' },
-      { expr: '"connection refused"', desc: 'Exact phrase match' },
-      { expr: 'timeout', desc: 'Full-text search' },
-      { expr: 'ServiceName:auth-*', desc: 'Prefix wildcard' },
-      { expr: 'SpanName:*checkout*', desc: 'Substring wildcard' },
-      { expr: 'SpanName:*checkout', desc: 'Suffix wildcard' },
+      { expr: 'ServiceName:"api"', desc: 'Field exact match' },
+      { expr: 'ServiceName:api', desc: 'Field substring match' },
+      {
+        expr: '"connection refused"',
+        desc: 'Phrase match against implicit column',
+      },
+      { expr: 'timeout', desc: 'Token match against implicit column' },
+      { expr: 'auth-*', desc: 'Prefix match against implicit column' },
+      { expr: '*-auth', desc: 'Suffix match against implicit column' },
+      { expr: '*checkout*', desc: 'Substring match against implicit column' },
       { expr: 'Duration:[100 TO 500]', desc: 'Numeric range (inclusive)' },
-      { expr: 'Duration:{100 TO 500}', desc: 'Numeric range (exclusive)' },
       { expr: 'Duration:>1000000', desc: 'Greater-than comparison' },
     ],
   },
@@ -144,8 +149,8 @@ const LUCENE_SECTIONS: Section[] = [
   {
     title: 'Existence & absence',
     rows: [
-      { expr: 'StatusCode:*', desc: 'Field exists (not null)' },
-      { expr: '-Body:*', desc: 'Field is absent / null' },
+      { expr: 'StatusCode:*', desc: 'Field exists (not null nor empty)' },
+      { expr: '-Body:*', desc: 'Field is absent / null / empty' },
     ],
   },
   {
@@ -157,7 +162,7 @@ const LUCENE_SECTIONS: Section[] = [
       },
       {
         expr: 'ResourceAttributes.service.env:prod',
-        desc: 'Resource attribute filter',
+        desc: 'Map / JSON attribute filter',
       },
     ],
   },
@@ -165,8 +170,8 @@ const LUCENE_SECTIONS: Section[] = [
     title: 'Arrays',
     rows: [
       {
-        expr: 'Events.Name:exception',
-        desc: 'Array column contains value (traces)',
+        expr: 'Events.Name:"exception"',
+        desc: 'Array column contains value',
       },
     ],
   },
@@ -271,11 +276,6 @@ function SyntaxTable({
   );
 }
 
-const INTRO: Record<Language, string> = {
-  sql: '',
-  lucene: '',
-};
-
 export default function SyntaxReferenceModal({
   opened,
   onClose,
@@ -343,11 +343,6 @@ export default function SyntaxReferenceModal({
             </Text>
           </Tooltip>
         </Group>
-        {INTRO[language] && (
-          <Text size="sm" c="dimmed" ta="center">
-            {INTRO[language]}
-          </Text>
-        )}
         <SyntaxTable sections={sections} query={query} />
       </Stack>
     </Modal>
