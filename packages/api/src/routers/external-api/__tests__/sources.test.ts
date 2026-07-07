@@ -20,7 +20,10 @@ import {
 } from '@/models/source';
 import { ITeam } from '@/models/team';
 import { IUser } from '@/models/user';
-import { mapGranularityToExternalFormat } from '@/routers/external-api/v2/sources';
+import {
+  mapGranularityToExternalFormat,
+  mapGranularityToInternalFormat,
+} from '@/routers/external-api/v2/sources';
 
 describe('External API v2 Sources', () => {
   const server = getServer();
@@ -693,6 +696,33 @@ describe('External API v2 Sources Mapping', () => {
       'passes through unsupported or already-short granularity $input',
       ({ input, expected }) => {
         expect(mapGranularityToExternalFormat(input)).toBe(expected);
+      },
+    );
+  });
+
+  describe('mapGranularityToInternalFormat', () => {
+    it.each`
+      input    | expected
+      ${'15s'} | ${'15 second'}
+      ${'5m'}  | ${'5 minute'}
+      ${'2h'}  | ${'2 hour'}
+      ${'1d'}  | ${'1 day'}
+    `(
+      'maps supported short-form granularity $input to $expected',
+      ({ input, expected }) => {
+        expect(mapGranularityToInternalFormat(input)).toBe(expected);
+      },
+    );
+
+    it.each`
+      input         | expected
+      ${'invalid'}  | ${'invalid'}
+      ${'1 minute'} | ${'1 minute'}
+      ${'5min'}     | ${'5min'}
+    `(
+      'passes through unsupported or already-long granularity $input',
+      ({ input, expected }) => {
+        expect(mapGranularityToInternalFormat(input)).toBe(expected);
       },
     );
   });

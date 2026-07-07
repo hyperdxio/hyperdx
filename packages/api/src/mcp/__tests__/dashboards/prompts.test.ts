@@ -50,25 +50,39 @@ describe('MCP Dashboard Prompts', () => {
       expect(numberFormat.toLowerCase()).toContain('per-series');
     });
 
-    it('declares the MCP metric-authoring gap rather than referencing fields that do not exist', () => {
-      // The MCP select-item schema does not carry metricName / metricType,
-      // so any prompt that tells the model to author a metric tile via
-      // the builder path is teaching it to ship JSON that gets silently
-      // stripped. Guard with an explicit assertion so a future diff that
-      // restores metric-tile guidance fails this test loudly.
+    it('documents the metric-source builder support with the discovery workflow', () => {
+      // Builder tiles on a metric source now work via the metricType +
+      // metricName + isDelta fields on each select item, with metricTables
+      // threaded through runConfigTile's builder branch. The prompt has to
+      // teach the model the discovery workflow (list_sources -> describe
+      // _source -> list_metrics -> describe_metric -> timeseries|table)
+      // and the per-kind aggFn rules so it doesn't fall back to raw SQL.
       const prompt = buildQueryGuidePrompt();
-      expect(prompt).not.toMatch(/metricName \+ metricType/);
-      expect(prompt).not.toMatch(/exactly 1 select item with metricName/);
-      const constraintsIdx = prompt.indexOf('== PER-TILE TYPE CONSTRAINTS ==');
-      const constraintsBody = prompt.slice(constraintsIdx);
-      // The constraints section closes with an explicit note that builder
-      // tiles on a metric source are not reliable today, with a fallback
-      // recipe to raw SQL. Anchor on the phrase so a future diff that
-      // drops the gap-acknowledgement fails loudly.
-      expect(constraintsBody).toMatch(
+      const metricsIdx = prompt.indexOf('== METRIC SOURCES ==');
+      expect(metricsIdx).toBeGreaterThan(-1);
+      const metricsBody = prompt.slice(
+        metricsIdx,
+        prompt.indexOf('\n== ', metricsIdx + 1),
+      );
+      // The four supported metric select fields are named.
+      expect(metricsBody).toContain('metricType');
+      expect(metricsBody).toContain('metricName');
+      expect(metricsBody).toContain('isDelta');
+      // Per-kind aggregation guidance is present.
+      expect(metricsBody).toMatch(/gauge\s+Use aggFn:"last_value"/);
+      expect(metricsBody).toMatch(/sum\s+Use aggFn:"increase"/);
+      expect(metricsBody).toMatch(/histogram\s+Use aggFn:"quantile"/);
+      // The 20-group cap on increase + groupBy is documented.
+      expect(metricsBody).toMatch(/top 20 groups/);
+      // The four-tool discovery chain is documented in order.
+      expect(metricsBody).toContain('clickstack_describe_source');
+      expect(metricsBody).toContain('clickstack_list_metrics');
+      expect(metricsBody).toContain('clickstack_describe_metric');
+      // The old "use raw SQL for metric tiles" workaround language is gone.
+      expect(prompt).not.toMatch(
         /Authoring builder tiles on a metric source is not reliable/,
       );
-      expect(constraintsBody).toMatch(/MCP select-item shape does not carry/);
+      expect(prompt).not.toMatch(/Both table name and UUID are empty/);
     });
 
     it('documents table-tile onClick linking features', () => {
@@ -229,16 +243,30 @@ describe('MCP Dashboard Prompts', () => {
       );
     });
 
-    it('flags the metric source builder gap', () => {
-      // Builder tiles on metric sources currently save but render with
-      // "Both table name and UUID are empty". Claude went 100% raw SQL
-      // across 21 metric tiles for this reason; the prompt has to make
-      // the workaround obvious so the model doesn't try the builder
-      // first and fail silently.
+    it('walks the metric discovery workflow end-to-end with worked examples', () => {
+      // Metric source builder tiles now work — the prompt teaches the
+      // model how to find, characterise, and chart a metric without
+      // falling through to raw SQL. The examples cover one tile per
+      // supported metric kind so the pattern is unambiguous.
       const prompt = buildQueryGuidePrompt();
-      expect(prompt).toMatch(/Both table name and UUID are empty/);
-      expect(prompt).toMatch(/use a raw SQL tile/);
-      expect(prompt).toMatch(/otel_metrics_gauge/);
+      const metricsIdx = prompt.indexOf('== METRIC SOURCES ==');
+      const metricsBody = prompt.slice(
+        metricsIdx,
+        prompt.indexOf('\n== ', metricsIdx + 1),
+      );
+      // The five-step discovery workflow is enumerated.
+      expect(metricsBody).toMatch(/clickstack_list_sources/);
+      expect(metricsBody).toMatch(/clickstack_describe_source/);
+      expect(metricsBody).toMatch(/clickstack_list_metrics/);
+      expect(metricsBody).toMatch(/clickstack_describe_metric/);
+      expect(metricsBody).toMatch(/clickstack_timeseries/);
+      // One worked example per supported kind, each using a real OTel
+      // metric name so the agent has a concrete template.
+      expect(metricsBody).toContain('system.cpu.utilization');
+      expect(metricsBody).toContain('http.server.request.count');
+      expect(metricsBody).toContain('http.server.request.duration');
+      // valueExpression default is documented.
+      expect(metricsBody).toMatch(/valueExpression defaults to "Value"/);
     });
 
     it('contains no em-dashes or en-dashes used as em-dashes', () => {
@@ -296,13 +324,13 @@ describe('MCP Dashboard Prompts', () => {
       const checklistIdx = prompt.indexOf('== DESIGN CHECKLIST ==');
       const adaptIdx = prompt.indexOf('== ADAPT, DO NOT COPY ==');
       const checklistBody = prompt.slice(checklistIdx, adaptIdx);
-      // Thirteen rules: the original ten plus GROUP BY HAS NO ALIAS HOOK
-      // (rule 3), VALIDATE EVERY TILE AFTER SAVE (rule 12), and NO
-      // TITLE-RECAP MARKDOWN TILE (rule 13). Each came out of a live
-      // verification pass after watching Claude reliably ignore the soft
-      // "should" formulations or hit a schema gap the earlier checklist
-      // did not call out.
-      for (let i = 1; i <= 13; i++) {
+      // Fourteen rules: the original ten plus GROUP BY HAS NO ALIAS HOOK
+      // (rule 3), VALIDATE EVERY TILE AFTER SAVE (rule 12), NO
+      // TITLE-RECAP MARKDOWN TILE (rule 13), and SIZE TILES TO FIT THEIR
+      // CONTENT (rule 14). Each came out of a live verification pass after
+      // watching Claude reliably ignore the soft "should" formulations or
+      // hit a schema gap the earlier checklist did not call out.
+      for (let i = 1; i <= 14; i++) {
         expect(checklistBody).toMatch(new RegExp(`^${i}\\. `, 'm'));
       }
       expect(prompt).toContain('ADAPT, DO NOT COPY');
@@ -345,6 +373,15 @@ describe('MCP Dashboard Prompts', () => {
       expect(checklistBody).toMatch(/id: "kpis"/);
       expect(checklistBody).toMatch(/id: "trends"/);
       expect(checklistBody).toMatch(/id: "errors"/);
+      // Rule 14 teaches per-displayType tile sizing. Claude reliably left
+      // every tile at the 12x4 default, clipping tables and search lists
+      // and leaving number tiles oversized; the rule has to name concrete
+      // per-type w/h ranges so the model picks deliberate sizes.
+      expect(checklistBody).toMatch(/SIZE TILES TO FIT THEIR CONTENT/);
+      expect(checklistBody).toMatch(/number tiles stay small \(w 6-8, h 3-4\)/);
+      expect(checklistBody).toMatch(
+        /tables and search lists want the full row/,
+      );
     });
 
     it('walks the workflow through six steps including read-existing and group-into-containers', () => {

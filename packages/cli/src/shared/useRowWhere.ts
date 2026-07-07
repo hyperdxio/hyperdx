@@ -24,7 +24,7 @@ import type { BuilderChartConfig } from '@hyperdx/common-utils/dist/types';
 const MAX_STRING_LENGTH = 512;
 
 // Type for WITH clause entries, derived from ChartConfig's with property
-export type WithClause = NonNullable<BuilderChartConfig['with']>[number];
+type WithClause = NonNullable<BuilderChartConfig['with']>[number];
 
 // Internal row field names used by the table component for row tracking
 const INTERNAL_ROW_FIELDS = {

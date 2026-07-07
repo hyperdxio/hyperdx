@@ -8,7 +8,7 @@ export type McpKind = string;
 /**
  * Transport configuration for an HTTP-based MCP server (e.g. HyperDX MCP).
  */
-export type HttpMcpTransport = {
+type HttpMcpTransport = {
   type: 'http';
   url: string;
   headers?: Record<string, string>;
@@ -17,7 +17,7 @@ export type HttpMcpTransport = {
 /**
  * Transport configuration for a stdio-based MCP server (e.g. mcp-clickhouse).
  */
-export type StdioMcpTransport = {
+type StdioMcpTransport = {
   type: 'stdio';
   command: string;
   args?: string[];
@@ -42,6 +42,27 @@ export type McpDefinition = (HttpMcpTransport | StdioMcpTransport) & {
    *  Explicitly naming a disabled MCP via `--mcp name` still works. */
   enabled?: boolean;
 };
+
+/**
+ * A Claude Code plugin definition in the eval config. A plugin is loaded into
+ * the isolated agent session (via `--plugin-url`/`--plugin-dir`) and treated
+ * as a evaluation variant. Exactly one of `url` (a `.zip` URL) or `dir`
+ * (a local plugin directory) should be set.
+ */
+export type PluginDefinition = {
+  /** Human-readable label for reports and CLI output. */
+  label: string;
+  /** URL to a plugin `.zip` archive (loaded via `--plugin-url`). */
+  url?: string;
+  /** Local plugin directory (loaded via `--plugin-dir`). */
+  dir?: string;
+};
+
+/**
+ * Sentinel plugin key meaning "no plugin". This is the implicit default
+ * for a run with no `--plugin` flag.
+ */
+export const PLUGIN_NONE = 'none';
 
 /**
  * Prompt variants for the system-prompt A/B.
@@ -70,6 +91,7 @@ export type RunRecord = {
   scenario: string;
   mcp: McpKind;
   model: string;
+  plugin?: string;
   runIndex: number;
   seed: number;
   startedAt: string;

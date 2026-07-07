@@ -1,12 +1,14 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
+import { z } from 'zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   isLogSource,
   isTraceSource,
   SourceKind,
   TSource,
+  WithClauseSchema,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -43,9 +45,23 @@ type EventRowWhere = {
   id: string;
   type: string;
   aliasWith: WithClause[];
+  // The trace this span selection was made in. Used to gate a selection left in
+  // the URL from a previous trace so it can't render against a different one.
+  traceId?: string;
 };
 
-const eventRowWhereParser = parseAsJsonEncoded<EventRowWhere>();
+// Validate the persisted span selection so a stale / hand-edited `eventRowWhere`
+// (valid JSON but wrong shape) resolves to null instead of feeding a malformed
+// row id into the span detail query.
+const eventRowWhereSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  aliasWith: z.array(WithClauseSchema),
+  traceId: z.string().optional(),
+});
+const eventRowWhereParser = parseAsJsonEncoded<EventRowWhere>(
+  eventRowWhereSchema.parse,
+);
 
 enum SpanDetailTab {
   Overview = 'overview',
@@ -208,6 +224,25 @@ export default function DBTracePanel({
     eventRowWhereParser,
   );
 
+  // A persisted span selection belongs to the trace it was made in. Gate it by
+  // the current `traceId` at *read* time so a selection left in the URL from a
+  // previous trace (e.g. after "View Trace" opened a different trace, or an old
+  // shared link) can never render against this trace's waterfall — no matter how
+  // the panel was (re)mounted.
+  const selectedSpan =
+    eventRowWhere != null && eventRowWhere.traceId === traceId
+      ? eventRowWhere
+      : null;
+
+  // Stamp the current trace onto every selection so the gate above can tell it
+  // apart from a stale one.
+  const selectSpan = useCallback(
+    (where: { id: string; type: string; aliasWith: WithClause[] }) => {
+      setEventRowWhere({ ...where, traceId });
+    },
+    [setEventRowWhere, traceId],
+  );
+
   const {
     control: traceIdControl,
     handleSubmit: traceIdHandleSubmit,
@@ -233,13 +268,14 @@ export default function DBTracePanel({
 
   const [showTraceIdInput, setShowTraceIdInput] = useState(false);
 
-  // Reset highlighted row when trace ID changes
-  // otherwise we'll show stale span details
+  // Tidy the URL: drop a selection that belongs to a different trace. Purely
+  // cosmetic — the read-time `selectedSpan` gate already prevents a foreign
+  // selection from rendering; this just keeps the param from lingering.
   useEffect(() => {
-    return () => {
+    if (eventRowWhere != null && eventRowWhere.traceId !== traceId) {
       setEventRowWhere(null);
-    };
-  }, [traceId, setEventRowWhere]);
+    }
+  }, [eventRowWhere, traceId, setEventRowWhere]);
 
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
@@ -254,12 +290,12 @@ export default function DBTracePanel({
   }, [setEventRowWhere]);
 
   const selectedSpanSource = useMemo(() => {
-    if (!eventRowWhere) return null;
-    if (eventRowWhere.type === SourceKind.Log && logSourceData) {
+    if (!selectedSpan) return null;
+    if (selectedSpan.type === SourceKind.Log && logSourceData) {
       return logSourceData;
     }
     return traceSourceData;
-  }, [eventRowWhere, logSourceData, traceSourceData]);
+  }, [selectedSpan, logSourceData, traceSourceData]);
 
   return (
     <div
@@ -371,7 +407,7 @@ export default function DBTracePanel({
       >
         <div
           style={{
-            flex: eventRowWhere ? `${100 - rightPanelSize} 1 0` : '1 1 100%',
+            flex: selectedSpan ? `${100 - rightPanelSize} 1 0` : '1 1 100%',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
@@ -385,15 +421,15 @@ export default function DBTracePanel({
               traceId={traceId}
               dateRange={dateRange}
               focusDate={focusDate}
-              highlightedRowWhere={eventRowWhere?.id}
-              onClick={setEventRowWhere}
+              highlightedRowWhere={selectedSpan?.id}
+              onClick={selectSpan}
               initialRowHighlightHint={initialRowHighlightHint}
               emptyState={emptyState}
             />
           )}
         </div>
 
-        {eventRowWhere != null && (
+        {selectedSpan != null && (
           <Box
             className={resizeStyles.resizeHandleInline}
             onMouseDown={startHorizontalResize}
@@ -401,7 +437,7 @@ export default function DBTracePanel({
         )}
 
         {traceSourceData != null &&
-          eventRowWhere != null &&
+          selectedSpan != null &&
           selectedSpanSource != null && (
             <div
               style={{
@@ -414,8 +450,8 @@ export default function DBTracePanel({
             >
               <SpanDetailPanel
                 source={selectedSpanSource}
-                rowId={eventRowWhere.id}
-                aliasWith={eventRowWhere.aliasWith}
+                rowId={selectedSpan.id}
+                aliasWith={selectedSpan.aliasWith}
                 onClose={handleCloseSpanDetails}
               />
             </div>

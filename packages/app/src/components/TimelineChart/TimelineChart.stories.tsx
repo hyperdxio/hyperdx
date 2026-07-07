@@ -24,7 +24,7 @@ function makeRow(
     color: 'var(--color-text-inverted)',
     backgroundColor: '#6A7077',
     body: <span>{body}</span>,
-    minWidthPerc: 1,
+    minWidthPx: 2,
     showDuration: true,
   };
 
@@ -37,6 +37,7 @@ function makeRow(
         <div className="d-flex align-items-center" style={{ height: 24 }}>
           {Array.from({ length: level }).map((_, idx) => (
             <div
+              // eslint-disable-next-line @eslint-react/no-array-index-key
               key={idx}
               style={{
                 borderLeft: '1px solid var(--color-border)',
@@ -71,40 +72,122 @@ function makeRow(
 
 const services = [
   'api-gateway',
-  'auth-service',
-  'user-service',
+  'checkout-service',
+  'inventory-service',
+  'payment-service',
   'postgres',
-  'dashboard-svc',
   'redis',
-  'metrics-svc',
+  'kafka',
   'clickhouse',
 ];
-const ops = [
-  'GET',
-  'POST',
-  'SELECT',
-  'INSERT',
-  'SET',
-  'validateToken',
-  'aggregate',
-  'query',
-];
+// Long-running operations produce multi-second spans; the short ops produce
+// sub-100ms database writes. This mix of durations exercises how the waterfall
+// renders both very long and very short spans on the same timeline.
+const longOps = ['SELECT', 'aggregate', 'query', 'validateToken'];
+const shortOps = ['INSERT', 'UPDATE', 'DELETE', 'SET', 'GET'];
 
-const sampleRows = Array.from({ length: 1000 }, (_, i) => {
-  const level = i === 0 ? 0 : (i * 7) % 4;
-  const childCount = level < 2 && i % 3 === 0 ? ((i * 3) % 5) + 1 : 0;
-  const start = i * 3;
-  const duration = 10 + ((i * 13) % 90);
-  return makeRow(
-    `s${i}`,
-    services[i % services.length],
-    `${ops[i % ops.length]} /op-${i}`,
-    start,
-    duration,
-    level,
-    childCount,
+// Small deterministic PRNG (mulberry32) so the story renders identically on
+// every load instead of depending on Math.random().
+function mulberry32(seed: number) {
+  return () => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const TRACE_DURATION_MS = 8000;
+
+// Builds a realistic sample trace (~414 spans across ~8s) that mixes a wide
+// range of span durations so the story exercises the full breadth of the
+// waterfall's rendering, including its minimum-width behavior and zooming.
+//
+//
+// The generated trace mixes:
+//   - a root span covering the whole trace,
+//   - a few long spans (up to ~2.4s),
+//   - a spread of mid-range children (tens to hundreds of ms, up to ~1.2s), and
+//   - many very short (14-29ms) database writes that fall below the min-width
+//     floor.
+const sampleRows = (() => {
+  const rand = mulberry32(2312);
+  const rows: ReturnType<typeof makeRow>[] = [];
+
+  // Root span covering the whole ~8s trace.
+  rows.push(
+    makeRow(
+      'root',
+      services[0],
+      'GET /api/checkout',
+      0,
+      TRACE_DURATION_MS * 0.985,
+      0,
+      8,
+    ),
   );
-});
+
+  const groupCount = 8;
+  const groupWindow = TRACE_DURATION_MS / groupCount;
+
+  for (let g = 0; g < groupCount; g++) {
+    const service = services[1 + (g % (services.length - 1))];
+    const groupStart = g * groupWindow + rand() * (groupWindow * 0.1);
+
+    // One long-running span per group. Group 1 gets an explicit ~2.4s span so
+    // there is a clear "hundreds of times longer" reference bar.
+    const longDuration = g === 1 ? 2400 : 300 + rand() * (groupWindow * 1.4);
+    const shortCount = 40 + Math.floor(rand() * 12); // ~40-51 tiny children
+
+    rows.push(
+      makeRow(
+        `svc-${g}`,
+        service,
+        `${longOps[g % longOps.length]} batch-${g}`,
+        groupStart,
+        longDuration,
+        1,
+        shortCount,
+      ),
+    );
+
+    // Children scattered inside the long span. Each picks a duration from a
+    // weighted set of ranges so the waterfall covers a good spread of widths:
+    // mostly tiny sub-floor DB writes, plus a healthy sprinkling of mid-range
+    // (100s of ms) and occasional near-second spans.
+    for (let s = 0; s < shortCount; s++) {
+      const roll = rand();
+      let childDuration: number;
+      if (roll < 0.5) {
+        childDuration = 14 + Math.floor(rand() * 16); // 14-29ms (below floor)
+      } else if (roll < 0.72) {
+        childDuration = 30 + Math.floor(rand() * 60); // 30-89ms
+      } else if (roll < 0.92) {
+        childDuration = 100 + Math.floor(rand() * 400); // 100-499ms
+      } else {
+        childDuration = 500 + Math.floor(rand() * 700); // 500-1199ms
+      }
+      // Keep the child within its parent span.
+      childDuration = Math.min(childDuration, Math.floor(longDuration));
+      const start =
+        groupStart + rand() * Math.max(longDuration - childDuration, 1);
+      rows.push(
+        makeRow(
+          `svc-${g}-w${s}`,
+          services[4 + (s % 4)], // postgres / redis / kafka / clickhouse
+          `${shortOps[s % shortOps.length]} row-${s}`,
+          start,
+          childDuration,
+          2,
+          0,
+        ),
+      );
+    }
+  }
+
+  return rows;
+})();
 
 const meta: Meta<typeof TimelineChart> = {
   title: 'Components/TimelineChart',

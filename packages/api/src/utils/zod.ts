@@ -457,7 +457,7 @@ export type ExternalDashboardRawSqlTileConfig = z.infer<
   typeof externalDashboardRawSqlTileConfigSchema
 >;
 
-export const externalDashboardTileConfigSchema = z
+const externalDashboardTileConfigSchema = z
   .custom<
     ExternalDashboardRawSqlTileConfig | ExternalDashboardBuilderTileConfig
   >()
@@ -636,6 +636,7 @@ export const alertSchema = z
     name: z.string().min(1).max(512).nullish(),
     message: z.string().min(1).max(4096).nullish(),
     note: alertNoteSchema,
+    numConsecutiveWindows: z.number().int().min(1).nullish(),
   })
   .and(zSavedSearchAlert.or(zTileAlert))
   .superRefine(validateAlertScheduleOffsetMinutes)
