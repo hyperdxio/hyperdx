@@ -297,9 +297,11 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
     // Open the Display Settings drawer and toggle a setting
     await dashboardPage.page.getByTestId('display-settings-button').click();
+    // Mantine's Checkbox puts data-testid on the wrapper <div>, not the
+    // <input>, so use click() instead of check().
     await dashboardPage.page
       .getByTestId('compare-to-previous-period-checkbox')
-      .check();
+      .click();
     await dashboardPage.page
       .getByTestId('display-settings-apply-button')
       .click();
