@@ -431,8 +431,8 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
               className={styles.timelineCorner}
               style={{
                 width: labelWidth,
-                height: `${axisHeight}px`,
-                marginTop: `-${axisHeight}px`,
+                height: `${axisHeight + rowsMarginTop}px`,
+                marginTop: `-${axisHeight + rowsMarginTop}px`,
               }}
             />
 

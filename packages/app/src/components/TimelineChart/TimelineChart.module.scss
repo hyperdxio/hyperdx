@@ -74,6 +74,11 @@
 .eventsContainer {
   flex: 1;
   position: relative;
+
+  // Own stacking context so a span-event marker's high z-index (the diamonds)
+  // stays contained within the events column and cannot paint over the sticky
+  // label column (which sits above this column at z-index 2).
+  isolation: isolate;
 }
 
 // Duration (+ span body on hover) rendered just outside the bar. Positioned by
