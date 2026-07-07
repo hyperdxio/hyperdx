@@ -2,6 +2,7 @@ import { ObjectId } from 'mongodb';
 import request, { SuperAgentTest } from 'supertest';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
+import Alert from '@/models/alert';
 import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
 import { ITeam } from '@/models/team';
@@ -46,7 +47,10 @@ describe('External API v2 Saved Searches', () => {
     await server.stop();
   });
 
-  const authRequest = (method: 'get' | 'post' | 'put' | 'delete', url: string) => {
+  const authRequest = (
+    method: 'get' | 'post' | 'put' | 'delete',
+    url: string,
+  ) => {
     return agent[method](url).set('Authorization', `Bearer ${user?.accessKey}`);
   };
 
@@ -120,7 +124,9 @@ describe('External API v2 Saved Searches', () => {
         whereLanguage: 'lucene',
       });
 
-      const res = await authRequest('get', `${BASE_URL}/${doc._id}`).expect(200);
+      const res = await authRequest('get', `${BASE_URL}/${doc._id}`).expect(
+        200,
+      );
       expect(res.body.data).toMatchObject({
         id: doc._id.toString(),
         name: 'My Search',
@@ -133,7 +139,7 @@ describe('External API v2 Saved Searches', () => {
       await authRequest('get', `${BASE_URL}/${new ObjectId()}`).expect(404);
     });
 
-    it('returns 404 for another team\'s saved search', async () => {
+    it("returns 404 for another team's saved search", async () => {
       const doc = await SavedSearch.create({
         team: new ObjectId(),
         source: new ObjectId(),
@@ -182,7 +188,9 @@ describe('External API v2 Saved Searches', () => {
     });
 
     it('rejects missing required fields', async () => {
-      await authRequest('post', BASE_URL).send({ name: 'No source' }).expect(400);
+      await authRequest('post', BASE_URL)
+        .send({ name: 'No source' })
+        .expect(400);
       await authRequest('post', BASE_URL).send({ sourceId }).expect(400);
     });
 
@@ -204,6 +212,55 @@ describe('External API v2 Saved Searches', () => {
       await authRequest('post', BASE_URL)
         .send({ name: 'Bad source', sourceId: new ObjectId().toString() })
         .expect(400);
+    });
+
+    it('rejects a name that exceeds the max length', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ name: 'a'.repeat(1025), sourceId })
+        .expect(400);
+    });
+
+    it('rejects a where clause that exceeds the max length', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ name: 'Too long where', sourceId, where: 'a'.repeat(8193) })
+        .expect(400);
+    });
+
+    it('rejects too many tags', async () => {
+      await authRequest('post', BASE_URL)
+        .send({
+          name: 'Too many tags',
+          sourceId,
+          tags: Array.from({ length: 51 }, (_, i) => `tag-${i}`),
+        })
+        .expect(400);
+    });
+
+    it('rejects an invalid whereLanguage value', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ name: 'Bad lang', sourceId, whereLanguage: 'regex' })
+        .expect(400);
+    });
+
+    it('persists createdBy and updatedBy audit metadata', async () => {
+      const res = await authRequest('post', BASE_URL)
+        .send({ name: 'Audited', sourceId })
+        .expect(200);
+
+      const stored = await SavedSearch.findById(res.body.data.id);
+      expect(stored?.createdBy?.toString()).toBe(user._id.toString());
+      expect(stored?.updatedBy?.toString()).toBe(user._id.toString());
+    });
+
+    it('defaults omitted where/select/tags to empty values', async () => {
+      const res = await authRequest('post', BASE_URL)
+        .send({ name: 'Defaults', sourceId })
+        .expect(200);
+
+      const stored = await SavedSearch.findById(res.body.data.id);
+      expect(stored?.where).toBe('');
+      expect(stored?.select).toBe('');
+      expect(stored?.tags).toEqual([]);
     });
 
     it('requires authentication', async () => {
@@ -240,7 +297,7 @@ describe('External API v2 Saved Searches', () => {
         .expect(404);
     });
 
-    it('returns 404 for another team\'s saved search', async () => {
+    it("returns 404 for another team's saved search", async () => {
       const doc = await SavedSearch.create({
         team: new ObjectId(),
         source: new ObjectId(),
@@ -281,6 +338,57 @@ describe('External API v2 Saved Searches', () => {
         .expect(400);
     });
 
+    it('returns 400 for an invalid id', async () => {
+      await authRequest('put', `${BASE_URL}/not-an-id`)
+        .send(mockSavedSearch())
+        .expect(400);
+    });
+
+    it('clears previously-set optional fields when omitted (full replace)', async () => {
+      const doc = await SavedSearch.create({
+        team: team._id,
+        source: new ObjectId(sourceId),
+        name: 'Original',
+        where: 'level:info',
+        whereLanguage: 'lucene',
+        orderBy: 'Timestamp DESC',
+        select: 'Body',
+        tags: ['keep-me'],
+      });
+
+      // Omit whereLanguage, orderBy, filters, where, select and tags. Only the
+      // required name + sourceId are supplied.
+      const res = await authRequest('put', `${BASE_URL}/${doc._id}`)
+        .send({ name: 'Replaced', sourceId })
+        .expect(200);
+
+      expect(res.body.data).toMatchObject({ name: 'Replaced' });
+
+      const stored = await SavedSearch.findById(doc._id);
+      // Defaulted fields are reset to empty values.
+      expect(stored?.where).toBe('');
+      expect(stored?.select).toBe('');
+      expect(stored?.tags).toEqual([]);
+      // Optional fields are cleared (unset), not merged.
+      expect(stored?.whereLanguage == null).toBe(true);
+      expect(stored?.orderBy == null).toBe(true);
+    });
+
+    it('persists updatedBy audit metadata on update', async () => {
+      const doc = await SavedSearch.create({
+        team: team._id,
+        source: new ObjectId(sourceId),
+        name: 'Original',
+      });
+
+      await authRequest('put', `${BASE_URL}/${doc._id}`)
+        .send({ name: 'Updated', sourceId })
+        .expect(200);
+
+      const stored = await SavedSearch.findById(doc._id);
+      expect(stored?.updatedBy?.toString()).toBe(user._id.toString());
+    });
+
     it('requires authentication', async () => {
       await request(server.getHttpServer())
         .put(`${BASE_URL}/${new ObjectId()}`)
@@ -297,15 +405,45 @@ describe('External API v2 Saved Searches', () => {
         name: 'To Delete',
       });
 
-      await authRequest('delete', `${BASE_URL}/${doc._id}`).expect(200);
+      const res = await authRequest('delete', `${BASE_URL}/${doc._id}`).expect(
+        200,
+      );
+      expect(res.body).toEqual({});
       expect(await SavedSearch.findById(doc._id)).toBeNull();
+    });
+
+    it('cascade-deletes alerts that reference the saved search', async () => {
+      const doc = await SavedSearch.create({
+        team: team._id,
+        source: new ObjectId(sourceId),
+        name: 'With Alerts',
+      });
+      const alert = await Alert.create({
+        team: team._id,
+        savedSearch: doc._id,
+        source: 'saved_search',
+        interval: '5m',
+        threshold: 1,
+        thresholdType: 'above',
+        state: 'OK',
+        channel: { type: 'webhook', webhookId: new ObjectId().toString() },
+      });
+
+      await authRequest('delete', `${BASE_URL}/${doc._id}`).expect(200);
+
+      expect(await SavedSearch.findById(doc._id)).toBeNull();
+      expect(await Alert.findById(alert._id)).toBeNull();
+    });
+
+    it('returns 400 for an invalid id', async () => {
+      await authRequest('delete', `${BASE_URL}/not-an-id`).expect(400);
     });
 
     it('returns 404 for non-existent id', async () => {
       await authRequest('delete', `${BASE_URL}/${new ObjectId()}`).expect(404);
     });
 
-    it('does not delete another team\'s saved search', async () => {
+    it("does not delete another team's saved search", async () => {
       const doc = await SavedSearch.create({
         team: new ObjectId(),
         source: new ObjectId(),

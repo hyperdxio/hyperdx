@@ -39,6 +39,10 @@
     {
       "name": "Search",
       "description": "Endpoints for querying raw data from log and trace sources"
+    },
+    {
+      "name": "Saved Searches",
+      "description": "Endpoints for managing saved searches"
     }
   ],
   "components": {
@@ -3062,6 +3066,227 @@
           }
         }
       },
+      "SavedSearch": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "teamId"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique saved search ID.",
+            "example": "507f1f77bcf86cd799439012"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name for the saved search.",
+            "example": "Production errors"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the source this saved search queries.",
+            "example": "507f1f77bcf86cd799439013"
+          },
+          "where": {
+            "type": "string",
+            "description": "Search condition/filter expression.",
+            "example": "SeverityText:ERROR"
+          },
+          "whereLanguage": {
+            "type": "string",
+            "enum": [
+              "lucene",
+              "sql",
+              "promql"
+            ],
+            "description": "Language used to interpret the `where` expression.",
+            "example": "lucene"
+          },
+          "select": {
+            "type": "string",
+            "description": "Comma-separated list of columns to select.",
+            "example": "Timestamp,Body,ServiceName"
+          },
+          "orderBy": {
+            "type": "string",
+            "description": "Ordering expression.",
+            "example": "Timestamp DESC"
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags associated with the saved search.",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "errors",
+              "production"
+            ]
+          },
+          "filters": {
+            "type": "array",
+            "description": "Structured filters applied to the saved search.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "teamId": {
+            "type": "string",
+            "description": "ID of the team that owns the saved search.",
+            "example": "507f1f77bcf86cd799439011"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp.",
+            "example": "2025-01-01T00:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp.",
+            "example": "2025-06-15T10:30:00.000Z"
+          }
+        }
+      },
+      "CreateSavedSearchRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "sourceId"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the saved search.",
+            "example": "Production errors"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the source this saved search queries.",
+            "example": "507f1f77bcf86cd799439013"
+          },
+          "where": {
+            "type": "string",
+            "description": "Search condition/filter expression. Defaults to an empty string when omitted.",
+            "example": "SeverityText:ERROR"
+          },
+          "whereLanguage": {
+            "type": "string",
+            "enum": [
+              "lucene",
+              "sql",
+              "promql"
+            ],
+            "description": "Language used to interpret the `where` expression.",
+            "example": "lucene"
+          },
+          "select": {
+            "type": "string",
+            "description": "Comma-separated list of columns to select. Defaults to an empty string when omitted.",
+            "example": "Timestamp,Body,ServiceName"
+          },
+          "orderBy": {
+            "type": "string",
+            "description": "Ordering expression.",
+            "example": "Timestamp DESC"
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags associated with the saved search. Defaults to an empty array when omitted.",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "errors",
+              "production"
+            ]
+          },
+          "filters": {
+            "type": "array",
+            "description": "Structured filters applied to the saved search.",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "UpdateSavedSearchRequest": {
+        "type": "object",
+        "description": "Full replacement of a saved search (PUT semantics). `name` and\n`sourceId` are required. `where`, `select` and `tags` default to\nempty values when omitted. `whereLanguage`, `orderBy` and `filters`\nare cleared when omitted.\n",
+        "required": [
+          "name",
+          "sourceId"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Production errors"
+          },
+          "sourceId": {
+            "type": "string",
+            "example": "507f1f77bcf86cd799439013"
+          },
+          "where": {
+            "type": "string",
+            "example": "SeverityText:ERROR"
+          },
+          "whereLanguage": {
+            "type": "string",
+            "enum": [
+              "lucene",
+              "sql",
+              "promql"
+            ],
+            "example": "lucene"
+          },
+          "select": {
+            "type": "string",
+            "example": "Timestamp,Body,ServiceName"
+          },
+          "orderBy": {
+            "type": "string",
+            "example": "Timestamp DESC"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "errors",
+              "production"
+            ]
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "SavedSearchResponseEnvelope": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SavedSearch"
+          }
+        }
+      },
+      "SavedSearchListResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavedSearch"
+            }
+          }
+        }
+      },
       "SearchRequest": {
         "type": "object",
         "required": [
@@ -5977,6 +6202,300 @@
                 },
                 "example": {
                   "message": "Unauthorized access. API key is missing or invalid."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/saved-searches": {
+      "get": {
+        "summary": "List Saved Searches",
+        "description": "Retrieves a list of all saved searches for the authenticated team",
+        "operationId": "listSavedSearches",
+        "tags": [
+          "Saved Searches"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved saved searches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Saved Search",
+        "description": "Creates a new saved search",
+        "operationId": "createSavedSearch",
+        "tags": [
+          "Saved Searches"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSavedSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully created saved search",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "sourceId not found"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/saved-searches/{id}": {
+      "get": {
+        "summary": "Get Saved Search",
+        "description": "Retrieves a specific saved search by ID",
+        "operationId": "getSavedSearch",
+        "tags": [
+          "Saved Searches"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Saved Search ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved saved search",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Saved search not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Saved Search",
+        "description": "Replaces an existing saved search (full-replace semantics).\n\n`name` and `sourceId` are required. `where`, `select` and `tags`\ndefault to empty values when omitted. `whereLanguage`, `orderBy` and\n`filters` are cleared when omitted from the request body.\n",
+        "operationId": "updateSavedSearch",
+        "tags": [
+          "Saved Searches"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Saved Search ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSavedSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully updated saved search",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "sourceId not found"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Saved search not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Saved Search",
+        "description": "Deletes a saved search and any alerts that reference it",
+        "operationId": "deleteSavedSearch",
+        "tags": [
+          "Saved Searches"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Saved Search ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully deleted saved search",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                },
+                "example": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Saved search not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

@@ -49,6 +49,10 @@ export const swaggerOptions = {
         description:
           'Endpoints for querying raw data from log and trace sources',
       },
+      {
+        name: 'Saved Searches',
+        description: 'Endpoints for managing saved searches',
+      },
     ],
     components: {
       securitySchemes: {
