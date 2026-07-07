@@ -1,5 +1,5 @@
 import { createContext, use } from 'react';
-import { ActionIcon, Group, Popover, Stack, Tooltip } from '@mantine/core';
+import { ActionIcon, Group, Menu, Stack, Tooltip } from '@mantine/core';
 import { IconDotsVertical } from '@tabler/icons-react';
 
 import styles from './ChartContainer.module.scss';
@@ -30,6 +30,33 @@ export function ChartContainerCardHeaderProvider({
   );
 }
 
+// Collapsed toolbar context for narrow dashboard tiles.
+// `menuItems` contains pre-built Menu.Item elements (alert + kebab actions)
+// that render as a flat list in the collapsed dropdown. `suffixCount` tells
+// ChartContainer how many items at the end of toolbarItems[] are "suffix"
+// (i.e. the hoverToolbar) and should be excluded from the inline row in the
+// collapsed view — they are replaced by the flat menuItems instead.
+interface CollapsedToolbarData {
+  menuItems: React.ReactNode;
+  suffixCount: number;
+}
+
+const CollapsedToolbarContext = createContext<CollapsedToolbarData | null>(
+  null,
+);
+
+export function CollapsedToolbarProvider({
+  menuItems,
+  suffixCount,
+  children,
+}: CollapsedToolbarData & { children: React.ReactNode }) {
+  return (
+    <CollapsedToolbarContext value={{ menuItems, suffixCount }}>
+      {children}
+    </CollapsedToolbarContext>
+  );
+}
+
 // Horizontal padding a dashboard tile applies to its content. The card header
 // bleeds its separator to the tile edge by cancelling exactly this inset, so
 // the tile must consume the same value (see DASHBOARD_TILE_PADDING_INLINE usage
@@ -46,8 +73,20 @@ function ChartContainer({
   disableReactiveContainer,
 }: ChartContainerProps) {
   const cardHeader = use(ChartContainerCardHeaderContext);
+  const collapsedToolbar = use(CollapsedToolbarContext);
   const hasToolbar = !!toolbarItems?.length;
   const showHeader = !!title || hasToolbar;
+
+  // In the collapsed view, split toolbarItems into inline items (indicators,
+  // toggles) and suffix items (hoverToolbar) which get replaced by flat
+  // Menu.Items from context. Filter out null/undefined entries (e.g.
+  // filterWarning is null when no warning applies).
+  const inlineItems = collapsedToolbar
+    ? toolbarItems
+        ?.slice(0, -collapsedToolbar.suffixCount || undefined)
+        .filter(Boolean)
+    : undefined;
+  const hasInlineItems = !!inlineItems?.length;
 
   return (
     // Reset the context so nested ChartContainers don't inherit the card
@@ -103,33 +142,51 @@ function ChartContainer({
                   flex={0}
                   wrap="nowrap"
                   gap={5}
-                  className={styles.toolbarNormal}
+                  className={
+                    collapsedToolbar ? styles.toolbarNormal : undefined
+                  }
                 >
                   {toolbarItems}
                 </Group>
-                {/* Collapsed toolbar: single ⋮ icon at narrow sizes */}
-                <div className={styles.toolbarCollapsed}>
-                  <Popover width={200} position="bottom-end">
-                    <Popover.Target>
-                      <Tooltip
-                        label="Tile actions"
-                        position="top"
-                        withArrow
+                {/* Collapsed toolbar: single ⋮ dropdown at narrow sizes.
+                    Row 1 shows inline items (indicators, toggles) as-is,
+                    then a divider, then flattened action Menu.Items. */}
+                {collapsedToolbar && (
+                  <div className={styles.toolbarCollapsed}>
+                    <Menu width={220} position="bottom-end">
+                      <Menu.Target>
+                        <Tooltip
+                          label="Tile actions"
+                          position="top"
+                          withArrow
+                        >
+                          <ActionIcon variant="subtle" size="sm">
+                            <IconDotsVertical size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                      </Menu.Target>
+                      <Menu.Dropdown
+                        onMouseDown={e => e.stopPropagation()}
                       >
-                        <ActionIcon variant="subtle" size="sm">
-                          <IconDotsVertical size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Popover.Target>
-                    <Popover.Dropdown
-                      onMouseDown={e => e.stopPropagation()}
-                    >
-                      <Group gap={5} justify="center">
-                        {toolbarItems}
-                      </Group>
-                    </Popover.Dropdown>
-                  </Popover>
-                </div>
+                        {hasInlineItems && (
+                          <div className={styles.inlineSection}>
+                            <Group
+                              gap="sm"
+                              wrap="nowrap"
+                              px="sm"
+                              py="xs"
+                              className={styles.inlineRow}
+                            >
+                              {inlineItems}
+                            </Group>
+                            <Menu.Divider />
+                          </div>
+                        )}
+                        {collapsedToolbar.menuItems}
+                      </Menu.Dropdown>
+                    </Menu>
+                  </div>
+                )}
               </>
             )}
           </Group>
