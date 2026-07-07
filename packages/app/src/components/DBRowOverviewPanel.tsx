@@ -196,7 +196,6 @@ export function RowOverviewPanel({
         <Box px="sm" pt="md">
           <DBRowSidePanelHeader
             attributes={highlightedAttributeValues}
-            date={new Date(firstRow?.__hdx_timestamp ?? 0)}
             mainContent={mainContent}
             mainContentHeader={mainContentColumn}
             // `getEventBody` returns undefined when neither Body Expression
