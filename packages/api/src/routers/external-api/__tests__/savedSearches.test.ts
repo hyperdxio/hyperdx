@@ -323,6 +323,56 @@ describe('External API v2 Saved Searches', () => {
         .expect(400);
     });
 
+    it('round-trips a sql_ast filter', async () => {
+      const filters = [
+        {
+          type: 'sql_ast',
+          operator: '=',
+          left: 'ServiceName',
+          right: "'api'",
+        },
+      ];
+      const res = await authRequest('post', BASE_URL)
+        .send({ name: 'SQL AST', sourceId, filters })
+        .expect(200);
+
+      expect(res.body.data.filters).toEqual(filters);
+
+      const getRes = await authRequest(
+        'get',
+        `${BASE_URL}/${res.body.data.id}`,
+      ).expect(200);
+      expect(getRes.body.data.filters).toEqual(filters);
+    });
+
+    it('rejects a select that exceeds the max length', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ name: 'Too long select', sourceId, select: 'a'.repeat(4097) })
+        .expect(400);
+    });
+
+    it('rejects an orderBy that exceeds the max length', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ name: 'Too long orderBy', sourceId, orderBy: 'a'.repeat(1025) })
+        .expect(400);
+    });
+
+    it('rejects a tag that exceeds the max length', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ name: 'Long tag', sourceId, tags: ['a'.repeat(33)] })
+        .expect(400);
+    });
+
+    it('rejects more than 100 filters', async () => {
+      const filters = Array.from({ length: 101 }, () => ({
+        type: 'lucene',
+        condition: 'x',
+      }));
+      await authRequest('post', BASE_URL)
+        .send({ name: 'Too many', sourceId, filters })
+        .expect(400);
+    });
+
     it('requires authentication', async () => {
       await request(server.getHttpServer())
         .post(BASE_URL)
@@ -432,6 +482,26 @@ describe('External API v2 Saved Searches', () => {
       // Optional fields are cleared (unset), not merged.
       expect(stored?.whereLanguage == null).toBe(true);
       expect(stored?.orderBy == null).toBe(true);
+    });
+
+    it('clears previously-set filters when omitted from PUT', async () => {
+      const doc = await SavedSearch.create({
+        team: team._id,
+        source: new ObjectId(sourceId),
+        name: 'Has Filters',
+        where: 'level:error',
+        filters: [{ type: 'lucene', condition: 'level:warn' }],
+      });
+
+      // PUT without filters field — should clear them
+      await authRequest('put', `${BASE_URL}/${doc._id}`)
+        .send({ name: 'No Filters', sourceId })
+        .expect(200);
+
+      const stored = await SavedSearch.findById(doc._id);
+      expect(stored?.filters == null || stored?.filters.length === 0).toBe(
+        true,
+      );
     });
 
     it('persists explicitly-provided optional fields on replace', async () => {

@@ -1,7 +1,4 @@
-import {
-  FilterSchema,
-  SearchConditionLanguageSchema,
-} from '@hyperdx/common-utils/dist/types';
+import { SearchConditionLanguageSchema } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import mongoose from 'mongoose';
 import { z } from 'zod';
@@ -9,7 +6,6 @@ import { z } from 'zod';
 import {
   createSavedSearch,
   deleteSavedSearch,
-  updateSavedSearch,
 } from '@/controllers/savedSearch';
 import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
@@ -22,6 +18,21 @@ import { objectIdSchema } from '@/utils/zod';
 // guarantees via `SavedSearchSchema.omit({ id: true })` — downstream consumers
 // such as `tasks/checkAlerts` read these fields directly into query
 // construction. `whereLanguage` reuses the shared enum to avoid drift.
+// Length-bounded variant of FilterSchema so that 100 filters with arbitrarily
+// large strings can't persist multi-MB documents close to Mongo's 16 MB limit.
+const boundedFilterSchema = z.union([
+  z.object({
+    type: z.enum(['lucene', 'sql']),
+    condition: z.string().max(8192),
+  }),
+  z.object({
+    type: z.literal('sql_ast'),
+    operator: z.enum(['=', '<', '>', '!=', '<=', '>=']),
+    left: z.string().max(8192),
+    right: z.string().max(8192),
+  }),
+]);
+
 const bodySchema = z.object({
   name: z.string().min(1).max(1024),
   sourceId: objectIdSchema,
@@ -30,7 +41,7 @@ const bodySchema = z.object({
   select: z.string().max(4096).default(''),
   orderBy: z.string().max(1024).optional(),
   tags: z.array(z.string().max(32)).max(50).default([]),
-  filters: z.array(FilterSchema).max(100).optional(),
+  filters: z.array(boundedFilterSchema).max(100).optional(),
 });
 
 // Fields that are optional on the body and therefore cleared (rather than
@@ -42,7 +53,7 @@ const CLEARABLE_ON_REPLACE = ['whereLanguage', 'orderBy', 'filters'] as const;
  * when the source exists and belongs to the team, false otherwise. Extracted so
  * the create and update handlers share a single ownership check.
  */
-async function assertOwnedSource(
+async function isSourceOwnedByTeam(
   teamId: mongoose.Types.ObjectId | string,
   sourceId: string,
 ): Promise<boolean> {
@@ -326,6 +337,12 @@ router.get('/', async (req, res, next) => {
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               \$ref: '#/components/schemas/Error'
  *       '404':
  *         description: Saved search not found
  *         content:
@@ -389,6 +406,12 @@ router.get(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               \$ref: '#/components/schemas/Error'
  */
 router.post(
   '/',
@@ -410,7 +433,7 @@ router.post(
         filters,
       } = req.body;
 
-      if (!(await assertOwnedSource(teamId, sourceId))) {
+      if (!(await isSourceOwnedByTeam(teamId, sourceId))) {
         return res.status(400).json({ message: 'sourceId not found' });
       }
 
@@ -485,6 +508,12 @@ router.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               \$ref: '#/components/schemas/Error'
  *       '404':
  *         description: Saved search not found
  *         content:
@@ -506,7 +535,7 @@ router.put(
 
       const { name, sourceId, where, select, tags } = req.body;
 
-      if (!(await assertOwnedSource(teamId, sourceId))) {
+      if (!(await isSourceOwnedByTeam(teamId, sourceId))) {
         return res.status(400).json({ message: 'sourceId not found' });
       }
 
@@ -583,6 +612,12 @@ router.put(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               \$ref: '#/components/schemas/Error'
  *       '404':
  *         description: Saved search not found
  *         content:
