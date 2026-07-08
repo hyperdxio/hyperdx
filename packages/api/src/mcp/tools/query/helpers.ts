@@ -33,6 +33,8 @@ import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
+import { runEventPatterns } from './runEventPatterns';
+
 // ─── Source body expression helpers ──────────────────────────────────────────
 
 export interface SourceBodyFields {
@@ -402,6 +404,26 @@ export async function runConfigTile(
           },
         ],
       };
+    }
+
+    // Event-patterns tiles need the Drain pattern-mining pipeline, not the
+    // generic chart-config SQL renderer. Delegate to the same function the
+    // standalone clickstack_event_patterns tool uses.
+    if (builderConfig.displayType === DisplayType.EventPatterns) {
+      const selectStr =
+        typeof builderConfig.select === 'string' ? builderConfig.select : '';
+      return runEventPatterns(
+        teamId,
+        builderConfig.source,
+        startDate,
+        endDate,
+        {
+          where: builderConfig.where ?? '',
+          whereLanguage:
+            (builderConfig.whereLanguage as 'lucene' | 'sql') ?? 'lucene',
+          bodyExpression: selectStr || undefined,
+        },
+      );
     }
 
     const source = await getSource(teamId, builderConfig.source);
