@@ -762,20 +762,6 @@ export function getChartColorSuccessHighlight(): string {
   );
 }
 
-export function getChartColorErrorHighlight(): string {
-  return getSemanticChartColor(
-    '--color-chart-error-highlight',
-    'errorHighlight',
-  );
-}
-
-export function getChartColorWarningHighlight(): string {
-  return getSemanticChartColor(
-    '--color-chart-warning-highlight',
-    'warningHighlight',
-  );
-}
-
 // Try to match log levels to colors
 export const semanticKeyedColor = (
   key: string | number | undefined,

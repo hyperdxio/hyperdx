@@ -722,6 +722,31 @@ const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
+const mcpEventPatternsTileSchema = mcpTileLayoutSchema.extend({
+  config: z.object({
+    displayType: z
+      .literal('event_patterns')
+      .describe('Event pattern mining tile'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+    where: z
+      .string()
+      .optional()
+      .default('')
+      .describe('Filter in Lucene syntax. Example: "level:error"'),
+    whereLanguage:
+      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
+    select: z
+      .string()
+      .optional()
+      .default('')
+      .describe(
+        'Pattern expression — column or expression to mine patterns from. ' +
+          'Leave empty to use the source default (Body for logs, SpanName for traces). ' +
+          'Example: "Body", "SpanName", "SpanAttributes[\'http.url\']"',
+      ),
+  }),
+});
+
 const mcpMarkdownTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('markdown').describe('Free-form Markdown text tile'),
@@ -817,6 +842,7 @@ const mcpTileSchema = z.union([
   mcpPieTileSchema,
   mcpHeatmapTileSchema,
   mcpSearchTileSchema,
+  mcpEventPatternsTileSchema,
   mcpMarkdownTileSchema,
   mcpSqlTileSchema,
 ]);
@@ -854,6 +880,9 @@ const mcpPatchTileSchema = z.union([
   }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpSearchTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpEventPatternsTileSchema.shape.config,
   }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpMarkdownTileSchema.shape.config,

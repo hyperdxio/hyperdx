@@ -91,6 +91,7 @@ export const QUERY_PARAMS_BY_DISPLAY_TYPE: Record<
   [DisplayType.Search]: [],
   [DisplayType.Heatmap]: [],
   [DisplayType.Markdown]: [],
+  [DisplayType.EventPatterns]: [],
 };
 
 const TIME_CHART_EXAMPLE_SQL = `SELECT
@@ -116,6 +117,7 @@ export const QUERY_PARAM_EXAMPLES: Record<DisplayType, string> = {
   [DisplayType.Search]: '',
   [DisplayType.Heatmap]: '',
   [DisplayType.Markdown]: '',
+  [DisplayType.EventPatterns]: '',
 };
 
 export function renderQueryParam(name: keyof typeof QUERY_PARAMS): string {
