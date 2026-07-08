@@ -31,7 +31,9 @@ jobs:
       # LTS ships npm 10.x, which has no OIDC code path and falls back to
       # NODE_AUTH_TOKEN, failing ENEEDAUTH.
       - name: Upgrade npm for OIDC trusted publishing
-        run: npm install -g npm@latest
+        # Pin the major (not @latest) so a future npm release raising the node
+        # floor can't silently break CI. npm@12 requires node >=22.22.2 (see .nvmrc).
+        run: npm install -g npm@12
       - name: Configure npm registry
         run: npm config set registry https://registry.npmjs.org/
       - name: Install root dependencies
