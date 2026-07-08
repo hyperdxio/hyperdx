@@ -239,8 +239,12 @@ describe('formatApproximateNumber', () => {
 // Parses an `hsl(H S% L%)` string into numeric components for property-based
 // assertions, so tests describe the *shape* of the sequential ramp rather than
 // hardcoding tuned endpoint values.
-function parseHsl(color: string): { h: number; s: number; l: number } {
-  const match = color.match(
+function parseHsl(color: string | undefined): {
+  h: number;
+  s: number;
+  l: number;
+} {
+  const match = color?.match(
     /^hsl\((\d+(?:\.\d+)?) (\d+(?:\.\d+)?)% (\d+(?:\.\d+)?)%\)$/,
   );
   if (!match) {
