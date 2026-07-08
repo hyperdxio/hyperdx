@@ -75,18 +75,37 @@ jest.mock('../DBRowDataPanel', () => ({
   getJSONColumnNames: jest.fn().mockReturnValue([]),
 }));
 
+// Lightweight stub: the real SearchWhereInput renders SearchInputV2, which
+// pulls in useMe()/metadata hooks that require a QueryClientProvider not present
+// in this harness. We only care that the right inputs render, so stub it to a
+// plain element carrying the data-testid.
+jest.mock('@/components/SearchInput/SearchWhereInput', () => ({
+  __esModule: true,
+  default: ({ 'data-testid': dataTestId, name }: any) => (
+    <div data-testid={dataTestId ?? `${name}-input`}>{name}</div>
+  ),
+  getStoredLanguage: () => 'lucene',
+}));
+
+const makeWaterfallSearchState = () => ({
+  traceWhere: '',
+  logWhere: '',
+  traceWhereLanguage: '',
+  logWhereLanguage: '',
+  clear: jest.fn(),
+  isFilterActive: false,
+  isFilterExpanded: false,
+  setIsFilterExpanded: jest.fn(),
+  onSubmit: jest.fn(),
+});
+
+const mockUseWaterfallSearchState: jest.Mock = jest.fn(
+  makeWaterfallSearchState,
+);
+
 jest.mock('@/hooks/useWaterfallSearchState', () => ({
   __esModule: true,
-  default: () => ({
-    traceWhere: '',
-    logWhere: '',
-    whereLanguage: '',
-    clear: jest.fn(),
-    isFilterActive: false,
-    isFilterExpanded: false,
-    setIsFilterExpanded: jest.fn(),
-    onSubmit: jest.fn(),
-  }),
+  default: (...args: any[]) => mockUseWaterfallSearchState(...args),
 }));
 
 const mockUseOffsetPaginatedQuery = useOffsetPaginatedQuery as jest.Mock;
@@ -172,6 +191,7 @@ describe('DBTraceWaterfallChartContainer', () => {
     jest.clearAllMocks();
     mockUseRowWhere.mockReturnValue(() => ({ where: 'row-id', aliasWith: [] }));
     MockTimelineChart.latestProps = {};
+    mockUseWaterfallSearchState.mockReturnValue(makeWaterfallSearchState());
   });
 
   // Helper functions
@@ -198,31 +218,62 @@ describe('DBTraceWaterfallChartContainer', () => {
     });
   };
 
+  // Content-based query mock. The waterfall runs, per source, a filtered query
+  // (with a computed `__hdx_hidden` column) plus an unfiltered fallback query
+  // that only fires when the filtered query errors. Keying responses off the
+  // query shape (table, before/after window, presence of the filter column,
+  // enabled flag) rather than call order keeps the mock stable as the number of
+  // queries changes.
+  //
+  // - `traceError`/`logError`: fatal — every query for that source fails.
+  // - `traceFilterError`/`logFilterError`: only the *filtered* query fails, so
+  //   the unfiltered fallback still returns data.
   const setupQueryMocks = (options: {
     traceData?: typeof mockTraceData | typeof emptyData;
     logData?: typeof mockLogData | typeof emptyData;
+    traceError?: Error;
+    logError?: Error;
+    traceFilterError?: Error;
+    logFilterError?: Error;
     isFetching?: boolean;
   }) => {
     const {
       traceData = emptyData,
       logData = emptyData,
+      traceError,
+      logError,
+      traceFilterError,
+      logFilterError,
       isFetching = false,
     } = options;
 
     mockUseOffsetPaginatedQuery.mockReset();
+    mockUseOffsetPaginatedQuery.mockImplementation((query: any, opts: any) => {
+      // Disabled queries never fire (mirrors react-query).
+      if (opts?.enabled === false) {
+        return { data: undefined, isFetching: false, error: undefined };
+      }
+      const isLog = query?.from?.tableName === 'log_table';
+      const isBefore = query?.dateRangeStartInclusive === true;
+      const isFiltered =
+        Array.isArray(query?.select) &&
+        query.select.some((s: any) => s?.alias === '__hdx_hidden');
 
-    // Use mockImplementation to handle all calls consistently
-    let callCount = 0;
-    mockUseOffsetPaginatedQuery.mockImplementation(() => {
-      const responses = [
-        { data: traceData, isFetching, error: undefined }, // trace before
-        { data: emptyData, isFetching, error: undefined }, // trace after
-        { data: logData, isFetching, error: undefined }, // log before
-        { data: emptyData, isFetching, error: undefined }, // log after
-      ];
-      const response = responses[callCount % responses.length];
-      callCount++;
-      return response;
+      const fatal = isLog ? logError : traceError;
+      if (fatal) {
+        return { data: undefined, isFetching, error: fatal };
+      }
+      const filterErr = isLog ? logFilterError : traceFilterError;
+      if (filterErr && isFiltered) {
+        return { data: undefined, isFetching, error: filterErr };
+      }
+
+      const data = isLog ? logData : traceData;
+      return {
+        data: isBefore ? data : emptyData,
+        isFetching,
+        error: undefined,
+      };
     });
   };
 
@@ -424,6 +475,105 @@ describe('DBTraceWaterfallChartContainer', () => {
 
     expect(screen.queryByLabelText('Expand all')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Collapse all')).not.toBeInTheDocument();
+  });
+
+  it('keeps rendering spans when the correlated-log filter errors', async () => {
+    // A log filter that references a column the log table lacks is the trigger.
+    mockUseWaterfallSearchState.mockReturnValue({
+      ...makeWaterfallSearchState(),
+      isFilterActive: true,
+      isFilterExpanded: true,
+      logWhere: "StatusCode = 'Error'",
+    });
+    setupQueryMocks({
+      traceData: mockTraceData,
+      logFilterError: new Error('Missing columns: StatusCode'),
+    });
+
+    renderComponent(); // with log source
+    await waitForLoading();
+
+    // Valid spans still render — the log failure did not blank the chart.
+    expect(MockTimelineChart.latestProps.rows.length).toBe(1);
+    // The full-chart error block is NOT shown.
+    expect(
+      screen.queryByText('An error occurred while fetching trace data:'),
+    ).not.toBeInTheDocument();
+    // The log failure is surfaced inline under the logs filter instead.
+    expect(screen.getByTestId('log-filter-error')).toBeInTheDocument();
+  });
+
+  it('keeps rendering spans (unfiltered) when the spans filter errors', async () => {
+    // A spans filter is a computed column inside the trace query, so an invalid
+    // one fails the query. We fall back to unfiltered spans instead of blanking.
+    mockUseWaterfallSearchState.mockReturnValue({
+      ...makeWaterfallSearchState(),
+      isFilterActive: true,
+      isFilterExpanded: true,
+      traceWhere: "StatusCode = 'Error'",
+    });
+    setupQueryMocks({
+      traceData: mockTraceData,
+      traceFilterError: new Error('Missing column: Nope'),
+    });
+
+    renderComponent(null); // no log source, to isolate the spans path
+    await waitForLoading();
+
+    // Spans still render (unfiltered fallback) — chart is not blanked.
+    expect(MockTimelineChart.latestProps.rows.length).toBe(1);
+    expect(
+      screen.queryByText('An error occurred while fetching trace data:'),
+    ).not.toBeInTheDocument();
+    // The span filter failure is surfaced inline under the spans filter.
+    expect(screen.getByTestId('trace-filter-error')).toBeInTheDocument();
+  });
+
+  it('renders the full-chart error block when the base trace query errors', async () => {
+    // No filter active, so a trace query error is fatal (nothing to show).
+    setupQueryMocks({
+      traceError: new Error('Trace query boom'),
+      logData: mockLogData,
+    });
+
+    renderComponent();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('An error occurred while fetching trace data:'),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText('Trace query boom')).toBeInTheDocument();
+    // The chart itself is replaced by the error block.
+    expect(screen.queryByTestId('timeline-chart')).not.toBeInTheDocument();
+  });
+
+  it('renders separate span and log filter inputs when a log source exists', async () => {
+    mockUseWaterfallSearchState.mockReturnValue({
+      ...makeWaterfallSearchState(),
+      isFilterExpanded: true,
+    });
+    setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
+
+    renderComponent(); // with log source
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-search-input')).toBeInTheDocument();
+    expect(screen.getByTestId('log-search-input')).toBeInTheDocument();
+  });
+
+  it('renders only the span filter input when there is no log source', async () => {
+    mockUseWaterfallSearchState.mockReturnValue({
+      ...makeWaterfallSearchState(),
+      isFilterExpanded: true,
+    });
+    setupQueryMocks({ traceData: mockTraceData });
+
+    renderComponent(null); // no log source
+    await waitForLoading();
+
+    expect(screen.getByTestId('trace-search-input')).toBeInTheDocument();
+    expect(screen.queryByTestId('log-search-input')).not.toBeInTheDocument();
   });
 });
 

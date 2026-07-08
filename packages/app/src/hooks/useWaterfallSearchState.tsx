@@ -8,9 +8,10 @@ export default function useWaterfallSearchState({
 }) {
   const [traceWhere, setTraceWhere] = useQueryState('traceWhere');
   const [logWhere, setLogWhere] = useQueryState('logWhere');
-  // Persisted alongside the WHERE values so a shared link / reload rebuilds the
-  // query with the same language the filter was written in (lucene vs sql).
-  const [whereLanguage, setWhereLanguage] = useQueryState('whereLanguage');
+  const [traceWhereLanguage, setTraceWhereLanguage] =
+    useQueryState('traceWhereLanguage');
+  const [logWhereLanguage, setLogWhereLanguage] =
+    useQueryState('logWhereLanguage');
 
   const isFilterActive = !!traceWhere || !!(hasLogSource && logWhere);
 
@@ -20,27 +21,33 @@ export default function useWaterfallSearchState({
     (data: {
       traceWhere: string;
       logWhere: string;
-      whereLanguage?: string;
+      traceWhereLanguage?: string;
+      logWhereLanguage?: string;
     }) => {
       setTraceWhere(data.traceWhere || null);
       setLogWhere(data.logWhere || null);
-      if (data.whereLanguage !== undefined) {
-        setWhereLanguage(data.whereLanguage || null);
+      if (data.traceWhereLanguage !== undefined) {
+        setTraceWhereLanguage(data.traceWhereLanguage || null);
+      }
+      if (data.logWhereLanguage !== undefined) {
+        setLogWhereLanguage(data.logWhereLanguage || null);
       }
     },
-    [setTraceWhere, setLogWhere, setWhereLanguage],
+    [setTraceWhere, setLogWhere, setTraceWhereLanguage, setLogWhereLanguage],
   );
 
   const clear = useCallback(() => {
     setTraceWhere(null);
     setLogWhere(null);
-    setWhereLanguage(null);
-  }, [setTraceWhere, setLogWhere, setWhereLanguage]);
+    setTraceWhereLanguage(null);
+    setLogWhereLanguage(null);
+  }, [setTraceWhere, setLogWhere, setTraceWhereLanguage, setLogWhereLanguage]);
 
   return {
     traceWhere,
     logWhere,
-    whereLanguage,
+    traceWhereLanguage,
+    logWhereLanguage,
     isFilterActive,
     isFilterExpanded,
     setIsFilterExpanded,

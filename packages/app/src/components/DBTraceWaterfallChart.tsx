@@ -28,6 +28,7 @@ import {
   Chip,
   Code,
   Group,
+  Stack,
   Text,
   Tooltip,
 } from '@mantine/core';
@@ -43,6 +44,7 @@ import {
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
+import { ErrorCollapse } from '@/components/Error/ErrorCollapse';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
@@ -422,6 +424,39 @@ export function useEventsAroundFocus({
   };
 }
 
+function useFilteredEventsAroundFocus(
+  args: Parameters<typeof useEventsAroundFocus>[0],
+) {
+  const filtered = useEventsAroundFocus(args);
+
+  const filterFailed =
+    args.enabled && !!args.hiddenRowExpression && !!filtered.error;
+
+  const fallback = useEventsAroundFocus({
+    ...args,
+    hiddenRowExpression: undefined,
+    enabled: filterFailed,
+  });
+
+  if (filterFailed) {
+    return {
+      rows: fallback.rows,
+      meta: fallback.meta,
+      isFetching: filtered.isFetching || fallback.isFetching,
+      filterError: fallback.error ? undefined : filtered.error,
+      fatalError: fallback.error,
+    };
+  }
+
+  return {
+    rows: filtered.rows,
+    meta: filtered.meta,
+    isFetching: filtered.isFetching,
+    filterError: undefined,
+    fatalError: filtered.error,
+  };
+}
+
 export function getDescendantIds(node: {
   id?: string;
   children?: Array<{ id?: string; children?: any[] }>;
@@ -563,7 +598,8 @@ export function DBTraceWaterfallChartContainer({
   const {
     traceWhere,
     logWhere,
-    whereLanguage,
+    traceWhereLanguage,
+    logWhereLanguage,
     clear: clearFilters,
     isFilterActive,
     isFilterExpanded,
@@ -573,30 +609,42 @@ export function DBTraceWaterfallChartContainer({
     hasLogSource: !!logTableSource,
   });
 
-  const filterLanguage: 'lucene' | 'sql' =
-    whereLanguage === 'sql' ? 'sql' : 'lucene';
+  // Each filter runs in its own language. Defaults come from the URL (shared
+  // link / reload fidelity), falling back to the stored preference.
+  const traceFilterLanguage: 'lucene' | 'sql' =
+    traceWhereLanguage === 'sql' ? 'sql' : 'lucene';
+  const logFilterLanguage: 'lucene' | 'sql' =
+    logWhereLanguage === 'sql' ? 'sql' : 'lucene';
 
   const { control, handleSubmit, setValue } = useForm({
     defaultValues: {
       traceWhere: traceWhere ?? '',
       logWhere: logWhere ?? '',
-      // Prefer the URL's whereLanguage so a shared link / reload shows the same
-      // language the filter runs in; fall back to the stored preference.
+      // Prefer each input's URL language so a shared link / reload shows the
+      // same language the filter runs in; fall back to the stored preference.
       traceWhereLanguage:
-        whereLanguage === 'sql' || whereLanguage === 'lucene'
-          ? whereLanguage
+        traceWhereLanguage === 'sql' || traceWhereLanguage === 'lucene'
+          ? traceWhereLanguage
+          : (getStoredLanguage() ?? 'lucene'),
+      logWhereLanguage:
+        logWhereLanguage === 'sql' || logWhereLanguage === 'lucene'
+          ? logWhereLanguage
           : (getStoredLanguage() ?? 'lucene'),
     },
   });
 
-  // The combined input writes a single value; apply it to both the trace and
-  // log WHERE clauses, and persist the chosen language for query rebuilds.
   const onSubmitFilters = useCallback(
-    (data: { traceWhere: string; traceWhereLanguage: string }) => {
+    (data: {
+      traceWhere: string;
+      logWhere: string;
+      traceWhereLanguage: string;
+      logWhereLanguage: string;
+    }) => {
       submitFilters({
         traceWhere: data.traceWhere,
-        logWhere: data.traceWhere,
-        whereLanguage: data.traceWhereLanguage,
+        logWhere: data.logWhere,
+        traceWhereLanguage: data.traceWhereLanguage,
+        logWhereLanguage: data.logWhereLanguage,
       });
     },
     [submitFilters],
@@ -605,9 +653,10 @@ export function DBTraceWaterfallChartContainer({
   const onClearFilters = useCallback(() => {
     setValue('traceWhere', '');
     setValue('logWhere', '');
-    // Reset the language toggle too, otherwise a stale value gets re-serialized
+    // Reset the language toggles too, otherwise stale values get re-serialized
     // into the URL on the next submit, undoing the cleared state.
     setValue('traceWhereLanguage', getStoredLanguage() ?? 'lucene');
+    setValue('logWhereLanguage', getStoredLanguage() ?? 'lucene');
     clearFilters();
   }, [clearFilters, setValue]);
 
@@ -615,22 +664,24 @@ export function DBTraceWaterfallChartContainer({
     rows: traceRowsData,
     isFetching: traceIsFetching,
     meta: traceRowsMeta,
-    error: traceError,
-  } = useEventsAroundFocus({
+    filterError: traceFilterError,
+    fatalError: traceError,
+  } = useFilteredEventsAroundFocus({
     tableSource: traceTableSource,
     focusDate,
     dateRange,
     traceId,
     hiddenRowExpression: traceWhere ? `NOT (${traceWhere})` : undefined,
-    hiddenRowExpressionLanguage: filterLanguage,
+    hiddenRowExpressionLanguage: traceFilterLanguage,
     enabled: true,
   });
   const {
     rows: logRowsData,
     isFetching: logIsFetching,
     meta: logRowsMeta,
-    error: logError,
-  } = useEventsAroundFocus({
+    filterError: logFilterError,
+    fatalError: logFatalError,
+  } = useFilteredEventsAroundFocus({
     // search data if logTableModel exist
     // search invalid date range if no logTableModel(react hook need execute no matter what)
     tableSource: logTableSource ? logTableSource : traceTableSource,
@@ -638,12 +689,20 @@ export function DBTraceWaterfallChartContainer({
     dateRange: logTableSource ? dateRange : [dateRange[1], dateRange[0]], // different query to prevent cache
     traceId,
     hiddenRowExpression: logWhere ? `NOT (${logWhere})` : undefined,
-    hiddenRowExpressionLanguage: filterLanguage,
+    hiddenRowExpressionLanguage: logFilterLanguage,
     enabled: logTableSource ? true : false, // disable fire query if logSource is not exist
   });
 
   const isFetching = traceIsFetching || logIsFetching;
-  const error = traceError || logError;
+  // Only a fatal trace failure (bad source / connection) blanks the waterfall.
+  // A *filter* error on either side is non-fatal: the offending query falls back
+  // to unfiltered data and the error is surfaced inline next to its input, so a
+  // bad filter can never hide valid spans or logs. The correlated-log source is
+  // secondary, so even a fatal log failure only drops logs — never the chart.
+  const error = traceError;
+  // Log-side error to surface inline: prefer the filter error (fallback data is
+  // shown), otherwise the fatal error (no logs could be loaded at all).
+  const logError = logFilterError ?? logFatalError;
 
   const rows: any[] = useMemo(() => {
     const nextRows: Array<(typeof traceRowsData)[number] & TimestampedRow> = [
@@ -1211,29 +1270,82 @@ export function DBTraceWaterfallChartContainer({
       )}
       {isFilterExpanded && (
         <form onSubmit={handleSubmit(onSubmitFilters)}>
-          <Box mt="xs">
-            <SearchWhereInput
-              tableConnection={tcFromSource(traceTableSource)}
-              name="traceWhere"
-              languageName="traceWhereLanguage"
-              control={control}
-              size="xs"
-              showLabel={false}
-              allowMultiline={false}
-              onSubmit={handleSubmit(onSubmitFilters)}
-              onLanguageChange={lang =>
-                setValue('traceWhereLanguage', lang, { shouldDirty: true })
-              }
-              lucenePlaceholder='Filter spans & logs ex. StatusCode:"Error"'
-              sqlPlaceholder="Filter spans & logs ex. StatusCode = 'Error'"
-              data-testid="trace-search-input"
-              // The waterfall lives inside an `overflow: hidden` column, which
-              // clips the SQL editor's autocomplete tooltip. Portal it to the
-              // document body so suggestions aren't cut off (Lucene mode already
-              // renders its dropdown in a portal).
-              parentRef={typeof document !== 'undefined' ? document.body : null}
-            />
-          </Box>
+          <Stack gap="xs" mt="xs">
+            <Box>
+              <Text size="xxs" c="dimmed" mb={2}>
+                Spans filter
+              </Text>
+              <SearchWhereInput
+                tableConnection={tcFromSource(traceTableSource)}
+                name="traceWhere"
+                languageName="traceWhereLanguage"
+                control={control}
+                size="xs"
+                showLabel={false}
+                allowMultiline={false}
+                onSubmit={handleSubmit(onSubmitFilters)}
+                onLanguageChange={lang =>
+                  setValue('traceWhereLanguage', lang, { shouldDirty: true })
+                }
+                lucenePlaceholder='Filter spans ex. StatusCode:"Error"'
+                sqlPlaceholder="Filter spans ex. StatusCode = 'Error'"
+                data-testid="trace-search-input"
+                // The waterfall lives inside an `overflow: hidden` column, which
+                // clips the SQL editor's autocomplete tooltip. Portal it to the
+                // document body so suggestions aren't cut off (Lucene mode
+                // already renders its dropdown in a portal).
+                parentRef={
+                  typeof document !== 'undefined' ? document.body : null
+                }
+              />
+              {traceFilterError && (
+                <Box mt={4} data-testid="trace-filter-error">
+                  <ErrorCollapse
+                    summary="Couldn't apply spans filter (showing all spans)"
+                    details={traceFilterError.message}
+                  />
+                </Box>
+              )}
+            </Box>
+            {logTableSource && (
+              <Box>
+                <Text size="xxs" c="dimmed" mb={2}>
+                  Logs filter
+                </Text>
+                <SearchWhereInput
+                  tableConnection={tcFromSource(logTableSource)}
+                  name="logWhere"
+                  languageName="logWhereLanguage"
+                  control={control}
+                  size="xs"
+                  showLabel={false}
+                  allowMultiline={false}
+                  onSubmit={handleSubmit(onSubmitFilters)}
+                  onLanguageChange={lang =>
+                    setValue('logWhereLanguage', lang, { shouldDirty: true })
+                  }
+                  lucenePlaceholder='Filter logs ex. SeverityText:"error"'
+                  sqlPlaceholder="Filter logs ex. SeverityText = 'error'"
+                  data-testid="log-search-input"
+                  parentRef={
+                    typeof document !== 'undefined' ? document.body : null
+                  }
+                />
+                {logError && (
+                  <Box mt={4} data-testid="log-filter-error">
+                    <ErrorCollapse
+                      summary={
+                        logFilterError
+                          ? "Couldn't apply logs filter (showing all logs)"
+                          : "Couldn't load correlated logs"
+                      }
+                      details={logError.message}
+                    />
+                  </Box>
+                )}
+              </Box>
+            )}
+          </Stack>
         </form>
       )}
       <Group my="xs" justify="space-between">
