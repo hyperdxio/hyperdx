@@ -98,6 +98,9 @@ interface ServiceMapPresentationProps {
   dateRange: [Date, Date];
   source: TTraceSource;
   isSingleTrace?: boolean;
+  // The single service the map is currently scoped to (via a node's focus
+  // action), or undefined when showing all/multiple services.
+  focusedService?: string;
   onFocusService?: (serviceName: string) => void;
 }
 
@@ -108,6 +111,7 @@ function ServiceMapPresentation({
   dateRange,
   source,
   isSingleTrace,
+  focusedService,
   onFocusService,
 }: ServiceMapPresentationProps) {
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -164,6 +168,7 @@ function ServiceMapPresentation({
           source,
           maxThroughput: metricMax.throughput,
           isSingleTrace,
+          focusedService,
           onFocusService,
         },
         position: { x: index * 150, y: 100 },
@@ -213,6 +218,7 @@ function ServiceMapPresentation({
     source,
     metricMax.throughput,
     isSingleTrace,
+    focusedService,
     onFocusService,
   ]);
 
@@ -369,6 +375,11 @@ export default function ServiceMap({
     }
   }, [error]);
 
+  // A node's focus action scopes the filter to exactly one service, so the map
+  // is "focused" on that service when it is the only one selected.
+  const focusedService =
+    serviceNames?.length === 1 ? serviceNames[0] : undefined;
+
   return (
     <ReactFlowProvider>
       <ServiceMapPresentation
@@ -378,6 +389,7 @@ export default function ServiceMap({
         dateRange={dateRange}
         source={traceTableSource}
         isSingleTrace={isSingleTrace}
+        focusedService={focusedService}
         onFocusService={onFocusService}
       />
     </ReactFlowProvider>

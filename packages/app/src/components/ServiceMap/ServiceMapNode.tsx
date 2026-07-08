@@ -23,6 +23,9 @@ export type ServiceMapNodeData = ServiceAggregation & {
   // scale node size.
   maxThroughput: number;
   isSingleTrace?: boolean;
+  // Name of the service the map is currently focused on (if any), so a node can
+  // tell whether it is the focused one and show the matching CTA.
+  focusedService?: string;
   // When provided, the node's tooltip offers a "Focus" action for this service.
   onFocusService?: (serviceName: string) => void;
 };
@@ -46,6 +49,7 @@ export default function ServiceMapNode(
     dateRange,
     maxThroughput,
     isSingleTrace,
+    focusedService,
     onFocusService,
   } = data;
 
@@ -90,6 +94,7 @@ export default function ServiceMapNode(
           dateRange={dateRange}
           serviceName={serviceName}
           isSingleTrace={isSingleTrace}
+          isFocused={focusedService === serviceName}
           onFocus={
             onFocusService && !isSingleTrace
               ? () => onFocusService(serviceName)

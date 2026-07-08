@@ -7,6 +7,7 @@ import {
   IconClock,
   IconSearch,
   IconTarget,
+  IconTargetOff,
 } from '@tabler/icons-react';
 
 import { formatDurationMs } from '@/utils';
@@ -28,6 +29,7 @@ export default function ServiceMapTooltip({
   dateRange,
   serviceName,
   isSingleTrace,
+  isFocused,
   onFocus,
 }: {
   totalRequests: number;
@@ -40,8 +42,11 @@ export default function ServiceMapTooltip({
   dateRange: [Date, Date];
   serviceName: string;
   isSingleTrace?: boolean;
-  // When provided, renders a "Focus" action that filters the map to this
-  // service and its immediate dependencies.
+  // Whether the map is currently scoped to this service (the focus toggle is on)
+  // — flips the focus CTA to a "clear" action.
+  isFocused?: boolean;
+  // When provided, renders an action that scopes the map to this service and its
+  // immediate dependencies (or clears that scope when already focused).
   onFocus?: () => void;
 }) {
   const requestText = `${isSingleTrace ? totalRequests : formatApproximateNumber(totalRequests)} incoming request${
@@ -153,12 +158,13 @@ export default function ServiceMapTooltip({
             onClick={onFocus}
             variant="secondary"
             size="xs"
-            color="gray"
             justify="center"
             fullWidth
-            leftSection={<IconTarget size={14} />}
+            leftSection={
+              isFocused ? <IconTargetOff size={14} /> : <IconTarget size={14} />
+            }
           >
-            Focus
+            {isFocused ? 'Clear focus' : 'Focus on this service'}
           </Button>
         </>
       ) : null}
