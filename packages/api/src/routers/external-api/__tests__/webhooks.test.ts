@@ -438,6 +438,69 @@ describe('External API v2 Webhooks', () => {
         })
         .expect(400);
     });
+
+    describe('field size caps', () => {
+      it('should reject an over-long name', async () => {
+        await authRequest('post', WEBHOOKS_BASE_URL)
+          .send({ ...MOCK_GENERIC_WEBHOOK, name: 'x'.repeat(1025) })
+          .expect(400);
+      });
+
+      it('should reject an over-long url', async () => {
+        await authRequest('post', WEBHOOKS_BASE_URL)
+          .send({
+            ...MOCK_GENERIC_WEBHOOK,
+            url: `https://example.com/${'a'.repeat(2049)}`,
+          })
+          .expect(400);
+      });
+
+      it('should reject an over-long description', async () => {
+        await authRequest('post', WEBHOOKS_BASE_URL)
+          .send({ ...MOCK_GENERIC_WEBHOOK, description: 'x'.repeat(2049) })
+          .expect(400);
+      });
+
+      it('should reject an over-long body', async () => {
+        await authRequest('post', WEBHOOKS_BASE_URL)
+          .send({ ...MOCK_GENERIC_WEBHOOK, body: 'x'.repeat(16 * 1024 + 1) })
+          .expect(400);
+      });
+
+      it('should reject an over-long header value', async () => {
+        await authRequest('post', WEBHOOKS_BASE_URL)
+          .send({
+            ...MOCK_GENERIC_WEBHOOK,
+            headers: { 'X-Big': 'x'.repeat(4097) },
+          })
+          .expect(400);
+      });
+
+      it('should reject an over-long query param value', async () => {
+        await authRequest('post', WEBHOOKS_BASE_URL)
+          .send({
+            ...MOCK_GENERIC_WEBHOOK,
+            queryParams: { token: 'x'.repeat(4097) },
+          })
+          .expect(400);
+      });
+
+      it('should reject more than 100 headers', async () => {
+        const headers: Record<string, string> = {};
+        for (let i = 0; i < 101; i++) headers[`X-H-${i}`] = 'v';
+        await authRequest('post', WEBHOOKS_BASE_URL)
+          .send({ ...MOCK_GENERIC_WEBHOOK, headers })
+          .expect(400);
+      });
+
+      it('should reject more than 100 query params', async () => {
+        const queryParams: Record<string, string> = {};
+        for (let i = 0; i < 101; i++) queryParams[`p${i}`] = 'v';
+        await authRequest('post', WEBHOOKS_BASE_URL)
+          .send({ ...MOCK_GENERIC_WEBHOOK, queryParams })
+          .expect(400);
+      });
+    });
   });
 
   describe('PUT /api/v2/webhooks/:id', () => {

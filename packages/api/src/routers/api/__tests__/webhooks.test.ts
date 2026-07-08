@@ -141,6 +141,26 @@ describe('webhooks router', () => {
     expect(webhooks).toHaveLength(1);
   });
 
+  it('POST / - returns 400 (not 500) on a name+service collision with a different URL', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    // The unique index is (team, service, name). A second webhook with the same
+    // name+service but a different URL violates it; the aligned pre-flight check
+    // (and duplicate-key backstop) must return 400 rather than a raw 500.
+    await Webhook.create({ ...MOCK_WEBHOOK, team: team._id });
+
+    const response = await agent
+      .post('/webhooks')
+      .send({
+        ...MOCK_WEBHOOK,
+        url: 'https://hooks.slack.com/services/T22222222/B22222222/mock-not-a-real-token',
+      })
+      .expect(400);
+
+    expect(response.body.message).toBe('Webhook already exists');
+    expect(await Webhook.countDocuments({})).toBe(1);
+  });
+
   it('POST / - returns 400 when request body is invalid', async () => {
     const { agent } = await getLoggedInAgent(server);
 
@@ -641,33 +661,34 @@ describe('webhooks router', () => {
       expect(response.body.message).toBe('Webhook not found');
     });
 
-    it('returns 400 when trying to update to a URL that already exists', async () => {
+    it('returns 400 when renaming onto an existing (service, name)', async () => {
       const { agent, team } = await getLoggedInAgent(server);
 
-      // Create two webhooks
+      // The unique index is on (team, service, name), so a rename collision is
+      // detected on name — not URL, which is not unique.
       await Webhook.create({
         ...MOCK_WEBHOOK,
-        name: 'Webhook Two',
+        name: 'Existing Name',
         team: team._id,
       });
 
       const webhook2 = await Webhook.create({
         ...MOCK_WEBHOOK,
+        name: 'Other Name',
         url: 'https://hooks.slack.com/services/T11111111/B11111111/YYYYYYYYYYYYYYYYYYYYYYYY',
         team: team._id,
       });
 
-      // Try to update webhook2 to use webhook1's URL
       const response = await agent
         .put(`/webhooks/${webhook2._id}`)
         .send({
           ...MOCK_WEBHOOK,
-          name: 'Different Name',
+          name: 'Existing Name',
         })
         .expect(400);
 
       expect(response.body.message).toBe(
-        'A webhook with this service and URL already exists',
+        'A webhook with this service and name already exists',
       );
     });
 

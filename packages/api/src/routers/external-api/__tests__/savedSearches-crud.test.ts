@@ -412,6 +412,43 @@ describe('External API v2 Saved Searches CRUD', () => {
   });
 
   describe('PUT /api/v2/saved-searches/:id', () => {
+    it('should preserve a pre-existing non-renderable filter on read-modify-write', async () => {
+      // A UI/legacy saved search can carry a filter shape the sidebar reverse
+      // parser does not render (e.g. a lucene condition). GET returns it
+      // verbatim, so a read-modify-write that echoes it back unchanged must
+      // succeed — otherwise the API would 400 on data it just served.
+      const legacy = await SavedSearch.create({
+        team: team._id,
+        name: 'Legacy',
+        source: sourceId,
+        whereLanguage: 'lucene',
+        filters: [{ type: 'lucene', condition: 'level:error' }],
+      });
+
+      const ok = await authRequest('put', `${BASE_URL}/${legacy._id}`)
+        .send({
+          name: 'Legacy renamed',
+          sourceId,
+          filters: [{ type: 'lucene', condition: 'level:error' }],
+        })
+        .expect(200);
+      expect(ok.body.data.filters).toEqual([
+        { type: 'lucene', condition: 'level:error' },
+      ]);
+
+      // Adding a *new* non-renderable filter is still rejected.
+      await authRequest('put', `${BASE_URL}/${legacy._id}`)
+        .send({
+          name: 'Legacy renamed',
+          sourceId,
+          filters: [
+            { type: 'lucene', condition: 'level:error' },
+            { type: 'lucene', condition: 'status:500' },
+          ],
+        })
+        .expect(400);
+    });
+
     it('should update a saved search', async () => {
       const created = await authRequest('post', BASE_URL)
         .send(savedSearchBody())

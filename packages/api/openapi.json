@@ -3075,7 +3075,7 @@
         "required": [
           "condition"
         ],
-        "description": "A single pinned filter applied to the search. Filters must use the SQL predicate form the UI produces so they render as a sidebar facet: `<column> IN ('<value1>', ...)` (or `NOT IN` / `BETWEEN`). Conditions that are not in this form are rejected, since they would not appear in the sidebar.",
+        "description": "A single pinned filter applied to the search. New or changed filters must use the SQL predicate form the UI produces so they render as a sidebar facet: `<column> IN ('<value1>', ...)` (or `NOT IN` / `BETWEEN`). Conditions not in this form are rejected on create, and on update unless they are echoed back unchanged from the stored saved search (so a read-modify-write of a legacy filter still succeeds).",
         "properties": {
           "type": {
             "type": "string",

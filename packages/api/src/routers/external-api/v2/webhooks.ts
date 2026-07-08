@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { WebhookDocument } from '@/models/webhook';
 import Webhook from '@/models/webhook';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
+import { isDuplicateKeyError } from '@/utils/errors';
 import logger from '@/utils/logger';
 import {
   getPagination,
@@ -16,16 +17,6 @@ import {
   externalWebhookSchema,
   objectIdSchema,
 } from '@/utils/zod';
-
-// A duplicate (team, service, name) violates the unique index on the Webhook
-// model. Surface it as a 400 instead of a 500.
-function isDuplicateKeyError(e: unknown): boolean {
-  return (
-    e != null &&
-    typeof e === 'object' &&
-    (e as { code?: unknown }).code === 11000
-  );
-}
 
 const DUPLICATE_WEBHOOK_MESSAGE =
   'A webhook with this service and name already exists';
@@ -458,9 +449,22 @@ router.post(
 
       const data = formatExternalWebhook(webhook);
       if (data === undefined) {
-        throw new Error(
-          `Failed to serialize webhook ${webhook._id} for external API`,
-        );
+        // The write already committed, so this is not a rejected request: it
+        // means a WebhookService value exists that externalWebhookSchema does
+        // not cover. Log it distinctly from a validation error and return the
+        // persisted id so the client knows the resource exists and can
+        // reconcile rather than assuming the create/update failed.
+        logger.error({
+          message:
+            'Webhook persisted but could not be serialized for the external API response',
+          webhookId: webhook._id.toString(),
+          service: webhook.service,
+        });
+        return res.status(500).json({
+          message:
+            'Webhook was saved but could not be serialized for the response',
+          id: webhook._id.toString(),
+        });
       }
 
       res.json({ data });
@@ -641,9 +645,22 @@ router.put(
 
       const data = formatExternalWebhook(webhook);
       if (data === undefined) {
-        throw new Error(
-          `Failed to serialize webhook ${webhook._id} for external API`,
-        );
+        // The write already committed, so this is not a rejected request: it
+        // means a WebhookService value exists that externalWebhookSchema does
+        // not cover. Log it distinctly from a validation error and return the
+        // persisted id so the client knows the resource exists and can
+        // reconcile rather than assuming the create/update failed.
+        logger.error({
+          message:
+            'Webhook persisted but could not be serialized for the external API response',
+          webhookId: webhook._id.toString(),
+          service: webhook.service,
+        });
+        return res.status(500).json({
+          message:
+            'Webhook was saved but could not be serialized for the response',
+          id: webhook._id.toString(),
+        });
       }
 
       res.json({ data });

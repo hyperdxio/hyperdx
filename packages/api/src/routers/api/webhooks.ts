@@ -17,6 +17,7 @@ import {
   handleSendGenericWebhook,
   handleSendSlackWebhook,
 } from '@/tasks/checkAlerts/template';
+import { isDuplicateKeyError } from '@/utils/errors';
 import {
   webhookHeaderNameSchema,
   webhookHeaderValueSchema,
@@ -167,7 +168,10 @@ router.post(
       }
       const { name, service, url, description, queryParams, headers, body } =
         req.body;
-      if (await Webhook.findOne({ team: teamId, service, url })) {
+      // The unique index is on (team, service, name), so the pre-flight check
+      // must query the same fields — otherwise a name+service collision slips
+      // past this guard and surfaces as an uncaught duplicate-key 500 below.
+      if (await Webhook.findOne({ team: teamId, service, name })) {
         return res.status(400).json({
           message: 'Webhook already exists',
         });
@@ -187,6 +191,11 @@ router.post(
         data: sanitizeWebhook(serializeWebhook(webhook)),
       });
     } catch (err) {
+      // Backstop the pre-flight check against a concurrent create racing on the
+      // same (team, service, name): the unique index rejects it as a duplicate.
+      if (isDuplicateKeyError(err)) {
+        return res.status(400).json({ message: 'Webhook already exists' });
+      }
       next(err);
     }
   },
@@ -270,15 +279,17 @@ router.put(
         ? emptyToUndefined(queryParams)
         : mergeRedactedMap(existingPlain.queryParams, queryParams);
 
+      // Match the unique index (team, service, name) so a rename onto an
+      // existing (service, name) is caught here rather than as a 500 below.
       const duplicateWebhook = await Webhook.findOne({
         team: teamId,
         service,
-        url: resolvedUrl,
+        name,
         _id: { $ne: id },
       });
       if (duplicateWebhook) {
         return res.status(400).json({
-          message: 'A webhook with this service and URL already exists',
+          message: 'A webhook with this service and name already exists',
         });
       }
 
@@ -327,6 +338,13 @@ router.put(
         data: sanitizeWebhook(serializeWebhook(updatedWebhook)),
       });
     } catch (err) {
+      // Backstop the pre-flight check against a concurrent rename racing onto
+      // the same (team, service, name): the unique index rejects it.
+      if (isDuplicateKeyError(err)) {
+        return res.status(400).json({
+          message: 'A webhook with this service and name already exists',
+        });
+      }
       next(err);
     }
   },
