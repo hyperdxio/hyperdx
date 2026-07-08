@@ -32,7 +32,7 @@ import SourceSchemaPreview, {
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { IS_LOCAL_MODE } from '@/config';
-import { getEventBody } from '@/source';
+import { getEventBody, isSingleExpression } from '@/source';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { OnClickFormButton } from './OnClickForm/OnClickFormButton';
@@ -169,6 +169,15 @@ export function ChartEditorControls({
             onSubmit={onSubmit}
             label="Pattern Expression"
           />
+          {typeof select === 'string' &&
+            select.length > 0 &&
+            !isSingleExpression(select) && (
+              <Text size="xs" c="red">
+                Pattern expression must be a single column or expression —
+                multi-column lists are not supported. The source default will be
+                used instead.
+              </Text>
+            )}
           <SearchWhereInput
             tableConnection={tableConnection}
             control={control}

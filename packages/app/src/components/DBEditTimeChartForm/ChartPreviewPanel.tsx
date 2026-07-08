@@ -304,7 +304,7 @@ export function ChartPreviewPanel({
         activeTab === 'event_patterns' && (
           <div
             className="flex-grow-1 d-flex flex-column"
-            style={{ height: 400 }}
+            style={{ minHeight: 400 }}
           >
             <PatternTable
               source={tableSource}

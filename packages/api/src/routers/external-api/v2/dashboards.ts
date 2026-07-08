@@ -922,6 +922,38 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           $ref: '#/components/schemas/QueryLanguage'
  *           description: Query language for the where clause.
  *
+ *     EventPatternsChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *       description: Configuration for an event pattern mining tile. Clusters log or trace events by recurring message shapes.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [event_patterns]
+ *           description: Display type discriminator. Must be "event_patterns" for pattern mining tiles.
+ *           example: "event_patterns"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to mine patterns from.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Column or expression to mine patterns from. Leave empty to use the source default (Body for logs, SpanName for traces).
+ *           default: ""
+ *           example: "Body"
+ *         where:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Filter condition for the pattern mining query (syntax depends on whereLanguage).
+ *           default: ""
+ *           example: "level:error"
+ *         whereLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause.
+ *
  *     MarkdownChartConfig:
  *       type: object
  *       required:
@@ -1299,7 +1331,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie),
  *         configType is the secondary discriminant: omit it for the builder
  *         variant or set it to "sql" for the Raw SQL variant. The heatmap,
- *         search, and markdown displayTypes only have a builder variant.
+ *         search, event_patterns, and markdown displayTypes only have a builder variant.
  *       oneOf:
  *         - $ref: '#/components/schemas/LineChartConfig'
  *         - $ref: '#/components/schemas/BarChartConfig'
@@ -1308,6 +1340,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         - $ref: '#/components/schemas/PieChartConfig'
  *         - $ref: '#/components/schemas/HeatmapChartConfig'
  *         - $ref: '#/components/schemas/SearchChartConfig'
+ *         - $ref: '#/components/schemas/EventPatternsChartConfig'
  *         - $ref: '#/components/schemas/MarkdownChartConfig'
  *       discriminator:
  *         propertyName: displayType
@@ -1319,6 +1352,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           pie: '#/components/schemas/PieChartConfig'
  *           heatmap: '#/components/schemas/HeatmapChartConfig'
  *           search: '#/components/schemas/SearchChartConfig'
+ *           event_patterns: '#/components/schemas/EventPatternsChartConfig'
  *           markdown: '#/components/schemas/MarkdownChartConfig'
  *
  *     DashboardContainerTab:
