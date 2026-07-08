@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { deleteSavedSearchAlerts } from '@/controllers/alerts';
 import Alert from '@/models/alert';
 import { SavedSearch } from '@/models/savedSearch';
+import logger from '@/utils/logger';
 
 type SavedSearchWithoutId = Omit<z.infer<typeof SavedSearchSchema>, 'id'>;
 
@@ -88,7 +89,17 @@ export async function deleteSavedSearch(teamId: string, savedSearchId: string) {
   // Re-sweep after the parent is gone: a concurrent alert-create targeting this
   // saved search could land between the two deletes above and orphan itself.
   // Once the parent no longer exists this second sweep cleans up any such alert
-  // (and is a cheap no-op in the common case).
-  await deleteSavedSearchAlerts(savedSearchId, teamId);
+  // (and is a cheap no-op in the common case). Best-effort: the parent is
+  // already deleted, so the operation has succeeded from the caller's view — a
+  // failure here must not surface as a 500. Log it so the (rare) orphan window
+  // is observable and can be swept later, and still return success.
+  try {
+    await deleteSavedSearchAlerts(savedSearchId, teamId);
+  } catch (e) {
+    logger.warn(
+      { err: e, savedSearchId, team: teamId },
+      'Post-delete alert re-sweep failed; a concurrently-created alert may be orphaned for this deleted saved search',
+    );
+  }
   return savedSearch;
 }

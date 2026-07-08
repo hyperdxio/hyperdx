@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import request, { SuperAgentTest } from 'supertest';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
+import Alert, { AlertSource, AlertState } from '@/models/alert';
 import { ITeam } from '@/models/team';
 import { IUser } from '@/models/user';
 import Webhook from '@/models/webhook';
@@ -788,6 +789,31 @@ describe('External API v2 Webhooks', () => {
       );
 
       // untouched
+      expect(await Webhook.findById(created._id)).not.toBeNull();
+    });
+
+    it('should return 409 (not orphan alerts) when an alert still references the webhook', async () => {
+      const created = await Webhook.create({
+        ...MOCK_SLACK_WEBHOOK,
+        team: team._id,
+      });
+      await Alert.create({
+        team: team._id,
+        source: AlertSource.SAVED_SEARCH,
+        savedSearch: new ObjectId(),
+        threshold: 1,
+        interval: '5m',
+        state: AlertState.OK,
+        channel: { type: 'webhook', webhookId: created._id.toString() },
+      });
+
+      const response = await authRequest(
+        'delete',
+        `${WEBHOOKS_BASE_URL}/${created._id}`,
+      ).expect(409);
+      expect(response.body.message).toMatch(/still reference/i);
+
+      // The webhook must survive so the referencing alert isn't orphaned.
       expect(await Webhook.findById(created._id)).not.toBeNull();
     });
   });

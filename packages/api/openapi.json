@@ -3075,7 +3075,7 @@
         "required": [
           "condition"
         ],
-        "description": "A single pinned filter applied to the search. New or changed filters must use the SQL predicate form the UI produces so they render as a sidebar facet: `<column> IN ('<value1>', ...)` (or `NOT IN` / `BETWEEN`). Conditions not in this form are rejected on create, and on update unless they are echoed back unchanged from the stored saved search (so a read-modify-write of a legacy filter still succeeds).",
+        "description": "A single pinned filter applied to the search. New or changed filters must use the SQL predicate form the UI produces so they render as a sidebar facet: `<column> IN ('<value1>', ...)` (or `NOT IN` / `BETWEEN`). Conditions not in this form are rejected on create, and on update unless they are echoed back unchanged from the stored saved search (so a read-modify-write of a legacy filter still succeeds). Note: existing saved searches created in the UI may also return a Lucene text filter (`type: lucene`) or a structured comparison (`type: sql_ast` with `operator`/`left`/`right`); reads return these stored shapes verbatim, and they are preserved on unchanged update.",
         "properties": {
           "type": {
             "type": "string",
@@ -7566,7 +7566,7 @@
       },
       "delete": {
         "summary": "Delete Webhook",
-        "description": "Deletes a webhook.",
+        "description": "Deletes a webhook. Blocked with a 409 while any alert still references it — reassign or remove those alerts first — so deletion never leaves an alert pointing at a missing webhook (which would silently drop notifications). Mirrors the internal webhook delete guard.",
         "operationId": "deleteWebhook",
         "tags": [
           "Webhooks"
@@ -7617,6 +7617,16 @@
           },
           "404": {
             "description": "Webhook not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Webhook is still referenced by one or more alerts",
             "content": {
               "application/json": {
                 "schema": {

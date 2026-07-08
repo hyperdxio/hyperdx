@@ -488,6 +488,15 @@ export function isRenderablePinnedFilter(filter: Filter): boolean {
   const keys = Object.keys(state);
   if (keys.length !== 1) return false;
 
+  // A pinned-filter column key is a bare column expression. parseQuery's lenient
+  // key capture can fold a boolean/negation operator into the key — e.g.
+  // `col NOT BETWEEN 1 AND 2` parses to key `col NOT`, and `NOT (col IN (...))`
+  // to key `NOT (col`. Both pass the clause/AND-count checks below, but the
+  // executed predicate is the *inverse* of the facet the sidebar renders from
+  // the same parse, so displayed and executed filters diverge. A real column key
+  // never contains a bare NOT/AND/OR keyword, so reject when one appears.
+  if (/\b(?:NOT|AND|OR)\b/i.test(keys[0])) return false;
+
   // filtersToQuery emits one clause per (column, kind); >1 means the condition
   // resolved to multiple predicates (e.g. included + excluded on one column, or
   // a compound), which is not a single renderable facet.

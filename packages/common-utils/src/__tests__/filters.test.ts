@@ -671,6 +671,11 @@ describe('filters', () => {
       ["A IN ('x') AND B IN ('y')", 'compound over two columns'],
       ["ts BETWEEN '2024-01-01' AND '2024-02-01'", 'non-numeric BETWEEN'],
       ["col BETWEEN 1 AND 2 AND other IN ('x')", 'BETWEEN swallowing a clause'],
+      [
+        'ServiceName NOT BETWEEN 1 AND 2',
+        'NOT folded into the key (renders inverted)',
+      ],
+      ["NOT (ServiceName IN ('x'))", 'leading NOT folded into the key'],
       ['', 'empty condition'],
     ])('rejects %s (%s)', condition => {
       expect(isRenderablePinnedFilter(sql(condition))).toBe(false);

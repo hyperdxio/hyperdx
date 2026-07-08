@@ -1,10 +1,12 @@
 import express from 'express';
 import { z } from 'zod';
 
+import Alert from '@/models/alert';
 import { WebhookDocument } from '@/models/webhook';
 import Webhook from '@/models/webhook';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import { isDuplicateKeyError } from '@/utils/errors';
+import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import {
   getPagination,
@@ -20,6 +22,40 @@ import {
 
 const DUPLICATE_WEBHOOK_MESSAGE =
   'A webhook with this service and name already exists';
+
+// Countable log event (see agent_docs/observability.md): a webhook that was
+// written but can't be serialized back to the client. `service` is a
+// low-cardinality enum (slack/incidentio/generic).
+const webhookSerializationErrorCounter = getCounter(
+  'hyperdx.api.webhook.serialization_errors',
+  {
+    description:
+      'Count of webhooks persisted but not serializable for the external API v2 create/update response.',
+  },
+);
+
+// Shared handling for the (verified-unreachable-today) case where the write
+// committed but formatExternalWebhook returned undefined — i.e. a WebhookService
+// value that externalWebhookSchema does not cover. This is not a rejected
+// request: log it distinctly from a validation error, emit the metric, and
+// return the persisted id so the client knows the resource exists and can
+// reconcile rather than assuming the create/update failed.
+function respondPersistedButUnserializable(
+  res: express.Response,
+  webhook: WebhookDocument,
+) {
+  logger.error({
+    message:
+      'Webhook persisted but could not be serialized for the external API response',
+    webhookId: webhook._id.toString(),
+    service: webhook.service,
+  });
+  webhookSerializationErrorCounter.add(1, { service: String(webhook.service) });
+  return res.status(500).json({
+    message: 'Webhook was saved but could not be serialized for the response',
+    id: webhook._id.toString(),
+  });
+}
 
 function formatExternalWebhook(
   webhook: WebhookDocument,
@@ -449,22 +485,7 @@ router.post(
 
       const data = formatExternalWebhook(webhook);
       if (data === undefined) {
-        // The write already committed, so this is not a rejected request: it
-        // means a WebhookService value exists that externalWebhookSchema does
-        // not cover. Log it distinctly from a validation error and return the
-        // persisted id so the client knows the resource exists and can
-        // reconcile rather than assuming the create/update failed.
-        logger.error({
-          message:
-            'Webhook persisted but could not be serialized for the external API response',
-          webhookId: webhook._id.toString(),
-          service: webhook.service,
-        });
-        return res.status(500).json({
-          message:
-            'Webhook was saved but could not be serialized for the response',
-          id: webhook._id.toString(),
-        });
+        return respondPersistedButUnserializable(res, webhook);
       }
 
       res.json({ data });
@@ -645,22 +666,7 @@ router.put(
 
       const data = formatExternalWebhook(webhook);
       if (data === undefined) {
-        // The write already committed, so this is not a rejected request: it
-        // means a WebhookService value exists that externalWebhookSchema does
-        // not cover. Log it distinctly from a validation error and return the
-        // persisted id so the client knows the resource exists and can
-        // reconcile rather than assuming the create/update failed.
-        logger.error({
-          message:
-            'Webhook persisted but could not be serialized for the external API response',
-          webhookId: webhook._id.toString(),
-          service: webhook.service,
-        });
-        return res.status(500).json({
-          message:
-            'Webhook was saved but could not be serialized for the response',
-          id: webhook._id.toString(),
-        });
+        return respondPersistedButUnserializable(res, webhook);
       }
 
       res.json({ data });
@@ -678,7 +684,11 @@ router.put(
  * /api/v2/webhooks/{id}:
  *   delete:
  *     summary: Delete Webhook
- *     description: Deletes a webhook.
+ *     description: >-
+ *       Deletes a webhook. Blocked with a 409 while any alert still references
+ *       it — reassign or remove those alerts first — so deletion never leaves an
+ *       alert pointing at a missing webhook (which would silently drop
+ *       notifications). Mirrors the internal webhook delete guard.
  *     operationId: deleteWebhook
  *     tags: [Webhooks]
  *     parameters:
@@ -715,6 +725,12 @@ router.put(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       '409':
+ *         description: Webhook is still referenced by one or more alerts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.delete(
   '/:id',
@@ -724,6 +740,19 @@ router.delete(
       const teamId = req.user?.team;
       if (teamId == null) {
         return res.status(403).json({ message: 'Forbidden' });
+      }
+
+      // Block deletion while alerts still reference this webhook, so we never
+      // orphan an alert onto a missing webhook (silent notification failure).
+      // Mirrors the internal webhooks router guard.
+      const referencingAlertCount = await Alert.countDocuments({
+        'channel.webhookId': req.params.id,
+        team: teamId,
+      });
+      if (referencingAlertCount > 0) {
+        return res.status(409).json({
+          message: `Cannot delete webhook: ${referencingAlertCount} alert(s) still reference it. Reassign or remove those alerts first.`,
+        });
       }
 
       const deleted = await Webhook.findOneAndDelete({
