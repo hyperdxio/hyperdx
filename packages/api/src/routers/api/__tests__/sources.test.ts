@@ -3,10 +3,14 @@ import {
   TSource,
   UseTextIndex,
 } from '@hyperdx/common-utils/dist/types';
+import express from 'express';
 import { Types } from 'mongoose';
+import request from 'supertest';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
+import { appErrorHandler } from '@/middleware/error';
 import { Source } from '@/models/source';
+import sourcesRouter from '@/routers/api/sources';
 
 const MOCK_SOURCE: Omit<Extract<TSource, { kind: 'log' }>, 'id'> = {
   kind: SourceKind.Log,
@@ -687,6 +691,73 @@ describe('sources router', () => {
       expect(sources[1].kind).toBe(SourceKind.Metric);
       expect(sources[2].kind).toBe(SourceKind.Session);
       expect(sources[3].kind).toBe(SourceKind.Trace);
+    });
+  });
+
+  describe('local app mode (string team id)', () => {
+    // In Local App Mode (IS_LOCAL_APP_MODE) the auth middleware injects a
+    // plain string team id ("_local_team_") onto req.user instead of a
+    // Mongoose ObjectId. Regression test for HDX-4713 where the POST/PUT
+    // handlers called teamId.toJSON() — a method that only exists on
+    // ObjectId, not on strings — producing an HTTP 500
+    // "TypeError: teamId.toJSON is not a function".
+    const LOCAL_APP_TEAM_ID = '_local_team_';
+
+    // Build a minimal Express app that mirrors how api-app.ts mounts the
+    // sources router, but with a middleware that emulates the Local App Mode
+    // branch of isUserAuthenticated (string team id).
+    const getLocalAppModeApp = () => {
+      const app = express();
+      app.use(express.json());
+      app.use((req, _res, next) => {
+        req.user = {
+          _id: '_local_user_',
+          email: 'local-user@hyperdx.io',
+          team: LOCAL_APP_TEAM_ID,
+        } as unknown as Express.User;
+        next();
+      });
+      app.use('/sources', sourcesRouter);
+      app.use(appErrorHandler);
+      return app;
+    };
+
+    it('POST / - creates a source when team id is a string', async () => {
+      const app = getLocalAppModeApp();
+
+      const response = await request(app)
+        .post('/sources')
+        .send(MOCK_SOURCE)
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        kind: MOCK_SOURCE.kind,
+        name: MOCK_SOURCE.name,
+      });
+
+      const sources = await Source.find({ team: LOCAL_APP_TEAM_ID });
+      expect(sources).toHaveLength(1);
+    });
+
+    it('PUT /:id - updates a source when team id is a string', async () => {
+      const app = getLocalAppModeApp();
+
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: LOCAL_APP_TEAM_ID,
+      });
+
+      await request(app)
+        .put(`/sources/${source._id}`)
+        .send({
+          ...MOCK_SOURCE,
+          id: source._id.toString(),
+          name: 'Updated In Local App Mode',
+        })
+        .expect(200);
+
+      const updated = await Source.findById(source._id);
+      expect(updated?.name).toBe('Updated In Local App Mode');
     });
   });
 

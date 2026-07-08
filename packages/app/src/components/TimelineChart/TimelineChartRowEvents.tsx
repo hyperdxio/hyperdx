@@ -7,6 +7,8 @@ import {
 } from './TimelineSpanEventMarker';
 import { renderMs } from './utils';
 
+import styles from './TimelineChart.module.scss';
+
 export type TTimelineEvent = {
   id: string;
   start: number;
@@ -43,8 +45,9 @@ export const TimelineChartRowEvents = memo(function (
     const durationMs = event.end - event.start;
     const barCenter = (event.start + event.end) / 2;
     const timelineMidpoint = maxVal / 2;
-    // Duration on left when majority of bar is past halfway, otherwise on right
-    const durationOnRight = barCenter <= timelineMidpoint;
+    // Render the detail on whichever side has more room: to the right when the
+    // bar's center sits in the left half of the timeline, otherwise to the left.
+    const onRight = barCenter <= timelineMidpoint;
 
     return (
       <div
@@ -71,20 +74,16 @@ export const TimelineChartRowEvents = memo(function (
           }}
         >
           <div
-            className="d-flex align-items-center h-100 cursor-pointer text-truncate hover-opacity"
+            className="d-flex align-items-center h-100 cursor-pointer hover-opacity"
             style={{
               userSelect: 'none',
               width: '100%',
               position: 'relative',
               borderRadius: 2,
               fontSize: height * 0.5,
-              color: event.color,
               backgroundColor: event.backgroundColor,
             }}
           >
-            <div style={{ margin: 'auto' }} className="px-2">
-              {event.body}
-            </div>
             {event.markers?.map((marker, idx) => (
               <TimelineSpanEventMarker
                 key={`${event.id}-marker-${idx}`}
@@ -98,22 +97,23 @@ export const TimelineChartRowEvents = memo(function (
         </Tooltip>
         {!!event.showDuration && (
           <span
+            className={styles.barDetail}
             style={{
-              position: 'absolute',
-              top: 0,
               height: '100%',
-              display: 'flex',
-              alignItems: 'center',
               fontSize: height * 0.5,
-              color: 'var(--color-text)',
-              whiteSpace: 'nowrap',
-              pointerEvents: 'none',
-              ...(durationOnRight
-                ? { left: '100%', marginLeft: 4 }
-                : { right: '100%', marginRight: 4 }),
+              ...(onRight
+                ? { left: '100%', paddingLeft: 4 }
+                : {
+                    right: '100%',
+                    paddingRight: 4,
+                    flexDirection: 'row-reverse',
+                  }),
             }}
           >
-            {renderMs(durationMs)}
+            <span style={{ color: 'var(--color-text-muted)' }}>
+              {renderMs(durationMs)}
+            </span>
+            <span className={styles.barDetailBody}>{event.body}</span>
           </span>
         )}
       </div>
