@@ -969,6 +969,14 @@ describe('alerts router', () => {
         .query({ startTime: now, endTime: now - 60_000 })
         .expect(400);
     });
+
+    it('accepts a very wide range (span is clamped, not rejected)', async () => {
+      const alertId = await createTileAlert();
+      await agent
+        .get(`/alerts/${alertId}/history`)
+        .query({ startTime: 0, endTime: Date.now() })
+        .expect(200);
+    });
   });
 
   describe('errors propagation', () => {

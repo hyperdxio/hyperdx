@@ -196,14 +196,18 @@ const api = {
     endTime: number,
   ) => ['alertHistory', alertId, startTime, endTime] as const,
   // Fetches alert firing/recovery transitions within a time range, for drawing
-  // annotations on dashboard charts.
+  // annotations on dashboard charts. Bounds are quantized to the minute so a
+  // live/auto-refreshing dashboard doesn't produce a new query key (and refetch
+  // every alerted tile) on every sub-minute tick.
   useAlertHistory(
     alertId: string | undefined,
     dateRange: [Date, Date],
     { enabled = true }: { enabled?: boolean } = {},
   ) {
-    const startTime = dateRange[0].getTime();
-    const endTime = dateRange[1].getTime();
+    const BUCKET_MS = 60_000;
+    const startTime =
+      Math.floor(dateRange[0].getTime() / BUCKET_MS) * BUCKET_MS;
+    const endTime = Math.floor(dateRange[1].getTime() / BUCKET_MS) * BUCKET_MS;
     return useQuery({
       queryKey: api.getAlertHistoryQueryKey(alertId, startTime, endTime),
       queryFn: () =>

@@ -1,6 +1,9 @@
 import { ReactElement } from 'react';
 
-import { getAnnotationReferenceLines } from '@/components/charts/chartAnnotations';
+import {
+  getAnnotationReferenceLines,
+  MAX_ANNOTATION_MARKERS,
+} from '@/components/charts/chartAnnotations';
 
 // ReferenceLine element props are typed as `unknown`; narrow for assertions.
 const lineProps = (el: ReactElement) =>
@@ -31,6 +34,16 @@ describe('getAnnotationReferenceLines', () => {
     expect(lineProps(fromDate).x).toBe(ms / 1000);
     expect(lineProps(fromMs).stroke).toBe('var(--color-border)');
     expect(lineProps(fromMs).label).toBeUndefined();
+  });
+
+  it('caps the number of rendered markers', () => {
+    const many = Array.from(
+      { length: MAX_ANNOTATION_MARKERS + 50 },
+      (_, i) => ({ time: 1_700_000_000_000 + i * 60_000 }),
+    );
+    expect(getAnnotationReferenceLines(many)).toHaveLength(
+      MAX_ANNOTATION_MARKERS,
+    );
   });
 
   it('uses a provided key and falls back to a generated one', () => {

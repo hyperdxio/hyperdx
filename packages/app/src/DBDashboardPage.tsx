@@ -630,11 +630,12 @@ const Tile = forwardRef(
       return tooltip;
     }, [alert]);
 
-    // Firing/recovery markers for this tile's alert, scoped to the tile's
-    // visible time range (off unless the dashboard toggle is on).
+    // Firing/recovery markers for this tile's alert, scoped to the *visible*
+    // window — the fullscreen range while the fullscreen view is open, else the
+    // dashboard range (off unless the dashboard toggle is on).
     const alertAnnotationReferenceLines = useAlertAnnotations(
       alert?.id,
-      dateRange,
+      isFullscreen ? fullscreenDateRange : dateRange,
       showAlertAnnotations,
     );
 
@@ -2557,18 +2558,20 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         </Menu.Target>
 
         <Menu.Dropdown>
-          {hasTiles && (
+          {(hasTiles || containers.length > 0) && (
             <>
               <Menu.Label>View</Menu.Label>
-              <Menu.Item
-                leftSection={<IconTimelineEvent size={16} />}
-                onClick={() => setShowAlertAnnotations(v => !v)}
-                data-testid="toggle-alert-annotations-menu-item"
-              >
-                {showAlertAnnotations
-                  ? 'Hide alert annotations'
-                  : 'Show alert annotations'}
-              </Menu.Item>
+              {hasTiles && (
+                <Menu.Item
+                  leftSection={<IconTimelineEvent size={16} />}
+                  onClick={() => setShowAlertAnnotations(v => !v)}
+                  data-testid="toggle-alert-annotations-menu-item"
+                >
+                  {showAlertAnnotations
+                    ? 'Hide alert annotations'
+                    : 'Show alert annotations'}
+                </Menu.Item>
+              )}
               {containers.length > 0 && (
                 <>
                   <Menu.Item

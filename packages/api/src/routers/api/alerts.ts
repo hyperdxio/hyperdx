@@ -157,6 +157,9 @@ router.get(
 
 // Alert firing/recovery transitions within a time range, used to draw
 // annotations on dashboard charts (startTime/endTime are epoch milliseconds).
+// Alert history has a ~30-day TTL, so cap the queried span to bound the
+// aggregation regardless of how small a startTime the caller sends.
+const MAX_HISTORY_SPAN_MS = 31 * 24 * 60 * 60 * 1000;
 type AlertHistoryRangeExpRes = express.Response<AlertHistoryRangeApiResponse>;
 router.get(
   '/:id/history',
@@ -178,16 +181,24 @@ router.get(
         return res.sendStatus(403);
       }
 
-      // Scope to the caller's team; 404 for alerts they can't see.
-      const alert = await getAlertEnhanced(req.params.id, teamId);
+      // Scope to the caller's team (404 for alerts they can't see). Uses the
+      // populate-free lookup since we only need team ownership + interval.
+      const alert = await getAlertById(req.params.id, teamId);
       if (!alert) {
         return res.sendStatus(404);
       }
 
+      // Clamp the span so a tiny/zero startTime can't force a scan wider than
+      // the history retention window.
+      const startTime = Math.max(
+        req.query.startTime,
+        req.query.endTime - MAX_HISTORY_SPAN_MS,
+      );
+
       const data = await getAlertTransitionsInRange({
         alertId: new ObjectId(alert._id),
         interval: alert.interval,
-        startTime: new Date(req.query.startTime),
+        startTime: new Date(startTime),
         endTime: new Date(req.query.endTime),
       });
 
