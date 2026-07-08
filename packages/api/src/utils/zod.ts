@@ -690,18 +690,18 @@ export type ExternalWebhook = z.infer<typeof externalWebhookSchema>;
 // Length caps for webhook write fields. These bound the stored document size so
 // a webhook write can't approach Mongo's 16MB document limit as an unhandled
 // error, mirroring the per-field caps on the saved-search schema.
-export const MAX_WEBHOOK_NAME_LENGTH = 1024;
-export const MAX_WEBHOOK_URL_LENGTH = 2048;
-export const MAX_WEBHOOK_DESCRIPTION_LENGTH = 2048;
-export const MAX_WEBHOOK_BODY_LENGTH = 16 * 1024;
-export const MAX_WEBHOOK_HEADER_NAME_LENGTH = 256;
-export const MAX_WEBHOOK_HEADER_VALUE_LENGTH = 4096;
-export const MAX_WEBHOOK_QUERY_PARAM_KEY_LENGTH = 1024;
-export const MAX_WEBHOOK_QUERY_PARAM_VALUE_LENGTH = 4096;
+const MAX_WEBHOOK_NAME_LENGTH = 1024;
+const MAX_WEBHOOK_URL_LENGTH = 2048;
+const MAX_WEBHOOK_DESCRIPTION_LENGTH = 2048;
+const MAX_WEBHOOK_BODY_LENGTH = 16 * 1024;
+const MAX_WEBHOOK_HEADER_NAME_LENGTH = 256;
+const MAX_WEBHOOK_HEADER_VALUE_LENGTH = 4096;
+const MAX_WEBHOOK_QUERY_PARAM_KEY_LENGTH = 1024;
+const MAX_WEBHOOK_QUERY_PARAM_VALUE_LENGTH = 4096;
 // Cap the number of header / query-param entries so an unbounded map can't blow
 // up the document size even with each individual value capped.
-export const MAX_WEBHOOK_HEADERS = 100;
-export const MAX_WEBHOOK_QUERY_PARAMS = 100;
+const MAX_WEBHOOK_HEADERS = 100;
+const MAX_WEBHOOK_QUERY_PARAMS = 100;
 
 export const webhookHeaderNameSchema = z
   .string()
