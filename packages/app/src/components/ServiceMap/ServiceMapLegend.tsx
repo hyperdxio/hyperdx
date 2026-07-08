@@ -27,14 +27,18 @@ function formatMax(
   dateRange: [Date, Date],
   isSingleTrace?: boolean,
 ): string {
-  if (!(max > 0)) {
+  // Only treat missing/invalid data as "n/a"; a real zero (e.g. a map with no
+  // errors) is meaningful and should render as a formatted 0 for its metric.
+  if (!Number.isFinite(max) || max < 0) {
     return 'n/a';
   }
   switch (metric) {
     case 'errorRate':
-      return `${max.toFixed(max < 10 ? 1 : 0)}%`;
+      return max === 0 ? '0%' : `${max.toFixed(max < 10 ? 1 : 0)}%`;
     case 'latency':
-      return `~${formatDurationMs(rawDurationToMs(max, source.durationPrecision ?? 3))}`;
+      return max === 0
+        ? '0ms'
+        : `~${formatDurationMs(rawDurationToMs(max, source.durationPrecision ?? 3))}`;
     case 'throughput':
       return isSingleTrace
         ? `${max} reqs`
@@ -57,10 +61,17 @@ export default function ServiceMapLegend({
 }) {
   const max = metricMax[metric];
 
+  // Latency is a p95 aggregate; spell that out in the legend (but not the
+  // toggle, which stays compact) so the max value is unambiguous.
+  const label =
+    metric === 'latency'
+      ? `${SERVICE_MAP_METRIC_LABEL[metric]} (p95)`
+      : SERVICE_MAP_METRIC_LABEL[metric];
+
   return (
     <Stack gap={4}>
       <Text size="xxs" c="var(--color-text-muted)">
-        {SERVICE_MAP_METRIC_LABEL[metric]}
+        {label}
       </Text>
       <div
         className={styles.legendGradient}
