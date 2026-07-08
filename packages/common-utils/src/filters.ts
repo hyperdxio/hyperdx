@@ -389,18 +389,26 @@ export const parseQuery = (
       if (betweenMatch) {
         const [, key, minVal, maxVal] = betweenMatch;
         const keyStr = key.trim();
-        const min = parseFloat(minVal.trim());
-        const max = parseFloat(maxVal.trim());
+        // Use `Number` (not `parseFloat`) so both bounds must be *entirely*
+        // numeric. This rejects quoted/date operands (`'2024-01-01'` → NaN) and
+        // trailing content the greedy regex may have swallowed from a compound
+        // condition (`... AND 2 AND other IN ('x')` → NaN), rather than
+        // emitting a `BETWEEN NaN AND NaN` range. A non-numeric BETWEEN
+        // contributes nothing (the sidebar range facet only handles numbers).
+        const min = Number(minVal.trim());
+        const max = Number(maxVal.trim());
 
-        if (!state.has(keyStr)) {
-          state.set(keyStr, {
-            included: new Set(),
-            excluded: new Set(),
-            range: { min, max },
-          });
-        } else {
-          const existing = state.get(keyStr)!;
-          existing.range = { min, max };
+        if (Number.isFinite(min) && Number.isFinite(max)) {
+          if (!state.has(keyStr)) {
+            state.set(keyStr, {
+              included: new Set(),
+              excluded: new Set(),
+              range: { min, max },
+            });
+          } else {
+            const existing = state.get(keyStr)!;
+            existing.range = { min, max };
+          }
         }
         continue;
       }
@@ -427,16 +435,68 @@ export const parseQuery = (
   return { filters: Object.fromEntries(state) };
 };
 
+// Count top-level ` AND ` separators (outside quoted strings). Used to detect
+// conjuncts the pinned-filter parser silently drops.
+function countTopLevelAnd(condition: string): number {
+  let count = 0;
+  let inString = false;
+  for (let i = 0; i < condition.length; i++) {
+    if (isQuoteBoundary(condition, i)) {
+      if (inString) {
+        const esc = handleQuoteEscape(condition, i);
+        if (esc.skip) {
+          i = esc.next;
+          continue;
+        }
+      }
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (condition.slice(i, i + 5).toUpperCase() === ' AND ') {
+      count++;
+      i += 4;
+    }
+  }
+  return count;
+}
+
 /**
- * Whether a filter renders as a facet in the search sidebar. The sidebar only
- * reads `type: 'sql'` conditions in the pinned-filter form filtersToQuery
- * produces (`<col> IN (...)` / `NOT IN` / `BETWEEN`); anything else is stored
- * but silently never shown. A filter is renderable iff parseQuery extracts at
- * least one column from it. Used by the external saved-search API to reject
- * filters that would vanish from the UI.
+ * Whether a filter renders *fully* as a single facet in the search sidebar.
+ *
+ * The sidebar only reads `type: 'sql'` conditions in the exact pinned-filter
+ * form filtersToQuery produces — a single `<col> IN (...)`, `<col> NOT IN (...)`,
+ * or `<col> BETWEEN <min> AND <max>` predicate. `parseQuery` is deliberately
+ * lenient (it extracts what it can and ignores the rest), so "parses to a
+ * non-empty state" is *not* enough: `col IN ('x') AND foo = 1` would render the
+ * `IN` facet while still executing `AND foo = 1` at query time, so the displayed
+ * and executed filters diverge.
+ *
+ * A filter is accepted iff it round-trips to exactly one clause on exactly one
+ * column with no dropped conjuncts:
+ *  - `parseQuery` yields exactly one column,
+ *  - re-emitting that state via `filtersToQuery` yields exactly one clause, and
+ *  - the input has no extra top-level `AND` beyond the one a `BETWEEN` carries.
+ *
+ * Used by the external saved-search API to reject filters that would be stored
+ * and executed but not shown (or only partially shown) in the UI.
  */
 export function isRenderablePinnedFilter(filter: Filter): boolean {
-  return Object.keys(parseQuery([filter]).filters).length > 0;
+  if (filter.type === 'sql_ast') return false;
+
+  const state = parseQuery([filter]).filters;
+  const keys = Object.keys(state);
+  if (keys.length !== 1) return false;
+
+  // filtersToQuery emits one clause per (column, kind); >1 means the condition
+  // resolved to multiple predicates (e.g. included + excluded on one column, or
+  // a compound), which is not a single renderable facet.
+  if (filtersToQuery(state).length !== 1) return false;
+
+  // Catch conjuncts the parser dropped: a single IN/NOT IN has no top-level
+  // AND, a single BETWEEN has exactly one (its own `min AND max`).
+  const expectedAnds = state[keys[0]].range ? 1 : 0;
+  return countTopLevelAnd(filter.condition) === expectedAnds;
 }
 
 export type SavedFilterValueIssue = {

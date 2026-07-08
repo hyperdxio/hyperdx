@@ -22,7 +22,12 @@ import type {
   ExternalDashboardFilterWithId,
   ExternalDashboardTileWithId,
 } from '@/utils/zod';
-import { objectIdSchema, tagsSchema } from '@/utils/zod';
+import {
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
+  objectIdSchema,
+  tagsSchema,
+} from '@/utils/zod';
 
 import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
 import {
@@ -56,7 +61,9 @@ export function registerSaveDashboard({
           ),
         name: z.string().describe('Dashboard name'),
         tiles: mcpTilesParam,
-        tags: tagsSchema.describe('Dashboard tags'),
+        tags: tagsSchema.describe(
+          `Dashboard tags. Up to ${MAX_TAGS} tags, each at most ${MAX_TAG_LENGTH} characters.`,
+        ),
         containers: mcpContainersParam.optional(),
         filters: mcpFiltersParam.optional(),
       }),

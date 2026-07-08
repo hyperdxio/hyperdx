@@ -20,6 +20,8 @@ import { getMetricSelectIssues } from '@/mcp/tools/query/schemas';
 import { QUERYABLE_METRIC_KINDS } from '@/mcp/tools/sources/metricKinds';
 import {
   externalQuantileLevelSchema,
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
   objectIdSchema,
   tagsSchema,
 } from '@/utils/zod';
@@ -990,7 +992,8 @@ export const mcpPatchDashboardSchema = z.object({
     .optional()
     .describe('New dashboard name. Omit to keep the current name.'),
   tags: tagsSchema.describe(
-    'New tags array (replaces all existing tags). Omit to keep the current tags.',
+    `New tags array (replaces all existing tags). Omit to keep the current tags. ` +
+      `Up to ${MAX_TAGS} tags, each at most ${MAX_TAG_LENGTH} characters.`,
   ),
   tileId: z
     .string()

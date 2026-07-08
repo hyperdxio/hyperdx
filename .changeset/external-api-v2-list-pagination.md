@@ -15,7 +15,9 @@ don't paginate keep receiving all their records (up to the cap) as before. Use
 Behavior change: `/api/v2/alerts` and `/api/v2/webhooks` were previously
 unbounded and now hard-cap a single page at 1000 records. A team that exceeds
 1000 alerts or webhooks will only see the first 1000 unless the client reads
-`meta.total` and pages with `offset`; the full set is still reachable, but a
+the total and pages with `offset`; the full set is still reachable, but a
 pre-`meta` client that never paginated would silently process only the first
-page. The server logs a warning when a default-limit page is truncated so this
-is observable rather than invisible.
+page. To make the truncation detectable without parsing the body, each list
+response now also sets an `X-Total-Count` header with the full count (matching
+`meta.total`), and the server logs a warning when a default-limit page is
+truncated.

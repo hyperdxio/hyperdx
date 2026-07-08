@@ -470,6 +470,9 @@ router.get(
         countAlerts(teamId),
       ]);
 
+      // Surface the full count at the HTTP layer too, so a client that reads
+      // headers but not the `meta` body can still detect truncation.
+      res.set('X-Total-Count', String(total));
       return res.json({
         data: alerts.map(alert => translateAlertDocumentToExternalAlert(alert)),
         meta: paginationMeta({ limit, offset }, total, 'alerts'),

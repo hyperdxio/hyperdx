@@ -174,21 +174,23 @@ describe('External API v2 Saved Searches CRUD', () => {
         .expect(400);
     });
 
-    it('should accept sql filters in the sidebar-renderable IN form', async () => {
+    it('should accept the sidebar-renderable IN / NOT IN / BETWEEN forms', async () => {
+      const filters = [
+        { type: 'sql', condition: "ServiceName IN ('checkout', 'payments')" },
+        { type: 'sql', condition: "SeverityText NOT IN ('debug', 'trace')" },
+        { type: 'sql', condition: 'Duration BETWEEN 100 AND 5000' },
+        // type defaults to 'sql' when omitted
+        { condition: "StatusCode IN ('500')" },
+      ];
       const response = await authRequest('post', BASE_URL)
-        .send({
-          ...savedSearchBody(),
-          filters: [
-            { type: 'sql', condition: "ServiceName IN ('checkout')" },
-            // type defaults to 'sql' when omitted
-            { condition: "SeverityText IN ('error', 'warn')" },
-          ],
-        })
+        .send({ ...savedSearchBody(), filters })
         .expect(200);
 
       expect(response.body.data.filters).toEqual([
-        { type: 'sql', condition: "ServiceName IN ('checkout')" },
-        { type: 'sql', condition: "SeverityText IN ('error', 'warn')" },
+        { type: 'sql', condition: "ServiceName IN ('checkout', 'payments')" },
+        { type: 'sql', condition: "SeverityText NOT IN ('debug', 'trace')" },
+        { type: 'sql', condition: 'Duration BETWEEN 100 AND 5000' },
+        { type: 'sql', condition: "StatusCode IN ('500')" },
       ]);
     });
 
@@ -226,6 +228,53 @@ describe('External API v2 Saved Searches CRUD', () => {
         .send({
           ...savedSearchBody(),
           filters: [{ type: 'sql', condition: "ServiceName = 'checkout'" }],
+        })
+        .expect(400);
+    });
+
+    it('should reject a compound condition that only partially renders', async () => {
+      // `ServiceName IN (...)` renders, but `AND foo = 1` would still execute at
+      // query time while never showing in the sidebar — displayed and executed
+      // filters must not diverge, so the whole filter is rejected. A compound of
+      // two IN clauses is likewise rejected: the UI stores those as two separate
+      // single-clause filters, not one condition.
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [
+            {
+              type: 'sql',
+              condition: "ServiceName IN ('checkout') AND foo = 1",
+            },
+          ],
+        })
+        .expect(400);
+
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [
+            {
+              type: 'sql',
+              condition: "ServiceName IN ('a') AND SeverityText IN ('error')",
+            },
+          ],
+        })
+        .expect(400);
+    });
+
+    it('should reject a BETWEEN with non-numeric bounds', async () => {
+      // A quoted/date BETWEEN reverse-parses to a NaN range and would re-emit
+      // `BETWEEN NaN AND NaN`, so it is not renderable.
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [
+            {
+              type: 'sql',
+              condition: "Timestamp BETWEEN '2024-01-01' AND '2024-02-01'",
+            },
+          ],
         })
         .expect(400);
     });
@@ -313,6 +362,9 @@ describe('External API v2 Saved Searches CRUD', () => {
       ).expect(200);
       expect(page1.body.data).toHaveLength(2);
       expect(page1.body.meta).toEqual({ total: 3, limit: 2, offset: 0 });
+      // The full count is also surfaced as a header for clients that don't read
+      // the meta body.
+      expect(page1.headers['x-total-count']).toBe('3');
 
       const page2 = await authRequest(
         'get',

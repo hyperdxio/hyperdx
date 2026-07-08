@@ -8,6 +8,8 @@ import {
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_TILES,
   DashboardFilterSchema,
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
   MetricsDataType,
   NumberFormatSchema,
   NumberTileColorConditionSchema,
@@ -133,7 +135,7 @@ type ChartSeries = z.infer<typeof chartSeriesSchema>;
 
 // Re-exported from common-utils so existing `@/utils/zod` importers keep working
 // while the canonical definition lives in the shared package.
-export { tagsSchema };
+export { MAX_TAG_LENGTH, MAX_TAGS, tagsSchema };
 
 export const externalDashboardFilterSchemaWithId = DashboardFilterSchema.omit({
   source: true,

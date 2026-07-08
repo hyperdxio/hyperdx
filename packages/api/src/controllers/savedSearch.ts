@@ -85,5 +85,10 @@ export async function deleteSavedSearch(teamId: string, savedSearchId: string) {
   // order's failure mode (orphaned alerts pointing at a deleted saved search).
   await deleteSavedSearchAlerts(savedSearchId, teamId);
   await SavedSearch.deleteOne({ _id: savedSearchId, team: teamId });
+  // Re-sweep after the parent is gone: a concurrent alert-create targeting this
+  // saved search could land between the two deletes above and orphan itself.
+  // Once the parent no longer exists this second sweep cleans up any such alert
+  // (and is a cheap no-op in the common case).
+  await deleteSavedSearchAlerts(savedSearchId, teamId);
   return savedSearch;
 }
