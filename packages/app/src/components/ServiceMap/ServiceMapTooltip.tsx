@@ -151,12 +151,12 @@ export default function ServiceMapTooltip({
           <Divider color="var(--color-border)" />
           <Button
             onClick={onFocus}
-            variant="subtle"
+            variant="secondary"
             size="xs"
-            color="var(--color-text)"
-            justify="space-between"
+            color="gray"
+            justify="center"
             fullWidth
-            rightSection={<IconTarget size={14} />}
+            leftSection={<IconTarget size={14} />}
           >
             Focus
           </Button>
