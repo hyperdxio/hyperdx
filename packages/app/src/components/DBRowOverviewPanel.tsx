@@ -1,12 +1,7 @@
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, useContext, useMemo } from 'react';
 import isString from 'lodash/isString';
 import pickBy from 'lodash/pickBy';
-import SqlString from 'sqlstring';
-import {
-  isTraceSource,
-  SourceKind,
-  TSource,
-} from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 import { Accordion, Box, Flex, Text } from '@mantine/core';
 
 import { WithClause } from '@/hooks/useRowWhere';
@@ -19,16 +14,13 @@ import {
   useRowData,
 } from './DBRowDataPanel';
 import { DBRowJsonViewer } from './DBRowJsonViewer';
-import DBRowSidePanel, { RowSidePanelContext } from './DBRowSidePanel';
-import DBRowSidePanelHeader, {
-  BreadcrumbNavigationCallback,
-  BreadcrumbPath,
-} from './DBRowSidePanelHeader';
+import { RowSidePanelContext } from './DBRowSidePanel';
+import DBRowSidePanelHeader from './DBRowSidePanelHeader';
 import EventTag from './EventTag';
 import { ExceptionSubpanel } from './ExceptionSubpanel';
 import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 import { SpanEventsSubpanel } from './SpanEventsSubpanel';
-import { SpanLinkData, SpanLinksSubpanel } from './SpanLinksSubpanel';
+import { SpanLinksSubpanel } from './SpanLinksSubpanel';
 
 const EMPTY_OBJ = {};
 export function RowOverviewPanel({
@@ -36,20 +28,16 @@ export function RowOverviewPanel({
   rowId,
   aliasWith,
   hideHeader = false,
-  breadcrumbPath,
-  onBreadcrumbClick,
   'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
   hideHeader?: boolean;
-  breadcrumbPath?: BreadcrumbPath;
-  onBreadcrumbClick?: BreadcrumbNavigationCallback;
   'data-testid'?: string;
 }) {
   const { data } = useRowData({ source, rowId, aliasWith });
-  const { onPropertyAddClick, generateSearchUrl } =
+  const { onPropertyAddClick, generateSearchUrl, onOpenLinkedTrace } =
     useContext(RowSidePanelContext);
 
   const highlightedAttributeValues = useMemo(() => {
@@ -203,24 +191,6 @@ export function RowOverviewPanel({
     );
   }, [firstRow?.__hdx_span_links]);
 
-  // Open a linked span in a stacked side panel one level deeper, reusing the
-  // same nested-drawer flow the Surrounding Context tab uses, instead of
-  // navigating the page to the linked trace. The linked span is identified by
-  // the link's TraceId + SpanId against the trace source's id expressions.
-  const [openedLink, setOpenedLink] = useState<SpanLinkData | null>(null);
-
-  const openedLinkWhere = useMemo(() => {
-    if (!openedLink || !isTraceSource(source)) {
-      return null;
-    }
-    return SqlString.format('?=? AND ?=?', [
-      SqlString.raw(source.spanIdExpression),
-      openedLink.SpanId,
-      SqlString.raw(source.traceIdExpression),
-      openedLink.TraceId,
-    ]);
-  }, [openedLink, source]);
-
   const mainContentColumn = getEventBody(source);
   const mainContent = isString(firstRow?.['__hdx_body'])
     ? firstRow['__hdx_body']
@@ -362,7 +332,7 @@ export function RowOverviewPanel({
               <Box px="md">
                 <SpanLinksSubpanel
                   spanLinks={firstRow?.__hdx_span_links}
-                  onOpenTrace={link => setOpenedLink(link)}
+                  onOpenTrace={onOpenLinkedTrace}
                 />
               </Box>
             </Accordion.Panel>
@@ -413,25 +383,6 @@ export function RowOverviewPanel({
           </Accordion.Item>
         )}
       </Accordion>
-      {openedLink && openedLinkWhere && (
-        <DBRowSidePanel
-          source={source}
-          rowId={openedLinkWhere}
-          aliasWith={[]}
-          onClose={() => setOpenedLink(null)}
-          isNestedPanel
-          breadcrumbPath={[
-            ...(breadcrumbPath ?? []),
-            {
-              label:
-                (typeof firstRow?.SpanName === 'string' && firstRow.SpanName) ||
-                'Span Link',
-              rowData: firstRow ?? {},
-            },
-          ]}
-          onBreadcrumbClick={onBreadcrumbClick}
-        />
-      )}
     </div>
   );
 }

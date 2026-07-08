@@ -1,6 +1,6 @@
 import { fireEvent, screen } from '@testing-library/react';
 
-import { SpanLinksSubpanel } from '../SpanLinksSubpanel';
+import { SpanLinksSubpanel } from '@/components/SpanLinksSubpanel';
 
 const LINK_A = {
   TraceId: 'aaaa1111bbbb2222cccc3333dddd4444',

@@ -73,6 +73,7 @@ import {
 } from './DrawerUtils';
 import LogLevel from './LogLevel';
 import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
+import { SpanLinkData } from './SpanLinksSubpanel';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -103,6 +104,12 @@ export type RowSidePanelContextProps = {
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
   source?: TLogSource | TTraceSource;
+  // Jump to the trace a span link points at, in place, via the same
+  // cross-source stack "View Trace" uses. Provided by DBRowSidePanelInner
+  // for its own subtree; absent for callers outside a trace-aware side
+  // panel (for example the standalone direct-trace drawer), where "Open
+  // trace" on a span link has no in-place destination to push to.
+  onOpenLinkedTrace?: (link: SpanLinkData) => void;
 };
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});
@@ -505,6 +512,48 @@ export const DBRowSidePanelInner = ({
     [traceSourceData, handleSourceStackPush, mainContent],
   );
 
+  // "Open trace" on a span link: the link carries only the linked span's
+  // TraceId + SpanId, so resolve it against the current trace source, the
+  // same assumption the Span Links display already makes. This is the same
+  // cross-source push "View Trace" uses above, just keyed off the link's
+  // ids instead of the current row's.
+  const handleOpenLinkedTrace = useCallback(
+    (link: SpanLinkData) => {
+      if (!traceSourceData || !traceIdExpression || !spanIdExpression) {
+        return;
+      }
+      const rowId = [
+        SqlString.format('?=?', [
+          SqlString.raw(traceIdExpression),
+          link.TraceId,
+        ]),
+        SqlString.format('?=?', [SqlString.raw(spanIdExpression), link.SpanId]),
+      ].join(' AND ');
+      handleSourceStackPush({
+        sourceId: traceSourceData.id,
+        rowId,
+        label: `Trace ${link.TraceId.slice(0, 8)}`,
+        sourceKind: traceSourceData.kind as SourceKind,
+        aliasWith: [],
+      });
+    },
+    [
+      traceSourceData,
+      traceIdExpression,
+      spanIdExpression,
+      handleSourceStackPush,
+    ],
+  );
+
+  // Re-provide RowSidePanelContext for this subtree so RowOverviewPanel (in
+  // both the Overview tab here and the trace tab's span detail inside
+  // DBTracePanel) can reach onOpenLinkedTrace, while still inheriting
+  // whatever the enclosing table/session view already put on the context.
+  const rowSidePanelContextValue = useMemo(
+    () => ({ ...parentContext, onOpenLinkedTrace: handleOpenLinkedTrace }),
+    [parentContext, handleOpenLinkedTrace],
+  );
+
   const { rumSessionId, rumServiceName } = useSessionId({
     sourceId: traceSourceId,
     traceId,
@@ -676,7 +725,7 @@ export const DBRowSidePanelInner = ({
   const showLogTraceActions = !sourceIsTrace && traceId && traceSourceId;
 
   return (
-    <>
+    <RowSidePanelContext value={rowSidePanelContextValue}>
       <Box px="sm" pt="sm" pb="xs">
         <Flex align="center" justify="space-between" gap="sm" mb={8}>
           <SidePanelBreadcrumbs
@@ -890,8 +939,6 @@ export const DBRowSidePanelInner = ({
             rowId={activeRowId}
             aliasWith={activeAliasWith}
             hideHeader={true}
-            breadcrumbPath={breadcrumbPath}
-            onBreadcrumbClick={handleBreadcrumbClick}
           />
         </ErrorBoundary>
       )}
@@ -1025,7 +1072,7 @@ export const DBRowSidePanelInner = ({
           </Box>
         </ErrorBoundary>
       )}
-    </>
+    </RowSidePanelContext>
   );
 };
 
