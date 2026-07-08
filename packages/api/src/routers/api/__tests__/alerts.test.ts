@@ -960,6 +960,15 @@ describe('alerts router', () => {
       const alertId = await createTileAlert();
       await agent.get(`/alerts/${alertId}/history`).expect(400);
     });
+
+    it('returns 400 when startTime is after endTime', async () => {
+      const alertId = await createTileAlert();
+      const now = Date.now();
+      await agent
+        .get(`/alerts/${alertId}/history`)
+        .query({ startTime: now, endTime: now - 60_000 })
+        .expect(400);
+    });
   });
 
   describe('errors propagation', () => {

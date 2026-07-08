@@ -162,10 +162,14 @@ router.get(
   '/:id/history',
   processRequest({
     params: z.object({ id: objectIdSchema }),
-    query: z.object({
-      startTime: z.coerce.number().int(),
-      endTime: z.coerce.number().int(),
-    }),
+    query: z
+      .object({
+        startTime: z.coerce.number().int(),
+        endTime: z.coerce.number().int(),
+      })
+      .refine(q => q.startTime < q.endTime, {
+        message: 'startTime must be less than endTime',
+      }),
   }),
   async (req, res: AlertHistoryRangeExpRes, next) => {
     try {

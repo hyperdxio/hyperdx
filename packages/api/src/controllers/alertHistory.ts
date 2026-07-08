@@ -173,21 +173,25 @@ export async function getAlertTransitionsInRange({
   let prevIsAlert = false;
   let enteredRange = false;
 
+  // Pin a firing marker to the range start if the alert was already firing on
+  // entry (carried in from before startTime).
+  const pinCarryInIfFiring = () => {
+    if (prevIsAlert) {
+      transitions.push({
+        createdAt: startTime.toISOString(),
+        state: AlertState.ALERT,
+      });
+    }
+  };
+
   for (const evalWindow of windows) {
     const isAlert =
       groupStateToOverallState(evalWindow.states) === AlertState.ALERT;
     const inRange = evalWindow._id >= startTime;
 
-    // On entry into the range, pin a firing marker to startTime if the alert
-    // was already firing (carried in from before the range).
     if (inRange && !enteredRange) {
       enteredRange = true;
-      if (prevIsAlert) {
-        transitions.push({
-          createdAt: startTime.toISOString(),
-          state: AlertState.ALERT,
-        });
-      }
+      pinCarryInIfFiring();
     }
 
     if (inRange && isAlert !== prevIsAlert) {
@@ -198,6 +202,12 @@ export async function getAlertTransitionsInRange({
     }
 
     prevIsAlert = isAlert;
+  }
+
+  // No window landed inside the range (e.g. the alert interval is wider than
+  // the dashboard window) but the pre-range state was firing — pin it anyway.
+  if (!enteredRange) {
+    pinCarryInIfFiring();
   }
 
   return transitions;

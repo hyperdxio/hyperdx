@@ -639,6 +639,25 @@ describe('alertHistory controller', () => {
       expect(transitions[0].createdAt).toBe(startTime.toISOString());
     });
 
+    it('pins a carry-in marker when no window falls inside the range', async () => {
+      // Alert interval wider than the dashboard window: the only evaluation is
+      // before startTime, so nothing lands in-range, but the alert is firing.
+      const alert = await createAlert();
+      await createHistory(alert._id, t(30), AlertState.ALERT, 1);
+
+      const startTime = t(20);
+      const transitions = await getAlertTransitionsInRange({
+        alertId: new ObjectId(alert._id),
+        interval: '1h', // lookback reaches back past the t(30) window
+        startTime,
+        endTime: t(5),
+      });
+
+      expect(transitions).toHaveLength(1);
+      expect(transitions[0].state).toBe(AlertState.ALERT);
+      expect(transitions[0].createdAt).toBe(startTime.toISOString());
+    });
+
     it('pins a carry-in firing then shows the in-range recovery', async () => {
       // Fired before the range and recovered inside it: without the carry-in
       // marker the recovery would appear orphaned.
