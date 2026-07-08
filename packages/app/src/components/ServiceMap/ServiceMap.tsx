@@ -158,6 +158,15 @@ function ServiceMapPresentation({
   // otherwise every node reports 0 and the option is disabled.
   const hasLatencyData = metricMax.latency > 0;
 
+  // If the active metric loses its data (e.g. time window changes and the new
+  // dataset has no latency), fall back to errorRate so nodes don't all render
+  // at the same zero-intensity color.
+  useEffect(() => {
+    if (metric === 'latency' && !hasLatencyData) {
+      setMetric('errorRate');
+    }
+  }, [metric, hasLatencyData]);
+
   useEffect(() => {
     const nodes: Node<ServiceMapNodeData>[] =
       Array.from(services?.values() ?? []).map((service, index) => ({

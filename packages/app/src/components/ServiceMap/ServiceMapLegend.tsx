@@ -5,7 +5,6 @@ import { formatDurationMs } from '@/utils';
 
 import type { ServiceMapMetricMax } from './ServiceMapMetricContext';
 import {
-  formatApproximateNumber,
   formatRate,
   getMetricGradientCss,
   getRequestsPerSecond,
@@ -38,7 +37,7 @@ function formatMax(
       return `~${formatDurationMs(rawDurationToMs(max, source.durationPrecision ?? 3))}`;
     case 'throughput':
       return isSingleTrace
-        ? `${formatApproximateNumber(max)} reqs`
+        ? `${max} reqs`
         : formatRate(getRequestsPerSecond(max, dateRange));
   }
 }
