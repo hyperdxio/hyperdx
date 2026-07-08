@@ -105,6 +105,22 @@ describe('convertFormStateToSavedChartConfig', () => {
     });
   });
 
+  it('persists alternateRowBackground for a sql+table config', () => {
+    const form: ChartEditorFormState = {
+      configType: 'sql',
+      displayType: DisplayType.Table,
+      sqlTemplate: 'SELECT 1',
+      connection: 'conn-1',
+      alternateRowBackground: true,
+      series: [],
+    };
+    const result = convertFormStateToSavedChartConfig(
+      form,
+      undefined,
+    ) as RawSqlSavedChartConfig;
+    expect(result.alternateRowBackground).toBe(true);
+  });
+
   it('returns a raw SQL config for Line displayType', () => {
     const form: ChartEditorFormState = {
       configType: 'sql',
@@ -353,6 +369,19 @@ describe('convertFormStateToChartConfig', () => {
       displayType: DisplayType.Table,
       dateRange,
     });
+  });
+
+  it('threads alternateRowBackground into the rendered sql+table config', () => {
+    const form: ChartEditorFormState = {
+      configType: 'sql',
+      displayType: DisplayType.Table,
+      sqlTemplate: 'SELECT now()',
+      connection: 'conn-1',
+      alternateRowBackground: true,
+      series: [],
+    };
+    const result = convertFormStateToChartConfig(form, dateRange, undefined);
+    expect(result).toMatchObject({ alternateRowBackground: true });
   });
 
   it('returns builder config with source fields merged', () => {
