@@ -424,6 +424,14 @@ const externalDashboardMarkdownChartConfigSchema = z.object({
   markdown: z.string().max(50000).optional(),
 });
 
+const externalDashboardEventPatternsChartConfigSchema = z.object({
+  displayType: z.literal('event_patterns'),
+  sourceId: objectIdSchema,
+  select: z.string().max(10000).optional().default(''),
+  where: z.string().max(10000).optional().default(''),
+  whereLanguage: whereLanguageSchema,
+});
+
 const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
   'displayType',
   [
@@ -435,6 +443,7 @@ const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
     externalDashboardHeatmapChartConfigSchema,
     externalDashboardMarkdownChartConfigSchema,
     externalDashboardSearchChartConfigSchema,
+    externalDashboardEventPatternsChartConfigSchema,
   ],
 );
 

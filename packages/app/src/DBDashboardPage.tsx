@@ -145,6 +145,7 @@ import DBHeatmapChart, {
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
+import PatternTable from './components/PatternTable';
 import SearchWhereInput, {
   getStoredLanguage,
 } from './components/SearchInput/SearchWhereInput';
@@ -171,7 +172,9 @@ import {
 import HDXMarkdownChart from './HDXMarkdownChart';
 import { withAppNav } from './layout';
 import {
+  getEventBody,
   getFirstTimestampValueExpression,
+  isSingleExpression,
   useSource,
   useSources,
 } from './source';
@@ -1176,6 +1179,57 @@ const Tile = forwardRef(
                         queryKeyPrefix={'search'}
                         variant="default"
                         errorVariant="collapsible"
+                      />
+                    </ChartContainer>
+                  )}
+                {effectiveQueriedConfig?.displayType ===
+                  DisplayType.EventPatterns &&
+                  isBuilderChartConfig(effectiveQueriedConfig) &&
+                  isBuilderSavedChartConfig(chart.config) && (
+                    <ChartContainer
+                      title={title}
+                      toolbarItems={toolbar}
+                      disableReactiveContainer
+                    >
+                      <PatternTable
+                        key={`${keyPrefix}-${chart.id}`}
+                        source={source}
+                        config={{
+                          ...effectiveQueriedConfig,
+                          // PatternTable's usePatterns hook overrides `select`
+                          // with pattern-specific columns, so clear the
+                          // defaultTableSelectExpression to prevent
+                          // source-specific columns from leaking through.
+                          select: '',
+                          displayType: DisplayType.Table,
+                          dateRange: effectiveDateRange,
+                          granularity: undefined,
+                        }}
+                        bodyValueExpression={
+                          // Prefer the user's custom pattern expression
+                          // (stored in select) when set. Reject
+                          // multi-column strings — those are stale
+                          // defaultTableSelectExpression values, not a
+                          // single pattern expression. Uses bracket-aware
+                          // splitting so expressions like COALESCE(a, b)
+                          // are correctly treated as single.
+                          (typeof effectiveQueriedConfig.select === 'string' &&
+                          effectiveQueriedConfig.select.length > 0 &&
+                          isSingleExpression(effectiveQueriedConfig.select)
+                            ? effectiveQueriedConfig.select
+                            : undefined) ??
+                          (source ? (getEventBody(source) ?? '') : '')
+                        }
+                        totalCountConfig={{
+                          ...effectiveQueriedConfig,
+                          displayType: DisplayType.Table,
+                          dateRange: effectiveDateRange,
+                          select: 'count() as total',
+                          groupBy: undefined,
+                          orderBy: undefined,
+                          granularity: undefined,
+                        }}
+                        totalCountQueryKeyPrefix={`dashboard-patterns-${chart.id}`}
                       />
                     </ChartContainer>
                   )}

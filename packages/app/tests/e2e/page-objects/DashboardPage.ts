@@ -30,7 +30,14 @@ export type TileConfig = {
   groupBy?: string;
   markdown?: string;
 };
-type SeriesType = 'time' | 'number' | 'table' | 'search' | 'markdown' | 'pie';
+type SeriesType =
+  | 'time'
+  | 'number'
+  | 'table'
+  | 'search'
+  | 'markdown'
+  | 'pie'
+  | 'event_patterns';
 /**
  * Series data structure for chart verification
  * Supports all chart types: time, number, table, search, markdown
