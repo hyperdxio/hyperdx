@@ -687,9 +687,26 @@ export type ExternalWebhook = z.infer<typeof externalWebhookSchema>;
 // webhooks router (routers/api/webhooks.ts) uses the exact same rules — a single
 // source of truth prevents the CRLF/control-char hardening from drifting between
 // the internal and external APIs.
+// Length caps for webhook write fields. These bound the stored document size so
+// a webhook write can't approach Mongo's 16MB document limit as an unhandled
+// error, mirroring the per-field caps on the saved-search schema.
+export const MAX_WEBHOOK_NAME_LENGTH = 1024;
+export const MAX_WEBHOOK_URL_LENGTH = 2048;
+export const MAX_WEBHOOK_DESCRIPTION_LENGTH = 2048;
+export const MAX_WEBHOOK_BODY_LENGTH = 16 * 1024;
+export const MAX_WEBHOOK_HEADER_NAME_LENGTH = 256;
+export const MAX_WEBHOOK_HEADER_VALUE_LENGTH = 4096;
+export const MAX_WEBHOOK_QUERY_PARAM_KEY_LENGTH = 1024;
+export const MAX_WEBHOOK_QUERY_PARAM_VALUE_LENGTH = 4096;
+// Cap the number of header / query-param entries so an unbounded map can't blow
+// up the document size even with each individual value capped.
+export const MAX_WEBHOOK_HEADERS = 100;
+export const MAX_WEBHOOK_QUERY_PARAMS = 100;
+
 export const webhookHeaderNameSchema = z
   .string()
   .min(1, 'Header name cannot be empty')
+  .max(MAX_WEBHOOK_HEADER_NAME_LENGTH)
   .regex(
     /^[!#$%&'*+\-.0-9A-Z^_`a-z|~]+$/,
     "Invalid header name. Only alphanumeric characters and !#$%&'*+-.^_`|~ are allowed",
@@ -701,6 +718,7 @@ const hasControlChars = (val: string) => /[\r\n\t\x00-\x1F\x7F]/.test(val);
 
 export const webhookHeaderValueSchema = z
   .string()
+  .max(MAX_WEBHOOK_HEADER_VALUE_LENGTH)
   .refine(val => !hasControlChars(val), {
     message: 'Header values cannot contain control characters',
   });
@@ -711,12 +729,14 @@ export const webhookHeaderValueSchema = z
 export const webhookQueryParamKeySchema = z
   .string()
   .min(1, 'Query parameter name cannot be empty')
+  .max(MAX_WEBHOOK_QUERY_PARAM_KEY_LENGTH)
   .refine(val => !hasControlChars(val), {
     message: 'Query parameter names cannot contain control characters',
   });
 
 export const webhookQueryParamValueSchema = z
   .string()
+  .max(MAX_WEBHOOK_QUERY_PARAM_VALUE_LENGTH)
   .refine(val => !hasControlChars(val), {
     message: 'Query parameter values cannot contain control characters',
   });
@@ -733,17 +753,23 @@ const SLACK_UNSUPPORTED_FIELDS = ['headers', 'queryParams', 'body'] as const;
 // so provider integrations can configure secrets without them leaking on read.
 export const externalWebhookCreateSchema = z
   .object({
-    name: z.string().trim().min(1),
+    name: z.string().trim().min(1).max(MAX_WEBHOOK_NAME_LENGTH),
     service: z.nativeEnum(WebhookService),
-    url: z.string().url(),
-    description: z.string().optional(),
+    url: z.string().url().max(MAX_WEBHOOK_URL_LENGTH),
+    description: z.string().max(MAX_WEBHOOK_DESCRIPTION_LENGTH).optional(),
     queryParams: z
       .record(webhookQueryParamKeySchema, webhookQueryParamValueSchema)
+      .refine(m => Object.keys(m).length <= MAX_WEBHOOK_QUERY_PARAMS, {
+        message: `A webhook cannot have more than ${MAX_WEBHOOK_QUERY_PARAMS} query parameters`,
+      })
       .optional(),
     headers: z
       .record(webhookHeaderNameSchema, webhookHeaderValueSchema)
+      .refine(m => Object.keys(m).length <= MAX_WEBHOOK_HEADERS, {
+        message: `A webhook cannot have more than ${MAX_WEBHOOK_HEADERS} headers`,
+      })
       .optional(),
-    body: z.string().optional(),
+    body: z.string().max(MAX_WEBHOOK_BODY_LENGTH).optional(),
   })
   .superRefine((val, ctx) => {
     if (val.service !== WebhookService.Slack) {

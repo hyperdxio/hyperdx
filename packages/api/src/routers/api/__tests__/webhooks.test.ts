@@ -511,6 +511,77 @@ describe('webhooks router', () => {
     });
   });
 
+  describe('Query parameter validation', () => {
+    // queryParams are written into the outbound request URL, so they get the
+    // same CRLF/control-char hardening as headers (shared validators in
+    // utils/zod.ts). These exercise that path on the internal router, which
+    // was previously only covered for headers.
+    const controlCharValues = [
+      'value\r\ninjected', // CRLF
+      'value\twith\ttab', // tab
+      'value\x00null', // null
+      'value\x1Fseparator', // unit separator
+      'value\x7Fdelete', // delete
+    ];
+
+    it('POST / - rejects query param values with control characters', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      for (const value of controlCharValues) {
+        const response = await agent
+          .post('/webhooks')
+          .send({
+            ...MOCK_WEBHOOK,
+            url: `https://example.com/qp-value-${Math.random()}`,
+            queryParams: { token: value },
+          })
+          .expect(400);
+
+        expect(Array.isArray(response.body)).toBe(true);
+        expect(response.body[0].type).toBe('Body');
+        expect(response.body[0].errors).toBeDefined();
+      }
+    });
+
+    it('POST / - rejects query param names with control characters', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/webhooks')
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://example.com/qp-name-crlf',
+          queryParams: { 'bad\r\nkey': 'value' },
+        })
+        .expect(400);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
+    });
+
+    it('PUT /:id - rejects query param values with control characters', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        team: team._id,
+      });
+
+      const response = await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          queryParams: { token: 'value\r\ninjected' },
+        })
+        .expect(400);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
+    });
+  });
+
   describe('PUT /:id - update webhook', () => {
     it('updates an existing webhook', async () => {
       const { agent, team } = await getLoggedInAgent(server);

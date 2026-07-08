@@ -1,4 +1,4 @@
-import { FilterSchema } from '@hyperdx/common-utils/dist/types';
+import { isRenderablePinnedFilter } from '@hyperdx/common-utils/dist/filters';
 import express from 'express';
 import { z } from 'zod';
 
@@ -23,24 +23,34 @@ import { objectIdSchema, tagsSchema } from '@/utils/zod';
 // concern; 100 is far above any realistic UI-built search.
 const MAX_SAVED_SEARCH_FILTERS = 100;
 
-// FilterSchema (shared, used by reads) leaves its expression strings unbounded.
-// Cap them here on the write path to the same size as `where` — otherwise the
+// Cap the filter condition to the same size as `where` — otherwise the
 // `where`/`select` length caps are trivially bypassed by relocating a huge
-// expression into filters[].condition/left/right.
+// expression into a filter condition.
 const MAX_FILTER_EXPR_LENGTH = 8 * 1024;
 
-const boundedFilterSchema = FilterSchema.superRefine((filter, ctx) => {
-  const expressions =
-    'condition' in filter ? [filter.condition] : [filter.left, filter.right];
-  for (const expr of expressions) {
-    if (expr.length > MAX_FILTER_EXPR_LENGTH) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `filter expression must be at most ${MAX_FILTER_EXPR_LENGTH} characters`,
-      });
-    }
-  }
-});
+// Saved-search filters must use the pinned-filter shape the sidebar can render:
+// `{ type: 'sql', condition: "<col> IN ('<v1>', ...)" }` (or `NOT IN` /
+// `BETWEEN`) — the exact output of filtersToQuery. The shared `FilterSchema`
+// also permits `lucene` and `sql_ast` shapes, and even a `type: 'sql'` condition
+// that isn't a pinned-filter predicate (e.g. `foo = 1`) is silently dropped by
+// the sidebar's reverse parser (parseQuery). So beyond restricting `type` to
+// 'sql', validate the condition actually round-trips through parseQuery via the
+// shared `isRenderablePinnedFilter` helper — a filter is accepted iff it would
+// render. `type` defaults to 'sql' when omitted so a minimal `{ condition }`
+// still validates.
+const savedSearchFilterSchema = z
+  .object({
+    type: z.literal('sql').optional().default('sql'),
+    condition: z.string().min(1).max(MAX_FILTER_EXPR_LENGTH),
+  })
+  .refine(
+    f => isRenderablePinnedFilter({ type: 'sql', condition: f.condition }),
+    {
+      message:
+        'filter condition must be a sidebar-renderable SQL predicate, e.g. "<column> IN (\'<value>\', ...)"',
+      path: ['condition'],
+    },
+  );
 
 // External request body. Uses `sourceId` (not the internal `source`) so the
 // create/update contract matches the shape returned by toExternalJSON().
@@ -67,7 +77,7 @@ const savedSearchRequestSchema = z.object({
   orderBy: z.string().max(1024).optional().default(''),
   tags: tagsSchema.default([]),
   filters: z
-    .array(boundedFilterSchema)
+    .array(savedSearchFilterSchema)
     .max(MAX_SAVED_SEARCH_FILTERS)
     .default([]),
 });
@@ -111,50 +121,27 @@ async function requireValidSourceId(
  * components:
  *   schemas:
  *     SavedSearchFilter:
+ *       type: object
+ *       required:
+ *         - condition
  *       description: >-
- *         A single structured pinned filter applied to the search. Either a
- *         text-condition filter (Lucene or SQL) or a structured SQL AST
- *         comparison.
- *       oneOf:
- *         - type: object
- *           required:
- *             - type
- *             - condition
- *           properties:
- *             type:
- *               type: string
- *               enum: [lucene, sql]
- *               description: Language of the condition expression.
- *             condition:
- *               type: string
- *               maxLength: 8192
- *               description: Filter expression in the language given by type.
- *               example: "SeverityText:ERROR"
- *         - type: object
- *           required:
- *             - type
- *             - operator
- *             - left
- *             - right
- *           properties:
- *             type:
- *               type: string
- *               enum: [sql_ast]
- *               description: Marks a structured SQL AST comparison.
- *             operator:
- *               type: string
- *               enum: ["=", "<", ">", "!=", "<=", ">="]
- *               description: Comparison operator.
- *             left:
- *               type: string
- *               maxLength: 8192
- *               description: Left-hand column or expression.
- *               example: ServiceName
- *             right:
- *               type: string
- *               maxLength: 8192
- *               description: Right-hand literal or expression.
- *               example: "'checkout'"
+ *         A single pinned filter applied to the search. Filters must use the SQL
+ *         predicate form the UI produces so they render as a sidebar facet:
+ *         `<column> IN ('<value1>', ...)` (or `NOT IN` / `BETWEEN`). Conditions
+ *         that are not in this form are rejected, since they would not appear in
+ *         the sidebar.
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [sql]
+ *           default: sql
+ *           description: Always `sql`. Only SQL predicate filters render in the sidebar.
+ *           example: sql
+ *         condition:
+ *           type: string
+ *           maxLength: 8192
+ *           description: SQL predicate applied to the search, in `<column> IN (...)` form.
+ *           example: "ServiceName IN ('checkout', 'payments')"
  *     SavedSearch:
  *       type: object
  *       required:
@@ -207,8 +194,8 @@ async function requireValidSourceId(
  *           items:
  *             $ref: '#/components/schemas/SavedSearchFilter'
  *           example:
- *             - type: lucene
- *               condition: "SeverityText:ERROR"
+ *             - type: sql
+ *               condition: "ServiceName IN ('checkout', 'payments')"
  *         teamId:
  *           type: string
  *           readOnly: true
@@ -277,8 +264,8 @@ async function requireValidSourceId(
  *           items:
  *             $ref: '#/components/schemas/SavedSearchFilter'
  *           example:
- *             - type: lucene
- *               condition: "SeverityText:ERROR"
+ *             - type: sql
+ *               condition: "ServiceName IN ('checkout', 'payments')"
  *     SavedSearchesListResponse:
  *       type: object
  *       required:

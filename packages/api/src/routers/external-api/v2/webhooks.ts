@@ -341,6 +341,7 @@ router.get(
  *       properties:
  *         name:
  *           type: string
+ *           maxLength: 1024
  *           description: Webhook name. Must be unique per service within the team.
  *           example: Production Alerts
  *         service:
@@ -351,28 +352,35 @@ router.get(
  *         url:
  *           type: string
  *           format: uri
+ *           maxLength: 2048
  *           description: Webhook destination URL.
  *           example: https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
  *         description:
  *           type: string
+ *           maxLength: 2048
  *           description: Webhook description, shown in the UI.
  *           example: "Sends critical alerts to the #incidents channel"
  *         body:
  *           type: string
+ *           maxLength: 16384
  *           description: Optional request body template. Only for generic/incidentio; rejected for slack.
  *           example: '{"alert": "{{title}}", "severity": "{{level}}"}'
  *         headers:
  *           type: object
- *           description: Write-only. Custom HTTP headers sent with the webhook request. Never returned on read. Only for generic/incidentio; rejected for slack.
+ *           maxProperties: 100
+ *           description: Write-only. Custom HTTP headers sent with the webhook request. Never returned on read. Only for generic/incidentio; rejected for slack. Each value is capped at 4096 characters.
  *           additionalProperties:
  *             type: string
+ *             maxLength: 4096
  *           example:
  *             Authorization: Bearer secret-token
  *         queryParams:
  *           type: object
- *           description: Write-only. Query parameters appended to the webhook URL. Never returned on read. Only for generic/incidentio; rejected for slack.
+ *           maxProperties: 100
+ *           description: Write-only. Query parameters appended to the webhook URL. Never returned on read. Only for generic/incidentio; rejected for slack. Each value is capped at 4096 characters.
  *           additionalProperties:
  *             type: string
+ *             maxLength: 4096
  *     WebhookResponseEnvelope:
  *       type: object
  *       properties:

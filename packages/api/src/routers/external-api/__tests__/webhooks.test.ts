@@ -617,6 +617,86 @@ describe('External API v2 Webhooks', () => {
         .send(MOCK_SLACK_WEBHOOK)
         .expect(404);
     });
+
+    it('should return 409 when the destination is changed concurrently between read and write', async () => {
+      // The pinned findOneAndUpdate guards against a concurrent PUT repointing
+      // the destination between the read and the write (which would otherwise
+      // leave a secret configured for one destination attached to another).
+      // Simulate that race: the initial findOne returns the stale snapshot but
+      // a concurrent write has already moved the url, so the pinned update
+      // matches nothing while the document still exists => 409.
+      const created = await Webhook.create({
+        ...MOCK_GENERIC_WEBHOOK,
+        team: team._id,
+      });
+      const staleDoc = await Webhook.findOne({
+        _id: created._id,
+        team: team._id,
+      });
+
+      const spy = jest.spyOn(Webhook, 'findOne').mockImplementationOnce((() =>
+        (async () => {
+          await Webhook.updateOne(
+            { _id: created._id },
+            { $set: { url: 'https://example.com/moved-concurrently' } },
+          );
+          return staleDoc;
+        })()) as any);
+
+      try {
+        const response = await authRequest(
+          'put',
+          `${WEBHOOKS_BASE_URL}/${created._id}`,
+        )
+          .send({
+            name: 'Renamed without repointing',
+            service: WebhookService.Generic,
+            url: MOCK_GENERIC_WEBHOOK.url,
+          })
+          .expect(409);
+        expect(response.body.message).toMatch(/concurrently/i);
+      } finally {
+        spy.mockRestore();
+      }
+
+      // The losing update did not apply; the concurrent write stands.
+      const stored = await Webhook.findById(created._id).lean();
+      expect(stored?.url).toBe('https://example.com/moved-concurrently');
+      expect(stored?.name).toBe(MOCK_GENERIC_WEBHOOK.name);
+    });
+
+    it('should return 404 when the webhook is deleted concurrently between read and write', async () => {
+      // Same pinned-update miss, but the document no longer exists => the
+      // 409-vs-404 disambiguation (Webhook.exists) must resolve to 404.
+      const created = await Webhook.create({
+        ...MOCK_GENERIC_WEBHOOK,
+        team: team._id,
+      });
+      const staleDoc = await Webhook.findOne({
+        _id: created._id,
+        team: team._id,
+      });
+
+      const spy = jest.spyOn(Webhook, 'findOne').mockImplementationOnce((() =>
+        (async () => {
+          await Webhook.deleteOne({ _id: created._id });
+          return staleDoc;
+        })()) as any);
+
+      try {
+        await authRequest('put', `${WEBHOOKS_BASE_URL}/${created._id}`)
+          .send({
+            name: MOCK_GENERIC_WEBHOOK.name,
+            service: WebhookService.Generic,
+            url: MOCK_GENERIC_WEBHOOK.url,
+          })
+          .expect(404);
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(await Webhook.findById(created._id)).toBeNull();
+    });
   });
 
   describe('DELETE /api/v2/webhooks/:id', () => {

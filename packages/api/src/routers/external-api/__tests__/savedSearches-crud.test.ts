@@ -174,13 +174,69 @@ describe('External API v2 Saved Searches CRUD', () => {
         .expect(400);
     });
 
+    it('should accept sql filters in the sidebar-renderable IN form', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [
+            { type: 'sql', condition: "ServiceName IN ('checkout')" },
+            // type defaults to 'sql' when omitted
+            { condition: "SeverityText IN ('error', 'warn')" },
+          ],
+        })
+        .expect(200);
+
+      expect(response.body.data.filters).toEqual([
+        { type: 'sql', condition: "ServiceName IN ('checkout')" },
+        { type: 'sql', condition: "SeverityText IN ('error', 'warn')" },
+      ]);
+    });
+
+    it('should reject non-sql filter shapes that would not render in the sidebar', async () => {
+      // The sidebar only renders `type: 'sql'` conditions; lucene and sql_ast
+      // shapes (accepted by the shared FilterSchema) would be stored but never
+      // shown, so the external write path rejects them.
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [{ type: 'lucene', condition: 'SeverityText:ERROR' }],
+        })
+        .expect(400);
+
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [
+            {
+              type: 'sql_ast',
+              operator: '=',
+              left: 'ServiceName',
+              right: "'x'",
+            },
+          ],
+        })
+        .expect(400);
+    });
+
+    it('should reject a sql condition that is not a sidebar-renderable predicate', async () => {
+      // Even a `type: 'sql'` condition is rejected when the sidebar's reverse
+      // parser can't extract a facet from it (e.g. a plain equality), because
+      // it would be stored but never render.
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [{ type: 'sql', condition: "ServiceName = 'checkout'" }],
+        })
+        .expect(400);
+    });
+
     it('should reject more than 100 filters', async () => {
       await authRequest('post', BASE_URL)
         .send({
           ...savedSearchBody(),
           filters: Array.from({ length: 101 }, () => ({
-            type: 'lucene',
-            condition: 'SeverityText:ERROR',
+            type: 'sql',
+            condition: "ServiceName IN ('checkout')",
           })),
         })
         .expect(400);
@@ -192,7 +248,7 @@ describe('External API v2 Saved Searches CRUD', () => {
       await authRequest('post', BASE_URL)
         .send({
           ...savedSearchBody(),
-          filters: [{ type: 'lucene', condition: 'x'.repeat(8 * 1024 + 1) }],
+          filters: [{ type: 'sql', condition: 'x'.repeat(8 * 1024 + 1) }],
         })
         .expect(400);
     });
@@ -413,6 +469,50 @@ describe('External API v2 Saved Searches CRUD', () => {
       expect(await Alert.countDocuments({ savedSearch: savedSearchId })).toBe(
         0,
       );
+    });
+
+    it('should delete dependent alerts before the saved search (partial-failure ordering)', async () => {
+      // Verifies the documented least-bad partial-failure ordering: alerts are
+      // deleted before the parent, so if the final SavedSearch.deleteOne throws,
+      // the search survives without its alerts (recoverable) rather than
+      // leaving orphaned alerts pointing at a deleted saved search.
+      const created = await authRequest('post', BASE_URL)
+        .send(savedSearchBody())
+        .expect(200);
+      const savedSearchId = created.body.data.id;
+
+      await Alert.create({
+        team: team._id,
+        savedSearch: savedSearchId,
+        source: AlertSource.SAVED_SEARCH,
+        threshold: 1,
+        interval: '5m',
+        state: AlertState.OK,
+        channel: { type: null },
+      });
+
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      const deleteSpy = jest
+        .spyOn(SavedSearch, 'deleteOne')
+        .mockImplementationOnce((() => {
+          throw new Error('simulated deleteOne failure');
+        }) as any);
+
+      try {
+        await authRequest('delete', `${BASE_URL}/${savedSearchId}`).expect(500);
+      } finally {
+        deleteSpy.mockRestore();
+        consoleErrorSpy.mockRestore();
+      }
+
+      // Alerts were deleted first, before the failure...
+      expect(await Alert.countDocuments({ savedSearch: savedSearchId })).toBe(
+        0,
+      );
+      // ...and the saved search survives its own failed delete (recoverable).
+      expect(await SavedSearch.findById(savedSearchId)).not.toBeNull();
     });
   });
 });
