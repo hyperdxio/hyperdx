@@ -1,6 +1,7 @@
 import { ObjectId } from 'mongodb';
 
 import {
+  getAlertTransitionsInRange,
   getRecentAlertHistories,
   getRecentAlertHistoriesBatch,
 } from '@/controllers/alertHistory';
@@ -516,6 +517,191 @@ describe('alertHistory controller', () => {
       expect(histories).toHaveLength(1);
       expect(histories![0].state).toBe(AlertState.ALERT);
       expect(histories![0].counts).toBe(3);
+    });
+  });
+
+  describe('getAlertTransitionsInRange', () => {
+    // Minutes-ago helper so all fixtures stay recent (avoids the 30d TTL).
+    const now = Date.now();
+    const t = (minsAgo: number) => new Date(now - minsAgo * 60_000);
+
+    const createAlert = async () => {
+      const team = await Team.create({ name: 'Test Team' });
+      return Alert.create({
+        team: team._id,
+        threshold: 100,
+        interval: '5m',
+        channel: { type: null },
+      });
+    };
+
+    const createHistory = (
+      alertId: any,
+      createdAt: Date,
+      state: AlertState,
+      counts: number,
+    ) =>
+      AlertHistory.create({
+        alert: alertId,
+        createdAt,
+        state,
+        counts,
+        lastValues: [{ startTime: createdAt, count: counts }],
+      });
+
+    it('returns empty array when no history exists', async () => {
+      const transitions = await getAlertTransitionsInRange({
+        alertId: new ObjectId(),
+        interval: '5m',
+        startTime: t(60),
+        endTime: t(0),
+      });
+      expect(transitions).toEqual([]);
+    });
+
+    it('emits a firing and a recovery for an ALERT episode', async () => {
+      const alert = await createAlert();
+      await createHistory(alert._id, t(25), AlertState.OK, 0);
+      await createHistory(alert._id, t(20), AlertState.ALERT, 7);
+      await createHistory(alert._id, t(15), AlertState.ALERT, 8);
+      await createHistory(alert._id, t(10), AlertState.OK, 0);
+
+      const transitions = await getAlertTransitionsInRange({
+        alertId: new ObjectId(alert._id),
+        interval: '5m',
+        startTime: t(28),
+        endTime: t(5),
+      });
+
+      expect(transitions).toHaveLength(2);
+      expect(transitions[0].state).toBe(AlertState.ALERT);
+      expect(transitions[0].createdAt).toBe(t(20).toISOString());
+      expect(transitions[1].state).toBe(AlertState.OK);
+      expect(transitions[1].createdAt).toBe(t(10).toISOString());
+    });
+
+    it('detects a firing at the range edge using the preceding window', async () => {
+      const alert = await createAlert();
+      // Window just before the range establishes the prior (non-firing) state.
+      await createHistory(alert._id, t(30), AlertState.OK, 0);
+      await createHistory(alert._id, t(25), AlertState.ALERT, 4);
+      await createHistory(alert._id, t(20), AlertState.ALERT, 5);
+
+      const transitions = await getAlertTransitionsInRange({
+        alertId: new ObjectId(alert._id),
+        interval: '5m',
+        startTime: t(27),
+        endTime: t(5),
+      });
+
+      expect(transitions).toHaveLength(1);
+      expect(transitions[0].state).toBe(AlertState.ALERT);
+      expect(transitions[0].createdAt).toBe(t(25).toISOString());
+    });
+
+    it('emits a firing when history begins already in ALERT', async () => {
+      // A freshly-created alert that is firing from its first evaluation: there
+      // is no preceding non-ALERT window, but it should still be marked.
+      const alert = await createAlert();
+      await createHistory(alert._id, t(20), AlertState.ALERT, 1);
+      await createHistory(alert._id, t(15), AlertState.ALERT, 1);
+
+      const transitions = await getAlertTransitionsInRange({
+        alertId: new ObjectId(alert._id),
+        interval: '5m',
+        startTime: t(25),
+        endTime: t(5),
+      });
+
+      expect(transitions).toHaveLength(1);
+      expect(transitions[0].state).toBe(AlertState.ALERT);
+      expect(transitions[0].createdAt).toBe(t(20).toISOString());
+    });
+
+    it('pins a carry-in firing marker to the range start when already firing on entry', async () => {
+      // Firing before and throughout the range: a single firing marker should
+      // appear at the range start, not at any interior window.
+      const alert = await createAlert();
+      await createHistory(alert._id, t(30), AlertState.ALERT, 5);
+      await createHistory(alert._id, t(25), AlertState.ALERT, 5);
+      await createHistory(alert._id, t(20), AlertState.ALERT, 5);
+
+      const startTime = t(27);
+      const transitions = await getAlertTransitionsInRange({
+        alertId: new ObjectId(alert._id),
+        interval: '5m',
+        startTime,
+        endTime: t(5),
+      });
+
+      expect(transitions).toHaveLength(1);
+      expect(transitions[0].state).toBe(AlertState.ALERT);
+      expect(transitions[0].createdAt).toBe(startTime.toISOString());
+    });
+
+    it('pins a carry-in firing then shows the in-range recovery', async () => {
+      // Fired before the range and recovered inside it: without the carry-in
+      // marker the recovery would appear orphaned.
+      const alert = await createAlert();
+      await createHistory(alert._id, t(30), AlertState.ALERT, 5); // before range
+      await createHistory(alert._id, t(25), AlertState.ALERT, 5); // in range, firing
+      await createHistory(alert._id, t(20), AlertState.OK, 0); // recovery in range
+
+      const startTime = t(27);
+      const transitions = await getAlertTransitionsInRange({
+        alertId: new ObjectId(alert._id),
+        interval: '5m',
+        startTime,
+        endTime: t(5),
+      });
+
+      expect(transitions).toHaveLength(2);
+      expect(transitions[0].state).toBe(AlertState.ALERT);
+      expect(transitions[0].createdAt).toBe(startTime.toISOString());
+      expect(transitions[1].state).toBe(AlertState.OK);
+      expect(transitions[1].createdAt).toBe(t(20).toISOString());
+    });
+
+    it('treats PENDING as non-firing for boundary detection', async () => {
+      const alert = await createAlert();
+      await createHistory(alert._id, t(30), AlertState.OK, 0);
+      await createHistory(alert._id, t(25), AlertState.PENDING, 2);
+      await createHistory(alert._id, t(20), AlertState.ALERT, 6);
+      await createHistory(alert._id, t(15), AlertState.PENDING, 1);
+
+      const transitions = await getAlertTransitionsInRange({
+        alertId: new ObjectId(alert._id),
+        interval: '5m',
+        startTime: t(27),
+        endTime: t(5),
+      });
+
+      expect(transitions.map(tr => tr.state)).toEqual([
+        AlertState.ALERT,
+        AlertState.OK,
+      ]);
+      expect(transitions[0].createdAt).toBe(t(20).toISOString());
+      expect(transitions[1].createdAt).toBe(t(15).toISOString());
+    });
+
+    it('only considers history for the specified alert', async () => {
+      const alert1 = await createAlert();
+      const alert2 = await createAlert();
+      await createHistory(alert1._id, t(30), AlertState.OK, 0);
+      await createHistory(alert1._id, t(25), AlertState.ALERT, 3);
+      // Noise on another alert must not leak in.
+      await createHistory(alert2._id, t(25), AlertState.OK, 0);
+      await createHistory(alert2._id, t(20), AlertState.ALERT, 9);
+
+      const transitions = await getAlertTransitionsInRange({
+        alertId: new ObjectId(alert1._id),
+        interval: '5m',
+        startTime: t(27),
+        endTime: t(5),
+      });
+
+      expect(transitions).toHaveLength(1);
+      expect(transitions[0].state).toBe(AlertState.ALERT);
     });
   });
 });

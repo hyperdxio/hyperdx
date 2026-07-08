@@ -4,6 +4,7 @@ import ky from 'ky-universal';
 import type {
   Alert,
   AlertApiResponse,
+  AlertHistoryRangeApiResponse,
   AlertsApiResponse,
   InstallationApiResponse,
   MeApiResponse,
@@ -187,6 +188,30 @@ const api = {
       queryKey: api.getAlertQueryKey(alertId),
       queryFn: () => hdxServer(`alerts/${alertId}`).json<AlertApiResponse>(),
       enabled: alertId != null,
+    });
+  },
+  getAlertHistoryQueryKey: (
+    alertId: string | undefined,
+    startTime: number,
+    endTime: number,
+  ) => ['alertHistory', alertId, startTime, endTime] as const,
+  // Fetches alert firing/recovery transitions within a time range, for drawing
+  // annotations on dashboard charts.
+  useAlertHistory(
+    alertId: string | undefined,
+    dateRange: [Date, Date],
+    { enabled = true }: { enabled?: boolean } = {},
+  ) {
+    const startTime = dateRange[0].getTime();
+    const endTime = dateRange[1].getTime();
+    return useQuery({
+      queryKey: api.getAlertHistoryQueryKey(alertId, startTime, endTime),
+      queryFn: () =>
+        hdxServer(`alerts/${alertId}/history`, {
+          method: 'GET',
+          searchParams: { startTime, endTime },
+        }).json<AlertHistoryRangeApiResponse>(),
+      enabled: enabled && alertId != null,
     });
   },
   useServices() {

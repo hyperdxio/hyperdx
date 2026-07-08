@@ -1,5 +1,6 @@
 import type {
   AlertApiResponse,
+  AlertHistoryRangeApiResponse,
   AlertsApiResponse,
   AlertsPageItem,
 } from '@hyperdx/common-utils/dist/types';
@@ -10,6 +11,7 @@ import { z } from 'zod';
 import { processRequest, validateRequest } from 'zod-express-middleware';
 
 import {
+  getAlertTransitionsInRange,
   getRecentAlertHistories,
   getRecentAlertHistoriesBatch,
 } from '@/controllers/alertHistory';
@@ -145,6 +147,45 @@ router.get(
       });
 
       const data = formatAlertResponse(alert, history);
+
+      sendJson(res, { data });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+// Alert firing/recovery transitions within a time range, used to draw
+// annotations on dashboard charts (startTime/endTime are epoch milliseconds).
+type AlertHistoryRangeExpRes = express.Response<AlertHistoryRangeApiResponse>;
+router.get(
+  '/:id/history',
+  processRequest({
+    params: z.object({ id: objectIdSchema }),
+    query: z.object({
+      startTime: z.coerce.number().int(),
+      endTime: z.coerce.number().int(),
+    }),
+  }),
+  async (req, res: AlertHistoryRangeExpRes, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.sendStatus(403);
+      }
+
+      // Scope to the caller's team; 404 for alerts they can't see.
+      const alert = await getAlertEnhanced(req.params.id, teamId);
+      if (!alert) {
+        return res.sendStatus(404);
+      }
+
+      const data = await getAlertTransitionsInRange({
+        alertId: new ObjectId(alert._id),
+        interval: alert.interval,
+        startTime: new Date(req.query.startTime),
+        endTime: new Date(req.query.endTime),
+      });
 
       sendJson(res, { data });
     } catch (e) {

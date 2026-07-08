@@ -640,6 +640,16 @@ export const AlertHistorySchema = z.object({
 
 export type AlertHistory = z.infer<typeof AlertHistorySchema>;
 
+// A single alert state transition within a time range, used to draw
+// firing/recovery annotations on dashboard charts. Only boundary crossings are
+// emitted: ALERT = fired, OK = recovered.
+export const AlertTransitionSchema = z.object({
+  createdAt: z.string(),
+  state: z.nativeEnum(AlertState),
+});
+
+export type AlertTransition = z.infer<typeof AlertTransitionSchema>;
+
 // --------------------------
 // FILTERS
 // --------------------------
@@ -2091,6 +2101,14 @@ export const AlertApiResponseSchema = z.object({
 });
 
 export type AlertApiResponse = z.infer<typeof AlertApiResponseSchema>;
+
+export const AlertHistoryRangeApiResponseSchema = z.object({
+  data: z.array(AlertTransitionSchema),
+});
+
+export type AlertHistoryRangeApiResponse = z.infer<
+  typeof AlertHistoryRangeApiResponseSchema
+>;
 
 // Webhooks
 export const WebhooksApiResponseSchema = z.object({
