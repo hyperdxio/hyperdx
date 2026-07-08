@@ -351,6 +351,7 @@ export function ChartEditorControls({
                 onClick={openDisplaySettings}
                 size="compact-sm"
                 variant="secondary"
+                data-testid="display-settings-button"
               >
                 Display Settings
               </Button>
