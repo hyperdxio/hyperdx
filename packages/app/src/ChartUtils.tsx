@@ -1175,9 +1175,12 @@ export function convertToCategoricalChartConfig(
     if (!firstSelect.alias?.trim()) {
       firstSelect.alias = 'Value';
     }
+    // Quote the alias as a ClickHouse identifier, doubling any embedded
+    // double quotes so aliases like `Request "Count"` are escaped correctly.
+    const quotedAlias = `"${firstSelect.alias.trim().replace(/"/g, '""')}"`;
     convertedConfig.orderBy = [
       {
-        valueExpression: `"${firstSelect.alias.trim()}"`,
+        valueExpression: quotedAlias,
         ordering: 'DESC',
       },
       {
