@@ -469,6 +469,18 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Set the "Series Limit" value in the Display Settings drawer. On pie/bar
+   * builder charts this caps the number of slices/bars displayed. Opens the
+   * drawer, fills the input, then applies and closes.
+   */
+  async setSeriesLimit(limit: number) {
+    await this.openDisplaySettings();
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    await drawer.getByLabel('Series Limit').fill(String(limit));
+    await this.applyDisplaySettings();
+  }
+
+  /**
    * Open the Display Settings drawer and wait for it to become visible.
    */
   async openDisplaySettings() {
