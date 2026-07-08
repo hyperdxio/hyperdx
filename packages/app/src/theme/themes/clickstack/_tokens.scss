@@ -110,6 +110,15 @@
   --color-bg-surface: var(--click-global-color-background-default);
   --color-bg-inverted: var(--mantine-color-dark-1);
   --color-bg-muted: var(--click-global-color-background-muted);
+
+  /* "Sunken" = a recessed backdrop that sits *below* raised content. Use it for
+     the area behind `--color-bg-body` cards (e.g. dashboard tiles) so the cards
+     visually pop. It is intentionally darker/greyer than the body itself. */
+  --color-bg-sunken: color-mix(
+    in srgb,
+    var(--click-global-color-background-default),
+    #000 20%
+  );
   --color-bg-highlighted: rgb(80 80 80 / 70%);
   --color-bg-sidenav: var(--click-global-color-background-default);
   --color-bg-sidenav-link-active: var(--palette-neutral-712);
@@ -302,6 +311,15 @@
   --color-bg-surface: var(--click-global-color-background-default);
   --color-bg-inverted: var(--mantine-color-dark-3);
   --color-bg-muted: var(--click-global-color-background-muted);
+
+  /* "Sunken" = a recessed backdrop that sits *below* raised content. Use it for
+     the area behind `--color-bg-body` cards (e.g. dashboard tiles) so the cards
+     visually pop. It is intentionally slightly darker than the body itself. */
+  --color-bg-sunken: color-mix(
+    in srgb,
+    var(--click-global-color-background-muted) 55%,
+    #fff
+  );
   --color-bg-highlighted: rgb(241 243 245 / 80%);
   --color-bg-sidenav: var(--click-global-color-background-default);
   --color-bg-sidenav-link-active: var(--click-global-color-stroke-default);

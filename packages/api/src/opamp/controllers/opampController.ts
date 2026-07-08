@@ -71,6 +71,13 @@ type CollectorConfig = {
     };
     nop?: null;
     'routing/logs'?: string[];
+    datadog?: {
+      endpoint: string;
+      read_timeout: string;
+      auth?: {
+        authenticator: string;
+      };
+    };
   };
   connectors?: {
     'routing/logs'?: {
@@ -339,6 +346,41 @@ export const buildOtelCollectorConfig = (
         authenticator: 'bearertokenauth/hyperdx',
       };
       otelCollectorConfig.service.extensions = ['bearertokenauth/hyperdx'];
+    }
+  }
+
+  // Opt-in Datadog receiver: lets a Datadog Agent ship traces, metrics, and
+  // logs to HyperDX. The contrib `datadogreceiver` runs a single HTTP server
+  // (the DD intake API on :8126) that serves all three signals and translates
+  // them into OTLP, which then flow through the existing traces/metrics/logs
+  // pipelines to ClickHouse. It is gated behind ENABLE_DATADOG_RECEIVER
+  // because it opens an extra ingest port (:8126).
+  if (config.ENABLE_DATADOG_RECEIVER) {
+    otelCollectorConfig.receivers.datadog = {
+      endpoint: '0.0.0.0:8126',
+      read_timeout: '60s',
+    };
+    otelCollectorConfig.service.pipelines.traces.receivers.push('datadog');
+    otelCollectorConfig.service.pipelines.metrics.receivers.push('datadog');
+    otelCollectorConfig.service.pipelines['logs/in'].receivers.push('datadog');
+
+    // Authenticate Datadog agents with the same per-team API keys as
+    // otlp/hyperdx. DD agents send their key in the `DD-API-KEY` header
+    // (set via DD_API_KEY on the agent), so the bearer-token extension is
+    // configured to validate that header instead of `Authorization`. Only
+    // attached when team API keys exist and collector authentication is
+    // enforced, mirroring otlp/hyperdx — otherwise the receiver stays
+    // unauthenticated.
+    if (apiKeys && apiKeys.length > 0 && collectorAuthenticationEnforced) {
+      otelCollectorConfig.extensions['bearertokenauth/datadog'] = {
+        header: 'DD-API-KEY',
+        scheme: '',
+        tokens: apiKeys,
+      };
+      otelCollectorConfig.receivers.datadog.auth = {
+        authenticator: 'bearertokenauth/datadog',
+      };
+      otelCollectorConfig.service.extensions.push('bearertokenauth/datadog');
     }
   }
 

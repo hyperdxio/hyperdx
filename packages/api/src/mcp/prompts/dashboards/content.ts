@@ -62,7 +62,7 @@ Use BUILDER tiles (with sourceId) for most cases:
   pie          Proportional breakdowns (traffic share by service, errors by type). Keep slice count under 8.
   heatmap      Distribution of a numeric value over time (latency buckets, payload size). Trace sources only. Requires non-empty valueExpression.
   search       Browse raw log/event rows (error logs, recent traces).
-  markdown     Use sparingly. The dashboard already shows its name in the title bar at the top; do NOT add a "About this dashboard" tile that repeats it. Markdown bodies render h1/h2/h3 headings at title-bar scale, so a single \`## Service Catalog\` line eats most of the tile and pushes real KPIs below the fold. Skip markdown tiles for starter dashboards. If you must add one, use h: 1, plain prose, no \`#\`/\`##\`/\`###\` headings. Use containers/tabs for section grouping instead.
+  markdown     Use sparingly. The dashboard already shows its name in the title bar at the top; do NOT add a "About this dashboard" tile that repeats it. Markdown bodies render h1/h2/h3 headings at title-bar scale, so a single \`## Service Catalog\` line eats most of the tile and pushes real KPIs below the fold. Skip markdown tiles for starter dashboards. If you must add one, size it to fit the text (h: 2-3 for a line or two; h: 1 clips it), use plain prose, no \`#\`/\`##\`/\`###\` headings. Use containers/tabs for section grouping instead.
 
 Use RAW SQL tiles (with connectionId) only for queries the builder cannot express:
   Requires configType: "sql" plus a displayType (line, stacked_bar, table, number, pie).
@@ -127,6 +127,8 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
 12. VALIDATE EVERY TILE AFTER SAVE. After clickstack_save_dashboard, call clickstack_query_tile on EVERY tile (not just one). Save validates input shape; it does NOT validate query semantics. Some queries pass save and fail at render time (known gaps: Lucene comparison/wildcard on map attributes, malformed having clauses). If query_tile returns an error, fix the tile and re-save before declaring the dashboard ready.
 
 13. NO TITLE-RECAP MARKDOWN TILE. The dashboard's name shows in the title bar. Adding a markdown tile with the dashboard name (or a "About this dashboard" header) doubles the title and eats a row of vertical space because markdown heading styles render at title-bar scale. Skip the markdown tile entirely on starter dashboards.
+
+14. SIZE TILES TO FIT THEIR CONTENT. The layout w/h are not one-size-fits-all; a tile that is too short clips its content (a table loses rows below the fold, a number tile crops its label) and one that is too wide wastes the row. Match the size to the displayType: number tiles stay small (w 6-8, h 3-4) so three or four KPIs share a row; line / stacked_bar / pie want w 8-12 and h 4-6; tables and search lists want the full row (w 24) and h 6-10 so rows are not cut off; heatmaps want w 12 and h 5-6; a markdown note wants h 2-3 (never h 1, which clips the text). The per-field w/h descriptions on the tile schema carry the same per-displayType ranges; reach for them instead of leaving every tile at the 12x4 default.
 
 == ADAPT, DO NOT COPY ==
 
@@ -1025,6 +1027,23 @@ Colors are palette tokens, not hex. Order rules from least to most severe so the
   }
 
 colorRules is for number builder tiles only. Raw SQL number tiles (configType: "sql") support color but not colorRules.
+
+== NUMBER TILE BACKGROUND CHART ==
+
+number tiles can show a faint background trend sparkline behind the value, derived from a time-bucketed version of the same query. Use it for SLO / error-budget tiles where the trend over the window matters as much as the current value. One field on the tile config:
+
+  backgroundChart  { type, color? }. type is "line" or "area". color is an optional palette token override; when unset the sparkline inherits the tile color.
+
+Example: an availability tile that shows the current value over a faint area trend:
+  config: {
+    displayType: "number",
+    sourceId: "...",
+    select: [{ aggFn: "avg", valueExpression: "Success", numberFormat: { output: "percent" } }],
+    color: "chart-green",
+    backgroundChart: { type: "area" }
+  }
+
+backgroundChart is for number builder tiles only. Raw SQL number tiles (configType: "sql") return a single value with no time dimension to bucket, so they do not support it.
 
 == asRatio ==
 

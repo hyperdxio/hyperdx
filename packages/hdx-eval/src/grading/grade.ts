@@ -2,8 +2,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 
-import type { RunRecord } from '@/harness/types';
-import { isModelSubdir, isRunJson, runsRoot, safeReaddir } from '@/runs/path';
+import { PLUGIN_NONE, type RunRecord } from '@/harness/types';
+import { columnKeyFor } from '@/reports/aggregate';
+import { getRunFilesInBatch, runsRoot } from '@/runs/path';
 import { readRun } from '@/runs/store';
 import { getScenario, SCENARIO_NAMES } from '@/scenarios';
 import type { PostRunInspectionResult } from '@/scenarios/types';
@@ -108,6 +109,24 @@ export async function gradeBatch(
   }
   const runFiles = listRunFiles(resolved);
 
+  // Detect whether this batch varies models/plugins so the per-run log labels
+  // use the same column keys as the run output (e.g. `hyperdx/none/0`).
+  const models = new Set<string>();
+  const plugins = new Set<string>();
+  for (const p of runFiles) {
+    try {
+      const r = readRun(p);
+      models.add(r.model);
+      plugins.add(r.plugin ?? PLUGIN_NONE);
+    } catch {
+      // Unreadable runs are reported by the grading loop below.
+    }
+  }
+  const keyOpts = {
+    multiModel: models.size > 1,
+    multiPlugin: plugins.size > 1,
+  };
+
   // Decide whether we'll actually need the judge: skipJudge wins, otherwise
   // we need it if any run is missing a cached judge OR rerun was requested.
   const needsJudge =
@@ -160,8 +179,14 @@ export async function gradeBatch(
       const inspBit = grade.inspectionSummary
         ? formatInspectionLogBit(grade.inspectionSummary)
         : '';
+      const cellLabel = columnKeyFor(
+        record.mcp,
+        record.model,
+        record.plugin ?? PLUGIN_NONE,
+        keyOpts,
+      );
       console.log(
-        `  ${grade.scenario}/${grade.mcp}/${grade.runId.split('-').slice(-1)[0]}  prog=${(
+        `  ${grade.scenario}/${cellLabel}/${grade.runId.split('-').slice(-1)[0]}  prog=${(
           grade.programmatic.score * 100
         ).toFixed(
           0,
@@ -292,33 +317,11 @@ async function gradeOne(args: {
   };
 }
 
-/**
- * List run JSON files. Supports both the new
- * `<scenario>/<mcp>/<model>/<index>.json` layout and the legacy
- * `<scenario>/<mcp>/<index>.json` layout.
- */
+/** List run JSON files. See `getRunFilesInBatch` for the supported layouts. */
 function listRunFiles(batchDir: string): string[] {
-  const out: string[] = [];
-  for (const scenario of safeReaddir(batchDir)) {
-    if (!SCENARIO_NAMES.includes(scenario)) continue;
-    const sceneDir = join(batchDir, scenario);
-    for (const mcp of safeReaddir(sceneDir)) {
-      const mcpDir = join(sceneDir, mcp);
-      for (const entry of safeReaddir(mcpDir)) {
-        if (isRunJson(entry)) {
-          // Legacy layout: <scenario>/<mcp>/<index>.json
-          out.push(join(mcpDir, entry));
-        } else if (isModelSubdir(mcpDir, entry)) {
-          // New layout: <scenario>/<mcp>/<model>/<index>.json
-          const modelDir = join(mcpDir, entry);
-          for (const file of safeReaddir(modelDir)) {
-            if (isRunJson(file)) out.push(join(modelDir, file));
-          }
-        }
-      }
-    }
-  }
-  return out.sort();
+  return getRunFilesInBatch(batchDir, {
+    scenarioFilter: s => SCENARIO_NAMES.includes(s),
+  });
 }
 
 function readExistingGrade(path: string): GradeRecord | null {

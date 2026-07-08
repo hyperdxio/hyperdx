@@ -4,6 +4,7 @@
 // readability. Reformatting all separators is out of scope here.
 import {
   AggregateFunctionSchema,
+  BackgroundChartSchema,
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_CONTAINERS,
@@ -59,6 +60,15 @@ const rawSqlNumberTileColorDescription =
   '"chart-blue" or "chart-success". Valid only when displayType is ' +
   '"number", ignored otherwise. Raw SQL number tiles do not support ' +
   'conditional colorRules.';
+
+const numberTileBackgroundChartDescription =
+  'Optional background trend sparkline drawn behind the number, derived ' +
+  'from a time-bucketed version of the same query (useful for SLO / ' +
+  'error-budget tiles where the trend over the window matters). ' +
+  '{ type, color? }: type is "line" or "area"; color is an optional ' +
+  'palette token override (the sparkline inherits the tile color when ' +
+  'unset). Builder number tiles only; raw SQL number tiles have no time ' +
+  'dimension to bucket. Example: { type: "area", color: "chart-blue" }.';
 
 const mcpNumberFormatSchema = z.object({
   output: z
@@ -430,13 +440,23 @@ const mcpTileLayoutSchema = z.object({
     .max(24)
     .optional()
     .default(12)
-    .describe('Width in grid columns (1–24). Default 12'),
+    .describe(
+      'Width in grid columns (1-24; a full row is 24). Default 12. ' +
+        'Match the width to the displayType: number 6-8 (three or four KPIs per row), ' +
+        'line / stacked_bar / pie 8-12, heatmap 12, table / search 12-24 (often the full row). ' +
+        'A markdown note is usually full-width (24).',
+    ),
   h: z
     .number()
     .min(1)
     .optional()
     .default(4)
-    .describe('Height in grid rows. Default 4'),
+    .describe(
+      'Height in grid rows. Default 4. ' +
+        'Match the height to the displayType so content is not clipped: number 3-4, ' +
+        'line / stacked_bar / pie 4-6, heatmap 5-6, table / search 6-10 (taller when more rows are expected), ' +
+        'markdown 2-3 for a short note (h: 1 clips the text).',
+    ),
   id: z
     .string()
     .max(36)
@@ -587,6 +607,9 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
       .max(10)
       .optional()
       .describe(numberTileColorRulesDescription),
+    backgroundChart: BackgroundChartSchema.optional().describe(
+      numberTileBackgroundChartDescription,
+    ),
   }),
 });
 
@@ -693,6 +716,31 @@ const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
+const mcpEventPatternsTileSchema = mcpTileLayoutSchema.extend({
+  config: z.object({
+    displayType: z
+      .literal('event_patterns')
+      .describe('Event pattern mining tile'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+    where: z
+      .string()
+      .optional()
+      .default('')
+      .describe('Filter in Lucene syntax. Example: "level:error"'),
+    whereLanguage:
+      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
+    select: z
+      .string()
+      .optional()
+      .default('')
+      .describe(
+        'Pattern expression — column or expression to mine patterns from. ' +
+          'Leave empty to use the source default (Body for logs, SpanName for traces). ' +
+          'Example: "Body", "SpanName", "SpanAttributes[\'http.url\']"',
+      ),
+  }),
+});
+
 const mcpMarkdownTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('markdown').describe('Free-form Markdown text tile'),
@@ -788,6 +836,7 @@ const mcpTileSchema = z.union([
   mcpPieTileSchema,
   mcpHeatmapTileSchema,
   mcpSearchTileSchema,
+  mcpEventPatternsTileSchema,
   mcpMarkdownTileSchema,
   mcpSqlTileSchema,
 ]);
@@ -825,6 +874,9 @@ const mcpPatchTileSchema = z.union([
   }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpSearchTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpEventPatternsTileSchema.shape.config,
   }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpMarkdownTileSchema.shape.config,

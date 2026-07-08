@@ -2413,6 +2413,21 @@ describe('External API v2 Dashboards - new format', () => {
         },
       };
 
+      const eventPatternsChart: ExternalDashboardTile = {
+        name: 'Event Patterns',
+        x: 18,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'event_patterns',
+          sourceId: traceSource._id.toString(),
+          select: 'SpanName',
+          where: 'level:error',
+          whereLanguage: 'lucene',
+        },
+      };
+
       // Act
       const response = await authRequest('post', BASE_URL)
         .send({
@@ -2425,6 +2440,7 @@ describe('External API v2 Dashboards - new format', () => {
             markdownChart,
             pieChart,
             heatmapChart,
+            eventPatternsChart,
           ],
           tags: ['round-trip-test'],
         })
@@ -2438,6 +2454,9 @@ describe('External API v2 Dashboards - new format', () => {
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(markdownChart);
       expect(omit(response.body.data.tiles[5], ['id'])).toEqual(pieChart);
       expect(omit(response.body.data.tiles[6], ['id'])).toEqual(heatmapChart);
+      expect(omit(response.body.data.tiles[7], ['id'])).toEqual(
+        eventPatternsChart,
+      );
     });
 
     // Schema-level rejections that exercise pure Zod constraints
@@ -3976,6 +3995,22 @@ describe('External API v2 Dashboards - new format', () => {
         },
       };
 
+      const eventPatternsChart: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Event Patterns',
+        x: 12,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'event_patterns',
+          sourceId: traceSource._id.toString(),
+          select: 'SpanName',
+          where: 'level:error',
+          whereLanguage: 'lucene',
+        },
+      };
+
       // Create an initial dashboard to update
       const initialDashboard = await createTestDashboard();
 
@@ -3993,6 +4028,7 @@ describe('External API v2 Dashboards - new format', () => {
             numberChart,
             markdownChart,
             heatmapChart,
+            eventPatternsChart,
           ],
           tags: ['round-trip-test'],
         })
@@ -4016,6 +4052,9 @@ describe('External API v2 Dashboards - new format', () => {
       );
       expect(omit(response.body.data.tiles[5], ['id'])).toEqual(
         omit(heatmapChart, ['id']),
+      );
+      expect(omit(response.body.data.tiles[6], ['id'])).toEqual(
+        omit(eventPatternsChart, ['id']),
       );
     });
 

@@ -101,6 +101,8 @@ export function displayTypeToActiveTab(displayType: DisplayType): string {
       return 'number';
     case DisplayType.Heatmap:
       return 'heatmap';
+    case DisplayType.EventPatterns:
+      return 'event_patterns';
     default:
       return 'time';
   }

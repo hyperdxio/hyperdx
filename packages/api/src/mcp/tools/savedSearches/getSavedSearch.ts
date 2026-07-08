@@ -3,7 +3,7 @@ import { z } from 'zod';
 import * as config from '@/config';
 import { getSavedSearch } from '@/controllers/savedSearch';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { validateObjectId } from '@/mcp/utils/errors';
+import { mcpUserError, validateObjectId } from '@/mcp/utils/errors';
 import { SavedSearch } from '@/models/savedSearch';
 
 export function registerGetSavedSearch({
@@ -57,10 +57,7 @@ export function registerGetSavedSearch({
 
       const savedSearch = await getSavedSearch(teamId, id);
       if (!savedSearch) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Saved search not found' }],
-        };
+        return mcpUserError('Saved search not found');
       }
 
       return {

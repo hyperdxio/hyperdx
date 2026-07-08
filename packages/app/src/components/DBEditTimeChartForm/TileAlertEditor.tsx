@@ -72,6 +72,10 @@ export function TileAlertEditor({
     control,
     name: 'alert.scheduleOffsetMinutes',
   });
+  const alertnumConsecutiveWindows = useWatch({
+    control,
+    name: 'alert.numConsecutiveWindows',
+  });
   const maxAlertScheduleOffsetMinutes = alert?.interval
     ? Math.max(intervalToMinutes(alert.interval) - 1, 0)
     : 0;
@@ -206,7 +210,7 @@ export function TileAlertEditor({
               )}
             />
             <Text size="sm" opacity={0.7}>
-              window via
+              via
             </Text>
             <Controller
               control={control}
@@ -237,6 +241,8 @@ export function TileAlertEditor({
                 ? `from each ${alertIntervalLabel} window`
                 : 'from each alert window'
             }
+            numConsecutiveWindowsName="alert.numConsecutiveWindows"
+            numConsecutiveWindows={alertnumConsecutiveWindows ?? undefined}
           />
           <Text size="xxs" opacity={0.5} mb={4} mt="sm">
             Send to

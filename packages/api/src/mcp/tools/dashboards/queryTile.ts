@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
 import { objectIdSchema } from '@/utils/zod';
@@ -47,10 +48,7 @@ export function registerQueryTile({
     async ({ dashboardId, tileId, startTime, endTime }) => {
       const timeRange = parseTimeRange(startTime, endTime);
       if ('error' in timeRange) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: timeRange.error }],
-        };
+        return mcpUserError(timeRange.error);
       }
       const { startDate, endDate } = timeRange;
 
@@ -59,24 +57,15 @@ export function registerQueryTile({
         team: teamId,
       });
       if (!dashboard) {
-        return {
-          isError: true,
-          content: [{ type: 'text' as const, text: 'Dashboard not found' }],
-        };
+        return mcpUserError('Dashboard not found');
       }
 
       const externalDashboard = convertToExternalDashboard(dashboard);
       const tile = externalDashboard.tiles.find(t => t.id === tileId);
       if (!tile) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Tile not found: ${tileId}. Available tile IDs: ${externalDashboard.tiles.map(t => t.id).join(', ')}`,
-            },
-          ],
-        };
+        return mcpUserError(
+          `Tile not found: ${tileId}. Available tile IDs: ${externalDashboard.tiles.map(t => t.id).join(', ')}`,
+        );
       }
 
       const result = await runConfigTile(

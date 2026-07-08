@@ -372,8 +372,8 @@ describe('ActiveFilterPills', () => {
     await user.click(screen.getByTestId('active-filter-pill-status'));
 
     const [copyButton, excludeButton] = await Promise.all([
-      screen.findByRole('button', { name: 'Copy value' }),
-      screen.findByRole('button', { name: 'Exclude' }),
+      screen.findByRole('button', { name: 'Copy value', hidden: true }),
+      screen.findByRole('button', { name: 'Exclude', hidden: true }),
     ]);
     expect(copyButton).toBeInTheDocument();
     expect(excludeButton).toBeInTheDocument();
@@ -391,7 +391,9 @@ describe('ActiveFilterPills', () => {
     renderPills(searchFilters);
 
     await user.click(screen.getByTestId('active-filter-pill-status'));
-    await user.click(await screen.findByRole('button', { name: 'Exclude' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Exclude', hidden: true }),
+    );
 
     expect(searchFilters.setFilterValue).toHaveBeenCalledWith(
       'status',
@@ -412,7 +414,9 @@ describe('ActiveFilterPills', () => {
     renderPills(searchFilters);
 
     await user.click(screen.getByTestId('active-filter-pill-status'));
-    await user.click(await screen.findByRole('button', { name: 'Include' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Include', hidden: true }),
+    );
 
     expect(searchFilters.setFilterValue).toHaveBeenCalledWith(
       'status',
@@ -433,7 +437,9 @@ describe('ActiveFilterPills', () => {
     renderPills(searchFilters);
 
     await user.click(screen.getByTestId('active-filter-pill-status'));
-    await user.click(await screen.findByRole('button', { name: 'Copy value' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Copy value', hidden: true }),
+    );
 
     expect(copyTextToClipboard).toHaveBeenCalledWith('200');
   });
