@@ -36,8 +36,10 @@ function formatMax(
     case 'errorRate':
       return max === 0 ? '0%' : `${max.toFixed(max < 10 ? 1 : 0)}%`;
     case 'latency':
+      // A zero latency max is a "no latency data" sentinel (see
+      // getServiceMetricValue), not a genuine 0ms, so surface it as n/a.
       return max === 0
-        ? '0ms'
+        ? 'n/a'
         : `~${formatDurationMs(rawDurationToMs(max, source.durationPrecision ?? 3))}`;
     case 'throughput':
       return isSingleTrace
