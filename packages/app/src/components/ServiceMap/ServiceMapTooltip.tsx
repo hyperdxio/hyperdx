@@ -1,12 +1,13 @@
 import { useCallback } from 'react';
 import SqlString from 'sqlstring';
 import { TTraceSource } from '@hyperdx/common-utils/dist/types';
-import { Button, Group, Stack, Text } from '@mantine/core';
+import { Button, Divider, Group, Stack, Text } from '@mantine/core';
 import {
   IconActivity,
   IconClock,
   IconSearch,
   IconTarget,
+  IconTargetOff,
 } from '@tabler/icons-react';
 
 import { formatDurationMs } from '@/utils';
@@ -28,6 +29,7 @@ export default function ServiceMapTooltip({
   dateRange,
   serviceName,
   isSingleTrace,
+  isFocused,
   onFocus,
 }: {
   totalRequests: number;
@@ -40,14 +42,23 @@ export default function ServiceMapTooltip({
   dateRange: [Date, Date];
   serviceName: string;
   isSingleTrace?: boolean;
-  // When provided, renders a "Focus" action that filters the map to this
-  // service and its immediate dependencies.
+  // Whether the map is currently scoped to this service (the focus toggle is on)
+  // — flips the focus CTA to a "clear" action.
+  isFocused?: boolean;
+  // When provided, renders an action that scopes the map to this service and its
+  // immediate dependencies (or clears that scope when already focused).
   onFocus?: () => void;
 }) {
-  const requestText = `${isSingleTrace ? totalRequests : formatApproximateNumber(totalRequests)} request${
+  const requestText = `${isSingleTrace ? totalRequests : formatApproximateNumber(totalRequests)} incoming request${
     totalRequests !== 1 ? 's' : ''
   }`;
   const errorsText = `${errorPercentage.toFixed(2)}% errors`;
+  // Only alarm (red) once errors are non-trivial; a fraction of a percent reads
+  // as amber and a clean service stays neutral-danger-free.
+  const errorColor =
+    errorPercentage >= 5
+      ? 'var(--color-text-danger)'
+      : 'var(--color-chart-warning)';
 
   const handleRequestsClick = useCallback(() => {
     navigateToTraceSearch({
@@ -81,7 +92,19 @@ export default function ServiceMapTooltip({
     totalRequests > 0 && (requestsPerSecond != null || latencyMs != null);
 
   return (
-    <Stack className={styles.toolbar} gap={2} align="stretch">
+    <Stack className={styles.toolbar} gap={4} align="stretch" miw={220}>
+      <Text
+        fw={600}
+        size="sm"
+        c="var(--color-text)"
+        px="xs"
+        pt={4}
+        lineClamp={1}
+        title={serviceName}
+      >
+        {serviceName}
+      </Text>
+      <Divider color="var(--color-border)" />
       <Button
         onClick={handleRequestsClick}
         variant="subtle"
@@ -98,7 +121,7 @@ export default function ServiceMapTooltip({
           onClick={handleErrorsClick}
           variant="subtle"
           size="xs"
-          color="var(--color-text-danger)"
+          color={errorColor}
           justify="space-between"
           fullWidth
           rightSection={<IconSearch size={14} />}
@@ -107,7 +130,7 @@ export default function ServiceMapTooltip({
         </Button>
       ) : null}
       {showMetrics ? (
-        <Stack gap={2} px="xs" py={2} c="var(--color-text)">
+        <Stack gap={4} px="xs" py={2} c="var(--color-text)">
           {requestsPerSecond != null ? (
             <Group gap={6} wrap="nowrap">
               <IconActivity size={14} />
@@ -129,17 +152,21 @@ export default function ServiceMapTooltip({
         </Stack>
       ) : null}
       {onFocus ? (
-        <Button
-          onClick={onFocus}
-          variant="subtle"
-          size="xs"
-          color="var(--color-text)"
-          justify="space-between"
-          fullWidth
-          rightSection={<IconTarget size={14} />}
-        >
-          Focus
-        </Button>
+        <>
+          <Divider color="var(--color-border)" />
+          <Button
+            onClick={onFocus}
+            variant="secondary"
+            size="xs"
+            justify="center"
+            fullWidth
+            leftSection={
+              isFocused ? <IconTargetOff size={14} /> : <IconTarget size={14} />
+            }
+          >
+            {isFocused ? 'Clear focus' : 'Focus on this service'}
+          </Button>
+        </>
       ) : null}
     </Stack>
   );
