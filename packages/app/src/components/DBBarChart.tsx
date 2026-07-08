@@ -21,7 +21,7 @@ import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
-import { formatNumber, getColorProps, truncateMiddle } from '@/utils';
+import { formatNumber, getColorProps } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
@@ -29,6 +29,14 @@ import ChartErrorState, {
 } from './charts/ChartErrorState';
 import { ChartTooltipContainer, ChartTooltipItem } from './charts/ChartTooltip';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
+
+const MAX_BAR_LABEL_LENGTH = 14;
+const BAR_LABEL_AXIS_HEIGHT = 80; // increased height to accommodate rotated + truncated labels
+
+const truncateBarLabel = (value: string) =>
+  value.length > MAX_BAR_LABEL_LENGTH
+    ? `${value.slice(0, MAX_BAR_LABEL_LENGTH - 1)}…`
+    : value;
 
 const BarChartTooltip = memo(
   ({
@@ -186,8 +194,11 @@ export const DBBarChart = ({
             <BarChart data={barChartData}>
               <XAxis
                 dataKey="label"
-                interval="preserveStartEnd"
-                tickFormatter={(value: string) => truncateMiddle(value, 20)}
+                interval={0}
+                angle={-45}
+                textAnchor="end"
+                height={BAR_LABEL_AXIS_HEIGHT}
+                tickFormatter={truncateBarLabel}
                 tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
               />
               <YAxis
