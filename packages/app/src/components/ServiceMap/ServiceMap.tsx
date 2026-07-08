@@ -14,8 +14,6 @@ import { notifications } from '@mantine/notifications';
 import {
   applyEdgeChanges,
   applyNodeChanges,
-  Background,
-  BackgroundVariant,
   Controls,
   Edge,
   EdgeChange,
@@ -287,7 +285,7 @@ function ServiceMapPresentation({
     <div className={styles.container}>
       <ServiceMapMetricContext.Provider value={{ metric, metricMax }}>
         <ReactFlow
-          style={{ backgroundColor: 'inherit' }}
+          style={{ backgroundColor: 'var(--color-bg-body)' }}
           nodes={nodes}
           edges={edges}
           onNodesChange={onNodesChange}
@@ -300,12 +298,6 @@ function ServiceMapPresentation({
           // TODO: Financially support react-flow if possible
           proOptions={{ hideAttribution: true }}
         >
-          <Background
-            variant={BackgroundVariant.Dots}
-            gap={20}
-            size={1.5}
-            color="var(--color-border-emphasis)"
-          />
           <Panel position="top-right">
             <div className={styles.panel}>
               <SegmentedControl
