@@ -371,13 +371,28 @@ describe('DBTableChart', () => {
       ).toBe(false);
     });
 
-    it('passes alternateRowBackground=false for raw SQL configs even when set', () => {
+    it('threads alternateRowBackground to the Table for raw SQL configs', () => {
       const rawSqlConfig = {
         configType: 'sql' as const,
         dateRange: [new Date(), new Date()] as [Date, Date],
         connection: 'test-connection',
         sqlTemplate: 'SELECT count() AS Count FROM t',
         alternateRowBackground: true,
+      };
+
+      renderWithMantine(<DBTableChart config={rawSqlConfig} />);
+
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].alternateRowBackground,
+      ).toBe(true);
+    });
+
+    it('passes alternateRowBackground=false when a raw SQL config omits it', () => {
+      const rawSqlConfig = {
+        configType: 'sql' as const,
+        dateRange: [new Date(), new Date()] as [Date, Date],
+        connection: 'test-connection',
+        sqlTemplate: 'SELECT count() AS Count FROM t',
       };
 
       renderWithMantine(<DBTableChart config={rawSqlConfig} />);

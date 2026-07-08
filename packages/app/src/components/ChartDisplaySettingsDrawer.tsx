@@ -184,11 +184,12 @@ export default function ChartDisplaySettingsDrawer({
   const showSeriesLimit =
     isTimeChart && configType !== 'sql' && configType !== 'promql';
 
-  // Builder-table-only display options (Group By column ordering, alternate
-  // row background). Raw SQL table configs author their own layout directly,
-  // so these are hidden there.
-  const showBuilderTableOptions =
-    displayType === DisplayType.Table && configType !== 'sql';
+  // Table display options. Alternate Row Background is purely presentational
+  // (it stripes rendered rows), so it applies to any table tile. Group By
+  // column ordering needs the builder `select` structure to know which columns
+  // are group-by keys, so it stays builder-only.
+  const showTableOptions = displayType === DisplayType.Table;
+  const showBuilderTableOptions = showTableOptions && configType !== 'sql';
 
   // Tile-level color is only meaningful for number tiles today.
   // Per-series colors on line / bar / pie ship in a follow-up PR via
@@ -278,14 +279,16 @@ export default function ChartDisplaySettingsDrawer({
           </>
         )}
 
-        {showBuilderTableOptions && (
+        {showTableOptions && (
           <>
-            <CheckBoxControlled
-              control={control}
-              name="groupByColumnsOnLeft"
-              size="xs"
-              label="Display Group By Columns on Left"
-            />
+            {showBuilderTableOptions && (
+              <CheckBoxControlled
+                control={control}
+                name="groupByColumnsOnLeft"
+                size="xs"
+                label="Display Group By Columns on Left"
+              />
+            )}
             <CheckBoxControlled
               control={control}
               name="alternateRowBackground"
