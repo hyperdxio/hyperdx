@@ -2200,6 +2200,7 @@ describe('External API v2 Dashboards - new format', () => {
             output: 'number',
             mantissa: 2,
           },
+          limit: 5,
         },
       };
 
@@ -2227,6 +2228,7 @@ describe('External API v2 Dashboards - new format', () => {
             output: 'number',
             mantissa: 2,
           },
+          limit: 5,
         },
       };
 

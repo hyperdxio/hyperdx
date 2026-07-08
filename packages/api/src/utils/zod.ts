@@ -367,6 +367,7 @@ const externalDashboardPieChartConfigSchema = z.object({
   select: z.array(externalDashboardSelectItemSchema).length(1),
   groupBy: z.string().max(10000).optional(),
   numberFormat: NumberFormatSchema.optional(),
+  limit: z.number().int().positive().optional(),
 });
 
 const externalDashboardCategoricalBarChartConfigSchema = z.object({
@@ -375,6 +376,7 @@ const externalDashboardCategoricalBarChartConfigSchema = z.object({
   select: z.array(externalDashboardSelectItemSchema).length(1),
   groupBy: z.string().max(10000).optional(),
   numberFormat: NumberFormatSchema.optional(),
+  limit: z.number().int().positive().optional(),
 });
 
 // Heatmap charts use a dedicated select item schema because they carry the

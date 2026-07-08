@@ -812,6 +812,14 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
+ *         limit:
+ *           type: integer
+ *           minimum: 1
+ *           description: >
+ *             Maximum number of slices (SQL LIMIT). The query keeps the
+ *             groups with the largest aggregated values. Omit to fetch all
+ *             groups.
+ *           example: 10
  *
  *     CategoricalBarBuilderChartConfig:
  *       type: object
@@ -848,6 +856,13 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
+ *         limit:
+ *           type: integer
+ *           minimum: 1
+ *           description: >
+ *             Maximum number of bars (SQL LIMIT). The query keeps the groups
+ *             with the largest aggregated values. Omit to fetch all groups.
+ *           example: 10
  *
  *     HeatmapSelectItem:
  *       type: object

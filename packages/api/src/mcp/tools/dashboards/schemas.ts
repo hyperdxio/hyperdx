@@ -628,6 +628,15 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(tileLevelNumberFormatDescription),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        'Maximum number of slices (SQL LIMIT). Keeps the top-N groups by the ' +
+          'aggregated value, descending. Omit to fetch all groups.',
+      ),
   }),
 });
 
@@ -651,6 +660,15 @@ const mcpCategoricalBarTileSchema = mcpTileLayoutSchema.extend({
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(tileLevelNumberFormatDescription),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        'Maximum number of bars (SQL LIMIT). Keeps the top-N groups by the ' +
+          'aggregated value, descending. Omit to fetch all groups.',
+      ),
   }),
 });
 

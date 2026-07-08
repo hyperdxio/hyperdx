@@ -965,6 +965,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         select: [{ aggFn: 'count' as const, alias: 'Requests' }],
         groupBy: 'SpanName',
         numberFormat,
+        limit: 5,
       };
       const categoricalBarConfig = {
         displayType: 'bar' as const,
@@ -972,6 +973,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         select: [{ aggFn: 'count' as const, alias: 'Requests' }],
         groupBy: 'SpanName',
         numberFormat,
+        limit: 5,
       };
       const numberConfig = {
         displayType: 'number' as const,

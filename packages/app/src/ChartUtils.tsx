@@ -1141,7 +1141,53 @@ export function convertToNumberChartConfig(
 export function convertToCategoricalChartConfig(
   config: BuilderChartConfigWithOptTimestamp,
 ): BuilderChartConfigWithOptTimestamp {
-  return omit(config, ['granularity']);
+  const convertedConfig = structuredClone(omit(config, ['granularity']));
+
+  // Pie/bar charts interpret `seriesLimit` as a plain SQL LIMIT on the
+  // number of slices/bars (the __hdx_series_limit ranking CTE it drives on
+  // time charts is gated on granularity, which is not used for categorical charts).
+  if (
+    convertedConfig.seriesLimit != null &&
+    convertedConfig.limit?.limit == null
+  ) {
+    convertedConfig.limit = { limit: convertedConfig.seriesLimit };
+    delete convertedConfig.seriesLimit;
+  }
+
+  // When a series limit is set, order by the first aggregated value
+  // descending (with the group as a stable tiebreak) so the limit
+  // deterministically keeps the largest slices/bars.
+  //
+  // The value column is
+  // referenced by its alias — the renderer emits `expr AS "alias"` — so
+  // inject the metrics-convention 'Value' alias when the user didn't set
+  // one. Without a limit, ordering is irrelevant: the chart sorts
+  // client-side by value.
+  if (
+    convertedConfig.limit?.limit != null &&
+    convertedConfig.orderBy == null &&
+    Array.isArray(convertedConfig.select) &&
+    convertedConfig.select.length > 0 &&
+    typeof convertedConfig.groupBy === 'string' &&
+    convertedConfig.seriesReturnType !== 'ratio'
+  ) {
+    const firstSelect = convertedConfig.select[0];
+    if (!firstSelect.alias?.trim()) {
+      firstSelect.alias = 'Value';
+    }
+    convertedConfig.orderBy = [
+      {
+        valueExpression: `"${firstSelect.alias.trim()}"`,
+        ordering: 'DESC',
+      },
+      {
+        valueExpression: convertedConfig.groupBy,
+        ordering: 'ASC' as const,
+      },
+    ];
+  }
+
+  return convertedConfig;
 }
 
 export function convertToTableChartConfig(

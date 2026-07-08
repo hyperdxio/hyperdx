@@ -351,6 +351,7 @@ const convertToExternalTileChartConfig = (
           : [DEFAULT_SELECT_ITEM],
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         numberFormat: config.numberFormat,
+        limit: config.seriesLimit ?? undefined,
       };
     case DisplayType.Bar:
       return {
@@ -361,6 +362,7 @@ const convertToExternalTileChartConfig = (
           : [DEFAULT_SELECT_ITEM],
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         numberFormat: config.numberFormat,
+        limit: config.seriesLimit ?? undefined,
       };
     case DisplayType.Table:
       return {
@@ -750,6 +752,7 @@ export function convertToInternalTileConfig(
           select: [convertToInternalSelectItem(externalConfig.select[0])],
           source: externalConfig.sourceId,
           where: '',
+          seriesLimit: externalConfig.limit,
           name,
         } satisfies BuilderSavedChartConfig;
         break;

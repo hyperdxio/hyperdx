@@ -953,8 +953,8 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
 == PER-TILE TYPE CONSTRAINTS ==
 
   number       Exactly 1 select item. No groupBy.
-  pie          Exactly 1 select item. groupBy defines the slices. Keep slice count under 8.
-  bar          Exactly 1 select item. groupBy defines the bars. Not a time series (use stacked_bar for that).
+  pie          Exactly 1 select item. groupBy defines the slices. Keep slice count under 8 — set the optional limit field (SQL LIMIT keeping the top-N groups by value) when the groupBy is high-cardinality.
+  bar          Exactly 1 select item. groupBy defines the bars. Not a time series (use stacked_bar for that). Optional limit field keeps the top-N groups by value.
   line         1 to 20 select items. Optional groupBy splits into series. Each select item may carry its own numberFormat.
   stacked_bar  1 to 20 select items. Optional groupBy splits into stacks.
   table        1 to 20 select items. Optional groupBy defines row groups. Per-series numberFormat lets one column render as a duration while a sibling count column stays a plain number.
