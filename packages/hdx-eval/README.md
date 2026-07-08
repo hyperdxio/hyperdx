@@ -264,6 +264,7 @@ mirrors HyperDX's `otel_traces` / `otel_logs` exactly.
 | `noisy-signals` | "We want to cut log ingest cost..." | ~16M logs across composite cells. Each noisy cell has a load-bearing pattern mixed in. |
 | `segmented-regression` | "API error rate has gone up..." | Enterprise x cache-miss errors at ~12%. Single-axis aggregates dilute the signal. |
 | `service-health-check` | "Generate a service health report..." | Peace-time report — no incident, but 4 novel signals to call out. |
+| `dashboard-build` | "We need dashboards to monitor our microservices..." | 3 user-facing + 4 distractor services. Dashboard creation via MCP tools, cross-dashboard drill-down, messy severity, latency red herring, impossible metric requests. |
 
 Use `--volume-factor` to scale background row counts for faster iteration.
 Planted anomaly counts stay fixed.
@@ -408,6 +409,21 @@ the agent's system prompt. It is persisted in `eval.config.json` under
   `--reseed` since the data must match the current time.
 - **`--reseed`**: force re-seed even when data already exists (e.g. after
   changing the seed value or anchor time).
+
+The anchor is intentionally allowed to age. It is **not** auto-refreshed when
+wall-clock time advances, and stale data does **not** trigger an automatic
+reseed. This keeps seeded data stable across runs (important for CI, where a
+fresh reseed is much slower than reusing cached seed data).
+
+> **Note on `clickstack_describe_source`:** that tool samples its value-related
+> fields (`lowCardinalityValues`, `mapAttributeValues`, `mapAttributeKeys`)
+> over a fixed **last-24h-of-wall-clock** window, independent of the anchor.
+> Once seeded data ages past that window those fields come back empty/partial.
+> Rather than refreshing the anchor and reseeding to keep them populated, the
+> system prompt instructs the agent to treat those samples as unreliable and to
+> discover real values via anchored queries instead (see
+> `SAMPLING_CAVEAT_BLOCK` in `src/harness/systemPrompt.ts`). The `columns`
+> schema from `describe_source` is unaffected and remains reliable.
 
 ## Tests
 
