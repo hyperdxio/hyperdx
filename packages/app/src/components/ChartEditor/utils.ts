@@ -62,11 +62,13 @@ export const isRawSqlDisplayType = (
   | DisplayType.Line
   | DisplayType.StackedBar
   | DisplayType.Pie
+  | DisplayType.Bar
   | DisplayType.Number =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
   displayType === DisplayType.Pie ||
+  displayType === DisplayType.Bar ||
   displayType === DisplayType.Number;
 
 /**
@@ -87,11 +89,13 @@ export const isPromqlDisplayType = (
   | DisplayType.Line
   | DisplayType.StackedBar
   | DisplayType.Pie
+  | DisplayType.Bar
   | DisplayType.Number =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
   displayType === DisplayType.Pie ||
+  displayType === DisplayType.Bar ||
   displayType === DisplayType.Number;
 
 export function convertFormStateToSavedChartConfig(
@@ -403,11 +407,12 @@ export const validateChartForm = (
     }
   }
 
-  // Validate pie and heatmap charts only have one series
+  // Validate pie, bar, and heatmap charts only have one series
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
     (form.displayType === DisplayType.Pie ||
+      form.displayType === DisplayType.Bar ||
       form.displayType === DisplayType.Heatmap) &&
     form.series.length > 1
   ) {

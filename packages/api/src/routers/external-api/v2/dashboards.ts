@@ -813,6 +813,42 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
  *
+ *     CategoricalBarBuilderChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *         - select
+ *       description: >
+ *         Builder configuration for a categorical bar chart tile. Each bar
+ *         represents one group value. Distinct from stacked_bar, which is a
+ *         time-series chart.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [bar]
+ *           description: Display type discriminator. Must be "bar" for categorical bar charts.
+ *           example: "bar"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 1
+ *           description: Exactly one aggregated value used to size each bar.
+ *           items:
+ *             $ref: '#/components/schemas/SelectItem'
+ *         groupBy:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Field expression to group results by (one bar per group value).
+ *           example: "service"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
+ *
  *     HeatmapSelectItem:
  *       type: object
  *       required:
@@ -1106,6 +1142,20 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               description: Display as a pie chart.
  *               example: "pie"
  *
+ *     CategoricalBarRawSqlChartConfig:
+ *       description: Raw SQL configuration for a categorical bar chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/RawSqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [bar]
+ *               description: Display as a categorical bar chart.
+ *               example: "bar"
+ *
  *     LineChartConfig:
  *       description: >
  *         Line chart. Omit configType for the builder variant (requires sourceId
@@ -1324,12 +1374,26 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         mapping:
  *           sql: '#/components/schemas/PieRawSqlChartConfig'
  *
+ *     CategoricalBarChartConfig:
+ *       description: >
+ *         Categorical bar chart (one bar per group value; not a time series).
+ *         Omit configType for the builder variant (requires sourceId and
+ *         select). Set configType to "sql" for the Raw SQL variant (requires
+ *         connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/CategoricalBarBuilderChartConfig'
+ *         - $ref: '#/components/schemas/CategoricalBarRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/CategoricalBarRawSqlChartConfig'
+ *
  *     TileConfig:
  *       description: >
  *         Tile chart configuration. displayType is the primary discriminant and
  *         determines which variant group applies. For displayTypes that support
- *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie),
- *         configType is the secondary discriminant: omit it for the builder
+ *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie,
+ *         bar), configType is the secondary discriminant: omit it for the builder
  *         variant or set it to "sql" for the Raw SQL variant. The heatmap,
  *         search, event_patterns, and markdown displayTypes only have a builder variant.
  *       oneOf:
@@ -1338,6 +1402,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         - $ref: '#/components/schemas/TableChartConfig'
  *         - $ref: '#/components/schemas/NumberChartConfig'
  *         - $ref: '#/components/schemas/PieChartConfig'
+ *         - $ref: '#/components/schemas/CategoricalBarChartConfig'
  *         - $ref: '#/components/schemas/HeatmapChartConfig'
  *         - $ref: '#/components/schemas/SearchChartConfig'
  *         - $ref: '#/components/schemas/EventPatternsChartConfig'
@@ -1350,6 +1415,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           table: '#/components/schemas/TableChartConfig'
  *           number: '#/components/schemas/NumberChartConfig'
  *           pie: '#/components/schemas/PieChartConfig'
+ *           bar: '#/components/schemas/CategoricalBarChartConfig'
  *           heatmap: '#/components/schemas/HeatmapChartConfig'
  *           search: '#/components/schemas/SearchChartConfig'
  *           event_patterns: '#/components/schemas/EventPatternsChartConfig'

@@ -1,8 +1,16 @@
 import { memo, useMemo } from 'react';
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import {
+  Bar,
+  BarChart,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
-import { Box, Flex, ScrollArea, Text } from '@mantine/core';
+import { Flex } from '@mantine/core';
 
 import {
   buildMVDateRangeIndicator,
@@ -22,14 +30,17 @@ import ChartErrorState, {
 import { ChartTooltipContainer, ChartTooltipItem } from './charts/ChartTooltip';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
-const PieChartTooltip = memo(
+const BarChartTooltip = memo(
   ({
     active,
     payload,
     numberFormat,
   }: {
     active?: boolean;
-    payload?: { name: string; value: number; payload: { color: string } }[];
+    payload?: {
+      value: number;
+      payload: { label: string; color: string };
+    }[];
     numberFormat?: NumberFormat;
   }) => {
     if (!active || !payload?.length) return null;
@@ -38,7 +49,7 @@ const PieChartTooltip = memo(
       <ChartTooltipContainer>
         <ChartTooltipItem
           color={entry.payload.color}
-          name={entry.name}
+          name={entry.payload.label}
           value={entry.value}
           numberFormat={numberFormat}
           indicator="none"
@@ -48,55 +59,7 @@ const PieChartTooltip = memo(
   },
 );
 
-const PieChartLegend = memo(
-  ({
-    data,
-    numberFormat,
-  }: {
-    data: { label: string; value: number; color: string }[];
-    numberFormat?: NumberFormat;
-  }) => {
-    if (!data.length) return null;
-    return (
-      <ScrollArea
-        data-testid="pie-chart-legend"
-        type="auto"
-        style={{ flexShrink: 0, maxWidth: '40%', alignSelf: 'stretch' }}
-        px="sm"
-      >
-        <Flex direction="column" gap={4}>
-          {data.map(entry => (
-            <Flex key={entry.label} align="center" gap={6} wrap="nowrap">
-              <Box
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: 2,
-                  backgroundColor: entry.color,
-                  flexShrink: 0,
-                }}
-              />
-              <Text size="xs" c="dimmed" truncate="end" title={entry.label}>
-                {truncateMiddle(entry.label, 40)}
-              </Text>
-              <Text
-                size="xs"
-                c="dimmed"
-                style={{ flexShrink: 0, marginLeft: 'auto' }}
-              >
-                {numberFormat
-                  ? formatNumber(entry.value, numberFormat)
-                  : entry.value}
-              </Text>
-            </Flex>
-          ))}
-        </Flex>
-      </ScrollArea>
-    );
-  },
-);
-
-export const DBPieChart = ({
+export const DBBarChart = ({
   config,
   title,
   enabled = true,
@@ -152,7 +115,7 @@ export const DBPieChart = ({
     if (source && showMVOptimizationIndicator && builderQueriedConfig) {
       allToolbarItems.push(
         <MVOptimizationIndicator
-          key="db-table-chart-mv-indicator"
+          key="db-bar-chart-mv-indicator"
           config={builderQueriedConfig}
           source={source}
           variant="icon"
@@ -184,7 +147,7 @@ export const DBPieChart = ({
     builderQueriedConfig,
   ]);
 
-  const [pieChartData, responseFormatError] = useMemo(() => {
+  const [barChartData, responseFormatError] = useMemo(() => {
     if (!data) return [[], null];
     try {
       return [formatResponseForCategoricalChart(data, getColorProps), null];
@@ -209,7 +172,7 @@ export const DBPieChart = ({
         </div>
       ) : (
         <Flex
-          data-testid="pie-chart-container"
+          data-testid="bar-chart-container"
           align="center"
           justify="center"
           h="100%"
@@ -220,30 +183,39 @@ export const DBPieChart = ({
             width="100%"
             className={isLoading ? 'effect-pulse' : ''}
           >
-            <PieChart>
-              <Pie
-                cx="50%"
-                cy="50%"
-                data={pieChartData}
-                dataKey="value"
-                fill="#8884d8"
-                nameKey="label"
-              >
-                {pieChartData.map(entry => (
+            <BarChart data={barChartData}>
+              <XAxis
+                dataKey="label"
+                interval="preserveStartEnd"
+                tickFormatter={(value: string) => truncateMiddle(value, 20)}
+                tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
+              />
+              <YAxis
+                width={40}
+                minTickGap={25}
+                tickFormatter={(value: number) =>
+                  resolvedNumberFormat
+                    ? formatNumber(value, resolvedNumberFormat)
+                    : new Intl.NumberFormat('en-US', {
+                        notation: 'compact',
+                        compactDisplay: 'short',
+                      }).format(value)
+                }
+                tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
+              />
+              <Bar dataKey="value">
+                {barChartData.map(entry => (
                   <Cell key={entry.label} fill={entry.color} stroke="none" />
                 ))}
-              </Pie>
+              </Bar>
               <Tooltip
                 content={
-                  <PieChartTooltip numberFormat={resolvedNumberFormat} />
+                  <BarChartTooltip numberFormat={resolvedNumberFormat} />
                 }
+                cursor={{ fill: 'transparent' }}
               />
-            </PieChart>
+            </BarChart>
           </ResponsiveContainer>
-          <PieChartLegend
-            data={pieChartData}
-            numberFormat={resolvedNumberFormat}
-          />
         </Flex>
       )}
     </ChartContainer>

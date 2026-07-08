@@ -99,6 +99,7 @@ export function ChartEditorControls({
 }: ChartEditorControlsProps) {
   const canAddSeries =
     displayType !== DisplayType.Pie &&
+    displayType !== DisplayType.Bar &&
     displayType !== DisplayType.Heatmap &&
     // Number tiles support up to two series (numerator + denominator for
     // ratio mode); Line/Table types remain unbounded.

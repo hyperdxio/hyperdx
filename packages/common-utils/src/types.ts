@@ -35,6 +35,7 @@ export enum DisplayType {
   StackedBar = 'stacked_bar',
   Table = 'table',
   Pie = 'pie',
+  Bar = 'bar',
   Number = 'number',
   Search = 'search',
   Heatmap = 'heatmap',

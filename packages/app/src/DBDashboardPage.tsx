@@ -139,6 +139,7 @@ import ChartContainer, {
   CollapsedToolbarProvider,
   DASHBOARD_TILE_PADDING_INLINE,
 } from './components/charts/ChartContainer';
+import { DBBarChart } from './components/DBBarChart';
 import DBHeatmapChart, {
   toHeatmapChartConfig,
 } from './components/DBHeatmapChart';
@@ -1110,6 +1111,16 @@ const Tile = forwardRef(
                 )}
                 {effectiveQueriedConfig?.displayType === DisplayType.Pie && (
                   <DBPieChart
+                    key={`${keyPrefix}-${chart.id}`}
+                    title={title}
+                    toolbarPrefix={toolbarPrefixItems}
+                    toolbarSuffix={toolbarSuffixItems}
+                    enabled={chartEnabled}
+                    config={effectiveQueriedConfig}
+                  />
+                )}
+                {effectiveQueriedConfig?.displayType === DisplayType.Bar && (
+                  <DBBarChart
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
                     toolbarPrefix={toolbarPrefixItems}
