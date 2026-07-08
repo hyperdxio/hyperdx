@@ -27,9 +27,16 @@ jest.mock('@/source', () => ({
 jest.mock('@/components/DBTraceWaterfallChart', () => ({
   DBTraceWaterfallChartContainer: ({
     emptyState,
+    controlsExtra,
   }: {
     emptyState?: React.ReactNode;
-  }) => <div>{emptyState ?? 'waterfall'}</div>,
+    controlsExtra?: React.ReactNode;
+  }) => (
+    <div>
+      {controlsExtra}
+      {emptyState ?? 'waterfall'}
+    </div>
+  ),
 }));
 
 jest.mock('../SourceSelect', () => ({
@@ -85,5 +92,36 @@ describe('DBTracePanel', () => {
     );
 
     expect(screen.getByText('Trace not found')).toBeInTheDocument();
+  });
+
+  it('moves the correlated logs source selector into the waterfall controls', () => {
+    renderWithMantine(
+      <DBTracePanel
+        traceId="trace-123"
+        parentSourceId="trace-source"
+        childSourceId="log-source"
+        dateRange={[new Date(0), new Date(1000)]}
+        focusDate={new Date(500)}
+      />,
+    );
+
+    // The selector (mocked) now renders inside the waterfall controls bar.
+    expect(screen.getByText('source select')).toBeInTheDocument();
+    expect(screen.getByText('Correlated logs')).toBeInTheDocument();
+  });
+
+  it('does not duplicate the trace id in the panel body', () => {
+    renderWithMantine(
+      <DBTracePanel
+        traceId="trace-123"
+        parentSourceId="trace-source"
+        childSourceId="log-source"
+        dateRange={[new Date(0), new Date(1000)]}
+        focusDate={new Date(500)}
+      />,
+    );
+
+    // Trace id lives in the side-panel header now, not the trace panel body.
+    expect(screen.queryByText(/trace-123/)).not.toBeInTheDocument();
   });
 });
