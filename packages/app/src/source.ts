@@ -48,7 +48,7 @@ export const SESSION_TABLE_EXPRESSIONS = {
   implicitColumnExpression: 'Body',
 } as const;
 
-export const JSON_SESSION_TABLE_EXPRESSIONS = {
+const JSON_SESSION_TABLE_EXPRESSIONS = {
   ...SESSION_TABLE_EXPRESSIONS,
   timestampValueExpression: 'Timestamp',
 } as const;
@@ -88,6 +88,17 @@ export function getEventBody(eventModel: TSource) {
   }
   const multiExpr = splitAndTrimWithBracket(expression ?? '');
   return multiExpr.length === 1 ? expression : multiExpr[0];
+}
+
+/**
+ * Check if a select string is a single expression (valid as a pattern body
+ * expression) rather than a multi-column list (stale
+ * `defaultTableSelectExpression`). Uses bracket-aware comma splitting so
+ * expressions like `COALESCE(SpanName, Body)` are correctly treated as a
+ * single expression.
+ */
+export function isSingleExpression(select: string): boolean {
+  return splitAndTrimWithBracket(select).length <= 1;
 }
 
 // This function is for supporting legacy sources, which did not require this field.

@@ -1,5 +1,4 @@
 import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import mongoose from 'mongoose';
 
 import * as config from '@/config';
@@ -9,9 +8,12 @@ import {
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
-import type { McpContext } from '@/mcp/tools/types';
-import { mcpError, validateObjectId } from '@/mcp/utils/errors';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import {
+  mcpServerError,
+  mcpUserError,
+  validateObjectId,
+} from '@/mcp/utils/errors';
 import { type AlertChannel, AlertSource } from '@/models/alert';
 import { BaseError } from '@/utils/errors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
@@ -33,14 +35,14 @@ function toAlertChannel(ch: McpSaveAlertInput['channel']): AlertChannel {
   };
 }
 
-export function registerSaveAlert(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerSaveAlert({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
-  server.registerTool(
+  registerTool(
     'clickstack_save_alert',
     {
       title: 'Create or Update Alert',
@@ -50,11 +52,11 @@ export function registerSaveAlert(
         'metric crosses a threshold. A webhook notification channel is required.',
       inputSchema: mcpSaveAlertSchema,
     },
-    withToolTracing('clickstack_save_alert', context, async input => {
+    async input => {
       // ── Runtime cross-field validation ──
       const validationError = validateSaveAlertInput(input);
       if (validationError) {
-        return mcpError(validationError);
+        return mcpUserError(validationError);
       }
 
       // ── Validate ID for updates (early return narrows input.id to string) ──
@@ -98,7 +100,7 @@ export function registerSaveAlert(
             : e instanceof Error
               ? e.message
               : String(e);
-        return mcpError(msg);
+        return e instanceof BaseError ? mcpUserError(msg) : mcpServerError(msg);
       }
 
       const mongoUserId = new mongoose.Types.ObjectId(userId);
@@ -107,7 +109,7 @@ export function registerSaveAlert(
       if (alertId) {
         const updated = await updateAlert(alertId, mongoTeamId, alertInput);
         if (!updated) {
-          return mcpError('Alert not found');
+          return mcpUserError('Alert not found');
         }
         return {
           content: [
@@ -147,6 +149,6 @@ export function registerSaveAlert(
           },
         ],
       };
-    }),
+    },
   );
 }

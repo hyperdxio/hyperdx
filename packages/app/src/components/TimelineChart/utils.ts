@@ -1,3 +1,18 @@
+// Shared maxVal used to position events across the waterfall and the minimap.
+// Adds 10% right padding so the last span never touches the edge. Kept here so
+// TimelineChart and TimelineMinimap derive an identical timeline range.
+export function getMaxEventValue(
+  rows: { events: { end: number }[] }[],
+): number {
+  let max = 0;
+  for (const row of rows) {
+    for (const event of row.events) {
+      max = Math.max(max, event.end);
+    }
+  }
+  return max * 1.1;
+}
+
 export function renderMs(ms: number) {
   if (ms < 1) {
     const µsRounded = Math.round(ms * 1000);

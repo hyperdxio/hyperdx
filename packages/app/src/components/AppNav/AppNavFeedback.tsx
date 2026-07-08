@@ -1,15 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { useRouter } from 'next/router';
 import HyperDX from '@hyperdx/browser';
-import {
-  ActionIcon,
-  Box,
-  Button,
-  Group,
-  Text,
-  Textarea,
-  Tooltip,
-} from '@mantine/core';
+import { ActionIcon, Box, Button, Group, Text, Textarea } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
 import {
   IconThumbDown,
@@ -114,40 +106,9 @@ const AppNavFeedbackInner = () => {
     }, 1500);
   }, [vote, comment, pageContext, reset]);
 
-  if (!sdkEnabled || hidden || dismissed) return null;
-
-  if (isCollapsed) {
-    return (
-      <Tooltip label="Feedback" position="right">
-        <Group
-          data-testid="feedback-inline"
-          gap={0}
-          justify="center"
-          py={4}
-          wrap="nowrap"
-        >
-          <ActionIcon
-            data-testid="feedback-thumbs-up"
-            variant="subtle"
-            size="sm"
-            onClick={() => handleVote('up')}
-            title="Thumbs up"
-          >
-            <IconThumbUp size={14} />
-          </ActionIcon>
-          <ActionIcon
-            data-testid="feedback-thumbs-down"
-            variant="subtle"
-            size="sm"
-            onClick={() => handleVote('down')}
-            title="Thumbs down"
-          >
-            <IconThumbDown size={14} />
-          </ActionIcon>
-        </Group>
-      </Tooltip>
-    );
-  }
+  // Hide the feedback control entirely when the nav is collapsed, since it is
+  // not usable in that state.
+  if (!sdkEnabled || hidden || dismissed || isCollapsed) return null;
 
   return (
     <Box data-testid="feedback-inline">

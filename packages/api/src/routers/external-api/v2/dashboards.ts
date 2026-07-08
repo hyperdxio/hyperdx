@@ -129,6 +129,26 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         Palette token used to color a number tile. Tokens reflow across
  *         light and dark themes, so raw hex values are not accepted.
  *       example: "chart-red"
+ *     BackgroundChart:
+ *       type: object
+ *       required:
+ *         - type
+ *       description: >
+ *         Optional background trend sparkline drawn behind a number tile's
+ *         value, derived from a time-bucketed version of the tile's query.
+ *         Builder number tiles only (raw SQL number tiles have no time
+ *         dimension to bucket).
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [line, area]
+ *           description: Sparkline shape.
+ *           example: "line"
+ *         color:
+ *           $ref: '#/components/schemas/ChartPaletteToken'
+ *           description: >
+ *             Optional palette-token override for the sparkline. When unset
+ *             the sparkline inherits the tile's static color.
  *     NumericColorCondition:
  *       type: object
  *       required:
@@ -755,6 +775,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             text color when no rule matches.
  *           items:
  *             $ref: '#/components/schemas/NumberTileColorCondition'
+ *         backgroundChart:
+ *           $ref: '#/components/schemas/BackgroundChart'
+ *           description: >
+ *             Optional background trend sparkline drawn behind the value.
  *
  *     PieBuilderChartConfig:
  *       type: object
@@ -892,6 +916,38 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           type: string
  *           maxLength: 10000
  *           description: Filter condition for the search (syntax depends on whereLanguage).
+ *           default: ""
+ *           example: "level:error"
+ *         whereLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause.
+ *
+ *     EventPatternsChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *       description: Configuration for an event pattern mining tile. Clusters log or trace events by recurring message shapes.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [event_patterns]
+ *           description: Display type discriminator. Must be "event_patterns" for pattern mining tiles.
+ *           example: "event_patterns"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to mine patterns from.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Column or expression to mine patterns from. Leave empty to use the source default (Body for logs, SpanName for traces).
+ *           default: ""
+ *           example: "Body"
+ *         where:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Filter condition for the pattern mining query (syntax depends on whereLanguage).
  *           default: ""
  *           example: "level:error"
  *         whereLanguage:
@@ -1191,6 +1247,27 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           items:
  *             $ref: '#/components/schemas/OnClickFilterTemplate'
  *
+ *     OnClickExternal:
+ *       type: object
+ *       required: [type, urlTemplate]
+ *       description: >
+ *         Link-out that navigates to an arbitrary external URL (e.g. a Grafana
+ *         or Langfuse dashboard). The rendered URL must be an absolute http(s) URL.
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [external]
+ *           description: OnClick variant discriminator. Must be "external" for external link-outs.
+ *           example: "external"
+ *         urlTemplate:
+ *           type: string
+ *           minLength: 1
+ *           description: >
+ *             Handlebars template rendered against the clicked row; supports
+ *             `{{column}}` variables. The rendered value must be an absolute
+ *             http(s) URL.
+ *           example: "https://example.com/d/abc?var-service={{ServiceName}}"
+ *
  *     OnClick:
  *       description: >
  *         Link-out configuration applied when a user clicks a row of a table tile.
@@ -1200,11 +1277,13 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *       oneOf:
  *         - $ref: '#/components/schemas/OnClickSearch'
  *         - $ref: '#/components/schemas/OnClickDashboard'
+ *         - $ref: '#/components/schemas/OnClickExternal'
  *       discriminator:
  *         propertyName: type
  *         mapping:
  *           search: '#/components/schemas/OnClickSearch'
  *           dashboard: '#/components/schemas/OnClickDashboard'
+ *           external: '#/components/schemas/OnClickExternal'
  *
  *     TableChartConfig:
  *       description: >
@@ -1252,7 +1331,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie),
  *         configType is the secondary discriminant: omit it for the builder
  *         variant or set it to "sql" for the Raw SQL variant. The heatmap,
- *         search, and markdown displayTypes only have a builder variant.
+ *         search, event_patterns, and markdown displayTypes only have a builder variant.
  *       oneOf:
  *         - $ref: '#/components/schemas/LineChartConfig'
  *         - $ref: '#/components/schemas/BarChartConfig'
@@ -1261,6 +1340,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         - $ref: '#/components/schemas/PieChartConfig'
  *         - $ref: '#/components/schemas/HeatmapChartConfig'
  *         - $ref: '#/components/schemas/SearchChartConfig'
+ *         - $ref: '#/components/schemas/EventPatternsChartConfig'
  *         - $ref: '#/components/schemas/MarkdownChartConfig'
  *       discriminator:
  *         propertyName: displayType
@@ -1272,6 +1352,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           pie: '#/components/schemas/PieChartConfig'
  *           heatmap: '#/components/schemas/HeatmapChartConfig'
  *           search: '#/components/schemas/SearchChartConfig'
+ *           event_patterns: '#/components/schemas/EventPatternsChartConfig'
  *           markdown: '#/components/schemas/MarkdownChartConfig'
  *
  *     DashboardContainerTab:
@@ -1881,6 +1962,127 @@ router.get(
     }
   },
 );
+
+/**
+ * @openapi
+ * /api/v2/dashboards/validate:
+ *   post:
+ *     summary: Validate Dashboard
+ *     description: |
+ *       Validates a dashboard body against the same schema and tile rules used
+ *       by POST /api/v2/dashboards. The dashboard is **never persisted**. Use
+ *       this endpoint at plan time (e.g. from a Terraform provider) to check
+ *       that a dashboard configuration is valid before applying it.
+ *     operationId: validateDashboard
+ *     tags: [Dashboards]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateDashboardRequest'
+ *     responses:
+ *       '200':
+ *         description: |
+ *           Validation result. HTTP 200 is always returned for valid **and**
+ *           invalid bodies — a non-200 response means the request itself
+ *           failed (auth, server error, etc.).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [valid, errors, normalized]
+ *               properties:
+ *                 valid:
+ *                   type: boolean
+ *                   description: True when the body passes all validation rules.
+ *                 errors:
+ *                   type: array
+ *                   description: Validation errors. Empty when valid is true.
+ *                   items:
+ *                     type: object
+ *                     required: [path, message]
+ *                     properties:
+ *                       path:
+ *                         type: string
+ *                         description: Dot-separated field path, or empty string for top-level errors.
+ *                       message:
+ *                         type: string
+ *                         description: Human-readable error description.
+ *                 normalized:
+ *                   type: object
+ *                   nullable: true
+ *                   description: |
+ *                     The parsed dashboard body with defaults applied (no
+ *                     persistence, so no server-assigned tile IDs). Populated
+ *                     when valid is true, null when valid is false.
+ *             examples:
+ *               valid:
+ *                 summary: Valid dashboard body
+ *                 value:
+ *                   valid: true
+ *                   errors: []
+ *                   normalized:
+ *                     name: "My Dashboard"
+ *                     tiles: []
+ *               invalid:
+ *                 summary: Invalid dashboard body
+ *                 value:
+ *                   valid: false
+ *                   errors:
+ *                     - path: "name"
+ *                       message: "Required"
+ *                   normalized: null
+ *       '401':
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Unauthorized access. API key is missing or invalid."
+ */
+router.post('/validate', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.sendStatus(403);
+    }
+
+    const parsed = createDashboardBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.json({
+        valid: false,
+        errors: parsed.error.issues.map(i => ({
+          path: i.path.join('.'),
+          message: i.message,
+        })),
+        normalized: null,
+      });
+    }
+
+    const { tiles, filters, containers } = parsed.data;
+    // Cast: createDashboardBodySchema tiles have optional `id`; the validator
+    // only reads sourceId/config — the cast is safe for a no-persist call.
+    const validationError = await validateDashboardTiles({
+      teamId: teamId.toString(),
+      tiles: tiles as ExternalDashboardTileWithId[],
+      filters,
+      containers: containers ?? [],
+    });
+    if (validationError) {
+      return res.json({
+        valid: false,
+        errors: [{ path: '', message: validationError }],
+        normalized: null,
+      });
+    }
+
+    return res.json({ valid: true, errors: [], normalized: parsed.data });
+  } catch (e) {
+    next(e);
+  }
+});
 
 /**
  * @openapi

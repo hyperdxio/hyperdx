@@ -70,7 +70,7 @@ interface ChartDisplaySettingsDrawerProps {
   /** 'sql' for raw SQL chart configs; anything else is treated as a builder config. */
   configType?: 'sql' | 'builder' | 'promql';
   previousDateRange?: [Date, Date];
-  onChange: (settings: ChartConfigDisplaySettings) => void;
+  onChange: (settings: ChartConfigDisplaySettings, isDirty: boolean) => void;
   onClose: () => void;
   isPerSeriesNumberFormatAllowed?: boolean;
 }
@@ -150,13 +150,17 @@ export default function ChartDisplaySettingsDrawer({
       // instead of freezing the drawer's inferred fallback into the config.
       const numberFormatExplicit =
         settings.numberFormat != null || dirtyFields.numberFormat != null;
-      onChange({
-        ...rest,
-        numberFormat: numberFormatExplicit
-          ? formValues.numberFormat
-          : undefined,
-        colorRules: colorRules ? stripLocalIds(colorRules) : undefined,
-      });
+      const hasDirtyFields = Object.keys(dirtyFields).length > 0;
+      onChange(
+        {
+          ...rest,
+          numberFormat: numberFormatExplicit
+            ? formValues.numberFormat
+            : undefined,
+          colorRules: colorRules ? stripLocalIds(colorRules) : undefined,
+        },
+        hasDirtyFields,
+      );
     })();
     onClose();
   }, [onChange, handleSubmit, onClose, settings.numberFormat, dirtyFields]);
@@ -175,7 +179,8 @@ export default function ChartDisplaySettingsDrawer({
 
   // The series-limit CTE is only emitted for builder group-by time charts;
   // raw SQL configs author their own LIMIT logic directly.
-  const showSeriesLimit = isTimeChart && configType !== 'sql';
+  const showSeriesLimit =
+    isTimeChart && configType !== 'sql' && configType !== 'promql';
 
   // Group By column ordering only applies to builder table charts; raw SQL
   // configs let the user author whatever column order they want directly.
@@ -348,7 +353,12 @@ export default function ChartDisplaySettingsDrawer({
           <Button type="submit" variant="secondary" onClick={resetToDefaults}>
             Reset to Defaults
           </Button>
-          <Button type="submit" variant="primary" onClick={applyChanges}>
+          <Button
+            type="submit"
+            variant="primary"
+            onClick={applyChanges}
+            data-testid="display-settings-apply-button"
+          >
             Apply
           </Button>
         </Group>

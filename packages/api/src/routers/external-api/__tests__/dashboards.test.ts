@@ -2371,6 +2371,7 @@ describe('External API v2 Dashboards - new format', () => {
               label: 'Critical',
             },
           ],
+          backgroundChart: { type: 'area', color: 'chart-blue' },
         },
       };
 
@@ -2412,6 +2413,21 @@ describe('External API v2 Dashboards - new format', () => {
         },
       };
 
+      const eventPatternsChart: ExternalDashboardTile = {
+        name: 'Event Patterns',
+        x: 18,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'event_patterns',
+          sourceId: traceSource._id.toString(),
+          select: 'SpanName',
+          where: 'level:error',
+          whereLanguage: 'lucene',
+        },
+      };
+
       // Act
       const response = await authRequest('post', BASE_URL)
         .send({
@@ -2424,6 +2440,7 @@ describe('External API v2 Dashboards - new format', () => {
             markdownChart,
             pieChart,
             heatmapChart,
+            eventPatternsChart,
           ],
           tags: ['round-trip-test'],
         })
@@ -2437,6 +2454,9 @@ describe('External API v2 Dashboards - new format', () => {
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(markdownChart);
       expect(omit(response.body.data.tiles[5], ['id'])).toEqual(pieChart);
       expect(omit(response.body.data.tiles[6], ['id'])).toEqual(heatmapChart);
+      expect(omit(response.body.data.tiles[7], ['id'])).toEqual(
+        eventPatternsChart,
+      );
     });
 
     // Schema-level rejections that exercise pure Zod constraints
@@ -3181,6 +3201,39 @@ describe('External API v2 Dashboards - new format', () => {
       });
     });
 
+    it('should accept and round-trip a table tile external onClick link', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with external onClick',
+          tiles: [
+            {
+              name: 'External Link Table',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'table',
+                sourceId: traceSource._id.toString(),
+                select: [{ aggFn: 'count' }],
+                onClick: {
+                  type: 'external',
+                  urlTemplate:
+                    'https://grafana.example.com/d/abc?var-service={{ServiceName}}',
+                },
+              },
+            },
+          ],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config.onClick).toEqual({
+        type: 'external',
+        urlTemplate:
+          'https://grafana.example.com/d/abc?var-service={{ServiceName}}',
+      });
+    });
+
     it('should return 400 when a table tile onClick target.id is not a valid ObjectId', async () => {
       const response = await authRequest('post', BASE_URL)
         .send({
@@ -3898,6 +3951,7 @@ describe('External API v2 Dashboards - new format', () => {
               label: 'Critical',
             },
           ],
+          backgroundChart: { type: 'area', color: 'chart-blue' },
         },
       };
 
@@ -3941,6 +3995,22 @@ describe('External API v2 Dashboards - new format', () => {
         },
       };
 
+      const eventPatternsChart: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Event Patterns',
+        x: 12,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'event_patterns',
+          sourceId: traceSource._id.toString(),
+          select: 'SpanName',
+          where: 'level:error',
+          whereLanguage: 'lucene',
+        },
+      };
+
       // Create an initial dashboard to update
       const initialDashboard = await createTestDashboard();
 
@@ -3958,6 +4028,7 @@ describe('External API v2 Dashboards - new format', () => {
             numberChart,
             markdownChart,
             heatmapChart,
+            eventPatternsChart,
           ],
           tags: ['round-trip-test'],
         })
@@ -3981,6 +4052,9 @@ describe('External API v2 Dashboards - new format', () => {
       );
       expect(omit(response.body.data.tiles[5], ['id'])).toEqual(
         omit(heatmapChart, ['id']),
+      );
+      expect(omit(response.body.data.tiles[6], ['id'])).toEqual(
+        omit(eventPatternsChart, ['id']),
       );
     });
 
@@ -4910,6 +4984,175 @@ describe('External API v2 Dashboards - new format', () => {
     });
   });
 
+  describe('Number tile background chart (HDX-1360)', () => {
+    // Minimal builder number tile; callers supply backgroundChart. The payload
+    // is sent through `.send()` (untyped) so negative tests can post
+    // intentionally invalid values without tripping the compile-time schema.
+    const numberTile = (config: Record<string, unknown>) => ({
+      name: 'Number',
+      x: 0,
+      y: 0,
+      w: 3,
+      h: 3,
+      config: {
+        displayType: 'number',
+        sourceId: traceSource._id.toString(),
+        select: [{ aggFn: 'count', where: '' }],
+        ...config,
+      },
+    });
+
+    const postTile = (config: Record<string, unknown>) =>
+      authRequest('post', BASE_URL).send({
+        name: 'Number background chart dashboard',
+        tiles: [numberTile(config)],
+        tags: [],
+      });
+
+    const rawSqlNumberTile = (config: Record<string, unknown>) => ({
+      name: 'Number Raw SQL',
+      x: 0,
+      y: 0,
+      w: 3,
+      h: 3,
+      config: {
+        configType: 'sql',
+        displayType: 'number',
+        connectionId: connection._id.toString(),
+        sqlTemplate: 'SELECT count() FROM otel_logs WHERE {timeFilter}',
+        sourceId: traceSource._id.toString(),
+        ...config,
+      },
+    });
+
+    // ── Positive: one per UI input ──────────────────────────────────────
+
+    it('round-trips a builder number tile with a line background chart', async () => {
+      const create = await postTile({
+        backgroundChart: { type: 'line' },
+      }).expect(200);
+      expect(create.body.data.tiles[0].config.backgroundChart).toEqual({
+        type: 'line',
+      });
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.backgroundChart).toEqual({
+        type: 'line',
+      });
+    });
+
+    it('round-trips an area background chart with a color override', async () => {
+      const create = await postTile({
+        backgroundChart: { type: 'area', color: 'chart-green' },
+      }).expect(200);
+      expect(create.body.data.tiles[0].config.backgroundChart).toEqual({
+        type: 'area',
+        color: 'chart-green',
+      });
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config.backgroundChart).toEqual({
+        type: 'area',
+        color: 'chart-green',
+      });
+    });
+
+    it('round-trips backgroundChart through an update (PUT)', async () => {
+      const created = await postTile({}).expect(200);
+      const dashboardId = created.body.data.id;
+      const tile = created.body.data.tiles[0];
+
+      const update = await authRequest('put', `${BASE_URL}/${dashboardId}`)
+        .send({
+          name: 'Number background chart dashboard',
+          tiles: [
+            {
+              ...tile,
+              config: {
+                ...tile.config,
+                backgroundChart: { type: 'line', color: 'chart-red' },
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+      expect(update.body.data.tiles[0].config.backgroundChart).toEqual({
+        type: 'line',
+        color: 'chart-red',
+      });
+
+      const get = await authRequest('get', `${BASE_URL}/${dashboardId}`).expect(
+        200,
+      );
+      expect(get.body.data.tiles[0].config.backgroundChart).toEqual({
+        type: 'line',
+        color: 'chart-red',
+      });
+    });
+
+    // ── Negative: one per schema rejection rule ─────────────────────────
+
+    it('rejects a background chart type outside the line/area enum', async () => {
+      const res = await postTile({
+        backgroundChart: { type: 'bar' },
+      }).expect(400);
+      expect(res.body.message).toContain('tiles.0.config.backgroundChart');
+    });
+
+    it('rejects a background chart with no type', async () => {
+      // `type` is required; a color override alone is not a valid sparkline.
+      await postTile({
+        backgroundChart: { color: 'chart-green' },
+      }).expect(400);
+    });
+
+    it('rejects a background chart color that is not a palette token', async () => {
+      await postTile({
+        backgroundChart: { type: 'line', color: '#ff0000' },
+      }).expect(400);
+      // Legacy numeric tokens are normalized on read, never accepted on write.
+      await postTile({
+        backgroundChart: { type: 'line', color: 'chart-1' },
+      }).expect(400);
+    });
+
+    // ── Builder-only: raw SQL number tiles never carry it ───────────────
+
+    it('strips backgroundChart from a raw SQL number tile, keeping color', async () => {
+      // The raw SQL number schema has no backgroundChart (the editor disables
+      // the control for SQL tiles and the save path never persists it), so a
+      // hand-written payload is stripped rather than stored.
+      const create = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Raw SQL backgroundChart',
+          tiles: [
+            rawSqlNumberTile({
+              color: 'chart-blue',
+              backgroundChart: { type: 'line' },
+            }),
+          ],
+          tags: [],
+        })
+        .expect(200);
+      expect(create.body.data.tiles[0].config.color).toBe('chart-blue');
+      expect(create.body.data.tiles[0].config.backgroundChart).toBeUndefined();
+    });
+
+    // ── Backward compatibility: the sparkline is opt-in ─────────────────
+
+    it('round-trips a builder number tile with no background chart', async () => {
+      const create = await postTile({}).expect(200);
+      expect(create.body.data.tiles[0].config.backgroundChart).toBeUndefined();
+    });
+  });
+
   describe('Containers and tabs', () => {
     const buildTile = (
       sourceId: string,
@@ -5689,11 +5932,51 @@ describe('External API v2 Dashboards - new format', () => {
         { method: 'post', path: BASE_URL },
         { method: 'put', path: `${BASE_URL}/${testId}` },
         { method: 'delete', path: `${BASE_URL}/${testId}` },
+        { method: 'post', path: `${BASE_URL}/validate` },
       ];
 
       for (const { method, path } of routes) {
         await unauthenticatedAgent[method](path).expect(401);
       }
+    });
+  });
+
+  describe('POST /api/v2/dashboards/validate', () => {
+    it('returns valid:true for a well-formed builder dashboard', async () => {
+      const res = await authRequest('post', `${BASE_URL}/validate`).send({
+        name: 'D',
+        tiles: [],
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.valid).toBe(true);
+      expect(res.body.errors).toEqual([]);
+    });
+
+    it('returns valid:false with errors for a malformed body', async () => {
+      const res = await authRequest('post', `${BASE_URL}/validate`).send({
+        tiles: 'nope',
+      }); // name missing, tiles wrong type
+      expect(res.status).toBe(200);
+      expect(res.body.valid).toBe(false);
+      expect(res.body.errors.length).toBeGreaterThan(0);
+    });
+
+    it('returns a normalized body with zod defaults applied when valid', async () => {
+      const res = await authRequest('post', `${BASE_URL}/validate`).send({
+        name: 'D',
+        tiles: [],
+      });
+      expect(res.body.valid).toBe(true);
+      expect(res.body.normalized).toMatchObject({ name: 'D', tiles: [] });
+    });
+
+    it('does not persist (dashboard count unchanged)', async () => {
+      const before = await Dashboard.countDocuments({});
+      await authRequest('post', `${BASE_URL}/validate`).send({
+        name: 'D',
+        tiles: [],
+      });
+      expect(await Dashboard.countDocuments({})).toBe(before);
     });
   });
 });

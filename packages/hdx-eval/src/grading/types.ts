@@ -10,7 +10,7 @@ export type ProgrammaticCheck = {
   negative?: boolean;
 };
 
-export type JudgeCriterion = {
+type JudgeCriterion = {
   id: string;
   weight: number;
   description: string;
@@ -81,13 +81,26 @@ export type GradeRecord = {
   judge: JudgeResult | null;
   toolErrors: ToolErrorStats;
   /**
+   * Scenario-specific inspection summary. Only present when the scenario
+   * provides a `postRunInspection` hook. The shape depends on the scenario
+   * (e.g., dashboard scenarios include tile details, alert scenarios might
+   * include alert evaluation results). Persisted as opaque JSON.
+   */
+  inspectionSummary?: Record<string, unknown>;
+  /**
+   * Human-readable inspection evidence that was passed to the LLM judge.
+   * Persisted so re-grades (e.g. --rerun-judge) can reuse the evidence
+   * without re-running the inspection hook (artifacts may be cleaned up).
+   */
+  inspectionEvidence?: string;
+  /**
    * combinedScore = clamp01(
    *   PROGRAMMATIC_WEIGHT * programmatic + JUDGE_WEIGHT * judge
    *     - toolErrors.penalty
    * )
-   * The penalty is at most MAX_ERROR_PENALTY (0.2) — a run can't be reduced
-   * to zero from a high error rate alone, but spamming bad tool calls makes
-   * an otherwise-good answer measurably worse.
+   * When a postRunInspection hook provides evidence, the judge receives
+   * it alongside the ground truth — the judge score already incorporates
+   * artifact quality, so no separate mechanical blend is needed.
    */
   combinedScore: number;
   gradedAt: string;

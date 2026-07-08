@@ -101,6 +101,8 @@ export function displayTypeToActiveTab(displayType: DisplayType): string {
       return 'number';
     case DisplayType.Heatmap:
       return 'heatmap';
+    case DisplayType.EventPatterns:
+      return 'event_patterns';
     default:
       return 'time';
   }
@@ -225,7 +227,7 @@ export function buildChartConfigForExplanations({
           }
         : undefined;
 
-  if (!config || isRawSqlChartConfig(config) || isPromqlChartConfig(config)) {
+  if (!config || !isBuilderChartConfig(config)) {
     return undefined;
   }
 

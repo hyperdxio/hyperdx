@@ -32,6 +32,8 @@ import { getMetadata } from '@/metadata';
 import { useSource, useSources } from '@/source';
 import { toArray } from '@/utils';
 
+export type Facet = { key: string; value: string[] };
+
 // Hook to get metadata with proper settings applied
 export function useMetadataWithSettings() {
   const [metadata, setMetadata] = useState(getMetadata());
@@ -89,7 +91,10 @@ export function useColumns(
 ) {
   const metadata = useMetadataWithSettings();
   return useQuery<ColumnMeta[]>({
-    queryKey: ['useMetadata.useColumns', { databaseName, tableName }],
+    queryKey: [
+      'useMetadata.useColumns',
+      { connectionId, databaseName, tableName },
+    ],
     queryFn: async () => {
       return metadata.getColumns({
         databaseName,
@@ -297,7 +302,10 @@ export function useTableMetadata(
 ) {
   const metadata = useMetadataWithSettings();
   return useQuery<TableMetadata | undefined>({
-    queryKey: ['useMetadata.useTableMetadata', { databaseName, tableName }],
+    queryKey: [
+      'useMetadata.useTableMetadata',
+      { connectionId, databaseName, tableName },
+    ],
     queryFn: async () => {
       return await metadata.getTableMetadata({
         databaseName,
@@ -342,7 +350,7 @@ export function useMultipleGetKeyValues(
   const maxKeys =
     me?.team?.filterKeysFetchLimit ?? DEFAULT_FILTER_KEYS_FETCH_LIMIT;
 
-  const query = useQuery<{ key: string; value: string[] }[]>({
+  const query = useQuery<Facet[]>({
     queryKey: [
       'useMetadata.useGetKeyValues',
       mode,
@@ -511,7 +519,7 @@ export function useAllFieldsAndValues(
   const { enabled = true } = options || {};
   const fieldMetadataDisabled = !!me?.team?.fieldMetadataDisabled;
 
-  return useQuery<{ key: string; value: string[] }[]>({
+  return useQuery<Facet[]>({
     queryKey: [
       'useMetadata.useAllFieldsAndValues',
       databaseName,
@@ -548,10 +556,6 @@ export function useAllFieldsAndValues(
       !!tableName &&
       !!connectionId,
   });
-}
-
-export function deduplicateArray<T extends object>(array: T[]): T[] {
-  return deduplicate2dArray([array]);
 }
 
 export function deduplicate2dArray<T extends object>(array2d: T[][]): T[] {
