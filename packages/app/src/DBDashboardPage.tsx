@@ -636,7 +636,7 @@ const Tile = forwardRef(
     // Firing/recovery markers for this tile's alert, scoped to the *visible*
     // window — the fullscreen range while the fullscreen view is open, else the
     // dashboard range (off unless the dashboard toggle is on).
-    const alertAnnotationReferenceLines = useAlertAnnotations(
+    const alertAnnotations = useAlertAnnotations(
       alert?.id,
       isFullscreen ? fullscreenDateRange : dateRange,
       showAlertAnnotations,
@@ -1077,7 +1077,7 @@ const Tile = forwardRef(
                     showDisplaySwitcher={true}
                     enabled={chartEnabled}
                     config={effectiveQueriedConfig}
-                    referenceLines={alertAnnotationReferenceLines}
+                    annotations={alertAnnotations}
                     onTimeRangeSelect={
                       isFullscreenView
                         ? (start, end) => setFullscreenDateRange([start, end])
@@ -1273,7 +1273,7 @@ const Tile = forwardRef(
         isSourceMissing,
         isSourceUnset,
         hasBeenVisible,
-        alertAnnotationReferenceLines,
+        alertAnnotations,
       ],
     );
 
