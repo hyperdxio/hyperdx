@@ -371,6 +371,49 @@ const LegendRenderer = memo<{
 
 export const HARD_LINES_LIMIT = MAX_TIME_CHART_SERIES;
 
+/** One series entry in a click-frozen tooltip's payload. */
+export type ActiveClickSeries = {
+  value?: number;
+  dataKey?: string;
+  name?: string;
+  /** Series color, matching the legend swatch. */
+  color?: string;
+};
+
+/**
+ * State for the click-frozen ("pinned") tooltip. Produced by MemoChart's
+ * onClick and consumed by DBTimeChart to render the drill-down popover.
+ */
+export type ActiveClickPayload = {
+  x: number;
+  y: number;
+  activeLabel: string;
+  xPerc: number;
+  yPerc: number;
+  activePayload?: ActiveClickSeries[];
+};
+
+/** Series label shown in the legend, tooltip, and line `name`. */
+const getSeriesDisplayName = (ld: LineData) => ld.displayName || ld.dataKey;
+
+/**
+ * The series actually drawn on the chart: the first HARD_LINES_LIMIT of
+ * lineData, narrowed to the legend selection when one is active. The rendered
+ * lines, the drill-down click payload, and the y-axis domain all derive from
+ * this same set so they never diverge. Exported for unit testing.
+ */
+export function getVisibleLineData(
+  lineData: LineData[],
+  selectedSeriesNames: Set<string> | undefined,
+): LineData[] {
+  const hasSelection = !!selectedSeriesNames && selectedSeriesNames.size > 0;
+  return lineData
+    .slice(0, HARD_LINES_LIMIT)
+    .filter(
+      ld => !hasSelection || selectedSeriesNames.has(getSeriesDisplayName(ld)),
+    );
+}
+
 const StackedBarWithOverlap = (props: BarProps) => {
   const { x, y, width, fill } = props;
   // `height` may arrive as a string, so coerce it to a number before the
@@ -491,8 +534,8 @@ export const MemoChart = memo(function MemoChart({
   fitYAxisToData = false,
 }: {
   graphResults: any[];
-  setIsClickActive: (v: any) => void;
-  isClickActive: any;
+  setIsClickActive: (v: ActiveClickPayload | undefined) => void;
+  isClickActive: ActiveClickPayload | undefined;
   dateRange: [Date, Date] | Readonly<[Date, Date]>;
   lineData: LineData[];
   referenceLines?: React.ReactNode;
@@ -541,33 +584,26 @@ export const MemoChart = memo(function MemoChart({
     [displayType],
   );
 
+  const visibleLineData = useMemo(
+    () => getVisibleLineData(lineData, selectedSeriesNames),
+    [lineData, selectedSeriesNames],
+  );
+
   const lines = useMemo(() => {
-    const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
-
-    const limitedGroupKeys = lineData
-      .map(ld => ld.dataKey)
-      .slice(0, HARD_LINES_LIMIT)
-      .filter((key, i) => {
-        const seriesName = lineData[i]?.displayName ?? key;
-        // If there's a selection, only show selected series
-        // If no selection, show all series
-        return !hasSelection || selectedSeriesNames.has(seriesName);
-      });
-
     // When a series is nearest the cursor (only meaningful with more than one
     // line shown), thicken its line and fade the others so the eye lands on
     // the same series the tooltip bolds. Mirrors the legend's selected style
     // (thicker stroke) with a gentle fade that keeps the rest readable.
     const hasNearest =
-      limitedGroupKeys.length > 1 &&
+      visibleLineData.length > 1 &&
       nearestSeriesKey != null &&
-      limitedGroupKeys.includes(nearestSeriesKey);
+      visibleLineData.some(ld => ld.dataKey === nearestSeriesKey);
 
-    return limitedGroupKeys.map(key => {
-      const lineDataIndex = lineData.findIndex(ld => ld.dataKey === key);
-      const color = lineData[lineDataIndex]?.color;
-      const strokeDasharray = lineData[lineDataIndex]?.isDashed ? '4 3' : '0';
-      const seriesName = lineData[lineDataIndex]?.displayName ?? key;
+    return visibleLineData.map(ld => {
+      const key = ld.dataKey;
+      const color = ld.color;
+      const strokeDasharray = ld.isDashed ? '4 3' : '0';
+      const seriesName = getSeriesDisplayName(ld);
 
       return displayType === 'stacked_bar' ? (
         <Bar
@@ -605,14 +641,7 @@ export const MemoChart = memo(function MemoChart({
         />
       );
     });
-  }, [
-    lineData,
-    displayType,
-    id,
-    isHovered,
-    selectedSeriesNames,
-    nearestSeriesKey,
-  ]);
+  }, [visibleLineData, displayType, id, isHovered, nearestSeriesKey]);
 
   const yAxisDomain: AxisDomain = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
@@ -843,15 +872,14 @@ export const MemoChart = memo(function MemoChart({
             setHighlightEnd(undefined);
             mouseDownPosRef.current = null;
           }}
-          onMouseDown={(state, e) => {
+          onMouseDown={state => {
             // Record the drag start: the active bucket label and the pointer's
-            // X for measuring drag distance on mouse up. Use the native event's
-            // offsetX (wrapper-relative) as the pixel source so mousedown and
-            // mouseup are measured in the same coordinate space — mixing it
-            // with activeCoordinate.x (plot-relative, offset by the y-axis
-            // width) could otherwise inflate a zero-distance click into a
-            // false drag.
-            const chartX = e?.nativeEvent?.offsetX;
+            // plot-relative X for measuring drag distance on mouse up. Use the
+            // chart's active coordinate (not the native event's offsetX, which
+            // is relative to whichever child SVG element — bar rect or line
+            // path — is under the pointer) so mousedown and mouseup share one
+            // origin.
+            const chartX = state?.activeCoordinate?.x;
             if (state?.activeLabel != null && chartX != null) {
               setHighlightStart(String(state.activeLabel));
               mouseDownPosRef.current = chartX;
@@ -887,14 +915,13 @@ export const MemoChart = memo(function MemoChart({
               setIsClickActive(undefined); // Clear out any click state as we're highlighting
             }
           }}
-          onMouseUp={(state, e) => {
+          onMouseUp={state => {
             const MIN_DRAG_DISTANCE = 20; // Minimum horizontal drag distance in pixels
             let dragDistance = 0;
 
-            // Measure against the same coordinate space recorded on mouse down
-            // (native offsetX) so the distance can't be skewed by the y-axis
-            // width.
-            const chartX = e?.nativeEvent?.offsetX;
+            // Measure against the same plot-relative coordinate recorded on
+            // mouse down so both endpoints share one origin.
+            const chartX = state?.activeCoordinate?.x;
             if (mouseDownPosRef.current != null && chartX != null) {
               dragDistance = Math.abs(chartX - mouseDownPosRef.current);
             }
@@ -968,15 +995,18 @@ export const MemoChart = memo(function MemoChart({
             ) {
               const activeLabel = String(state.activeLabel);
               const activeRow = graphResults.find(
-                row => String(row[timestampKey ?? 'ts_bucket']) === activeLabel,
+                row => String(row[timestampKey]) === activeLabel,
               );
+              // Mirror the series actually drawn (legend selection +
+              // HARD_LINES_LIMIT) so the popover's "Filter by group" list never
+              // shows deselected or over-limit series.
               const activePayload =
                 activeRow != null
-                  ? lineData
-                      .filter(ld => activeRow[ld.dataKey] != null)
+                  ? visibleLineData
+                      .filter(ld => typeof activeRow[ld.dataKey] === 'number')
                       .map(ld => ({
                         dataKey: ld.dataKey,
-                        name: ld.displayName || ld.dataKey,
+                        name: getSeriesDisplayName(ld),
                         value: activeRow[ld.dataKey] as number,
                         color: ld.color,
                       }))

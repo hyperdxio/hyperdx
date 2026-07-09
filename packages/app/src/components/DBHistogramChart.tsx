@@ -60,16 +60,15 @@ function HistogramChart({
         className="user-select-none cursor-crosshair"
         onClick={state => {
           // Toggle the pinned tooltip on the clicked bar (click the same bar
-          // again to unpin).
-          const idx =
-            typeof state?.activeIndex === 'number'
-              ? state.activeIndex
-              : state?.activeIndex != null
-                ? Number(state.activeIndex)
-                : undefined;
-          setPinnedIndex(prev =>
-            idx == null ? undefined : prev === idx ? undefined : idx,
-          );
+          // again to unpin). Coerce activeIndex to a number and ignore NaN so a
+          // click that resolves to no bar never leaves a stuck pin.
+          const raw = state?.activeIndex;
+          const idx = typeof raw === 'number' ? raw : Number(raw);
+          if (!Number.isInteger(idx)) {
+            setPinnedIndex(undefined);
+            return;
+          }
+          setPinnedIndex(prev => (prev === idx ? undefined : idx));
         }}
       >
         <XAxis

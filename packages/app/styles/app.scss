@@ -323,15 +323,13 @@ button:focus-visible {
   }
 }
 
-// Charts are keyboard-focusable for accessibility, which paints a browser focus
-// ring when the chart is clicked. Hide the ring on the chart surface (the SVG
-// that receives focus on click) and its focusable descendants, but leave the
-// outer `.recharts-wrapper` untouched so keyboard users Tabbing to a chart
-// still get a visible focus indicator (WCAG 2.4.11).
-.recharts-surface:focus,
-.recharts-surface:focus-visible,
-.recharts-surface *:focus,
-.recharts-surface *:focus-visible {
+// The chart surface (and its interaction layers) is keyboard-focusable for
+// accessibility, which paints a browser focus ring when the chart is *clicked*.
+// Suppress the ring only for pointer focus (`:focus:not(:focus-visible)`) so a
+// click doesn't outline the chart, while keyboard focus (`:focus-visible`)
+// still shows a visible indicator as required by WCAG 2.4.11.
+.recharts-surface:focus:not(:focus-visible),
+.recharts-surface *:focus:not(:focus-visible) {
   outline: none;
 }
 

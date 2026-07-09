@@ -38,7 +38,7 @@ import {
   shouldFillNullsWithZero,
   useTimeChartSettings,
 } from '@/ChartUtils';
-import { MemoChart } from '@/HDXMultiSeriesTimeChart';
+import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useChartNumberFormats, useSource } from '@/source';
@@ -50,15 +50,6 @@ import ChartErrorState, {
 import DateRangeIndicator from './charts/DateRangeIndicator';
 import DisplaySwitcher from './charts/DisplaySwitcher';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-
-type ActiveClickPayload = {
-  x: number;
-  y: number;
-  activeLabel: string;
-  xPerc: number;
-  yPerc: number;
-  activePayload?: { value?: number; dataKey?: string; name?: string }[];
-};
 
 function ActiveTimeTooltip({
   activeClickPayload,
