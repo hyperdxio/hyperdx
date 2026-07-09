@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo } from 'react';
 import {
   Bar,
   BarChart,
@@ -8,27 +8,18 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 import { Flex } from '@mantine/core';
 
-import {
-  buildMVDateRangeIndicator,
-  convertToCategoricalChartConfig,
-  formatResponseForCategoricalChart,
-} from '@/ChartUtils';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
-import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
-import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import type { NumberFormat } from '@/types';
-import { formatNumber, getColorProps } from '@/utils';
+import { formatNumber } from '@/utils';
 
+import {
+  CategoricalChartProps,
+  useCategoricalChart,
+} from './charts/CategoricalChart';
 import ChartContainer from './charts/ChartContainer';
-import ChartErrorState, {
-  ChartErrorStateVariant,
-} from './charts/ChartErrorState';
+import ChartErrorState from './charts/ChartErrorState';
 import { ChartTooltipContainer, ChartTooltipItem } from './charts/ChartTooltip';
-import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
 const MAX_BAR_LABEL_LENGTH = 14;
 const BAR_LABEL_AXIS_HEIGHT = 80; // increased height to accommodate rotated + truncated labels
@@ -67,113 +58,31 @@ const BarChartTooltip = memo(
   },
 );
 
-export const DBBarChart = ({
-  config,
-  title,
-  enabled = true,
-  queryKeyPrefix,
-  showMVOptimizationIndicator = true,
-  toolbarPrefix,
-  toolbarSuffix,
-  errorVariant,
-}: {
-  config: ChartConfigWithOptTimestamp;
-  title?: React.ReactNode;
-  enabled?: boolean;
-  queryKeyPrefix?: string;
-  showMVOptimizationIndicator?: boolean;
-  toolbarPrefix?: React.ReactNode[];
-  toolbarSuffix?: React.ReactNode[];
-  errorVariant?: ChartErrorStateVariant;
-}) => {
-  const { data: source } = useSource({
-    id: config.source,
-  });
-
-  const queriedConfig = useMemo(() => {
-    return isBuilderChartConfig(config)
-      ? convertToCategoricalChartConfig(config)
-      : config;
-  }, [config]);
-
-  const resolvedNumberFormat = useSingleSeriesNumberFormat(queriedConfig);
-
-  const builderQueriedConfig = isBuilderChartConfig(queriedConfig)
-    ? queriedConfig
-    : undefined;
-  const { data: mvOptimizationData } =
-    useMVOptimizationExplanation(builderQueriedConfig);
-
-  const { data, isLoading, isError, error } = useQueriedChartConfig(
-    queriedConfig,
-    {
-      placeholderData: (prev: any) => prev,
-      queryKey: [queryKeyPrefix, queriedConfig],
-      enabled,
-    },
-  );
-
-  const toolbarItemsMemo = useMemo(() => {
-    const allToolbarItems = [];
-
-    if (toolbarPrefix && toolbarPrefix.length > 0) {
-      allToolbarItems.push(...toolbarPrefix);
-    }
-
-    if (source && showMVOptimizationIndicator && builderQueriedConfig) {
-      allToolbarItems.push(
-        <MVOptimizationIndicator
-          key="db-bar-chart-mv-indicator"
-          config={builderQueriedConfig}
-          source={source}
-          variant="icon"
-        />,
-      );
-    }
-
-    const dateRangeIndicator = buildMVDateRangeIndicator({
-      mvOptimizationData,
-      originalDateRange: queriedConfig.dateRange,
-    });
-
-    if (dateRangeIndicator) {
-      allToolbarItems.push(dateRangeIndicator);
-    }
-
-    if (toolbarSuffix && toolbarSuffix.length > 0) {
-      allToolbarItems.push(...toolbarSuffix);
-    }
-
-    return allToolbarItems;
-  }, [
-    toolbarPrefix,
-    toolbarSuffix,
-    source,
-    showMVOptimizationIndicator,
-    mvOptimizationData,
-    queriedConfig,
-    builderQueriedConfig,
-  ]);
-
-  const [barChartData, responseFormatError] = useMemo(() => {
-    if (!data) return [[], null];
-    try {
-      return [formatResponseForCategoricalChart(data, getColorProps), null];
-    } catch (error) {
-      return [[], error instanceof Error ? error : new Error(String(error))];
-    }
-  }, [data]);
+export const DBBarChart = (props: CategoricalChartProps) => {
+  const {
+    resolvedNumberFormat,
+    toolbarItems,
+    data,
+    isLoading,
+    isError,
+    error,
+    chartData,
+    responseFormatError,
+  } = useCategoricalChart(props);
 
   return (
-    <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
+    <ChartContainer title={props.title} toolbarItems={toolbarItems}>
       {isLoading && !data ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           Loading Chart Data...
         </div>
       ) : isError && error ? (
-        <ChartErrorState error={error} variant={errorVariant} />
+        <ChartErrorState error={error} variant={props.errorVariant} />
       ) : responseFormatError ? (
-        <ChartErrorState error={responseFormatError} variant={errorVariant} />
+        <ChartErrorState
+          error={responseFormatError}
+          variant={props.errorVariant}
+        />
       ) : data?.data.length === 0 ? (
         <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
           No data found within time range.
@@ -191,7 +100,7 @@ export const DBBarChart = ({
             width="100%"
             className={isLoading ? 'effect-pulse' : ''}
           >
-            <BarChart data={barChartData}>
+            <BarChart data={chartData}>
               <XAxis
                 dataKey="label"
                 interval={0}
@@ -215,7 +124,7 @@ export const DBBarChart = ({
                 tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
               />
               <Bar dataKey="value">
-                {barChartData.map(entry => (
+                {chartData.map(entry => (
                   <Cell key={entry.label} fill={entry.color} stroke="none" />
                 ))}
               </Bar>
