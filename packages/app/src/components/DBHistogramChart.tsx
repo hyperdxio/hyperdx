@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { omit } from 'lodash';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -10,7 +10,6 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { CategoricalChartState } from 'recharts/types/chart/types';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
 import { buildMVDateRangeIndicator } from '@/ChartUtils';
@@ -43,37 +42,14 @@ function HistogramChart({
     );
   }, [graphResults]);
 
-  const barChartRef = useRef<any>(null);
-  const activeBar = useRef<CategoricalChartState | undefined>(undefined);
+  // Index of the bar whose tooltip is "pinned" open by a click. When set, the
+  // tooltip is forced active on that bar via the controlled `active` +
+  // `defaultIndex` props below; `undefined` lets the tooltip follow hover.
+  const [pinnedIndex, setPinnedIndex] = useState<number | undefined>(undefined);
 
   useHotkeys(['esc'], () => {
-    activeBar.current = undefined;
+    setPinnedIndex(undefined);
   });
-
-  // Complete hack
-  // See: https://github.com/recharts/recharts/issues/1231#issuecomment-1237958802
-  const setChartActive = (payload: {
-    activeCoordinate?: { x: number; y: number };
-    activeLabel: any;
-    activePayload?: any[];
-  }) => {
-    if (barChartRef.current == null) return;
-
-    if (activeBar.current == null) {
-      // @ts-ignore
-      return barChartRef.current.setState({
-        isTooltipActive: false,
-      });
-    }
-
-    // @ts-ignore
-    barChartRef.current.setState({
-      isTooltipActive: true,
-      activeCoordinate: payload.activeCoordinate,
-      activeLabel: payload.activeLabel,
-      activePayload: payload.activePayload,
-    });
-  };
 
   return (
     <ResponsiveContainer width="100%" height="100%" minWidth={0}>
@@ -82,29 +58,18 @@ function HistogramChart({
         height={300}
         data={data}
         className="user-select-none cursor-crosshair"
-        ref={barChartRef}
-        onMouseMove={() => {
-          if (activeBar.current == null) return;
-
-          setChartActive({
-            activeCoordinate: activeBar.current.activeCoordinate,
-            activeLabel: activeBar.current.activeLabel,
-            activePayload: activeBar.current.activePayload,
-          });
-        }}
-        onMouseLeave={() => {
-          activeBar.current = undefined;
-        }}
-        onClick={click => {
-          activeBar.current = click;
-
-          if (click != null) {
-            setChartActive({
-              activeCoordinate: activeBar.current.activeCoordinate,
-              activeLabel: activeBar.current.activeLabel,
-              activePayload: activeBar.current.activePayload,
-            });
-          }
+        onClick={state => {
+          // Toggle the pinned tooltip on the clicked bar (click the same bar
+          // again to unpin).
+          const idx =
+            typeof state?.activeIndex === 'number'
+              ? state.activeIndex
+              : state?.activeIndex != null
+                ? Number(state.activeIndex)
+                : undefined;
+          setPinnedIndex(prev =>
+            idx == null ? undefined : prev === idx ? undefined : idx,
+          );
         }}
       >
         <XAxis
@@ -140,7 +105,11 @@ function HistogramChart({
           content={
             <HDXHistogramChartTooltip generateSearchUrl={generateSearchUrl} />
           }
-          active
+          // When a bar is pinned, force the tooltip active on that bar;
+          // otherwise let Recharts control it on hover.
+          {...(pinnedIndex != null
+            ? { active: true, defaultIndex: pinnedIndex }
+            : {})}
         />
         <Bar dataKey="height" stackId="a" fill="#50FA7B" />
       </BarChart>

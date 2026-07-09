@@ -372,14 +372,18 @@ const LegendRenderer = memo<{
 export const HARD_LINES_LIMIT = MAX_TIME_CHART_SERIES;
 
 const StackedBarWithOverlap = (props: BarProps) => {
-  const { x, y, width, height, fill } = props;
+  const { x, y, width, fill } = props;
+  // `height` may arrive as a string, so coerce it to a number before the
+  // arithmetic below.
+  const height =
+    typeof props.height === 'number' ? props.height : Number(props.height ?? 0);
   // Add a tiny bit to the height to create overlap. Otherwise there's a gap
   return (
     <rect
       x={x}
       y={y}
       width={width}
-      height={height && height > 0 ? height + 0.5 : 0}
+      height={height > 0 ? height + 0.5 : 0}
       fill={fill}
     />
   );
@@ -839,13 +843,18 @@ export const MemoChart = memo(function MemoChart({
             setHighlightEnd(undefined);
             mouseDownPosRef.current = null;
           }}
-          onMouseDown={e => {
-            if (e != null && e.chartX != null && e.chartY != null) {
-              setHighlightStart(e.activeLabel);
-              mouseDownPosRef.current = e.chartX;
+          onMouseDown={(state, e) => {
+            // Record the drag start: the active bucket label and the pointer's
+            // plot-relative X (from the active coordinate, falling back to the
+            // native event's offsetX) for measuring drag distance on mouse up.
+            const chartX =
+              state?.activeCoordinate?.x ?? e?.nativeEvent?.offsetX;
+            if (state?.activeLabel != null && chartX != null) {
+              setHighlightStart(String(state.activeLabel));
+              mouseDownPosRef.current = chartX;
             }
           }}
-          onMouseMove={e => {
+          onMouseMove={state => {
             setIsHovered(true);
 
             // Track which series' line is nearest the cursor so the lines can
@@ -853,15 +862,16 @@ export const MemoChart = memo(function MemoChart({
             // frame; comparing the pointer's chartY picks the nearest line. Skip
             // while a click-frozen tooltip is shown, matching the tooltip, and
             // only set state when the key changes to keep re-renders rare.
+            const chartY = state?.activeCoordinate?.y;
             const activePointYByKey = activePointYByKeyRef.current;
             const nextNearest =
               isClickActive == null &&
               activePointYByKey.size > 1 &&
-              e?.chartY != null
+              chartY != null
                 ? findNearestSeriesKey(
                     activePointYByKey,
                     Array.from(activePointYByKey.keys()),
-                    e.chartY,
+                    chartY,
                     NEAREST_SERIES_MAX_DISTANCE_PX,
                   )
                 : undefined;
@@ -869,20 +879,26 @@ export const MemoChart = memo(function MemoChart({
               prev === nextNearest ? prev : nextNearest,
             );
 
-            if (highlightStart != null) {
-              setHighlightEnd(e.activeLabel);
+            if (highlightStart != null && state?.activeLabel != null) {
+              setHighlightEnd(String(state.activeLabel));
               setIsClickActive(undefined); // Clear out any click state as we're highlighting
             }
           }}
-          onMouseUp={e => {
+          onMouseUp={(state, e) => {
             const MIN_DRAG_DISTANCE = 20; // Minimum horizontal drag distance in pixels
             let dragDistance = 0;
 
-            if (mouseDownPosRef.current != null && e?.chartX != null) {
-              dragDistance = Math.abs(e.chartX - mouseDownPosRef.current);
+            const chartX =
+              state?.activeCoordinate?.x ?? e?.nativeEvent?.offsetX;
+            if (mouseDownPosRef.current != null && chartX != null) {
+              dragDistance = Math.abs(chartX - mouseDownPosRef.current);
             }
 
-            if (e?.activeLabel != null && highlightStart === e.activeLabel) {
+            const activeLabel =
+              state?.activeLabel != null
+                ? String(state.activeLabel)
+                : undefined;
+            if (activeLabel != null && highlightStart === activeLabel) {
               // If it's just a click, don't zoom
               setHighlightStart(undefined);
               setHighlightEnd(undefined);
@@ -931,21 +947,42 @@ export const MemoChart = memo(function MemoChart({
             }
           }}
           onClick={(state, e) => {
+            // Freeze a tooltip at the clicked point: take the click position
+            // from the active coordinate and build the per-series payload from
+            // the active bucket in graphResults (the popover only needs
+            // value/name/color/dataKey per series).
+            const chartX = state?.activeCoordinate?.x;
+            const chartY = state?.activeCoordinate?.y;
             if (
               state != null &&
-              state.chartX != null &&
-              state.chartY != null &&
+              chartX != null &&
+              chartY != null &&
               state.activeLabel != null &&
               // If we didn't drag and highlight yet
               highlightStart == null
             ) {
+              const activeLabel = String(state.activeLabel);
+              const activeRow = graphResults.find(
+                row => String(row[timestampKey ?? 'ts_bucket']) === activeLabel,
+              );
+              const activePayload =
+                activeRow != null
+                  ? lineData
+                      .filter(ld => activeRow[ld.dataKey] != null)
+                      .map(ld => ({
+                        dataKey: ld.dataKey,
+                        name: ld.displayName || ld.dataKey,
+                        value: activeRow[ld.dataKey] as number,
+                        color: ld.color,
+                      }))
+                  : [];
               setIsClickActive({
-                x: state.chartX,
-                y: state.chartY,
-                activeLabel: state.activeLabel,
-                xPerc: state.chartX / sizeRef.current[0],
-                yPerc: state.chartY / sizeRef.current[1],
-                activePayload: state.activePayload,
+                x: chartX,
+                y: chartY,
+                activeLabel,
+                xPerc: chartX / sizeRef.current[0],
+                yPerc: chartY / sizeRef.current[1],
+                activePayload,
               });
               // The click-frozen tooltip hides the live tooltip, so drop any
               // line emphasis to match.

@@ -323,6 +323,19 @@ button:focus-visible {
   }
 }
 
+// Charts are keyboard-focusable for accessibility, which paints a browser focus
+// ring when the chart is clicked. Hide the visual ring on the chart wrapper,
+// surface, and any focusable descendant of the surface while keeping the
+// elements focusable for keyboard navigation.
+.recharts-wrapper:focus,
+.recharts-wrapper:focus-visible,
+.recharts-surface:focus,
+.recharts-surface:focus-visible,
+.recharts-surface *:focus,
+.recharts-surface *:focus-visible {
+  outline: none;
+}
+
 // Global cursor pointer for interactive elements
 button,
 a,

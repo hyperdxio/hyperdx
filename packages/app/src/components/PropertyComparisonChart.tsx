@@ -1,6 +1,6 @@
 import { memo, useState } from 'react';
 import { withErrorBoundary } from 'react-error-boundary';
-import type { TooltipProps } from 'recharts';
+import type { TooltipContentProps as RechartsTooltipContentProps } from 'recharts';
 import {
   Bar,
   BarChart,
@@ -43,14 +43,12 @@ export const CHART_GAP = 16; // px; used in grid gap and layout math
 // Always reserved (even when pagination is hidden via visibility:hidden) so rows count is stable.
 export const PAGINATION_HEIGHT = 48;
 
-type TooltipPayloadItem = {
-  dataKey: string;
-  name: string;
-  value: number;
-  payload?: Record<string, unknown>;
-};
-
-type TooltipContentProps = TooltipProps<number, string> & {
+// The content props (payload, coordinate, active, ...) are supplied by the
+// chart's Tooltip at render time, so they're optional here — the element is
+// written in JSX with only the `title` prop.
+type TooltipContentProps = Partial<
+  RechartsTooltipContentProps<number, string>
+> & {
   title?: string;
 };
 
@@ -70,11 +68,11 @@ const HDXBarChartTooltip = withErrorBoundary(
             <Text size="xs" mb="xs">
               {String(label).length === 0 ? <i>Empty String</i> : String(label)}
             </Text>
-            {(payload as TooltipPayloadItem[])
-              .sort((a, b) => b.value - a.value)
+            {[...payload]
+              .sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0))
               .map(p => (
-                <div key={p.dataKey}>
-                  {p.name}: {p.value.toFixed(2)}%
+                <div key={String(p.dataKey)}>
+                  {p.name}: {Number(p.value ?? 0).toFixed(2)}%
                 </div>
               ))}
           </div>
@@ -146,15 +144,19 @@ export function PropertyComparisonChart({
   const clipboard = useClipboard({ timeout: 2000 });
 
   const handleChartClick = (data: any) => {
-    if (!data?.activePayload?.length) {
+    // Select the clicked bar by its label (the bar's `name`), looking the row
+    // up in chartData to skip the aggregated "other" bucket.
+    const activeLabel = data?.activeLabel;
+    if (activeLabel == null) {
       setClickedValue(null);
       return;
     }
-    if (data.activePayload[0]?.payload?.isOther) {
+    const clickedRow = chartData.find(row => row.name === activeLabel);
+    if (clickedRow == null || clickedRow.isOther) {
       setClickedValue(null);
       return;
     }
-    const newValue = String(data.activeLabel ?? '');
+    const newValue = String(activeLabel ?? '');
     // Toggle off if clicking the same bar
     if (newValue === clickedValue) {
       setClickedValue(null);
