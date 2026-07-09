@@ -380,7 +380,7 @@ describe('rewriteSqlFilterWithKvItems', () => {
       expect(orCount).toBeGreaterThanOrEqual(2);
     });
 
-    it('preserves precedence when the fallback OR chain sits inside an AND', () => {
+    it('preserves precedence when the fallback OR chain sits inside an AND (IN on the left)', () => {
       const result = rewriteSqlFilterWithKvItems(
         "LogAttributes['k'] IN ('a', 'b') AND Severity = 'error'",
         legacyLookup,
@@ -393,6 +393,24 @@ describe('rewriteSqlFilterWithKvItems', () => {
       );
       expect(result).toContain("Severity = 'error'");
       expect(result).not.toContain('hasAny(');
+      // The OR chain MUST be parenthesized so AND doesn't bind tighter than OR
+      // and cause the right-hand `AND Severity` to attach to only the last has().
+      expect(result).toMatch(
+        /\(has\([^)]+\)[^)]*\) OR has\([^)]+\)[^)]*\)\) AND /,
+      );
+    });
+
+    it('preserves precedence when the fallback OR chain sits inside an AND (IN on the right)', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "Severity = 'error' AND LogAttributes['k'] IN ('a', 'b')",
+        legacyLookup,
+      );
+      expect(result).toContain("Severity = 'error'");
+      expect(result).not.toContain('hasAny(');
+      // Same rationale as the mirror case above: precedence-sensitive parens.
+      expect(result).toMatch(
+        / AND \(has\([^)]+\)[^)]*\) OR has\([^)]+\)[^)]*\)\)/,
+      );
     });
 
     it('does not rewrite when any IN value is an empty string', () => {
