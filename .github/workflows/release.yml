@@ -31,7 +31,16 @@ jobs:
       # LTS ships npm 10.x, which has no OIDC code path and falls back to
       # NODE_AUTH_TOKEN, failing ENEEDAUTH.
       - name: Upgrade npm for OIDC trusted publishing
-        run: npm install -g npm@latest
+        # Pin to 11.x (not @latest): OIDC only needs npm >= 11.5.1, and floating
+        # tags drag in majors that raise the node floor / lack a stable GA and
+        # break CI. 11.x supports node 22.9+.
+        #
+        # NOTE: this bootstraps via the node-bundled npm, so the .nvmrc node
+        # version must ship a working npm. Node 22.22.2's bundled npm 10.9.7 has
+        # a broken module tree (missing promise-retry) and crashes here — see
+        # actions/runner-images#13883. 22.23.1 bundles npm 10.9.8, which works.
+        # Keep .nvmrc off 22.22.2.
+        run: npm install -g npm@11
       - name: Configure npm registry
         run: npm config set registry https://registry.npmjs.org/
       - name: Install root dependencies

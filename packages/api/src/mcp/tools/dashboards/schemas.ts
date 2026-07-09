@@ -4,6 +4,7 @@
 // readability. Reformatting all separators is out of scope here.
 import {
   AggregateFunctionSchema,
+  BackgroundChartSchema,
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_CONTAINERS,
@@ -17,7 +18,13 @@ import { z } from 'zod';
 
 import { getMetricSelectIssues } from '@/mcp/tools/query/schemas';
 import { QUERYABLE_METRIC_KINDS } from '@/mcp/tools/sources/metricKinds';
-import { externalQuantileLevelSchema, objectIdSchema } from '@/utils/zod';
+import {
+  externalQuantileLevelSchema,
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
+  objectIdSchema,
+  tagsSchema,
+} from '@/utils/zod';
 
 /**
  * Metric type values exposed on dashboard tile select items. Restricted to
@@ -59,6 +66,15 @@ const rawSqlNumberTileColorDescription =
   '"chart-blue" or "chart-success". Valid only when displayType is ' +
   '"number", ignored otherwise. Raw SQL number tiles do not support ' +
   'conditional colorRules.';
+
+const numberTileBackgroundChartDescription =
+  'Optional background trend sparkline drawn behind the number, derived ' +
+  'from a time-bucketed version of the same query (useful for SLO / ' +
+  'error-budget tiles where the trend over the window matters). ' +
+  '{ type, color? }: type is "line" or "area"; color is an optional ' +
+  'palette token override (the sparkline inherits the tile color when ' +
+  'unset). Builder number tiles only; raw SQL number tiles have no time ' +
+  'dimension to bucket. Example: { type: "area", color: "chart-blue" }.';
 
 const mcpNumberFormatSchema = z.object({
   output: z
@@ -597,6 +613,9 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
       .max(10)
       .optional()
       .describe(numberTileColorRulesDescription),
+    backgroundChart: BackgroundChartSchema.optional().describe(
+      numberTileBackgroundChartDescription,
+    ),
   }),
 });
 
@@ -703,6 +722,31 @@ const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
+const mcpEventPatternsTileSchema = mcpTileLayoutSchema.extend({
+  config: z.object({
+    displayType: z
+      .literal('event_patterns')
+      .describe('Event pattern mining tile'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+    where: z
+      .string()
+      .optional()
+      .default('')
+      .describe('Filter in Lucene syntax. Example: "level:error"'),
+    whereLanguage:
+      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
+    select: z
+      .string()
+      .optional()
+      .default('')
+      .describe(
+        'Pattern expression — column or expression to mine patterns from. ' +
+          'Leave empty to use the source default (Body for logs, SpanName for traces). ' +
+          'Example: "Body", "SpanName", "SpanAttributes[\'http.url\']"',
+      ),
+  }),
+});
+
 const mcpMarkdownTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('markdown').describe('Free-form Markdown text tile'),
@@ -798,6 +842,7 @@ const mcpTileSchema = z.union([
   mcpPieTileSchema,
   mcpHeatmapTileSchema,
   mcpSearchTileSchema,
+  mcpEventPatternsTileSchema,
   mcpMarkdownTileSchema,
   mcpSqlTileSchema,
 ]);
@@ -835,6 +880,9 @@ const mcpPatchTileSchema = z.union([
   }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpSearchTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpEventPatternsTileSchema.shape.config,
   }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpMarkdownTileSchema.shape.config,
@@ -972,12 +1020,10 @@ export const mcpPatchDashboardSchema = z.object({
     .min(1)
     .optional()
     .describe('New dashboard name. Omit to keep the current name.'),
-  tags: z
-    .array(z.string())
-    .optional()
-    .describe(
-      'New tags array (replaces all existing tags). Omit to keep the current tags.',
-    ),
+  tags: tagsSchema.describe(
+    `New tags array (replaces all existing tags). Omit to keep the current tags. ` +
+      `Up to ${MAX_TAGS} tags, each at most ${MAX_TAG_LENGTH} characters.`,
+  ),
   tileId: z
     .string()
     .optional()

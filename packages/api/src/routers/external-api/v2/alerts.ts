@@ -3,6 +3,7 @@ import _ from 'lodash';
 import { z } from 'zod';
 
 import {
+  countAlerts,
   createAlert,
   deleteAlert,
   getAlertById,
@@ -15,6 +16,11 @@ import {
   validateRequestWithEnhancedErrors as validateRequest,
 } from '@/utils/enhancedErrors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
+import {
+  getPagination,
+  paginationMeta,
+  paginationQuerySchema,
+} from '@/utils/pagination';
 import { alertSchema, objectIdSchema } from '@/utils/zod';
 
 /**
@@ -42,7 +48,7 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *       description: Alert source type.
  *     AlertState:
  *       type: string
- *       enum: [ALERT, OK, INSUFFICIENT_DATA, DISABLED]
+ *       enum: [ALERT, OK, INSUFFICIENT_DATA, DISABLED, PENDING]
  *       description: Current alert state.
  *     AlertChannelType:
  *       type: string
@@ -186,6 +192,12 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *           minLength: 1
  *           maxLength: 4096
  *           example: "Threshold raised from 50 to 100 on 2026-01-15. See [runbook](https://wiki.example.com/runbook)."
+ *         numConsecutiveWindows:
+ *           type: integer
+ *           minimum: 1
+ *           nullable: true
+ *           description: Fire the alert only after its condition has been met for this many consecutive evaluation windows. While the condition is met but fewer than this many consecutive windows have violated, the alert is in the PENDING state.
+ *           example: 3
  *
  *     AlertResponse:
  *       allOf:
@@ -256,12 +268,18 @@ import { alertSchema, objectIdSchema } from '@/utils/zod';
  *
  *     AlertsListResponse:
  *       type: object
+ *       required:
+ *         - data
+ *         - meta
  *       properties:
  *         data:
  *           type: array
  *           description: List of alert objects.
  *           items:
  *             $ref: '#/components/schemas/AlertResponse'
+ *         meta:
+ *           $ref: '#/components/schemas/PaginationMeta'
+ *           description: Pagination metadata for this result page.
  *
  *     EmptyResponse:
  *       type: object
@@ -310,10 +328,17 @@ const router = express.Router();
  *                     teamId: "65f5e4a3b9e77c001a345678"
  *                     tileId: "65f5e4a3b9e77c001a901234"
  *                     dashboardId: "65f5e4a3b9e77c001a567890"
+ *                     numConsecutiveWindows: 3
  *                     createdAt: "2023-03-15T10:20:30.000Z"
  *                     updatedAt: "2023-03-15T14:25:10.000Z"
  *       '401':
  *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
  *         content:
  *           application/json:
  *             schema:
@@ -336,13 +361,13 @@ router.get(
     try {
       const teamId = req.user?.team;
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
 
       const alert = await getAlertById(req.params.id, teamId);
 
       if (alert == null) {
-        return res.sendStatus(404);
+        return res.status(404).json({ message: 'Alert not found' });
       }
 
       return res.json({
@@ -359,9 +384,31 @@ router.get(
  * /api/v2/alerts:
  *   get:
  *     summary: List Alerts
- *     description: Retrieves a list of all alerts for the authenticated team
+ *     description: >-
+ *       Retrieves alerts for the authenticated team (paginated). Results are
+ *       capped at `limit` (default and maximum 1000). When more records exist
+ *       than are returned, `meta.total` exceeds `data.length`; clients with
+ *       large collections must page with `limit`/`offset` to retrieve them all.
  *     operationId: listAlerts
  *     tags: [Alerts]
+ *     parameters:
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 1000
+ *           default: 1000
+ *         description: Maximum number of alerts to return.
+ *       - name: offset
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *         description: Number of alerts to skip before returning results.
  *     responses:
  *       '200':
  *         description: Successfully retrieved alerts
@@ -388,6 +435,10 @@ router.get(
  *                       dashboardId: "65f5e4a3b9e77c001a567890"
  *                       createdAt: "2023-01-01T00:00:00.000Z"
  *                       updatedAt: "2023-01-01T00:00:00.000Z"
+ *                   meta:
+ *                     total: 1
+ *                     limit: 1000
+ *                     offset: 0
  *       '401':
  *         description: Unauthorized
  *         content:
@@ -396,23 +447,41 @@ router.get(
  *               $ref: '#/components/schemas/Error'
  *             example:
  *               message: "Unauthorized access. API key is missing or invalid."
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
-router.get('/', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    if (teamId == null) {
-      return res.sendStatus(403);
+router.get(
+  '/',
+  processRequest({ query: paginationQuerySchema }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.status(403).json({ message: 'Forbidden' });
+      }
+
+      const { limit, offset } = getPagination(req.query);
+      const [alerts, total] = await Promise.all([
+        getAlerts(teamId, { limit, offset }),
+        countAlerts(teamId),
+      ]);
+
+      // Surface the full count at the HTTP layer too, so a client that reads
+      // headers but not the `meta` body can still detect truncation.
+      res.set('X-Total-Count', String(total));
+      return res.json({
+        data: alerts.map(alert => translateAlertDocumentToExternalAlert(alert)),
+        meta: paginationMeta({ limit, offset }, total, 'alerts'),
+      });
+    } catch (e) {
+      next(e);
     }
-
-    const alerts = await getAlerts(teamId);
-
-    return res.json({
-      data: alerts.map(alert => translateAlertDocumentToExternalAlert(alert)),
-    });
-  } catch (e) {
-    next(e);
-  }
-});
+  },
+);
 
 /**
  * @openapi
@@ -443,6 +512,7 @@ router.get('/', async (req, res, next) => {
  *                   webhookId: "65f5e4a3b9e77c001a789012"
  *                 name: "Error Spike Alert"
  *                 message: "Error rate has exceeded 100 in the last hour"
+ *                 numConsecutiveWindows: 3
  *     responses:
  *       '200':
  *         description: Successfully created alert
@@ -452,6 +522,12 @@ router.get('/', async (req, res, next) => {
  *               $ref: '#/components/schemas/AlertResponseEnvelope'
  *       '401':
  *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
  *         content:
  *           application/json:
  *             schema:
@@ -472,7 +548,7 @@ router.post(
     const teamId = req.user?.team;
     const userId = req.user?._id;
     if (teamId == null || userId == null) {
-      return res.sendStatus(403);
+      return res.status(403).json({ message: 'Forbidden' });
     }
     try {
       const alertInput = req.body;
@@ -539,6 +615,12 @@ router.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       '404':
  *         description: Alert not found
  *         content:
@@ -565,7 +647,7 @@ router.put(
       const teamId = req.user?.team;
 
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
       const { id } = req.params;
 
@@ -575,7 +657,7 @@ router.put(
       const alert = await updateAlert(id, teamId, alertInput);
 
       if (alert == null) {
-        return res.sendStatus(404);
+        return res.status(404).json({ message: 'Alert not found' });
       }
 
       res.json({
@@ -617,6 +699,12 @@ router.put(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       '404':
  *         description: Alert not found
  *         content:
@@ -636,11 +724,14 @@ router.delete(
       const teamId = req.user?.team;
       const { id: alertId } = req.params;
       if (teamId == null) {
-        return res.sendStatus(403);
+        return res.status(403).json({ message: 'Forbidden' });
       }
 
-      await deleteAlert(alertId, teamId);
-      res.sendStatus(200);
+      const { deletedCount } = await deleteAlert(alertId, teamId);
+      if (deletedCount === 0) {
+        return res.status(404).json({ message: 'Alert not found' });
+      }
+      res.json({});
     } catch (e) {
       next(e);
     }

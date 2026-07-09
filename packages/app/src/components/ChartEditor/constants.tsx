@@ -46,6 +46,7 @@ WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
   [DisplayType.Search]: '',
   [DisplayType.Heatmap]: '',
   [DisplayType.Markdown]: '',
+  [DisplayType.EventPatterns]: '',
 };
 
 const TIMESERIES_INSTRUCTIONS = (

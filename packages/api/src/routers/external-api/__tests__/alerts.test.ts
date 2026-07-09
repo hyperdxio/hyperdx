@@ -223,6 +223,7 @@ describe('External API Alerts', () => {
           name: 'Format Test Alert',
           message: 'This is a test alert for format verification',
           note: null,
+          numConsecutiveWindows: null,
           threshold: 123,
           interval: '15m',
           source: AlertSource.TILE,
@@ -495,6 +496,53 @@ describe('External API Alerts', () => {
       );
       expect(secondAlert.threshold).toBe(200);
     });
+
+    it('should paginate with limit and offset and report the total', async () => {
+      await createTestAlert({ name: 'Alert A', threshold: 100 });
+      await createTestAlert({ name: 'Alert B', threshold: 200 });
+      await createTestAlert({ name: 'Alert C', threshold: 300 });
+
+      const page1 = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}?limit=2&offset=0`,
+      ).expect(200);
+      expect(page1.body.data).toHaveLength(2);
+      expect(page1.body.meta).toEqual({ total: 3, limit: 2, offset: 0 });
+
+      const page2 = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}?limit=2&offset=2`,
+      ).expect(200);
+      expect(page2.body.data).toHaveLength(1);
+      expect(page2.body.meta).toEqual({ total: 3, limit: 2, offset: 2 });
+
+      // Pages must be disjoint and together cover every record (stable order).
+      const pagedIds = [...page1.body.data, ...page2.body.data].map(a => a.id);
+      expect(new Set(pagedIds).size).toBe(3);
+    });
+
+    it('should return an empty page with the correct total past the end', async () => {
+      await createTestAlert({ name: 'Only Alert', threshold: 100 });
+
+      const response = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}?offset=100`,
+      ).expect(200);
+      expect(response.body.data).toHaveLength(0);
+      expect(response.body.meta).toEqual({
+        total: 1,
+        limit: 1000,
+        offset: 100,
+      });
+    });
+
+    it('should reject an out-of-range or non-integer limit or offset', async () => {
+      await authRequest('get', `${ALERTS_BASE_URL}?limit=0`).expect(400);
+      await authRequest('get', `${ALERTS_BASE_URL}?limit=5000`).expect(400);
+      await authRequest('get', `${ALERTS_BASE_URL}?offset=-1`).expect(400);
+      await authRequest('get', `${ALERTS_BASE_URL}?limit=abc`).expect(400);
+      await authRequest('get', `${ALERTS_BASE_URL}?limit=1.5`).expect(400);
+    });
   });
 
   describe('Updating alerts', () => {
@@ -591,6 +639,15 @@ describe('External API Alerts', () => {
 
       const deletedAlert = listResponse.body.data.find(a => a.id === alert.id);
       expect(deletedAlert).toBeUndefined();
+    });
+
+    it('should return 404 with a JSON body when deleting a non-existent alert', async () => {
+      const nonExistentId = new ObjectId().toString();
+      const response = await authRequest(
+        'delete',
+        `${ALERTS_BASE_URL}/${nonExistentId}`,
+      ).expect(404);
+      expect(response.body).toEqual({ message: 'Alert not found' });
     });
   });
 
@@ -1230,6 +1287,106 @@ describe('External API Alerts', () => {
       expect(match.executionErrors).toHaveLength(1);
       expect(match.executionErrors[0].type).toBe(AlertErrorType.WEBHOOK_ERROR);
       expect(match.executionErrors[0].message).toBe('webhook delivery failed');
+    });
+  });
+
+  describe('Consecutive-window alerting (numConsecutiveWindows)', () => {
+    it('should create an alert with numConsecutiveWindows and return it', async () => {
+      const { alert } = await createTestAlert({ numConsecutiveWindows: 3 });
+
+      expect(alert.numConsecutiveWindows).toBe(3);
+    });
+
+    it('should default numConsecutiveWindows to null when not provided', async () => {
+      const { alert } = await createTestAlert();
+
+      expect(alert.numConsecutiveWindows).toBeNull();
+    });
+
+    it('should reject numConsecutiveWindows below 1', async () => {
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      await authRequest('post', ALERTS_BASE_URL)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          numConsecutiveWindows: 0,
+        })
+        .expect(400);
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should return numConsecutiveWindows on GET by id', async () => {
+      const { alert } = await createTestAlert({ numConsecutiveWindows: 5 });
+
+      const getResponse = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      ).expect(200);
+
+      expect(getResponse.body.data.numConsecutiveWindows).toBe(5);
+    });
+
+    it('should return numConsecutiveWindows on the list endpoint', async () => {
+      const { alert } = await createTestAlert({ numConsecutiveWindows: 4 });
+
+      const listResponse = await authRequest('get', ALERTS_BASE_URL).expect(
+        200,
+      );
+
+      const match = listResponse.body.data.find((a: any) => a.id === alert.id);
+      expect(match).toBeDefined();
+      expect(match.numConsecutiveWindows).toBe(4);
+    });
+
+    it('should update an alert to set numConsecutiveWindows', async () => {
+      const { alert, alertInput } = await createTestAlert();
+
+      expect(alert.numConsecutiveWindows).toBeNull();
+
+      await authRequest('put', `${ALERTS_BASE_URL}/${alert.id}`)
+        .send({ ...alertInput, numConsecutiveWindows: 2 })
+        .expect(200);
+
+      const getResponse = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      ).expect(200);
+
+      expect(getResponse.body.data.numConsecutiveWindows).toBe(2);
+    });
+
+    it('should update an alert to clear numConsecutiveWindows (null)', async () => {
+      const { alert, alertInput } = await createTestAlert({
+        numConsecutiveWindows: 3,
+      });
+
+      expect(alert.numConsecutiveWindows).toBe(3);
+
+      await authRequest('put', `${ALERTS_BASE_URL}/${alert.id}`)
+        .send({ ...alertInput, numConsecutiveWindows: null })
+        .expect(200);
+
+      const getResponse = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      ).expect(200);
+
+      expect(getResponse.body.data.numConsecutiveWindows).toBeNull();
     });
   });
 });

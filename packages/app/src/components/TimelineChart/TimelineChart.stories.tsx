@@ -4,6 +4,7 @@ import { IconChevronDown } from '@tabler/icons-react';
 
 import { TimelineChart } from './TimelineChart';
 import type { TTimelineEvent } from './TimelineChartRowEvents';
+import type { TTimelineSpanEventMarker } from './TimelineSpanEventMarker';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -15,6 +16,7 @@ function makeRow(
   duration: number,
   level = 0,
   childCount = 0,
+  markers?: TTimelineSpanEventMarker[],
 ) {
   const event: TTimelineEvent = {
     id,
@@ -24,8 +26,9 @@ function makeRow(
     color: 'var(--color-text-inverted)',
     backgroundColor: '#6A7077',
     body: <span>{body}</span>,
-    minWidthPerc: 1,
+    minWidthPx: 2,
     showDuration: true,
+    markers,
   };
 
   return {
@@ -208,6 +211,49 @@ type Story = StoryObj<typeof TimelineChart>;
 export const Default: Story = {
   args: {
     rows: sampleRows,
+    rowHeight: 24,
+    labelWidth: 300,
+    maxHeight: 800,
+    initialScrollRowIndex: 0,
+  },
+};
+
+// Variant with span-event markers (the green diamonds) clustered near the
+// timeline start. Use this to verify diamonds paint above their bar but never
+// over the sticky left-hand label column — scroll the chart vertically so a
+// marked span sits behind the labels and confirm the labels stay on top.
+const markedRows = (() => {
+  const makeMarkers = (base: number): TTimelineSpanEventMarker[] =>
+    [0, 20, 45, 80].map((offset, idx) => ({
+      timestamp: base + offset,
+      name: `span.event.${idx}`,
+      attributes: {
+        'event.index': idx,
+        'exception.type': idx % 2 === 0 ? 'RetryableError' : 'Timeout',
+        'exception.message': `sample span event detail #${idx}`,
+      },
+    }));
+
+  return sampleRows.map((row, idx) => {
+    // Add markers to the first few spans (which start near t=0) so they land
+    // under the label column once the list is scrolled.
+    if (idx > 4) return row;
+    const event = row.events[0];
+    return {
+      ...row,
+      events: [
+        {
+          ...event,
+          markers: makeMarkers(event.start),
+        },
+      ],
+    };
+  });
+})();
+
+export const WithSpanEvents: Story = {
+  args: {
+    rows: markedRows,
     rowHeight: 24,
     labelWidth: 300,
     maxHeight: 800,

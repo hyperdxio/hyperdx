@@ -39,6 +39,7 @@ export enum DisplayType {
   Search = 'search',
   Heatmap = 'heatmap',
   Markdown = 'markdown',
+  EventPatterns = 'event_patterns',
 }
 
 export type KeyValue<Key = string, Value = string> = { key: Key; value: Value };
@@ -431,6 +432,7 @@ export enum AlertState {
   DISABLED = 'DISABLED',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
+  PENDING = 'PENDING',
 }
 
 export enum AlertErrorType {
@@ -604,6 +606,7 @@ export const AlertBaseObjectSchema = z.object({
       until: z.string(),
     })
     .optional(),
+  numConsecutiveWindows: z.number().int().min(1).nullish(),
 });
 
 // Keep AlertBaseSchema as a ZodObject for backwards compatibility with
@@ -638,6 +641,16 @@ export const AlertHistorySchema = z.object({
 
 export type AlertHistory = z.infer<typeof AlertHistorySchema>;
 
+// A single alert state transition within a time range, used to draw
+// firing/recovery annotations on dashboard charts. Only boundary crossings are
+// emitted: ALERT = fired, OK = recovered.
+export const AlertTransitionSchema = z.object({
+  createdAt: z.string(),
+  state: z.nativeEnum(AlertState),
+});
+
+export type AlertTransition = z.infer<typeof AlertTransitionSchema>;
+
 // --------------------------
 // FILTERS
 // --------------------------
@@ -659,6 +672,22 @@ export const FilterSchema = z.union([
 ]);
 
 export type Filter = z.infer<typeof FilterSchema>;
+
+// --------------------------
+// TAGS
+// --------------------------
+// Shared limits + validator for user-supplied tag arrays. Any write path that
+// accepts tags (external API, MCP tools, internal routers) should validate with
+// `tagsSchema` so the caps stay consistent in one place. Read/model schemas keep
+// a bare `z.array(z.string())` so parsing existing documents never fails on
+// legacy data that predates these caps.
+export const MAX_TAG_LENGTH = 32;
+export const MAX_TAGS = 50;
+
+export const tagsSchema = z
+  .array(z.string().max(MAX_TAG_LENGTH))
+  .max(MAX_TAGS)
+  .optional();
 
 // --------------------------
 // SAVED SEARCH
@@ -1219,34 +1248,30 @@ export const CteChartConfigSchema = z.intersection(
 
 export type CteChartConfig = z.infer<typeof CteChartConfigSchema>;
 
+export const WithClauseSchema = z.object({
+  name: z.string(),
+
+  // Need to specify either a sql or chartConfig instance. To avoid
+  // the schema falling into an any type, the fields are separate
+  // and listed as optional.
+  sql: ChSqlSchema.optional(),
+  chartConfig: CteChartConfigSchema.optional(),
+
+  // If true, it'll render as WITH ident AS (subquery)
+  // If false, it'll be a "variable" ex. WITH (sql) AS ident
+  // where sql can be any expression, ex. a constant string
+  // see: https://clickhouse.com/docs/sql-reference/statements/select/with#syntax
+  // default assume true
+  isSubquery: z.boolean().optional(),
+});
+
 // The `with` CTE property needs to be defined at this level, just above the
 // non-recursive chart config so that it can reference a complete chart config
 // schema. This structure does mean that we cannot nest `with` clauses but does
 // ensure the type system can catch more issues in the build pipeline.
 const BuilderChartConfigSchema = z.intersection(
   z.intersection(_ChartConfigSchema, SelectSQLStatementSchema),
-  z
-    .object({
-      with: z.array(
-        z.object({
-          name: z.string(),
-
-          // Need to specify either a sql or chartConfig instance. To avoid
-          // the schema falling into an any type, the fields are separate
-          // and listed as optional.
-          sql: ChSqlSchema.optional(),
-          chartConfig: CteChartConfigSchema.optional(),
-
-          // If true, it'll render as WITH ident AS (subquery)
-          // If false, it'll be a "variable" ex. WITH (sql) AS ident
-          // where sql can be any expression, ex. a constant string
-          // see: https://clickhouse.com/docs/sql-reference/statements/select/with#syntax
-          // default assume true
-          isSubquery: z.boolean().optional(),
-        }),
-      ),
-    })
-    .partial(),
+  z.object({ with: z.array(WithClauseSchema) }).partial(),
 );
 
 export type BuilderChartConfig = z.infer<typeof BuilderChartConfigSchema>;
@@ -2077,6 +2102,7 @@ export const AlertsPageItemSchema = z.object({
     })
     .optional(),
   executionErrors: z.array(AlertErrorSchema).optional(),
+  numConsecutiveWindows: z.number().int().min(1).nullish(),
 });
 
 export type AlertsPageItem = z.infer<typeof AlertsPageItemSchema>;
@@ -2092,6 +2118,14 @@ export const AlertApiResponseSchema = z.object({
 });
 
 export type AlertApiResponse = z.infer<typeof AlertApiResponseSchema>;
+
+export const AlertHistoryRangeApiResponseSchema = z.object({
+  data: z.array(AlertTransitionSchema),
+});
+
+export type AlertHistoryRangeApiResponse = z.infer<
+  typeof AlertHistoryRangeApiResponseSchema
+>;
 
 // Webhooks
 export const WebhooksApiResponseSchema = z.object({
