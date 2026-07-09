@@ -16,6 +16,7 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Divider,
   Group,
   Popover,
@@ -24,7 +25,15 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconChartBar, IconChartLine, IconSearch } from '@tabler/icons-react';
+import { useClipboard } from '@mantine/hooks';
+import {
+  IconChartBar,
+  IconChartLine,
+  IconCheck,
+  IconCopy,
+  IconFocusCentered,
+  IconSearch,
+} from '@tabler/icons-react';
 
 import api from '@/api';
 import {
@@ -57,17 +66,170 @@ type ActiveClickPayload = {
   activeLabel: string;
   xPerc: number;
   yPerc: number;
-  activePayload?: { value?: number; dataKey?: string; name?: string }[];
+  activePayload?: {
+    value?: number;
+    dataKey?: string;
+    name?: string;
+    /** Series color from Recharts, matching the legend swatch. */
+    color?: string;
+  }[];
 };
+
+/** A single group column / value pair decoded from a chart series key. */
+export type SeriesGroupFilter = { column: string; value: string };
+
+// Decode a Recharts series key (e.g. "count · error · api") into the
+// underlying group-column filters. This is the same decode `buildSearchUrl`
+// uses to build a drill-down URL, extracted so the focus callback can hand the
+// caller structured filters (rather than a display string) to apply to a
+// sibling results list.
+export function decodeSeriesGroupFilters({
+  seriesKey,
+  groupColumns,
+  valueColumns,
+  isSingleValueColumn,
+}: {
+  seriesKey: string | undefined;
+  groupColumns: string[];
+  valueColumns: string[];
+  isSingleValueColumn: boolean | undefined;
+}): SeriesGroupFilter[] {
+  const seriesKeys = seriesKey?.split(ChartKeyJoiner);
+  const groupFilters: SeriesGroupFilter[] = [];
+
+  if (seriesKeys?.length && groupColumns?.length) {
+    // Determine if the first part is a value column name
+    const startsWithValueColumn =
+      !(isSingleValueColumn ?? true) ||
+      ((groupColumns?.length ?? 0) === 0 && (valueColumns?.length ?? 0) > 0);
+    const groupValues = startsWithValueColumn
+      ? seriesKeys.slice(1)
+      : seriesKeys;
+
+    groupValues.forEach((value, index) => {
+      if (groupColumns[index] != null) {
+        groupFilters.push({ column: groupColumns[index], value });
+      }
+    });
+  }
+
+  return groupFilters;
+}
+
+// A single series row in the "Filter by group" list. Shows a color swatch and
+// the series name, plus a row of icon actions: drill into the underlying
+// events, copy the name, and focus the series on the chart (same as clicking
+// its legend item). The swatch mirrors the chart legend so a row stays
+// visually tied to its line.
+function FilterByGroupRow({
+  name,
+  dataKey,
+  color,
+  drillInUrl,
+  onDrillIn,
+  onFocus,
+}: {
+  name: string;
+  dataKey?: string;
+  color?: string;
+  drillInUrl: string;
+  onDrillIn: () => void;
+  onFocus: () => void;
+}) {
+  const clipboard = useClipboard({ timeout: 1500 });
+
+  return (
+    <Group gap={8} wrap="nowrap">
+      {color != null && (
+        // Same line swatch the legend renders, so the row reads as the same
+        // series as its chart line.
+        <svg width="12" height="4" style={{ flexShrink: 0 }} aria-hidden>
+          <line x1="0" y1="2" x2="12" y2="2" stroke={color} strokeWidth={1.5} />
+        </svg>
+      )}
+      <Text size="xs" truncate flex="1" title={name}>
+        {name}
+      </Text>
+      {/* flexShrink:0 so the action cluster never resizes as the name
+          truncates or the copy icon swaps, which would shift the row and
+          make the buttons move out from under the cursor mid-click. */}
+      <Group gap={2} wrap="nowrap" style={{ flexShrink: 0 }}>
+        <Tooltip
+          label="Drill in (opens new tab)"
+          withArrow
+          withinPortal
+          color="gray"
+          position="top"
+        >
+          <ActionIcon
+            component={Link}
+            href={drillInUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            prefetch={false}
+            variant="subtle"
+            size="xs"
+            data-testid={`chart-view-events-link-${dataKey}`}
+            aria-label="Drill in"
+            onClick={onDrillIn}
+          >
+            <IconSearch size={13} />
+          </ActionIcon>
+        </Tooltip>
+        <Tooltip
+          label={clipboard.copied ? 'Copied!' : 'Copy name'}
+          withArrow
+          withinPortal
+          color="gray"
+          position="top"
+        >
+          <ActionIcon
+            variant="subtle"
+            size="xs"
+            aria-label="Copy name"
+            data-testid={`chart-copy-name-${dataKey}`}
+            onClick={() => clipboard.copy(name)}
+          >
+            {clipboard.copied ? (
+              <IconCheck size={13} />
+            ) : (
+              <IconCopy size={13} />
+            )}
+          </ActionIcon>
+        </Tooltip>
+        <Tooltip
+          label="Focus"
+          withArrow
+          withinPortal
+          color="gray"
+          position="top"
+        >
+          <ActionIcon
+            variant="subtle"
+            size="xs"
+            aria-label="Focus"
+            data-testid={`chart-focus-series-${dataKey}`}
+            onClick={onFocus}
+          >
+            <IconFocusCentered size={13} />
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+    </Group>
+  );
+}
 
 function ActiveTimeTooltip({
   activeClickPayload,
   buildSearchUrl,
   onDismiss,
+  onFocusSeries,
 }: {
   activeClickPayload: ActiveClickPayload | undefined;
   buildSearchUrl: (key?: string, value?: number) => string | null;
   onDismiss: () => void;
+  /** Focus a series by its raw series key (dataKey) and display name. */
+  onFocusSeries: (payload: { dataKey?: string; name: string }) => void;
 }) {
   const isOpen =
     activeClickPayload != null &&
@@ -139,25 +301,32 @@ function ActiveTimeTooltip({
           />
         </Popover.Target>
         <Popover.Dropdown
-          p="xs"
-          maw={300}
+          p={8}
+          // Fixed width (not maw) so the dropdown never re-measures when a row's
+          // content changes (e.g. the copy icon swapping to a check). A
+          // content-driven width would make Floating UI reposition the popover
+          // mid-interaction, shifting the buttons out from under the cursor.
+          w={280}
           onClick={e => e.stopPropagation()}
           onMouseDown={e => e.stopPropagation()}
         >
-          <Stack gap="xs" style={{ maxHeight: '220px', overflowY: 'auto' }}>
+          <Stack gap={4} style={{ maxHeight: '220px', overflowY: 'auto' }}>
             <Link
               data-testid="chart-view-events-link"
               href={buildSearchUrl() ?? '/search'}
+              target="_blank"
+              rel="noopener noreferrer"
+              prefetch={false}
               onClick={onDismiss}
             >
-              <Group gap="xs">
-                <IconSearch size={16} />
-                View All Events
+              <Group gap={8} py={2}>
+                <IconSearch size={14} />
+                <Text size="xs">View All Events</Text>
               </Group>
             </Link>
             {validPayloads.length > 1 && (
               <>
-                <Divider />
+                <Divider my={4} />
                 <Text c="gray.5" size="xs">
                   Filter by group:
                 </Text>
@@ -166,27 +335,20 @@ function ActiveTimeTooltip({
                     payload.dataKey,
                     payload.value,
                   );
+                  const name = payload.name ?? payload.dataKey ?? '';
                   return (
-                    <Tooltip
+                    <FilterByGroupRow
                       key={idx}
-                      label={payload.name}
-                      withArrow
-                      color="gray"
-                      position="right"
-                    >
-                      <Link
-                        data-testid={`chart-view-events-link-${payload.dataKey}`}
-                        href={seriesUrl ?? '/search'}
-                        onClick={onDismiss}
-                      >
-                        <Group gap="xs">
-                          <IconSearch size={12} />
-                          <Text size="xs" truncate flex="1">
-                            {payload.name}
-                          </Text>
-                        </Group>
-                      </Link>
-                    </Tooltip>
+                      name={name}
+                      dataKey={payload.dataKey}
+                      color={payload.color}
+                      drillInUrl={seriesUrl ?? '/search'}
+                      onDrillIn={onDismiss}
+                      onFocus={() => {
+                        onFocusSeries({ dataKey: payload.dataKey, name });
+                        onDismiss();
+                      }}
+                    />
                   );
                 })}
               </>
@@ -221,6 +383,15 @@ type DBTimeChartComponentProps = {
   showMVOptimizationIndicator?: boolean;
   showDateRangeIndicator?: boolean;
   errorVariant?: ChartErrorStateVariant;
+  /**
+   * Called when the user clicks "Focus" on a series in the drill-down menu,
+   * with the group-column filters decoded from that series. When provided, the
+   * consumer owns focus behavior — e.g. the search page applies these as search
+   * filters so both the chart AND the sibling results list narrow to the series.
+   * When omitted, Focus falls back to a chart-only visual isolation (legend
+   * behavior), which is all a standalone chart can do.
+   */
+  onFocusSeries?: (filters: SeriesGroupFilter[]) => void;
 };
 
 function DBTimeChartComponent({
@@ -244,6 +415,7 @@ function DBTimeChartComponent({
   showMVOptimizationIndicator = true,
   showDateRangeIndicator = true,
   errorVariant,
+  onFocusSeries,
 }: DBTimeChartComponentProps) {
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
@@ -493,28 +665,12 @@ function DBTimeChartComponent({
 
       // Parse the series key to extract group values
       const seriesKeys = seriesKey?.split(ChartKeyJoiner);
-      const groupFilters: Array<{ column: string; value: any }> = [];
-
-      if (seriesKeys?.length && groupColumns?.length) {
-        // Determine if the first part is a value column name
-        const startsWithValueColumn =
-          !(isSingleValueColumn ?? true) ||
-          ((groupColumns?.length ?? 0) === 0 &&
-            (valueColumns?.length ?? 0) > 0);
-        const groupValues = startsWithValueColumn
-          ? seriesKeys.slice(1)
-          : seriesKeys;
-
-        // Build group filters
-        groupValues.forEach((value, index) => {
-          if (groupColumns[index] != null) {
-            groupFilters.push({
-              column: groupColumns[index],
-              value,
-            });
-          }
-        });
-      }
+      const groupFilters = decodeSeriesGroupFilters({
+        seriesKey,
+        groupColumns,
+        valueColumns,
+        isSingleValueColumn,
+      });
 
       // Build value range filter for Y-axis if provided
       let valueRangeFilter:
@@ -603,6 +759,36 @@ function DBTimeChartComponent({
       groupColumns,
       valueColumns,
       isSingleValueColumn,
+    ],
+  );
+
+  // Focus a series from the drill-down menu. When the consumer supplied an
+  // onFocusSeries handler, decode the series into its group-column filters and
+  // hand them up so the consumer can narrow both the chart and any sibling
+  // results list. Otherwise fall back to chart-only visual isolation, which is
+  // the best a standalone chart (e.g. a dashboard tile) can do.
+  const handleFocusSeries = useCallback(
+    ({ dataKey, name }: { dataKey?: string; name: string }) => {
+      if (onFocusSeries) {
+        const groupFilters = decodeSeriesGroupFilters({
+          seriesKey: dataKey,
+          groupColumns,
+          valueColumns,
+          isSingleValueColumn,
+        });
+        if (groupFilters.length > 0) {
+          onFocusSeries(groupFilters);
+          return;
+        }
+      }
+      handleToggleSeries(name);
+    },
+    [
+      onFocusSeries,
+      groupColumns,
+      valueColumns,
+      isSingleValueColumn,
+      handleToggleSeries,
     ],
   );
 
@@ -719,6 +905,7 @@ function DBTimeChartComponent({
             activeClickPayload={activeClickPayload}
             buildSearchUrl={buildSearchUrl}
             onDismiss={() => setActiveClickPayload(undefined)}
+            onFocusSeries={handleFocusSeries}
           />
           <MemoChart
             dateRange={dateRange}
