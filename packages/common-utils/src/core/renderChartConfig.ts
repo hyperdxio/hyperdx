@@ -421,13 +421,13 @@ export const rewriteSqlFilterWithKvItems = (
 
       const replacement =
         values.length === 1
-          ? SqlString.format('has(??, concat(?, ?, ?))', [
+          ? SqlString.format('hasToken(??, concat(?, ?, ?))', [
               info.kvItemsColumn,
               mapKey,
               info.separator,
               values[0],
             ])
-          : `hasAny(${SqlString.format('??', [
+          : `hasAnyTokens(${SqlString.format('??', [
               info.kvItemsColumn,
             ])}, array(${values
               .map(v =>
