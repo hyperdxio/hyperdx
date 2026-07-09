@@ -343,6 +343,20 @@ const fastifySQL = ({
   }
 };
 
+function generateHasSqlForKvItemsColumn(
+  column: string,
+  key: string,
+  separator: string,
+  value: string,
+): string {
+  return SqlString.format('has(??, concat(?, ?, ?))', [
+    column,
+    key,
+    separator,
+    value,
+  ]);
+}
+
 export const rewriteSqlFilterWithKvItems = (
   condition: string,
   kvItemsLookup: KvItemsLookup,
@@ -419,25 +433,38 @@ export const rewriteSqlFilterWithKvItems = (
       // alone does not preserve. Same rationale for empty entries in IN lists.
       if (values.length === 0 || values.some(v => v === '')) return;
 
-      const replacement =
-        values.length === 1
-          ? SqlString.format('hasToken(??, concat(?, ?, ?))', [
+      let replacement: string;
+      if (values.length === 1) {
+        replacement = generateHasSqlForKvItemsColumn(
+          info.kvItemsColumn,
+          mapKey,
+          info.separator,
+          values[0],
+        );
+      } else if (info.useHasAny) {
+        // ClickHouse >= 26.5 supports `hasAny` over the direct_read map items
+        // column in a single call.
+        replacement = `hasAny(${SqlString.format('??', [
+          info.kvItemsColumn,
+        ])}, array(${values
+          .map(v =>
+            SqlString.format('concat(?, ?, ?)', [mapKey, info.separator, v]),
+          )
+          .join(', ')}))`;
+      } else {
+        // Backport branches (26.2/26.3/26.4) support `has` but not `hasAny` over
+        // the items column, so we fall back to a chain of `has(...) OR ...`.
+        replacement = `(${values
+          .map(v =>
+            generateHasSqlForKvItemsColumn(
               info.kvItemsColumn,
               mapKey,
               info.separator,
-              values[0],
-            ])
-          : `hasAnyTokens(${SqlString.format('??', [
-              info.kvItemsColumn,
-            ])}, array(${values
-              .map(v =>
-                SqlString.format('concat(?, ?, ?)', [
-                  mapKey,
-                  info.separator,
-                  v,
-                ]),
-              )
-              .join(', ')}))`;
+              v,
+            ),
+          )
+          .join(' OR ')})`;
+      }
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type, we expect Select
       const replAst = parser.astify(`${prefix}${replacement}`, {
