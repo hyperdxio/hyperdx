@@ -1,5 +1,6 @@
 import type {
   OnClickDashboard,
+  OnClickExternal,
   OnClickSearch,
 } from '@hyperdx/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
@@ -83,6 +84,42 @@ describe('useOnClickLinkBuilder', () => {
     const action = result.current!({});
     expect(action.description).toBe('Open dashboard "API Latency Drilldown"');
     expect(action.url!.startsWith('/dashboards/dash_1?')).toBe(true);
+  });
+
+  it('resolves an external link to an absolute URL marked external', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate:
+        'https://grafana.example.com/d/abc?var-service={{ServiceName}}',
+    };
+    const { result } = renderHook(() =>
+      useOnClickLinkBuilder({ onClick, dateRange }),
+    );
+    const action = result.current!({ ServiceName: 'checkout' });
+    // The resolved destination URL is surfaced as the hover hint so the
+    // user can see exactly where an external link points.
+    expect(action.description).toBe(
+      'https://grafana.example.com/d/abc?var-service=checkout',
+    );
+    expect(action.url).toBe(
+      'https://grafana.example.com/d/abc?var-service=checkout',
+    );
+    expect(action.external).toBe(true);
+    expect(action.onClickError).toBeUndefined();
+  });
+
+  it('encodes an invalid external URL as url: null with an error handler', () => {
+    const onClick: OnClickExternal = {
+      type: 'external',
+      urlTemplate: '/dashboards/{{Id}}',
+    };
+    const { result } = renderHook(() =>
+      useOnClickLinkBuilder({ onClick, dateRange }),
+    );
+    const action = result.current!({ Id: '123' });
+    expect(action.url).toBeNull();
+    expect(action.description).toBe('Open external link');
+    expect(action.onClickError).toBeInstanceOf(Function);
   });
 
   it('caches results per row reference so repeated calls share the same RowAction', () => {

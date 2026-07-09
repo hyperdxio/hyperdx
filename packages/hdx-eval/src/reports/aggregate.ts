@@ -1,12 +1,12 @@
 import type { GradeRecord } from '@/grading/types';
-import type { McpKind, RunRecord } from '@/harness/types';
-import { modelDirName } from '@/runs/path';
+import { type McpKind, PLUGIN_NONE, type RunRecord } from '@/harness/types';
+import { escapeDirSegment } from '@/runs/path';
 
 /**
- * A column key uniquely identifies a (mcp, model) combination in reports.
- * When a batch has a single model, the column key equals the MCP name
- * (backward-compatible). When multiple models are present, the column
- * key is `mcp/model`.
+ * A column key uniquely identifies a (mcp, model, plugin) combination in
+ * reports. The MCP name is always the base; when the batch compares multiple
+ * models and/or plugins, the varying components are appended after a `/`,
+ * joined with `+`: `mcp`, `mcp/model`, `mcp/plugin`, or `mcp/model+plugin`.
  */
 export type ColumnKey = string;
 
@@ -14,6 +14,7 @@ export type CellSummary = {
   scenario: string;
   mcp: McpKind;
   model: string;
+  plugin: string;
   /** Display key used in report columns. */
   columnKey: ColumnKey;
   n: number;
@@ -47,7 +48,7 @@ export type DeltaSummary = {
 
 export type ScenarioSummary = {
   scenario: string;
-  /** Cells keyed by column key (mcp or mcp/model). */
+  /** Cells keyed by column key (e.g. mcp, mcp/model, mcp/model+plugin). */
   cells: Record<ColumnKey, CellSummary>;
   /** Which column key is the baseline. */
   baseline?: ColumnKey;
@@ -64,6 +65,8 @@ export type BatchSummary = {
   columnOrder: ColumnKey[];
   /** Whether this batch compares multiple models. */
   multiModel: boolean;
+  /** Whether this batch compares multiple plugin arms. */
+  multiPlugin: boolean;
   scenarios: ScenarioSummary[];
   /**
    * @deprecated Use `columnOrder`. Preserved for backward compatibility
@@ -78,56 +81,96 @@ export type GradedRunPair = {
 };
 
 /**
- * Build a column key from a (mcp, model) pair.
- * When `multiModel` is false the column key is just the mcp name.
+ * Build a column key from a (mcp, model, plugin) tuple.
+ * The MCP name is always the base. Model and plugin follow the same rule:
+ * a component is included only when the batch compares multiple values of
+ * that dimension. Varying components are appended after a `/`, joined with
+ * `+` (e.g. `hyperdx/opus`, `hyperdx/myplugin`, `hyperdx/opus+myplugin`).
+ * When plugins vary, the no-plugin variant renders as the literal `none`.
  *
- * The model component is sanitized through `modelDirName` so that the
- * column key matches the directory name on disk (which is what the
- * viewer reads). Without this, model IDs containing `/`, `:`, or `.`
- * would produce different keys in the summary JSON vs the viewer.
+ * The model/plugin components are sanitized through `escapeDirSegment` so the
+ * column key matches the directory name on disk (which is what the viewer
+ * reads).
  */
 export function columnKeyFor(
   mcp: McpKind,
   model: string,
-  multiModel: boolean,
+  plugin: string,
+  opts: { multiModel: boolean; multiPlugin: boolean },
 ): ColumnKey {
-  return multiModel ? `${mcp}/${modelDirName(model)}` : mcp;
+  const varying: string[] = [];
+  if (opts.multiModel) varying.push(escapeDirSegment(model));
+  if (opts.multiPlugin) varying.push(escapeDirSegment(plugin || PLUGIN_NONE));
+  return varying.length > 0 ? `${mcp}/${varying.join('+')}` : mcp;
 }
 
 export function buildAggregate(args: {
   batchDir: string;
   pairs: GradedRunPair[];
-  /** Explicit baseline column key. If not set, the first column encountered
-   *  is used. When using a single model, pass just the mcp name. */
+  /** Explicit baseline column key. Ignored when it doesn't match any column
+   *  in the batch; without a (valid) baseline the first column is used.
+   *  Callers that know the CLI variant order (the `run` command) or a
+   *  previously persisted baseline (`writeBatchSummary`) pass it here. */
   baseline?: ColumnKey;
 }): BatchSummary {
-  // Detect whether this batch involves multiple models.
+  // Detect whether this batch compares multiple models / plugins.
   const modelSet = new Set<string>();
-  for (const p of args.pairs) modelSet.add(p.run.model);
+  const pluginSet = new Set<string>();
+  for (const p of args.pairs) {
+    modelSet.add(p.run.model);
+    pluginSet.add(p.run.plugin ?? PLUGIN_NONE);
+  }
   const multiModel = modelSet.size > 1;
+  const multiPlugin = pluginSet.size > 1;
+  const keyOpts = { multiModel, multiPlugin };
 
   const byScenario = new Map<string, GradedRunPair[]>();
   const columnSet = new Set<ColumnKey>();
   for (const p of args.pairs) {
     if (!byScenario.has(p.run.scenario)) byScenario.set(p.run.scenario, []);
     byScenario.get(p.run.scenario)!.push(p);
-    columnSet.add(columnKeyFor(p.run.mcp, p.run.model, multiModel));
+    columnSet.add(
+      columnKeyFor(
+        p.run.mcp,
+        p.run.model,
+        p.run.plugin ?? PLUGIN_NONE,
+        keyOpts,
+      ),
+    );
   }
   const columnOrder = [...columnSet].sort();
-  const baseline = args.baseline ?? columnOrder[0];
+  // Honor the requested baseline only if it actually matches a column (a
+  // persisted baseline can go stale, e.g. after a key-format change);
+  // otherwise fall back to the first column.
+  const baseline =
+    args.baseline && columnSet.has(args.baseline)
+      ? args.baseline
+      : columnOrder[0];
 
   const scenarios: ScenarioSummary[] = [];
   for (const [name, ps] of byScenario.entries()) {
     const byCol = new Map<ColumnKey, GradedRunPair[]>();
     for (const p of ps) {
-      const key = columnKeyFor(p.run.mcp, p.run.model, multiModel);
+      const key = columnKeyFor(
+        p.run.mcp,
+        p.run.model,
+        p.run.plugin ?? PLUGIN_NONE,
+        keyOpts,
+      );
       if (!byCol.has(key)) byCol.set(key, []);
       byCol.get(key)!.push(p);
     }
     const cells: Record<ColumnKey, CellSummary> = {};
     for (const [col, list] of byCol.entries()) {
       const first = list[0].run;
-      cells[col] = buildCellSummary(name, first.mcp, first.model, col, list);
+      cells[col] = buildCellSummary(
+        name,
+        first.mcp,
+        first.model,
+        first.plugin ?? PLUGIN_NONE,
+        col,
+        list,
+      );
     }
 
     // Compute deltas: each non-baseline column vs the baseline.
@@ -153,6 +196,7 @@ export function buildAggregate(args: {
     baseline,
     columnOrder,
     multiModel,
+    multiPlugin,
     mcpOrder: columnOrder,
     scenarios,
   };
@@ -162,6 +206,7 @@ function buildCellSummary(
   scenario: string,
   mcp: McpKind,
   model: string,
+  plugin: string,
   columnKey: ColumnKey,
   pairs: GradedRunPair[],
 ): CellSummary {
@@ -227,6 +272,7 @@ function buildCellSummary(
     scenario,
     mcp,
     model,
+    plugin,
     columnKey,
     n,
     programmatic: { mean: programmaticScore, perCheck },

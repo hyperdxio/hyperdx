@@ -11,7 +11,11 @@ import { Box } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { WithClause } from '@/hooks/useRowWhere';
-import { getDisplayedTimestampValueExpression, getEventBody } from '@/source';
+import {
+  getDisplayedTimestampValueExpression,
+  getDurationMsExpression,
+  getEventBody,
+} from '@/source';
 import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
 
 import { DBRowJsonViewer } from './DBRowJsonViewer';
@@ -28,6 +32,8 @@ export enum ROW_DATA_ALIASES {
   EVENT_ATTRIBUTES = '__hdx_event_attributes',
   EVENTS_EXCEPTION_ATTRIBUTES = '__hdx_events_exception_attributes',
   SPAN_EVENTS = '__hdx_span_events',
+  DURATION_MS = '__hdx_duration_ms',
+  SPAN_KIND = '__hdx_span_kind',
 }
 
 export function useRowData({
@@ -63,12 +69,21 @@ export function useRowData({
         )
       : [];
 
+  // `SELECT *` can fail against a Distributed/Merge table whose underlying
+  // target tables declare different column sets. When the source declares a
+  // "known columns" list (columns known to exist across all target tables) we
+  // select that instead of `*` when fetching full row data.
+  const knownColumns =
+    isLogSource(source) || isTraceSource(source)
+      ? source.knownColumnsListExpression?.trim()
+      : undefined;
+
   const queryResult = useQueriedChartConfig(
     {
       connection: source.connection,
       select: [
         {
-          valueExpression: '*',
+          valueExpression: knownColumns || '*',
         },
         {
           valueExpression: getDisplayedTimestampValueExpression(source),
@@ -142,6 +157,22 @@ export function useRowData({
               {
                 valueExpression: source.spanEventsValueExpression,
                 alias: ROW_DATA_ALIASES.SPAN_EVENTS,
+              },
+            ]
+          : []),
+        ...(source.kind === SourceKind.Trace && source.durationExpression
+          ? [
+              {
+                valueExpression: getDurationMsExpression(source),
+                alias: ROW_DATA_ALIASES.DURATION_MS,
+              },
+            ]
+          : []),
+        ...(source.kind === SourceKind.Trace && source.spanKindExpression
+          ? [
+              {
+                valueExpression: source.spanKindExpression,
+                alias: ROW_DATA_ALIASES.SPAN_KIND,
               },
             ]
           : []),

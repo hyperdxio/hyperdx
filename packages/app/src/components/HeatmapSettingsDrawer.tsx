@@ -17,7 +17,7 @@ import { IconPlayerPlay } from '@tabler/icons-react';
 
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
-export const HeatmapSettingsSchema = z.object({
+const HeatmapSettingsSchema = z.object({
   value: z.string().trim().min(1),
   count: z.string().trim().optional(),
   scaleType: z.enum(['log', 'linear']).default('log'),

@@ -1,0 +1,607 @@
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import mongoose from 'mongoose';
+import request, { SuperAgentTest } from 'supertest';
+
+import * as config from '@/config';
+import {
+  DEFAULT_DATABASE,
+  DEFAULT_LOGS_TABLE,
+  getLoggedInAgent,
+  getServer,
+} from '@/fixtures';
+import Alert, { AlertSource, AlertState } from '@/models/alert';
+import Connection from '@/models/connection';
+import { SavedSearch } from '@/models/savedSearch';
+import { LogSource } from '@/models/source';
+import { ITeam } from '@/models/team';
+import { IUser } from '@/models/user';
+
+const BASE_URL = '/api/v2/saved-searches';
+
+describe('External API v2 Saved Searches CRUD', () => {
+  const server = getServer();
+  let agent: SuperAgentTest;
+  let team: ITeam;
+  let user: IUser;
+  let sourceId: string;
+
+  beforeAll(async () => {
+    await server.start();
+  });
+
+  beforeEach(async () => {
+    const result = await getLoggedInAgent(server);
+    agent = result.agent;
+    team = result.team;
+    user = result.user;
+
+    const connection = await Connection.create({
+      team: team._id,
+      name: 'Default',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+    const source = await LogSource.create({
+      kind: SourceKind.Log,
+      team: team._id,
+      name: 'Logs',
+      from: { databaseName: DEFAULT_DATABASE, tableName: DEFAULT_LOGS_TABLE },
+      timestampValueExpression: 'Timestamp',
+      defaultTableSelectExpression: 'Timestamp, Body',
+      connection: connection._id,
+    });
+    sourceId = source._id.toString();
+  });
+
+  afterEach(async () => {
+    await server.clearDBs();
+  });
+
+  afterAll(async () => {
+    await server.stop();
+  });
+
+  const authRequest = (
+    method: 'get' | 'post' | 'put' | 'delete',
+    url: string,
+  ) => agent[method](url).set('Authorization', `Bearer ${user?.accessKey}`);
+
+  const savedSearchBody = () => ({
+    name: 'Production Errors',
+    sourceId,
+    select: 'Timestamp, Body',
+    where: 'SeverityText:ERROR',
+    whereLanguage: 'lucene' as const,
+    orderBy: 'Timestamp DESC',
+    tags: ['prod'],
+  });
+
+  const createOtherTeamSavedSearch = () =>
+    SavedSearch.create({
+      team: new mongoose.Types.ObjectId(),
+      name: 'Other Team Search',
+      source: new mongoose.Types.ObjectId(),
+      whereLanguage: 'lucene',
+    });
+
+  describe('auth', () => {
+    it('should require authentication on list', async () => {
+      await request(server.getHttpServer()).get(BASE_URL).expect(401);
+    });
+  });
+
+  describe('POST /api/v2/saved-searches', () => {
+    it('should create a saved search and return the external shape', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send(savedSearchBody())
+        .expect(200);
+
+      expect(response.body.data).toMatchObject({
+        id: expect.any(String),
+        name: 'Production Errors',
+        sourceId,
+        select: 'Timestamp, Body',
+        where: 'SeverityText:ERROR',
+        whereLanguage: 'lucene',
+        orderBy: 'Timestamp DESC',
+        tags: ['prod'],
+        teamId: team._id.toString(),
+      });
+      // never leak the internal source field
+      expect(response.body.data).not.toHaveProperty('source');
+    });
+
+    it('should reject a sourceId that does not belong to the team', async () => {
+      const otherSourceId = new mongoose.Types.ObjectId().toString();
+      const response = await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), sourceId: otherSourceId })
+        .expect(400);
+      expect(response.body.message).toMatch(/existing source/i);
+    });
+
+    it('should reject a real source owned by another team (cross-team)', async () => {
+      // A source that genuinely exists but belongs to a different team must be
+      // rejected the same as a non-existent one — requireValidSourceId scopes
+      // the lookup to the caller's team, preventing cross-team references.
+      const otherTeamSource = await LogSource.create({
+        kind: SourceKind.Log,
+        team: new mongoose.Types.ObjectId(),
+        name: 'Other Team Logs',
+        from: { databaseName: DEFAULT_DATABASE, tableName: DEFAULT_LOGS_TABLE },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+        connection: new mongoose.Types.ObjectId(),
+      });
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          sourceId: otherTeamSource._id.toString(),
+        })
+        .expect(400);
+      expect(response.body.message).toMatch(/existing source/i);
+    });
+
+    it('should reject a malformed sourceId', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), sourceId: 'not-an-id' })
+        .expect(400);
+    });
+
+    it('should reject a missing name', async () => {
+      const { name, ...rest } = savedSearchBody();
+      await authRequest('post', BASE_URL).send(rest).expect(400);
+    });
+
+    it('should reject more than 50 tags', async () => {
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          tags: Array.from({ length: 51 }, (_, i) => `tag-${i}`),
+        })
+        .expect(400);
+    });
+
+    it('should reject a tag longer than 32 characters', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), tags: ['x'.repeat(33)] })
+        .expect(400);
+    });
+
+    it('should reject a name longer than 1024 characters', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), name: 'x'.repeat(1025) })
+        .expect(400);
+    });
+
+    it('should accept the sidebar-renderable IN / NOT IN / BETWEEN forms', async () => {
+      const filters = [
+        { type: 'sql', condition: "ServiceName IN ('checkout', 'payments')" },
+        { type: 'sql', condition: "SeverityText NOT IN ('debug', 'trace')" },
+        { type: 'sql', condition: 'Duration BETWEEN 100 AND 5000' },
+        // type defaults to 'sql' when omitted
+        { condition: "StatusCode IN ('500')" },
+      ];
+      const response = await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), filters })
+        .expect(200);
+
+      expect(response.body.data.filters).toEqual([
+        { type: 'sql', condition: "ServiceName IN ('checkout', 'payments')" },
+        { type: 'sql', condition: "SeverityText NOT IN ('debug', 'trace')" },
+        { type: 'sql', condition: 'Duration BETWEEN 100 AND 5000' },
+        { type: 'sql', condition: "StatusCode IN ('500')" },
+      ]);
+    });
+
+    it('should reject non-sql filter shapes that would not render in the sidebar', async () => {
+      // The sidebar only renders `type: 'sql'` conditions; lucene and sql_ast
+      // shapes (accepted by the shared FilterSchema) would be stored but never
+      // shown, so the external write path rejects them.
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [{ type: 'lucene', condition: 'SeverityText:ERROR' }],
+        })
+        .expect(400);
+
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [
+            {
+              type: 'sql_ast',
+              operator: '=',
+              left: 'ServiceName',
+              right: "'x'",
+            },
+          ],
+        })
+        .expect(400);
+    });
+
+    it('should reject a sql condition that is not a sidebar-renderable predicate', async () => {
+      // Even a `type: 'sql'` condition is rejected when the sidebar's reverse
+      // parser can't extract a facet from it (e.g. a plain equality), because
+      // it would be stored but never render.
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [{ type: 'sql', condition: "ServiceName = 'checkout'" }],
+        })
+        .expect(400);
+    });
+
+    it('should reject a compound condition that only partially renders', async () => {
+      // `ServiceName IN (...)` renders, but `AND foo = 1` would still execute at
+      // query time while never showing in the sidebar — displayed and executed
+      // filters must not diverge, so the whole filter is rejected. A compound of
+      // two IN clauses is likewise rejected: the UI stores those as two separate
+      // single-clause filters, not one condition.
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [
+            {
+              type: 'sql',
+              condition: "ServiceName IN ('checkout') AND foo = 1",
+            },
+          ],
+        })
+        .expect(400);
+
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [
+            {
+              type: 'sql',
+              condition: "ServiceName IN ('a') AND SeverityText IN ('error')",
+            },
+          ],
+        })
+        .expect(400);
+    });
+
+    it('should reject a BETWEEN with non-numeric bounds', async () => {
+      // A quoted/date BETWEEN reverse-parses to a NaN range and would re-emit
+      // `BETWEEN NaN AND NaN`, so it is not renderable.
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [
+            {
+              type: 'sql',
+              condition: "Timestamp BETWEEN '2024-01-01' AND '2024-02-01'",
+            },
+          ],
+        })
+        .expect(400);
+    });
+
+    it('should reject more than 100 filters', async () => {
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: Array.from({ length: 101 }, () => ({
+            type: 'sql',
+            condition: "ServiceName IN ('checkout')",
+          })),
+        })
+        .expect(400);
+    });
+
+    it('should reject a filter expression that exceeds the length cap', async () => {
+      // Guards against bypassing the `where` length cap by relocating a huge
+      // expression into an otherwise-uncapped filter condition.
+      await authRequest('post', BASE_URL)
+        .send({
+          ...savedSearchBody(),
+          filters: [{ type: 'sql', condition: 'x'.repeat(8 * 1024 + 1) }],
+        })
+        .expect(400);
+    });
+
+    it.each([
+      ['select', 4 * 1024],
+      ['where', 8 * 1024],
+      ['orderBy', 1024],
+    ])('should reject %s longer than its cap', async (field, cap) => {
+      await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), [field]: 'x'.repeat(cap + 1) })
+        .expect(400);
+    });
+  });
+
+  describe('GET /api/v2/saved-searches', () => {
+    it('should list only the team saved searches', async () => {
+      await authRequest('post', BASE_URL).send(savedSearchBody()).expect(200);
+      await createOtherTeamSavedSearch();
+
+      const response = await authRequest('get', BASE_URL).expect(200);
+      expect(response.body.data).toHaveLength(1);
+      expect(response.body.data[0].name).toBe('Production Errors');
+    });
+
+    it('should cap the number of results with the limit param', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), name: 'First' })
+        .expect(200);
+      await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), name: 'Second' })
+        .expect(200);
+
+      const response = await authRequest('get', `${BASE_URL}?limit=1`).expect(
+        200,
+      );
+      expect(response.body.data).toHaveLength(1);
+    });
+
+    it('should reject an out-of-range or non-integer limit or offset', async () => {
+      await authRequest('get', `${BASE_URL}?limit=0`).expect(400);
+      await authRequest('get', `${BASE_URL}?limit=5000`).expect(400);
+      await authRequest('get', `${BASE_URL}?offset=-1`).expect(400);
+      await authRequest('get', `${BASE_URL}?limit=abc`).expect(400);
+      await authRequest('get', `${BASE_URL}?limit=1.5`).expect(400);
+    });
+
+    it('should paginate with limit and offset and report the total', async () => {
+      await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), name: 'First' })
+        .expect(200);
+      await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), name: 'Second' })
+        .expect(200);
+      await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), name: 'Third' })
+        .expect(200);
+
+      const page1 = await authRequest(
+        'get',
+        `${BASE_URL}?limit=2&offset=0`,
+      ).expect(200);
+      expect(page1.body.data).toHaveLength(2);
+      expect(page1.body.meta).toEqual({ total: 3, limit: 2, offset: 0 });
+      // The full count is also surfaced as a header for clients that don't read
+      // the meta body.
+      expect(page1.headers['x-total-count']).toBe('3');
+
+      const page2 = await authRequest(
+        'get',
+        `${BASE_URL}?limit=2&offset=2`,
+      ).expect(200);
+      expect(page2.body.data).toHaveLength(1);
+      expect(page2.body.meta).toEqual({ total: 3, limit: 2, offset: 2 });
+
+      // Pages must be disjoint and together cover every record (stable order).
+      const pagedIds = [...page1.body.data, ...page2.body.data].map(s => s.id);
+      expect(new Set(pagedIds).size).toBe(3);
+    });
+
+    it('should return an empty page with the correct total past the end', async () => {
+      await authRequest('post', BASE_URL).send(savedSearchBody()).expect(200);
+
+      const response = await authRequest(
+        'get',
+        `${BASE_URL}?offset=100`,
+      ).expect(200);
+      expect(response.body.data).toHaveLength(0);
+      expect(response.body.meta).toEqual({
+        total: 1,
+        limit: 1000,
+        offset: 100,
+      });
+    });
+
+    it('should get a saved search by id', async () => {
+      const created = await authRequest('post', BASE_URL)
+        .send(savedSearchBody())
+        .expect(200);
+
+      const response = await authRequest(
+        'get',
+        `${BASE_URL}/${created.body.data.id}`,
+      ).expect(200);
+      expect(response.body.data.id).toBe(created.body.data.id);
+    });
+
+    it('should return 404 for another team saved search', async () => {
+      const other = await createOtherTeamSavedSearch();
+      await authRequest('get', `${BASE_URL}/${other._id}`).expect(404);
+    });
+  });
+
+  describe('PUT /api/v2/saved-searches/:id', () => {
+    it('should preserve a pre-existing non-renderable filter on read-modify-write', async () => {
+      // A UI/legacy saved search can carry a filter shape the sidebar reverse
+      // parser does not render (e.g. a lucene condition). GET returns it
+      // verbatim, so a read-modify-write that echoes it back unchanged must
+      // succeed — otherwise the API would 400 on data it just served.
+      const legacy = await SavedSearch.create({
+        team: team._id,
+        name: 'Legacy',
+        source: sourceId,
+        whereLanguage: 'lucene',
+        filters: [{ type: 'lucene', condition: 'level:error' }],
+      });
+
+      const ok = await authRequest('put', `${BASE_URL}/${legacy._id}`)
+        .send({
+          name: 'Legacy renamed',
+          sourceId,
+          filters: [{ type: 'lucene', condition: 'level:error' }],
+        })
+        .expect(200);
+      expect(ok.body.data.filters).toEqual([
+        { type: 'lucene', condition: 'level:error' },
+      ]);
+
+      // Adding a *new* non-renderable filter is still rejected.
+      await authRequest('put', `${BASE_URL}/${legacy._id}`)
+        .send({
+          name: 'Legacy renamed',
+          sourceId,
+          filters: [
+            { type: 'lucene', condition: 'level:error' },
+            { type: 'lucene', condition: 'status:500' },
+          ],
+        })
+        .expect(400);
+    });
+
+    it('should update a saved search', async () => {
+      const created = await authRequest('post', BASE_URL)
+        .send(savedSearchBody())
+        .expect(200);
+
+      const response = await authRequest(
+        'put',
+        `${BASE_URL}/${created.body.data.id}`,
+      )
+        .send({ ...savedSearchBody(), name: 'Renamed', where: 'Body:timeout' })
+        .expect(200);
+
+      expect(response.body.data.name).toBe('Renamed');
+      expect(response.body.data.where).toBe('Body:timeout');
+    });
+
+    it('should reset every omitted optional field to its default (uniform full-replace)', async () => {
+      // PUT is a full replace: omitting any optional field resets it, uniformly
+      // — orderBy and filters must not be silently preserved while
+      // select/where/whereLanguage/tags reset.
+      const created = await authRequest('post', BASE_URL)
+        .send({ ...savedSearchBody(), whereLanguage: 'sql', where: 'x = 1' })
+        .expect(200);
+      expect(created.body.data.orderBy).toBe('Timestamp DESC');
+      expect(created.body.data.tags).toEqual(['prod']);
+
+      // Send only the required fields; every optional field is omitted.
+      const response = await authRequest(
+        'put',
+        `${BASE_URL}/${created.body.data.id}`,
+      )
+        .send({ name: 'Minimal', sourceId })
+        .expect(200);
+
+      expect(response.body.data.name).toBe('Minimal');
+      expect(response.body.data.select).toBe('');
+      expect(response.body.data.where).toBe('');
+      expect(response.body.data.whereLanguage).toBe('lucene');
+      // Previously-preserved fields must now reset too.
+      expect(response.body.data.orderBy).toBe('');
+      expect(response.body.data.tags).toEqual([]);
+      expect(response.body.data.filters).toEqual([]);
+    });
+
+    it('should return 404 for another team saved search', async () => {
+      const other = await createOtherTeamSavedSearch();
+      await authRequest('put', `${BASE_URL}/${other._id}`)
+        .send(savedSearchBody())
+        .expect(404);
+    });
+
+    it('should reject a sourceId that does not belong to the team', async () => {
+      const created = await authRequest('post', BASE_URL)
+        .send(savedSearchBody())
+        .expect(200);
+
+      const otherSourceId = new mongoose.Types.ObjectId().toString();
+      const response = await authRequest(
+        'put',
+        `${BASE_URL}/${created.body.data.id}`,
+      )
+        .send({ ...savedSearchBody(), sourceId: otherSourceId })
+        .expect(400);
+      expect(response.body.message).toMatch(/existing source/i);
+    });
+  });
+
+  describe('DELETE /api/v2/saved-searches/:id', () => {
+    it('should delete a saved search', async () => {
+      const created = await authRequest('post', BASE_URL)
+        .send(savedSearchBody())
+        .expect(200);
+
+      await authRequest('delete', `${BASE_URL}/${created.body.data.id}`).expect(
+        200,
+      );
+
+      expect(await SavedSearch.findById(created.body.data.id)).toBeNull();
+    });
+
+    it('should return 404 for another team saved search', async () => {
+      const other = await createOtherTeamSavedSearch();
+      await authRequest('delete', `${BASE_URL}/${other._id}`).expect(404);
+      expect(await SavedSearch.findById(other._id)).not.toBeNull();
+    });
+
+    it('should delete alerts attached to the saved search', async () => {
+      const created = await authRequest('post', BASE_URL)
+        .send(savedSearchBody())
+        .expect(200);
+      const savedSearchId = created.body.data.id;
+
+      await Alert.create({
+        team: team._id,
+        savedSearch: savedSearchId,
+        source: AlertSource.SAVED_SEARCH,
+        threshold: 1,
+        interval: '5m',
+        state: AlertState.OK,
+        channel: { type: null },
+      });
+
+      await authRequest('delete', `${BASE_URL}/${savedSearchId}`).expect(200);
+
+      expect(await SavedSearch.findById(savedSearchId)).toBeNull();
+      // Dependent alerts must not be orphaned.
+      expect(await Alert.countDocuments({ savedSearch: savedSearchId })).toBe(
+        0,
+      );
+    });
+
+    it('should delete dependent alerts before the saved search (partial-failure ordering)', async () => {
+      // Verifies the documented least-bad partial-failure ordering: alerts are
+      // deleted before the parent, so if the final SavedSearch.deleteOne throws,
+      // the search survives without its alerts (recoverable) rather than
+      // leaving orphaned alerts pointing at a deleted saved search.
+      const created = await authRequest('post', BASE_URL)
+        .send(savedSearchBody())
+        .expect(200);
+      const savedSearchId = created.body.data.id;
+
+      await Alert.create({
+        team: team._id,
+        savedSearch: savedSearchId,
+        source: AlertSource.SAVED_SEARCH,
+        threshold: 1,
+        interval: '5m',
+        state: AlertState.OK,
+        channel: { type: null },
+      });
+
+      const consoleErrorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      const deleteSpy = jest
+        .spyOn(SavedSearch, 'deleteOne')
+        .mockImplementationOnce((() => {
+          throw new Error('simulated deleteOne failure');
+        }) as any);
+
+      try {
+        await authRequest('delete', `${BASE_URL}/${savedSearchId}`).expect(500);
+      } finally {
+        deleteSpy.mockRestore();
+        consoleErrorSpy.mockRestore();
+      }
+
+      // Alerts were deleted first, before the failure...
+      expect(await Alert.countDocuments({ savedSearch: savedSearchId })).toBe(
+        0,
+      );
+      // ...and the saved search survives its own failed delete (recoverable).
+      expect(await SavedSearch.findById(savedSearchId)).not.toBeNull();
+    });
+  });
+});

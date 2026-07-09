@@ -39,6 +39,7 @@ export enum DisplayType {
   Search = 'search',
   Heatmap = 'heatmap',
   Markdown = 'markdown',
+  EventPatterns = 'event_patterns',
 }
 
 export type KeyValue<Key = string, Value = string> = { key: Key; value: Value };
@@ -147,9 +148,15 @@ export const SQLIntervalSchema = z
   .string()
   .regex(/^\d+ (second|minute|hour|day)$/);
 export const SearchConditionSchema = z.string();
-export const SearchConditionLanguageSchema = z
-  .enum(['sql', 'lucene', 'promql'])
-  .optional();
+const SearchConditionRequiredLanguageSchema = z.enum([
+  'sql',
+  'lucene',
+  'promql',
+]);
+export const SearchConditionLanguageSchema =
+  SearchConditionRequiredLanguageSchema.optional();
+export const SearchConditionTrimmedLanguageSchema =
+  SearchConditionRequiredLanguageSchema.exclude(['promql']).optional();
 export const AggregateFunctionSchema = z.enum([
   'avg',
   'count',
@@ -425,6 +432,7 @@ export enum AlertState {
   DISABLED = 'DISABLED',
   INSUFFICIENT_DATA = 'INSUFFICIENT_DATA',
   OK = 'OK',
+  PENDING = 'PENDING',
 }
 
 export enum AlertErrorType {
@@ -598,6 +606,7 @@ export const AlertBaseObjectSchema = z.object({
       until: z.string(),
     })
     .optional(),
+  numConsecutiveWindows: z.number().int().min(1).nullish(),
 });
 
 // Keep AlertBaseSchema as a ZodObject for backwards compatibility with
@@ -653,6 +662,22 @@ export const FilterSchema = z.union([
 ]);
 
 export type Filter = z.infer<typeof FilterSchema>;
+
+// --------------------------
+// TAGS
+// --------------------------
+// Shared limits + validator for user-supplied tag arrays. Any write path that
+// accepts tags (external API, MCP tools, internal routers) should validate with
+// `tagsSchema` so the caps stay consistent in one place. Read/model schemas keep
+// a bare `z.array(z.string())` so parsing existing documents never fails on
+// legacy data that predates these caps.
+export const MAX_TAG_LENGTH = 32;
+export const MAX_TAGS = 50;
+
+export const tagsSchema = z
+  .array(z.string().max(MAX_TAG_LENGTH))
+  .max(MAX_TAGS)
+  .optional();
 
 // --------------------------
 // SAVED SEARCH
@@ -757,9 +782,16 @@ export const OnClickDashboardSchema = z.object({
 });
 export type OnClickDashboard = z.infer<typeof OnClickDashboardSchema>;
 
+export const OnClickExternalSchema = z.object({
+  type: z.literal('external'),
+  urlTemplate: z.string().min(1).max(10000),
+});
+export type OnClickExternal = z.infer<typeof OnClickExternalSchema>;
+
 export const OnClickSchema = z.discriminatedUnion('type', [
   OnClickSearchSchema,
   OnClickDashboardSchema,
+  OnClickExternalSchema,
 ]);
 export type OnClick = z.infer<typeof OnClickSchema>;
 
@@ -1206,34 +1238,30 @@ export const CteChartConfigSchema = z.intersection(
 
 export type CteChartConfig = z.infer<typeof CteChartConfigSchema>;
 
+export const WithClauseSchema = z.object({
+  name: z.string(),
+
+  // Need to specify either a sql or chartConfig instance. To avoid
+  // the schema falling into an any type, the fields are separate
+  // and listed as optional.
+  sql: ChSqlSchema.optional(),
+  chartConfig: CteChartConfigSchema.optional(),
+
+  // If true, it'll render as WITH ident AS (subquery)
+  // If false, it'll be a "variable" ex. WITH (sql) AS ident
+  // where sql can be any expression, ex. a constant string
+  // see: https://clickhouse.com/docs/sql-reference/statements/select/with#syntax
+  // default assume true
+  isSubquery: z.boolean().optional(),
+});
+
 // The `with` CTE property needs to be defined at this level, just above the
 // non-recursive chart config so that it can reference a complete chart config
 // schema. This structure does mean that we cannot nest `with` clauses but does
 // ensure the type system can catch more issues in the build pipeline.
 const BuilderChartConfigSchema = z.intersection(
   z.intersection(_ChartConfigSchema, SelectSQLStatementSchema),
-  z
-    .object({
-      with: z.array(
-        z.object({
-          name: z.string(),
-
-          // Need to specify either a sql or chartConfig instance. To avoid
-          // the schema falling into an any type, the fields are separate
-          // and listed as optional.
-          sql: ChSqlSchema.optional(),
-          chartConfig: CteChartConfigSchema.optional(),
-
-          // If true, it'll render as WITH ident AS (subquery)
-          // If false, it'll be a "variable" ex. WITH (sql) AS ident
-          // where sql can be any expression, ex. a constant string
-          // see: https://clickhouse.com/docs/sql-reference/statements/select/with#syntax
-          // default assume true
-          isSubquery: z.boolean().optional(),
-        }),
-      ),
-    })
-    .partial(),
+  z.object({ with: z.array(WithClauseSchema) }).partial(),
 );
 
 export type BuilderChartConfig = z.infer<typeof BuilderChartConfigSchema>;
@@ -1479,7 +1507,7 @@ export const DashboardFilterSchema = z.object({
   source: z.string().min(1),
   sourceMetricType: z.nativeEnum(MetricsDataType).optional(),
   where: z.string().optional(),
-  whereLanguage: SearchConditionLanguageSchema,
+  whereLanguage: SearchConditionTrimmedLanguageSchema,
   // Sources this filter applies to. Undefined / missing means the filter
   // applies to all tiles.
   appliesToSourceIds: z.array(z.string().min(1)).optional(),
@@ -1579,7 +1607,7 @@ export const ConnectionSchema = z.object({
     .regex(/^[a-z0-9_]+$/i)
     .optional()
     .nullable(),
-  prometheusEndpoint: z.string().url().optional(),
+  isPrometheusEndpoint: z.boolean().optional(),
 });
 
 export type Connection = z.infer<typeof ConnectionSchema>;
@@ -1732,6 +1760,7 @@ export const LogSourceSchema = BaseSourceSchema.extend({
   traceIdExpression: z.string().optional(),
   spanIdExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
+  knownColumnsListExpression: z.string().optional(),
   /**
    * @deprecated Application-side SQL predicate AND'd into every query against
    * the source. Not a security boundary; bypassable by direct table SELECT.
@@ -1782,6 +1811,7 @@ export const TraceSourceSchema = BaseSourceSchema.extend({
   eventAttributesExpression: z.string().optional(),
   spanEventsValueExpression: z.string().optional(),
   implicitColumnExpression: z.string().optional(),
+  knownColumnsListExpression: z.string().optional(),
   displayedTimestampValueExpression: z.string().optional(),
   highlightedTraceAttributeExpressions:
     HighlightedAttributeExpressionsSchema.optional(),
@@ -2062,6 +2092,7 @@ export const AlertsPageItemSchema = z.object({
     })
     .optional(),
   executionErrors: z.array(AlertErrorSchema).optional(),
+  numConsecutiveWindows: z.number().int().min(1).nullish(),
 });
 
 export type AlertsPageItem = z.infer<typeof AlertsPageItemSchema>;

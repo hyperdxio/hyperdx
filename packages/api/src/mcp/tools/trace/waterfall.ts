@@ -6,14 +6,16 @@ import {
   DisplayType,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import { parseTimeRange } from '@/mcp/tools/query/helpers';
-import type { McpContext } from '@/mcp/tools/types';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import {
+  clickHouseErrorResult,
+  parseTimeRange,
+} from '@/mcp/tools/query/helpers';
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpUserError } from '@/mcp/utils/errors';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -164,10 +166,13 @@ function durationDivisor(precision: number): number {
 
 // ─── Tool definition ─────────────────────────────────────────────────────────
 
-export function registerTraceWaterfall(server: McpServer, context: McpContext) {
+export function registerTraceWaterfall({
+  context,
+  registerTool,
+}: ToolRegistrar) {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_trace_waterfall',
     {
       title: 'Trace Waterfall (single trace)',
@@ -205,198 +210,160 @@ export function registerTraceWaterfall(server: McpServer, context: McpContext) {
         'me one example of a slow X" (single trace).',
       inputSchema: traceSchema,
     },
-    withToolTracing(
-      'clickstack_trace_waterfall',
-      context,
-      async (rawInput: TraceInput) => {
-        const input = traceSchema.parse(rawInput);
-        const timeRange = parseTimeRange(input.startTime, input.endTime);
-        if ('error' in timeRange) {
-          return {
-            isError: true as const,
-            content: [{ type: 'text' as const, text: timeRange.error }],
-          };
-        }
-        const { startDate, endDate } = timeRange;
+    async (rawInput: TraceInput) => {
+      const input = traceSchema.parse(rawInput);
+      const timeRange = parseTimeRange(input.startTime, input.endTime);
+      if ('error' in timeRange) {
+        return mcpUserError(timeRange.error);
+      }
+      const { startDate, endDate } = timeRange;
 
-        const source = await getSource(teamId.toString(), input.sourceId);
-        if (!source) {
-          return {
-            isError: true as const,
-            content: [
-              {
-                type: 'text' as const,
-                text: `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
-              },
-            ],
-          };
-        }
-        if (source.kind !== SourceKind.Trace) {
-          return {
-            isError: true as const,
-            content: [
-              {
-                type: 'text' as const,
-                text: `Source ${input.sourceId} is kind="${source.kind}". clickstack_trace_waterfall requires a source of kind="trace".`,
-              },
-            ],
-          };
-        }
-
-        const connection = await getConnectionById(
-          teamId.toString(),
-          source.connection.toString(),
-          true,
+      const source = await getSource(teamId.toString(), input.sourceId);
+      if (!source) {
+        return mcpUserError(
+          `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
         );
-        if (!connection) {
+      }
+      if (source.kind !== SourceKind.Trace) {
+        return mcpUserError(
+          `Source ${input.sourceId} is kind="${source.kind}". clickstack_trace_waterfall requires a source of kind="trace".`,
+        );
+      }
+
+      const connection = await getConnectionById(
+        teamId.toString(),
+        source.connection.toString(),
+        true,
+      );
+      if (!connection) {
+        return mcpUserError(
+          `Connection not found for source: ${input.sourceId}`,
+        );
+      }
+
+      const clickhouseClient = new ClickhouseClient({
+        host: connection.host,
+        username: connection.username,
+        password: connection.password,
+      });
+      const metadata = getMetadata(clickhouseClient);
+
+      const traceIdExpr = source.traceIdExpression;
+      const spanIdExpr = source.spanIdExpression;
+      const parentSpanIdExpr = source.parentSpanIdExpression;
+      const spanNameExpr = source.spanNameExpression;
+      const spanKindExpr = source.spanKindExpression;
+      const durationExpr = source.durationExpression;
+      const tsExpr = source.timestampValueExpression;
+      const serviceNameExpr = source.serviceNameExpression ?? "''";
+      const statusCodeExpr = source.statusCodeExpression ?? "''";
+      const statusMessageExpr = source.statusMessageExpression ?? "''";
+      const attrsExpr = source.eventAttributesExpression ?? 'map()';
+      const divisor = durationDivisor(source.durationPrecision);
+
+      // ── Step 1: pick a TraceId (unless one was provided) ──
+      let pickedTraceId = input.traceId;
+      if (!pickedTraceId) {
+        // Compose pickFilter with the pickBy-specific filter when needed.
+        let effectiveFilter = input.pickFilter;
+        let effectiveLanguage = input.pickFilterLanguage;
+        if (input.pickBy === 'first_error') {
+          // Statuses are typically stored as enum strings. Use SQL so we don't
+          // depend on lucene mapping the raw column name.
+          const errFilter = `${statusCodeExpr} = 'STATUS_CODE_ERROR'`;
+          if (effectiveFilter && effectiveLanguage === 'sql') {
+            effectiveFilter = `(${effectiveFilter}) AND (${errFilter})`;
+          } else if (effectiveFilter && effectiveLanguage === 'lucene') {
+            // Run lucene filter inside parens, AND with raw SQL.
+            // Easiest: convert to sql by AND-joining a fresh sql-only condition
+            // means we'd have to render lucene first. Compromise: tell user
+            // to express the error filter in pickFilter directly.
+            effectiveFilter = `(${effectiveFilter}) AND StatusCode:STATUS_CODE_ERROR`;
+            effectiveLanguage = 'lucene';
+          } else {
+            effectiveFilter = errFilter;
+            effectiveLanguage = 'sql';
+          }
+        }
+
+        const orderBy =
+          input.pickBy === 'slowest'
+            ? `max(${durationExpr}) DESC`
+            : input.pickBy === 'first_error'
+              ? `min(${tsExpr}) ASC`
+              : `max(${tsExpr}) DESC`;
+
+        const pickConfig: BuilderChartConfigWithDateRange = {
+          displayType: DisplayType.Table,
+          select: [
+            {
+              aggFn: 'count' as const,
+              valueExpression: '',
+              alias: 'span_count',
+              aggCondition: '',
+              aggConditionLanguage: 'sql' as const,
+            },
+          ],
+          from: source.from,
+          where: effectiveFilter,
+          whereLanguage: effectiveLanguage,
+          connection: source.connection.toString(),
+          timestampValueExpression: tsExpr,
+          implicitColumnExpression: source.implicitColumnExpression,
+          groupBy: traceIdExpr,
+          orderBy,
+          limit: { limit: 1 },
+          dateRange: [startDate, endDate],
+        };
+
+        let pickResult: { data?: Array<Record<string, unknown>> } = {};
+        try {
+          pickResult = (await clickhouseClient.queryChartConfig({
+            config: pickConfig as ChartConfigWithDateRange,
+            metadata,
+            querySettings: source.querySettings,
+          })) as { data?: Array<Record<string, unknown>> };
+        } catch (e) {
+          return clickHouseErrorResult(e, 'Failed to pick a trace');
+        }
+
+        const firstRow = pickResult.data?.[0];
+        if (!firstRow) {
           return {
-            isError: true as const,
             content: [
               {
                 type: 'text' as const,
-                text: `Connection not found for source: ${input.sourceId}`,
+                text: JSON.stringify(
+                  {
+                    result: null,
+                    hint:
+                      'No traces matched. Widen the time range, relax pickFilter, or ' +
+                      'pass a specific traceId.',
+                    pickFilter: effectiveFilter,
+                    pickBy: input.pickBy,
+                  },
+                  null,
+                  2,
+                ),
               },
             ],
           };
         }
-
-        const clickhouseClient = new ClickhouseClient({
-          host: connection.host,
-          username: connection.username,
-          password: connection.password,
-        });
-        const metadata = getMetadata(clickhouseClient);
-
-        const traceIdExpr = source.traceIdExpression;
-        const spanIdExpr = source.spanIdExpression;
-        const parentSpanIdExpr = source.parentSpanIdExpression;
-        const spanNameExpr = source.spanNameExpression;
-        const spanKindExpr = source.spanKindExpression;
-        const durationExpr = source.durationExpression;
-        const tsExpr = source.timestampValueExpression;
-        const serviceNameExpr = source.serviceNameExpression ?? "''";
-        const statusCodeExpr = source.statusCodeExpression ?? "''";
-        const statusMessageExpr = source.statusMessageExpression ?? "''";
-        const attrsExpr = source.eventAttributesExpression ?? 'map()';
-        const divisor = durationDivisor(source.durationPrecision);
-
-        // ── Step 1: pick a TraceId (unless one was provided) ──
-        let pickedTraceId = input.traceId;
-        if (!pickedTraceId) {
-          // Compose pickFilter with the pickBy-specific filter when needed.
-          let effectiveFilter = input.pickFilter;
-          let effectiveLanguage = input.pickFilterLanguage;
-          if (input.pickBy === 'first_error') {
-            // Statuses are typically stored as enum strings. Use SQL so we don't
-            // depend on lucene mapping the raw column name.
-            const errFilter = `${statusCodeExpr} = 'STATUS_CODE_ERROR'`;
-            if (effectiveFilter && effectiveLanguage === 'sql') {
-              effectiveFilter = `(${effectiveFilter}) AND (${errFilter})`;
-            } else if (effectiveFilter && effectiveLanguage === 'lucene') {
-              // Run lucene filter inside parens, AND with raw SQL.
-              // Easiest: convert to sql by AND-joining a fresh sql-only condition
-              // means we'd have to render lucene first. Compromise: tell user
-              // to express the error filter in pickFilter directly.
-              effectiveFilter = `(${effectiveFilter}) AND StatusCode:STATUS_CODE_ERROR`;
-              effectiveLanguage = 'lucene';
-            } else {
-              effectiveFilter = errFilter;
-              effectiveLanguage = 'sql';
-            }
-          }
-
-          const orderBy =
-            input.pickBy === 'slowest'
-              ? `max(${durationExpr}) DESC`
-              : input.pickBy === 'first_error'
-                ? `min(${tsExpr}) ASC`
-                : `max(${tsExpr}) DESC`;
-
-          const pickConfig: BuilderChartConfigWithDateRange = {
-            displayType: DisplayType.Table,
-            select: [
-              {
-                aggFn: 'count' as const,
-                valueExpression: '',
-                alias: 'span_count',
-                aggCondition: '',
-                aggConditionLanguage: 'sql' as const,
-              },
-            ],
-            from: source.from,
-            where: effectiveFilter,
-            whereLanguage: effectiveLanguage,
-            connection: source.connection.toString(),
-            timestampValueExpression: tsExpr,
-            implicitColumnExpression: source.implicitColumnExpression,
-            groupBy: traceIdExpr,
-            orderBy,
-            limit: { limit: 1 },
-            dateRange: [startDate, endDate],
-          };
-
-          let pickResult: { data?: Array<Record<string, unknown>> } = {};
-          try {
-            pickResult = (await clickhouseClient.queryChartConfig({
-              config: pickConfig as ChartConfigWithDateRange,
-              metadata,
-              querySettings: source.querySettings,
-            })) as { data?: Array<Record<string, unknown>> };
-          } catch (e) {
-            return {
-              isError: true as const,
-              content: [
-                {
-                  type: 'text' as const,
-                  text: `Failed to pick a trace: ${e instanceof Error ? e.message : String(e)}`,
-                },
-              ],
-            };
-          }
-
-          const firstRow = pickResult.data?.[0];
-          if (!firstRow) {
-            return {
-              content: [
-                {
-                  type: 'text' as const,
-                  text: JSON.stringify(
-                    {
-                      result: null,
-                      hint:
-                        'No traces matched. Widen the time range, relax pickFilter, or ' +
-                        'pass a specific traceId.',
-                      pickFilter: effectiveFilter,
-                      pickBy: input.pickBy,
-                    },
-                    null,
-                    2,
-                  ),
-                },
-              ],
-            };
-          }
-          // The grouped traceId column is rendered into the result with the
-          // expression text as its alias. Locate it by stripping non-data keys.
-          const candidate = Object.entries(firstRow).find(
-            ([k]) => k !== 'span_count' && k !== '__hdx_time_bucket',
+        // The grouped traceId column is rendered into the result with the
+        // expression text as its alias. Locate it by stripping non-data keys.
+        const candidate = Object.entries(firstRow).find(
+          ([k]) => k !== 'span_count' && k !== '__hdx_time_bucket',
+        );
+        if (!candidate || candidate[1] == null) {
+          return mcpUserError(
+            `Picker returned a row but no TraceId column was found. Row keys: ${Object.keys(firstRow).join(', ')}`,
           );
-          if (!candidate || candidate[1] == null) {
-            return {
-              isError: true as const,
-              content: [
-                {
-                  type: 'text' as const,
-                  text: `Picker returned a row but no TraceId column was found. Row keys: ${Object.keys(firstRow).join(', ')}`,
-                },
-              ],
-            };
-          }
-          pickedTraceId = String(candidate[1]);
         }
+        pickedTraceId = String(candidate[1]);
+      }
 
-        // ── Step 2: fetch the full span tree ──
-        const treeQuery = `
+      // ── Step 2: fetch the full span tree ──
+      const treeQuery = `
         SELECT
           ${spanIdExpr} AS spanId,
           ${parentSpanIdExpr} AS parentSpanId,
@@ -414,120 +381,115 @@ export function registerTraceWaterfall(server: McpServer, context: McpContext) {
         LIMIT {n:UInt32}
       `;
 
-        let rows: SpanRow[];
-        try {
-          const result = await clickhouseClient.query({
-            query: treeQuery,
-            query_params: {
-              db: source.from.databaseName,
-              tbl: source.from.tableName,
-              tid: pickedTraceId,
-              n: input.maxSpans + 1, // +1 to detect truncation
-              divisor,
+      let rows: SpanRow[];
+      try {
+        const result = await clickhouseClient.query({
+          query: treeQuery,
+          query_params: {
+            db: source.from.databaseName,
+            tbl: source.from.tableName,
+            tid: pickedTraceId,
+            n: input.maxSpans + 1, // +1 to detect truncation
+            divisor,
+          },
+          format: 'JSONEachRow',
+          connectionId: source.connection.toString(),
+          clickhouse_settings: {
+            readonly: '1',
+            // Per-query timeout matches the rest of the MCP for consistency.
+            ...(source.querySettings
+              ? Object.fromEntries(
+                  source.querySettings.map(s => [s.setting, s.value]),
+                )
+              : {}),
+          },
+        });
+        rows =
+          (await (result as { json: () => Promise<SpanRow[]> }).json()) ?? [];
+      } catch (e) {
+        return clickHouseErrorResult(
+          e,
+          `Failed to fetch trace ${pickedTraceId}`,
+        );
+      }
+
+      const truncated = rows.length > input.maxSpans;
+      const spans = truncated ? rows.slice(0, input.maxSpans) : rows;
+
+      if (spans.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify(
+                {
+                  result: null,
+                  traceId: pickedTraceId,
+                  hint: 'TraceId picked, but no spans exist in the time window. The trace may have spans outside startTime/endTime — widen the window.',
+                },
+                null,
+                2,
+              ),
             },
-            format: 'JSONEachRow',
-            connectionId: source.connection.toString(),
-            clickhouse_settings: {
-              readonly: '1',
-              // Per-query timeout matches the rest of the MCP for consistency.
-              ...(source.querySettings
-                ? Object.fromEntries(
-                    source.querySettings.map(s => [s.setting, s.value]),
-                  )
-                : {}),
-            },
-          });
-          rows =
-            (await (result as { json: () => Promise<SpanRow[]> }).json()) ?? [];
-        } catch (e) {
-          return {
-            isError: true as const,
-            content: [
-              {
-                type: 'text' as const,
-                text: `Failed to fetch trace ${pickedTraceId}: ${e instanceof Error ? e.message : String(e)}`,
-              },
-            ],
-          };
-        }
-
-        const truncated = rows.length > input.maxSpans;
-        const spans = truncated ? rows.slice(0, input.maxSpans) : rows;
-
-        if (spans.length === 0) {
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify(
-                  {
-                    result: null,
-                    traceId: pickedTraceId,
-                    hint: 'TraceId picked, but no spans exist in the time window. The trace may have spans outside startTime/endTime — widen the window.',
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
-        }
-
-        const tree = buildPreOrderTree(spans);
-        const root = tree.find(s => s.depth === 0) ?? tree[0];
-        const totalDuration = Math.max(...spans.map(s => s.durationMs));
-
-        // ── Step 3: fetch correlated logs (when logSourceId is configured) ──
-        type LogRow = {
-          timestamp: string;
-          severityText: string;
-          body: string;
-          serviceName: string;
-          spanId: string;
+          ],
         };
-        let correlatedLogs: LogRow[] | undefined;
-        let logsTruncated = false;
-        let logsNote: string | undefined;
-        if (input.includeLogs && source.logSourceId) {
-          const logSource = await getSource(
-            teamId.toString(),
-            source.logSourceId,
-          );
-          if (!logSource) {
-            logsNote = `logSourceId ${source.logSourceId} configured but source not found`;
-          } else if (logSource.kind !== SourceKind.Log) {
-            logsNote = `logSourceId ${source.logSourceId} is kind="${logSource.kind}", not "log"`;
-          } else {
-            const logTraceIdExpr = logSource.traceIdExpression ?? 'TraceId';
-            const logSpanIdExpr = logSource.spanIdExpression ?? "''";
-            const logTsExpr = logSource.timestampValueExpression;
-            const logBodyExpr = logSource.bodyExpression ?? "''";
-            const logSevExpr = logSource.severityTextExpression ?? "''";
-            const logSvcExpr = logSource.serviceNameExpression ?? "''";
+      }
 
-            // Reuse the same connection only when the log source lives there.
-            let logClient = clickhouseClient;
-            if (
-              logSource.connection.toString() !== source.connection.toString()
-            ) {
-              const logConn = await getConnectionById(
-                teamId.toString(),
-                logSource.connection.toString(),
-                true,
-              );
-              if (!logConn) {
-                logsNote = `connection for log source ${source.logSourceId} not found`;
-              } else {
-                logClient = new ClickhouseClient({
-                  host: logConn.host,
-                  username: logConn.username,
-                  password: logConn.password,
-                });
-              }
+      const tree = buildPreOrderTree(spans);
+      const root = tree.find(s => s.depth === 0) ?? tree[0];
+      const totalDuration = Math.max(...spans.map(s => s.durationMs));
+
+      // ── Step 3: fetch correlated logs (when logSourceId is configured) ──
+      type LogRow = {
+        timestamp: string;
+        severityText: string;
+        body: string;
+        serviceName: string;
+        spanId: string;
+      };
+      let correlatedLogs: LogRow[] | undefined;
+      let logsTruncated = false;
+      let logsNote: string | undefined;
+      if (input.includeLogs && source.logSourceId) {
+        const logSource = await getSource(
+          teamId.toString(),
+          source.logSourceId,
+        );
+        if (!logSource) {
+          logsNote = `logSourceId ${source.logSourceId} configured but source not found`;
+        } else if (logSource.kind !== SourceKind.Log) {
+          logsNote = `logSourceId ${source.logSourceId} is kind="${logSource.kind}", not "log"`;
+        } else {
+          const logTraceIdExpr = logSource.traceIdExpression ?? 'TraceId';
+          const logSpanIdExpr = logSource.spanIdExpression ?? "''";
+          const logTsExpr = logSource.timestampValueExpression;
+          const logBodyExpr = logSource.bodyExpression ?? "''";
+          const logSevExpr = logSource.severityTextExpression ?? "''";
+          const logSvcExpr = logSource.serviceNameExpression ?? "''";
+
+          // Reuse the same connection only when the log source lives there.
+          let logClient = clickhouseClient;
+          if (
+            logSource.connection.toString() !== source.connection.toString()
+          ) {
+            const logConn = await getConnectionById(
+              teamId.toString(),
+              logSource.connection.toString(),
+              true,
+            );
+            if (!logConn) {
+              logsNote = `connection for log source ${source.logSourceId} not found`;
+            } else {
+              logClient = new ClickhouseClient({
+                host: logConn.host,
+                username: logConn.username,
+                password: logConn.password,
+              });
             }
+          }
 
-            if (!logsNote) {
-              const logsQuery = `
+          if (!logsNote) {
+            const logsQuery = `
               SELECT
                 ${logTsExpr} AS timestamp,
                 ${logSevExpr} AS severityText,
@@ -539,81 +501,77 @@ export function registerTraceWaterfall(server: McpServer, context: McpContext) {
               ORDER BY ${logTsExpr} ASC
               LIMIT {n:UInt32}
             `;
-              try {
-                const logResult = await logClient.query({
-                  query: logsQuery,
-                  query_params: {
-                    db: logSource.from.databaseName,
-                    tbl: logSource.from.tableName,
-                    tid: pickedTraceId,
-                    n: input.maxLogs + 1, // +1 to detect truncation
-                  },
-                  format: 'JSONEachRow',
-                  connectionId: logSource.connection.toString(),
-                  clickhouse_settings: {
-                    readonly: '1',
-                    ...(logSource.querySettings
-                      ? Object.fromEntries(
-                          logSource.querySettings.map(s => [
-                            s.setting,
-                            s.value,
-                          ]),
-                        )
-                      : {}),
-                  },
-                });
-                const allLogs =
-                  (await (
-                    logResult as { json: () => Promise<LogRow[]> }
-                  ).json()) ?? [];
-                logsTruncated = allLogs.length > input.maxLogs;
-                correlatedLogs = logsTruncated
-                  ? allLogs.slice(0, input.maxLogs)
-                  : allLogs;
-              } catch (e) {
-                logsNote = `Failed to fetch correlated logs: ${e instanceof Error ? e.message : String(e)}`;
-              }
+            try {
+              const logResult = await logClient.query({
+                query: logsQuery,
+                query_params: {
+                  db: logSource.from.databaseName,
+                  tbl: logSource.from.tableName,
+                  tid: pickedTraceId,
+                  n: input.maxLogs + 1, // +1 to detect truncation
+                },
+                format: 'JSONEachRow',
+                connectionId: logSource.connection.toString(),
+                clickhouse_settings: {
+                  readonly: '1',
+                  ...(logSource.querySettings
+                    ? Object.fromEntries(
+                        logSource.querySettings.map(s => [s.setting, s.value]),
+                      )
+                    : {}),
+                },
+              });
+              const allLogs =
+                (await (
+                  logResult as { json: () => Promise<LogRow[]> }
+                ).json()) ?? [];
+              logsTruncated = allLogs.length > input.maxLogs;
+              correlatedLogs = logsTruncated
+                ? allLogs.slice(0, input.maxLogs)
+                : allLogs;
+            } catch (e) {
+              logsNote = `Failed to fetch correlated logs: ${e instanceof Error ? e.message : String(e)}`;
             }
           }
         }
+      }
 
-        const output = {
-          traceId: pickedTraceId,
-          spanCount: spans.length,
-          totalDurationMs: totalDuration,
-          rootSpan: {
-            spanId: root.spanId,
-            serviceName: root.serviceName,
-            spanName: root.spanName,
-            durationMs: root.durationMs,
-            statusCode: root.statusCode,
-          },
-          spans: tree,
-          ...(correlatedLogs
-            ? {
-                logs: correlatedLogs,
-                logsCount: correlatedLogs.length,
-                ...(logsTruncated
-                  ? {
-                      logsNote: `Logs truncated to ${input.maxLogs}. Increase maxLogs (max 1000) if needed.`,
-                    }
-                  : {}),
-              }
-            : {}),
-          ...(logsNote ? { logsNote } : {}),
-          ...(truncated
-            ? {
-                note: `Result truncated to ${input.maxSpans} spans. Increase maxSpans (max 2000) or narrow the trace if needed.`,
-              }
-            : {}),
-        };
+      const output = {
+        traceId: pickedTraceId,
+        spanCount: spans.length,
+        totalDurationMs: totalDuration,
+        rootSpan: {
+          spanId: root.spanId,
+          serviceName: root.serviceName,
+          spanName: root.spanName,
+          durationMs: root.durationMs,
+          statusCode: root.statusCode,
+        },
+        spans: tree,
+        ...(correlatedLogs
+          ? {
+              logs: correlatedLogs,
+              logsCount: correlatedLogs.length,
+              ...(logsTruncated
+                ? {
+                    logsNote: `Logs truncated to ${input.maxLogs}. Increase maxLogs (max 1000) if needed.`,
+                  }
+                : {}),
+            }
+          : {}),
+        ...(logsNote ? { logsNote } : {}),
+        ...(truncated
+          ? {
+              note: `Result truncated to ${input.maxSpans} spans. Increase maxSpans (max 2000) or narrow the trace if needed.`,
+            }
+          : {}),
+      };
 
-        return {
-          content: [
-            { type: 'text' as const, text: JSON.stringify(output, null, 2) },
-          ],
-        };
-      },
-    ),
+      return {
+        content: [
+          { type: 'text' as const, text: JSON.stringify(output, null, 2) },
+        ],
+      };
+    },
   );
 }

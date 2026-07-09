@@ -225,6 +225,91 @@ describe('chSqlToAliasMap - alias unit test', () => {
   });
 });
 
+describe('chSqlToAliasMap - resilient parsing of ClickHouse-specific SQL', () => {
+  // A sampling CTE renders `greatest(CAST(total / N AS UInt32), 1)`. The
+  // `CAST(... AS UInt32)` cast is rejected by node-sql-parser's Postgresql
+  // dialect, so the full statement no longer parses. Before the outer-
+  // projection fallback this returned `{}`, which dropped every alias and
+  // broke filters on select-alias columns (Event Patterns, histogram, alerts).
+  const samplingCte =
+    'WITH tableStats AS (SELECT count() as total, greatest(CAST(total / 10000 AS UInt32), 1) as sample_factor FROM db.t)';
+  const samplingWhere =
+    'cityHash64(Timestamp, rand()) % (SELECT sample_factor FROM tableStats) = 0';
+
+  it('recovers plain aliases when a sampling CTE makes the full query unparseable', () => {
+    const chSqlInput: ChSql = {
+      sql: `${samplingCte} SELECT ServiceName as service, Timestamp as ts FROM db.t WHERE ${samplingWhere} GROUP BY service, ts`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      service: 'ServiceName',
+      ts: 'Timestamp',
+    });
+  });
+
+  it('recovers bracket (map-access) aliases through the fallback', () => {
+    const chSqlInput: ChSql = {
+      sql: `${samplingCte} SELECT ResourceAttributes['service.name'] as svc, Timestamp as ts FROM db.t WHERE ${samplingWhere}`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      svc: "ResourceAttributes['service.name']",
+      ts: 'Timestamp',
+    });
+  });
+
+  it('recovers expression aliases through the fallback', () => {
+    const chSqlInput: ChSql = {
+      sql: `${samplingCte} SELECT toString(SpanId) as span, ServiceName as service FROM db.t WHERE ${samplingWhere}`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      span: 'toString(SpanId)',
+      service: 'ServiceName',
+    });
+  });
+
+  it('restores JSON-path aliases recovered through the fallback', () => {
+    const chSqlInput: ChSql = {
+      sql: `${samplingCte} SELECT ResourceAttributes.service.name as service, Timestamp as ts FROM db.t WHERE ${samplingWhere}`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      service: 'ResourceAttributes.service.name',
+      ts: 'Timestamp',
+    });
+  });
+
+  it('ignores SELECT / FROM keywords inside string literals in the CTE', () => {
+    const chSqlInput: ChSql = {
+      sql: `WITH cte AS (SELECT 'a SELECT b FROM c literal' as lit, greatest(CAST(count() / 10 AS UInt32), 1) as sf FROM db.t) SELECT ServiceName as service FROM db.t WHERE rand() % (SELECT sf FROM cte) = 0`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      service: 'ServiceName',
+    });
+  });
+
+  it('ignores SELECT / FROM keywords inside SQL comments', () => {
+    const chSqlInput: ChSql = {
+      sql: `${samplingCte} SELECT /* not a real SELECT ... FROM */ ServiceName as service, -- trailing SELECT x FROM y\n Timestamp as ts FROM db.t WHERE ${samplingWhere}`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      service: 'ServiceName',
+      ts: 'Timestamp',
+    });
+  });
+
+  it('returns an empty map when neither the full query nor the projection parses', () => {
+    const chSqlInput: ChSql = {
+      sql: 'NOT VALID SQL AT ALL )(',
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({});
+  });
+});
+
 describe('computeRatio', () => {
   it('should correctly compute ratio of two numbers', () => {
     expect(computeRatio('10', '2')).toBe(5);

@@ -247,6 +247,7 @@ const convertToExternalTileChartConfig = (
       case DisplayType.Search:
       case DisplayType.Markdown:
       case DisplayType.Heatmap:
+      case DisplayType.EventPatterns:
         logger.error(
           { config },
           'Error converting chart config to external chart - unsupported display type for raw SQL config',
@@ -325,6 +326,12 @@ const convertToExternalTileChartConfig = (
         // response, keeping it within the palette-token enum.
         color: resolveChartPaletteToken(config.color),
         colorRules: toExternalColorRules(config.colorRules),
+        // Pass `backgroundChart` through as-is: it shipped after the hue
+        // rename, so its optional `color` can only hold a hue-named token (no
+        // legacy normalization needed). Builder number tiles only; raw SQL
+        // number tiles never persist it (see the schema). Absent resolves to
+        // undefined and is omitted from the response.
+        backgroundChart: config.backgroundChart,
       };
     case DisplayType.Pie:
       return {
@@ -414,6 +421,14 @@ const convertToExternalTileChartConfig = (
         numberFormat: config.numberFormat,
       };
     }
+    case DisplayType.EventPatterns:
+      return {
+        displayType: config.displayType,
+        sourceId,
+        select: stringValueOrDefault(config.select, ''),
+        where: stringValueOrDefault(config.where, ''),
+        whereLanguage: config.whereLanguage ?? 'lucene',
+      };
     case undefined:
       logger.error(
         { config },
@@ -695,6 +710,10 @@ export function convertToInternalTileConfig(
           // them when absent.
           color: externalConfig.color,
           colorRules: externalConfig.colorRules,
+          // Builder number tiles only; `_.omitBy(_.isNil)` below drops it when
+          // absent. The input schema validates the nested color as a hue-only
+          // palette token, so it passes through directly.
+          backgroundChart: externalConfig.backgroundChart,
           name,
         } satisfies BuilderSavedChartConfig;
         break;
@@ -773,6 +792,15 @@ export function convertToInternalTileConfig(
         internalConfig = {
           ...pick(externalConfig, ['select', 'where']),
           displayType: DisplayType.Search,
+          source: externalConfig.sourceId,
+          name,
+          whereLanguage: externalConfig.whereLanguage ?? 'lucene',
+        } satisfies BuilderSavedChartConfig;
+        break;
+      case 'event_patterns':
+        internalConfig = {
+          ...pick(externalConfig, ['select', 'where']),
+          displayType: DisplayType.EventPatterns,
           source: externalConfig.sourceId,
           name,
           whereLanguage: externalConfig.whereLanguage ?? 'lucene',

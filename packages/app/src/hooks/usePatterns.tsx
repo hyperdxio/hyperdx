@@ -111,7 +111,7 @@ export const TIMESTAMP_COLUMN_ALIAS = '__hdx_timestamp';
 export const SEVERITY_TEXT_COLUMN_ALIAS = '__hdx_severity_text';
 const STATUS_CODE_COLUMN_ALIAS = '__hdx_status_code';
 
-export type SampleLog = {
+type SampleLog = {
   [PATTERN_COLUMN_ALIAS]: string;
   [TIMESTAMP_COLUMN_ALIAS]: string;
   [key: string]: any;

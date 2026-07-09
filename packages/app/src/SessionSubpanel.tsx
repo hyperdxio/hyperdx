@@ -17,7 +17,6 @@ import {
   Button,
   Divider,
   Group,
-  Portal,
   SegmentedControl,
   Tooltip,
 } from '@mantine/core';
@@ -31,9 +30,7 @@ import {
   IconToggleRight,
 } from '@tabler/icons-react';
 
-import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
-import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import SearchWhereInput from './components/SearchInput/SearchWhereInput';
 import useFieldExpressionGenerator from './hooks/useFieldExpressionGenerator';
@@ -149,12 +146,12 @@ function useSessionChartConfigs({
       type: 'lucene' as const,
       condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
     AND (
-      ${traceSource.eventAttributesExpression}.http.status_code:>299 
-      OR ${traceSource.eventAttributesExpression}.component:"error" 
-      OR ${traceSource.spanNameExpression}:"routeChange" 
-      OR ${traceSource.spanNameExpression}:"documentLoad" 
-      OR ${traceSource.spanNameExpression}:"intercom.onShow" 
-      OR ScopeName:"custom-action" 
+      ${traceSource.eventAttributesExpression}.http.status_code:>299
+      OR ${traceSource.eventAttributesExpression}.component:"error"
+      OR ${traceSource.spanNameExpression}:"routeChange"
+      OR ${traceSource.spanNameExpression}:"documentLoad"
+      OR ${traceSource.spanNameExpression}:"intercom.onShow"
+      OR ScopeName:"custom-action"
     )`,
     }),
     [traceSource, rumSessionId],
@@ -166,13 +163,13 @@ function useSessionChartConfigs({
       type: 'lucene' as const,
       condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
     AND (
-      ${traceSource.eventAttributesExpression}.http.status_code:* 
-      OR ${traceSource.eventAttributesExpression}.component:"console" 
-      OR ${traceSource.eventAttributesExpression}.component:"error" 
-      OR ${traceSource.spanNameExpression}:"routeChange" 
-      OR ${traceSource.spanNameExpression}:"documentLoad" 
-      OR ${traceSource.spanNameExpression}:"intercom.onShow" 
-      OR ScopeName:"custom-action" 
+      ${traceSource.eventAttributesExpression}.http.status_code:*
+      OR ${traceSource.eventAttributesExpression}.component:"console"
+      OR ${traceSource.eventAttributesExpression}.component:"error"
+      OR ${traceSource.spanNameExpression}:"routeChange"
+      OR ${traceSource.spanNameExpression}:"documentLoad"
+      OR ${traceSource.spanNameExpression}:"intercom.onShow"
+      OR ScopeName:"custom-action"
     )`,
     };
   }, [traceSource, rumSessionId, getTraceSourceFieldExpression]);
@@ -235,30 +232,25 @@ export default function SessionSubpanel({
   traceSource,
   sessionSource,
   session,
-  setDrawerOpen,
   rumSessionId,
   start,
   end,
   initialTs,
   whereLanguage = 'lucene',
   onLanguageChange,
+  onEventNavigate,
 }: {
   traceSource: TTraceSource;
   sessionSource: TSessionSource;
   session: { serviceName: string };
-  setDrawerOpen: (open: boolean) => void;
   rumSessionId: string;
   start: Date;
   end: Date;
   initialTs?: number;
   whereLanguage?: SearchConditionLanguage;
   onLanguageChange?: (lang: 'sql' | 'lucene') => void;
+  onEventNavigate?: (rowId: string, aliasWith: WithClause[]) => void;
 }) {
-  const contextZIndex = useZIndex();
-
-  const [rowId, setRowId] = useState<string | undefined>(undefined);
-  const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
-
   const [tsQuery, setTsQuery] = useQueryState(
     'ts',
     parseAsInteger.withOptions({ history: 'replace' }),
@@ -430,11 +422,9 @@ export default function SessionSubpanel({
   );
   const onSessionEventClick = useCallback(
     (rowWhere: RowWhereResult) => {
-      setDrawerOpen(true);
-      setRowId(rowWhere.where);
-      setAliasWith(rowWhere.aliasWith);
+      onEventNavigate?.(rowWhere.where, rowWhere.aliasWith);
     },
-    [setDrawerOpen, setRowId, setAliasWith],
+    [onEventNavigate],
   );
   const onSessionEventTimeClick = useCallback(
     (ts: number) => {
@@ -453,22 +443,6 @@ export default function SessionSubpanel({
 
   return (
     <div className={styles.wrapper}>
-      {rowId != null && traceSource && (
-        <Portal>
-          <ZIndexContext.Provider value={contextZIndex}>
-            <DBRowSidePanel
-              source={traceSource}
-              rowId={rowId}
-              aliasWith={aliasWith}
-              isNestedPanel
-              onClose={() => {
-                setDrawerOpen(false);
-                setRowId(undefined);
-              }}
-            />
-          </ZIndexContext.Provider>
-        </Portal>
-      )}
       <div className={cx(styles.eventList, { 'd-none': playerFullWidth })}>
         <div className={styles.eventListHeader}>
           <form

@@ -159,20 +159,23 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       const dashboardTiles = dashboardPage.getTiles();
       await expect(dashboardTiles).toHaveCount(2, { timeout: 10000 });
 
-      // Hover over first tile to reveal action buttons
+      // The alert affordance lives directly in the always-visible tile header.
       await dashboardPage.hoverOverTile(0);
+      await expect(dashboardPage.getTileButton('alerts')).toBeVisible();
 
-      // Verify all action buttons are visible
-      const buttons: Array<'edit' | 'duplicate' | 'delete' | 'alerts'> = [
+      // Edit / duplicate / delete now live inside the tile actions (kebab) menu.
+      await dashboardPage.openTileActionsMenu(0);
+      const menuButtons: Array<'edit' | 'duplicate' | 'delete'> = [
         'edit',
         'duplicate',
         'delete',
-        'alerts',
       ];
-      for (const button of buttons) {
-        const buttonLocator = dashboardPage.getTileButton(button);
-        await expect(buttonLocator).toBeVisible();
+      for (const button of menuButtons) {
+        await expect(dashboardPage.getTileButton(button)).toBeVisible();
       }
+
+      // Close the menu so it doesn't intercept subsequent interactions.
+      await dashboardPage.page.keyboard.press('Escape');
     });
 
     await test.step('Test duplicate tile', async () => {
@@ -289,6 +292,32 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
   });
 
+  test('should warn when closing tile editor with unsaved display settings changes', async () => {
+    await dashboardPage.openNewTileEditor();
+
+    // Open the Display Settings drawer
+    await dashboardPage.page.getByTestId('display-settings-button').click();
+    const applyButton = dashboardPage.page.getByTestId(
+      'display-settings-apply-button',
+    );
+    await expect(applyButton).toBeVisible({ timeout: 5000 });
+
+    // Toggle a checkbox via its label
+    await dashboardPage.page
+      .locator('label', { hasText: 'Compare to Previous Period' })
+      .click();
+
+    // Apply and wait for the drawer to close
+    await applyButton.click();
+    await expect(applyButton).toBeHidden({ timeout: 5000 });
+
+    // Try to close — should show unsaved changes confirm
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
+      timeout: 5000,
+    });
+  });
+
   test('should add and remove alert on Number type chart', async () => {
     test.setTimeout(60000);
     const ts = Date.now();
@@ -338,20 +367,23 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       const dashboardTiles = dashboardPage.getTiles();
       await expect(dashboardTiles).toHaveCount(1, { timeout: 10000 });
 
-      // Hover over first tile to reveal action buttons
+      // The alert affordance lives directly in the always-visible tile header.
       await dashboardPage.hoverOverTile(0);
+      await expect(dashboardPage.getTileButton('alerts')).toBeVisible();
 
-      // Verify all action buttons are visible
-      const buttons: Array<'edit' | 'duplicate' | 'delete' | 'alerts'> = [
+      // Edit / duplicate / delete now live inside the tile actions (kebab) menu.
+      await dashboardPage.openTileActionsMenu(0);
+      const menuButtons: Array<'edit' | 'duplicate' | 'delete'> = [
         'edit',
         'duplicate',
         'delete',
-        'alerts',
       ];
-      for (const button of buttons) {
-        const buttonLocator = dashboardPage.getTileButton(button);
-        await expect(buttonLocator).toBeVisible();
+      for (const button of menuButtons) {
+        await expect(dashboardPage.getTileButton(button)).toBeVisible();
       }
+
+      // Close the menu so it doesn't intercept subsequent interactions.
+      await dashboardPage.page.keyboard.press('Escape');
     });
 
     let dashboardUrl: string;
@@ -991,7 +1023,8 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
 
     await test.step('Verify tile can be edited when source is missing', async () => {
-      await dashboardPage.hoverOverTile(0);
+      // Edit now lives inside the tile actions (kebab) menu.
+      await dashboardPage.openTileActionsMenu(0);
 
       const editButton = dashboardPage.getTileButton('edit');
       await expect(editButton).toBeVisible();

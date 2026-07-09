@@ -77,6 +77,7 @@ const SavedSearchAlertFormSchema = z
     scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
     channel: zAlertChannel,
+    numConsecutiveWindows: z.number().int().min(1).optional(),
   })
   .passthrough()
   .superRefine(validateAlertScheduleOffsetMinutes)
@@ -150,6 +151,10 @@ const AlertForm = ({
   const groupByValue = useWatch({ control, name: 'groupBy' });
   const threshold = useWatch({ control, name: 'threshold' });
   const thresholdMax = useWatch({ control, name: 'thresholdMax' });
+  const numConsecutiveWindows = useWatch({
+    control,
+    name: 'numConsecutiveWindows',
+  });
   const maxScheduleOffsetMinutes = Math.max(
     intervalToMinutes(interval ?? '5m') - 1,
     0,
@@ -264,6 +269,8 @@ const AlertForm = ({
             scheduleOffsetMinutes={scheduleOffsetMinutes}
             maxScheduleOffsetMinutes={maxScheduleOffsetMinutes}
             offsetWindowLabel={`from each ${intervalLabel} window`}
+            numConsecutiveWindowsName="numConsecutiveWindows"
+            numConsecutiveWindows={numConsecutiveWindows ?? undefined}
           />
           <Text size="xxs" opacity={0.5} mb={4} mt="xs">
             grouped by
