@@ -43,6 +43,23 @@ export const CHART_GAP = 16; // px; used in grid gap and layout math
 // Always reserved (even when pagination is hidden via visibility:hidden) so rows count is stable.
 export const PAGINATION_HEIGHT = 48;
 
+/**
+ * Resolve which value a bar click selects. Returns `null` (deselect) for a
+ * missing label, the aggregated "Other" bucket, or a click on the currently
+ * selected bar (toggle off); otherwise the clicked label. Exported for testing.
+ */
+export function resolveComparisonClick(
+  activeLabel: string | number | null | undefined,
+  rows: ReadonlyArray<{ name: string; isOther?: boolean }>,
+  currentValue: string | null,
+): string | null {
+  if (activeLabel == null) return null;
+  const clickedRow = rows.find(row => row.name === activeLabel);
+  if (clickedRow == null || clickedRow.isOther) return null;
+  const newValue = String(activeLabel);
+  return newValue === currentValue ? null : newValue;
+}
+
 // The content props (payload, coordinate, active, ...) are supplied by the
 // chart's Tooltip at render time, so they're optional here — the element is
 // written in JSX with only the `title` prop.
@@ -144,26 +161,15 @@ export function PropertyComparisonChart({
   const clipboard = useClipboard({ timeout: 2000 });
 
   const handleChartClick = (data: { activeLabel?: string | number }) => {
-    // Select the clicked bar by its label (the bar's `name`), looking the row
-    // up in chartData to skip the aggregated "other" bucket.
-    const activeLabel = data?.activeLabel;
-    if (activeLabel == null) {
-      setClickedValue(null);
-      return;
+    const next = resolveComparisonClick(
+      data?.activeLabel,
+      chartData,
+      clickedValue,
+    );
+    if (next != null) {
+      clipboard.reset();
     }
-    const clickedRow = chartData.find(row => row.name === activeLabel);
-    if (clickedRow == null || clickedRow.isOther) {
-      setClickedValue(null);
-      return;
-    }
-    const newValue = String(activeLabel);
-    // Toggle off if clicking the same bar
-    if (newValue === clickedValue) {
-      setClickedValue(null);
-      return;
-    }
-    clipboard.reset();
-    setClickedValue(newValue);
+    setClickedValue(next);
   };
 
   return (

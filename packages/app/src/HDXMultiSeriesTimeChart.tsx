@@ -387,7 +387,10 @@ type ActiveClickSeries = {
   value?: number;
   dataKey?: string;
   name?: string;
-  /** Series color, matching the legend swatch. */
+  /**
+   * Series color (matches the legend swatch). Part of the drill-down payload
+   * contract so a popover can show a per-series swatch.
+   */
   color?: string;
 };
 
@@ -1022,7 +1025,13 @@ export const MemoChart = memo(function MemoChart({
                 const originStart = dateRange[0];
                 const originEnd = dateRange[1];
                 setZoomOrigin(prev => prev ?? [originStart, originEnd]);
-                justZoomedRef.current = true;
+                // Only flag a pending zoom when a range change will actually
+                // happen. Without onTimeRangeSelect the date range never
+                // changes, so the [dateRange] effect would never reset the flag
+                // and the onClick guard below would suppress every later click.
+                if (onTimeRangeSelect != null) {
+                  justZoomedRef.current = true;
+                }
                 // Order the range numerically — the labels are epoch-second
                 // strings, so a lexicographic compare would misorder values of
                 // differing digit length.
@@ -1168,8 +1177,10 @@ export const MemoChart = memo(function MemoChart({
           {highlightStart && highlightEnd ? (
             <ReferenceArea
               // yAxisId="1"
-              x1={highlightStart}
-              x2={highlightEnd}
+              // Numeric x on the numeric time axis (same as the click marker
+              // ReferenceLine); a string wouldn't position on scale="time".
+              x1={Number(highlightStart)}
+              x2={Number(highlightEnd)}
               strokeOpacity={0.3}
             />
           ) : null}

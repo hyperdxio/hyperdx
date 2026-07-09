@@ -23,6 +23,25 @@ import ChartErrorState, {
 } from './charts/ChartErrorState';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
+/**
+ * Normalize a chart click's `activeIndex` to a real, in-range bar index.
+ * Returns the integer index for a number or non-empty numeric string, or
+ * `undefined` for anything that resolves to no bar (null/''/negative/
+ * fractional/NaN) so the caller can clear the pin instead of pinning bar 0.
+ * Exported for unit testing.
+ */
+export function resolvePinnedBarIndex(
+  raw: number | string | null | undefined,
+): number | undefined {
+  const idx =
+    typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string' && raw.trim() !== ''
+        ? Number(raw)
+        : NaN;
+  return Number.isInteger(idx) && idx >= 0 ? idx : undefined;
+}
+
 function HistogramChart({
   graphResults,
   generateSearchUrl,
@@ -67,17 +86,9 @@ function HistogramChart({
         className="user-select-none cursor-crosshair"
         onClick={state => {
           // Toggle the pinned tooltip on the clicked bar (click the same bar
-          // again to unpin). Only pin on a real, in-range bar index; anything
-          // else (a click that resolves to no bar: null/''/-1/fractional)
-          // clears the pin rather than defaulting to bar 0.
-          const raw = state?.activeIndex;
-          const idx =
-            typeof raw === 'number'
-              ? raw
-              : typeof raw === 'string' && raw.trim() !== ''
-                ? Number(raw)
-                : NaN;
-          if (!Number.isInteger(idx) || idx < 0) {
+          // again to unpin). A click that resolves to no bar clears the pin.
+          const idx = resolvePinnedBarIndex(state?.activeIndex);
+          if (idx == null) {
             setPinnedIndex(undefined);
             return;
           }
