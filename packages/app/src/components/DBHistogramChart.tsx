@@ -105,10 +105,13 @@ function HistogramChart({
           content={
             <HDXHistogramChartTooltip generateSearchUrl={generateSearchUrl} />
           }
-          // When a bar is pinned, force the tooltip active on that bar;
-          // otherwise let Recharts control it on hover.
+          // When a bar is pinned, lock the tooltip to that bar: `trigger:
+          // 'click'` makes the tooltip ignore hover (which would otherwise let
+          // the tooltip drift to whatever bar the cursor grazes), and
+          // `defaultIndex` fixes it on the pinned bar. When nothing is pinned,
+          // Recharts controls the tooltip on hover as usual.
           {...(pinnedIndex != null
-            ? { active: true, defaultIndex: pinnedIndex }
+            ? { active: true, defaultIndex: pinnedIndex, trigger: 'click' }
             : {})}
         />
         <Bar dataKey="height" stackId="a" fill="#50FA7B" />

@@ -845,10 +845,13 @@ export const MemoChart = memo(function MemoChart({
           }}
           onMouseDown={(state, e) => {
             // Record the drag start: the active bucket label and the pointer's
-            // plot-relative X (from the active coordinate, falling back to the
-            // native event's offsetX) for measuring drag distance on mouse up.
-            const chartX =
-              state?.activeCoordinate?.x ?? e?.nativeEvent?.offsetX;
+            // X for measuring drag distance on mouse up. Use the native event's
+            // offsetX (wrapper-relative) as the pixel source so mousedown and
+            // mouseup are measured in the same coordinate space — mixing it
+            // with activeCoordinate.x (plot-relative, offset by the y-axis
+            // width) could otherwise inflate a zero-distance click into a
+            // false drag.
+            const chartX = e?.nativeEvent?.offsetX;
             if (state?.activeLabel != null && chartX != null) {
               setHighlightStart(String(state.activeLabel));
               mouseDownPosRef.current = chartX;
@@ -888,8 +891,10 @@ export const MemoChart = memo(function MemoChart({
             const MIN_DRAG_DISTANCE = 20; // Minimum horizontal drag distance in pixels
             let dragDistance = 0;
 
-            const chartX =
-              state?.activeCoordinate?.x ?? e?.nativeEvent?.offsetX;
+            // Measure against the same coordinate space recorded on mouse down
+            // (native offsetX) so the distance can't be skewed by the y-axis
+            // width.
+            const chartX = e?.nativeEvent?.offsetX;
             if (mouseDownPosRef.current != null && chartX != null) {
               dragDistance = Math.abs(chartX - mouseDownPosRef.current);
             }
