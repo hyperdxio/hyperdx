@@ -372,7 +372,7 @@ const LegendRenderer = memo<{
 export const HARD_LINES_LIMIT = MAX_TIME_CHART_SERIES;
 
 /** One series entry in a click-frozen tooltip's payload. */
-export type ActiveClickSeries = {
+type ActiveClickSeries = {
   value?: number;
   dataKey?: string;
   name?: string;
