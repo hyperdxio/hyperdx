@@ -18,7 +18,13 @@ import { z } from 'zod';
 
 import { getMetricSelectIssues } from '@/mcp/tools/query/schemas';
 import { QUERYABLE_METRIC_KINDS } from '@/mcp/tools/sources/metricKinds';
-import { externalQuantileLevelSchema, objectIdSchema } from '@/utils/zod';
+import {
+  externalQuantileLevelSchema,
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
+  objectIdSchema,
+  tagsSchema,
+} from '@/utils/zod';
 
 /**
  * Metric type values exposed on dashboard tile select items. Restricted to
@@ -1059,12 +1065,10 @@ export const mcpPatchDashboardSchema = z.object({
     .min(1)
     .optional()
     .describe('New dashboard name. Omit to keep the current name.'),
-  tags: z
-    .array(z.string())
-    .optional()
-    .describe(
-      'New tags array (replaces all existing tags). Omit to keep the current tags.',
-    ),
+  tags: tagsSchema.describe(
+    `New tags array (replaces all existing tags). Omit to keep the current tags. ` +
+      `Up to ${MAX_TAGS} tags, each at most ${MAX_TAG_LENGTH} characters.`,
+  ),
   tileId: z
     .string()
     .optional()
