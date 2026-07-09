@@ -1316,7 +1316,7 @@ describe('renderChartConfig', () => {
       granularity: '1 minute',
     });
 
-    it('rewrites `Map[key] = value` to has() when a KV items column exists', async () => {
+    it('rewrites `Map[key] = value` to hasToken() when a KV items column exists', async () => {
       stubKvItemsMetadata();
       const sql = parameterizedQueryToSql(
         await renderChartConfig(
@@ -1326,12 +1326,12 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain(
-        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+        "hasToken(`LogAttributeItems`, concat('service.name', '=', 'api'))",
       );
       expect(sql).not.toContain("LogAttributes['service.name'] = 'api'");
     });
 
-    it('rewrites `Map[key] IN (one)` to has()', async () => {
+    it('rewrites `Map[key] IN (one)` to hasToken()', async () => {
       stubKvItemsMetadata();
       const sql = parameterizedQueryToSql(
         await renderChartConfig(
@@ -1341,11 +1341,11 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain(
-        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+        "hasToken(`LogAttributeItems`, concat('service.name', '=', 'api'))",
       );
     });
 
-    it('rewrites `Map[key] IN (many)` to hasAny(... array(...))', async () => {
+    it('rewrites `Map[key] IN (many)` to hasAnyTokens(... array(...))', async () => {
       stubKvItemsMetadata();
       const sql = parameterizedQueryToSql(
         await renderChartConfig(
@@ -1355,7 +1355,7 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain(
-        "hasAny(`LogAttributeItems`, array(concat('k', '=', 'a'), concat('k', '=', 'b'), concat('k', '=', 'c')))",
+        "hasAnyTokens(`LogAttributeItems`, array(concat('k', '=', 'a'), concat('k', '=', 'b'), concat('k', '=', 'c')))",
       );
     });
 
@@ -1384,7 +1384,7 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain("LogAttributes['k'] = 'v'");
-      expect(sql).not.toContain('has(');
+      expect(sql).not.toContain('hasToken(');
     });
 
     it('does not rewrite when value is empty (Map[k]= preserves missing-key semantics)', async () => {
@@ -1397,7 +1397,7 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain("LogAttributes['k'] = ''");
-      expect(sql).not.toContain('has(');
+      expect(sql).not.toContain('hasToken(');
     });
 
     it('rewrites only the matching Map subscript in a compound AND condition', async () => {
@@ -1412,7 +1412,7 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain(
-        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+        "hasToken(`LogAttributeItems`, concat('service.name', '=', 'api'))",
       );
       expect(sql).toContain("SeverityText = 'error'");
     });
