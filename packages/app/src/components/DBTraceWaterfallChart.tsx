@@ -21,25 +21,33 @@ import {
   TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Anchor,
   Box,
   Center,
   Chip,
   Code,
   Group,
-  Kbd,
+  Stack,
   Text,
   Tooltip,
 } from '@mantine/core';
-import { useDisclosure, useElementSize } from '@mantine/hooks';
+import { useElementSize } from '@mantine/hooks';
 import {
+  IconAlertCircleFilled,
+  IconAlertTriangleFilled,
   IconChevronDown,
   IconChevronRight,
+  IconChevronsDown,
+  IconChevronsRight,
   IconLogs,
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
-import SearchInputV2 from '@/components/SearchInput/SearchInputV2';
+import { ErrorCollapse } from '@/components/Error/ErrorCollapse';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
 import {
   TimelineChart,
   TimelineMinimap,
@@ -56,12 +64,12 @@ import {
 } from '@/source';
 import { useFormatTime } from '@/useFormatTime';
 import {
+  CATEGORICAL_PALETTE_TOKENS,
+  COLORS,
   getChartColorError,
-  getChartColorErrorHighlight,
   getChartColorSuccess,
   getChartColorSuccessHighlight,
   getChartColorWarning,
-  getChartColorWarningHighlight,
   parseTimestampToMs,
 } from '@/utils';
 import {
@@ -97,28 +105,15 @@ type TimestampedRow = {
   Timestamp: string;
 };
 
-function textColor(condition: { isError: boolean; isWarn: boolean }): string {
-  const { isError, isWarn } = condition;
-  if (isError) return 'text-danger';
-  if (isWarn) return 'text-warning';
-  return '';
-}
-
+// Bar background color. Correlated log rows are always green (success), error
+// spans are always red, and every other span takes its per-service color.
 function barColor(condition: {
-  isError: boolean;
-  isWarn: boolean;
   isHighlighted: boolean;
+  isError?: boolean;
   type: string | undefined;
+  serviceColor?: string;
 }) {
-  const { isError, isWarn, isHighlighted, type } = condition;
-
-  if (isError)
-    return isHighlighted ? getChartColorErrorHighlight() : getChartColorError();
-
-  if (isWarn)
-    return isHighlighted
-      ? getChartColorWarningHighlight()
-      : getChartColorWarning();
+  const { isHighlighted, isError, type, serviceColor } = condition;
 
   if (type === SourceKind.Log) {
     return isHighlighted
@@ -126,8 +121,30 @@ function barColor(condition: {
       : getChartColorSuccess();
   }
 
+  if (isError) {
+    return isHighlighted
+      ? `color-mix(in srgb, ${getChartColorError()} 60%, white)`
+      : getChartColorError();
+  }
+
+  if (serviceColor) {
+    return isHighlighted
+      ? `color-mix(in srgb, ${serviceColor} 60%, white)`
+      : serviceColor;
+  }
+
   return isHighlighted ? '#A9AFB7' : '#6A7077';
 }
+
+// Per-service span palette: the full categorical palette minus the two hues we
+// reserve for semantics — green (correlated log rows) and red (error spans) —
+// so a service color is never confused with a log or an error. Index-aligned
+// with CATEGORICAL_PALETTE_TOKENS, so filtering by token survives reordering.
+const SERVICE_COLORS = COLORS.filter(
+  (_color, i) =>
+    CATEGORICAL_PALETTE_TOKENS[i] !== 'chart-green' &&
+    CATEGORICAL_PALETTE_TOKENS[i] !== 'chart-red',
+);
 
 function getTableBody(tableModel: TSource) {
   if (tableModel?.kind === SourceKind.Trace) {
@@ -143,6 +160,7 @@ function getConfig(
   source: TTraceSource | TLogSource,
   traceId: string,
   hiddenRowExpression?: string,
+  hiddenRowExpressionLanguage: 'lucene' | 'sql' = 'lucene',
 ) {
   const alias: Record<string, string> = {
     Body: getTableBody(source),
@@ -208,7 +226,7 @@ function getConfig(
       ? [
           {
             valueExpression: hiddenRowExpression,
-            valueExpressionLanguage: 'lucene' as const,
+            valueExpressionLanguage: hiddenRowExpressionLanguage,
             alias: '__hdx_hidden',
           },
         ]
@@ -318,18 +336,26 @@ export function useEventsAroundFocus({
   traceId,
   enabled,
   hiddenRowExpression,
+  hiddenRowExpressionLanguage = 'lucene',
 }: {
   tableSource: TTraceSource | TLogSource;
   focusDate: Date;
   dateRange: [Date, Date];
   traceId: string;
   enabled: boolean;
-  /** A lucene expression that identifies rows to be hidden. Hidden rows will be returned with a `__hdx_hidden: true` column. */
+  /** An expression (in `hiddenRowExpressionLanguage`) that identifies rows to be hidden. Hidden rows will be returned with a `__hdx_hidden: true` column. */
   hiddenRowExpression?: string;
+  hiddenRowExpressionLanguage?: 'lucene' | 'sql';
 }) {
   const { config, alias, type } = useMemo(
-    () => getConfig(tableSource, traceId, hiddenRowExpression),
-    [tableSource, traceId, hiddenRowExpression],
+    () =>
+      getConfig(
+        tableSource,
+        traceId,
+        hiddenRowExpression,
+        hiddenRowExpressionLanguage,
+      ),
+    [tableSource, traceId, hiddenRowExpression, hiddenRowExpressionLanguage],
   );
 
   const {
@@ -398,6 +424,39 @@ export function useEventsAroundFocus({
   };
 }
 
+function useFilteredEventsAroundFocus(
+  args: Parameters<typeof useEventsAroundFocus>[0],
+) {
+  const filtered = useEventsAroundFocus(args);
+
+  const filterFailed =
+    args.enabled && !!args.hiddenRowExpression && !!filtered.error;
+
+  const fallback = useEventsAroundFocus({
+    ...args,
+    hiddenRowExpression: undefined,
+    enabled: filterFailed,
+  });
+
+  if (filterFailed) {
+    return {
+      rows: fallback.rows,
+      meta: fallback.meta,
+      isFetching: filtered.isFetching || fallback.isFetching,
+      filterError: fallback.error ? undefined : filtered.error,
+      fatalError: fallback.error,
+    };
+  }
+
+  return {
+    rows: filtered.rows,
+    meta: filtered.meta,
+    isFetching: filtered.isFetching,
+    filterError: undefined,
+    fatalError: filtered.error,
+  };
+}
+
 export function getDescendantIds(node: {
   id?: string;
   children?: Array<{ id?: string; children?: any[] }>;
@@ -419,14 +478,86 @@ export function getDescendantIds(node: {
   return ids;
 }
 
-function CollapseTooltipLabel({ onShown }: { onShown: () => void }) {
-  useEffect(() => onShown, [onShown]);
+/** "Collapse all": every collapsible parent, at every level, becomes collapsed. */
+export function computeCollapseAll(
+  parentIdsByLevel: Map<number, Set<string>>,
+): Set<string> {
+  const allParentIds = new Set<string>();
+  parentIdsByLevel.forEach(ids => {
+    ids.forEach(id => allParentIds.add(id));
+  });
+  return allParentIds;
+}
 
-  return (
-    <>
-      <Kbd>⌥/Alt</Kbd> + <Kbd>click</Kbd> to collapse children
-    </>
-  );
+/**
+ * "Expand one level": expand the shallowest level that still has any collapsed
+ * parents.
+ */
+export function computeExpandOneLevel(
+  collapsedIds: Set<string>,
+  parentIdsByLevel: Map<number, Set<string>>,
+): Set<string> {
+  if (collapsedIds.size === 0) return collapsedIds;
+  const newSet = new Set(collapsedIds);
+  // Shallowest first: expanding starts at the top of the tree.
+  const sortedLevels = [...parentIdsByLevel.keys()].sort((a, b) => a - b);
+  for (const level of sortedLevels) {
+    const ids = parentIdsByLevel.get(level)!;
+    const collapsedAtLevel = [...ids].filter(id => newSet.has(id));
+    if (collapsedAtLevel.length > 0) {
+      collapsedAtLevel.forEach(id => newSet.delete(id));
+      break;
+    }
+  }
+  return newSet;
+}
+
+export function computeCollapseOneLevel(
+  collapsedIds: Set<string>,
+  parentIdsByLevel: Map<number, Set<string>>,
+): Set<string> {
+  const newSet = new Set(collapsedIds);
+  // Deepest first: collapsing starts at the bottom of the tree.
+  const sortedLevels = [...parentIdsByLevel.keys()].sort((a, b) => b - a);
+  for (const level of sortedLevels) {
+    const ids = parentIdsByLevel.get(level)!;
+    const expandedAtLevel = [...ids].filter(id => !newSet.has(id));
+    if (expandedAtLevel.length > 0) {
+      expandedAtLevel.forEach(id => newSet.add(id));
+      break;
+    }
+  }
+  return newSet;
+}
+
+export function computeToggleCollapse(
+  collapsedIds: Set<string>,
+  id: string,
+  node:
+    | { id?: string; children?: Array<{ id?: string; children?: any[] }> }
+    | undefined,
+  includeDescendants: boolean,
+): Set<string> {
+  const next = new Set(collapsedIds);
+  const wasCollapsed = next.has(id);
+
+  if (wasCollapsed) {
+    next.delete(id);
+  } else {
+    next.add(id);
+  }
+
+  if (includeDescendants && node?.children?.length) {
+    // Match every descendant to the node's new state.
+    const descendantIds = getDescendantIds(node);
+    if (wasCollapsed) {
+      descendantIds.forEach(descId => next.delete(descId));
+    } else {
+      descendantIds.forEach(descId => next.add(descId));
+    }
+  }
+
+  return next;
 }
 
 // TODO: Optimize with ts lookup tables
@@ -440,6 +571,7 @@ export function DBTraceWaterfallChartContainer({
   highlightedRowWhere,
   initialRowHighlightHint,
   emptyState,
+  controlsExtra,
 }: {
   traceTableSource: TTraceSource;
   logTableSource: TLogSource | null;
@@ -458,31 +590,73 @@ export function DBTraceWaterfallChartContainer({
     body: string;
   };
   emptyState?: ReactNode;
+  /** Extra controls rendered in the waterfall controls bar (e.g. the correlated logs source selector). */
+  controlsExtra?: ReactNode;
 }) {
   const formatTime = useFormatTime();
 
   const {
     traceWhere,
     logWhere,
+    traceWhereLanguage,
+    logWhereLanguage,
     clear: clearFilters,
     isFilterActive,
     isFilterExpanded,
     setIsFilterExpanded,
-    onSubmit: onSubmitFilters,
+    onSubmit: submitFilters,
   } = useWaterfallSearchState({
     hasLogSource: !!logTableSource,
   });
+
+  // Each filter runs in its own language. Defaults come from the URL (shared
+  // link / reload fidelity), falling back to the stored preference.
+  const traceFilterLanguage: 'lucene' | 'sql' =
+    traceWhereLanguage === 'sql' ? 'sql' : 'lucene';
+  const logFilterLanguage: 'lucene' | 'sql' =
+    logWhereLanguage === 'sql' ? 'sql' : 'lucene';
 
   const { control, handleSubmit, setValue } = useForm({
     defaultValues: {
       traceWhere: traceWhere ?? '',
       logWhere: logWhere ?? '',
+      // Prefer each input's URL language so a shared link / reload shows the
+      // same language the filter runs in; fall back to the stored preference.
+      traceWhereLanguage:
+        traceWhereLanguage === 'sql' || traceWhereLanguage === 'lucene'
+          ? traceWhereLanguage
+          : (getStoredLanguage() ?? 'lucene'),
+      logWhereLanguage:
+        logWhereLanguage === 'sql' || logWhereLanguage === 'lucene'
+          ? logWhereLanguage
+          : (getStoredLanguage() ?? 'lucene'),
     },
   });
+
+  const onSubmitFilters = useCallback(
+    (data: {
+      traceWhere: string;
+      logWhere: string;
+      traceWhereLanguage: string;
+      logWhereLanguage: string;
+    }) => {
+      submitFilters({
+        traceWhere: data.traceWhere,
+        logWhere: data.logWhere,
+        traceWhereLanguage: data.traceWhereLanguage,
+        logWhereLanguage: data.logWhereLanguage,
+      });
+    },
+    [submitFilters],
+  );
 
   const onClearFilters = useCallback(() => {
     setValue('traceWhere', '');
     setValue('logWhere', '');
+    // Reset the language toggles too, otherwise stale values get re-serialized
+    // into the URL on the next submit, undoing the cleared state.
+    setValue('traceWhereLanguage', getStoredLanguage() ?? 'lucene');
+    setValue('logWhereLanguage', getStoredLanguage() ?? 'lucene');
     clearFilters();
   }, [clearFilters, setValue]);
 
@@ -490,21 +664,24 @@ export function DBTraceWaterfallChartContainer({
     rows: traceRowsData,
     isFetching: traceIsFetching,
     meta: traceRowsMeta,
-    error: traceError,
-  } = useEventsAroundFocus({
+    filterError: traceFilterError,
+    fatalError: traceError,
+  } = useFilteredEventsAroundFocus({
     tableSource: traceTableSource,
     focusDate,
     dateRange,
     traceId,
     hiddenRowExpression: traceWhere ? `NOT (${traceWhere})` : undefined,
+    hiddenRowExpressionLanguage: traceFilterLanguage,
     enabled: true,
   });
   const {
     rows: logRowsData,
     isFetching: logIsFetching,
     meta: logRowsMeta,
-    error: logError,
-  } = useEventsAroundFocus({
+    filterError: logFilterError,
+    fatalError: logFatalError,
+  } = useFilteredEventsAroundFocus({
     // search data if logTableModel exist
     // search invalid date range if no logTableModel(react hook need execute no matter what)
     tableSource: logTableSource ? logTableSource : traceTableSource,
@@ -512,11 +689,20 @@ export function DBTraceWaterfallChartContainer({
     dateRange: logTableSource ? dateRange : [dateRange[1], dateRange[0]], // different query to prevent cache
     traceId,
     hiddenRowExpression: logWhere ? `NOT (${logWhere})` : undefined,
+    hiddenRowExpressionLanguage: logFilterLanguage,
     enabled: logTableSource ? true : false, // disable fire query if logSource is not exist
   });
 
   const isFetching = traceIsFetching || logIsFetching;
-  const error = traceError || logError;
+  // Only a fatal trace failure (bad source / connection) blanks the waterfall.
+  // A *filter* error on either side is non-fatal: the offending query falls back
+  // to unfiltered data and the error is surfaced inline next to its input, so a
+  // bad filter can never hide valid spans or logs. The correlated-log source is
+  // secondary, so even a fatal log failure only drops logs — never the chart.
+  const error = traceError;
+  // Log-side error to surface inline: prefer the filter error (fallback data is
+  // shown), otherwise the fatal error (no logs could be loaded at all).
+  const logError = logFilterError ?? logFatalError;
 
   const rows: any[] = useMemo(() => {
     const nextRows: Array<(typeof traceRowsData)[number] & TimestampedRow> = [
@@ -536,6 +722,29 @@ export function DBTraceWaterfallChartContainer({
 
     return nextRows;
   }, [traceRowsData, logRowsData]);
+
+  // Map each distinct span service to a stable color. Sorting the names first
+  // keeps a service's color stable across renders regardless of row ordering.
+  const serviceColorMap = useMemo(() => {
+    const serviceNames = [
+      ...new Set(
+        rows
+          .filter(
+            r =>
+              r.ServiceName &&
+              r.type !== SourceKind.Log &&
+              typeof r.ServiceName === 'string',
+          )
+          .map(r => r.ServiceName),
+      ),
+    ].sort();
+
+    const map = new Map<string, string>();
+    serviceNames.forEach((name, i) => {
+      map.set(name, SERVICE_COLORS[i % SERVICE_COLORS.length]);
+    });
+    return map;
+  }, [rows]);
 
   const highlightedAttributeValues = useMemo(() => {
     const visibleTraceRowsData = traceRowsData?.filter(
@@ -644,7 +853,7 @@ export function DBTraceWaterfallChartContainer({
   const [showSpans, setShowSpans] = useState(true);
   const [showLogs, setShowLogs] = useState(true);
 
-  const { nodesMap, flattenedNodes } = useMemo(() => {
+  const { nodesMap, flattenedNodes, parentIdsByLevel } = useMemo(() => {
     const rootNodes: Node[] = [];
     const nodesMap = new Map(); // Maps result.id (or placeholder id) -> Node
     const spanIdMap = new Map(); // Maps SpanId -> result.id of FIRST node with that SpanId
@@ -712,6 +921,20 @@ export function DBTraceWaterfallChartContainer({
       }
     }
 
+    // Build a map of level → parent node IDs (nodes that have children) so the
+    // depth controls can expand/collapse a whole level at a time.
+    const parentIdsByLevel = new Map<number, Set<string>>();
+    const collectParents = (node: any, level: number) => {
+      if (node.children?.length > 0 && node.id) {
+        if (!parentIdsByLevel.has(level)) {
+          parentIdsByLevel.set(level, new Set());
+        }
+        parentIdsByLevel.get(level)!.add(node.id);
+      }
+      node.children?.forEach((child: any) => collectParents(child, level + 1));
+    };
+    rootNodes.forEach(root => collectParents(root, 0));
+
     type NodeWithLevel = Node & { level: number };
     // flatten the rootnode dag into an array via in-order traversal
     const traverse = (node: Node, arr: NodeWithLevel[], level = 0) => {
@@ -735,40 +958,37 @@ export function DBTraceWaterfallChartContainer({
       rootNodes.forEach(rootNode => traverse(rootNode, flattenedNodes));
     }
 
-    return { nodesMap, flattenedNodes };
+    return { nodesMap, flattenedNodes, parentIdsByLevel };
   }, [collapsedIds, rows, validSpanIDs]);
 
   const toggleCollapse = useCallback(
     (id: string, event: React.MouseEvent) => {
       event.stopPropagation(); // prevent collapsing from selecting row
-
-      setCollapsedIds(prev => {
-        const newSet = new Set(prev);
-        const isCollapsed = newSet.has(id);
-
-        if (isCollapsed) {
-          newSet.delete(id);
-        } else {
-          newSet.add(id);
-        }
-
-        if (event.altKey) {
-          const node = nodesMap.get(id);
-          if (node?.children?.length) {
-            const descendantIds = getDescendantIds(node);
-            if (isCollapsed) {
-              descendantIds.forEach(descId => newSet.delete(descId));
-            } else {
-              descendantIds.forEach(descId => newSet.add(descId));
-            }
-          }
-        }
-
-        return newSet;
-      });
+      // Alt/Option-click toggles the whole subtree along with the node.
+      setCollapsedIds(prev =>
+        computeToggleCollapse(prev, id, nodesMap.get(id), event.altKey),
+      );
     },
     [nodesMap],
   );
+
+  const expandAll = useCallback(() => {
+    setCollapsedIds(new Set());
+  }, []);
+
+  const collapseAll = useCallback(() => {
+    setCollapsedIds(computeCollapseAll(parentIdsByLevel));
+  }, [parentIdsByLevel]);
+
+  const expandOneLevel = useCallback(() => {
+    setCollapsedIds(prev => computeExpandOneLevel(prev, parentIdsByLevel));
+  }, [parentIdsByLevel]);
+
+  const collapseOneLevel = useCallback(() => {
+    setCollapsedIds(prev => computeCollapseOneLevel(prev, parentIdsByLevel));
+  }, [parentIdsByLevel]);
+
+  const hasCollapsibleNodes = parentIdsByLevel.size > 0;
 
   const visibleNodes = useMemo(() => {
     if (showSpans && showLogs) return flattenedNodes;
@@ -810,9 +1030,6 @@ export function DBTraceWaterfallChartContainer({
     }, Number.MAX_SAFE_INTEGER) ?? 0;
   const minOffset =
     foundMinOffset === Number.MAX_SAFE_INTEGER ? 0 : foundMinOffset;
-
-  const [collapseTooltipShown, { open: setCollapseTooltipShown }] =
-    useDisclosure(false);
 
   const timelineRows = useMemo(
     () =>
@@ -867,13 +1084,20 @@ export function DBTraceWaterfallChartContainer({
         const isWarn = result.SeverityText === 'warn';
         const isHighlighted = highlightedRowWhere === id;
 
+        const barBackgroundColor =
+          type === SourceKind.Log
+            ? getChartColorSuccess()
+            : serviceName
+              ? (serviceColorMap.get(serviceName) ?? '#6A7077')
+              : '#6A7077';
+
         return {
           id,
           type,
           aliasWith,
           label: (
             <div
-              className={`${textColor({ isError, isWarn })} ${
+              className={`${
                 isHighlighted && styles.traceTimelineLabelHighlighted
               } text-truncate cursor-pointer ps-2 ${styles.traceTimelineLabel}`}
               role="button"
@@ -898,46 +1122,64 @@ export function DBTraceWaterfallChartContainer({
                   ></div>
                 ))}
 
-                <Tooltip
-                  disabled={!result.children.length || collapseTooltipShown}
-                  closeDelay={500}
-                  label={
-                    <CollapseTooltipLabel onShown={setCollapseTooltipShown} />
+                <Center
+                  style={{
+                    opacity: result.children.length > 0 ? 1 : 0,
+                  }}
+                  onClick={
+                    result.children.length > 0
+                      ? e => {
+                          toggleCollapse(id, e);
+                        }
+                      : undefined
                   }
-                  withArrow
                 >
-                  <Center
-                    style={{
-                      opacity: result.children.length > 0 ? 1 : 0,
-                    }}
-                    onClick={
-                      result.children.length > 0
-                        ? e => {
-                            toggleCollapse(id, e);
-                          }
-                        : undefined
-                    }
-                  >
-                    {collapsedIds.has(id) ? (
-                      <IconChevronRight
-                        size={16}
-                        className="me-1 text-muted-hover"
-                      />
-                    ) : (
-                      <IconChevronDown
-                        size={16}
-                        className="me-1 text-muted-hover"
-                      />
-                    )}{' '}
-                  </Center>
-                </Tooltip>
+                  {collapsedIds.has(id) ? (
+                    <IconChevronRight size={16} className="me-1" />
+                  ) : (
+                    <IconChevronDown size={16} className="me-1" />
+                  )}{' '}
+                </Center>
 
-                {!isFilterActive && (
-                  <Text span size="xxs" me="xs" pt="2px">
-                    {result.children.length > 0
-                      ? `(${result.children.length})`
-                      : ''}
+                <div
+                  style={{
+                    width: 3,
+                    minWidth: 3,
+                    height: 14,
+                    backgroundColor: barBackgroundColor,
+                    borderRadius: 1,
+                    flexShrink: 0,
+                    marginRight: 6,
+                  }}
+                />
+
+                {result.children.length > 0 && (
+                  <Text
+                    span
+                    size="xxs"
+                    c="dimmed"
+                    me={4}
+                    style={{ flexShrink: 0 }}
+                  >
+                    ({result.children.length})
                   </Text>
+                )}
+
+                {isError && (
+                  <IconAlertCircleFilled
+                    size={12}
+                    className="me-1 flex-shrink-0"
+                    style={{ color: getChartColorError() }}
+                    aria-label="Error"
+                  />
+                )}
+                {isWarn && !isError && (
+                  <IconAlertTriangleFilled
+                    size={12}
+                    className="me-1 flex-shrink-0"
+                    style={{ color: getChartColorWarning() }}
+                    aria-label="Warning"
+                  />
                 )}
 
                 <Group gap={0} wrap="nowrap">
@@ -952,11 +1194,13 @@ export function DBTraceWaterfallChartContainer({
                     size="xxs"
                     truncate="end"
                     span
-                    title={`${serviceName}${hasHttpAttributes && httpUrl ? ` | ${displayText}` : ''}`}
+                    title={`${serviceName}${hasHttpAttributes && httpUrl ? ` ${displayText}` : ''}`}
                     role="button"
                   >
-                    {serviceName ? `${serviceName} | ` : ''}
-                    {displayText}
+                    {serviceName && <>{serviceName} </>}
+                    <Text span inherit c="dimmed">
+                      {displayText}
+                    </Text>
                   </Text>
                 </Group>
               </div>
@@ -973,10 +1217,12 @@ export function DBTraceWaterfallChartContainer({
               tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${!isNaN(startOffset) ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}` : ''}`,
               color: 'var(--color-text-inverted)',
               backgroundColor: barColor({
-                isError,
-                isWarn,
                 isHighlighted,
+                isError,
                 type,
+                serviceColor: serviceName
+                  ? serviceColorMap.get(serviceName)
+                  : undefined,
               }),
               body: <span>{displayText}</span>,
               minWidthPx: type === SourceKind.Log ? 10 : 2,
@@ -992,13 +1238,11 @@ export function DBTraceWaterfallChartContainer({
       visibleNodes,
       formatTime,
       highlightedRowWhere,
-      isFilterActive,
       minOffset,
       onClick,
+      serviceColorMap,
       showSpanEvents,
       toggleCollapse,
-      collapseTooltipShown,
-      setCollapseTooltipShown,
     ],
   );
   const initialScrollRowIndex = visibleNodes.findIndex(v => {
@@ -1026,50 +1270,134 @@ export function DBTraceWaterfallChartContainer({
       )}
       {isFilterExpanded && (
         <form onSubmit={handleSubmit(onSubmitFilters)}>
-          <Box
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'auto 1fr',
-              alignItems: 'center',
-              gap: '12px',
-            }}
-          >
-            <Text size="xs">Spans filter</Text>
-            <SearchInputV2
-              tableConnection={tcFromSource(traceTableSource)}
-              placeholder={
-                'Search trace spans w/ Lucene ex. StatusCode:"Error"'
-              }
-              language="lucene"
-              name="traceWhere"
-              control={control}
-              size="xs"
-              onSubmit={handleSubmit(onSubmitFilters)}
-              data-testid="trace-search-input"
-            />
-
+          <Stack gap="xs" mt="xs">
+            <Box>
+              <Text size="xxs" c="dimmed" mb={2}>
+                Spans filter
+              </Text>
+              <SearchWhereInput
+                tableConnection={tcFromSource(traceTableSource)}
+                name="traceWhere"
+                languageName="traceWhereLanguage"
+                control={control}
+                size="xs"
+                showLabel={false}
+                allowMultiline={false}
+                onSubmit={handleSubmit(onSubmitFilters)}
+                onLanguageChange={lang =>
+                  setValue('traceWhereLanguage', lang, { shouldDirty: true })
+                }
+                lucenePlaceholder='Filter spans ex. StatusCode:"Error"'
+                sqlPlaceholder="Filter spans ex. StatusCode = 'Error'"
+                data-testid="trace-search-input"
+                // The waterfall lives inside an `overflow: hidden` column, which
+                // clips the SQL editor's autocomplete tooltip. Portal it to the
+                // document body so suggestions aren't cut off (Lucene mode
+                // already renders its dropdown in a portal).
+                parentRef={
+                  typeof document !== 'undefined' ? document.body : null
+                }
+              />
+              {traceFilterError && (
+                <Box mt={4} data-testid="trace-filter-error">
+                  <ErrorCollapse
+                    summary="Couldn't apply spans filter (showing all spans)"
+                    details={traceFilterError.message}
+                  />
+                </Box>
+              )}
+            </Box>
             {logTableSource && (
-              <>
-                <Text size="xs">Logs filter</Text>
-                <SearchInputV2
+              <Box>
+                <Text size="xxs" c="dimmed" mb={2}>
+                  Logs filter
+                </Text>
+                <SearchWhereInput
                   tableConnection={tcFromSource(logTableSource)}
-                  placeholder={
-                    'Search trace logs w/ Lucene ex. SeverityText:"error"'
-                  }
-                  language="lucene"
                   name="logWhere"
+                  languageName="logWhereLanguage"
                   control={control}
                   size="xs"
+                  showLabel={false}
+                  allowMultiline={false}
                   onSubmit={handleSubmit(onSubmitFilters)}
+                  onLanguageChange={lang =>
+                    setValue('logWhereLanguage', lang, { shouldDirty: true })
+                  }
+                  lucenePlaceholder='Filter logs ex. SeverityText:"error"'
+                  sqlPlaceholder="Filter logs ex. SeverityText = 'error'"
                   data-testid="log-search-input"
+                  parentRef={
+                    typeof document !== 'undefined' ? document.body : null
+                  }
                 />
-              </>
+                {logError && (
+                  <Box mt={4} data-testid="log-filter-error">
+                    <ErrorCollapse
+                      summary={
+                        logFilterError
+                          ? "Couldn't apply logs filter (showing all logs)"
+                          : "Couldn't load correlated logs"
+                      }
+                      details={logError.message}
+                    />
+                  </Box>
+                )}
+              </Box>
             )}
-          </Box>
+          </Stack>
         </form>
       )}
       <Group my="xs" justify="space-between">
         <Group gap="md">
+          {hasCollapsibleNodes && (
+            <Group gap={2}>
+              <Tooltip label="Expand +1 level" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  onClick={expandOneLevel}
+                  aria-label="Expand one level"
+                >
+                  <IconChevronDown size={14} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="Collapse +1 level" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  onClick={collapseOneLevel}
+                  aria-label="Collapse one level"
+                >
+                  <IconChevronRight size={14} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="Expand all" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  onClick={expandAll}
+                  aria-label="Expand all"
+                >
+                  <IconChevronsDown size={14} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="Collapse all" position="bottom">
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  onClick={collapseAll}
+                  aria-label="Collapse all"
+                >
+                  <IconChevronsRight size={14} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+          )}
           <Text size="xs">
             {itemCountString},{' '}
             <span className={errorCount ? 'text-danger' : ''}>
@@ -1123,26 +1451,29 @@ export function DBTraceWaterfallChartContainer({
             </Group>
           </Group>
         </Group>
-        <span>
-          <Anchor
-            underline="always"
-            onClick={() => setIsFilterExpanded(prev => !prev)}
-            size="xs"
-          >
-            {isFilterExpanded ? 'Hide Filters' : 'Show Filters'}{' '}
-            {isFilterActive && '(active)'}
-          </Anchor>
-          {isFilterActive && (
+        <Group gap="sm">
+          {controlsExtra}
+          <span>
             <Anchor
               underline="always"
-              onClick={onClearFilters}
+              onClick={() => setIsFilterExpanded(prev => !prev)}
               size="xs"
-              ms="xs"
             >
-              Clear Filters
+              {isFilterExpanded ? 'Hide Filters' : 'Show Filters'}{' '}
+              {isFilterActive && '(active)'}
             </Anchor>
-          )}
-        </span>
+            {isFilterActive && (
+              <Anchor
+                underline="always"
+                onClick={onClearFilters}
+                size="xs"
+                ms="xs"
+              >
+                Clear Filters
+              </Anchor>
+            )}
+          </span>
+        </Group>
       </Group>
       {!isFetching && !error && highlightedAttributeValues?.length > 0 && (
         <DBHighlightedAttributesList attributes={highlightedAttributeValues} />

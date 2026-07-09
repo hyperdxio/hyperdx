@@ -25,10 +25,10 @@ export default function PatternTable({
   totalCountConfig,
   totalCountQueryKeyPrefix,
   bodyValueExpression,
-  patternColumn,
-  draftPatternColumn,
-  onDraftPatternColumnChange,
-  onSubmit,
+  patternColumn: externalPatternColumn,
+  draftPatternColumn: externalDraftPatternColumn,
+  onDraftPatternColumnChange: externalOnDraftPatternColumnChange,
+  onSubmit: externalOnSubmit,
   source,
 }: {
   config: BuilderChartConfigWithDateRange;
@@ -45,8 +45,16 @@ export default function PatternTable({
 
   const [selectedPattern, setSelectedPattern] = useState<Pattern | null>(null);
 
+  // When external handlers are provided (e.g. search page), the pattern
+  // column selector is shown inline and the user can override the expression
+  // at runtime. For dashboard/preview tiles, the pattern expression is
+  // configured in the tile edit UI (via the config's `select` field) and
+  // the PatternColumnSelector is not shown.
+  const hasExternalPatternColumn =
+    externalOnDraftPatternColumnChange != null && externalOnSubmit != null;
+
   const effectiveBodyValueExpression = buildPatternColumnExpression({
-    patternColumn,
+    patternColumn: externalPatternColumn ?? null,
     fallback: bodyValueExpression,
   });
 
@@ -86,14 +94,16 @@ export default function PatternTable({
 
   return (
     <>
-      <PatternColumnSelector
-        sourceId={source?.id}
-        value={draftPatternColumn ?? ''}
-        onChange={onDraftPatternColumnChange}
-        onSubmit={onSubmit}
-        dateRange={config.dateRange}
-        bodyValueExpression={bodyValueExpression}
-      />
+      {hasExternalPatternColumn && (
+        <PatternColumnSelector
+          sourceId={source?.id}
+          value={externalDraftPatternColumn ?? ''}
+          onChange={externalOnDraftPatternColumnChange}
+          onSubmit={externalOnSubmit}
+          dateRange={config.dateRange}
+          bodyValueExpression={bodyValueExpression}
+        />
+      )}
       {error ? (
         <Container style={{ overflow: 'auto' }}>
           <Box mt="lg">

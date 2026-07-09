@@ -39,6 +39,7 @@ export enum DisplayType {
   Search = 'search',
   Heatmap = 'heatmap',
   Markdown = 'markdown',
+  EventPatterns = 'event_patterns',
 }
 
 export type KeyValue<Key = string, Value = string> = { key: Key; value: Value };
@@ -671,6 +672,22 @@ export const FilterSchema = z.union([
 ]);
 
 export type Filter = z.infer<typeof FilterSchema>;
+
+// --------------------------
+// TAGS
+// --------------------------
+// Shared limits + validator for user-supplied tag arrays. Any write path that
+// accepts tags (external API, MCP tools, internal routers) should validate with
+// `tagsSchema` so the caps stay consistent in one place. Read/model schemas keep
+// a bare `z.array(z.string())` so parsing existing documents never fails on
+// legacy data that predates these caps.
+export const MAX_TAG_LENGTH = 32;
+export const MAX_TAGS = 50;
+
+export const tagsSchema = z
+  .array(z.string().max(MAX_TAG_LENGTH))
+  .max(MAX_TAGS)
+  .optional();
 
 // --------------------------
 // SAVED SEARCH

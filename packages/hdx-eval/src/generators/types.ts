@@ -18,19 +18,31 @@ export type TraceRow = {
   spanAttributes: Record<string, string>;
 };
 
+/** Canonical, normalized severity levels (what most scenarios store). */
+export type CanonicalSeverity = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+
 export type LogRow = {
   timestampMs: number;
   traceId?: string;
   spanId?: string;
   serviceName: string;
-  severityText: 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+  /**
+   * Severity text as written to ClickHouse `SeverityText`, verbatim.
+   *
+   * Most scenarios store canonical uppercase values. Scenarios that want to
+   * exercise messy real-world severity (mixed case + aliases like `warning`,
+   * `fatal`, `information`) may store arbitrary strings here — a `string &
+   * {}` member keeps the canonical literals as autocomplete hints while
+   * allowing the raw OTel variants through.
+   */
+  severityText: CanonicalSeverity | (string & {});
   severityNumber: number;
   body: string;
   resourceAttributes: Record<string, string>;
   logAttributes: Record<string, string>;
 };
 
-export const SEVERITY_NUMBER: Record<LogRow['severityText'], number> = {
+export const SEVERITY_NUMBER: Record<CanonicalSeverity, number> = {
   TRACE: 1,
   DEBUG: 5,
   INFO: 9,
