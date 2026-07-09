@@ -382,7 +382,6 @@ describe('DBTimeChart', () => {
         decodeSeriesGroupFilters({
           seriesKey: 'error',
           groupColumns: ['severityText'],
-          valueColumns: ['count'],
           isSingleValueColumn: true,
         }),
       ).toEqual([{ column: 'severityText', value: 'error' }]);
@@ -394,7 +393,6 @@ describe('DBTimeChart', () => {
         decodeSeriesGroupFilters({
           seriesKey,
           groupColumns: ['severityText', 'service'],
-          valueColumns: ['count'],
           isSingleValueColumn: true,
         }),
       ).toEqual([
@@ -409,7 +407,6 @@ describe('DBTimeChart', () => {
         decodeSeriesGroupFilters({
           seriesKey,
           groupColumns: ['severityText'],
-          valueColumns: ['errors', 'warnings'],
           isSingleValueColumn: false,
         }),
       ).toEqual([{ column: 'severityText', value: 'error' }]);
@@ -420,7 +417,6 @@ describe('DBTimeChart', () => {
         decodeSeriesGroupFilters({
           seriesKey: 'count',
           groupColumns: [],
-          valueColumns: ['count'],
           isSingleValueColumn: true,
         }),
       ).toEqual([]);
@@ -431,7 +427,6 @@ describe('DBTimeChart', () => {
         decodeSeriesGroupFilters({
           seriesKey: undefined,
           groupColumns: ['severityText'],
-          valueColumns: ['count'],
           isSingleValueColumn: true,
         }),
       ).toEqual([]);

@@ -86,22 +86,22 @@ export type SeriesGroupFilter = { column: string; value: string };
 export function decodeSeriesGroupFilters({
   seriesKey,
   groupColumns,
-  valueColumns,
   isSingleValueColumn,
 }: {
   seriesKey: string | undefined;
   groupColumns: string[];
-  valueColumns: string[];
   isSingleValueColumn: boolean | undefined;
 }): SeriesGroupFilter[] {
   const seriesKeys = seriesKey?.split(ChartKeyJoiner);
   const groupFilters: SeriesGroupFilter[] = [];
 
   if (seriesKeys?.length && groupColumns?.length) {
-    // Determine if the first part is a value column name
-    const startsWithValueColumn =
-      !(isSingleValueColumn ?? true) ||
-      ((groupColumns?.length ?? 0) === 0 && (valueColumns?.length ?? 0) > 0);
+    // When the series has multiple value columns, the key is prefixed with the
+    // value column name (e.g. "count · error"), so the group values start at
+    // index 1. (The "no group columns" case the original inline code also
+    // guarded is impossible here — this block only runs when groupColumns is
+    // non-empty.)
+    const startsWithValueColumn = !(isSingleValueColumn ?? true);
     const groupValues = startsWithValueColumn
       ? seriesKeys.slice(1)
       : seriesKeys;
@@ -155,7 +155,7 @@ function FilterByGroupRow({
           make the buttons move out from under the cursor mid-click. */}
       <Group gap={2} wrap="nowrap" style={{ flexShrink: 0 }}>
         <Tooltip
-          label="Drill in (opens new tab)"
+          label="Search (Opens in New Tab)"
           withArrow
           withinPortal
           color="gray"
@@ -170,14 +170,14 @@ function FilterByGroupRow({
             variant="subtle"
             size="xs"
             data-testid={`chart-view-events-link-${dataKey}`}
-            aria-label="Drill in"
+            aria-label="Search (Opens in New Tab)"
             onClick={onDrillIn}
           >
             <IconSearch size={13} />
           </ActionIcon>
         </Tooltip>
         <Tooltip
-          label={clipboard.copied ? 'Copied!' : 'Copy name'}
+          label={clipboard.copied ? 'Copied!' : 'Copy Label'}
           withArrow
           withinPortal
           color="gray"
@@ -186,7 +186,7 @@ function FilterByGroupRow({
           <ActionIcon
             variant="subtle"
             size="xs"
-            aria-label="Copy name"
+            aria-label="Copy Label"
             data-testid={`chart-copy-name-${dataKey}`}
             onClick={() => clipboard.copy(name)}
           >
@@ -668,7 +668,6 @@ function DBTimeChartComponent({
       const groupFilters = decodeSeriesGroupFilters({
         seriesKey,
         groupColumns,
-        valueColumns,
         isSingleValueColumn,
       });
 
@@ -773,7 +772,6 @@ function DBTimeChartComponent({
         const groupFilters = decodeSeriesGroupFilters({
           seriesKey: dataKey,
           groupColumns,
-          valueColumns,
           isSingleValueColumn,
         });
         if (groupFilters.length > 0) {
@@ -783,13 +781,7 @@ function DBTimeChartComponent({
       }
       handleToggleSeries(name);
     },
-    [
-      onFocusSeries,
-      groupColumns,
-      valueColumns,
-      isSingleValueColumn,
-      handleToggleSeries,
-    ],
+    [onFocusSeries, groupColumns, isSingleValueColumn, handleToggleSeries],
   );
 
   const toolbarItemsMemo = useMemo(() => {

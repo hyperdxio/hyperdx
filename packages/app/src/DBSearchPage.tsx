@@ -1807,15 +1807,15 @@ export function DBSearchPage() {
   // they stay in sync (the chart-only visual focus wouldn't touch the table).
   const handleFocusSeries = useCallback(
     (groupFilters: SeriesGroupFilter[]) => {
-      groupFilters.forEach(({ column, value }) => {
-        // setFilterValue keys on the clean (unquoted) column expression; the
-        // chart hands us the raw groupBy expression.
-        searchFilters.setFilterValue(
-          cleanClickHouseExpression(column),
+      // Apply all group filters in one update so a multi-group series focus
+      // re-queries once, not once per column. setOnlyFilters keys on the clean
+      // (unquoted) column expression; the chart hands us the raw groupBy one.
+      searchFilters.setOnlyFilters(
+        groupFilters.map(({ column, value }) => ({
+          property: cleanClickHouseExpression(column),
           value,
-          'only',
-        );
-      });
+        })),
+      );
     },
     [searchFilters],
   );
