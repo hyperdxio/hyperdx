@@ -838,6 +838,11 @@ export const MemoChart = memo(function MemoChart({
   // Set right before we trigger our own brush-zoom so the dateRange effect can
   // tell an internal zoom apart from an external time-range change.
   const justZoomedRef = useRef(false);
+  // Set on a completed brush-zoom so the synthetic click that follows mouseup
+  // is swallowed (instead of freezing a stale drill-down tooltip). Kept
+  // separate from justZoomedRef and consumed/cleared by onClick, because the
+  // dateRange effect may never run when the post-zoom range is value-equal.
+  const suppressNextClickRef = useRef(false);
   const prevDateRangeRef = useRef<[number, number] | null>(null);
 
   // Clear the reset-zoom affordance whenever the time range changes for a
@@ -851,11 +856,17 @@ export const MemoChart = memo(function MemoChart({
     const changed = prev == null || prev[0] !== from || prev[1] !== to;
     prevDateRangeRef.current = [from, to];
 
+    // A brush-zoom sets justZoomedRef; consume it here so the range change it
+    // caused doesn't clear zoomOrigin. Clear it even when the range didn't
+    // actually change (a value-equal zoom), so it can't leak into a later
+    // unrelated range change and wrongly preserve a stale zoomOrigin.
+    const wasInternalZoom = justZoomedRef.current;
+    justZoomedRef.current = false;
+
     if (!changed) {
       return;
     }
-    if (justZoomedRef.current) {
-      justZoomedRef.current = false;
+    if (wasInternalZoom) {
       return;
     }
     setZoomOrigin(null);
@@ -1025,10 +1036,13 @@ export const MemoChart = memo(function MemoChart({
                 const originStart = dateRange[0];
                 const originEnd = dateRange[1];
                 setZoomOrigin(prev => prev ?? [originStart, originEnd]);
-                // Only flag a pending zoom when a range change will actually
-                // happen. Without onTimeRangeSelect the date range never
-                // changes, so the [dateRange] effect would never reset the flag
-                // and the onClick guard below would suppress every later click.
+                // The synthetic click after this drag must be swallowed
+                // regardless of whether a range change follows; onClick
+                // consumes and clears this itself.
+                suppressNextClickRef.current = true;
+                // Only tell the [dateRange] effect to preserve zoomOrigin when a
+                // range change will actually happen; without onTimeRangeSelect
+                // the range never changes and the effect never runs.
                 if (onTimeRangeSelect != null) {
                   justZoomedRef.current = true;
                 }
@@ -1059,11 +1073,13 @@ export const MemoChart = memo(function MemoChart({
             }
           }}
           onClick={(state, e) => {
-            // A brush-to-zoom ends with a synthetic click; skip it so we don't
-            // freeze a drill-down tooltip (with now-stale, pre-zoom data) right
-            // after zooming. justZoomedRef is set when a zoom completes and is
-            // cleared by the date-range effect.
-            if (justZoomedRef.current) {
+            // A brush-to-zoom ends with a synthetic click; skip that one click
+            // so we don't freeze a drill-down tooltip with now-stale, pre-zoom
+            // data. Consume-and-clear the flag here so a value-equal zoom (which
+            // never triggers the dateRange effect) can't leave it stuck and
+            // suppress every later click.
+            if (suppressNextClickRef.current) {
+              suppressNextClickRef.current = false;
               e.stopPropagation();
               return;
             }
