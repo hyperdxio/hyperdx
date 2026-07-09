@@ -38,6 +38,16 @@ export class ChartExplorerPage {
     return this.getChartContainers().first();
   }
 
+  /**
+   * Get the rendered bar rectangles inside the categorical bar chart. One
+   * locator per bar, so `.count()` yields the number of bars displayed.
+   */
+  getBars() {
+    return this.page.locator(
+      '[data-testid="bar-chart-container"] .recharts-bar-rectangle',
+    );
+  }
+
   // Getters for assertions
 
   get form() {

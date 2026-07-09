@@ -244,6 +244,15 @@ const convertToExternalTileChartConfig = (
           sourceId: config.source,
           numberFormat: config.numberFormat,
         };
+      case DisplayType.Bar:
+        return {
+          configType: 'sql',
+          displayType: DisplayType.Bar,
+          connectionId: config.connection,
+          sqlTemplate: config.sqlTemplate,
+          sourceId: config.source,
+          numberFormat: config.numberFormat,
+        };
       case DisplayType.Search:
       case DisplayType.Markdown:
       case DisplayType.Heatmap:
@@ -342,6 +351,18 @@ const convertToExternalTileChartConfig = (
           : [DEFAULT_SELECT_ITEM],
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         numberFormat: config.numberFormat,
+        limit: config.seriesLimit ?? undefined,
+      };
+    case DisplayType.Bar:
+      return {
+        displayType: config.displayType,
+        sourceId,
+        select: Array.isArray(config.select)
+          ? [convertToExternalSelectItem(config.select[0])]
+          : [DEFAULT_SELECT_ITEM],
+        groupBy: stringValueOrDefault(config.groupBy, undefined),
+        numberFormat: config.numberFormat,
+        limit: config.seriesLimit ?? undefined,
       };
     case DisplayType.Table:
       return {
@@ -623,6 +644,7 @@ export function convertToInternalTileConfig(
       case 'table':
       case 'number':
       case 'pie':
+      case 'bar':
         internalConfig = {
           configType: 'sql',
           displayType:
@@ -630,7 +652,9 @@ export function convertToInternalTileConfig(
               ? DisplayType.Table
               : externalConfig.displayType === 'number'
                 ? DisplayType.Number
-                : DisplayType.Pie,
+                : externalConfig.displayType === 'bar'
+                  ? DisplayType.Bar
+                  : DisplayType.Pie,
           name,
           connection: externalConfig.connectionId,
           sqlTemplate: externalConfig.sqlTemplate,
@@ -718,12 +742,17 @@ export function convertToInternalTileConfig(
         } satisfies BuilderSavedChartConfig;
         break;
       case 'pie':
+      case 'bar':
         internalConfig = {
           ...pick(externalConfig, ['groupBy', 'numberFormat']),
-          displayType: DisplayType.Pie,
+          displayType:
+            externalConfig.displayType === 'bar'
+              ? DisplayType.Bar
+              : DisplayType.Pie,
           select: [convertToInternalSelectItem(externalConfig.select[0])],
           source: externalConfig.sourceId,
           where: '',
+          seriesLimit: externalConfig.limit,
           name,
         } satisfies BuilderSavedChartConfig;
         break;

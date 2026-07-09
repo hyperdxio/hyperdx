@@ -14,6 +14,7 @@ import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChart
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
+  convertToCategoricalChartConfig,
   getAlignedDateRange,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -421,7 +422,7 @@ function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
   ]);
 }
 
-export function formatResponseForPieChart(
+export function formatResponseForCategoricalChart(
   data: ResponseJSON<Record<string, unknown>>,
   getColor: (index: number, label: string) => string,
 ): Array<{ label: string; value: number; color: string }> {
@@ -455,7 +456,7 @@ export function formatResponseForPieChart(
         return { label, value };
       })
       .filter(entry => !isNaN(entry.value) && isFinite(entry.value))
-      // Sort in descending order so the largest slice is always first and gets the first color in the palette
+      // Sort in descending order so the largest entry is always first and gets the first color in the palette
       .sort((a, b) => b.value - a.value)
       .map((entry, index) => ({
         ...entry,
@@ -1138,11 +1139,8 @@ export function convertToNumberChartConfig(
   return omit(config, ['granularity', 'groupBy']);
 }
 
-export function convertToPieChartConfig(
-  config: BuilderChartConfigWithOptTimestamp,
-): BuilderChartConfigWithOptTimestamp {
-  return omit(config, ['granularity']);
-}
+// The pie/bar seriesLimit→LIMIT translation lives in common-utils
+export { convertToCategoricalChartConfig };
 
 export function convertToTableChartConfig(
   config: BuilderChartConfigWithOptTimestamp,

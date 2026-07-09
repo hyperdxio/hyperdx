@@ -328,6 +328,13 @@ const externalDashboardPieRawSqlChartConfigSchema =
     displayType: z.literal('pie'),
   });
 
+// Categorical bar charts behave exactly like pie charts.
+// Distinct from 'stacked_bar', which is a time series.
+const externalDashboardCategoricalBarRawSqlChartConfigSchema =
+  externalDashboardRawSqlChartConfigBaseSchema.extend({
+    displayType: z.literal('bar'),
+  });
+
 const externalDashboardNumberChartConfigSchema = z.object({
   displayType: z.literal('number'),
   sourceId: objectIdSchema,
@@ -365,6 +372,16 @@ const externalDashboardPieChartConfigSchema = z.object({
   select: z.array(externalDashboardSelectItemSchema).length(1),
   groupBy: z.string().max(10000).optional(),
   numberFormat: NumberFormatSchema.optional(),
+  limit: z.number().int().positive().optional(),
+});
+
+const externalDashboardCategoricalBarChartConfigSchema = z.object({
+  displayType: z.literal('bar'),
+  sourceId: objectIdSchema,
+  select: z.array(externalDashboardSelectItemSchema).length(1),
+  groupBy: z.string().max(10000).optional(),
+  numberFormat: NumberFormatSchema.optional(),
+  limit: z.number().int().positive().optional(),
 });
 
 // Heatmap charts use a dedicated select item schema because they carry the
@@ -445,6 +462,7 @@ const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
     externalDashboardTableChartConfigSchema,
     externalDashboardNumberChartConfigSchema,
     externalDashboardPieChartConfigSchema,
+    externalDashboardCategoricalBarChartConfigSchema,
     externalDashboardHeatmapChartConfigSchema,
     externalDashboardMarkdownChartConfigSchema,
     externalDashboardSearchChartConfigSchema,
@@ -464,6 +482,7 @@ const externalDashboardRawSqlTileConfigSchema = z.discriminatedUnion(
     externalDashboardTableRawSqlChartConfigSchema,
     externalDashboardNumberRawSqlChartConfigSchema,
     externalDashboardPieRawSqlChartConfigSchema,
+    externalDashboardCategoricalBarRawSqlChartConfigSchema,
   ],
 );
 

@@ -52,7 +52,13 @@ export class ChartEditorComponent {
    * Set chart type
    */
   async setChartType(name: DisplayType) {
-    await this.chartTypeInput.getByRole('tab', { name }).click();
+    // Line and StackedBar share the "Time Series" tab; other display types
+    // match their tab label by name (case-insensitive substring).
+    const tabName =
+      name === DisplayType.Line || name === DisplayType.StackedBar
+        ? 'Time Series'
+        : name;
+    await this.chartTypeInput.getByRole('tab', { name: tabName }).click();
   }
 
   /**
@@ -460,6 +466,18 @@ export class ChartEditorComponent {
     const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
     await drawer.getByRole('button', { name: 'Apply', exact: true }).click();
     await drawer.waitFor({ state: 'hidden', timeout: 5000 });
+  }
+
+  /**
+   * Set the "Series Limit" value in the Display Settings drawer. On pie/bar
+   * builder charts this caps the number of slices/bars displayed. Opens the
+   * drawer, fills the input, then applies and closes.
+   */
+  async setSeriesLimit(limit: number) {
+    await this.openDisplaySettings();
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    await drawer.getByLabel('Series Limit').fill(String(limit));
+    await this.applyDisplaySettings();
   }
 
   /**

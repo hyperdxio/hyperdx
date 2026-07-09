@@ -219,6 +219,19 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
             },
           },
           {
+            name: 'Bar',
+            x: 12,
+            y: 8,
+            w: 6,
+            h: 3,
+            config: {
+              displayType: 'bar',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              groupBy: 'SpanName',
+            },
+          },
+          {
             name: 'Notes',
             x: 0,
             y: 11,
@@ -231,7 +244,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
 
       expect(result.isError).toBeFalsy();
       const output = JSON.parse(getFirstText(result));
-      expect(output.tiles).toHaveLength(5);
+      expect(output.tiles).toHaveLength(6);
 
       const tableTile = output.tiles.find(
         (t: { name: string }) => t.name === 'Table',
@@ -952,6 +965,15 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         select: [{ aggFn: 'count' as const, alias: 'Requests' }],
         groupBy: 'SpanName',
         numberFormat,
+        limit: 5,
+      };
+      const categoricalBarConfig = {
+        displayType: 'bar' as const,
+        sourceId,
+        select: [{ aggFn: 'count' as const, alias: 'Requests' }],
+        groupBy: 'SpanName',
+        numberFormat,
+        limit: 5,
       };
       const numberConfig = {
         displayType: 'number' as const,
@@ -977,6 +999,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         { name: 'Bar', config: barConfig },
         { name: 'Table', config: tableConfig },
         { name: 'Pie', config: pieConfig },
+        { name: 'Categorical Bar', config: categoricalBarConfig },
         { name: 'Number', config: numberConfig },
       ];
       const configByName: Record<string, object> = {
@@ -984,6 +1007,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         Bar: barConfig,
         Table: tableConfig,
         Pie: pieConfig,
+        'Categorical Bar': categoricalBarConfig,
         Number: numberConfig,
       };
       const assertTiles = (output: { tiles: { name: string }[] }) => {
