@@ -371,6 +371,12 @@ const LegendRenderer = memo<{
 
 export const HARD_LINES_LIMIT = MAX_TIME_CHART_SERIES;
 
+// Debounce (ms) for the chart's ResponsiveContainer resize observer. Without
+// it the observer fires on every frame, and a resize → re-render → resize
+// cycle can keep the chart (and the form controls around it in the tile
+// editor) from ever settling.
+const RESPONSIVE_CONTAINER_DEBOUNCE_MS = 50;
+
 /** One series entry in a click-frozen tooltip's payload. */
 type ActiveClickSeries = {
   value?: number;
@@ -430,8 +436,8 @@ export function buildActiveClickSeries(
 /**
  * The series actually drawn on the chart: the first HARD_LINES_LIMIT of
  * lineData, narrowed to the legend selection when one is active. The rendered
- * lines, the drill-down click payload, and the y-axis domain all derive from
- * this same set so they never diverge. Exported for unit testing.
+ * lines and the drill-down click payload both derive from this same set so
+ * they never diverge. Exported for unit testing.
  */
 export function getVisibleLineData(
   lineData: LineData[],
@@ -894,6 +900,10 @@ export const MemoChart = memo(function MemoChart({
         width="100%"
         height="100%"
         minWidth={0}
+        // Debounce resize handling so a resize → re-render → resize cycle
+        // can't thrash layout (which leaves surrounding form controls never
+        // "stable"); the observer otherwise fires undebounced on every frame.
+        debounce={RESPONSIVE_CONTAINER_DEBOUNCE_MS}
         onResize={(width, height) => {
           const w = width ?? 1;
           sizeRef.current = [w, height ?? 1];
@@ -989,21 +999,16 @@ export const MemoChart = memo(function MemoChart({
                 const originEnd = dateRange[1];
                 setZoomOrigin(prev => prev ?? [originStart, originEnd]);
                 justZoomedRef.current = true;
+                // Order the range numerically — the labels are epoch-second
+                // strings, so a lexicographic compare would misorder values of
+                // differing digit length.
+                const startSec = Number(highlightStart);
+                const endSec = Number(highlightEnd);
+                const lowSec = Math.min(startSec, endSec);
+                const highSec = Math.max(startSec, endSec);
                 onTimeRangeSelect?.(
-                  new Date(
-                    Number.parseInt(
-                      highlightStart <= highlightEnd
-                        ? highlightStart
-                        : highlightEnd,
-                    ) * 1000,
-                  ),
-                  new Date(
-                    Number.parseInt(
-                      highlightEnd >= highlightStart
-                        ? highlightEnd
-                        : highlightStart,
-                    ) * 1000,
-                  ),
+                  new Date(lowSec * 1000),
+                  new Date(highSec * 1000),
                 );
               } catch (e) {
                 console.error('failed to highlight range', e);
@@ -1021,6 +1026,14 @@ export const MemoChart = memo(function MemoChart({
             }
           }}
           onClick={(state, e) => {
+            // A brush-to-zoom ends with a synthetic click; skip it so we don't
+            // freeze a drill-down tooltip (with now-stale, pre-zoom data) right
+            // after zooming. justZoomedRef is set when a zoom completes and is
+            // cleared by the date-range effect.
+            if (justZoomedRef.current) {
+              e.stopPropagation();
+              return;
+            }
             // Freeze a tooltip at the clicked point: take the click position
             // from the active coordinate and build the per-series payload from
             // the active bucket in graphResults (the popover only needs

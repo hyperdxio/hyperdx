@@ -67,11 +67,17 @@ function HistogramChart({
         className="user-select-none cursor-crosshair"
         onClick={state => {
           // Toggle the pinned tooltip on the clicked bar (click the same bar
-          // again to unpin). Coerce activeIndex to a number and ignore NaN so a
-          // click that resolves to no bar never leaves a stuck pin.
+          // again to unpin). Only pin on a real, in-range bar index; anything
+          // else (a click that resolves to no bar: null/''/-1/fractional)
+          // clears the pin rather than defaulting to bar 0.
           const raw = state?.activeIndex;
-          const idx = typeof raw === 'number' ? raw : Number(raw);
-          if (!Number.isInteger(idx)) {
+          const idx =
+            typeof raw === 'number'
+              ? raw
+              : typeof raw === 'string' && raw.trim() !== ''
+                ? Number(raw)
+                : NaN;
+          if (!Number.isInteger(idx) || idx < 0) {
             setPinnedIndex(undefined);
             return;
           }
