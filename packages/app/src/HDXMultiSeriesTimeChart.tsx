@@ -166,7 +166,10 @@ const HDXLineChartTooltip = withErrorBoundary(
 
       return (
         <ChartTooltipContainer header={header}>
-          {payload
+          {/* Copy before sorting: Recharts 3 keeps the payload in its
+              Immer-backed store and freezes it, so an in-place sort throws
+              "this object has been frozen". */}
+          {[...payload]
             .sort((a: TooltipPayload, b: TooltipPayload) => b.value - a.value)
             .map((p: TooltipPayload) => {
               const previousKey = lineDataMap[p.dataKey]?.previousPeriodKey;
@@ -308,7 +311,9 @@ const LegendRenderer = memo<{
       }
     });
 
-    return allSeriesPayload.sort((a, b) => {
+    // Copy before sorting: when this comes from Recharts' legend payload it is
+    // kept in the Immer-backed store and frozen, so an in-place sort throws.
+    return [...allSeriesPayload].sort((a, b) => {
       const keyA = lineDataMap[a.dataKey]?.currentPeriodKey ?? '';
       const keyB = lineDataMap[b.dataKey]?.currentPeriodKey ?? '';
 
@@ -470,8 +475,13 @@ const StackedBarWithOverlap = (props: BarProps) => {
 };
 
 type CaptureActiveDotProps = {
-  /** Shared ref the tooltip reads to find the series nearest the cursor. */
-  captureRef: React.MutableRefObject<Map<string, number>>;
+  /**
+   * Called with each series' active-point pixel Y. This is a stable callback
+   * (not the ref itself) so Recharts, which stores this element's props in its
+   * Immer-backed store and freezes them, never freezes the underlying Map —
+   * the write happens on the ref captured in the callback's closure instead.
+   */
+  onCapture: (dataKey: string, cy: number) => void;
   cx?: number;
   cy?: number;
   dataKey?: string | number;
@@ -483,14 +493,14 @@ type CaptureActiveDotProps = {
 
 /**
  * Active dot for an Area series. Records the active point's pixel Y (`cy`)
- * into `captureRef`, keyed by dataKey, then draws the same dot Recharts
+ * via `onCapture`, keyed by dataKey, then draws the same dot Recharts
  * renders by default. Recharts clones this element with the active-point
  * props (cx, cy, dataKey, r, fill, stroke, strokeWidth) during the render
- * that precedes the tooltip, so the ref is current when the tooltip reads
+ * that precedes the tooltip, so the capture is current when the tooltip reads
  * it to find the series nearest the cursor.
  */
 function CaptureActiveDot({
-  captureRef,
+  onCapture,
   cx,
   cy,
   dataKey,
@@ -503,8 +513,7 @@ function CaptureActiveDot({
     // Written synchronously during render so the tooltip, which Recharts
     // renders after the graphical items in the same commit, reads the
     // current frame's positions rather than the previous frame's.
-    // eslint-disable-next-line react-hooks/refs
-    captureRef.current.set(String(dataKey), cy);
+    onCapture(String(dataKey), cy);
   }
   if (typeof cx !== 'number' || typeof cy !== 'number') {
     return null;
@@ -606,6 +615,14 @@ export const MemoChart = memo(function MemoChart({
   // Read during the same render that draws the active dots.
   const activePointYByKeyRef = useRef<Map<string, number>>(new Map());
 
+  // Stable writer passed to the active-dot element instead of the ref itself.
+  // Recharts freezes the props of graphical-item elements in its Immer store;
+  // passing a callback (rather than the Map) keeps the mutation on the
+  // closed-over ref, which is never frozen.
+  const captureActivePointY = useCallback((dataKey: string, cy: number) => {
+    activePointYByKeyRef.current.set(dataKey, cy);
+  }, []);
+
   // Key of the series whose line is nearest the cursor, lifted into state so
   // the chart can emphasize that line (thicker stroke) and fade the rest.
   // Set from the chart's mouse-move using the pixel Y the active dots captured
@@ -665,7 +682,7 @@ export const MemoChart = memo(function MemoChart({
           strokeOpacity={
             hasNearest && key !== nearestSeriesKey ? 0.5 : undefined
           }
-          activeDot={<CaptureActiveDot captureRef={activePointYByKeyRef} />}
+          activeDot={<CaptureActiveDot onCapture={captureActivePointY} />}
           {...(isHovered
             ? { fill: 'none', strokeDasharray }
             : {
@@ -678,7 +695,14 @@ export const MemoChart = memo(function MemoChart({
         />
       );
     });
-  }, [visibleLineData, displayType, id, isHovered, nearestSeriesKey]);
+  }, [
+    visibleLineData,
+    displayType,
+    id,
+    isHovered,
+    nearestSeriesKey,
+    captureActivePointY,
+  ]);
 
   const yAxisDomain: AxisDomain = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
