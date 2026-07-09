@@ -14,7 +14,12 @@ import { useRouter } from 'next/router';
 import { formatDistanceToNow, formatRelative } from 'date-fns';
 import produce from 'immer';
 import { pick } from 'lodash';
-import { parseAsArrayOf, parseAsString, useQueryState } from 'nuqs';
+import {
+  parseAsArrayOf,
+  parseAsBoolean,
+  parseAsString,
+  useQueryState,
+} from 'nuqs';
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
@@ -95,6 +100,7 @@ import {
   IconSearch,
   IconSquaresDiagonal,
   IconTags,
+  IconTimelineEvent,
   IconTrash,
   IconUpload,
   IconX,
@@ -129,6 +135,7 @@ import {
   useDashboards,
   useDeleteDashboard,
 } from '@/dashboard';
+import { useAlertAnnotations } from '@/hooks/useAlertAnnotations';
 import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
@@ -369,6 +376,7 @@ const Tile = forwardRef(
       granularity,
       onTimeRangeSelect,
       filters,
+      showAlertAnnotations,
 
       // Properties forwarded by grid layout
       className,
@@ -394,6 +402,8 @@ const Tile = forwardRef(
       granularity: SQLInterval | undefined;
       onTimeRangeSelect: (start: Date, end: Date) => void;
       filters?: Filter[];
+      // When true, draw alert firing/recovery annotations on this tile's chart.
+      showAlertAnnotations?: boolean;
 
       // Properties forwarded by grid layout
       className?: string;
@@ -623,6 +633,15 @@ const Tile = forwardRef(
       }
       return tooltip;
     }, [alert]);
+
+    // Firing/recovery markers for this tile's alert, scoped to the *visible*
+    // window — the fullscreen range while the fullscreen view is open, else the
+    // dashboard range (off unless the dashboard toggle is on).
+    const alertAnnotationReferenceLines = useAlertAnnotations(
+      alert?.id,
+      isFullscreen ? fullscreenDateRange : dateRange,
+      showAlertAnnotations,
+    );
 
     const filterWarning = useMemo(() => {
       const doFiltersExist = !!filters?.filter(
@@ -1059,6 +1078,7 @@ const Tile = forwardRef(
                     showDisplaySwitcher={true}
                     enabled={chartEnabled}
                     config={effectiveQueriedConfig}
+                    referenceLines={alertAnnotationReferenceLines}
                     onTimeRangeSelect={
                       isFullscreenView
                         ? (start, end) => setFullscreenDateRange([start, end])
@@ -1264,6 +1284,7 @@ const Tile = forwardRef(
         isSourceMissing,
         isSourceUnset,
         hasBeenVisible,
+        alertAnnotationReferenceLines,
       ],
     );
 
@@ -1654,6 +1675,12 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
   const [rawFilterQueries] = useQueryState(
     'filters',
     parseAsJsonEncoded<Filter[]>(),
+  );
+  // Toggle for overlaying alert firing/recovery markers on tile charts.
+  // Ephemeral view state (URL param), not persisted on the dashboard.
+  const [showAlertAnnotations, setShowAlertAnnotations] = useQueryState(
+    'alertAnnotations',
+    parseAsBoolean.withDefault(false),
   );
 
   // Track if we've initialized query for this dashboard
@@ -2109,6 +2136,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
             ...getFilterQueriesForSource(tileSourceId),
           ]}
           onTimeRangeSelect={onTimeRangeSelect}
+          showAlertAnnotations={showAlertAnnotations}
           isHighlighted={highlightedTileId === chart.id}
           onUpdateChart={newChart => {
             if (!dashboard) return;
@@ -2198,6 +2226,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
       where,
       whereLanguage,
       onTimeRangeSelect,
+      showAlertAnnotations,
       getFilterQueriesForSource,
       moveTargetContainers,
       handleMoveTileToGroup,
@@ -2594,40 +2623,55 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
         </Menu.Target>
 
         <Menu.Dropdown>
-          {containers.length > 0 && (
+          {(hasTiles || containers.length > 0) && (
             <>
               <Menu.Label>View</Menu.Label>
-              <Menu.Item
-                leftSection={
-                  tocVisible ? (
-                    <IconLayoutSidebarRightCollapse size={16} />
-                  ) : (
-                    <IconLayoutSidebarRightExpand size={16} />
-                  )
-                }
-                onClick={() => setTocVisible(v => !v)}
-                data-testid="toggle-toc-menu-item"
-              >
-                {tocVisible
-                  ? 'Hide table of contents'
-                  : 'Show table of contents'}
-              </Menu.Item>
-              <Menu.Item
-                leftSection={<IconChevronsUp size={16} />}
-                onClick={handleCollapseAll}
-                disabled={collapsibleContainers.length === 0}
-                data-testid="collapse-all-sections-menu-item"
-              >
-                Collapse all sections
-              </Menu.Item>
-              <Menu.Item
-                leftSection={<IconChevronsDown size={16} />}
-                onClick={handleExpandAll}
-                disabled={collapsibleContainers.length === 0}
-                data-testid="expand-all-sections-menu-item"
-              >
-                Expand all sections
-              </Menu.Item>
+              {hasTiles && (
+                <Menu.Item
+                  leftSection={<IconTimelineEvent size={16} />}
+                  onClick={() => setShowAlertAnnotations(v => !v)}
+                  data-testid="toggle-alert-annotations-menu-item"
+                >
+                  {showAlertAnnotations
+                    ? 'Hide alert annotations'
+                    : 'Show alert annotations'}
+                </Menu.Item>
+              )}
+              {containers.length > 0 && (
+                <>
+                  <Menu.Item
+                    leftSection={
+                      tocVisible ? (
+                        <IconLayoutSidebarRightCollapse size={16} />
+                      ) : (
+                        <IconLayoutSidebarRightExpand size={16} />
+                      )
+                    }
+                    onClick={() => setTocVisible(v => !v)}
+                    data-testid="toggle-toc-menu-item"
+                  >
+                    {tocVisible
+                      ? 'Hide table of contents'
+                      : 'Show table of contents'}
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<IconChevronsUp size={16} />}
+                    onClick={handleCollapseAll}
+                    disabled={collapsibleContainers.length === 0}
+                    data-testid="collapse-all-sections-menu-item"
+                  >
+                    Collapse all sections
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<IconChevronsDown size={16} />}
+                    onClick={handleExpandAll}
+                    disabled={collapsibleContainers.length === 0}
+                    data-testid="expand-all-sections-menu-item"
+                  >
+                    Expand all sections
+                  </Menu.Item>
+                </>
+              )}
               <Menu.Divider />
             </>
           )}
