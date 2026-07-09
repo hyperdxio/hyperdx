@@ -1,5 +1,3 @@
-import { FaJsSquare } from 'react-icons/fa';
-import { SiDeno, SiGo, SiPython, SiRuby } from 'react-icons/si';
 import { Group } from '@mantine/core';
 import type { Meta, StoryObj } from '@storybook/nextjs';
 
@@ -12,15 +10,36 @@ const meta = {
   args: {
     size: 56,
     radius: 12,
+    background: '#fff',
   },
 } satisfies Meta<typeof LogoBadge>;
 
 export default meta;
 type Story = StoryObj<typeof LogoBadge>;
 
+/** Brand logo served from `public/integrations`. */
+function Logo({
+  src,
+  alt,
+  size = 26,
+}: {
+  src: string;
+  alt: string;
+  size?: number;
+}) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      style={{ height: size, width: 'auto', display: 'block' }}
+    />
+  );
+}
+
 export const Default: Story = {
   args: {
-    children: <FaJsSquare size={28} color="#f7df1e" />,
+    children: <Logo src="/integrations/python.svg" alt="Python" size={28} />,
   },
 };
 
@@ -28,19 +47,19 @@ export const BrandLogos: Story = {
   render: args => (
     <Group gap={16}>
       <LogoBadge {...args}>
-        <FaJsSquare size={28} color="#f7df1e" />
+        <Logo src="/integrations/python.svg" alt="Python" size={26} />
       </LogoBadge>
       <LogoBadge {...args}>
-        <SiPython size={26} color="#3776ab" />
+        <Logo src="/integrations/ruby.svg" alt="Ruby" size={26} />
       </LogoBadge>
       <LogoBadge {...args}>
-        <SiRuby size={24} color="#cc342d" />
+        <Logo src="/integrations/go.svg" alt="Go" size={30} />
       </LogoBadge>
       <LogoBadge {...args}>
-        <SiGo size={30} color="#00add8" />
+        <Logo src="/integrations/deno.svg" alt="Deno" size={26} />
       </LogoBadge>
       <LogoBadge {...args}>
-        <SiDeno size={26} color="#000000" />
+        <Logo src="/integrations/nextjs.svg" alt="Next.js" size={26} />
       </LogoBadge>
     </Group>
   ),

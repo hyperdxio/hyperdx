@@ -1,30 +1,29 @@
 import {
-  ActionIcon,
   Anchor,
   Box,
-  CopyButton,
-  Divider,
   Group,
+  Loader,
   Stack,
   Text,
-  Tooltip,
   UnstyledButton,
 } from '@mantine/core';
 import {
   IconArrowLeft,
   IconArrowUpRight,
-  IconCheck,
-  IconCopy,
+  IconInfoCircle,
 } from '@tabler/icons-react';
 
+import { ConnectionSnippet } from './ConnectionSnippet';
+import { IntegrationDocMarkdown } from './IntegrationDocMarkdown';
 import {
-  applyGuideTokens,
-  INTEGRATION_GUIDES,
+  docUrl,
+  docUrlFromSlug,
   INTEGRATION_ITEMS_BY_ID,
   SIGNAL_LABELS,
   signalsFor,
 } from './integrationsCatalog';
 import { ItemBadge } from './ItemTile';
+import { useIntegrationDoc } from './useIntegrationDoc';
 
 function SignalChip({ label }: { label: string }) {
   return (
@@ -44,53 +43,42 @@ function SignalChip({ label }: { label: string }) {
   );
 }
 
-interface GuideCodeProps {
-  code: string;
-  endpoint: string;
-  apiKey: string;
-}
-
-function CodeBlock({ code, endpoint, apiKey }: GuideCodeProps) {
-  const resolved = applyGuideTokens(code, endpoint, apiKey);
+/**
+ * Callout that tells the user the snippets use the docs' placeholder endpoint /
+ * ingestion key, and to swap in the real values shown in the Connection panel
+ * above. We deliberately render the docs verbatim rather than substituting the
+ * values into the code, so the guide always matches upstream.
+ */
+function ReplaceTokensNote() {
   return (
-    <Box
+    <Group
+      gap={8}
+      align="flex-start"
+      wrap="nowrap"
+      p={10}
       style={{
-        position: 'relative',
-        background: 'var(--color-bg-muted)',
         borderRadius: 8,
+        border: '1px solid var(--color-border)',
+        background: 'var(--color-bg-muted)',
       }}
     >
-      <Box
-        component="pre"
+      <IconInfoCircle
+        size={16}
         style={{
-          margin: 0,
-          padding: '12px 44px 12px 14px',
-          fontFamily:
-            'var(--mantine-font-family-monospace, ui-monospace, monospace)',
-          fontSize: 12.5,
-          lineHeight: 1.6,
-          color: 'var(--color-text)',
-          whiteSpace: 'pre',
-          overflowX: 'auto',
+          color: 'var(--color-text-muted)',
+          flexShrink: 0,
+          marginTop: 1,
         }}
-      >
-        {resolved}
-      </Box>
-      <CopyButton value={resolved}>
-        {({ copied, copy }) => (
-          <Tooltip label={copied ? 'Copied' : 'Copy'} withArrow>
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              onClick={copy}
-              style={{ position: 'absolute', top: 6, right: 6 }}
-            >
-              {copied ? <IconCheck size={15} /> : <IconCopy size={15} />}
-            </ActionIcon>
-          </Tooltip>
-        )}
-      </CopyButton>
-    </Box>
+      />
+      <Text fz={12.5} style={{ color: 'var(--color-text-muted)' }}>
+        The snippets below come straight from the docs and use placeholder
+        values. Replace the endpoint and ingestion key with the values from the{' '}
+        <Text component="span" fw={600} style={{ color: 'var(--color-text)' }}>
+          Connection
+        </Text>{' '}
+        panel above.
+      </Text>
+    </Group>
   );
 }
 
@@ -105,9 +93,16 @@ export function GuideView({
   apiKey: string;
   onBack: () => void;
 }) {
-  const guide = INTEGRATION_GUIDES[guideId];
   const item = INTEGRATION_ITEMS_BY_ID[guideId];
   const signals = signalsFor(guideId);
+  const { data, isLoading, isError, refetch } = useIntegrationDoc(item);
+
+  const title = data?.title || item?.name || guideId;
+  const fullDocsUrl = data?.slug
+    ? docUrlFromSlug(data.slug)
+    : item
+      ? docUrl(item.doc)
+      : null;
 
   return (
     <Stack gap={16}>
@@ -127,11 +122,10 @@ export function GuideView({
         {item ? <ItemBadge item={item} /> : null}
         <Stack gap={2}>
           <Text fw={700} fz={16} style={{ color: 'var(--color-text)' }}>
-            {guide.title}
+            {title}
           </Text>
           <Text fz={12} style={{ color: 'var(--color-text-muted)' }}>
-            {guide.steps.length} step
-            {guide.steps.length === 1 ? '' : 's'} · copy-paste setup
+            Setup guide · from the ClickStack docs
           </Text>
         </Stack>
       </Group>
@@ -147,41 +141,40 @@ export function GuideView({
         </Group>
       ) : null}
 
-      <Divider />
+      <ConnectionSnippet endpoint={endpoint} apiKey={apiKey} />
+      <ReplaceTokensNote />
 
-      <Stack gap={18}>
-        {guide.steps.map((step, idx) => (
-          <Group key={step.title} gap={12} align="flex-start" wrap="nowrap">
-            <Box
+      {isLoading ? (
+        <Group gap={8} align="center" py="xl" justify="center">
+          <Loader size="sm" />
+          <Text fz={13} style={{ color: 'var(--color-text-muted)' }}>
+            Loading setup guide…
+          </Text>
+        </Group>
+      ) : isError || !data ? (
+        <Stack gap={8} align="center" py="lg">
+          <Text fz={13} style={{ color: 'var(--color-text-muted)' }}>
+            Couldn’t load the setup guide.
+          </Text>
+          <UnstyledButton onClick={() => refetch()}>
+            <Text
+              fz={13}
+              fw={500}
               style={{
-                width: 22,
-                height: 22,
-                flexShrink: 0,
-                borderRadius: 999,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 12,
-                fontWeight: 600,
-                color: 'var(--color-text)',
-                background: 'var(--color-bg-muted)',
+                color: 'var(--click-global-color-text-link-default, #437eef)',
               }}
             >
-              {idx + 1}
-            </Box>
-            <Stack gap={8} style={{ flex: 1, minWidth: 0 }}>
-              <Text fz={14} fw={600} style={{ color: 'var(--color-text)' }}>
-                {step.title}
-              </Text>
-              <CodeBlock code={step.code} endpoint={endpoint} apiKey={apiKey} />
-            </Stack>
-          </Group>
-        ))}
-      </Stack>
+              Try again
+            </Text>
+          </UnstyledButton>
+        </Stack>
+      ) : (
+        <IntegrationDocMarkdown body={data.body} />
+      )}
 
-      {guide.docUrl ? (
+      {fullDocsUrl ? (
         <Anchor
-          href={guide.docUrl}
+          href={fullDocsUrl}
           target="_blank"
           rel="noreferrer"
           underline="never"
@@ -194,7 +187,7 @@ export function GuideView({
                 color: 'var(--click-global-color-text-link-default, #437eef)',
               }}
             >
-              View full {guide.title} docs
+              View full {title} docs
             </Text>
             <IconArrowUpRight
               size={14}

@@ -1,14 +1,4 @@
 import { type ReactNode, useEffect, useState } from 'react';
-import { type IconType } from 'react-icons';
-import { FaJsSquare } from 'react-icons/fa';
-import { RiNextjsFill } from 'react-icons/ri';
-import {
-  SiDeno,
-  SiGo,
-  SiOpentelemetry,
-  SiPython,
-  SiRuby,
-} from 'react-icons/si';
 import {
   ActionIcon,
   Anchor,
@@ -215,10 +205,35 @@ function StatusDot({ label }: { label: string }) {
   );
 }
 
+/**
+ * Brand logo served from `public/integrations`. Rendered on a white
+ * `LogoBadge` tile (see `IntegrationsLogos`) so near-black marks stay legible
+ * in both light and dark themes — matching the integrations drawer tiles.
+ */
+function IntegrationLogo({
+  src,
+  alt,
+  size = 24,
+}: {
+  src: string;
+  alt: string;
+  size?: number;
+}) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      style={{ height: size, width: 'auto', display: 'block' }}
+    />
+  );
+}
+
 interface GridCell {
   key: string;
-  Icon?: IconType;
-  color?: string;
+  /** Path to the brand SVG under `public/integrations`. */
+  src?: string;
+  alt?: string;
   size?: number;
 }
 
@@ -228,16 +243,21 @@ interface GridCell {
  */
 const GRID_CELLS: GridCell[] = [
   { key: 'e1' },
-  { key: 'js', Icon: FaJsSquare, color: '#f7df1e', size: 26 },
+  {
+    key: 'js',
+    src: '/integrations/browser.svg',
+    alt: 'Browser',
+    size: 26,
+  },
   { key: 'e2' },
-  { key: 'python', Icon: SiPython, color: '#3776ab', size: 24 },
+  { key: 'python', src: '/integrations/python.svg', alt: 'Python', size: 26 },
   { key: 'e3' },
-  { key: 'go', Icon: SiGo, color: '#00add8', size: 28 },
-  { key: 'ruby', Icon: SiRuby, color: '#cc342d', size: 22 },
+  { key: 'go', src: '/integrations/go.svg', alt: 'Go', size: 28 },
+  { key: 'ruby', src: '/integrations/ruby.svg', alt: 'Ruby', size: 24 },
   { key: 'e4' },
-  { key: 'deno', Icon: SiDeno, color: 'var(--color-text)', size: 24 },
+  { key: 'deno', src: '/integrations/deno.svg', alt: 'Deno', size: 26 },
   { key: 'e5' },
-  { key: 'nextjs', Icon: RiNextjsFill, color: 'var(--color-text)', size: 28 },
+  { key: 'nextjs', src: '/integrations/nextjs.svg', alt: 'Next.js', size: 26 },
   { key: 'e6' },
 ];
 
@@ -253,10 +273,10 @@ function IntegrationsLogos() {
         flexShrink: 0,
       }}
     >
-      {GRID_CELLS.map(({ key, Icon, color, size }) =>
-        Icon ? (
-          <LogoBadge key={key} size={50}>
-            <Icon size={size} color={color} />
+      {GRID_CELLS.map(({ key, src, alt, size }) =>
+        src ? (
+          <LogoBadge key={key} size={50} background="#fff">
+            <IntegrationLogo src={src} alt={alt ?? ''} size={size} />
           </LogoBadge>
         ) : (
           <LogoBadge key={key} size={50} dashed />
@@ -570,22 +590,6 @@ function CheckTelemetryRow({ onCheck }: { onCheck?: () => void }) {
 // start a fresh collector or wire ClickStack into an existing one.
 // ---------------------------------------------------------------------------
 
-/** Vector.dev mark — react-icons has no vector.dev logo, so we inline one. */
-function VectorLogo({ size = 20 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={(size * 24) / 20}
-      viewBox="0 0 20 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      style={{ display: 'block' }}
-    >
-      <path d="M2 2.5h16L11 12v8.5L9 19.5V12L2 2.5z" fill="#10b8b0" />
-    </svg>
-  );
-}
-
 interface CollectorSource {
   value: string;
   label: string;
@@ -600,13 +604,21 @@ const COLLECTOR_SOURCES: CollectorSource[] = [
     value: 'otel',
     label: 'OpenTelemetry',
     recommended: true,
-    logo: <SiOpentelemetry size={22} color="#f5a800" />,
+    logo: (
+      <IntegrationLogo
+        src="/integrations/opentelemetry.svg"
+        alt="OpenTelemetry"
+        size={22}
+      />
+    ),
     noun: 'OpenTelemetry Collector',
   },
   {
     value: 'vector',
     label: 'Vector',
-    logo: <VectorLogo size={20} />,
+    logo: (
+      <IntegrationLogo src="/integrations/vector.svg" alt="Vector" size={22} />
+    ),
     noun: 'Vector pipeline',
   },
 ];

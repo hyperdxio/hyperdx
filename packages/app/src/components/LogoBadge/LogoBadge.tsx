@@ -28,7 +28,7 @@ export interface LogoBadgeProps {
   background?: string;
   className?: string;
   style?: CSSProperties;
-  /** Logo rendered centered within the badge (e.g. a `react-icons` glyph). */
+  /** Logo rendered centered within the badge (e.g. a brand SVG `<img>`). */
   children?: ReactNode;
   /**
    * Render an empty placeholder tile (dashed outline, no fill or shadow) to

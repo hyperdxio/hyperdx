@@ -23,7 +23,6 @@
     "test:e2e:ci": "../../scripts/test-e2e-ci.sh",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
-    "generate:integration-guides": "node scripts/generate-integration-guides.mjs",
     "knip": "knip"
   },
   "dependencies": {
@@ -85,11 +84,11 @@
     "react-grid-layout": "^1.3.4",
     "react-hook-form": "^7.43.8",
     "react-hotkeys-hook": "^4.3.7",
-    "react-icons": "^5.6.0",
     "react-json-tree": "^0.20.0",
     "react-markdown": "^10.1.0",
     "react-resizable": "^3.0.4",
     "recharts": "^2.12.7",
+    "remark-gfm": "^4.0.1",
     "rrweb": "2.0.0-alpha.8",
     "sass": "^1.54.8",
     "sql-formatter": "^15.7.2",
