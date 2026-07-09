@@ -396,6 +396,37 @@ export type ActiveClickPayload = {
 /** Series label shown in the legend, tooltip, and line `name`. */
 const getSeriesDisplayName = (ld: LineData) => ld.displayName || ld.dataKey;
 
+/** Normalize a chart event's active label (number | string) to a string. */
+const getActiveLabel = (state?: {
+  activeLabel?: string | number;
+}): string | undefined =>
+  state?.activeLabel != null ? String(state.activeLabel) : undefined;
+
+/**
+ * Build the per-series payload for a click-frozen tooltip from the data row at
+ * the clicked bucket. Only the visible series (legend selection +
+ * HARD_LINES_LIMIT) with a numeric value at that bucket are included, so the
+ * drill-down popover mirrors exactly what is drawn. Exported for unit testing.
+ */
+export function buildActiveClickSeries(
+  visibleLineData: LineData[],
+  activeRow: Record<string, unknown> | undefined,
+): ActiveClickSeries[] {
+  if (activeRow == null) return [];
+  return visibleLineData.flatMap(ld => {
+    const value = activeRow[ld.dataKey];
+    if (typeof value !== 'number') return [];
+    return [
+      {
+        dataKey: ld.dataKey,
+        name: getSeriesDisplayName(ld),
+        value,
+        color: ld.color,
+      },
+    ];
+  });
+}
+
 /**
  * The series actually drawn on the chart: the first HARD_LINES_LIMIT of
  * lineData, narrowed to the legend selection when one is active. The rendered
@@ -705,6 +736,17 @@ export const MemoChart = memo(function MemoChart({
   const sizeRef = useRef<[number, number]>([0, 0]);
   const [containerWidth, setContainerWidth] = useState(0);
 
+  // The chart's outer positioned container. Used to convert a pointer's
+  // viewport clientX into a stable container-relative X for measuring
+  // drag-to-zoom distance — a single origin that is always defined, unlike the
+  // chart's activeCoordinate (null off a data point) or a child SVG element's
+  // offsetX (relative to whichever bar/path is under the pointer).
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const getContainerX = useCallback((e?: { clientX?: number } | null) => {
+    if (e?.clientX == null || containerRef.current == null) return undefined;
+    return e.clientX - containerRef.current.getBoundingClientRect().left;
+  }, []);
+
   // Recharts computes bar width from the smallest gap between ticks on a
   // numerical XAxis. With a single data point there are no gaps, so the
   // computed width is 0 and bars become invisible. Provide an explicit
@@ -826,7 +868,10 @@ export const MemoChart = memo(function MemoChart({
   }, [dateRange, granularity, dateRangeEndInclusive, displayType]);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div
+      ref={containerRef}
+      style={{ position: 'relative', width: '100%', height: '100%' }}
+    >
       {onTimeRangeSelect != null && zoomOrigin != null ? (
         <MantineTooltip label="Reset to the range before zooming in" withArrow>
           <Button
@@ -872,16 +917,14 @@ export const MemoChart = memo(function MemoChart({
             setHighlightEnd(undefined);
             mouseDownPosRef.current = null;
           }}
-          onMouseDown={state => {
-            // Record the drag start: the active bucket label and the pointer's
-            // plot-relative X for measuring drag distance on mouse up. Use the
-            // chart's active coordinate (not the native event's offsetX, which
-            // is relative to whichever child SVG element — bar rect or line
-            // path — is under the pointer) so mousedown and mouseup share one
-            // origin.
-            const chartX = state?.activeCoordinate?.x;
-            if (state?.activeLabel != null && chartX != null) {
-              setHighlightStart(String(state.activeLabel));
+          onMouseDown={(state, e) => {
+            // Record the drag start: the active bucket label and a
+            // container-relative pointer X (always defined, single origin) for
+            // measuring drag distance on mouse up.
+            const chartX = getContainerX(e?.nativeEvent);
+            const downLabel = getActiveLabel(state);
+            if (downLabel != null && chartX != null) {
+              setHighlightStart(downLabel);
               mouseDownPosRef.current = chartX;
             }
           }}
@@ -910,26 +953,25 @@ export const MemoChart = memo(function MemoChart({
               prev === nextNearest ? prev : nextNearest,
             );
 
-            if (highlightStart != null && state?.activeLabel != null) {
-              setHighlightEnd(String(state.activeLabel));
+            const moveLabel = getActiveLabel(state);
+            if (highlightStart != null && moveLabel != null) {
+              setHighlightEnd(moveLabel);
               setIsClickActive(undefined); // Clear out any click state as we're highlighting
             }
           }}
-          onMouseUp={state => {
+          onMouseUp={(state, e) => {
             const MIN_DRAG_DISTANCE = 20; // Minimum horizontal drag distance in pixels
             let dragDistance = 0;
 
-            // Measure against the same plot-relative coordinate recorded on
-            // mouse down so both endpoints share one origin.
-            const chartX = state?.activeCoordinate?.x;
+            // Measure against the same container-relative origin recorded on
+            // mouse down so the distance is never skewed or dropped when the
+            // pointer maps to no data point.
+            const chartX = getContainerX(e?.nativeEvent);
             if (mouseDownPosRef.current != null && chartX != null) {
               dragDistance = Math.abs(chartX - mouseDownPosRef.current);
             }
 
-            const activeLabel =
-              state?.activeLabel != null
-                ? String(state.activeLabel)
-                : undefined;
+            const activeLabel = getActiveLabel(state);
             if (activeLabel != null && highlightStart === activeLabel) {
               // If it's just a click, don't zoom
               setHighlightStart(undefined);
@@ -985,32 +1027,24 @@ export const MemoChart = memo(function MemoChart({
             // value/name/color/dataKey per series).
             const chartX = state?.activeCoordinate?.x;
             const chartY = state?.activeCoordinate?.y;
+            const activeLabel = getActiveLabel(state);
             if (
-              state != null &&
               chartX != null &&
               chartY != null &&
-              state.activeLabel != null &&
+              activeLabel != null &&
               // If we didn't drag and highlight yet
               highlightStart == null
             ) {
-              const activeLabel = String(state.activeLabel);
               const activeRow = graphResults.find(
                 row => String(row[timestampKey]) === activeLabel,
               );
               // Mirror the series actually drawn (legend selection +
               // HARD_LINES_LIMIT) so the popover's "Filter by group" list never
               // shows deselected or over-limit series.
-              const activePayload =
-                activeRow != null
-                  ? visibleLineData
-                      .filter(ld => typeof activeRow[ld.dataKey] === 'number')
-                      .map(ld => ({
-                        dataKey: ld.dataKey,
-                        name: getSeriesDisplayName(ld),
-                        value: activeRow[ld.dataKey] as number,
-                        color: ld.color,
-                      }))
-                  : [];
+              const activePayload = buildActiveClickSeries(
+                visibleLineData,
+                activeRow,
+              );
               setIsClickActive({
                 x: chartX,
                 y: chartY,
@@ -1119,7 +1153,12 @@ export const MemoChart = memo(function MemoChart({
           )}
           {/** Needs to be at the bottom to prevent re-rendering */}
           {isClickActive != null ? (
-            <ReferenceLine x={isClickActive.activeLabel} stroke="#ccc" />
+            // The x-axis is numeric (scale="time"); pass a number so the marker
+            // positions without relying on the axis coercing a string.
+            <ReferenceLine
+              x={Number(isClickActive.activeLabel)}
+              stroke="#ccc"
+            />
           ) : null}
           {logReferenceTimestamp != null ? (
             <ReferenceLine

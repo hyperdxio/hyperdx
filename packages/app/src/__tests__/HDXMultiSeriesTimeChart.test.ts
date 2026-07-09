@@ -8,6 +8,7 @@
 // def after the `COLORS` palette was unified to Observable 10.
 import type { LineData } from '@/ChartUtils';
 import {
+  buildActiveClickSeries,
   collectMemoChartGradientHexes,
   getVisibleLineData,
   HARD_LINES_LIMIT,
@@ -105,5 +106,40 @@ describe('getVisibleLineData', () => {
     expect(getVisibleLineData(lineData, new Set([overLimitName]))).toHaveLength(
       0,
     );
+  });
+});
+
+// The drill-down popover payload is rebuilt from the clicked bucket row. This
+// pins that it only includes visible series with a numeric value, and carries
+// the fields the popover renders (name/color/dataKey/value).
+describe('buildActiveClickSeries', () => {
+  const makeLine = (dataKey: string, displayName?: string): LineData => ({
+    dataKey,
+    currentPeriodKey: dataKey,
+    previousPeriodKey: `${dataKey}.prev`,
+    displayName: displayName ?? dataKey,
+    valueColumnName: dataKey,
+    color: `#${dataKey}`,
+  });
+
+  it('returns [] when there is no active row', () => {
+    expect(buildActiveClickSeries([makeLine('a')], undefined)).toEqual([]);
+  });
+
+  it('includes only visible series with a numeric value at the bucket', () => {
+    const visible = [makeLine('a', 'Alpha'), makeLine('b', 'Beta')];
+    // `b` is missing/non-numeric at this bucket, so it is excluded.
+    const row = { ts_bucket: 1000, a: 42, b: null };
+    expect(buildActiveClickSeries(visible, row)).toEqual([
+      { dataKey: 'a', name: 'Alpha', value: 42, color: '#a' },
+    ]);
+  });
+
+  it('preserves zero values but drops non-numeric ones', () => {
+    const visible = [makeLine('a'), makeLine('b')];
+    const row = { a: 0, b: 'oops' };
+    const result = buildActiveClickSeries(visible, row);
+    expect(result.map(r => r.dataKey)).toEqual(['a']);
+    expect(result[0].value).toBe(0);
   });
 });

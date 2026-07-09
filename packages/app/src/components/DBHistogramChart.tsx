@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { omit } from 'lodash';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -51,6 +51,13 @@ function HistogramChart({
     setPinnedIndex(undefined);
   });
 
+  // The pin is a positional index, so clear it whenever the buckets change
+  // (e.g. a background refetch) — otherwise the pin would silently repoint to
+  // whatever bucket now occupies that index and show the wrong time range.
+  useEffect(() => {
+    setPinnedIndex(undefined);
+  }, [data]);
+
   return (
     <ResponsiveContainer width="100%" height="100%" minWidth={0}>
       <BarChart
@@ -101,6 +108,9 @@ function HistogramChart({
           tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
         />
         <Tooltip
+          // Remount when the pinned bar changes so `defaultIndex` re-seeds on a
+          // fresh instance rather than relying on it being reactive after mount.
+          key={pinnedIndex ?? 'hover'}
           content={
             <HDXHistogramChartTooltip generateSearchUrl={generateSearchUrl} />
           }

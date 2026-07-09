@@ -143,7 +143,7 @@ export function PropertyComparisonChart({
   const [clickedValue, setClickedValue] = useState<string | null>(null);
   const clipboard = useClipboard({ timeout: 2000 });
 
-  const handleChartClick = (data: any) => {
+  const handleChartClick = (data: { activeLabel?: string | number }) => {
     // Select the clicked bar by its label (the bar's `name`), looking the row
     // up in chartData to skip the aggregated "other" bucket.
     const activeLabel = data?.activeLabel;
@@ -156,7 +156,7 @@ export function PropertyComparisonChart({
       setClickedValue(null);
       return;
     }
-    const newValue = String(activeLabel ?? '');
+    const newValue = String(activeLabel);
     // Toggle off if clicking the same bar
     if (newValue === clickedValue) {
       setClickedValue(null);
