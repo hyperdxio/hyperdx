@@ -1361,8 +1361,8 @@ export const processAlert = async (
       const hitAlertThisRun = latestAlertContext.has(groupKey);
       const wasAlertingBefore = groupPrevious?.state === AlertState.ALERT;
 
-      // If it hit ALERT during this run, and it wasn't already alerting before this run started
-      if (hitAlertThisRun && !wasAlertingBefore) {
+      // If it hit ALERT during this run, send the notification (re-notifying every tick if it continuously breaches)
+      if (hitAlertThisRun) {
         const context = latestAlertContext.get(groupKey);
         if (context) {
           await trySendNotification({
