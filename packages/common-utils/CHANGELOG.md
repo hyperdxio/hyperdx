@@ -1,5 +1,29 @@
 # @hyperdx/common-utils
 
+## 0.22.0
+
+### Minor Changes
+
+- c29d0df23: feat: Add categorical bar chart display type
+- ba598baba: feat: Add a custom ORDER BY input for Bar and Pie charts
+- c29d0df23: feat: Allow specifying a limit on pie and bar chart series
+- 3f1e1fe4: feat: update metrics schema for more efficient PK and time pruning
+- 0c7254360: Adding consecutive-window configuration to alerts, so that you can specify a condition like "only fire this alert after some condition is met for N consecutive windows." This helps prevent flaky alerts (and pages), and cut down on alert noise in many cases.
+
+  Also adds a `PENDING` alert state for alarms that _will_ fire if current trends continue.
+
+### Patch Changes
+
+- 617355378: Move the pinned-filter query parser (`parseQuery`) into `@hyperdx/common-utils`
+  as the inverse of `filtersToQuery`, and add an `isRenderablePinnedFilter`
+  helper. The app re-exports `parseQuery` from its previous location, so there is
+  no behavior change in the UI. The helper lets the external saved-search API
+  validate that a pinned filter will actually render as a sidebar facet (a
+  `type: 'sql'` `<column> IN (...)` / `NOT IN` / `BETWEEN` predicate) and reject
+  shapes that would be stored but never shown.
+- e2145678d: fix: fixes the functions used to trigger direct_read
+- bb7ae21e8: Upgrade the TypeScript devDependency from 5.9 to 6.0 across all packages.
+
 ## 0.21.0
 
 ### Minor Changes
