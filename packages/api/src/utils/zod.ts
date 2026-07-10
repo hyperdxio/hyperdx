@@ -8,6 +8,8 @@ import {
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_TILES,
   DashboardFilterSchema,
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
   MetricsDataType,
   NumberFormatSchema,
   NumberTileColorConditionSchema,
@@ -16,6 +18,7 @@ import {
   OnClickSearchSchema,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
+  tagsSchema,
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
   WebhookService,
@@ -130,7 +133,9 @@ const chartSeriesSchema = z.discriminatedUnion('type', [
 
 type ChartSeries = z.infer<typeof chartSeriesSchema>;
 
-export const tagsSchema = z.array(z.string().max(32)).max(50).optional();
+// Re-exported from common-utils so existing `@/utils/zod` importers keep working
+// while the canonical definition lives in the shared package.
+export { MAX_TAG_LENGTH, MAX_TAGS, tagsSchema };
 
 export const externalDashboardFilterSchemaWithId = DashboardFilterSchema.omit({
   source: true,
@@ -323,6 +328,13 @@ const externalDashboardPieRawSqlChartConfigSchema =
     displayType: z.literal('pie'),
   });
 
+// Categorical bar charts behave exactly like pie charts.
+// Distinct from 'stacked_bar', which is a time series.
+const externalDashboardCategoricalBarRawSqlChartConfigSchema =
+  externalDashboardRawSqlChartConfigBaseSchema.extend({
+    displayType: z.literal('bar'),
+  });
+
 const externalDashboardNumberChartConfigSchema = z.object({
   displayType: z.literal('number'),
   sourceId: objectIdSchema,
@@ -359,7 +371,19 @@ const externalDashboardPieChartConfigSchema = z.object({
   sourceId: objectIdSchema,
   select: z.array(externalDashboardSelectItemSchema).length(1),
   groupBy: z.string().max(10000).optional(),
+  orderBy: z.string().max(10000).optional(),
   numberFormat: NumberFormatSchema.optional(),
+  limit: z.number().int().positive().optional(),
+});
+
+const externalDashboardCategoricalBarChartConfigSchema = z.object({
+  displayType: z.literal('bar'),
+  sourceId: objectIdSchema,
+  select: z.array(externalDashboardSelectItemSchema).length(1),
+  groupBy: z.string().max(10000).optional(),
+  orderBy: z.string().max(10000).optional(),
+  numberFormat: NumberFormatSchema.optional(),
+  limit: z.number().int().positive().optional(),
 });
 
 // Heatmap charts use a dedicated select item schema because they carry the
@@ -424,6 +448,14 @@ const externalDashboardMarkdownChartConfigSchema = z.object({
   markdown: z.string().max(50000).optional(),
 });
 
+const externalDashboardEventPatternsChartConfigSchema = z.object({
+  displayType: z.literal('event_patterns'),
+  sourceId: objectIdSchema,
+  select: z.string().max(10000).optional().default(''),
+  where: z.string().max(10000).optional().default(''),
+  whereLanguage: whereLanguageSchema,
+});
+
 const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
   'displayType',
   [
@@ -432,9 +464,11 @@ const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
     externalDashboardTableChartConfigSchema,
     externalDashboardNumberChartConfigSchema,
     externalDashboardPieChartConfigSchema,
+    externalDashboardCategoricalBarChartConfigSchema,
     externalDashboardHeatmapChartConfigSchema,
     externalDashboardMarkdownChartConfigSchema,
     externalDashboardSearchChartConfigSchema,
+    externalDashboardEventPatternsChartConfigSchema,
   ],
 );
 
@@ -450,6 +484,7 @@ const externalDashboardRawSqlTileConfigSchema = z.discriminatedUnion(
     externalDashboardTableRawSqlChartConfigSchema,
     externalDashboardNumberRawSqlChartConfigSchema,
     externalDashboardPieRawSqlChartConfigSchema,
+    externalDashboardCategoricalBarRawSqlChartConfigSchema,
   ],
 );
 
@@ -679,3 +714,106 @@ export const externalWebhookSchema = z.discriminatedUnion('service', [
 ]);
 
 export type ExternalWebhook = z.infer<typeof externalWebhookSchema>;
+
+// Shared webhook header/query-param validators. Exported so the internal
+// webhooks router (routers/api/webhooks.ts) uses the exact same rules — a single
+// source of truth prevents the CRLF/control-char hardening from drifting between
+// the internal and external APIs.
+// Length caps for webhook write fields. These bound the stored document size so
+// a webhook write can't approach Mongo's 16MB document limit as an unhandled
+// error, mirroring the per-field caps on the saved-search schema.
+const MAX_WEBHOOK_NAME_LENGTH = 1024;
+const MAX_WEBHOOK_URL_LENGTH = 2048;
+const MAX_WEBHOOK_DESCRIPTION_LENGTH = 2048;
+const MAX_WEBHOOK_BODY_LENGTH = 16 * 1024;
+const MAX_WEBHOOK_HEADER_NAME_LENGTH = 256;
+const MAX_WEBHOOK_HEADER_VALUE_LENGTH = 4096;
+const MAX_WEBHOOK_QUERY_PARAM_KEY_LENGTH = 1024;
+const MAX_WEBHOOK_QUERY_PARAM_VALUE_LENGTH = 4096;
+// Cap the number of header / query-param entries so an unbounded map can't blow
+// up the document size even with each individual value capped.
+const MAX_WEBHOOK_HEADERS = 100;
+const MAX_WEBHOOK_QUERY_PARAMS = 100;
+
+export const webhookHeaderNameSchema = z
+  .string()
+  .min(1, 'Header name cannot be empty')
+  .max(MAX_WEBHOOK_HEADER_NAME_LENGTH)
+  .regex(
+    /^[!#$%&'*+\-.0-9A-Z^_`a-z|~]+$/,
+    "Invalid header name. Only alphanumeric characters and !#$%&'*+-.^_`|~ are allowed",
+  )
+  .refine(name => !/^\d/.test(name), 'Header name cannot start with a number');
+
+// eslint-disable-next-line no-control-regex
+const hasControlChars = (val: string) => /[\r\n\t\x00-\x1F\x7F]/.test(val);
+
+export const webhookHeaderValueSchema = z
+  .string()
+  .max(MAX_WEBHOOK_HEADER_VALUE_LENGTH)
+  .refine(val => !hasControlChars(val), {
+    message: 'Header values cannot contain control characters',
+  });
+
+// Query param keys and values are written into the outbound request URL, so they
+// get the same CRLF/control-char hardening as headers. Unlike header names, query
+// keys aren't HTTP tokens, so only control chars are rejected (not a token charset).
+export const webhookQueryParamKeySchema = z
+  .string()
+  .min(1, 'Query parameter name cannot be empty')
+  .max(MAX_WEBHOOK_QUERY_PARAM_KEY_LENGTH)
+  .refine(val => !hasControlChars(val), {
+    message: 'Query parameter names cannot contain control characters',
+  });
+
+export const webhookQueryParamValueSchema = z
+  .string()
+  .max(MAX_WEBHOOK_QUERY_PARAM_VALUE_LENGTH)
+  .refine(val => !hasControlChars(val), {
+    message: 'Query parameter values cannot contain control characters',
+  });
+
+// Fields that only take effect for services that issue a templated HTTP request
+// (generic, incident.io). Slack posts a fixed Block Kit payload to its incoming
+// webhook URL and ignores headers/queryParams/body entirely (see
+// handleSendSlackWebhook in tasks/checkAlerts/template.ts), so supplying them on
+// a slack webhook is rejected rather than silently dropped.
+const SLACK_UNSUPPORTED_FIELDS = ['headers', 'queryParams', 'body'] as const;
+
+// Request body for external webhook create/update. `headers` and `queryParams`
+// are write-only: accepted here but never echoed back by externalWebhookSchema,
+// so provider integrations can configure secrets without them leaking on read.
+export const externalWebhookCreateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(MAX_WEBHOOK_NAME_LENGTH),
+    service: z.nativeEnum(WebhookService),
+    url: z.string().url().max(MAX_WEBHOOK_URL_LENGTH),
+    description: z.string().max(MAX_WEBHOOK_DESCRIPTION_LENGTH).optional(),
+    queryParams: z
+      .record(webhookQueryParamKeySchema, webhookQueryParamValueSchema)
+      .refine(m => Object.keys(m).length <= MAX_WEBHOOK_QUERY_PARAMS, {
+        message: `A webhook cannot have more than ${MAX_WEBHOOK_QUERY_PARAMS} query parameters`,
+      })
+      .optional(),
+    headers: z
+      .record(webhookHeaderNameSchema, webhookHeaderValueSchema)
+      .refine(m => Object.keys(m).length <= MAX_WEBHOOK_HEADERS, {
+        message: `A webhook cannot have more than ${MAX_WEBHOOK_HEADERS} headers`,
+      })
+      .optional(),
+    body: z.string().max(MAX_WEBHOOK_BODY_LENGTH).optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.service !== WebhookService.Slack) {
+      return;
+    }
+    for (const field of SLACK_UNSUPPORTED_FIELDS) {
+      if (val[field] !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: `${field} is not supported for the slack webhook service`,
+        });
+      }
+    }
+  });

@@ -1,6 +1,7 @@
 // Port from ChartUtils + source.ts
 import { add as fnsAdd, format as fnsFormat } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
+import { omit } from 'lodash';
 import { z } from 'zod';
 
 export { default as objectHash } from 'object-hash';
@@ -22,6 +23,7 @@ import {
   QuerySettings,
   RawSqlChartConfig,
   SavedChartConfig,
+  SortSpecificationList,
   SQLInterval,
   TileTemplateSchema,
   TSource,
@@ -731,6 +733,89 @@ export function convertToDashboardDocument(
   }
 
   return output;
+}
+
+export function hasNonEmptyOrderBy(
+  orderBy: SortSpecificationList | undefined | null,
+): boolean {
+  if (orderBy == null) {
+    return false;
+  }
+  return typeof orderBy === 'string'
+    ? orderBy.trim().length > 0
+    : orderBy.length > 0;
+}
+
+/**
+ * Normalize a builder chart config for categorical (pie/bar) rendering.
+ *
+ * Categorical charts have no time dimension, so `granularity` is dropped and
+ * the per-tile `seriesLimit` is reinterpreted as a plain SQL `LIMIT` on the
+ * number of slices/bars (the `__hdx_series_limit` ranking CTE it drives on time
+ * charts is gated on granularity, which categorical charts never set — see
+ * `renderSeriesLimitCte`).
+ *
+ * Ordering precedence:
+ *  - A user-supplied `orderBy` (from the chart editor's ORDER BY input) always
+ *    wins and is pushed down to SQL as-is. When combined with a limit, the
+ *    limit keeps the top rows according to that ordering.
+ *  - Otherwise, when a limit is present we inject a value-descending ordering
+ *    so the kept slices/bars are the largest ones by default.
+ *
+ * Shared by the in-app renderers (DBPieChart/DBBarChart) and the server-side
+ * MCP tile-query path so every surface applies the limit identically.
+ */
+export function convertToCategoricalChartConfig(
+  config: BuilderChartConfigWithOptTimestamp,
+): BuilderChartConfigWithOptTimestamp {
+  const convertedConfig = structuredClone(omit(config, ['granularity']));
+
+  // Pie/bar charts interpret `seriesLimit` as a plain SQL LIMIT on the
+  // number of slices/bars.
+  if (
+    convertedConfig.seriesLimit != null &&
+    convertedConfig.limit?.limit == null
+  ) {
+    convertedConfig.limit = { limit: convertedConfig.seriesLimit };
+    delete convertedConfig.seriesLimit;
+  }
+
+  // A user-supplied ORDER BY takes precedence over the default value-descending
+  // ordering, so only inject the default when the user has not set one.
+  // When a series limit is set and the user has not supplied an ordering, order
+  // by the first aggregated value descending (with the group as a stable
+  // tiebreak) so the limit deterministically keeps the largest slices/bars.
+  if (
+    !hasNonEmptyOrderBy(convertedConfig.orderBy) &&
+    convertedConfig.limit?.limit != null &&
+    Array.isArray(convertedConfig.select) &&
+    convertedConfig.select.length > 0 &&
+    typeof convertedConfig.groupBy === 'string'
+  ) {
+    const firstSelect = convertedConfig.select[0];
+    if (!firstSelect.alias?.trim()) {
+      firstSelect.alias = 'Value';
+    }
+    // Quote the alias as a ClickHouse identifier, doubling any embedded
+    // double quotes so aliases like `Request "Count"` are escaped correctly.
+    const quotedAlias = `"${firstSelect.alias.trim().replace(/"/g, '""')}"`;
+    convertedConfig.orderBy = [
+      {
+        valueExpression: quotedAlias,
+        ordering: 'DESC',
+      },
+      ...(convertedConfig.groupBy?.trim()
+        ? [
+            {
+              valueExpression: convertedConfig.groupBy,
+              ordering: 'ASC' as const,
+            },
+          ]
+        : []),
+    ];
+  }
+
+  return convertedConfig;
 }
 
 export const getFirstOrderingItem = (

@@ -104,6 +104,49 @@ export class SidePanelComponent {
   }
 
   /**
+   * The cross-source "View Trace" action rendered in a log panel's metadata row
+   * when the log has trace context (TraceId + a configured trace source).
+   */
+  get viewTraceButton() {
+    return this.page.getByTestId('side-panel-view-trace');
+  }
+
+  /**
+   * The breadcrumb trail container (rendered by SidePanelBreadcrumbs). Its
+   * individual crumbs are `side-panel-breadcrumb-<i>` (0-indexed, root first).
+   */
+  get breadcrumbs() {
+    return this.page.getByTestId('side-panel-breadcrumbs');
+  }
+
+  /**
+   * Get a breadcrumb crumb by its 0-based index (root = 0). Both clickable
+   * (ancestor) and current (leaf) crumbs carry the same test id shape.
+   */
+  getBreadcrumb(index: number) {
+    return this.page.getByTestId(`side-panel-breadcrumb-${index}`);
+  }
+
+  /**
+   * Click the breadcrumb Back control (pops one navigation level).
+   */
+  async back() {
+    await this.breadcrumbs
+      .getByLabel('Back')
+      .click({ timeout: this.defaultTimeout });
+  }
+
+  /**
+   * Click "View Trace" to push the correlated trace onto the source stack.
+   */
+  async clickViewTrace() {
+    // The button stays disabled until the correlated trace source + span row id
+    // resolve, so allow a longer window than the default tab-click timeout.
+    await this.viewTraceButton.waitFor({ state: 'visible', timeout: 10_000 });
+    await this.viewTraceButton.click({ timeout: 10_000 });
+  }
+
+  /**
    * Close the side panel (if it has a close button)
    */
   async close() {

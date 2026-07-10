@@ -877,6 +877,108 @@ describe('alerts router', () => {
     });
   });
 
+  describe('GET /alerts/:id/history', () => {
+    const createTileAlert = async () => {
+      const dashboard = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+      const alert = await agent
+        .post('/alerts')
+        .send(
+          makeAlertInput({
+            dashboardId: dashboard.body.id,
+            tileId: dashboard.body.tiles[0].id,
+            webhookId: webhook._id.toString(),
+          }),
+        )
+        .expect(200);
+      return alert.body.data._id as string;
+    };
+
+    it('returns firing and recovery transitions within the range', async () => {
+      const alertId = await createTileAlert();
+      const now = Date.now();
+      const at = (minsAgo: number) => new Date(now - minsAgo * 60_000);
+
+      await AlertHistory.create({
+        alert: alertId,
+        createdAt: at(25),
+        state: AlertState.OK,
+        counts: 0,
+        lastValues: [{ startTime: at(25), count: 0 }],
+      });
+      await AlertHistory.create({
+        alert: alertId,
+        createdAt: at(20),
+        state: AlertState.ALERT,
+        counts: 5,
+        lastValues: [{ startTime: at(20), count: 5 }],
+      });
+      await AlertHistory.create({
+        alert: alertId,
+        createdAt: at(10),
+        state: AlertState.OK,
+        counts: 0,
+        lastValues: [{ startTime: at(10), count: 0 }],
+      });
+
+      const res = await agent
+        .get(`/alerts/${alertId}/history`)
+        .query({ startTime: now - 30 * 60_000, endTime: now - 5 * 60_000 })
+        .expect(200);
+
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.data[0].state).toBe('ALERT');
+      expect(res.body.data[0].createdAt).toBe(at(20).toISOString());
+      expect(res.body.data[1].state).toBe('OK');
+      expect(res.body.data[1].createdAt).toBe(at(10).toISOString());
+    });
+
+    it('returns 404 for an unknown alert id', async () => {
+      const fakeId = randomMongoId();
+      await agent
+        .get(`/alerts/${fakeId}/history`)
+        .query({ startTime: 0, endTime: Date.now() })
+        .expect(404);
+    });
+
+    it("returns 404 for another team's alert", async () => {
+      const otherTeamAlert = await Alert.create({
+        team: randomMongoId(),
+        threshold: 1,
+        interval: '5m',
+        channel: { type: null },
+      });
+      await agent
+        .get(`/alerts/${otherTeamAlert._id}/history`)
+        .query({ startTime: 0, endTime: Date.now() })
+        .expect(404);
+    });
+
+    it('returns 400 when the time range is missing', async () => {
+      const alertId = await createTileAlert();
+      await agent.get(`/alerts/${alertId}/history`).expect(400);
+    });
+
+    it('returns 400 when startTime is after endTime', async () => {
+      const alertId = await createTileAlert();
+      const now = Date.now();
+      await agent
+        .get(`/alerts/${alertId}/history`)
+        .query({ startTime: now, endTime: now - 60_000 })
+        .expect(400);
+    });
+
+    it('accepts a very wide range (span is clamped, not rejected)', async () => {
+      const alertId = await createTileAlert();
+      await agent
+        .get(`/alerts/${alertId}/history`)
+        .query({ startTime: 0, endTime: Date.now() })
+        .expect(200);
+    });
+  });
+
   describe('errors propagation', () => {
     it('returns the errors field on a single alert response', async () => {
       const dashboard = await agent
