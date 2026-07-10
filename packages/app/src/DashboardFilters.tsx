@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 import { Group, Stack, Text, Tooltip } from '@mantine/core';
@@ -29,7 +30,7 @@ const DashboardFilterSelect = ({
   isLoading,
   isError,
 }: DashboardFilterSelectProps) => {
-  const sortedValues = values?.toSorted() || [];
+  const valuesOrEmptyMemo = useMemo(() => values ?? [], [values]);
   const tooltipText = getAppliesToTooltip(filter);
 
   return (
@@ -62,7 +63,7 @@ const DashboardFilterSelect = ({
         <VirtualMultiSelect
           placeholder={value.length === 0 ? filter.name : undefined}
           values={value}
-          data={sortedValues}
+          data={valuesOrEmptyMemo}
           // Disable only while values are genuinely loading. A completed query
           // that returned no rows (or failed) must stay interactive so the user
           // can still clear/adjust the selection instead of being stuck.
