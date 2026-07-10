@@ -140,20 +140,15 @@ function FilterPill({
   // visible on open instead of being filtered down to just the current value.
   const [draftValue, setDraftValue] = useState('');
   const copyTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  // Guards against committing the same value twice when picking an option
-  // (onOptionSubmit fires, then onBlur as the menu closes). Reset on open.
-  const committedRef = useRef(false);
 
   useEffect(() => {
     return () => clearTimeout(copyTimerRef.current);
   }, []);
 
-  // Reset the draft (and commit guard) each time the menu opens so reopening
-  // on a different pill (or after a replace) starts from a clean, unfiltered
-  // list.
+  // Reset the draft each time the menu opens so reopening on a different
+  // pill (or after a replace) starts from a clean, unfiltered list.
   useEffect(() => {
     setDraftValue('');
-    committedRef.current = false;
   }, [pill.value, opened]);
 
   // The picker lists values to switch this pill to, so it must not be scoped
@@ -191,12 +186,10 @@ function FilterPill({
   const showDangerAccent = isExcluded && !isInvalid;
 
   // Commit the typed/picked value, but only when it actually differs from the
-  // current one (avoids a redundant query on blur with no change). The
-  // committedRef guard prevents a double commit when picking an option.
+  // current one (avoids a redundant query on blur with no change).
   const commitValue = (value: string) => {
     const trimmed = value.trim();
-    if (!committedRef.current && trimmed && trimmed !== pill.value) {
-      committedRef.current = true;
+    if (trimmed && trimmed !== pill.value) {
       onReplaceValue(trimmed);
     }
     setOpened(false);
@@ -345,7 +338,6 @@ function FilterPill({
               commitValue(draftValue);
             }
           }}
-          onBlur={() => commitValue(draftValue)}
           comboboxProps={{ withinPortal: false }}
           placeholder={isFetchingValues ? 'Loading values...' : pill.value}
           aria-label="Change filter value"
