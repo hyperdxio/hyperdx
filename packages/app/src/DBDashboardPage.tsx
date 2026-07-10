@@ -146,6 +146,7 @@ import ChartContainer, {
   CollapsedToolbarProvider,
   DASHBOARD_TILE_PADDING_INLINE,
 } from './components/charts/ChartContainer';
+import { DBBarChart } from './components/DBBarChart';
 import DBHeatmapChart, {
   toHeatmapChartConfig,
 } from './components/DBHeatmapChart';
@@ -636,7 +637,7 @@ const Tile = forwardRef(
     // Firing/recovery markers for this tile's alert, scoped to the *visible*
     // window — the fullscreen range while the fullscreen view is open, else the
     // dashboard range (off unless the dashboard toggle is on).
-    const alertAnnotationReferenceLines = useAlertAnnotations(
+    const alertAnnotations = useAlertAnnotations(
       alert?.id,
       isFullscreen ? fullscreenDateRange : dateRange,
       showAlertAnnotations,
@@ -1077,7 +1078,7 @@ const Tile = forwardRef(
                     showDisplaySwitcher={true}
                     enabled={chartEnabled}
                     config={effectiveQueriedConfig}
-                    referenceLines={alertAnnotationReferenceLines}
+                    annotations={alertAnnotations}
                     onTimeRangeSelect={
                       isFullscreenView
                         ? (start, end) => setFullscreenDateRange([start, end])
@@ -1130,6 +1131,16 @@ const Tile = forwardRef(
                 )}
                 {effectiveQueriedConfig?.displayType === DisplayType.Pie && (
                   <DBPieChart
+                    key={`${keyPrefix}-${chart.id}`}
+                    title={title}
+                    toolbarPrefix={toolbarPrefixItems}
+                    toolbarSuffix={toolbarSuffixItems}
+                    enabled={chartEnabled}
+                    config={effectiveQueriedConfig}
+                  />
+                )}
+                {effectiveQueriedConfig?.displayType === DisplayType.Bar && (
+                  <DBBarChart
                     key={`${keyPrefix}-${chart.id}`}
                     title={title}
                     toolbarPrefix={toolbarPrefixItems}
@@ -1273,7 +1284,7 @@ const Tile = forwardRef(
         isSourceMissing,
         isSourceUnset,
         hasBeenVisible,
-        alertAnnotationReferenceLines,
+        alertAnnotations,
       ],
     );
 

@@ -1,11 +1,8 @@
-import { type ReactElement, useMemo } from 'react';
+import { useMemo } from 'react';
 import { AlertState, AlertTransition } from '@hyperdx/common-utils/dist/types';
 
 import api from '@/api';
-import {
-  ChartAnnotation,
-  getAnnotationReferenceLines,
-} from '@/components/charts/chartAnnotations';
+import { ChartAnnotation } from '@/components/charts/chartAnnotations';
 import { getChartColorError, getChartColorSuccess } from '@/utils';
 
 /**
@@ -31,23 +28,22 @@ export function alertTransitionsToAnnotations(
 }
 
 /**
- * Returns alert firing/recovery annotation lines for a dashboard tile, scoped
- * to the given `dateRange` (the tile's visible window). The query stays idle
- * unless `enabled` is true and an `alertId` is present.
+ * Returns alert firing/recovery annotations for a dashboard tile, scoped to the
+ * given `dateRange` (the tile's visible window). Returns annotation *data*; the
+ * chart renders it (clamping/band geometry needs the chart's x-axis domain). The
+ * query stays idle unless `enabled` is true and an `alertId` is present.
  */
 export function useAlertAnnotations(
   alertId: string | undefined,
   dateRange: [Date, Date],
   enabled: boolean = false,
-): ReactElement[] | undefined {
+): ChartAnnotation[] | undefined {
   const { data } = api.useAlertHistory(alertId, dateRange, { enabled });
 
   return useMemo(() => {
     if (!enabled || !data?.data.length) {
       return undefined;
     }
-    return getAnnotationReferenceLines(
-      alertTransitionsToAnnotations(data.data),
-    );
+    return alertTransitionsToAnnotations(data.data);
   }, [enabled, data]);
 }

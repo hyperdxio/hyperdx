@@ -140,6 +140,18 @@ export class SearchPage {
   }
 
   /**
+   * Open a log row that carries trace context (a non-empty TraceId) so the side
+   * panel renders the cross-source "View Trace" action.
+   */
+  async openTraceLinkedLogRow(traceId: string = 'trace-0') {
+    await this.timePicker.selectRelativeTime('Last 1 days');
+    await this.performSearch(`TraceId:"${traceId}"`);
+    await expect(this.table.firstRow).toBeVisible();
+    await this.table.clickFirstRow();
+    await expect(this.sidePanel.tabs).toBeVisible();
+  }
+
+  /**
    * Clear the search input
    */
   async clearSearch() {

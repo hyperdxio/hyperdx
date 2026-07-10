@@ -37,7 +37,9 @@ type SeriesType =
   | 'search'
   | 'markdown'
   | 'pie'
-  | 'event_patterns';
+  | 'event_patterns'
+  | 'bar';
+
 /**
  * Series data structure for chart verification
  * Supports all chart types: time, number, table, search, markdown
@@ -927,7 +929,7 @@ export class DashboardPage {
 
   getChartTypeTab(type: SeriesType) {
     if (type === 'time') {
-      return this.page.getByRole('tab', { name: /line/i });
+      return this.page.getByRole('tab', { name: /time series/i });
     }
     return this.page.getByRole('tab', { name: new RegExp(type, 'i') });
   }
