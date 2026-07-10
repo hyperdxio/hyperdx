@@ -8541,6 +8541,94 @@ describe('checkAlerts', () => {
       expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
     });
 
+    it('same-tick breach-then-recover sends an alert followed by a resolved notification', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      // Prior OK history
+      await new AlertHistory({
+        alert: details.alert.id,
+        state: 'OK',
+        createdAt: new Date('2024-03-01T22:05:00Z'),
+        counts: 0,
+      }).save();
+      await Alert.findByIdAndUpdate(details.alert.id, { state: 'OK' });
+
+      // Buckets:
+      // (3 errors, breach)
+      // (1 error, ok)
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2024-03-01T22:06:00Z'),
+          SeverityText: 'error',
+          Body: 'err',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2024-03-01T22:07:00Z'),
+          SeverityText: 'error',
+          Body: 'err',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2024-03-01T22:08:00Z'),
+          SeverityText: 'error',
+          Body: 'err',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2024-03-01T22:11:00Z'),
+          SeverityText: 'error',
+          Body: 'err',
+        },
+      ]);
+
+      // now
+      await processAlertAtTime(
+        new Date('2024-03-01T22:18:00Z'),
+        details,
+        clickhouseClient,
+        connection.id as any,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+
+      const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
+      expect(JSON.stringify(calls[0][1])).toContain('Triggering');
+      expect(JSON.stringify(calls[1][1])).toContain('Alert resolved');
+    });
+
     describe('multi-window alerting (numConsecutiveWindows)', () => {
       it('fires on the first violation when numConsecutiveWindows=1', async () => {
         const {
