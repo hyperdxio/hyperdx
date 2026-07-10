@@ -5485,9 +5485,9 @@ describe('checkAlerts', () => {
 
       // Check webhook calls:
       // 1-2: First run alerts for service-a and service-b
-      // 3: Second run alert for service-a (continues alerting)
-      // 4: Second run resolution notification for service-b
-      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(4);
+      // 3: Second run resolution notification for service-b
+      // Note: service-a continues alerting, but we no longer re-notify every tick
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(3);
 
       // Verify the resolution notification was sent for service-b
       const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
