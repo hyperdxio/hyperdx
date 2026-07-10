@@ -77,7 +77,9 @@ const SavedSearchAlertFormSchema = z
     scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
     channel: zAlertChannel,
-    numConsecutiveWindows: z.number().int().min(1).optional(),
+    // nullish() (not optional()): persisted alerts store this as null, which
+    // optional() would reject.
+    numConsecutiveWindows: z.number().int().min(1).nullish(),
   })
   .passthrough()
   .superRefine(validateAlertScheduleOffsetMinutes)
@@ -123,6 +125,9 @@ const AlertForm = ({
           ...defaultValues,
           scheduleOffsetMinutes: defaultValues.scheduleOffsetMinutes ?? 0,
           scheduleStartAt: defaultValues.scheduleStartAt ?? null,
+          // Persisted null -> undefined for the NumberInput.
+          numConsecutiveWindows:
+            defaultValues.numConsecutiveWindows ?? undefined,
         }
       : {
           interval: '5m',
@@ -467,7 +472,7 @@ export const DBSearchPageAlertModal = ({
           filters: searchedConfig.filters ?? [],
           tags: [],
         });
-        await createAlert.mutate({
+        await createAlert.mutateAsync({
           ...data,
           source: AlertSource.SAVED_SEARCH,
           savedSearchId: result.id,
@@ -477,21 +482,24 @@ export const DBSearchPageAlertModal = ({
       } else if (id) {
         // Create new alert
         if (activeIndex === 'stage') {
-          await createAlert.mutate({
+          await createAlert.mutateAsync({
             ...data,
-            source: AlertSource.SAVED_SEARCH,
-            savedSearchId: id,
-          });
-        } else if (data.id) {
-          // Update existing alert
-          await updateAlert.mutate({
-            ...data,
-            id: data.id,
             source: AlertSource.SAVED_SEARCH,
             savedSearchId: id,
           });
         } else {
-          return;
+          // Update existing alert. `id` is not a registered form field, so
+          // resolve it from the active tab rather than the form payload.
+          const existingAlert = savedSearch?.alerts?.[parseInt(activeIndex)];
+          if (!existingAlert?.id) {
+            return;
+          }
+          await updateAlert.mutateAsync({
+            ...data,
+            id: existingAlert.id,
+            source: AlertSource.SAVED_SEARCH,
+            savedSearchId: id,
+          });
         }
         notifications.show({
           color: 'green',
@@ -513,7 +521,7 @@ export const DBSearchPageAlertModal = ({
 
   const onDelete = async (id: string) => {
     try {
-      await deleteAlert.mutate(id);
+      await deleteAlert.mutateAsync(id);
       notifications.show({
         color: 'green',
         message: 'Alert deleted!',
