@@ -52,7 +52,7 @@ COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./ts
 # full source is copied in the build stages that need it.
 COPY ./packages/common-utils/package.json ./packages/common-utils/package.json
 COPY ./packages/api/jest.config.js ./packages/api/tsconfig.json ./packages/api/tsconfig.build.json ./packages/api/package.json ./packages/api/
-COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.build.json ./packages/app/package.json ./packages/app/next.config.mjs ./packages/app/mdx.d.ts ./packages/app/eslint.config.mjs ./packages/app/
+COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.build.json ./packages/app/package.json ./packages/app/next.config.mjs ./packages/app/css.d.ts ./packages/app/mdx.d.ts ./packages/app/eslint.config.mjs ./packages/app/
 
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
 RUN apk add --no-cache libc6-compat
