@@ -46,8 +46,9 @@ function normalizeChartConfig<
     // Order By and Having can only be set by the user for table charts
     having:
       config.displayType === DisplayType.Table ? config.having : undefined,
-    orderBy:
-      config.displayType === DisplayType.Table ? config.orderBy : undefined,
+    orderBy: isCustomOrderByDisplayType(config.displayType)
+      ? config.orderBy
+      : undefined,
     onClick:
       config.onClick && config.displayType === DisplayType.Table
         ? config.onClick
@@ -97,6 +98,13 @@ export const isPromqlDisplayType = (
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Bar ||
   displayType === DisplayType.Number;
+
+const isCustomOrderByDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is DisplayType.Table | DisplayType.Bar | DisplayType.Pie =>
+  displayType === DisplayType.Table ||
+  displayType === DisplayType.Bar ||
+  displayType === DisplayType.Pie;
 
 export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,

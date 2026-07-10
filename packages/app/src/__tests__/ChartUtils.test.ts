@@ -1045,6 +1045,59 @@ describe('ChartUtils', () => {
       expect(result[1]).toMatchObject({ label: 'b', color: 'color-1-b' });
     });
 
+    it('preserves the input row order and index-based colors when applyDefaultOrder is false', () => {
+      // Rows are intentionally NOT in descending-by-value order. With
+      // applyDefaultOrder=false (the custom ORDER BY render path), the server
+      // has already ordered the rows, so the function must not re-sort them and
+      // must assign palette colors by the incoming row index.
+      const result = formatResponseForCategoricalChart(
+        {
+          data: [
+            { 'count()': 3, ServiceName: 'c' },
+            { 'count()': 10, ServiceName: 'a' },
+            { 'count()': 1, ServiceName: 'b' },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+          ],
+        },
+        getColor,
+        false,
+      );
+
+      // Row order is preserved exactly as provided (no descending re-sort).
+      expect(result).toEqual([
+        { label: 'c', value: 3, color: 'color-0-c' },
+        { label: 'a', value: 10, color: 'color-1-a' },
+        { label: 'b', value: 1, color: 'color-2-b' },
+      ]);
+    });
+
+    it('still sorts descending when applyDefaultOrder is explicitly true', () => {
+      const result = formatResponseForCategoricalChart(
+        {
+          data: [
+            { 'count()': 3, ServiceName: 'c' },
+            { 'count()': 10, ServiceName: 'a' },
+            { 'count()': 1, ServiceName: 'b' },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+          ],
+        },
+        getColor,
+        true,
+      );
+
+      expect(result).toEqual([
+        { label: 'a', value: 10, color: 'color-0-a' },
+        { label: 'c', value: 3, color: 'color-1-c' },
+        { label: 'b', value: 1, color: 'color-2-b' },
+      ]);
+    });
+
     it('uses only the first numeric column as the value column', () => {
       const result = formatResponseForCategoricalChart(
         {

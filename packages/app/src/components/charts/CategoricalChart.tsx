@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { hasNonEmptyOrderBy } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 
@@ -111,11 +112,18 @@ export function useCategoricalChart({
   >(() => {
     if (!data) return [[], null];
     try {
-      return [formatResponseForCategoricalChart(data, getColorProps), null];
+      const hasOrderBy =
+        isBuilderChartConfig(queriedConfig) &&
+        hasNonEmptyOrderBy(queriedConfig.orderBy);
+
+      return [
+        formatResponseForCategoricalChart(data, getColorProps, !hasOrderBy),
+        null,
+      ];
     } catch (error) {
       return [[], error instanceof Error ? error : new Error(String(error))];
     }
-  }, [data]);
+  }, [data, queriedConfig]);
 
   return {
     resolvedNumberFormat,

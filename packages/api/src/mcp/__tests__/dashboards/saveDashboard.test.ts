@@ -964,6 +964,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         sourceId,
         select: [{ aggFn: 'count' as const, alias: 'Requests' }],
         groupBy: 'SpanName',
+        orderBy: 'SpanName ASC',
         numberFormat,
         limit: 5,
       };
@@ -972,6 +973,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         sourceId,
         select: [{ aggFn: 'count' as const, alias: 'Requests' }],
         groupBy: 'SpanName',
+        orderBy: '"Requests" DESC',
         numberFormat,
         limit: 5,
       };
