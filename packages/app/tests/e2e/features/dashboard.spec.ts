@@ -921,6 +921,40 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         ).toBeVisible({ timeout: 15000 });
       });
     });
+
+    test('Bar chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Bar ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Bar chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Bar);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        // Bar charts share the pie chart's categorical query shape.
+        await dashboardPage.chartEditor.typeSqlQuery(PIE_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the bar chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(
+          tile.locator(
+            '[data-testid="bar-chart-container"] .recharts-responsive-container',
+          ),
+        ).toBeVisible({ timeout: 15000 });
+      });
+    });
   });
 
   test(
