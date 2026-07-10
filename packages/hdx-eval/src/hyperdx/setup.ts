@@ -26,6 +26,20 @@ export type SetupOptions = {
     user: string;
     password: string;
   };
+  /**
+   * ClickHouse host:port as the HyperDX API sees it, when it differs from the
+   * eval runner's view (`clickhouse`). In the containerized CI setup the eval
+   * runner reaches ClickHouse over the shared Docker network (e.g.
+   * `hyperdx:8123`) while the all-in-one HyperDX API reaches its own bundled
+   * ClickHouse at `localhost:8123`. The Connection stored in the API must use
+   * the API's view; the persisted `clickhouse` config keeps the runner's view
+   * for seeding/grading. Defaults to `clickhouse` when omitted (local dev,
+   * where both views are identical).
+   */
+  connectionClickhouse?: {
+    host: string;
+    port: string;
+  };
   resetSources?: boolean;
 };
 
@@ -46,8 +60,11 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
   const me = await api.me();
 
   // 3. Ensure eval Connection exists pointing at the local ClickHouse.
+  // The Connection host is the ClickHouse endpoint as the HyperDX API sees it,
+  // which can differ from the eval runner's view (see `connectionClickhouse`).
   const connections = await api.listConnections();
-  const chHost = `http://${opts.clickhouse.host}:${opts.clickhouse.port}`;
+  const connCh = opts.connectionClickhouse ?? opts.clickhouse;
+  const chHost = `http://${connCh.host}:${connCh.port}`;
   let connection = connections.find(c => c.name === EVAL_CONNECTION_NAME);
   let createdConnection = false;
   if (!connection) {

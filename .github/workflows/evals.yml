@@ -1,0 +1,180 @@
+name: MCP Evals
+
+# HDX-4756 — Run the MCP-server AI evals end to end in CI.
+#
+# Milestone 1 (CI skeleton): boot the HyperDX all-in-one image + the pre-baked
+# eval runner container, seed a LOW-volume dataset, and run all five stages
+# (Setup → Seed → Run → Grade → Report) to completion, then post the verdict as
+# a PR comment. This job is ADVISORY — it never gates merges (see the final
+# step which always exits 0). Speed is not a goal for M1.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'Scenario to run'
+        type: string
+        default: latency-spike
+      volume_factor:
+        description: 'Seed volume factor (fraction of full volume)'
+        type: string
+        default: '0.01'
+      runs:
+        description: 'Runs per (scenario, MCP) cell'
+        type: string
+        default: '1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evals:
+    name: Run MCP evals (advisory)
+    runs-on: ubuntu-24.04
+    # Generous budget — M1 is slow by design (heavy image build + agent run).
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      # M1 defaults; workflow_dispatch inputs override on manual runs.
+      HDX_EVAL_SCENARIO: ${{ github.event.inputs.scenario || 'latency-spike' }}
+      HDX_EVAL_VOLUME_FACTOR: ${{ github.event.inputs.volume_factor || '0.01' }}
+      HDX_EVAL_RUNS: ${{ github.event.inputs.runs || '1' }}
+      HDX_EVAL_OUTPUT_DIR: ${{ github.workspace }}/eval-output
+      HDX_EVALS_OUTPUT_DIR: ${{ github.workspace }}/eval-output
+      HDX_EVALS_RUNS_DIR: ${{ github.workspace }}/eval-output/runs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+
+      - name: Expose GitHub Actions cache to BuildKit
+        uses: crazy-max/ghaction-github-runtime@v4
+
+      - name: Prepare output dir
+        run: mkdir -p "${HDX_EVAL_OUTPUT_DIR}/runs"
+
+      # Build both DISTINCT images with GHA layer caching. The HyperDX
+      # all-in-one build is heavy (OTel collector + Next.js); caching keeps
+      # re-runs reasonable. Slow first build is acceptable for M1.
+      - name: Build HyperDX image
+        run: |
+          docker buildx bake \
+            -f docker-compose.evals.yml \
+            --set hyperdx.cache-to=type=gha,scope=evals-hyperdx,mode=max \
+            --set hyperdx.cache-from=type=gha,scope=evals-hyperdx \
+            --load \
+            hyperdx
+
+      - name: Build eval runner image
+        run: |
+          docker buildx bake \
+            -f docker-compose.evals.yml \
+            --set eval-runner.cache-to=type=gha,scope=evals-runner,mode=max \
+            --set eval-runner.cache-from=type=gha,scope=evals-runner \
+            --load \
+            eval-runner
+
+      - name: Boot HyperDX instance
+        run: |
+          docker compose -f docker-compose.evals.yml up -d --no-build hyperdx
+
+      - name: Wait for HyperDX to be healthy
+        run: |
+          echo "Waiting for the HyperDX container healthcheck to pass..."
+          for i in $(seq 1 60); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' \
+              "$(docker compose -f docker-compose.evals.yml ps -q hyperdx)" 2>/dev/null || echo "starting")
+            echo "  [$i] health=$status"
+            if [ "$status" = "healthy" ]; then
+              echo "HyperDX is healthy."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::HyperDX did not become healthy in time"
+          docker compose -f docker-compose.evals.yml logs hyperdx | tail -n 200
+          exit 1
+
+      - name: Run evals (Setup → Seed → Run → Grade → Report)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HDX_EVAL_RUN_URL:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{
+            github.run_id }}
+          HDX_EVAL_COMMIT_SHA:
+            ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          docker compose -f docker-compose.evals.yml run --rm \
+            -e ANTHROPIC_API_KEY \
+            -e HDX_EVAL_RUN_URL \
+            -e HDX_EVAL_COMMIT_SHA \
+            eval-runner
+
+      - name: Dump HyperDX logs on failure
+        if: failure()
+        run:
+          docker compose -f docker-compose.evals.yml logs hyperdx | tail -n 300
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.evals.yml down -v || true
+
+      - name: Upload eval artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-eval-results
+          path: ${{ env.HDX_EVAL_OUTPUT_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Read verdict comment
+        id: verdict
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          COMMENT_FILE="${HDX_EVAL_OUTPUT_DIR}/verdict.md"
+          if [ -f "$COMMENT_FILE" ]; then
+            {
+              echo 'body<<HDX_EOF'
+              cat "$COMMENT_FILE"
+              echo 'HDX_EOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo 'body<<HDX_EOF'
+              echo '<!-- hdx-eval-verdict -->'
+              echo '## MCP Eval Results — ❌ FAIL'
+              echo ''
+              echo '_Advisory only (Milestone 1 CI skeleton) — this check does not block merges._'
+              echo ''
+              echo 'The eval pipeline did not produce a verdict (no `verdict.md`). Check the workflow logs.'
+              echo 'HDX_EOF'
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      # Sticky comment: `message-id` makes re-runs UPDATE the existing comment
+      # instead of posting duplicates (same pattern as the E2E results comment).
+      - name: Post verdict as PR comment
+        if: >-
+          always() && github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.fork != true
+        uses: mshick/add-pr-comment@v3
+        with:
+          message: ${{ steps.verdict.outputs.body }}
+          message-id: mcp-eval-verdict
+
+      # Advisory: this workflow never fails the build on the eval verdict. Only
+      # genuine infra breakage (image build, boot, or the runner erroring) fails
+      # via the earlier steps' own non-zero exits.
+      - name: Advisory note
+        if: always()
+        run: echo "MCP evals are advisory for M1 — not gating merges."
