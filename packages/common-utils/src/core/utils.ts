@@ -23,6 +23,7 @@ import {
   QuerySettings,
   RawSqlChartConfig,
   SavedChartConfig,
+  SortSpecificationList,
   SQLInterval,
   TileTemplateSchema,
   TSource,
@@ -734,6 +735,17 @@ export function convertToDashboardDocument(
   return output;
 }
 
+export function hasNonEmptyOrderBy(
+  orderBy: SortSpecificationList | undefined | null,
+): boolean {
+  if (orderBy == null) {
+    return false;
+  }
+  return typeof orderBy === 'string'
+    ? orderBy.trim().length > 0
+    : orderBy.length > 0;
+}
+
 /**
  * Normalize a builder chart config for categorical (pie/bar) rendering.
  *
@@ -741,8 +753,14 @@ export function convertToDashboardDocument(
  * the per-tile `seriesLimit` is reinterpreted as a plain SQL `LIMIT` on the
  * number of slices/bars (the `__hdx_series_limit` ranking CTE it drives on time
  * charts is gated on granularity, which categorical charts never set — see
- * `renderSeriesLimitCte`). When a limit is present we also inject a
- * value-descending ordering so the kept slices/bars are the largest ones.
+ * `renderSeriesLimitCte`).
+ *
+ * Ordering precedence:
+ *  - A user-supplied `orderBy` (from the chart editor's ORDER BY input) always
+ *    wins and is pushed down to SQL as-is. When combined with a limit, the
+ *    limit keeps the top rows according to that ordering.
+ *  - Otherwise, when a limit is present we inject a value-descending ordering
+ *    so the kept slices/bars are the largest ones by default.
  *
  * Shared by the in-app renderers (DBPieChart/DBBarChart) and the server-side
  * MCP tile-query path so every surface applies the limit identically.
@@ -762,10 +780,13 @@ export function convertToCategoricalChartConfig(
     delete convertedConfig.seriesLimit;
   }
 
-  // When a series limit is set, order by the first aggregated value
-  // descending (with the group as a stable tiebreak) so the limit
-  // deterministically keeps the largest slices/bars.
+  // A user-supplied ORDER BY takes precedence over the default value-descending
+  // ordering, so only inject the default when the user has not set one.
+  // When a series limit is set and the user has not supplied an ordering, order
+  // by the first aggregated value descending (with the group as a stable
+  // tiebreak) so the limit deterministically keeps the largest slices/bars.
   if (
+    !hasNonEmptyOrderBy(convertedConfig.orderBy) &&
     convertedConfig.limit?.limit != null &&
     Array.isArray(convertedConfig.select) &&
     convertedConfig.select.length > 0 &&

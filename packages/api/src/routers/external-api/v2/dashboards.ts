@@ -809,6 +809,14 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           maxLength: 10000
  *           description: Field expression to group results by (one slice per group value).
  *           example: "service"
+ *         orderBy:
+ *           type: string
+ *           maxLength: 10000
+ *           description: >
+ *             Optional custom SQL ORDER BY expression (raw SQL). Overrides the
+ *             default value-descending ordering and, when combined with
+ *             "limit", controls which slices are kept.
+ *           example: "\"Count\" DESC"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
@@ -816,9 +824,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           type: integer
  *           minimum: 1
  *           description: >
- *             Maximum number of slices (SQL LIMIT). The query keeps the
- *             groups with the largest aggregated values. Omit to fetch all
- *             groups.
+ *             Maximum number of slices (SQL LIMIT). Without a custom "orderBy"
+ *             the query keeps the groups with the largest aggregated values;
+ *             with an "orderBy" it keeps the first slices in that order. Omit
+ *             to fetch all groups.
  *           example: 10
  *
  *     CategoricalBarBuilderChartConfig:
@@ -853,6 +862,14 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           maxLength: 10000
  *           description: Field expression to group results by (one bar per group value).
  *           example: "service"
+ *         orderBy:
+ *           type: string
+ *           maxLength: 10000
+ *           description: >
+ *             Optional custom SQL ORDER BY expression (raw SQL). Overrides the
+ *             default value-descending ordering and, when combined with
+ *             "limit", controls which bars are kept.
+ *           example: "\"Count\" DESC"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
@@ -860,8 +877,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           type: integer
  *           minimum: 1
  *           description: >
- *             Maximum number of bars (SQL LIMIT). The query keeps the groups
- *             with the largest aggregated values. Omit to fetch all groups.
+ *             Maximum number of bars (SQL LIMIT). Without a custom "orderBy"
+ *             the query keeps the groups with the largest aggregated values;
+ *             with an "orderBy" it keeps the first bars in that order. Omit to
+ *             fetch all groups.
  *           example: 10
  *
  *     HeatmapSelectItem:

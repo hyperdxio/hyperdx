@@ -48,6 +48,37 @@ export class ChartExplorerPage {
     );
   }
 
+  /**
+   * Read the x-axis category labels of the bar chart in the order they are
+   * rendered (left to right), which reflects the order of the underlying
+   * query result. Labels may be truncated with an ellipsis by the chart.
+   */
+  async getBarLabels(): Promise<string[]> {
+    const ticks = this.page.locator(
+      '[data-testid="bar-chart-container"] .recharts-xAxis .recharts-cartesian-axis-tick-value',
+    );
+    await ticks.first().waitFor({ state: 'visible', timeout: 15000 });
+    const labels = await ticks.allTextContents();
+    return labels.map(l => l.trim());
+  }
+
+  /**
+   * Read the legend labels of the pie chart in the order they are rendered
+   * (top to bottom), which reflects the order of the underlying query result.
+   */
+  async getPieLegendLabels(): Promise<string[]> {
+    const legend = this.page.locator('[data-testid="pie-chart-legend"]');
+    await legend.waitFor({ state: 'visible', timeout: 15000 });
+    // Each legend row renders its label in a <p> (Mantine Text) that carries a
+    // `title` attribute equal to the full, untruncated label.
+    const titles = await legend
+      .locator('[title]')
+      .evaluateAll(nodes =>
+        nodes.map(n => (n.getAttribute('title') ?? '').trim()),
+      );
+    return titles.filter(t => t.length > 0);
+  }
+
   // Getters for assertions
 
   get form() {
