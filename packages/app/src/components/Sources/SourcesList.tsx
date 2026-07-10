@@ -75,31 +75,43 @@ export function SourcesList({
   const [editedSourceId, setEditedSourceId] = useState<string | null>(null);
   const [isCreatingSource, setIsCreatingSource] = useState(false);
 
-  // Honor `?source=<id>` from the URL so kebab "Edit source" deep-links
-  // expand the right entry. We auto-expand once per param value, then
-  // strip it from the URL so subsequent in-page interactions don't
-  // re-fight the user. `expandedFromQueryRef` prevents the effect from
-  // toggling back on every keystroke that ticks `router.query`.
+  // Expand and scroll to the relevant source when the URL includes a
+  // `#source-<id>` anchor.
   const router = useRouter();
-  const expandedFromQueryRef = useRef<string | null>(null);
+  const expandedFromHashRef = useRef<string | null>(null);
+  const isLoading = isLoadingConnections || isLoadingSources;
+  const error = connectionsError || sourcesError;
+
   useEffect(() => {
-    if (!router.isReady) return;
-    const sourceParam = router.query.source;
-    const sourceId = Array.isArray(sourceParam) ? sourceParam[0] : sourceParam;
-    if (!sourceId || expandedFromQueryRef.current === sourceId) return;
+    if (!router.isReady || isLoading || error) return;
+
+    const hash = window.location.hash;
+    const sourceId = hash?.startsWith('#source-')
+      ? hash.slice('#source-'.length)
+      : undefined;
+
+    if (!sourceId || expandedFromHashRef.current === sourceId) return;
     if (!sources?.some(s => s.id === sourceId)) return;
-    expandedFromQueryRef.current = sourceId;
+    expandedFromHashRef.current = sourceId;
+
+    // Expand the source
     setEditedSourceId(sourceId);
-    const { source: _omit, ...rest } = router.query;
+
+    // Scroll the source into view.
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`source-${sourceId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    // Drop the hash (keeping the query, e.g. `?tab=`) so later commits
+    // don't re-trigger Next's scrollToHash.
     void router.replace(
-      { pathname: router.pathname, query: rest, hash: 'sources' },
+      { pathname: router.pathname, query: router.query },
       undefined,
       { shallow: true },
     );
-  }, [router, sources]);
-
-  const isLoading = isLoadingConnections || isLoadingSources;
-  const error = connectionsError || sourcesError;
+  }, [router, sources, isLoading, error]);
 
   const handleRetry = () => {
     refetchConnections();
@@ -181,7 +193,7 @@ export function SourcesList({
 
         {sources?.map((s, index) => (
           <React.Fragment key={s.id}>
-            <Flex justify="space-between" align="center">
+            <Flex justify="space-between" align="center" id={`source-${s.id}`}>
               <div
                 style={{
                   flex: 1,
