@@ -35,6 +35,10 @@ import type { NumberFormat } from '@/types';
 import { COLORS, formatNumber, truncateMiddle } from '@/utils';
 
 import {
+  ChartAnnotation,
+  getAnnotationElements,
+} from './components/charts/chartAnnotations';
+import {
   ChartTooltipContainer,
   ChartTooltipItem,
 } from './components/charts/ChartTooltip';
@@ -58,6 +62,10 @@ const NEAREST_SERIES_MAX_DISTANCE_PX = 30;
 const Y_AXIS_WIDTH = 40;
 const SINGLE_POINT_BAR_RIGHT_PADDING = 10;
 const SINGLE_POINT_BAR_WIDTH_RATIO = 0.8;
+// Top margin (px) reserved above the plot for annotation labels ("Alert"/"OK"),
+// added only when a chart is showing annotations so other charts keep their
+// tighter default headroom.
+const ANNOTATION_LABEL_HEADROOM = 18;
 
 type TooltipPayload = {
   dataKey: string;
@@ -566,6 +574,7 @@ export const MemoChart = memo(function MemoChart({
   dateRange,
   lineData,
   referenceLines,
+  annotations,
   logReferenceTimestamp,
   displayType = DisplayType.Line,
   axisNumberFormat,
@@ -588,6 +597,13 @@ export const MemoChart = memo(function MemoChart({
   dateRange: [Date, Date] | Readonly<[Date, Date]>;
   lineData: LineData[];
   referenceLines?: React.ReactNode;
+  /**
+   * Event markers (alerts, deploys, …) drawn as dashed vertical lines with a
+   * label above. Passed as data rather than pre-rendered elements so the chart
+   * can clamp them to its own x-axis domain. Distinct from `referenceLines`
+   * (threshold lines).
+   */
+  annotations?: ChartAnnotation[];
   displayType?: DisplayType;
   axisNumberFormat?: NumberFormat;
   fallbackNumberFormat?: NumberFormat;
@@ -911,6 +927,19 @@ export const MemoChart = memo(function MemoChart({
     return [startTime.getTime() / 1000, endTime.getTime() / 1000];
   }, [dateRange, granularity, dateRangeEndInclusive, displayType]);
 
+  // Alert/event markers as dashed lines, clamped to the chart's x-axis domain so
+  // an edge marker (e.g. an alert already firing at window open) stays visible
+  // instead of being dropped. Labels float in the reserved top headroom.
+  const annotationElements = useMemo(() => {
+    if (!annotations?.length) {
+      return null;
+    }
+    // xAxisDomain is a [min, max] tuple at runtime (declared as AxisDomain).
+    return getAnnotationElements(annotations, {
+      domain: xAxisDomain as [number, number],
+    });
+  }, [annotations, xAxisDomain]);
+
   return (
     <div
       ref={containerRef}
@@ -953,6 +982,11 @@ export const MemoChart = memo(function MemoChart({
           width={500}
           height={300}
           data={graphResults}
+          margin={
+            annotationElements != null
+              ? { top: ANNOTATION_LABEL_HEADROOM, right: 5, bottom: 5, left: 5 }
+              : undefined
+          }
           syncId="hdx"
           syncMethod="value"
           barSize={singlePointBarSize}
@@ -1190,6 +1224,7 @@ export const MemoChart = memo(function MemoChart({
             />
           )}
           {referenceLines}
+          {annotationElements}
           {highlightStart && highlightEnd ? (
             <ReferenceArea
               // yAxisId="1"

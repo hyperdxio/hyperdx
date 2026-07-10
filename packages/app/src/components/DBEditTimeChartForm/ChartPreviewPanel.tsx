@@ -18,6 +18,7 @@ import { buildTableRowSearchUrl } from '@/ChartUtils';
 import { getAlertReferenceLines } from '@/components/Alerts';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
+import { DBBarChart } from '@/components/DBBarChart';
 import DBHeatmapChart, {
   buildHeatmapBoundsConfig,
   buildHeatmapBucketConfig,
@@ -233,6 +234,15 @@ export function ChartPreviewPanel({
       {queryReady && queriedConfig != null && activeTab === 'pie' && (
         <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
           <DBPieChart
+            config={queriedConfig}
+            showMVOptimizationIndicator={false}
+            errorVariant="inline"
+          />
+        </div>
+      )}
+      {queryReady && queriedConfig != null && activeTab === 'bar' && (
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
+          <DBBarChart
             config={queriedConfig}
             showMVOptimizationIndicator={false}
             errorVariant="inline"

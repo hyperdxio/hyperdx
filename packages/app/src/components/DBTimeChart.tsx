@@ -38,6 +38,7 @@ import {
   shouldFillNullsWithZero,
   useTimeChartSettings,
 } from '@/ChartUtils';
+import { ChartAnnotation } from '@/components/charts/chartAnnotations';
 import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
@@ -200,6 +201,8 @@ type DBTimeChartComponentProps = {
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   queryKeyPrefix?: string;
   referenceLines?: React.ReactNode;
+  /** Event markers (e.g. alert firing/recovery) drawn as dashed lines with labels. */
+  annotations?: ChartAnnotation[];
   setDisplayType?: (type: DisplayType) => void;
   showDisplaySwitcher?: boolean;
   showLegend?: boolean;
@@ -224,6 +227,7 @@ function DBTimeChartComponent({
   onTimeRangeSelect,
   queryKeyPrefix,
   referenceLines,
+  annotations,
   setDisplayType,
   showDisplaySwitcher = true,
   showLegend = true,
@@ -724,6 +728,7 @@ function DBTimeChartComponent({
             tooltipNumberFormatsByKey={formatByColumn}
             onTimeRangeSelect={onTimeRangeSelect}
             referenceLines={referenceLines}
+            annotations={annotations}
             setIsClickActive={setActiveClickPayloadIfSourceAvailable}
             showLegend={showLegend}
             timestampKey={timestampColumn?.name}
