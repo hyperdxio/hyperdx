@@ -656,7 +656,15 @@ export function formatDataForHeatmap({
         bucket.push(bucketToYValue(row['x_bucket']));
         count.push(Number.parseInt(row['count'], 10)); // UInt64 returns as string
 
-        dataIndex++;
+        // Skip duplicate buckets (from unmerged distributed table results)
+        while (
+          dataIndex < data.length &&
+          new Date(data[dataIndex][timestampColumn.name]).getTime() ==
+            generatedTs &&
+          data[dataIndex]['x_bucket'] == j
+        ) {
+          dataIndex++;
+        }
       } else {
         time.push(generatedTs);
         bucket.push(bucketToYValue(j));
