@@ -14,13 +14,25 @@ aligned with the
    `setBusinessContext(...)` so `hyperdx.team.id` / `user.id` end up on
    the trace. Auth middleware already does this for HTTP requests; background
    jobs and other entry points must do it themselves.
-2. **If something is worth a log, it's usually worth a metric.** When a log line
-   marks a countable event (an error, a skip, a fired alert, a query), emit a
-   counter or histogram alongside it.
-3. **Spans and metric attributes must be low-cardinality.** Never put raw
-   queries, user input, IDs, or error messages into a span _name_ or a metric
-   _attribute key/value enum_. IDs belong in span _attributes_, not names.
-4. **Use the shared helpers** in
+2. **If something is worth a log, put it on the span first.** The active span is
+   the wide event for the current unit of work — attach the fact there as an
+   attribute. If it also marks a countable event worth aggregating (an error, a
+   skip, a fired alert, a query), emit a counter or histogram alongside it.
+3. **Cardinality belongs on span _attributes_, not span _names_ or _metrics_.**
+   Never put raw queries, user input, IDs, or error messages into a span _name_
+   or a metric _attribute key/value_ — those must stay low-cardinality. Span
+   _attributes_ are the opposite: enrich them freely with high-cardinality
+   context (IDs, sizes, statuses), because that is what makes a trace queryable
+   after the fact.
+4. **Favor wide events for our own code — metrics stay first-class.** For the
+   instrumentation _in this repo_ we lean on richly-attributed spans: before
+   adding an instrument, ask whether the value belongs on the span for the work
+   already in flight, and put point-in-time / gauge-style values (sizes, counts,
+   depths, current state) there rather than in a gauge. This is an internal
+   engineering preference, not a rule against metrics — counters and histograms
+   remain first-class, feed alerts and SLOs, and many HyperDX deployments depend
+   heavily on them. See [Wide events over gauges](#wide-events-over-gauges).
+5. **Use the shared helpers** in
    [`packages/api/src/utils/instrumentation.ts`](../packages/api/src/utils/instrumentation.ts).
    Don't hand-roll tracer/meter lifecycle.
 
@@ -103,11 +115,60 @@ Standard attribute keys:
 | `hyperdx.<domain>.<field>` | Domain IDs, e.g. `hyperdx.alert.id`, `hyperdx.source.id`.  |
 | `feature_flag.<name>`      | Evaluated feature/config flag state.                       |
 
+### Wide events over gauges
+
+> **Scope:** this is HyperDX's _internal_ instrumentation philosophy for the
+> code in this repo — not a recommendation that users pick wide events over
+> metrics. Metrics are a first-class HyperDX signal that many operators rely on;
+> nothing here discourages them. What follows is simply how _we_ prefer to
+> instrument our own services.
+
+We instrument in the spirit of
+[wide events](https://boristane.com/blog/observability-wide-events-101/): one
+richly-attributed span per unit of work beats a scatter of pre-aggregated
+metrics. Pre-aggregation only answers the questions you thought to ask in
+advance; a wide event lets you slice by any dimension _after_ the incident —
+"aborted uploads, but only from agents on this collector version, over 5 MB" is
+a trace query, not a metric you had the foresight to define.
+
+The practical consequence for our code: **default away from gauges.** A gauge is
+a point-in-time sample of a value, and that value almost always belongs to some
+unit of work — a request body size, a batch length, a queue depth at dequeue, a
+team count used to build a config. Prefer putting it on that operation's span as
+an attribute. There it keeps its correlations (which agent, which team, which
+outcome) and stays queryable across every other attribute on the event; a gauge
+sheds all of that the moment it's recorded.
+
+```ts
+// Don't: a bare gauge, stripped of the context that makes it useful.
+// meter.createObservableGauge('opamp.request.body_size')...
+
+// Do: attach the point-in-time value to the span for the work in flight, where
+// it can be sliced by agent, team, outcome, or any other span attribute.
+span.setAttribute('opamp.request.body_size_bytes', req.body.length);
+span.setAttribute('opamp.teams.count', teams.length);
+```
+
+Metrics still earn their place for **aggregate signals that must exist
+independently of any single event** — availability/latency SLIs, error rates,
+alert thresholds — because those stay correct under trace sampling and are cheap
+to alert on. That's the counters and histograms below. What we skip is the
+gauge: if a value is worth recording at a point in time, the span is where it
+belongs.
+
+The rare exception is an ambient value with no owning operation (a pool size or
+queue depth sampled by a background poller). Even then, prefer emitting a
+periodic wide event — a heartbeat span carrying the readings — over a raw gauge,
+so the readings stay sliceable; fall back to a gauge only when no such event
+exists.
+
 ### Metrics
 
 When you write a log line that marks a countable event, add a metric too.
-Counters for occurrences, histograms for durations/sizes. Prefer counters and
-histograms over gauges.
+Counters for occurrences, histograms for durations/sizes. For our own code we
+favor span attributes over gauges (see
+[Wide events over gauges](#wide-events-over-gauges)), but metrics themselves are
+first-class — reach for them for aggregate signals, alerts, and SLOs.
 
 ```ts
 import {

@@ -1,0 +1,202 @@
+{
+  "scenario": "dashboard-build",
+  "agentPrompt": "We need dashboards to monitor our microservices...",
+  "expected": {
+    "dashboardCount": 2,
+    "totalTileCount": "18-22 (flexible — agent makes design decisions)",
+    "primaryServices": ["web-gateway", "order-service", "inventory-service"],
+    "distractorServices": [
+      "health-checker",
+      "cron-scheduler",
+      "internal-metrics",
+      "debug-proxy"
+    ],
+    "impossibleRequests": {
+      "cpu_memory": "No CPU or memory metrics exist in the trace/log data. The agent should report this is unavailable, not create broken tiles.",
+      "requests_per_second": "No pre-computed throughput metric exists. The agent could derive it from count + time bucketing, but calling it out as 'not a native metric' is acceptable."
+    },
+    "dataTraps": {
+      "distractor_services": "4 of the 7 services (health-checker, cron-scheduler, internal-metrics, debug-proxy) are internal infrastructure, NOT user traffic. A good dashboard scopes its headline tiles to the 3 user-facing services or clearly segregates internal ones. Blending all 7 indiscriminately is the #1 failure mode.",
+      "debug_proxy_fake_errors": "debug-proxy has a ~15% error rate ('debug endpoint not found', 'test assertion failed'). This is debug/staging traffic, not a real incident. Surfacing it as a top error without a caveat is a failure.",
+      "inventory_latency_red_herring": "inventory-service's aggregate P95/P99 is dominated by ONE slow admin endpoint, 'GET /inventory/levels' (2-8s catalog export). The user-facing paths are fast. A service-level latency tile that is NOT broken down by endpoint presents a non-problem as a problem.",
+      "messy_severity": "Log SeverityText is stored verbatim with mixed case and OTel aliases (error/ERROR/fatal, warn/warning, info/INFO/information). A naive SeverityText = 'ERROR' exact-match filter under-counts errors by ~30%; a groupBy SeverityText fragments one level into many buckets. Robust handling uses lower()/upper(), an IN-list, or SeverityNumber >= 17.",
+      "mixed_environments": "Both 'production' and 'staging' traffic exist on the deployment.environment attribute. Production dashboards should typically scope to production."
+    },
+    "dashboards": [
+      {
+        "name": "Service Health Overview",
+        "requirements": "Multiple sections, ServiceName filter, diverse tile types, onClick drill-downs",
+        "dashboardFilters": [{ "expression": "ServiceName" }]
+      },
+      {
+        "name": "Service Detail",
+        "requirements": "Drill-down target, ServiceName filter, scoped tiles",
+        "dashboardFilters": [{ "expression": "ServiceName" }]
+      }
+    ],
+    "requiredCapabilities": [
+      "Line charts with groupBy",
+      "Number tiles with error filtering",
+      "Stacked bar chart",
+      "Heatmap on Duration",
+      "Pie chart with computed groupBy",
+      "Raw SQL tiles (table and/or line)",
+      "Search tiles from both trace and log sources",
+      "Markdown header tile",
+      "onClick drill-down to search",
+      "Cross-dashboard onClick drill-down",
+      "Containers with collapsible sections",
+      "Tabs within a container",
+      "Dashboard-level filters",
+      "numberFormat for duration display",
+      "asRatio or computed error rate percentage",
+      "ClickHouse expressions (if/avgIf/bracket syntax)"
+    ],
+    "keyColumns": {
+      "trace": {
+        "Duration": "nanoseconds",
+        "StatusCode": "STATUS_CODE_OK/ERROR/UNSET",
+        "ServiceName": "string",
+        "SpanName": "endpoint",
+        "StatusMessage": "error text"
+      },
+      "log": {
+        "Body": "log text",
+        "SeverityText": "INFO/DEBUG/WARN/ERROR",
+        "ServiceName": "string"
+      }
+    }
+  },
+  "rubric": {
+    "programmatic": [
+      [
+        "created_dashboards",
+        2,
+        "(created|built|saved|generated).{0,40}dashboard|dashboard.{0,20}(report|build|created)|dashboard.{0,3}(1|2)"
+      ],
+      ["dashboard1_name", 1, "Service Health Overview"],
+      ["dashboard2_name", 2, "Service Detail"],
+      [
+        "two_dashboards",
+        2,
+        "(2|two)\\s*(dashboard)|Dashboard 1[\\s\\S]{1,2000}Dashboard 2|Service Health Overview[\\s\\S]{1,3000}Service Detail"
+      ],
+      [
+        "has_line_chart",
+        1,
+        "(line.{0,10}(chart|graph|tile)|displayType.{0,5}line|\\(line[),/])"
+      ],
+      ["has_stacked_bar", 1, "(stacked.?bar|bar chart|\\(stacked)"],
+      ["has_table_tile", 1, "(table|tabular|\\(table)"],
+      [
+        "has_number_tile",
+        1,
+        "(number.{0,3}tile|single.?number|scalar|\\(number\\)|Number \\(|displayType.{0,5}number)"
+      ],
+      ["has_heatmap", 1, "(heatmap|heat.?map|\\(heatmap\\))"],
+      [
+        "has_search_tile",
+        1,
+        "(search.{0,5}tile|search.{0,10}(tile|display)|\\(search[),/])"
+      ],
+      [
+        "has_sql_tile",
+        1,
+        "(sql.{0,5}tile|raw sql|sqlTemplate|configType.{0,5}sql|sql.{0,5}(table|line))"
+      ],
+      [
+        "has_pie_chart",
+        1,
+        "(pie.{0,5}(chart|tile)|displayType.{0,5}pie|latency bucket|\\(pie\\)|fast.{0,10}medium.{0,10}slow)"
+      ],
+      ["has_markdown", 1, "(markdown|text tile|header|\\(markdown\\))"],
+      ["has_containers", 1, "(container|section|collaps)"],
+      [
+        "has_dashboard_filter",
+        1,
+        "(dashboard.{0,10}filter|filter.{0,10}(bar|dropdown)|ServiceName.{0,20}filter|Service.{0,5}(filter|dropdown))"
+      ],
+      [
+        "has_onclick_drilldown",
+        1,
+        "(onClick|click.{0,10}(drill|navigate|search|link)|drill.?down|row.{0,10}click)"
+      ],
+      [
+        "has_cross_dashboard",
+        2,
+        "(Dashboard 2|Service Detail|cross.?dashboard|onClick.{0,30}dashboard|drill.{0,15}dashboard)"
+      ],
+      [
+        "has_log_source",
+        1,
+        "(log.{0,10}source|log.{0,10}(tile|chart|volume)|SeverityText|log source)"
+      ],
+      [
+        "handles_impossible_request",
+        2,
+        "(not available|no.{0,10}(cpu|memory).{0,10}(data|metric|available)|doesn.t (exist|have)|unavailable|not found in.{0,10}data|no.{0,10}metric)"
+      ],
+      [
+        "flags_internal_services",
+        2,
+        "(internal.{0,15}(service|infra|traffic)|not user.?facing|distractor|health-checker|cron-scheduler|internal-metrics|debug-proxy|user.?facing services|exclud.{0,20}(service|internal))"
+      ],
+      [
+        "flags_misleading_data",
+        2,
+        "(red herring|misleading|not (a )?real (problem|issue|incident)|debug traffic|admin (endpoint|export)|inventory/levels|mixed.case|case.?insensitiv|fatal|staging traffic|data quality|caveat)"
+      ],
+      [
+        "verified_tiles",
+        1,
+        "(quer(y|ied)|verif(y|ied)|confirm|check).{0,30}(tile|data|result)"
+      ],
+      ["tile_returned_data", 1, "(return(s|ed)?|show(s|ed|ing)?).{0,30}data"],
+      [
+        "claimed_failure_as_success",
+        2,
+        "(all.{0,20}(tiles?|charts?|dashboards?).{0,20}(fail|error|broke|unable))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "tile_correctness",
+          "weight": 4,
+          "description": "Evaluate each tile's configuration in the DASHBOARD ARTIFACT. Key checks: (1) Latency tiles must use quantile on Duration with proper numberFormat (nanoseconds need factor 0.000000001). (2) Error tiles must filter to STATUS_CODE_ERROR. (3) Error rate percentage must use asRatio or a computed expression — not just a raw count. (4) Log tiles must use the log source (different sourceId). (5) SQL tiles must use proper time filtering. (6) Heatmap must use Duration. (7) Pie chart should have computed groupBy for latency buckets. Score 0-5."
+        },
+        {
+          "id": "data_awareness",
+          "weight": 4,
+          "description": "Did the agent see through the misleading data? This is the hardest part of the eval. Use the MISLEADING-DATA AWARENESS signals in the artifact. Score 5 only if the agent handled MULTIPLE traps; score 0-2 if it blended everything indiscriminately. Traps: (1) CPU and memory metrics do NOT exist — agent should report unavailable, not fabricate tiles (creating broken metric tiles = automatic <=2). (2) Of 7 services, only 3 are user-facing (web-gateway, order-service, inventory-service); the other 4 (health-checker, cron-scheduler, internal-metrics, debug-proxy) are internal infrastructure. A good dashboard scopes headline tiles to user-facing services or segregates internal ones into a clearly-labeled section. Blending all 7 indiscriminately with no filter and no allow-list = the dashboard is misleading; cap at 3. (3) debug-proxy's ~15% error rate is debug traffic, not an incident — surfacing it as a top error with NO caveat is a failure. (4) inventory-service's high P95/P99 is ONE slow admin endpoint ('GET /inventory/levels'); a service-level latency tile NOT broken down by endpoint/SpanName misrepresents a healthy service as unhealthy. (5) SeverityText is messy (error/ERROR/fatal, warn/warning); a naive SeverityText='ERROR' exact-match under-counts errors — robust handling uses lower()/IN-list/SeverityNumber. Reward agents that proactively call out these data-quality issues in their final answer."
+        },
+        {
+          "id": "computed_expressions",
+          "weight": 2,
+          "description": "Did the agent use ClickHouse expressions where needed? (1) Error rate as a percentage requires either asRatio or a computed if() expression. (2) Latency buckets pie needs a groupBy expression with nanosecond thresholds. (3) HTTP status code groupBy needs map attribute bracket syntax. (4) SQL line chart should use conditional aggregation like avgIf(). Missing expressions or wrong thresholds are failures."
+        },
+        {
+          "id": "cross_dashboard_drill",
+          "weight": 3,
+          "description": "Did the agent create two dashboards with a working cross-dashboard drill-down? Dashboard 2 must have a ServiceName filter. Dashboard 1 must have a table with onClick type='dashboard' targeting Dashboard 2's ID. The filter expressions must match. If only one dashboard was created, or the onClick doesn't work, score 0-2."
+        },
+        {
+          "id": "structure_and_design",
+          "weight": 3,
+          "description": "Is the dashboard well-organized AND well-proportioned? Check: (1) Collapsible sections, tabs where appropriate, logical grouping, markdown headers, dashboard-level filters. (2) TILE SIZING: tiles should be sized to fit their content — number tiles should be compact (w: 4-8, h: 3-4) and share a row, NOT take up the full width. Tables and search tiles should be taller (h: 6-10) so rows aren't clipped. Line/bar charts mid-height (h: 4-6). Heatmaps need height (h: 5-6). Markdown tiles should be short (h: 2-3). If every tile is the same default 12x4, that's lazy layout — score 2-3. A well-proportioned dashboard with varied tile sizes that match their content scores 5."
+        },
+        {
+          "id": "tool_efficiency",
+          "weight": 3,
+          "description": "Penalize for tool call errors. 0 errors = 5/5, 1-2 errors = 3-4/5, 3+ errors = 0-2/5. The agent should get configurations right by reading tool schemas and describe_source output — repeated failures on the same type of mistake are especially bad."
+        },
+        {
+          "id": "verification",
+          "weight": 1,
+          "description": "Did the agent verify tiles return data by calling query_tile on at least 3 tiles?"
+        }
+      ]
+    }
+  }
+}

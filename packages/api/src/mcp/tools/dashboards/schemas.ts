@@ -18,7 +18,13 @@ import { z } from 'zod';
 
 import { getMetricSelectIssues } from '@/mcp/tools/query/schemas';
 import { QUERYABLE_METRIC_KINDS } from '@/mcp/tools/sources/metricKinds';
-import { externalQuantileLevelSchema, objectIdSchema } from '@/utils/zod';
+import {
+  externalQuantileLevelSchema,
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
+  objectIdSchema,
+  tagsSchema,
+} from '@/utils/zod';
 
 /**
  * Metric type values exposed on dashboard tile select items. Restricted to
@@ -625,9 +631,70 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
         'Column that defines pie slices. Use PascalCase for top-level columns. ' +
           "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
       ),
+    orderBy: z
+      .string()
+      .optional()
+      .describe(
+        'Optional custom SQL ORDER BY expression. Overrides the default ' +
+          'value-descending ordering and, combined with `limit`, controls which ' +
+          'slices are kept. When ordering by an alias that contains spaces or ' +
+          `special characters, wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+      ),
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(tileLevelNumberFormatDescription),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        'Maximum number of slices (SQL LIMIT). Without a custom `orderBy`, keeps ' +
+          'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
+          'keeps the first N in that order. Omit to fetch all groups.',
+      ),
+  }),
+});
+
+// Categorical bar charts ('bar') behave exactly like pie charts: one
+// aggregated select item, optional groupBy, no time bucketing. Distinct
+// from 'stacked_bar', which is a time series.
+const mcpCategoricalBarTileSchema = mcpTileLayoutSchema.extend({
+  config: z.object({
+    displayType: z
+      .literal('bar')
+      .describe('Bar chart — one bar per group value (not a time series)'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+    select: z.array(mcpTileSelectItemSchema).length(1),
+    groupBy: z
+      .string()
+      .optional()
+      .describe(
+        'Column(s) that define the bars. Use PascalCase for top-level columns. ' +
+          "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
+      ),
+    orderBy: z
+      .string()
+      .optional()
+      .describe(
+        'Optional custom SQL ORDER BY expression. Overrides the default ' +
+          'value-descending ordering and, combined with `limit`, controls which ' +
+          'bars are kept. When ordering by an alias that contains spaces or ' +
+          `special characters, wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+      ),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(tileLevelNumberFormatDescription),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        'Maximum number of bars (SQL LIMIT). Without a custom `orderBy`, keeps ' +
+          'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
+          'keeps the first N in that order. Omit to fetch all groups.',
+      ),
   }),
 });
 
@@ -716,6 +783,31 @@ const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
+const mcpEventPatternsTileSchema = mcpTileLayoutSchema.extend({
+  config: z.object({
+    displayType: z
+      .literal('event_patterns')
+      .describe('Event pattern mining tile'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+    where: z
+      .string()
+      .optional()
+      .default('')
+      .describe('Filter in Lucene syntax. Example: "level:error"'),
+    whereLanguage:
+      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
+    select: z
+      .string()
+      .optional()
+      .default('')
+      .describe(
+        'Pattern expression — column or expression to mine patterns from. ' +
+          'Leave empty to use the source default (Body for logs, SpanName for traces). ' +
+          'Example: "Body", "SpanName", "SpanAttributes[\'http.url\']"',
+      ),
+  }),
+});
+
 const mcpMarkdownTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('markdown').describe('Free-form Markdown text tile'),
@@ -732,7 +824,7 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
           'ADVANCED: Only use raw SQL tiles when the builder tile types cannot express the query you need.',
       ),
     displayType: z
-      .enum(['line', 'stacked_bar', 'table', 'number', 'pie'])
+      .enum(['line', 'stacked_bar', 'table', 'number', 'pie', 'bar'])
       .describe('How to render the SQL results'),
     connectionId: z
       .string()
@@ -809,8 +901,10 @@ const mcpTileSchema = z.union([
   mcpTableTileSchema,
   mcpNumberTileSchema,
   mcpPieTileSchema,
+  mcpCategoricalBarTileSchema,
   mcpHeatmapTileSchema,
   mcpSearchTileSchema,
+  mcpEventPatternsTileSchema,
   mcpMarkdownTileSchema,
   mcpSqlTileSchema,
 ]);
@@ -844,10 +938,16 @@ const mcpPatchTileSchema = z.union([
   }),
   mcpPatchTileLayoutSchema.extend({ config: mcpPieTileSchema.shape.config }),
   mcpPatchTileLayoutSchema.extend({
+    config: mcpCategoricalBarTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
     config: mcpHeatmapTileSchema.shape.config,
   }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpSearchTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpEventPatternsTileSchema.shape.config,
   }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpMarkdownTileSchema.shape.config,
@@ -985,12 +1085,10 @@ export const mcpPatchDashboardSchema = z.object({
     .min(1)
     .optional()
     .describe('New dashboard name. Omit to keep the current name.'),
-  tags: z
-    .array(z.string())
-    .optional()
-    .describe(
-      'New tags array (replaces all existing tags). Omit to keep the current tags.',
-    ),
+  tags: tagsSchema.describe(
+    `New tags array (replaces all existing tags). Omit to keep the current tags. ` +
+      `Up to ${MAX_TAGS} tags, each at most ${MAX_TAG_LENGTH} characters.`,
+  ),
   tileId: z
     .string()
     .optional()

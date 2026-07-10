@@ -76,18 +76,18 @@
     "supertest": "^6.3.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
-    "ts-jest": "^29.4.5",
+    "ts-jest": "^29.4.11",
     "ts-node": "^10.8.1",
     "tsc-alias": "^1.8.8",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "scripts": {
     "start": "node ./build/index.js",
     "dev": "DOTENV_CONFIG_PATH=.env.development nodemon --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/index.ts",
     "dev:mcp": "npx @modelcontextprotocol/inspector",
     "dev-task": "DOTENV_CONFIG_PATH=.env.development nodemon --exec 'ts-node' --transpile-only -r tsconfig-paths/register -r dotenv-expand/config -r '@hyperdx/node-opentelemetry/build/src/tracing' ./src/tasks/index.ts",
-    "build": "rimraf ./build && tsc && tsc-alias && cp -r ./src/opamp/proto ./build/opamp/",
+    "build": "rimraf ./build && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && cp -r ./src/opamp/proto ./build/opamp/",
     "build:vercel": "rimraf ./build && tsc -p tsconfig.vercel.json && tsc-alias -p tsconfig.vercel.json && cp -r ./src/opamp/proto ./build/opamp/",
     "lint": "npx eslint --quiet . --ext .ts",
     "lint:fix": "npx eslint . --ext .ts --fix",

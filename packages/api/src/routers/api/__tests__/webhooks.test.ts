@@ -141,6 +141,26 @@ describe('webhooks router', () => {
     expect(webhooks).toHaveLength(1);
   });
 
+  it('POST / - returns 400 (not 500) on a name+service collision with a different URL', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    // The unique index is (team, service, name). A second webhook with the same
+    // name+service but a different URL violates it; the aligned pre-flight check
+    // (and duplicate-key backstop) must return 400 rather than a raw 500.
+    await Webhook.create({ ...MOCK_WEBHOOK, team: team._id });
+
+    const response = await agent
+      .post('/webhooks')
+      .send({
+        ...MOCK_WEBHOOK,
+        url: 'https://hooks.slack.com/services/T22222222/B22222222/mock-not-a-real-token',
+      })
+      .expect(400);
+
+    expect(response.body.message).toBe('Webhook already exists');
+    expect(await Webhook.countDocuments({})).toBe(1);
+  });
+
   it('POST / - returns 400 when request body is invalid', async () => {
     const { agent } = await getLoggedInAgent(server);
 
@@ -511,6 +531,77 @@ describe('webhooks router', () => {
     });
   });
 
+  describe('Query parameter validation', () => {
+    // queryParams are written into the outbound request URL, so they get the
+    // same CRLF/control-char hardening as headers (shared validators in
+    // utils/zod.ts). These exercise that path on the internal router, which
+    // was previously only covered for headers.
+    const controlCharValues = [
+      'value\r\ninjected', // CRLF
+      'value\twith\ttab', // tab
+      'value\x00null', // null
+      'value\x1Fseparator', // unit separator
+      'value\x7Fdelete', // delete
+    ];
+
+    it('POST / - rejects query param values with control characters', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      for (const value of controlCharValues) {
+        const response = await agent
+          .post('/webhooks')
+          .send({
+            ...MOCK_WEBHOOK,
+            url: `https://example.com/qp-value-${Math.random()}`,
+            queryParams: { token: value },
+          })
+          .expect(400);
+
+        expect(Array.isArray(response.body)).toBe(true);
+        expect(response.body[0].type).toBe('Body');
+        expect(response.body[0].errors).toBeDefined();
+      }
+    });
+
+    it('POST / - rejects query param names with control characters', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/webhooks')
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://example.com/qp-name-crlf',
+          queryParams: { 'bad\r\nkey': 'value' },
+        })
+        .expect(400);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
+    });
+
+    it('PUT /:id - rejects query param values with control characters', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        team: team._id,
+      });
+
+      const response = await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          queryParams: { token: 'value\r\ninjected' },
+        })
+        .expect(400);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
+    });
+  });
+
   describe('PUT /:id - update webhook', () => {
     it('updates an existing webhook', async () => {
       const { agent, team } = await getLoggedInAgent(server);
@@ -570,33 +661,34 @@ describe('webhooks router', () => {
       expect(response.body.message).toBe('Webhook not found');
     });
 
-    it('returns 400 when trying to update to a URL that already exists', async () => {
+    it('returns 400 when renaming onto an existing (service, name)', async () => {
       const { agent, team } = await getLoggedInAgent(server);
 
-      // Create two webhooks
+      // The unique index is on (team, service, name), so a rename collision is
+      // detected on name — not URL, which is not unique.
       await Webhook.create({
         ...MOCK_WEBHOOK,
-        name: 'Webhook Two',
+        name: 'Existing Name',
         team: team._id,
       });
 
       const webhook2 = await Webhook.create({
         ...MOCK_WEBHOOK,
+        name: 'Other Name',
         url: 'https://hooks.slack.com/services/T11111111/B11111111/YYYYYYYYYYYYYYYYYYYYYYYY',
         team: team._id,
       });
 
-      // Try to update webhook2 to use webhook1's URL
       const response = await agent
         .put(`/webhooks/${webhook2._id}`)
         .send({
           ...MOCK_WEBHOOK,
-          name: 'Different Name',
+          name: 'Existing Name',
         })
         .expect(400);
 
       expect(response.body.message).toBe(
-        'A webhook with this service and URL already exists',
+        'A webhook with this service and name already exists',
       );
     });
 

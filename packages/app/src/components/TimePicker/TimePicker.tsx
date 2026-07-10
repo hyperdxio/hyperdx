@@ -234,6 +234,23 @@ const TimePickerComponent = ({
   );
 
   const [isRelative, setIsRelative] = useState(defaultRelativeTimeMode);
+  // Promote the toggle into relative mode when the URL-derived
+  // `defaultRelativeTimeMode` prop becomes true (e.g. after a reload while a
+  // non-default live interval is active). Previously `isRelative` was only
+  // seeded at mount, so this case left the picker in absolute mode even though
+  // the URL described a relative range.
+  //
+  // We intentionally only force the toggle ON, never OFF. The prop is a lossy
+  // signal — it is false both for "absolute mode" and for "relative mode at
+  // the default live-tail interval" (e.g. Live Tail / Last 15 minutes), so
+  // syncing it back to false would incorrectly drop the user out of relative
+  // mode whenever they pick the default interval. Turning relative mode off is
+  // left to the user's explicit toggle.
+  React.useEffect(() => {
+    if (defaultRelativeTimeMode) {
+      setIsRelative(true);
+    }
+  }, [defaultRelativeTimeMode]);
   // Must be state to ensure rerenders occur when ref changes
   const [containerRef, setContainerRef] = useState<HTMLDivElement | null>(null);
   const dateComponentPopoverProps = useMemo(

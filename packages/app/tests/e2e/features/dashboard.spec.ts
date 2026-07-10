@@ -292,6 +292,32 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
   });
 
+  test('should warn when closing tile editor with unsaved display settings changes', async () => {
+    await dashboardPage.openNewTileEditor();
+
+    // Open the Display Settings drawer
+    await dashboardPage.page.getByTestId('display-settings-button').click();
+    const applyButton = dashboardPage.page.getByTestId(
+      'display-settings-apply-button',
+    );
+    await expect(applyButton).toBeVisible({ timeout: 5000 });
+
+    // Toggle a checkbox via its label
+    await dashboardPage.page
+      .locator('label', { hasText: 'Compare to Previous Period' })
+      .click();
+
+    // Apply and wait for the drawer to close
+    await applyButton.click();
+    await expect(applyButton).toBeHidden({ timeout: 5000 });
+
+    // Try to close — should show unsaved changes confirm
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
+      timeout: 5000,
+    });
+  });
+
   test('should add and remove alert on Number type chart', async () => {
     test.setTimeout(60000);
     const ts = Date.now();
@@ -892,6 +918,40 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         const tile = dashboardPage.getTiles().filter({ hasText: chartName });
         await expect(
           tile.locator('.recharts-responsive-container'),
+        ).toBeVisible({ timeout: 15000 });
+      });
+    });
+
+    test('Bar chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Bar ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Bar chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Bar);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        // Bar charts share the pie chart's categorical query shape.
+        await dashboardPage.chartEditor.typeSqlQuery(PIE_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the bar chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(
+          tile.locator(
+            '[data-testid="bar-chart-container"] .recharts-responsive-container',
+          ),
         ).toBeVisible({ timeout: 15000 });
       });
     });

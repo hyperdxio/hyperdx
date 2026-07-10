@@ -1,9 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": "./src",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./src/*"]
     },
     "types": ["jest", "node"],
     "outDir": "build",
@@ -12,6 +11,14 @@
     "sourceMap": true,
     "strict": true,
     "target": "ES2022"
+  },
+  "ts-node": {
+    "compilerOptions": {
+      // ts-node compiles single files on demand (e.g. `src/index.ts` for the
+      // dev server), so TypeScript infers the common source dir as `./src`.
+      // TS 6 requires that inferred rootDir to be explicit (TS5011).
+      "rootDir": "./src"
+    }
   },
   "include": ["src", "migrations", "scripts"],
   "exclude": ["node_modules"]

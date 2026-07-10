@@ -243,6 +243,7 @@ export const DBRowSidePanelInner = ({
     data: activeStackSource,
     isLoading: isStackSourceLoading,
     isSuccess: isStackSourceSettled,
+    isError: isStackSourceErrored,
   } = useSource({
     id: activeSourceFrame?.sourceId ?? null,
   });
@@ -250,8 +251,8 @@ export const DBRowSidePanelInner = ({
 
   const isStackSourceMissing =
     activeSourceFrame != null &&
-    isStackSourceSettled &&
-    activeStackSource == null;
+    ((isStackSourceSettled && activeStackSource == null) ||
+      isStackSourceErrored);
   const source = activeStackSource ?? rootSource;
 
   const baseRowId = activeSourceFrame?.rowId ?? initialRowId;
@@ -786,6 +787,7 @@ export const DBRowSidePanelInner = ({
           )}
           {showLogTraceActions && (
             <Button
+              data-testid="side-panel-view-trace"
               variant="subtle"
               size="compact-xs"
               onClick={() => {

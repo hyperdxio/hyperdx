@@ -66,11 +66,7 @@ function KnownColumnsListHint({
             Edit source settings
           </Button>
         ) : (
-          <Anchor
-            component={Link}
-            href={`/team?source=${source.id}#sources`}
-            size="sm"
-          >
+          <Anchor component={Link} href={`/team#source-${source.id}`} size="sm">
             Edit source settings
           </Anchor>
         )}
