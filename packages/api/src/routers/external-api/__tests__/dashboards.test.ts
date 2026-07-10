@@ -1850,6 +1850,26 @@ describe('External API v2 Dashboards - new format', () => {
     },
   });
 
+  const createBarChart = (sourceId: string): ExternalDashboardTileWithId => ({
+    name: 'Bar Chart',
+    x: 9,
+    y: 3,
+    w: 3,
+    h: 3,
+    id: new ObjectId().toString(),
+    config: {
+      displayType: 'bar',
+      sourceId,
+      select: [
+        {
+          aggFn: 'count',
+          where: '',
+        },
+      ],
+      groupBy: 'service.name',
+    },
+  });
+
   const server = getServer();
   let agent, team, user, traceSource, metricSource, connection;
 
@@ -2133,6 +2153,7 @@ describe('External API v2 Dashboards - new format', () => {
           createNumberChart(traceSource._id.toString()),
           createMarkdownChart(),
           createPieChart(traceSource._id.toString()),
+          createBarChart(traceSource._id.toString()),
         ],
         tags: ['test', 'chart-types'],
       };
@@ -2143,13 +2164,13 @@ describe('External API v2 Dashboards - new format', () => {
 
       const { id } = response.body.data;
       expect(response.body.data).toHaveProperty('id');
-      expect(response.body.data.tiles.length).toBe(5);
+      expect(response.body.data.tiles.length).toBe(6);
 
       // Verify by retrieving the dashboard
       const retrieveResponse = await authRequest('get', `${BASE_URL}/${id}`);
 
       expect(retrieveResponse.status).toBe(200);
-      expect(retrieveResponse.body.data.tiles.length).toBe(5);
+      expect(retrieveResponse.body.data.tiles.length).toBe(6);
       expect(retrieveResponse.body.data.tags).toEqual(['test', 'chart-types']);
     });
 
@@ -2175,10 +2196,41 @@ describe('External API v2 Dashboards - new format', () => {
             },
           ],
           groupBy: 'service.name',
+          orderBy: '"Median Duration" ASC',
           numberFormat: {
             output: 'number',
             mantissa: 2,
           },
+          limit: 5,
+        },
+      };
+
+      const categoricalBarChart: ExternalDashboardTile = {
+        name: 'Categorical Bar Chart',
+        x: 12,
+        y: 6,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'bar',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.5,
+              valueExpression: 'Duration',
+              alias: 'Median Duration',
+              where: "env = 'production'",
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'service.name',
+          orderBy: '"Median Duration" ASC',
+          numberFormat: {
+            output: 'number',
+            mantissa: 2,
+          },
+          limit: 5,
         },
       };
 
@@ -2441,6 +2493,7 @@ describe('External API v2 Dashboards - new format', () => {
             pieChart,
             heatmapChart,
             eventPatternsChart,
+            categoricalBarChart,
           ],
           tags: ['round-trip-test'],
         })
@@ -2457,6 +2510,119 @@ describe('External API v2 Dashboards - new format', () => {
       expect(omit(response.body.data.tiles[7], ['id'])).toEqual(
         eventPatternsChart,
       );
+      expect(omit(response.body.data.tiles[8], ['id'])).toEqual(
+        categoricalBarChart,
+      );
+    });
+
+    it('persists a custom orderBy on pie and categorical bar tiles through create and get', async () => {
+      // Arrange: pie and bar tiles carrying a custom ORDER BY that differs from
+      // the default value-descending ordering the charts apply client-side.
+      const pieChart: ExternalDashboardTile = {
+        name: 'Pie with custom order',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'pie',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+          orderBy: 'ServiceName ASC',
+          limit: 5,
+        },
+      };
+
+      const barChart: ExternalDashboardTile = {
+        name: 'Bar with custom order',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'bar',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+          orderBy: '"Count" DESC',
+          limit: 5,
+        },
+      };
+
+      // Act: create the dashboard
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with custom categorical ordering',
+          tiles: [pieChart, barChart],
+        })
+        .expect(200);
+
+      // Assert: create response echoes the custom orderBy back
+      expect(createResponse.body.data.tiles[0].config.orderBy).toBe(
+        'ServiceName ASC',
+      );
+      expect(createResponse.body.data.tiles[1].config.orderBy).toBe(
+        '"Count" DESC',
+      );
+
+      // Assert: the orderBy survives a round-trip through persistence (GET)
+      const { id } = createResponse.body.data;
+      const getResponse = await authRequest('get', `${BASE_URL}/${id}`).expect(
+        200,
+      );
+      expect(getResponse.body.data.tiles[0].config.orderBy).toBe(
+        'ServiceName ASC',
+      );
+      expect(getResponse.body.data.tiles[1].config.orderBy).toBe(
+        '"Count" DESC',
+      );
+    });
+
+    it('omits orderBy on pie/bar tiles when it is not provided', async () => {
+      const pieChart: ExternalDashboardTile = {
+        name: 'Pie without order',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'pie',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard without categorical ordering',
+          tiles: [pieChart],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config).not.toHaveProperty('orderBy');
     });
 
     // Schema-level rejections that exercise pure Zod constraints
@@ -2824,10 +2990,32 @@ describe('External API v2 Dashboards - new format', () => {
         },
       };
 
+      const categoricalBarRawSql: ExternalDashboardTile = {
+        name: 'Categorical Bar Raw SQL',
+        x: 18,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'bar',
+          connectionId,
+          sqlTemplate,
+          sourceId,
+        },
+      };
+
       const response = await authRequest('post', BASE_URL)
         .send({
           name: 'Dashboard with Raw SQL Chart Types',
-          tiles: [lineRawSql, barRawSql, tableRawSql, numberRawSql, pieRawSql],
+          tiles: [
+            lineRawSql,
+            barRawSql,
+            tableRawSql,
+            numberRawSql,
+            pieRawSql,
+            categoricalBarRawSql,
+          ],
           tags: ['raw-sql-test'],
         })
         .expect(200);
@@ -2837,6 +3025,9 @@ describe('External API v2 Dashboards - new format', () => {
       expect(omit(response.body.data.tiles[2], ['id'])).toEqual(tableRawSql);
       expect(omit(response.body.data.tiles[3], ['id'])).toEqual(numberRawSql);
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(pieRawSql);
+      expect(omit(response.body.data.tiles[5], ['id'])).toEqual(
+        categoricalBarRawSql,
+      );
     });
 
     it('persists fitYAxisToData on line tiles only and reads it back on GET', async () => {
@@ -4163,6 +4354,22 @@ describe('External API v2 Dashboards - new format', () => {
         },
       };
 
+      const categoricalBarRawSql: ExternalDashboardTileWithId = {
+        id: new ObjectId().toString(),
+        name: 'Categorical Bar Raw SQL',
+        x: 18,
+        y: 3,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'bar',
+          connectionId,
+          sqlTemplate,
+          sourceId,
+        },
+      };
+
       const initialDashboard = await createTestDashboard();
 
       const response = await authRequest(
@@ -4171,7 +4378,14 @@ describe('External API v2 Dashboards - new format', () => {
       )
         .send({
           name: 'Dashboard with Raw SQL Chart Types',
-          tiles: [lineRawSql, barRawSql, tableRawSql, numberRawSql, pieRawSql],
+          tiles: [
+            lineRawSql,
+            barRawSql,
+            tableRawSql,
+            numberRawSql,
+            pieRawSql,
+            categoricalBarRawSql,
+          ],
           tags: ['raw-sql-test'],
         })
         .expect(200);
@@ -4190,6 +4404,9 @@ describe('External API v2 Dashboards - new format', () => {
       );
       expect(omit(response.body.data.tiles[4], ['id'])).toEqual(
         omit(pieRawSql, ['id']),
+      );
+      expect(omit(response.body.data.tiles[5], ['id'])).toEqual(
+        omit(categoricalBarRawSql, ['id']),
       );
     });
 
