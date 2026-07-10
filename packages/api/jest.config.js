@@ -1,6 +1,12 @@
 const { createJsWithTsPreset } = require('ts-jest');
 
-const tsJestTransformCfg = createJsWithTsPreset();
+const tsJestTransformCfg = createJsWithTsPreset({
+  tsconfig: {
+    // TypeScript 6 requires an explicit rootDir when compiling a subset of
+    // files (ts-jest compiles per-file), otherwise it errors with TS5011.
+    rootDir: './src',
+  },
+});
 
 /** @type {import("jest").Config} **/
 module.exports = {
