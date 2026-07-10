@@ -272,6 +272,20 @@ describe('MCP Query Tools', () => {
       expect(result.content).toHaveLength(1);
     });
 
+    it('should execute a bar query', async () => {
+      const result = await callTool(client, 'clickstack_table', {
+        sourceId: traceSource._id.toString(),
+        select: [{ aggFn: 'count' }],
+        shape: 'bar',
+        groupBy: 'SpanName',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
     it('should auto-upgrade shape:"number" to "table" when select has multiple items', async () => {
       // This should NOT error — it should silently upgrade to table
       const result = await callTool(client, 'clickstack_table', {
@@ -297,6 +311,23 @@ describe('MCP Query Tools', () => {
           { aggFn: 'sum', valueExpression: 'Duration' },
         ],
         shape: 'pie',
+        groupBy: 'SpanName',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
+    it('should auto-upgrade shape:"bar" to "table" when select has multiple items', async () => {
+      const result = await callTool(client, 'clickstack_table', {
+        sourceId: traceSource._id.toString(),
+        select: [
+          { aggFn: 'count' },
+          { aggFn: 'sum', valueExpression: 'Duration' },
+        ],
+        shape: 'bar',
         groupBy: 'SpanName',
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
         endTime: new Date().toISOString(),
@@ -689,6 +720,143 @@ describe('MCP Query Tools', () => {
 
       expect(result.isError).toBe(true);
       expect(getFirstText(result)).toContain('Invalid');
+    });
+  });
+
+  // ─── ClickHouse query errors ──────────────────────────────────────────────────
+
+  describe('ClickHouse query error handling', () => {
+    describe('clickstack_sql errors', () => {
+      it('should return isError for a syntax error', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: 'SELECTT 1',
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toMatch(
+          /SYNTAX_ERROR|Syntax error|unknown/i,
+        );
+      });
+
+      it('should return isError for a nonexistent column', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: `SELECT nonexistent_column_xyz FROM ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE} LIMIT 1`,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toMatch(
+          /UNKNOWN_IDENTIFIER|Missing columns|unknown/i,
+        );
+      });
+
+      it('should return isError for a nonexistent table', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: `SELECT 1 FROM ${DEFAULT_DATABASE}.nonexistent_table_xyz LIMIT 1`,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toMatch(
+          /UNKNOWN_TABLE|doesn.t exist|unknown/i,
+        );
+      });
+    });
+
+    describe('clickstack_table errors', () => {
+      it('should return isError for a nonexistent valueExpression column', async () => {
+        const result = await callTool(client, 'clickstack_table', {
+          sourceId: traceSource._id.toString(),
+          select: [{ aggFn: 'avg', valueExpression: 'nonexistent_column_xyz' }],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toMatch(
+          /UNKNOWN_IDENTIFIER|Missing columns|unknown/i,
+        );
+      });
+    });
+
+    describe('clickstack_timeseries errors', () => {
+      it('should return isError for a nonexistent valueExpression column', async () => {
+        const result = await callTool(client, 'clickstack_timeseries', {
+          sourceId: traceSource._id.toString(),
+          select: [{ aggFn: 'sum', valueExpression: 'nonexistent_column_xyz' }],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toMatch(
+          /UNKNOWN_IDENTIFIER|Missing columns|unknown/i,
+        );
+      });
+    });
+
+    it('should not leak _errorCategory on the wire result', async () => {
+      const result = await callTool(client, 'clickstack_sql', {
+        connectionId: connection._id.toString(),
+        sql: 'SELECTT 1',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result).not.toHaveProperty('_errorCategory');
+    });
+
+    describe('infrastructure errors (unreachable ClickHouse)', () => {
+      let deadConnection: any;
+      let deadSource: SourceDocument;
+
+      beforeEach(async () => {
+        deadConnection = await Connection.create({
+          team: team._id,
+          name: 'Dead',
+          host: 'http://localhost:1',
+          username: 'default',
+          password: '',
+        });
+
+        deadSource = await Source.create({
+          kind: SourceKind.Trace,
+          team: team._id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_TRACES_TABLE,
+          },
+          timestampValueExpression: 'Timestamp',
+          connection: deadConnection._id,
+          name: 'Dead Traces',
+        });
+      });
+
+      it('should return isError for clickstack_sql against unreachable host', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: deadConnection._id.toString(),
+          sql: 'SELECT 1',
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result).length).toBeGreaterThan(0);
+      });
+
+      it('should return isError for clickstack_table against unreachable host', async () => {
+        const result = await callTool(client, 'clickstack_table', {
+          sourceId: deadSource._id.toString(),
+          select: [{ aggFn: 'count' }],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result).length).toBeGreaterThan(0);
+      });
+
+      it('should return isError for clickstack_timeseries against unreachable host', async () => {
+        const result = await callTool(client, 'clickstack_timeseries', {
+          sourceId: deadSource._id.toString(),
+          select: [{ aggFn: 'count' }],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result).length).toBeGreaterThan(0);
+      });
     });
   });
 

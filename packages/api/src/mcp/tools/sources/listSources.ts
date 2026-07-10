@@ -1,21 +1,19 @@
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { getConnectionsByTeam } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';
-import type { McpContext } from '@/mcp/tools/types';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import type { ToolRegistrar } from '@/mcp/tools/types';
 
 import { sanitizeMetricTables } from './metricKinds';
 
-export function registerListSources(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerListSources({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_list_sources',
     {
       title: 'List Sources & Connections',
@@ -30,7 +28,7 @@ export function registerListSources(
         'Connection IDs are only needed for clickstack_sql (raw ClickHouse SQL).',
       inputSchema: z.object({}),
     },
-    withToolTracing('clickstack_list_sources', context, async () => {
+    async () => {
       const [sources, connections] = await Promise.all([
         getSources(teamId.toString()),
         getConnectionsByTeam(teamId.toString()),
@@ -44,6 +42,10 @@ export function registerListSources(
           connectionId: s.connection.toString(),
           timestampColumn: s.timestampValueExpression,
         };
+
+        if (s.section) {
+          meta.section = s.section;
+        }
 
         if ('eventAttributesExpression' in s && s.eventAttributesExpression) {
           meta.eventAttributesColumn = s.eventAttributesExpression;
@@ -101,6 +103,6 @@ export function registerListSources(
           { type: 'text' as const, text: JSON.stringify(output, null, 2) },
         ],
       };
-    }),
+    },
   );
 }

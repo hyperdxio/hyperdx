@@ -809,9 +809,79 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           maxLength: 10000
  *           description: Field expression to group results by (one slice per group value).
  *           example: "service"
+ *         orderBy:
+ *           type: string
+ *           maxLength: 10000
+ *           description: >
+ *             Optional custom SQL ORDER BY expression (raw SQL). Overrides the
+ *             default value-descending ordering and, when combined with
+ *             "limit", controls which slices are kept.
+ *           example: "\"Count\" DESC"
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
+ *         limit:
+ *           type: integer
+ *           minimum: 1
+ *           description: >
+ *             Maximum number of slices (SQL LIMIT). Without a custom "orderBy"
+ *             the query keeps the groups with the largest aggregated values;
+ *             with an "orderBy" it keeps the first slices in that order. Omit
+ *             to fetch all groups.
+ *           example: 10
+ *
+ *     CategoricalBarBuilderChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *         - select
+ *       description: >
+ *         Builder configuration for a categorical bar chart tile. Each bar
+ *         represents one group value. Distinct from stacked_bar, which is a
+ *         time-series chart.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [bar]
+ *           description: Display type discriminator. Must be "bar" for categorical bar charts.
+ *           example: "bar"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 1
+ *           description: Exactly one aggregated value used to size each bar.
+ *           items:
+ *             $ref: '#/components/schemas/SelectItem'
+ *         groupBy:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Field expression to group results by (one bar per group value).
+ *           example: "service"
+ *         orderBy:
+ *           type: string
+ *           maxLength: 10000
+ *           description: >
+ *             Optional custom SQL ORDER BY expression (raw SQL). Overrides the
+ *             default value-descending ordering and, when combined with
+ *             "limit", controls which bars are kept.
+ *           example: "\"Count\" DESC"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
+ *         limit:
+ *           type: integer
+ *           minimum: 1
+ *           description: >
+ *             Maximum number of bars (SQL LIMIT). Without a custom "orderBy"
+ *             the query keeps the groups with the largest aggregated values;
+ *             with an "orderBy" it keeps the first bars in that order. Omit to
+ *             fetch all groups.
+ *           example: 10
  *
  *     HeatmapSelectItem:
  *       type: object
@@ -916,6 +986,38 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           type: string
  *           maxLength: 10000
  *           description: Filter condition for the search (syntax depends on whereLanguage).
+ *           default: ""
+ *           example: "level:error"
+ *         whereLanguage:
+ *           $ref: '#/components/schemas/QueryLanguage'
+ *           description: Query language for the where clause.
+ *
+ *     EventPatternsChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *       description: Configuration for an event pattern mining tile. Clusters log or trace events by recurring message shapes.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [event_patterns]
+ *           description: Display type discriminator. Must be "event_patterns" for pattern mining tiles.
+ *           example: "event_patterns"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to mine patterns from.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Column or expression to mine patterns from. Leave empty to use the source default (Body for logs, SpanName for traces).
+ *           default: ""
+ *           example: "Body"
+ *         where:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Filter condition for the pattern mining query (syntax depends on whereLanguage).
  *           default: ""
  *           example: "level:error"
  *         whereLanguage:
@@ -1073,6 +1175,20 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               enum: [pie]
  *               description: Display as a pie chart.
  *               example: "pie"
+ *
+ *     CategoricalBarRawSqlChartConfig:
+ *       description: Raw SQL configuration for a categorical bar chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/RawSqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [bar]
+ *               description: Display as a categorical bar chart.
+ *               example: "bar"
  *
  *     LineChartConfig:
  *       description: >
@@ -1292,22 +1408,38 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         mapping:
  *           sql: '#/components/schemas/PieRawSqlChartConfig'
  *
+ *     CategoricalBarChartConfig:
+ *       description: >
+ *         Categorical bar chart (one bar per group value; not a time series).
+ *         Omit configType for the builder variant (requires sourceId and
+ *         select). Set configType to "sql" for the Raw SQL variant (requires
+ *         connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/CategoricalBarBuilderChartConfig'
+ *         - $ref: '#/components/schemas/CategoricalBarRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/CategoricalBarRawSqlChartConfig'
+ *
  *     TileConfig:
  *       description: >
  *         Tile chart configuration. displayType is the primary discriminant and
  *         determines which variant group applies. For displayTypes that support
- *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie),
- *         configType is the secondary discriminant: omit it for the builder
+ *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie,
+ *         bar), configType is the secondary discriminant: omit it for the builder
  *         variant or set it to "sql" for the Raw SQL variant. The heatmap,
- *         search, and markdown displayTypes only have a builder variant.
+ *         search, event_patterns, and markdown displayTypes only have a builder variant.
  *       oneOf:
  *         - $ref: '#/components/schemas/LineChartConfig'
  *         - $ref: '#/components/schemas/BarChartConfig'
  *         - $ref: '#/components/schemas/TableChartConfig'
  *         - $ref: '#/components/schemas/NumberChartConfig'
  *         - $ref: '#/components/schemas/PieChartConfig'
+ *         - $ref: '#/components/schemas/CategoricalBarChartConfig'
  *         - $ref: '#/components/schemas/HeatmapChartConfig'
  *         - $ref: '#/components/schemas/SearchChartConfig'
+ *         - $ref: '#/components/schemas/EventPatternsChartConfig'
  *         - $ref: '#/components/schemas/MarkdownChartConfig'
  *       discriminator:
  *         propertyName: displayType
@@ -1317,8 +1449,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           table: '#/components/schemas/TableChartConfig'
  *           number: '#/components/schemas/NumberChartConfig'
  *           pie: '#/components/schemas/PieChartConfig'
+ *           bar: '#/components/schemas/CategoricalBarChartConfig'
  *           heatmap: '#/components/schemas/HeatmapChartConfig'
  *           search: '#/components/schemas/SearchChartConfig'
+ *           event_patterns: '#/components/schemas/EventPatternsChartConfig'
  *           markdown: '#/components/schemas/MarkdownChartConfig'
  *
  *     DashboardContainerTab:
@@ -1928,6 +2062,127 @@ router.get(
     }
   },
 );
+
+/**
+ * @openapi
+ * /api/v2/dashboards/validate:
+ *   post:
+ *     summary: Validate Dashboard
+ *     description: |
+ *       Validates a dashboard body against the same schema and tile rules used
+ *       by POST /api/v2/dashboards. The dashboard is **never persisted**. Use
+ *       this endpoint at plan time (e.g. from a Terraform provider) to check
+ *       that a dashboard configuration is valid before applying it.
+ *     operationId: validateDashboard
+ *     tags: [Dashboards]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateDashboardRequest'
+ *     responses:
+ *       '200':
+ *         description: |
+ *           Validation result. HTTP 200 is always returned for valid **and**
+ *           invalid bodies — a non-200 response means the request itself
+ *           failed (auth, server error, etc.).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [valid, errors, normalized]
+ *               properties:
+ *                 valid:
+ *                   type: boolean
+ *                   description: True when the body passes all validation rules.
+ *                 errors:
+ *                   type: array
+ *                   description: Validation errors. Empty when valid is true.
+ *                   items:
+ *                     type: object
+ *                     required: [path, message]
+ *                     properties:
+ *                       path:
+ *                         type: string
+ *                         description: Dot-separated field path, or empty string for top-level errors.
+ *                       message:
+ *                         type: string
+ *                         description: Human-readable error description.
+ *                 normalized:
+ *                   type: object
+ *                   nullable: true
+ *                   description: |
+ *                     The parsed dashboard body with defaults applied (no
+ *                     persistence, so no server-assigned tile IDs). Populated
+ *                     when valid is true, null when valid is false.
+ *             examples:
+ *               valid:
+ *                 summary: Valid dashboard body
+ *                 value:
+ *                   valid: true
+ *                   errors: []
+ *                   normalized:
+ *                     name: "My Dashboard"
+ *                     tiles: []
+ *               invalid:
+ *                 summary: Invalid dashboard body
+ *                 value:
+ *                   valid: false
+ *                   errors:
+ *                     - path: "name"
+ *                       message: "Required"
+ *                   normalized: null
+ *       '401':
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Unauthorized access. API key is missing or invalid."
+ */
+router.post('/validate', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.sendStatus(403);
+    }
+
+    const parsed = createDashboardBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.json({
+        valid: false,
+        errors: parsed.error.issues.map(i => ({
+          path: i.path.join('.'),
+          message: i.message,
+        })),
+        normalized: null,
+      });
+    }
+
+    const { tiles, filters, containers } = parsed.data;
+    // Cast: createDashboardBodySchema tiles have optional `id`; the validator
+    // only reads sourceId/config — the cast is safe for a no-persist call.
+    const validationError = await validateDashboardTiles({
+      teamId: teamId.toString(),
+      tiles: tiles as ExternalDashboardTileWithId[],
+      filters,
+      containers: containers ?? [],
+    });
+    if (validationError) {
+      return res.json({
+        valid: false,
+        errors: [{ path: '', message: validationError }],
+        normalized: null,
+      });
+    }
+
+    return res.json({ valid: true, errors: [], normalized: parsed.data });
+  } catch (e) {
+    next(e);
+  }
+});
 
 /**
  * @openapi

@@ -372,8 +372,8 @@ describe('ActiveFilterPills', () => {
     await user.click(screen.getByTestId('active-filter-pill-status'));
 
     const [copyButton, excludeButton] = await Promise.all([
-      screen.findByRole('button', { name: 'Copy value' }),
-      screen.findByRole('button', { name: 'Exclude' }),
+      screen.findByRole('button', { name: 'Copy value', hidden: true }),
+      screen.findByRole('button', { name: 'Exclude', hidden: true }),
     ]);
     expect(copyButton).toBeInTheDocument();
     expect(excludeButton).toBeInTheDocument();
@@ -391,7 +391,9 @@ describe('ActiveFilterPills', () => {
     renderPills(searchFilters);
 
     await user.click(screen.getByTestId('active-filter-pill-status'));
-    await user.click(await screen.findByRole('button', { name: 'Exclude' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Exclude', hidden: true }),
+    );
 
     expect(searchFilters.setFilterValue).toHaveBeenCalledWith(
       'status',
@@ -412,7 +414,9 @@ describe('ActiveFilterPills', () => {
     renderPills(searchFilters);
 
     await user.click(screen.getByTestId('active-filter-pill-status'));
-    await user.click(await screen.findByRole('button', { name: 'Include' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Include', hidden: true }),
+    );
 
     expect(searchFilters.setFilterValue).toHaveBeenCalledWith(
       'status',
@@ -433,7 +437,9 @@ describe('ActiveFilterPills', () => {
     renderPills(searchFilters);
 
     await user.click(screen.getByTestId('active-filter-pill-status'));
-    await user.click(await screen.findByRole('button', { name: 'Copy value' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Copy value', hidden: true }),
+    );
 
     expect(copyTextToClipboard).toHaveBeenCalledWith('200');
   });
@@ -555,6 +561,65 @@ describe('ActiveFilterPills', () => {
       'status',
       '200',
       '404',
+      'include',
+    );
+  });
+
+  it('submits the highlighted option when navigating with the keyboard and pressing Enter', async () => {
+    jest.useRealTimers();
+    mockedUseGetKeyValues.mockReturnValue({
+      data: [{ key: 'status', value: ['200', '404', '500'] }],
+      isFetching: false,
+    });
+    const user = userEvent.setup();
+    const searchFilters = makeSearchFilters({
+      status: {
+        included: new Set<string | boolean>(['200']),
+        excluded: new Set<string | boolean>(),
+      },
+    });
+    renderPills(searchFilters);
+
+    await user.click(screen.getByTestId('active-filter-pill-status'));
+    const input = await screen.findByLabelText('Change filter value');
+    input.focus();
+    // The picker lists ['200', '404', '500']. First ArrowDown highlights the
+    // first option ('200'), the second moves to '404'; Enter then submits the
+    // highlighted '404' — not the empty typed draft.
+    await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+
+    expect(searchFilters.replaceFilterValue).toHaveBeenCalledWith(
+      'status',
+      '200',
+      '404',
+      'include',
+    );
+  });
+
+  it('replaces with a free-typed value not in the suggestion list', async () => {
+    jest.useRealTimers();
+    mockedUseGetKeyValues.mockReturnValue({
+      data: [{ key: 'status', value: ['200', '404', '500'] }],
+      isFetching: false,
+    });
+    const user = userEvent.setup();
+    const searchFilters = makeSearchFilters({
+      status: {
+        included: new Set<string | boolean>(['200']),
+        excluded: new Set<string | boolean>(),
+      },
+    });
+    renderPills(searchFilters);
+
+    await user.click(screen.getByTestId('active-filter-pill-status'));
+    const input = await screen.findByLabelText('Change filter value');
+    await user.clear(input);
+    await user.type(input, '418{Enter}');
+
+    expect(searchFilters.replaceFilterValue).toHaveBeenCalledWith(
+      'status',
+      '200',
+      '418',
       'include',
     );
   });

@@ -94,6 +94,9 @@ export default function DirectTraceSidePanel({
       onClose={onClose}
       position="right"
       size="75vw"
+      lockScroll={false}
+      withOverlay={false}
+      trapFocus={false}
       title={
         <Group gap="xs">
           <IconConnection size={16} />

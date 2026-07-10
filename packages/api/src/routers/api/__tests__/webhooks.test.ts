@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
+import Alert from '@/models/alert';
 import Webhook, { WebhookService } from '@/models/webhook';
 import * as template from '@/tasks/checkAlerts/template';
 
@@ -140,6 +141,26 @@ describe('webhooks router', () => {
     expect(webhooks).toHaveLength(1);
   });
 
+  it('POST / - returns 400 (not 500) on a name+service collision with a different URL', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    // The unique index is (team, service, name). A second webhook with the same
+    // name+service but a different URL violates it; the aligned pre-flight check
+    // (and duplicate-key backstop) must return 400 rather than a raw 500.
+    await Webhook.create({ ...MOCK_WEBHOOK, team: team._id });
+
+    const response = await agent
+      .post('/webhooks')
+      .send({
+        ...MOCK_WEBHOOK,
+        url: 'https://hooks.slack.com/services/T22222222/B22222222/mock-not-a-real-token',
+      })
+      .expect(400);
+
+    expect(response.body.message).toBe('Webhook already exists');
+    expect(await Webhook.countDocuments({})).toBe(1);
+  });
+
   it('POST / - returns 400 when request body is invalid', async () => {
     const { agent } = await getLoggedInAgent(server);
 
@@ -184,6 +205,75 @@ describe('webhooks router', () => {
     // Verify webhook was deleted
     const deletedWebhook = await Webhook.findById(webhook._id);
     expect(deletedWebhook).toBeNull();
+  });
+
+  it('DELETE /:id - returns 409 when alerts still reference the webhook', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    // 1. Create a webhook
+    const webhook = await Webhook.create({
+      ...MOCK_WEBHOOK,
+      team: team._id,
+    });
+
+    // 2. Create an alert pointing to that webhook
+    await Alert.create({
+      team: team._id,
+      name: 'Test Alert',
+      channel: {
+        type: 'webhook',
+        webhookId: webhook._id.toString(),
+      },
+      source: 'logs',
+      groupBy: 'test',
+      interval: '5m',
+      threshold: 1,
+      thresholdType: 'above',
+    });
+
+    // 3. Attempt to delete — should be blocked
+    const response = await agent.delete(`/webhooks/${webhook._id}`).expect(409);
+
+    expect(response.body.message).toContain('1 alert(s) still reference it');
+
+    // 4. Webhook should still exist
+    const stillExists = await Webhook.findById(webhook._id);
+    expect(stillExists).not.toBeNull();
+  });
+
+  it('DELETE /:id - succeeds after referencing alerts are removed', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    const webhook = await Webhook.create({
+      ...MOCK_WEBHOOK,
+      team: team._id,
+    });
+
+    const alert = await Alert.create({
+      team: team._id,
+      name: 'Test Alert',
+      channel: {
+        type: 'webhook',
+        webhookId: webhook._id.toString(),
+      },
+      source: 'logs',
+      groupBy: 'test',
+      interval: '5m',
+      threshold: 1,
+      thresholdType: 'above',
+    });
+
+    // First attempt should fail
+    await agent.delete(`/webhooks/${webhook._id}`).expect(409);
+
+    // Remove the alert
+    await Alert.findByIdAndDelete(alert._id);
+
+    // Now deletion should succeed
+    await agent.delete(`/webhooks/${webhook._id}`).expect(200);
+
+    const deleted = await Webhook.findById(webhook._id);
+    expect(deleted).toBeNull();
   });
 
   it('DELETE /:id - returns 200 when webhook does not exist', async () => {
@@ -441,6 +531,77 @@ describe('webhooks router', () => {
     });
   });
 
+  describe('Query parameter validation', () => {
+    // queryParams are written into the outbound request URL, so they get the
+    // same CRLF/control-char hardening as headers (shared validators in
+    // utils/zod.ts). These exercise that path on the internal router, which
+    // was previously only covered for headers.
+    const controlCharValues = [
+      'value\r\ninjected', // CRLF
+      'value\twith\ttab', // tab
+      'value\x00null', // null
+      'value\x1Fseparator', // unit separator
+      'value\x7Fdelete', // delete
+    ];
+
+    it('POST / - rejects query param values with control characters', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      for (const value of controlCharValues) {
+        const response = await agent
+          .post('/webhooks')
+          .send({
+            ...MOCK_WEBHOOK,
+            url: `https://example.com/qp-value-${Math.random()}`,
+            queryParams: { token: value },
+          })
+          .expect(400);
+
+        expect(Array.isArray(response.body)).toBe(true);
+        expect(response.body[0].type).toBe('Body');
+        expect(response.body[0].errors).toBeDefined();
+      }
+    });
+
+    it('POST / - rejects query param names with control characters', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/webhooks')
+        .send({
+          ...MOCK_WEBHOOK,
+          url: 'https://example.com/qp-name-crlf',
+          queryParams: { 'bad\r\nkey': 'value' },
+        })
+        .expect(400);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
+    });
+
+    it('PUT /:id - rejects query param values with control characters', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        team: team._id,
+      });
+
+      const response = await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({
+          ...MOCK_WEBHOOK,
+          queryParams: { token: 'value\r\ninjected' },
+        })
+        .expect(400);
+
+      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body[0].type).toBe('Body');
+      expect(response.body[0].errors).toBeDefined();
+    });
+  });
+
   describe('PUT /:id - update webhook', () => {
     it('updates an existing webhook', async () => {
       const { agent, team } = await getLoggedInAgent(server);
@@ -500,33 +661,34 @@ describe('webhooks router', () => {
       expect(response.body.message).toBe('Webhook not found');
     });
 
-    it('returns 400 when trying to update to a URL that already exists', async () => {
+    it('returns 400 when renaming onto an existing (service, name)', async () => {
       const { agent, team } = await getLoggedInAgent(server);
 
-      // Create two webhooks
+      // The unique index is on (team, service, name), so a rename collision is
+      // detected on name — not URL, which is not unique.
       await Webhook.create({
         ...MOCK_WEBHOOK,
-        name: 'Webhook Two',
+        name: 'Existing Name',
         team: team._id,
       });
 
       const webhook2 = await Webhook.create({
         ...MOCK_WEBHOOK,
+        name: 'Other Name',
         url: 'https://hooks.slack.com/services/T11111111/B11111111/YYYYYYYYYYYYYYYYYYYYYYYY',
         team: team._id,
       });
 
-      // Try to update webhook2 to use webhook1's URL
       const response = await agent
         .put(`/webhooks/${webhook2._id}`)
         .send({
           ...MOCK_WEBHOOK,
-          name: 'Different Name',
+          name: 'Existing Name',
         })
         .expect(400);
 
       expect(response.body.message).toBe(
-        'A webhook with this service and URL already exists',
+        'A webhook with this service and name already exists',
       );
     });
 

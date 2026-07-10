@@ -78,21 +78,24 @@ export function ChartActionBar({
         )}
       </Flex>
       <Flex gap="sm" mb="sm" align="center" justify="end">
-        {activeTab === 'table' && !isRawSqlInput && (
-          <div style={{ width: 400 }}>
-            <SQLInlineEditorControlled
-              parentRef={parentRef}
-              tableConnection={tableConnection}
-              // The default order by is the current group by value
-              placeholder={typeof groupBy === 'string' ? groupBy : ''}
-              control={control}
-              name={`orderBy`}
-              disableKeywordAutocomplete
-              onSubmit={onSubmit}
-              label="ORDER BY"
-            />
-          </div>
-        )}
+        {(activeTab === 'table' ||
+          activeTab === 'pie' ||
+          activeTab === 'bar') &&
+          !isRawSqlInput && (
+            <div style={{ width: 400 }} data-testid="order-by-input">
+              <SQLInlineEditorControlled
+                parentRef={parentRef}
+                tableConnection={tableConnection}
+                // The default order by is the current group by value
+                placeholder={typeof groupBy === 'string' ? groupBy : ''}
+                control={control}
+                name={`orderBy`}
+                disableKeywordAutocomplete
+                onSubmit={onSubmit}
+                label="ORDER BY"
+              />
+            </div>
+          )}
         {activeTab !== 'markdown' &&
           setDisplayedTimeInputValue != null &&
           displayedTimeInputValue != null &&

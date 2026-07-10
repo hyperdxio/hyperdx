@@ -1,7 +1,7 @@
 {
   "name": "@hyperdx/common-utils",
   "description": "Common utilities for HyperDX application",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "license": "MIT",
   "private": true,
   "files": [
@@ -34,9 +34,9 @@
     "dotenv": "^17.2.3",
     "jest": "^30.2.0",
     "nodemon": "^2.0.20",
-    "ts-jest": "^29.4.5",
+    "ts-jest": "^29.4.11",
     "tsup": "^8.4.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "scripts": {
     "dev": "nodemon --on-change-only --watch ./src --ext ts --exec \"yarn dev:build\"",

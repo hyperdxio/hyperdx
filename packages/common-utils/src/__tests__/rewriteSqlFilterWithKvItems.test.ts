@@ -1,12 +1,30 @@
 import { rewriteSqlFilterWithKvItems } from '@/core/renderChartConfig';
 import { KvItemsLookup } from '@/queryParser';
 
+type PartialKvItemsInfo = {
+  kvItemsColumn: string;
+  separator: string;
+  useHasAny?: boolean;
+};
+
 const makeLookup = (
-  entries: Array<[string, { kvItemsColumn: string; separator: string }]>,
-): KvItemsLookup => new Map(entries);
+  entries: Array<[string, PartialKvItemsInfo]>,
+): KvItemsLookup =>
+  new Map(entries.map(([k, v]) => [k, { useHasAny: true, ...v }]));
 
 const defaultLookup: KvItemsLookup = makeLookup([
   ['LogAttributes', { kvItemsColumn: 'LogAttributeItems', separator: '=' }],
+]);
+
+const legacyLookup: KvItemsLookup = makeLookup([
+  [
+    'LogAttributes',
+    {
+      kvItemsColumn: 'LogAttributeItems',
+      separator: '=',
+      useHasAny: false,
+    },
+  ],
 ]);
 
 describe('rewriteSqlFilterWithKvItems', () => {
@@ -322,6 +340,86 @@ describe('rewriteSqlFilterWithKvItems', () => {
       expect(result).toContain(
         "has(`LogAttributeItems`, concat('k', '=', 'v'))",
       );
+    });
+  });
+
+  describe('hasAny fallback (useHasAny: false)', () => {
+    it("still rewrites Map['key'] = 'value' to has(...)", () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['k'] = 'v'",
+        legacyLookup,
+      );
+      expect(result).toBe("has(`LogAttributeItems`, concat('k', '=', 'v'))");
+    });
+
+    it("still rewrites Map['key'] IN ('a') (single item) to has(...)", () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['k'] IN ('a')",
+        legacyLookup,
+      );
+      expect(result).toBe("has(`LogAttributeItems`, concat('k', '=', 'a'))");
+    });
+
+    it("rewrites Map['key'] IN ('a','b','c') to a chain of has(...) OR ...", () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['k'] IN ('a', 'b', 'c')",
+        legacyLookup,
+      );
+      expect(result).toContain(
+        "has(`LogAttributeItems`, concat('k', '=', 'a'))",
+      );
+      expect(result).toContain(
+        "has(`LogAttributeItems`, concat('k', '=', 'b'))",
+      );
+      expect(result).toContain(
+        "has(`LogAttributeItems`, concat('k', '=', 'c'))",
+      );
+      expect(result).not.toContain('hasAny(');
+      expect(result).not.toContain('array(');
+      const orCount = (result.match(/ OR /g) ?? []).length;
+      expect(orCount).toBeGreaterThanOrEqual(2);
+    });
+
+    it('preserves precedence when the fallback OR chain sits inside an AND (IN on the left)', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['k'] IN ('a', 'b') AND Severity = 'error'",
+        legacyLookup,
+      );
+      expect(result).toContain(
+        "has(`LogAttributeItems`, concat('k', '=', 'a'))",
+      );
+      expect(result).toContain(
+        "has(`LogAttributeItems`, concat('k', '=', 'b'))",
+      );
+      expect(result).toContain("Severity = 'error'");
+      expect(result).not.toContain('hasAny(');
+      // The OR chain MUST be parenthesized so AND doesn't bind tighter than OR
+      // and cause the right-hand `AND Severity` to attach to only the last has().
+      expect(result).toMatch(
+        /\(has\([^)]+\)[^)]*\) OR has\([^)]+\)[^)]*\)\) AND /,
+      );
+    });
+
+    it('preserves precedence when the fallback OR chain sits inside an AND (IN on the right)', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "Severity = 'error' AND LogAttributes['k'] IN ('a', 'b')",
+        legacyLookup,
+      );
+      expect(result).toContain("Severity = 'error'");
+      expect(result).not.toContain('hasAny(');
+      // Same rationale as the mirror case above: precedence-sensitive parens.
+      expect(result).toMatch(
+        / AND \(has\([^)]+\)[^)]*\) OR has\([^)]+\)[^)]*\)\)/,
+      );
+    });
+
+    it('does not rewrite when any IN value is an empty string', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['k'] IN ('a', '')",
+        legacyLookup,
+      );
+      expect(result).not.toContain('has(');
+      expect(result).not.toContain('hasAny(');
     });
   });
 });

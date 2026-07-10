@@ -1,5 +1,62 @@
 # @hyperdx/otel-collector
 
+## 2.29.0
+
+### Minor Changes
+
+- 34a855969: chore(otel-collector): bump base collector to v0.154.0
+
+  Upgrade the custom OTel Collector base from contrib v0.149.0 (core 1.55.0) to
+  v0.154.0 (core 1.60.0). Updates `OTEL_COLLECTOR_VERSION` /
+  `OTEL_COLLECTOR_CORE_VERSION` in `.env`, both Dockerfile ARG defaults, and the
+  smoke-test compose fallbacks.
+
+  Compatibility: no config changes required. Reviewed contrib and core breaking
+  changes across v0.150–v0.154 against every component HyperDX uses. All affected
+  upstream changes are either backward-compatible deprecation aliases
+  (`prometheusremotewrite`, `resourcedetection`), explicit-config no-ops for
+  HyperDX (clickhouse exporter already sets `json:` directly; transform/routing
+  connectors set `error_mode: ignore` explicitly), or internal core feature-gate
+  stabilizations.
+
+- 6b6c340fc: chore(otel-collector): bump base collector to v0.155.0
+
+  Upgrade the custom OTel Collector base from contrib v0.154.0 (core 1.60.0) to
+  v0.155.0 (core 1.61.0). Updates `OTEL_COLLECTOR_VERSION` /
+  `OTEL_COLLECTOR_CORE_VERSION` in `.env`, both Dockerfile ARG defaults, and the
+  smoke-test compose fallbacks.
+
+  Compatibility: no config changes required. Reviewed contrib and core breaking
+  changes for v0.155.0 against every component HyperDX uses. The removed
+  `telemetry.UseLocalHostAsDefaultMetricsAddress` core gate has no impact because
+  the telemetry metrics endpoint is set explicitly (`host: 0.0.0.0`, `port:
+8888`), and the `memory_limiter` metric rename does not affect the smoke tests
+  (which assert on the startup log line and the `batch/lowlatency` metric label,
+  not memory_limiter metrics). All other breaking changes are in unused components
+  or internal feature-gate removals.
+
+### Patch Changes
+
+- 973d1201b: fix: polish promql experience across the app
+- a5dfce4b: fix(otel-collector): only enable the prometheus remote-write exporter in
+  standalone mode when `CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT` is set
+
+  The standalone collector config used to unconditionally declare a
+  `prometheusremotewrite` exporter and a `metrics/promql` pipeline. When
+  `CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT` was unset the exporter rendered
+  with an empty endpoint and every metrics batch failed to export.
+
+  The exporter and pipeline have been moved to
+  `docker/otel-collector/config.standalone.promql.yaml`, which is now only
+  loaded by `entrypoint.sh` when `CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT` is
+  non-empty. This mirrors the OpAMP-managed gating in
+  `packages/api/src/opamp/controllers/opampController.ts` (which already
+  only adds the exporter when `IS_PROMQL_ENABLED` is true).
+
+  No action required if `CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT` is set; the
+  behavior is unchanged. If it was unset, the collector now stops emitting
+  the failing prometheus-remote-write attempts.
+
 ## 2.28.0
 
 ### Minor Changes

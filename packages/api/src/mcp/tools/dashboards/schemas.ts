@@ -4,6 +4,7 @@
 // readability. Reformatting all separators is out of scope here.
 import {
   AggregateFunctionSchema,
+  BackgroundChartSchema,
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_CONTAINERS,
@@ -17,7 +18,13 @@ import { z } from 'zod';
 
 import { getMetricSelectIssues } from '@/mcp/tools/query/schemas';
 import { QUERYABLE_METRIC_KINDS } from '@/mcp/tools/sources/metricKinds';
-import { externalQuantileLevelSchema, objectIdSchema } from '@/utils/zod';
+import {
+  externalQuantileLevelSchema,
+  MAX_TAG_LENGTH,
+  MAX_TAGS,
+  objectIdSchema,
+  tagsSchema,
+} from '@/utils/zod';
 
 /**
  * Metric type values exposed on dashboard tile select items. Restricted to
@@ -59,6 +66,15 @@ const rawSqlNumberTileColorDescription =
   '"chart-blue" or "chart-success". Valid only when displayType is ' +
   '"number", ignored otherwise. Raw SQL number tiles do not support ' +
   'conditional colorRules.';
+
+const numberTileBackgroundChartDescription =
+  'Optional background trend sparkline drawn behind the number, derived ' +
+  'from a time-bucketed version of the same query (useful for SLO / ' +
+  'error-budget tiles where the trend over the window matters). ' +
+  '{ type, color? }: type is "line" or "area"; color is an optional ' +
+  'palette token override (the sparkline inherits the tile color when ' +
+  'unset). Builder number tiles only; raw SQL number tiles have no time ' +
+  'dimension to bucket. Example: { type: "area", color: "chart-blue" }.';
 
 const mcpNumberFormatSchema = z.object({
   output: z
@@ -430,13 +446,23 @@ const mcpTileLayoutSchema = z.object({
     .max(24)
     .optional()
     .default(12)
-    .describe('Width in grid columns (1–24). Default 12'),
+    .describe(
+      'Width in grid columns (1-24; a full row is 24). Default 12. ' +
+        'Match the width to the displayType: number 6-8 (three or four KPIs per row), ' +
+        'line / stacked_bar / pie 8-12, heatmap 12, table / search 12-24 (often the full row). ' +
+        'A markdown note is usually full-width (24).',
+    ),
   h: z
     .number()
     .min(1)
     .optional()
     .default(4)
-    .describe('Height in grid rows. Default 4'),
+    .describe(
+      'Height in grid rows. Default 4. ' +
+        'Match the height to the displayType so content is not clipped: number 3-4, ' +
+        'line / stacked_bar / pie 4-6, heatmap 5-6, table / search 6-10 (taller when more rows are expected), ' +
+        'markdown 2-3 for a short note (h: 1 clips the text).',
+    ),
   id: z
     .string()
     .max(36)
@@ -587,6 +613,9 @@ const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
       .max(10)
       .optional()
       .describe(numberTileColorRulesDescription),
+    backgroundChart: BackgroundChartSchema.optional().describe(
+      numberTileBackgroundChartDescription,
+    ),
   }),
 });
 
@@ -602,9 +631,70 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
         'Column that defines pie slices. Use PascalCase for top-level columns. ' +
           "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
       ),
+    orderBy: z
+      .string()
+      .optional()
+      .describe(
+        'Optional custom SQL ORDER BY expression. Overrides the default ' +
+          'value-descending ordering and, combined with `limit`, controls which ' +
+          'slices are kept. When ordering by an alias that contains spaces or ' +
+          `special characters, wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+      ),
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(tileLevelNumberFormatDescription),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        'Maximum number of slices (SQL LIMIT). Without a custom `orderBy`, keeps ' +
+          'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
+          'keeps the first N in that order. Omit to fetch all groups.',
+      ),
+  }),
+});
+
+// Categorical bar charts ('bar') behave exactly like pie charts: one
+// aggregated select item, optional groupBy, no time bucketing. Distinct
+// from 'stacked_bar', which is a time series.
+const mcpCategoricalBarTileSchema = mcpTileLayoutSchema.extend({
+  config: z.object({
+    displayType: z
+      .literal('bar')
+      .describe('Bar chart — one bar per group value (not a time series)'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+    select: z.array(mcpTileSelectItemSchema).length(1),
+    groupBy: z
+      .string()
+      .optional()
+      .describe(
+        'Column(s) that define the bars. Use PascalCase for top-level columns. ' +
+          "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
+      ),
+    orderBy: z
+      .string()
+      .optional()
+      .describe(
+        'Optional custom SQL ORDER BY expression. Overrides the default ' +
+          'value-descending ordering and, combined with `limit`, controls which ' +
+          'bars are kept. When ordering by an alias that contains spaces or ' +
+          `special characters, wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+      ),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(tileLevelNumberFormatDescription),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        'Maximum number of bars (SQL LIMIT). Without a custom `orderBy`, keeps ' +
+          'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
+          'keeps the first N in that order. Omit to fetch all groups.',
+      ),
   }),
 });
 
@@ -693,6 +783,31 @@ const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
+const mcpEventPatternsTileSchema = mcpTileLayoutSchema.extend({
+  config: z.object({
+    displayType: z
+      .literal('event_patterns')
+      .describe('Event pattern mining tile'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+    where: z
+      .string()
+      .optional()
+      .default('')
+      .describe('Filter in Lucene syntax. Example: "level:error"'),
+    whereLanguage:
+      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
+    select: z
+      .string()
+      .optional()
+      .default('')
+      .describe(
+        'Pattern expression — column or expression to mine patterns from. ' +
+          'Leave empty to use the source default (Body for logs, SpanName for traces). ' +
+          'Example: "Body", "SpanName", "SpanAttributes[\'http.url\']"',
+      ),
+  }),
+});
+
 const mcpMarkdownTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     displayType: z.literal('markdown').describe('Free-form Markdown text tile'),
@@ -709,7 +824,7 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
           'ADVANCED: Only use raw SQL tiles when the builder tile types cannot express the query you need.',
       ),
     displayType: z
-      .enum(['line', 'stacked_bar', 'table', 'number', 'pie'])
+      .enum(['line', 'stacked_bar', 'table', 'number', 'pie', 'bar'])
       .describe('How to render the SQL results'),
     connectionId: z
       .string()
@@ -786,8 +901,10 @@ const mcpTileSchema = z.union([
   mcpTableTileSchema,
   mcpNumberTileSchema,
   mcpPieTileSchema,
+  mcpCategoricalBarTileSchema,
   mcpHeatmapTileSchema,
   mcpSearchTileSchema,
+  mcpEventPatternsTileSchema,
   mcpMarkdownTileSchema,
   mcpSqlTileSchema,
 ]);
@@ -821,10 +938,16 @@ const mcpPatchTileSchema = z.union([
   }),
   mcpPatchTileLayoutSchema.extend({ config: mcpPieTileSchema.shape.config }),
   mcpPatchTileLayoutSchema.extend({
+    config: mcpCategoricalBarTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
     config: mcpHeatmapTileSchema.shape.config,
   }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpSearchTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpEventPatternsTileSchema.shape.config,
   }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpMarkdownTileSchema.shape.config,
@@ -962,12 +1085,10 @@ export const mcpPatchDashboardSchema = z.object({
     .min(1)
     .optional()
     .describe('New dashboard name. Omit to keep the current name.'),
-  tags: z
-    .array(z.string())
-    .optional()
-    .describe(
-      'New tags array (replaces all existing tags). Omit to keep the current tags.',
-    ),
+  tags: tagsSchema.describe(
+    `New tags array (replaces all existing tags). Omit to keep the current tags. ` +
+      `Up to ${MAX_TAGS} tags, each at most ${MAX_TAG_LENGTH} characters.`,
+  ),
   tileId: z
     .string()
     .optional()

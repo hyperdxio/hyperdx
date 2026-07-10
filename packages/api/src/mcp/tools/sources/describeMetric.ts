@@ -9,13 +9,13 @@ import {
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import type { McpContext } from '@/mcp/tools/types';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import { clickHouseErrorResult } from '@/mcp/tools/query/helpers';
+import type { ToolRegistrar } from '@/mcp/tools/types';
+import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -484,34 +484,19 @@ async function describeMetricImpl(
 ) {
   const source = await getSource(teamId, input.sourceId);
   if (!source) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source "${input.sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source "${input.sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
+    );
   }
   if (source.kind !== SourceKind.Metric) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source "${input.sourceId}" is a "${source.kind}" source, not a metric source. clickstack_describe_metric only works on metric sources.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source "${input.sourceId}" is a "${source.kind}" source, not a metric source. clickstack_describe_metric only works on metric sources.`,
+    );
   }
 
   const timeRange = parseTimeRange(input.startTime, input.endTime);
   if ('error' in timeRange) {
-    return {
-      isError: true,
-      content: [{ type: 'text' as const, text: timeRange.error }],
-    };
+    return mcpUserError(timeRange.error);
   }
   const { startDate, endDate } = timeRange;
 
@@ -521,15 +506,7 @@ async function describeMetricImpl(
     true,
   );
   if (!connection) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Connection not found for source "${input.sourceId}".`,
-        },
-      ],
-    };
+    return mcpUserError(`Connection not found for source "${input.sourceId}".`);
   }
 
   const clickhouseClient = new ClickhouseClient({
@@ -546,15 +523,9 @@ async function describeMetricImpl(
   const kind = input.kind;
   const tableName = source.metricTables[kind];
   if (!tableName) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Source "${input.sourceId}" has no "${kind}" metric table populated. Populated kinds: ${Object.keys(source.metricTables).join(', ')}.`,
-        },
-      ],
-    };
+    return mcpUserError(
+      `Source "${input.sourceId}" has no "${kind}" metric table populated. Populated kinds: ${Object.keys(source.metricTables).join(', ')}.`,
+    );
   }
 
   // Defensive column-presence check before referencing MetricUnit /
@@ -571,15 +542,10 @@ async function describeMetricImpl(
       { kind, error: e instanceof Error ? e.message : String(e) },
       'describeMetric: getColumns failed',
     );
-    return {
-      isError: true,
-      content: [
-        {
-          type: 'text' as const,
-          text: `Failed to load columns for "${tableName}". The metric table may be missing or unreachable.`,
-        },
-      ],
-    };
+    return clickHouseErrorResult(e, {
+      prefix: `Failed to load columns for "${tableName}"`,
+      suffix: 'The metric table may be missing or unreachable.',
+    });
   }
   const columnNames = new Set(columns.map(c => c.name));
   const hasUnit = columnNames.has('MetricUnit');
@@ -724,13 +690,13 @@ async function describeMetricImpl(
 
 // ─── Tool registration ───────────────────────────────────────────────────────
 
-export function registerDescribeMetric(
-  server: McpServer,
-  context: McpContext,
-): void {
+export function registerDescribeMetric({
+  context,
+  registerTool,
+}: ToolRegistrar): void {
   const { teamId } = context;
 
-  server.registerTool(
+  registerTool(
     'clickstack_describe_metric',
     {
       title: 'Describe Metric',
@@ -750,7 +716,7 @@ export function registerDescribeMetric(
         'clickstack_describe_metric → clickstack_timeseries|clickstack_table.',
       inputSchema: describeMetricSchema,
     },
-    withToolTracing('clickstack_describe_metric', context, async rawInput => {
+    async rawInput => {
       // Re-parse explicitly: the MCP SDK callback signature widens
       // optional-field types into `unknown`, but the parser produces
       // the typed shape we need for downstream calls.
@@ -778,24 +744,17 @@ export function registerDescribeMetric(
             { teamId, sourceId: input.sourceId, metricName: input.metricName },
             'clickstack_describe_metric timed out',
           );
-          return {
-            isError: true as const,
-            content: [
-              {
-                type: 'text' as const,
-                text:
-                  'Discovery timed out. The metric table may be under load or the ' +
-                  'attribute set may be very high-cardinality. Try narrowing ' +
-                  'startTime/endTime or setting sampleValues:false to skip the ' +
-                  'value-sampling stage.',
-              },
-            ],
-          };
+          return mcpServerError(
+            'Discovery timed out. The metric table may be under load or the ' +
+              'attribute set may be very high-cardinality. Try narrowing ' +
+              'startTime/endTime or setting sampleValues:false to skip the ' +
+              'value-sampling stage.',
+          );
         }
         throw e;
       } finally {
         if (timeoutId !== undefined) clearTimeout(timeoutId);
       }
-    }),
+    },
   );
 }

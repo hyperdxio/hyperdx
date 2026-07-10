@@ -1345,7 +1345,7 @@ describe('renderChartConfig', () => {
       );
     });
 
-    it('rewrites `Map[key] IN (many)` to hasAny(... array(...))', async () => {
+    it('rewrites `Map[key] IN (many)` to hasAny(... array(...)) on ClickHouse >= 26.5', async () => {
       stubKvItemsMetadata();
       const sql = parameterizedQueryToSql(
         await renderChartConfig(
@@ -1357,6 +1357,25 @@ describe('renderChartConfig', () => {
       expect(sql).toContain(
         "hasAny(`LogAttributeItems`, array(concat('k', '=', 'a'), concat('k', '=', 'b'), concat('k', '=', 'c')))",
       );
+    });
+
+    it('rewrites `Map[key] IN (many)` to a chain of has() ORs on older ClickHouse (< 26.5)', async () => {
+      stubKvItemsMetadata();
+      mockMetadata.getServerVersion = jest
+        .fn()
+        .mockResolvedValue([26, 4, 3, 37]);
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildConfig("LogAttributes['k'] IN ('a', 'b', 'c')"),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain("has(`LogAttributeItems`, concat('k', '=', 'a'))");
+      expect(sql).toContain("has(`LogAttributeItems`, concat('k', '=', 'b'))");
+      expect(sql).toContain("has(`LogAttributeItems`, concat('k', '=', 'c'))");
+      expect(sql).not.toContain('hasAny(');
+      expect(sql).not.toContain('array(concat(');
     });
 
     it('leaves the condition unchanged when no KV items column exists', async () => {
@@ -1384,7 +1403,7 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain("LogAttributes['k'] = 'v'");
-      expect(sql).not.toContain('has(');
+      expect(sql).not.toContain('has(`LogAttributeItems`');
     });
 
     it('does not rewrite when value is empty (Map[k]= preserves missing-key semantics)', async () => {
@@ -1397,7 +1416,7 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain("LogAttributes['k'] = ''");
-      expect(sql).not.toContain('has(');
+      expect(sql).not.toContain('has(`LogAttributeItems`');
     });
 
     it('rewrites only the matching Map subscript in a compound AND condition', async () => {
@@ -2094,6 +2113,17 @@ describe('renderChartConfig', () => {
         dateRangeStartInclusive: false,
         dateRangeEndInclusive: false,
         expected: `(toDate(timestamp) >= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()})) AND toDate(timestamp) <= toDate(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()})))AND(timestamp > fromUnixTimestamp64Milli(${new Date('2025-02-12 03:53:38Z').getTime()}) AND timestamp < fromUnixTimestamp64Milli(${new Date('2025-02-12 04:08:38Z').getTime()}))`,
+      },
+      {
+        description:
+          'wraps includedDataInterval-expanded bound in toStartOf when PK has toStartOfHour(col) — prevents dropping rows whose hour is before the raw expanded start',
+        timestampValueExpression: 'timestamp, toStartOfHour(timestamp)',
+        dateRange: [
+          new Date('2025-02-12 04:00:00Z'),
+          new Date('2025-02-12 04:20:00Z'),
+        ],
+        includedDataInterval: '5 minute',
+        expected: `(timestamp >= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:00:00Z').getTime()}), INTERVAL 5 minute) - INTERVAL 5 minute AND timestamp <= toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:20:00Z').getTime()}), INTERVAL 5 minute) + INTERVAL 5 minute)AND(toStartOfHour(timestamp) >= toStartOfHour(toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:00:00Z').getTime()}), INTERVAL 5 minute) - INTERVAL 5 minute) AND toStartOfHour(timestamp) <= toStartOfHour(toStartOfInterval(fromUnixTimestamp64Milli(${new Date('2025-02-12 04:20:00Z').getTime()}), INTERVAL 5 minute) + INTERVAL 5 minute))`,
       },
     ];
 

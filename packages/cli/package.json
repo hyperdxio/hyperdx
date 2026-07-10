@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/cli",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -40,7 +40,7 @@
   },
   "devDependencies": {
     "@clickhouse/client": "1.23.0-head.fae5998.1",
-    "@hyperdx/common-utils": "^0.20.0",
+    "@hyperdx/common-utils": "^0.21.0",
     "@jest/globals": "^30.2.0",
     "@types/crypto-js": "^4.2.2",
     "@types/jest": "^29.5.14",
@@ -57,9 +57,9 @@
     "react": "^19.0.0",
     "react-devtools-core": "^7.0.1",
     "sqlstring": "^2.3.3",
-    "ts-jest": "^29.4.5",
+    "ts-jest": "^29.4.11",
     "tsup": "^8.4.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   }
 }
