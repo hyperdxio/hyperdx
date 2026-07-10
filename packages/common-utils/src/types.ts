@@ -35,10 +35,12 @@ export enum DisplayType {
   StackedBar = 'stacked_bar',
   Table = 'table',
   Pie = 'pie',
+  Bar = 'bar',
   Number = 'number',
   Search = 'search',
   Heatmap = 'heatmap',
   Markdown = 'markdown',
+  EventPatterns = 'event_patterns',
 }
 
 export type KeyValue<Key = string, Value = string> = { key: Key; value: Value };
@@ -640,6 +642,16 @@ export const AlertHistorySchema = z.object({
 
 export type AlertHistory = z.infer<typeof AlertHistorySchema>;
 
+// A single alert state transition within a time range, used to draw
+// firing/recovery annotations on dashboard charts. Only boundary crossings are
+// emitted: ALERT = fired, OK = recovered.
+export const AlertTransitionSchema = z.object({
+  createdAt: z.string(),
+  state: z.nativeEnum(AlertState),
+});
+
+export type AlertTransition = z.infer<typeof AlertTransitionSchema>;
+
 // --------------------------
 // FILTERS
 // --------------------------
@@ -661,6 +673,22 @@ export const FilterSchema = z.union([
 ]);
 
 export type Filter = z.infer<typeof FilterSchema>;
+
+// --------------------------
+// TAGS
+// --------------------------
+// Shared limits + validator for user-supplied tag arrays. Any write path that
+// accepts tags (external API, MCP tools, internal routers) should validate with
+// `tagsSchema` so the caps stay consistent in one place. Read/model schemas keep
+// a bare `z.array(z.string())` so parsing existing documents never fails on
+// legacy data that predates these caps.
+export const MAX_TAG_LENGTH = 32;
+export const MAX_TAGS = 50;
+
+export const tagsSchema = z
+  .array(z.string().max(MAX_TAG_LENGTH))
+  .max(MAX_TAGS)
+  .optional();
 
 // --------------------------
 // SAVED SEARCH
@@ -2091,6 +2119,14 @@ export const AlertApiResponseSchema = z.object({
 });
 
 export type AlertApiResponse = z.infer<typeof AlertApiResponseSchema>;
+
+export const AlertHistoryRangeApiResponseSchema = z.object({
+  data: z.array(AlertTransitionSchema),
+});
+
+export type AlertHistoryRangeApiResponse = z.infer<
+  typeof AlertHistoryRangeApiResponseSchema
+>;
 
 // Webhooks
 export const WebhooksApiResponseSchema = z.object({

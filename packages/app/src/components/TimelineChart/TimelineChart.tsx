@@ -403,7 +403,7 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
   );
 
   return (
-    <Flex mah={maxHeight} direction="column">
+    <Flex h={maxHeight} mah={maxHeight} direction="column">
       <Flex justify="end" mb="sm">
         <Text>
           <Kbd>⌘/Ctrl</Kbd> + <Kbd>scroll</Kbd> to zoom
@@ -431,8 +431,8 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
               className={styles.timelineCorner}
               style={{
                 width: labelWidth,
-                height: `${axisHeight}px`,
-                marginTop: `-${axisHeight}px`,
+                height: `${axisHeight + rowsMarginTop}px`,
+                marginTop: `-${axisHeight + rowsMarginTop}px`,
               }}
             />
 

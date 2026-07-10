@@ -2,6 +2,7 @@ import { ClickHouseError } from '@clickhouse/client-common';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  convertToCategoricalChartConfig,
   getFirstTimestampValueExpression,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -32,6 +33,8 @@ import {
 import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
+
+import { runEventPatterns } from './runEventPatterns';
 
 // ─── Source body expression helpers ──────────────────────────────────────────
 
@@ -404,6 +407,26 @@ export async function runConfigTile(
       };
     }
 
+    // Event-patterns tiles need the Drain pattern-mining pipeline, not the
+    // generic chart-config SQL renderer. Delegate to the same function the
+    // standalone clickstack_event_patterns tool uses.
+    if (builderConfig.displayType === DisplayType.EventPatterns) {
+      const selectStr =
+        typeof builderConfig.select === 'string' ? builderConfig.select : '';
+      return runEventPatterns(
+        teamId,
+        builderConfig.source,
+        startDate,
+        endDate,
+        {
+          where: builderConfig.where ?? '',
+          whereLanguage:
+            (builderConfig.whereLanguage as 'lucene' | 'sql') ?? 'lucene',
+          bodyExpression: selectStr || undefined,
+        },
+      );
+    }
+
     const source = await getSource(teamId, builderConfig.source);
     if (!source) {
       return mcpUserError(
@@ -523,10 +546,18 @@ export async function runConfigTile(
       dateRange: [startDate, endDate] as [Date, Date],
     } satisfies ChartConfigWithDateRange;
 
+    // Apply seriesLimit as LIMIT to categorical charts (pie/bar)
+    const isCategorical =
+      builderConfig.displayType === DisplayType.Pie ||
+      builderConfig.displayType === DisplayType.Bar;
+    const renderConfig = isCategorical
+      ? convertToCategoricalChartConfig(chartConfig)
+      : chartConfig;
+
     const metadata = getMetadata(clickhouseClient);
     try {
       const result = await clickhouseClient.queryChartConfig({
-        config: chartConfig,
+        config: renderConfig,
         metadata,
         querySettings: source.querySettings,
         opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },

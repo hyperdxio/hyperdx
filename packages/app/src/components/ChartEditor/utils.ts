@@ -62,12 +62,25 @@ export const isRawSqlDisplayType = (
   | DisplayType.Line
   | DisplayType.StackedBar
   | DisplayType.Pie
+  | DisplayType.Bar
   | DisplayType.Number =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
   displayType === DisplayType.Pie ||
+  displayType === DisplayType.Bar ||
   displayType === DisplayType.Number;
+
+/**
+ * Display types that store `select` as a plain string (column expression)
+ * rather than a structured `DerivedColumn[]` series array. These types
+ * don't use the builder series editor and skip series-level validation.
+ */
+export const isStringSelectDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is DisplayType.Search | DisplayType.EventPatterns =>
+  displayType === DisplayType.Search ||
+  displayType === DisplayType.EventPatterns;
 
 export const isPromqlDisplayType = (
   displayType: DisplayType | undefined,
@@ -76,11 +89,13 @@ export const isPromqlDisplayType = (
   | DisplayType.Line
   | DisplayType.StackedBar
   | DisplayType.Pie
+  | DisplayType.Bar
   | DisplayType.Number =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
   displayType === DisplayType.Pie ||
+  displayType === DisplayType.Bar ||
   displayType === DisplayType.Number;
 
 export function convertFormStateToSavedChartConfig(
@@ -145,13 +160,11 @@ export function convertFormStateToSavedChartConfig(
     // Merge the series and select fields back together, and prevent the series field from being submitted
     const config: BuilderSavedChartConfig = {
       ...omit(form, ['series', 'configType', 'sqlTemplate']),
-      // If the chart type is search, we need to ensure the select is a string
-      select:
-        form.displayType === DisplayType.Search
-          ? typeof form.select === 'string'
-            ? form.select
-            : ''
-          : form.series,
+      select: isStringSelectDisplayType(form.displayType)
+        ? typeof form.select === 'string'
+          ? form.select
+          : ''
+        : form.series,
       where: form.where ?? '',
       source: source.id,
     };
@@ -225,9 +238,10 @@ export function convertFormStateToChartConfig(
   }
 
   if (source) {
-    // Merge the series and select fields back together, and prevent the series field from being submitted
-    const mergedSelect =
-      form.displayType === DisplayType.Search ? form.select : form.series;
+    // Merge the series and select fields back together, and prevent the series field from being submitted.
+    const mergedSelect = isStringSelectDisplayType(form.displayType)
+      ? form.select
+      : form.series;
     const isSelectEmpty = !mergedSelect || mergedSelect.length === 0;
 
     const newConfig: ChartConfigWithDateRange = {
@@ -249,10 +263,20 @@ export function convertFormStateToChartConfig(
       sampleWeightExpression: getSampleWeightExpression(source),
       metricTables: isMetricSource(source) ? source.metricTables : undefined,
       where: form.where ?? '',
+      // When select is empty, the fallback differs by display type:
+      //   - EventPatterns: keep '' — the pattern-mining code resolves the
+      //     body expression from the source at render time. Using
+      //     defaultTableSelectExpression here would inject multi-column
+      //     search-table columns (e.g. SeverityText) that don't belong in
+      //     a single-expression pattern field.
+      //   - Search: fall back to defaultTableSelectExpression — the
+      //     multi-column list is exactly what the search results table needs.
       select: isSelectEmpty
-        ? ((isLogSource(source) || isTraceSource(source)) &&
-            source.defaultTableSelectExpression) ||
-          ''
+        ? form.displayType === DisplayType.EventPatterns
+          ? ''
+          : ((isLogSource(source) || isTraceSource(source)) &&
+              source.defaultTableSelectExpression) ||
+            ''
         : mergedSelect,
     };
 
@@ -310,13 +334,15 @@ export const validateChartForm = (
     errors.push({ path: `source`, message: 'Source is required' });
   }
 
-  // Validate that valueExpressions are specified for each series
+  // Validate that valueExpressions are specified for each series.
+  // String-select display types (Search, EventPatterns) don't use the
+  // series array, so skip them.
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
     source?.kind !== SourceKind.Metric &&
     form.displayType !== DisplayType.Markdown &&
-    form.displayType !== DisplayType.Search
+    !isStringSelectDisplayType(form.displayType)
   ) {
     form.series.forEach((s, index) => {
       if (s.aggFn && s.aggFn !== 'count' && !s.valueExpression) {
@@ -381,11 +407,12 @@ export const validateChartForm = (
     }
   }
 
-  // Validate pie and heatmap charts only have one series
+  // Validate pie, bar, and heatmap charts only have one series
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
     (form.displayType === DisplayType.Pie ||
+      form.displayType === DisplayType.Bar ||
       form.displayType === DisplayType.Heatmap) &&
     form.series.length > 1
   ) {

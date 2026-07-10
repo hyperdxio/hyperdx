@@ -20,8 +20,8 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 import {
+  convertToCategoricalChartConfig,
   convertToNumberChartConfig,
-  convertToPieChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
 } from '@/ChartUtils';
@@ -97,10 +97,14 @@ export function displayTypeToActiveTab(displayType: DisplayType): string {
       return 'table';
     case DisplayType.Pie:
       return 'pie';
+    case DisplayType.Bar:
+      return 'bar';
     case DisplayType.Number:
       return 'number';
     case DisplayType.Heatmap:
       return 'heatmap';
+    case DisplayType.EventPatterns:
+      return 'event_patterns';
     default:
       return 'time';
   }
@@ -111,6 +115,7 @@ export const TABS_WITH_GENERATED_SQL = new Set([
   'time',
   'number',
   'pie',
+  'bar',
   'heatmap',
 ]);
 
@@ -244,8 +249,8 @@ export function buildChartConfigForExplanations({
     return convertToNumberChartConfig(builderConfig);
   } else if (activeTab === 'table') {
     return convertToTableChartConfig(builderConfig);
-  } else if (activeTab === 'pie') {
-    return convertToPieChartConfig(builderConfig);
+  } else if (activeTab === 'pie' || activeTab === 'bar') {
+    return convertToCategoricalChartConfig(builderConfig);
   } else if (activeTab === 'heatmap') {
     return config;
   }

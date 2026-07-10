@@ -270,6 +270,38 @@ describe('MCP Saved Search Tools', () => {
         expect(output.orderBy).toBe('Timestamp DESC');
       });
 
+      it('should accept tags at the shared caps (50 tags, 32 chars)', async () => {
+        const result = await callTool(client, 'clickstack_save_saved_search', {
+          name: 'Max Tags',
+          sourceId: traceSource._id.toString(),
+          tags: Array.from({ length: 50 }, (_, i) => `t${i}`.padEnd(32, 'x')),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output.tags).toHaveLength(50);
+      });
+
+      it('should reject more than 50 tags (shared cap)', async () => {
+        const result = await callTool(client, 'clickstack_save_saved_search', {
+          name: 'Too Many Tags',
+          sourceId: traceSource._id.toString(),
+          tags: Array.from({ length: 51 }, (_, i) => `tag-${i}`),
+        });
+
+        expect(result.isError).toBe(true);
+      });
+
+      it('should reject a tag longer than 32 characters (shared cap)', async () => {
+        const result = await callTool(client, 'clickstack_save_saved_search', {
+          name: 'Long Tag',
+          sourceId: traceSource._id.toString(),
+          tags: ['x'.repeat(33)],
+        });
+
+        expect(result.isError).toBe(true);
+      });
+
       it('should create a saved search with filters', async () => {
         const result = await callTool(client, 'clickstack_save_saved_search', {
           name: 'Filtered Search',
