@@ -8625,8 +8625,8 @@ describe('checkAlerts', () => {
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
 
       const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
-      expect(JSON.stringify(calls[0][1])).toContain('Triggering');
-      expect(JSON.stringify(calls[1][1])).toContain('Alert resolved');
+      expect(JSON.stringify(calls[0][1])).toContain('Alert for');
+      expect(JSON.stringify(calls[1][1])).toContain('The alert has been resolved');
     });
 
     describe('multi-window alerting (numConsecutiveWindows)', () => {
