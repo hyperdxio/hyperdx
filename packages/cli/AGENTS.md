@@ -17,6 +17,10 @@ hdx tui -s <url>                    # Interactive TUI (main command)
 hdx stream -s <url> --source "Logs" # Non-interactive streaming to stdout
 hdx sources -s <url>                # List available sources
 hdx connections                     # List ClickHouse connections (id, name, host)
+hdx dashboards                      # List dashboards with tile summaries
+hdx chart -d <dashboard> [-t tile]  # Render dashboard tiles as ANSI charts
+hdx chart -s <source> [--agg ...]   # Ad-hoc chart over a source (builder mode)
+hdx chart --sql <query> -s <source> # Ad-hoc chart from raw SQL
 hdx auth login -s <url>             # Sign in (interactive or -e/-p flags)
 hdx auth status                     # Show auth status (reads saved session)
 hdx auth logout                     # Clear saved session
@@ -48,12 +52,25 @@ src/
 │                        #   buildFullRowSql (SELECT * for row detail)
 ├── components/
 │   ├── AlertsPage.tsx   # Alerts overview page — list + detail with recent history (Shift+A)
+│   ├── DashboardPage.tsx # Dashboards page — picker + tile chart view (d)
+│   ├── Tile/            # Dashboard tile charting (mirror of web Tile component)
+│   │   ├── TileChart.tsx  # Ink wrapper: query + render per displayType
+│   │   └── useTileData.ts # React hook around shared/tileQuery fetchTileData
 │   ├── EventViewer.tsx  # Main TUI view — table, search, detail panel with tabs
 │   ├── TraceWaterfall.tsx # Trace waterfall chart with j/k navigation + event details
 │   ├── RowOverview.tsx  # Structured overview (top-level attrs, event attrs, resource attrs)
 │   ├── ColumnValues.tsx # Shared key-value renderer (used by Column Values tab + Event Details)
 │   ├── LoginForm.tsx    # Email/password login form (used inside TUI App)
 │   └── SourcePicker.tsx # Arrow-key source selector
+├── shared/
+│   ├── tileConfig.ts    # Tile → queryable chart config resolution + per-displayType
+│   │                    #   transforms (ports of web DBDashboardPage / ChartUtils)
+│   ├── tileQuery.ts     # fetchTileData — executes via queryChartConfig (renderChartConfig)
+│   ├── tileRender.ts    # displayType → ANSI string dispatch (mirror of renderChartContent)
+│   ├── chartData.ts     # Response shaping (formatResponseForTimeChart etc. ports)
+│   ├── ansiChart.ts     # Pure ANSI renderers: line (asciichart), stacked bar, table,
+│   │                    #   categorical bars (bar/pie), number, markdown
+│   └── formatNumber.ts  # numbro-based formatNumber + number-format resolution ports
 └── utils/
     ├── config.ts        # Session persistence (~/.config/hyperdx/cli/session.json)
     ├── editor.ts        # $EDITOR integration for time range and select clause editing
@@ -112,6 +129,43 @@ Port of the web frontend's `DBRowOverviewPanel`. Three sections:
    `source.resourceAttributesExpression`, rendered as chips with
    `backgroundColor="#3a3a3a"` and cyan key / white value
 
+### DashboardPage + Tile charting (`components/DashboardPage.tsx`, `components/Tile/`)
+
+Dashboard tiles are queried and rendered with the **same SQL pipeline as the
+web dashboard**:
+
+1. `shared/tileConfig.ts` resolves a tile's `SavedChartConfig` against its
+   source (port of the web Tile's `queriedConfig` effect in
+   `DBDashboardPage.tsx`) and applies the per-displayType config transform
+   (`convertToTimeChartConfig` / `convertToNumberChartConfig` /
+   `convertToTableChartConfig` / `convertToCategoricalChartConfig`).
+2. `shared/tileQuery.ts` executes it via
+   `clickhouseClient.queryChartConfig()` from common-utils — internally
+   `setChartSelectsAlias → splitChartConfigs → renderChartConfig`, identical
+   to the web's `useQueriedChartConfig` core (minus chunking / MV
+   optimization / PromQL).
+3. `shared/chartData.ts` shapes the response (ports of
+   `formatResponseForTimeChart`, `formatResponseForCategoricalChart`, etc.).
+4. `shared/ansiChart.ts` renders pure ANSI strings, consumed by both the Ink
+   `TileChart` component and the non-interactive `hdx chart` command.
+
+Supported display types: line, stacked_bar, number, table, bar, pie,
+markdown. Heatmap / search / event patterns / PromQL show a placeholder.
+Time-series charts stretch to the full terminal width via linear resampling
+(line) or nearest-neighbor column mapping (stacked bar); auto granularity is
+capped at 80 buckets like the web (`maxTimeBuckets`).
+
+The `hdx chart` command (designed for agent-driven troubleshooting) reuses
+this same pipeline in three modes: dashboard tiles (`-d`), ad-hoc builder
+charts (`-s <source>` + `--agg/--value/--where/--group-by/--series`, built
+by `shared/adhocChart.ts`), and ad-hoc raw SQL (`--sql` with
+`$__timeFilter` / `$__timeInterval` macros). ANSI colors are stripped
+automatically when stdout is not a TTY (`--color auto|always|never`), and
+`--json` emits raw rows + column metadata.
+
+Do NOT change resolution/shaping rules without checking the web components
+first (see the alignment table below).
+
 ### ColumnValues (`components/ColumnValues.tsx`)
 
 Shared component for rendering key-value pairs from a row data object. Used by:
@@ -127,13 +181,17 @@ This package mirrors several web frontend components. **Always check the
 corresponding web component before making changes** to ensure behavior stays
 consistent:
 
-| CLI Component    | Web Component           | Notes                            |
-| ---------------- | ----------------------- | -------------------------------- |
-| `TraceWaterfall` | `DBTraceWaterfallChart` | Tree builder is a direct port    |
-| `RowOverview`    | `DBRowOverviewPanel`    | Same sections and field list     |
-| Trace tab logic  | `DBTracePanel`          | Source resolution (trace/log)    |
-| Detail panel     | `DBRowSidePanel`        | Tab structure, highlight hint    |
-| Event query      | `DBTraceWaterfallChart` | `getConfig()` → `buildTrace*Sql` |
+| CLI Component          | Web Component                     | Notes                              |
+| ---------------------- | --------------------------------- | ---------------------------------- |
+| `TraceWaterfall`       | `DBTraceWaterfallChart`           | Tree builder is a direct port      |
+| `RowOverview`          | `DBRowOverviewPanel`              | Same sections and field list       |
+| Trace tab logic        | `DBTracePanel`                    | Source resolution (trace/log)      |
+| Detail panel           | `DBRowSidePanel`                  | Tab structure, highlight hint      |
+| Event query            | `DBTraceWaterfallChart`           | `getConfig()` → `buildTrace*Sql`   |
+| `shared/tileConfig`    | `DBDashboardPage` + `ChartUtils`  | Tile config resolution/transforms  |
+| `shared/tileRender`    | `DBDashboardPage`                 | `renderChartContent` dispatch      |
+| `shared/chartData`     | `ChartUtils`                      | Response shaping ports             |
+| `shared/formatNumber`  | `utils.ts` + `source.ts`          | formatNumber + format resolution   |
 
 Key expression mappings from the web frontend's `getConfig()`:
 
@@ -163,11 +221,17 @@ Key expression mappings from the web frontend's `getConfig()`:
 | `o`           | Open trace in browser (detail panel)       |
 | `w`           | Toggle line wrap                           |
 | `A` (Shift+A) | Open alerts page                           |
+| `d`           | Open dashboards page                       |
 | `?`           | Toggle help screen                         |
 | `q`           | Quit                                       |
 
 In the **Trace tab**, `j`/`k` navigate spans/logs in the waterfall instead of
 the main table.
+
+In the **Dashboards page**: `j`/`k` select a tile, `Enter`/`l` opens the tile
+fullscreen, `t` edits the time range in `$EDITOR`, `r` refetches all tiles,
+`Esc`/`h` goes back (fullscreen → tile list → dashboard picker → previous
+screen).
 
 ## Development
 

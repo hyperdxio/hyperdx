@@ -7,7 +7,7 @@
  *    with session cookies and connection-id header injection
  */
 
-import { createClient } from '@clickhouse/client';
+import { ClickHouseLogLevel, createClient } from '@clickhouse/client';
 import type {
   BaseResultSet,
   ClickHouseClient as NodeClickHouseClient,
@@ -28,6 +28,8 @@ import {
 import { loadSession, saveSession, clearSession } from '@/utils/config';
 import {
   AlertThresholdType,
+  MetricTable,
+  Tile,
   UseTextIndex,
 } from '@hyperdx/common-utils/dist/types';
 
@@ -340,6 +342,12 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
       application: 'hyperdx-tui',
       http_headers: baseHeaders,
       keep_alive: { enabled: false },
+      // Silence the client's internal logger. Its DefaultLogger writes
+      // via console.error at WARN level, and Ink's patchConsole re-routes
+      // console output into the TUI — so aborted in-flight queries
+      // (normal when tiles unmount or a time range changes) would spew
+      // stack traces over the UI despite silenceLogs.
+      log: { level: ClickHouseLogLevel.OFF },
     });
   }
 
@@ -462,6 +470,11 @@ export interface SourceResponse {
   statusMessageExpression?: string;
   eventAttributesExpression?: string;
   resourceAttributesExpression?: string;
+  /** Trace sampling weight expression (used as chart sampleWeightExpression) */
+  sampleRateExpression?: string;
+
+  // Metric-specific: metric kind -> table name (gauge/sum/histogram/...)
+  metricTables?: MetricTable;
 
   // Correlated source IDs
   logSourceId?: string;
@@ -490,24 +503,13 @@ export interface SavedSearchResponse {
   orderBy?: string;
 }
 
-interface DashboardTileConfig {
-  name?: string;
-  source?: string;
-  type?: string;
-  displayType?: string;
-  sql?: string;
-  [key: string]: unknown;
-}
-
-interface DashboardTile {
-  id: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  config: DashboardTileConfig;
-  containerId?: string;
-}
+/**
+ * A dashboard tile as returned by the internal API. `config` is the full
+ * SavedChartConfig union (builder / raw SQL / PromQL) from common-utils.
+ * Stored documents may carry legacy extra fields, hence the index signature
+ * escape hatch on top of the typed shape.
+ */
+type DashboardTile = Tile;
 
 interface DashboardFilter {
   key: string;
@@ -516,7 +518,7 @@ interface DashboardFilter {
   sourceId?: string;
 }
 
-interface DashboardResponse {
+export interface DashboardResponse {
   id: string;
   _id: string;
   name: string;

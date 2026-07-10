@@ -9,5 +9,8 @@ npx lint-staged
 # workflow so unused files/deps/exports are caught before push, not in CI.
 # --no-config-hints matches CI (which never counts hints) and drops the
 # cosmetic ".claude/** redundant ignore" false positive.
+# --exclude nsExports,nsTypes matches CI too: the workflow only counts
+# files/deps/unlisted/unresolved/binaries/exports/types, so namespace-only
+# findings must not fail local commits when CI would pass.
 echo "Running knip..."
-npx knip --no-config-hints
+npx knip --no-config-hints --exclude nsExports,nsTypes
