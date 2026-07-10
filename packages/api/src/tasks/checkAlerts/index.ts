@@ -990,6 +990,10 @@ export const processAlert = async (
 
     // Track state per group (or one history if no groupBy)
     const histories = new Map<string, IAlertHistory>();
+    const latestAlertContext = new Map<
+      string,
+      { value: number; attributes: Record<string, string>; startTime: Date }
+    >();
 
     // Helper to get or create history for a group
     const getOrCreateHistory = (groupKey: string): IAlertHistory => {
@@ -1255,6 +1259,13 @@ export const processAlert = async (
       }
 
       // We have at least one data point for this bucket
+
+      // Track the worst-case state for each group in this bucket to prevent
+      // a subsequent OK row in the SAME bucket from overwriting an ALERT row.
+      const bucketEvaluations = new Map<
+        string,
+        { value: number; attributes: Record<string, string>; exceeds: boolean }
+      >();
       for (const checkData of dataForBucket) {
         const { value, extraFields } = parseAlertData(checkData, meta);
 
@@ -1268,19 +1279,27 @@ export const processAlert = async (
           ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
           : '';
         const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
+
+        const exceeds = doesExceedThreshold(alert, value);
+
+        const existing = bucketEvaluations.get(groupKey);
+        if (!existing || !existing.exceeds || exceeds) {
+          bucketEvaluations.set(groupKey, { value, attributes, exceeds });
+        }
+      }
+
+      for (const [groupKey, evaluation] of bucketEvaluations.entries()) {
         const history = getOrCreateHistory(groupKey);
 
-        if (doesExceedThreshold(alert, value)) {
+        if (evaluation.exceeds) {
           history.counts += 1;
           if (shouldFireBasedOnConsecutiveWindows(groupKey)) {
             history.state = AlertState.ALERT;
             history.fired = true;
-            await trySendNotification({
-              state: AlertState.ALERT,
-              group: groupKey,
-              totalCount: value,
+            latestAlertContext.set(groupKey, {
+              value: evaluation.value,
+              attributes: evaluation.attributes,
               startTime: bucketStart,
-              attributes,
             });
           } else {
             history.state = AlertState.PENDING;
@@ -1296,7 +1315,10 @@ export const processAlert = async (
           history.state = AlertState.OK;
           history.counts = 0;
         }
-        history.lastValues.push({ count: value, startTime: bucketStart });
+        history.lastValues.push({
+          count: evaluation.value,
+          startTime: bucketStart,
+        });
       }
     }
 
@@ -1332,10 +1354,28 @@ export const processAlert = async (
       getOrCreateHistory('');
     }
 
-    // Check for auto-resolve: for each group, check if it transitioned from ALERT to OK
+    // Check for state transitions and send notifications
     for (const [groupKey, history] of histories.entries()) {
       const previousKey = computeHistoryMapKey(alert.id, groupKey);
       const groupPrevious = previousMap.get(previousKey);
+
+      // If it transitioned to ALERT in this run, fire the notification
+      if (
+        history.state === AlertState.ALERT &&
+        groupPrevious?.state !== AlertState.ALERT
+      ) {
+        const context = latestAlertContext.get(groupKey);
+        if (context) {
+          await trySendNotification({
+            state: AlertState.ALERT,
+            group: groupKey,
+            totalCount: context.value,
+            startTime: context.startTime,
+            attributes: context.attributes,
+          });
+        }
+      }
+
       await sendNotificationIfResolved(groupPrevious, history, groupKey);
     }
 
