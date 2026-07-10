@@ -173,12 +173,20 @@ const AlertForm = ({
     <form
       onSubmit={handleSubmit(data =>
         onSubmit(
-          normalizeNoOpAlertScheduleFields(data, defaultValues, {
-            preserveExplicitScheduleOffsetMinutes:
-              dirtyFields.scheduleOffsetMinutes === true,
-            preserveExplicitScheduleStartAt:
-              dirtyFields.scheduleStartAt === true,
-          }),
+          normalizeNoOpAlertScheduleFields(
+            // `id` is not a registered form field, so carry it from the alert
+            // this form was opened with. This binds the submission to the
+            // originally-edited alert rather than whatever the parent's alerts
+            // list happens to index at submit time.
+            { ...data, id: defaultValues?.id },
+            defaultValues,
+            {
+              preserveExplicitScheduleOffsetMinutes:
+                dirtyFields.scheduleOffsetMinutes === true,
+              preserveExplicitScheduleStartAt:
+                dirtyFields.scheduleStartAt === true,
+            },
+          ),
         ),
       )}
     >
@@ -487,19 +495,19 @@ export const DBSearchPageAlertModal = ({
             source: AlertSource.SAVED_SEARCH,
             savedSearchId: id,
           });
-        } else {
-          // Update existing alert. `id` is not a registered form field, so
-          // resolve it from the active tab rather than the form payload.
-          const existingAlert = savedSearch?.alerts?.[parseInt(activeIndex)];
-          if (!existingAlert?.id) {
-            return;
-          }
+        } else if (data.id) {
+          // Update existing alert. `data.id` is the id of the alert the form
+          // was opened with (carried through by AlertForm), not a live
+          // re-index of the alerts list, so edits always target the intended
+          // alert even if the list changes while the modal is open.
           await updateAlert.mutateAsync({
             ...data,
-            id: existingAlert.id,
+            id: data.id,
             source: AlertSource.SAVED_SEARCH,
             savedSearchId: id,
           });
+        } else {
+          return;
         }
         notifications.show({
           color: 'green',
