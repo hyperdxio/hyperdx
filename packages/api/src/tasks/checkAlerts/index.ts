@@ -1357,13 +1357,13 @@ export const processAlert = async (
     // Check for state transitions and send notifications
     for (const [groupKey, history] of histories.entries()) {
       const previousKey = computeHistoryMapKey(alert.id, groupKey);
-      const groupPrevious = previousMap.get(previousKey);
+      let groupPrevious = previousMap.get(previousKey);
 
-      // If it transitioned to ALERT in this run, fire the notification
-      if (
-        history.state === AlertState.ALERT &&
-        groupPrevious?.state !== AlertState.ALERT
-      ) {
+      const hitAlertThisRun = latestAlertContext.has(groupKey);
+      const wasAlertingBefore = groupPrevious?.state === AlertState.ALERT;
+
+      // If it hit ALERT during this run, and it wasn't already alerting before this run started
+      if (hitAlertThisRun && !wasAlertingBefore) {
         const context = latestAlertContext.get(groupKey);
         if (context) {
           await trySendNotification({
@@ -1373,6 +1373,14 @@ export const processAlert = async (
             startTime: context.startTime,
             attributes: context.attributes,
           });
+
+          // Inject a mock previous history so the resolve check below catches it
+          // if the final state for this group is OK (i.e. it breached then resolved).
+          groupPrevious = {
+            ...(groupPrevious || {}),
+            state: AlertState.ALERT,
+            fired: true,
+          } as AggregatedAlertHistory;
         }
       }
 
