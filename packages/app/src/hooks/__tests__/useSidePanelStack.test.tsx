@@ -275,6 +275,72 @@ describe('useSidePanelStack', () => {
     expect(setterFor('sidePanelSourceStack')).not.toHaveBeenCalled();
   });
 
+  it('two sequential pops collapse nav then source across re-renders (double Back)', () => {
+    // A trail with both a same-source drilldown and a cross-source frame.
+    seedParam('sidePanelSourceStack', [{ ...FRAME, originTab: Tab.Overview }]);
+    seedParam('sidePanelNavStack', [
+      { rowId: 'ctx', aliasWith: [], label: 'Ctx', originTab: Tab.Context },
+    ]);
+    seedParam('sidePanelStackRoot', 'root-1');
+    const { result, rerender } = renderHook(() =>
+      useSidePanelStack({ initialRowId: 'root-1' }),
+    );
+
+    // First Back pops the nav leaf and restores the tab it was entered from.
+    let firstPop: string | undefined;
+    act(() => {
+      firstPop = result.current.popOne();
+    });
+    expect(firstPop).toBe('nav');
+    expect(setterFor('sidePanelNavStack')).toHaveBeenLastCalledWith([]);
+    expect(setterFor('sidePanelTab')).toHaveBeenLastCalledWith(Tab.Context);
+    // The cross-source frame is untouched while a nav entry remained.
+    expect(setterFor('sidePanelSourceStack')).not.toHaveBeenCalled();
+
+    // Simulate the URL settling after the first pop (nav now empty) and the
+    // component re-rendering before the user's second Back. popOne reads the
+    // effective stacks from a closure, so the second pop must see this update.
+    seedParam('sidePanelNavStack', []);
+    rerender();
+
+    // Second Back now pops the source frame and restores its origin tab.
+    let secondPop: string | undefined;
+    act(() => {
+      secondPop = result.current.popOne();
+    });
+    expect(secondPop).toBe('source');
+    expect(setterFor('sidePanelSourceStack')).toHaveBeenLastCalledWith([]);
+    expect(setterFor('sidePanelTab')).toHaveBeenLastCalledWith(Tab.Overview);
+  });
+
+  it('invoking popOne twice within one act is safe (no re-render between pops)', () => {
+    // Guards the rapid double-fire path (e.g. two Esc/Back before React commits
+    // the first update). Without a re-render the memoized popOne still closes
+    // over the pre-pop trail, so both calls target the same (nav) level rather
+    // than corrupting state or throwing. The realistic two-level collapse is
+    // covered by the cross-render test above.
+    seedParam('sidePanelSourceStack', [{ ...FRAME, originTab: Tab.Overview }]);
+    seedParam('sidePanelNavStack', [
+      { rowId: 'ctx', aliasWith: [], label: 'Ctx', originTab: Tab.Context },
+    ]);
+    seedParam('sidePanelStackRoot', 'root-1');
+    const { result } = renderHook(() =>
+      useSidePanelStack({ initialRowId: 'root-1' }),
+    );
+
+    const popped: Array<'nav' | 'source' | 'none'> = [];
+    act(() => {
+      popped.push(result.current.popOne());
+      popped.push(result.current.popOne());
+    });
+
+    expect(popped).toEqual(['nav', 'nav']);
+    // The nav pop ran (idempotently), and the source frame was never dropped by
+    // the stale second call.
+    expect(setterFor('sidePanelNavStack')).toHaveBeenLastCalledWith([]);
+    expect(setterFor('sidePanelSourceStack')).not.toHaveBeenCalled();
+  });
+
   it('truncateTo slices both stacks and restores the dropped level tab', () => {
     seedParam('sidePanelSourceStack', [
       { ...FRAME, rowId: 'a', originTab: Tab.Overview },
