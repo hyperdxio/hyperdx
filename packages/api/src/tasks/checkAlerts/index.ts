@@ -1290,7 +1290,11 @@ export const processAlert = async (
                 ?.fired === true;
           }
         } else {
-          // TODO: if the alert was previously alerting (different bucket), should we set state to OK (plus auto-resolve)?
+          // If the threshold is not met, reset the state to OK.
+          // This ensures that if a previous window in this evaluation triggered an ALERT,
+          // a subsequent OK window correctly resolves it before the notification phase.
+          history.state = AlertState.OK;
+          history.counts = 0;
         }
         history.lastValues.push({ count: value, startTime: bucketStart });
       }

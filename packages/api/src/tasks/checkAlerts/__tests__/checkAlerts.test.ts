@@ -5854,8 +5854,9 @@ describe('checkAlerts', () => {
       ).toBe(true);
     });
 
-    // TODO: revisit this once the auto-resolve feature is implemented
-    it('should check 3 time buckets [1 error, 3 errors, 1 error] with threshold 2 and maintain ALERT state with 3 lastValues entries', async () => {
+    // The auto-resolve logic ensures that if a subsequent bucket within the same tick drops below the threshold,
+    // the alert state resets to OK, even though an alert notification might have already fired for the earlier bucket.
+    it('should check 3 time buckets [1 error, 3 errors, 1 error] with threshold 2 and auto-resolve to OK state with 3 lastValues entries', async () => {
       const {
         team,
         webhook,
@@ -5950,9 +5951,9 @@ describe('checkAlerts', () => {
         teamWebhooksById,
       );
 
-      // Alert should be in ALERT state because one of the buckets exceeded threshold
+      // Alert should be in OK state because the final bucket (bucket 3) dropped below the threshold and auto-resolved.
       const updatedAlert = await Alert.findById(details.alert.id);
-      expect(updatedAlert!.state).toBe('ALERT');
+      expect(updatedAlert!.state).toBe('OK');
 
       // Check alert history
       const alertHistories = await AlertHistory.find({
@@ -5964,7 +5965,7 @@ describe('checkAlerts', () => {
 
       // Get the new alert history (not the previous one we created)
       const history = alertHistories[1];
-      expect(history.state).toBe('ALERT');
+      expect(history.state).toBe('OK');
 
       // Should have 3 entries in lastValues (one for each time bucket checked)
       // Even though ClickHouse only returns rows with data, the system should populate all 3 buckets
