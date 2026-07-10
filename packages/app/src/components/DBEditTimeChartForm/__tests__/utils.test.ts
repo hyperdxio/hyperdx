@@ -216,6 +216,7 @@ describe('displayTypeToActiveTab', () => {
     [DisplayType.Markdown, 'markdown'],
     [DisplayType.Table, 'table'],
     [DisplayType.Pie, 'pie'],
+    [DisplayType.Bar, 'bar'],
     [DisplayType.Number, 'number'],
     [DisplayType.Line, 'time'],
   ])('maps %s to %s', (displayType, expected) => {
@@ -228,11 +229,12 @@ describe('displayTypeToActiveTab', () => {
 // ---------------------------------------------------------------------------
 
 describe('TABS_WITH_GENERATED_SQL', () => {
-  it('includes table, time, number, pie, heatmap', () => {
+  it('includes table, time, number, pie, bar, heatmap', () => {
     expect(TABS_WITH_GENERATED_SQL.has('table')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('time')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('number')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('pie')).toBe(true);
+    expect(TABS_WITH_GENERATED_SQL.has('bar')).toBe(true);
     expect(TABS_WITH_GENERATED_SQL.has('heatmap')).toBe(true);
   });
 
@@ -443,7 +445,7 @@ describe('buildChartConfigForExplanations', () => {
     expect(result!.seriesLimit).toBeUndefined();
   });
 
-  it.each(['table', 'number', 'pie'] as const)(
+  it.each(['table', 'number', 'pie', 'bar'] as const)(
     'uses queriedConfig for activeTab=%s and applies tab transform',
     activeTab => {
       const result = buildChartConfigForExplanations({

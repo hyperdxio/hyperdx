@@ -46,8 +46,9 @@ function normalizeChartConfig<
     // Order By and Having can only be set by the user for table charts
     having:
       config.displayType === DisplayType.Table ? config.having : undefined,
-    orderBy:
-      config.displayType === DisplayType.Table ? config.orderBy : undefined,
+    orderBy: isCustomOrderByDisplayType(config.displayType)
+      ? config.orderBy
+      : undefined,
     onClick:
       config.onClick && config.displayType === DisplayType.Table
         ? config.onClick
@@ -62,11 +63,13 @@ export const isRawSqlDisplayType = (
   | DisplayType.Line
   | DisplayType.StackedBar
   | DisplayType.Pie
+  | DisplayType.Bar
   | DisplayType.Number =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
   displayType === DisplayType.Pie ||
+  displayType === DisplayType.Bar ||
   displayType === DisplayType.Number;
 
 /**
@@ -87,12 +90,21 @@ export const isPromqlDisplayType = (
   | DisplayType.Line
   | DisplayType.StackedBar
   | DisplayType.Pie
+  | DisplayType.Bar
   | DisplayType.Number =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
   displayType === DisplayType.Pie ||
+  displayType === DisplayType.Bar ||
   displayType === DisplayType.Number;
+
+const isCustomOrderByDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is DisplayType.Table | DisplayType.Bar | DisplayType.Pie =>
+  displayType === DisplayType.Table ||
+  displayType === DisplayType.Bar ||
+  displayType === DisplayType.Pie;
 
 export function convertFormStateToSavedChartConfig(
   form: ChartEditorFormState,
@@ -403,11 +415,12 @@ export const validateChartForm = (
     }
   }
 
-  // Validate pie and heatmap charts only have one series
+  // Validate pie, bar, and heatmap charts only have one series
   if (
     !isRawSqlChart &&
     Array.isArray(form.series) &&
     (form.displayType === DisplayType.Pie ||
+      form.displayType === DisplayType.Bar ||
       form.displayType === DisplayType.Heatmap) &&
     form.series.length > 1
   ) {

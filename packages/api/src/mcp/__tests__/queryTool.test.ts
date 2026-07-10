@@ -272,6 +272,20 @@ describe('MCP Query Tools', () => {
       expect(result.content).toHaveLength(1);
     });
 
+    it('should execute a bar query', async () => {
+      const result = await callTool(client, 'clickstack_table', {
+        sourceId: traceSource._id.toString(),
+        select: [{ aggFn: 'count' }],
+        shape: 'bar',
+        groupBy: 'SpanName',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
     it('should auto-upgrade shape:"number" to "table" when select has multiple items', async () => {
       // This should NOT error — it should silently upgrade to table
       const result = await callTool(client, 'clickstack_table', {
@@ -297,6 +311,23 @@ describe('MCP Query Tools', () => {
           { aggFn: 'sum', valueExpression: 'Duration' },
         ],
         shape: 'pie',
+        groupBy: 'SpanName',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toHaveLength(1);
+    });
+
+    it('should auto-upgrade shape:"bar" to "table" when select has multiple items', async () => {
+      const result = await callTool(client, 'clickstack_table', {
+        sourceId: traceSource._id.toString(),
+        select: [
+          { aggFn: 'count' },
+          { aggFn: 'sum', valueExpression: 'Duration' },
+        ],
+        shape: 'bar',
         groupBy: 'SpanName',
         startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
         endTime: new Date().toISOString(),

@@ -33,6 +33,7 @@ import { useDisclosure, usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconBracketsContain,
+  IconChartBar,
   IconChartLine,
   IconChartPie,
   IconGrid3x3,
@@ -705,7 +706,7 @@ export default function EditTimeChartForm({
                   value={DisplayType.Line}
                   leftSection={<IconChartLine size={16} />}
                 >
-                  Line/Bar
+                  Time Series
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Table}
@@ -718,6 +719,12 @@ export default function EditTimeChartForm({
                   leftSection={<IconNumbers size={16} />}
                 >
                   Number
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.Bar}
+                  leftSection={<IconChartBar size={16} />}
+                >
+                  Bar
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Pie}
