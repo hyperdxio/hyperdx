@@ -1235,10 +1235,9 @@ export const processAlert = async (
           if (shouldFireBasedOnConsecutiveWindows()) {
             history.state = AlertState.ALERT;
             history.fired = true;
-            await trySendNotification({
-              state: AlertState.ALERT,
-              group: '',
-              totalCount: 0,
+            latestAlertContext.set('', {
+              value: 0,
+              attributes: {},
               startTime: bucketStart,
             });
           } else {
