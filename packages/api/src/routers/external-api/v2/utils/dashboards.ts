@@ -350,6 +350,7 @@ const convertToExternalTileChartConfig = (
           ? [convertToExternalSelectItem(config.select[0])]
           : [DEFAULT_SELECT_ITEM],
         groupBy: stringValueOrDefault(config.groupBy, undefined),
+        orderBy: stringValueOrDefault(config.orderBy, undefined),
         numberFormat: config.numberFormat,
         limit: config.seriesLimit ?? undefined,
       };
@@ -361,6 +362,7 @@ const convertToExternalTileChartConfig = (
           ? [convertToExternalSelectItem(config.select[0])]
           : [DEFAULT_SELECT_ITEM],
         groupBy: stringValueOrDefault(config.groupBy, undefined),
+        orderBy: stringValueOrDefault(config.orderBy, undefined),
         numberFormat: config.numberFormat,
         limit: config.seriesLimit ?? undefined,
       };
@@ -744,7 +746,7 @@ export function convertToInternalTileConfig(
       case 'pie':
       case 'bar':
         internalConfig = {
-          ...pick(externalConfig, ['groupBy', 'numberFormat']),
+          ...pick(externalConfig, ['groupBy', 'numberFormat', 'orderBy']),
           displayType:
             externalConfig.displayType === 'bar'
               ? DisplayType.Bar

@@ -111,11 +111,19 @@ export function useCategoricalChart({
   >(() => {
     if (!data) return [[], null];
     try {
-      return [formatResponseForCategoricalChart(data, getColorProps), null];
+      const hasOrderBy =
+        isBuilderChartConfig(queriedConfig) &&
+        typeof queriedConfig.orderBy === 'string' &&
+        !!queriedConfig.orderBy?.trim();
+
+      return [
+        formatResponseForCategoricalChart(data, getColorProps, !hasOrderBy),
+        null,
+      ];
     } catch (error) {
       return [[], error instanceof Error ? error : new Error(String(error))];
     }
-  }, [data]);
+  }, [data, queriedConfig]);
 
   return {
     resolvedNumberFormat,

@@ -2196,6 +2196,7 @@ describe('External API v2 Dashboards - new format', () => {
             },
           ],
           groupBy: 'service.name',
+          orderBy: '"Median Duration" ASC',
           numberFormat: {
             output: 'number',
             mantissa: 2,
@@ -2224,6 +2225,7 @@ describe('External API v2 Dashboards - new format', () => {
             },
           ],
           groupBy: 'service.name',
+          orderBy: '"Median Duration" ASC',
           numberFormat: {
             output: 'number',
             mantissa: 2,
@@ -2511,6 +2513,116 @@ describe('External API v2 Dashboards - new format', () => {
       expect(omit(response.body.data.tiles[8], ['id'])).toEqual(
         categoricalBarChart,
       );
+    });
+
+    it('persists a custom orderBy on pie and categorical bar tiles through create and get', async () => {
+      // Arrange: pie and bar tiles carrying a custom ORDER BY that differs from
+      // the default value-descending ordering the charts apply client-side.
+      const pieChart: ExternalDashboardTile = {
+        name: 'Pie with custom order',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'pie',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+          orderBy: 'ServiceName ASC',
+          limit: 5,
+        },
+      };
+
+      const barChart: ExternalDashboardTile = {
+        name: 'Bar with custom order',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'bar',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+          orderBy: '"Count" DESC',
+          limit: 5,
+        },
+      };
+
+      // Act: create the dashboard
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with custom categorical ordering',
+          tiles: [pieChart, barChart],
+        })
+        .expect(200);
+
+      // Assert: create response echoes the custom orderBy back
+      expect(createResponse.body.data.tiles[0].config.orderBy).toBe(
+        'ServiceName ASC',
+      );
+      expect(createResponse.body.data.tiles[1].config.orderBy).toBe(
+        '"Count" DESC',
+      );
+
+      // Assert: the orderBy survives a round-trip through persistence (GET)
+      const { id } = createResponse.body.data;
+      const getResponse = await authRequest('get', `${BASE_URL}/${id}`).expect(
+        200,
+      );
+      expect(getResponse.body.data.tiles[0].config.orderBy).toBe(
+        'ServiceName ASC',
+      );
+      expect(getResponse.body.data.tiles[1].config.orderBy).toBe(
+        '"Count" DESC',
+      );
+    });
+
+    it('omits orderBy on pie/bar tiles when it is not provided', async () => {
+      const pieChart: ExternalDashboardTile = {
+        name: 'Pie without order',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'pie',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard without categorical ordering',
+          tiles: [pieChart],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config).not.toHaveProperty('orderBy');
     });
 
     // Schema-level rejections that exercise pure Zod constraints

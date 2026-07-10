@@ -247,21 +247,32 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
       await bulkInsertLogs(logs);
     });
 
-    const saveBarDashboard = async (limit?: number) => {
+    const saveCategoricalDashboard = async ({
+      displayType = 'bar',
+      limit,
+      orderBy,
+    }: {
+      displayType?: 'bar' | 'pie';
+      limit?: number;
+      orderBy?: string;
+    } = {}) => {
       const createResult = await callTool(
         ctx.client!,
         'clickstack_save_dashboard',
         {
-          name: `Bar Limit Dashboard ${limit ?? 'none'}`,
+          name: `Categorical ${displayType} Dashboard ${limit ?? 'none'} ${
+            orderBy ?? 'default-order'
+          }`,
           tiles: [
             {
-              name: 'Bars by service',
+              name: 'Groups by service',
               config: {
-                displayType: 'bar',
+                displayType,
                 sourceId: logSourceId,
                 select: [{ aggFn: 'count' }],
                 groupBy: 'ServiceName',
                 ...(limit != null ? { limit } : {}),
+                ...(orderBy != null ? { orderBy } : {}),
               },
             },
           ],
@@ -284,13 +295,13 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
     };
 
     it('returns every group when no limit is set', async () => {
-      const dashboard = await saveBarDashboard();
+      const dashboard = await saveCategoricalDashboard();
       const rows = await queryTileRows(dashboard);
       expect(rows).toHaveLength(SERVICE_COUNTS.length);
     });
 
     it('caps the bars to the series limit, keeping the largest groups', async () => {
-      const dashboard = await saveBarDashboard(3);
+      const dashboard = await saveCategoricalDashboard({ limit: 3 });
       const rows = await queryTileRows(dashboard);
 
       // The limit must actually reduce the result below the full set.
@@ -300,6 +311,51 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
       // And it must keep the top-3 by count, not an arbitrary subset.
       const services = rows.map(r => r.ServiceName).sort();
       expect(services).toEqual(['svc-a', 'svc-b', 'svc-c']);
+    });
+
+    it('applies a custom orderBy to a bar tile, driving the SQL result order', async () => {
+      const dashboard = await saveCategoricalDashboard({
+        orderBy: 'ServiceName ASC',
+      });
+      const rows = await queryTileRows(dashboard);
+
+      // Every group is returned, ordered ascending by ServiceName rather than
+      // by the aggregated count.
+      expect(rows.map(r => r.ServiceName)).toEqual([
+        'svc-a',
+        'svc-b',
+        'svc-c',
+        'svc-d',
+        'svc-e',
+      ]);
+    });
+
+    it('lets a custom orderBy override the default value-descending ordering when a limit is applied', async () => {
+      // ServiceName DESC + LIMIT 3 keeps the alphabetically-last three
+      // services (svc-e, svc-d, svc-c). The default value-descending ordering
+      // would instead keep the highest-count three (svc-a, svc-b, svc-c), so
+      // the differing result proves the custom orderBy overrides the default
+      // and controls which groups survive the limit.
+      const dashboard = await saveCategoricalDashboard({
+        limit: 3,
+        orderBy: 'ServiceName DESC',
+      });
+      const rows = await queryTileRows(dashboard);
+
+      expect(rows).toHaveLength(3);
+      expect(rows.map(r => r.ServiceName)).toEqual(['svc-e', 'svc-d', 'svc-c']);
+    });
+
+    it('applies a custom orderBy to a pie tile with a limit', async () => {
+      const dashboard = await saveCategoricalDashboard({
+        displayType: 'pie',
+        limit: 3,
+        orderBy: 'ServiceName DESC',
+      });
+      const rows = await queryTileRows(dashboard);
+
+      expect(rows).toHaveLength(3);
+      expect(rows.map(r => r.ServiceName)).toEqual(['svc-e', 'svc-d', 'svc-c']);
     });
   });
 });

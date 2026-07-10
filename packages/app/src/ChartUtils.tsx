@@ -422,9 +422,12 @@ function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
   ]);
 }
 
+const DEFAULT_MAX_CATEGORICAL_GROUPS = 500;
+
 export function formatResponseForCategoricalChart(
   data: ResponseJSON<Record<string, unknown>>,
   getColor: (index: number, label: string) => string,
+  applyDefaultOrder: boolean = true,
 ): Array<{ label: string; value: number; color: string }> {
   if (data.meta == null) {
     throw new Error('No meta data found in response');
@@ -442,27 +445,31 @@ export function formatResponseForCategoricalChart(
 
   const groupByColumns = inferGroupColumns(data.meta);
 
-  return (
-    data.data
-      .map(row => {
-        const label = groupByColumns?.length
-          ? groupByColumns.map(({ name }) => row[name]).join(' - ')
-          : valueColumn;
-        const rawValue = row[valueColumn];
-        const value =
-          typeof rawValue === 'number'
-            ? rawValue
-            : Number.parseFloat(`${rawValue}`);
-        return { label, value };
-      })
-      .filter(entry => !isNaN(entry.value) && isFinite(entry.value))
-      // Sort in descending order so the largest entry is always first and gets the first color in the palette
-      .sort((a, b) => b.value - a.value)
-      .map((entry, index) => ({
-        ...entry,
-        color: getColor(index, entry.label),
-      }))
-  );
+  const labelsAndValues = data.data
+    .map(row => {
+      const label = groupByColumns?.length
+        ? groupByColumns.map(({ name }) => row[name]).join(' - ')
+        : valueColumn;
+      const rawValue = row[valueColumn];
+      const value =
+        typeof rawValue === 'number'
+          ? rawValue
+          : Number.parseFloat(`${rawValue}`);
+      return { label, value };
+    })
+    .filter(entry => !isNaN(entry.value) && isFinite(entry.value));
+
+  if (applyDefaultOrder) {
+    // Sort in descending order so the largest entry is always first and gets the first color in the palette
+    labelsAndValues.sort((a, b) => b.value - a.value);
+  }
+
+  return labelsAndValues
+    .slice(0, DEFAULT_MAX_CATEGORICAL_GROUPS)
+    .map((entry, index) => ({
+      ...entry,
+      color: getColor(index, entry.label),
+    }));
 }
 
 export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {

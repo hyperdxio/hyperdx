@@ -371,6 +371,7 @@ const externalDashboardPieChartConfigSchema = z.object({
   sourceId: objectIdSchema,
   select: z.array(externalDashboardSelectItemSchema).length(1),
   groupBy: z.string().max(10000).optional(),
+  orderBy: z.string().max(10000).optional(),
   numberFormat: NumberFormatSchema.optional(),
   limit: z.number().int().positive().optional(),
 });
@@ -380,6 +381,7 @@ const externalDashboardCategoricalBarChartConfigSchema = z.object({
   sourceId: objectIdSchema,
   select: z.array(externalDashboardSelectItemSchema).length(1),
   groupBy: z.string().max(10000).optional(),
+  orderBy: z.string().max(10000).optional(),
   numberFormat: NumberFormatSchema.optional(),
   limit: z.number().int().positive().optional(),
 });
