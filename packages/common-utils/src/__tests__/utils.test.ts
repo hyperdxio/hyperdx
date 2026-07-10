@@ -11,6 +11,7 @@ import {
   getAlignedDateRange,
   getDistributedTableArgs,
   getFirstOrderingItem,
+  hasNonEmptyOrderBy,
   isFirstOrderByAscending,
   isJsonExpression,
   isTimestampExpressionInFirstOrderBy,
@@ -465,6 +466,40 @@ describe('utils', () => {
       expect(config.select[0]).not.toHaveProperty('alias');
       expect(config.orderBy).toBeUndefined();
       expect(config.limit).toBeUndefined();
+    });
+  });
+
+  describe('hasCategoricalUserOrderBy', () => {
+    it('returns false for undefined', () => {
+      expect(hasNonEmptyOrderBy(undefined)).toBe(false);
+    });
+
+    it('returns false for null', () => {
+      expect(hasNonEmptyOrderBy(null)).toBe(false);
+    });
+
+    it('returns false for an empty string', () => {
+      expect(hasNonEmptyOrderBy('')).toBe(false);
+    });
+
+    it('returns false for a whitespace-only string', () => {
+      expect(hasNonEmptyOrderBy('   ')).toBe(false);
+    });
+
+    it('returns true for a non-empty string', () => {
+      expect(hasNonEmptyOrderBy('ServiceName ASC')).toBe(true);
+    });
+
+    it('returns false for an empty array', () => {
+      expect(hasNonEmptyOrderBy([])).toBe(false);
+    });
+
+    it('returns true for a non-empty array of sort specifications', () => {
+      expect(
+        hasNonEmptyOrderBy([
+          { valueExpression: 'ServiceName', ordering: 'DESC' },
+        ]),
+      ).toBe(true);
     });
   });
 

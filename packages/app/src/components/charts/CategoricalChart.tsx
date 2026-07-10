@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { hasNonEmptyOrderBy } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { ChartConfigWithOptTimestamp } from '@hyperdx/common-utils/dist/types';
 
@@ -113,8 +114,7 @@ export function useCategoricalChart({
     try {
       const hasOrderBy =
         isBuilderChartConfig(queriedConfig) &&
-        typeof queriedConfig.orderBy === 'string' &&
-        !!queriedConfig.orderBy?.trim();
+        hasNonEmptyOrderBy(queriedConfig.orderBy);
 
       return [
         formatResponseForCategoricalChart(data, getColorProps, !hasOrderBy),

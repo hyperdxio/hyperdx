@@ -23,6 +23,7 @@ import {
   QuerySettings,
   RawSqlChartConfig,
   SavedChartConfig,
+  SortSpecificationList,
   SQLInterval,
   TileTemplateSchema,
   TSource,
@@ -734,6 +735,17 @@ export function convertToDashboardDocument(
   return output;
 }
 
+export function hasNonEmptyOrderBy(
+  orderBy: SortSpecificationList | undefined | null,
+): boolean {
+  if (orderBy == null) {
+    return false;
+  }
+  return typeof orderBy === 'string'
+    ? orderBy.trim().length > 0
+    : orderBy.length > 0;
+}
+
 /**
  * Normalize a builder chart config for categorical (pie/bar) rendering.
  *
@@ -770,17 +782,11 @@ export function convertToCategoricalChartConfig(
 
   // A user-supplied ORDER BY takes precedence over the default value-descending
   // ordering, so only inject the default when the user has not set one.
-  const userOrderBy = convertedConfig.orderBy;
-  const hasUserOrderBy =
-    typeof userOrderBy === 'string'
-      ? userOrderBy.trim().length > 0
-      : Array.isArray(userOrderBy) && userOrderBy.length > 0;
-
   // When a series limit is set and the user has not supplied an ordering, order
   // by the first aggregated value descending (with the group as a stable
   // tiebreak) so the limit deterministically keeps the largest slices/bars.
   if (
-    !hasUserOrderBy &&
+    !hasNonEmptyOrderBy(convertedConfig.orderBy) &&
     convertedConfig.limit?.limit != null &&
     Array.isArray(convertedConfig.select) &&
     convertedConfig.select.length > 0 &&
