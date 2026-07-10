@@ -631,6 +631,15 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
         'Column that defines pie slices. Use PascalCase for top-level columns. ' +
           "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
       ),
+    orderBy: z
+      .string()
+      .optional()
+      .describe(
+        'Optional custom SQL ORDER BY expression. Overrides the default ' +
+          'value-descending ordering and, combined with `limit`, controls which ' +
+          'slices are kept. When ordering by an alias that contains spaces or ' +
+          `special characters, wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+      ),
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(tileLevelNumberFormatDescription),
@@ -640,8 +649,9 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
       .positive()
       .optional()
       .describe(
-        'Maximum number of slices (SQL LIMIT). Keeps the top-N groups by the ' +
-          'aggregated value, descending. Omit to fetch all groups.',
+        'Maximum number of slices (SQL LIMIT). Without a custom `orderBy`, keeps ' +
+          'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
+          'keeps the first N in that order. Omit to fetch all groups.',
       ),
   }),
 });
@@ -663,6 +673,15 @@ const mcpCategoricalBarTileSchema = mcpTileLayoutSchema.extend({
         'Column(s) that define the bars. Use PascalCase for top-level columns. ' +
           "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
       ),
+    orderBy: z
+      .string()
+      .optional()
+      .describe(
+        'Optional custom SQL ORDER BY expression. Overrides the default ' +
+          'value-descending ordering and, combined with `limit`, controls which ' +
+          'bars are kept. When ordering by an alias that contains spaces or ' +
+          `special characters, wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+      ),
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(tileLevelNumberFormatDescription),
@@ -672,8 +691,9 @@ const mcpCategoricalBarTileSchema = mcpTileLayoutSchema.extend({
       .positive()
       .optional()
       .describe(
-        'Maximum number of bars (SQL LIMIT). Keeps the top-N groups by the ' +
-          'aggregated value, descending. Omit to fetch all groups.',
+        'Maximum number of bars (SQL LIMIT). Without a custom `orderBy`, keeps ' +
+          'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
+          'keeps the first N in that order. Omit to fetch all groups.',
       ),
   }),
 });

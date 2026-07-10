@@ -88,6 +88,7 @@ function SidePanelBreadcrumbs({
         return (
           <Text
             key={i}
+            data-testid={`side-panel-breadcrumb-${i}`}
             size="xs"
             c={isLast ? undefined : 'dimmed'}
             component="span"
@@ -98,7 +99,11 @@ function SidePanelBreadcrumbs({
       }
 
       return (
-        <UnstyledButton key={i} onClick={item.onClick}>
+        <UnstyledButton
+          key={i}
+          data-testid={`side-panel-breadcrumb-${i}`}
+          onClick={item.onClick}
+        >
           <Text size="xs" c="dimmed" component="span">
             {wrapped}
           </Text>
@@ -108,7 +113,12 @@ function SidePanelBreadcrumbs({
   }, [items]);
 
   return (
-    <Group gap={8} wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+    <Group
+      data-testid="side-panel-breadcrumbs"
+      gap={8}
+      wrap="nowrap"
+      style={{ minWidth: 0, flex: 1 }}
+    >
       <Tooltip label="Back" position="bottom">
         <ActionIcon
           variant="subtle"

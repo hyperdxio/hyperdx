@@ -11,6 +11,7 @@ import {
   getAlignedDateRange,
   getDistributedTableArgs,
   getFirstOrderingItem,
+  hasNonEmptyOrderBy,
   isFirstOrderByAscending,
   isJsonExpression,
   isTimestampExpressionInFirstOrderBy,
@@ -337,7 +338,7 @@ describe('utils', () => {
       expect(convertedConfig.limit).toEqual({ limit: 3 });
     });
 
-    it('should override an explicit orderBy with the value-descending default when a limit is set', () => {
+    it('should preserve a user-supplied string orderBy over the value-descending default when a limit is set', () => {
       const config = {
         select: [{ aggFn: 'count', valueExpression: '' }],
         groupBy: 'ServiceName',
@@ -348,14 +349,64 @@ describe('utils', () => {
 
       const convertedConfig = convertToCategoricalChartConfig(config);
 
-      // A limit forces the value-descending ordering so the kept bars/slices
-      // are deterministically the largest, regardless of any prior orderBy.
+      // The user's explicit ORDER BY wins; the limit then keeps the top rows
+      // according to that ordering rather than the value-descending default.
+      expect(convertedConfig.orderBy).toEqual('ServiceName ASC');
+      expect(convertedConfig.limit).toEqual({ limit: 5 });
+      // The default value alias is only injected when we synthesize an
+      // ordering, so an untouched series keeps no alias.
+      expect(convertedConfig.select[0]).not.toHaveProperty('alias');
+    });
+
+    it('should preserve a user-supplied array orderBy over the value-descending default when a limit is set', () => {
+      const config = {
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        groupBy: 'ServiceName',
+        seriesLimit: 5,
+        orderBy: [
+          { valueExpression: 'ServiceName', ordering: 'DESC' as const },
+        ],
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      const convertedConfig = convertToCategoricalChartConfig(config);
+
+      expect(convertedConfig.orderBy).toEqual([
+        { valueExpression: 'ServiceName', ordering: 'DESC' },
+      ]);
+      expect(convertedConfig.limit).toEqual({ limit: 5 });
+    });
+
+    it('should preserve a user-supplied orderBy even when no limit is set', () => {
+      const config = {
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        groupBy: 'ServiceName',
+        orderBy: 'ServiceName ASC',
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      const convertedConfig = convertToCategoricalChartConfig(config);
+
+      expect(convertedConfig.orderBy).toEqual('ServiceName ASC');
+      expect(convertedConfig.limit).toBeUndefined();
+    });
+
+    it('should inject the value-descending default when the user orderBy is an empty string', () => {
+      const config = {
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        groupBy: 'ServiceName',
+        seriesLimit: 5,
+        orderBy: '',
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      const convertedConfig = convertToCategoricalChartConfig(config);
+
       expect(convertedConfig.orderBy).toEqual([
         { valueExpression: '"Value"', ordering: 'DESC' },
         { valueExpression: 'ServiceName', ordering: 'ASC' },
       ]);
       expect(convertedConfig.limit).toEqual({ limit: 5 });
-      expect(convertedConfig.select[0]).toMatchObject({ alias: 'Value' });
     });
 
     it('should inject the value-descending ordering for ratio configs too', () => {
@@ -415,6 +466,40 @@ describe('utils', () => {
       expect(config.select[0]).not.toHaveProperty('alias');
       expect(config.orderBy).toBeUndefined();
       expect(config.limit).toBeUndefined();
+    });
+  });
+
+  describe('hasCategoricalUserOrderBy', () => {
+    it('returns false for undefined', () => {
+      expect(hasNonEmptyOrderBy(undefined)).toBe(false);
+    });
+
+    it('returns false for null', () => {
+      expect(hasNonEmptyOrderBy(null)).toBe(false);
+    });
+
+    it('returns false for an empty string', () => {
+      expect(hasNonEmptyOrderBy('')).toBe(false);
+    });
+
+    it('returns false for a whitespace-only string', () => {
+      expect(hasNonEmptyOrderBy('   ')).toBe(false);
+    });
+
+    it('returns true for a non-empty string', () => {
+      expect(hasNonEmptyOrderBy('ServiceName ASC')).toBe(true);
+    });
+
+    it('returns false for an empty array', () => {
+      expect(hasNonEmptyOrderBy([])).toBe(false);
+    });
+
+    it('returns true for a non-empty array of sort specifications', () => {
+      expect(
+        hasNonEmptyOrderBy([
+          { valueExpression: 'ServiceName', ordering: 'DESC' },
+        ]),
+      ).toBe(true);
     });
   });
 

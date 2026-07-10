@@ -97,4 +97,119 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
       expect(seriesLimit).toBeLessThan(totalBars);
     });
   });
+
+  test('should apply a custom ORDER BY on a categorical bar chart', async () => {
+    let ascendingLabels: string[] = [];
+    let descendingLabels: string[] = [];
+
+    await test.step('Verify chart configuration form is accessible', async () => {
+      await expect(chartExplorerPage.form).toBeVisible();
+      await chartExplorerPage.page.waitForLoadState('networkidle');
+    });
+
+    await test.step('Select the Bar chart type and group by ServiceName', async () => {
+      await chartExplorerPage.chartEditor.setChartType(DisplayType.Bar);
+      await chartExplorerPage.chartEditor.setGroupBy('ServiceName');
+    });
+
+    await test.step('Order by ServiceName ascending and capture the bar order', async () => {
+      await chartExplorerPage.chartEditor.setOrderBy('ServiceName ASC');
+      await chartExplorerPage.chartEditor.runQuery();
+      await expect(chartExplorerPage.getBars().first()).toBeVisible({
+        timeout: 15000,
+      });
+
+      ascendingLabels = await chartExplorerPage.getBarLabels();
+      // Need at least two distinct bars for the ordering to be observable.
+      expect(ascendingLabels.length).toBeGreaterThan(1);
+    });
+
+    await test.step('Order by ServiceName descending and verify the order is reversed', async () => {
+      await chartExplorerPage.chartEditor.setOrderBy('ServiceName DESC');
+      await chartExplorerPage.chartEditor.runQuery();
+
+      // The descending result must be the exact reverse of the ascending one,
+      // proving the custom ORDER BY is driving the SQL query ordering.
+      await expect
+        .poll(async () => chartExplorerPage.getBarLabels(), { timeout: 10000 })
+        .toEqual([...ascendingLabels].reverse());
+
+      descendingLabels = await chartExplorerPage.getBarLabels();
+    });
+
+    await test.step('Apply a series limit and confirm the custom order still drives which bars are kept', async () => {
+      const seriesLimit = 3;
+      await chartExplorerPage.chartEditor.setSeriesLimit(seriesLimit);
+      await chartExplorerPage.chartEditor.runQuery();
+
+      await expect
+        .poll(async () => chartExplorerPage.getBars().count(), {
+          timeout: 10000,
+        })
+        .toBe(seriesLimit);
+
+      // With ServiceName DESC + LIMIT 3, the kept bars must be the first three
+      // of the descending order — not the three largest by value. This proves
+      // the custom ORDER BY overrides the default value-descending ordering and
+      // is honored alongside the series limit.
+      await expect
+        .poll(async () => chartExplorerPage.getBarLabels(), { timeout: 10000 })
+        .toEqual(descendingLabels.slice(0, seriesLimit));
+    });
+  });
+
+  test('should apply a custom ORDER BY on a categorical pie chart', async () => {
+    let ascendingLabels: string[] = [];
+    let descendingLabels: string[] = [];
+
+    await test.step('Verify chart configuration form is accessible', async () => {
+      await expect(chartExplorerPage.form).toBeVisible();
+      await chartExplorerPage.page.waitForLoadState('networkidle');
+    });
+
+    await test.step('Select the Pie chart type and group by ServiceName', async () => {
+      await chartExplorerPage.chartEditor.setChartType(DisplayType.Pie);
+      await chartExplorerPage.chartEditor.setGroupBy('ServiceName');
+    });
+
+    await test.step('Order by ServiceName ascending and capture the legend order', async () => {
+      await chartExplorerPage.chartEditor.setOrderBy('ServiceName ASC');
+      await chartExplorerPage.chartEditor.runQuery();
+
+      ascendingLabels = await chartExplorerPage.getPieLegendLabels();
+      // Need at least two distinct slices for the ordering to be observable.
+      expect(ascendingLabels.length).toBeGreaterThan(1);
+    });
+
+    await test.step('Order by ServiceName descending and verify the order is reversed', async () => {
+      await chartExplorerPage.chartEditor.setOrderBy('ServiceName DESC');
+      await chartExplorerPage.chartEditor.runQuery();
+
+      // The descending result must be the exact reverse of the ascending one,
+      // proving the custom ORDER BY is driving the SQL query ordering.
+      await expect
+        .poll(async () => chartExplorerPage.getPieLegendLabels(), {
+          timeout: 10000,
+        })
+        .toEqual([...ascendingLabels].reverse());
+
+      descendingLabels = await chartExplorerPage.getPieLegendLabels();
+    });
+
+    await test.step('Apply a series limit and confirm the custom order still drives which slices are kept', async () => {
+      const seriesLimit = 3;
+      await chartExplorerPage.chartEditor.setSeriesLimit(seriesLimit);
+      await chartExplorerPage.chartEditor.runQuery();
+
+      // With ServiceName DESC + LIMIT 3, the kept slices must be the first
+      // three of the descending order — not the three largest by value. This
+      // proves the custom ORDER BY overrides the default value-descending
+      // ordering and is honored alongside the series limit.
+      await expect
+        .poll(async () => chartExplorerPage.getPieLegendLabels(), {
+          timeout: 10000,
+        })
+        .toEqual(descendingLabels.slice(0, seriesLimit));
+    });
+  });
 });

@@ -71,6 +71,25 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Set a custom ORDER BY expression in the chart editor's ORDER BY input.
+   * Available on the Table, Pie, and Bar display types. Clears any existing
+   * value first, then types the new expression and dismisses the autocomplete
+   * popup so it doesn't swallow the following interaction.
+   */
+  async setOrderBy(expression: string) {
+    const editor = this.page
+      .getByTestId('order-by-input')
+      .locator('.cm-content');
+    await editor.click();
+    // Clear any existing content before typing the new expression.
+    await this.page.keyboard.press('ControlOrMeta+A');
+    await this.page.keyboard.press('Delete');
+    await this.page.keyboard.type(expression);
+    // Dismiss the autocomplete dropdown so it doesn't intercept the next click.
+    await this.page.keyboard.press('Escape');
+  }
+
+  /**
    * Select a data source
    */
   async selectSource(sourceName: string) {
