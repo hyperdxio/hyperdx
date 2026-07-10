@@ -1,18 +1,30 @@
+import { useEffect, useState } from 'react';
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 
-// Render the dynamic() wrapper's inner component synchronously.
+// Render the dynamic() wrapper's inner component. The page passes
+// `async () => ServicesDashboardPage`, so the loader resolves asynchronously;
+// hold the resolved component in state so its arrival triggers a re-render
+// (a plain closure assignment would not, leaving the tree empty).
 jest.mock('next/dynamic', () => ({
   __esModule: true,
   default: (loader: () => Promise<unknown>) => {
-    // The page passes `async () => ServicesDashboardPage`; resolve it eagerly
-    // to the underlying component so it renders synchronously in jsdom.
-    let Component: React.ComponentType = () => null;
-    loader().then((mod: any) => {
-      Component = mod?.default ?? mod;
-    });
-    const Wrapped = (props: any) => <Component {...props} />;
+    const Wrapped = (props: any) => {
+      const [Component, setComponent] = useState<React.ComponentType | null>(
+        null,
+      );
+      useEffect(() => {
+        let active = true;
+        loader().then((mod: any) => {
+          if (active) setComponent(() => mod?.default ?? mod);
+        });
+        return () => {
+          active = false;
+        };
+      }, []);
+      return Component ? <Component {...props} /> : null;
+    };
     return Wrapped;
   },
 }));
@@ -156,7 +168,7 @@ jest.mock('@/theme/ThemeProvider', () => ({
 import ServicesDashboardPage from '@/ServicesDashboardPage';
 
 describe('ServicesDashboardPage', () => {
-  it('renders the page shell', () => {
+  it('renders the page shell', async () => {
     const queryClient = new QueryClient();
     render(
       <QueryClientProvider client={queryClient}>
@@ -166,6 +178,10 @@ describe('ServicesDashboardPage', () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByTestId('services-dashboard-page')).toBeInTheDocument();
+    // The dynamic() wrapper resolves the page component asynchronously, so
+    // wait for the shell to mount rather than asserting synchronously.
+    await waitFor(() =>
+      expect(screen.getByTestId('services-dashboard-page')).toBeInTheDocument(),
+    );
   });
 });
