@@ -5995,8 +5995,8 @@ describe('checkAlerts', () => {
       );
       expect(buckets[2].count).toBe(1);
 
-      // Verify webhook was called for the alert
-      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      // Verify webhook was called for the alert (ALERT followed by RESOLVED)
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
 
       // Second run: process alert at 22:22:00
       // Previous history was created at 22:15:00 (from first run)
