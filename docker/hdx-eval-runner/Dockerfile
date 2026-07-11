@@ -71,6 +71,16 @@ RUN chmod +x ./docker/hdx-eval-runner/run-evals.sh
 ENV NODE_ENV=production \
     NODE_OPTIONS=--max-old-space-size=8192
 
+# Run as the non-root `node` user (uid 1000, present in the node base image).
+# The Claude Code CLI hard-refuses `--dangerously-skip-permissions` when run as
+# root ("cannot be used with root/sudo privileges"), which the harness always
+# passes — so the agent process MUST run unprivileged. Give `node` ownership of
+# the workspace so it can write runs/ and the eval config, and set HOME so the
+# claude CLI has a writable config/cache dir.
+RUN chown -R node:node /work
+ENV HOME=/home/node
+USER node
+
 # Default command runs the full M1 pipeline. Override args to run individual
 # `yarn workspace @hyperdx/hdx-eval dev <command>` steps for debugging.
 ENTRYPOINT ["/bin/bash"]

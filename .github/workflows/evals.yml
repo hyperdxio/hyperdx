@@ -60,7 +60,12 @@ jobs:
         uses: crazy-max/ghaction-github-runtime@v4
 
       - name: Prepare output dir
-        run: mkdir -p "${HDX_EVAL_OUTPUT_DIR}/runs"
+        # World-writable so the runner container's non-root `node` user (uid
+        # 1000) can write runs/ + verdict.md into these bind mounts regardless
+        # of the host runner's uid.
+        run: |
+          mkdir -p "${HDX_EVAL_OUTPUT_DIR}/runs"
+          chmod -R 777 "${HDX_EVAL_OUTPUT_DIR}"
 
       # Build both DISTINCT images with GHA layer caching. The HyperDX
       # all-in-one build is heavy (OTel collector + Next.js); caching keeps
