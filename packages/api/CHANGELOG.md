@@ -1,5 +1,146 @@
 # @hyperdx/api
 
+## 2.30.1
+
+## 2.30.0
+
+### Minor Changes
+
+- c29d0df23: feat: Add categorical bar chart display type
+- 727d3274: Add an opt-in Datadog receiver (gated behind `ENABLE_DATADOG_RECEIVER`) so a
+  Datadog Agent can ship traces, metrics, and logs to HyperDX. The contrib
+  `datadogreceiver` is compiled into the collector binary and, when enabled, the
+  OpAMP controller attaches it (listening on `0.0.0.0:8126`) to the traces,
+  metrics, and logs pipelines. When collector authentication is enforced, the
+  receiver validates the `DD-API-KEY` header against team API keys.
+- 880fb668c: feat: add event patterns as a first-class dashboard tile type
+
+  Event patterns can now be created, edited, and saved as dashboard tiles with a dedicated "Pattern Expression" editor. Supported across the UI, MCP server, and External API v2.
+
+- 232e87139: feat(dashboards): overlay alert firing/recovery markers on tile charts
+
+  Adds an optional "alert annotations" overlay to dashboard timeseries tiles.
+  When enabled via the dashboard menu ("Show alert annotations"), tiles that have
+  an alert draw a red vertical marker at the moment the alert fired and a green
+  marker when it recovered, so alert events can be correlated with the chart in
+  one view. The overlay is off by default and its state lives in the URL
+  (`?alertAnnotations=true`), not on the saved dashboard. Backed by a new
+  team-scoped `GET /api/alerts/:id/history` endpoint that returns only alert state
+  transitions within the requested time range, so annotations honor the
+  dashboard's selected window.
+
+- 617355378: External API v2: make error responses consistent and add concurrency safety.
+
+  - `/api/v2/alerts` `403`/`404` responses now return a JSON `{ message }` body
+    (previously an empty plaintext body), matching the documented `Error` schema
+    and the saved-search/webhook routers.
+  - `DELETE /api/v2/alerts/:id` now returns `404` for an alert that does not exist
+    (previously always `200`). The `404` was already part of the documented
+    contract; delete is no longer idempotent for a missing alert.
+  - `PUT /api/v2/webhooks/:id` can now return `409` when the webhook's destination
+    (`url`/`service`) was changed concurrently between read and write. Clients
+    should re-read and retry.
+
+- 617355378: External API v2: add offset/limit pagination to the alerts, saved-searches, and
+  webhooks list endpoints. Each now accepts `limit` (1–1000, default 1000) and
+  `offset` (>=0, default 0) query params and returns a `meta: { total, limit,
+offset }` block alongside `data`. Results are sorted by `_id` so paging is
+  stable across requests.
+
+  Backward compatible: the default `limit` is the maximum (1000), so callers that
+  don't paginate keep receiving all their records (up to the cap) as before. Use
+  `limit`/`offset` to page through larger result sets.
+
+  Behavior change: `/api/v2/alerts` and `/api/v2/webhooks` were previously
+  unbounded and now hard-cap a single page at 1000 records. A team that exceeds
+  1000 alerts or webhooks will only see the first 1000 unless the client reads
+  the total and pages with `offset`; the full set is still reachable, but a
+  pre-`meta` client that never paginated would silently process only the first
+  page. To make the truncation detectable without parsing the body, each list
+  response now also sets an `X-Total-Count` header with the full count (matching
+  `meta.total`), and the server logs a warning when a default-limit page is
+  truncated.
+
+- 617355378: External API v2: add bearer-auth CRUD for saved searches and webhooks so
+  providers can manage them as resources. Adds a new
+  `/api/v2/saved-searches` router (list/get/create/update/delete, team-scoped,
+  validates `sourceId` ownership) and upgrades `/api/v2/webhooks` from
+  list-only to full CRUD (POST/PUT/DELETE). Webhook `headers` and `queryParams`
+  are write-only — accepted on create/update but never returned on read — so
+  auth tokens and other secrets do not leak.
+- abf5b537: Adds a POST /api/v2/dashboards/validate endpoint to the external v2 API. It
+- ba598baba: feat: Add a custom ORDER BY input for Bar and Pie charts
+- c29d0df23: feat: Allow specifying a limit on pie and bar chart series
+- 0c7254360: Adding consecutive-window configuration to alerts, so that you can specify a condition like "only fire this alert after some condition is met for N consecutive windows." This helps prevent flaky alerts (and pages), and cut down on alert noise in many cases.
+
+  Also adds a `PENDING` alert state for alarms that _will_ fire if current trends continue.
+
+- bdf9352a2: Add Create, Read (by ID), Update, and Delete routes to the external API v2 sources router. Granularity fields in write requests accept the same short format the API returns (e.g. `5m`, `15s`).
+- 27e80e965: feat(alerts): implement webhook retries and exponential backoff
+
+### Patch Changes
+
+- 73e6e876e: Expose consecutive-window alerting on the external API.
+- 1aaa9388a: fix: honor INGESTION_API_KEY in the all-in-one auth image
+
+  The all-in-one entrypoint set `HYPERDX_IMAGE` to values (`all-in-one` /
+  `all-in-one-noauth`) that did not match the strings `config.ts` compares against
+  (`all-in-one-auth` / `all-in-one-noauth`). As a result `IS_ALL_IN_ONE_IMAGE` was
+  never true in the auth image, so the `INGESTION_API_KEY` env var was silently
+  ignored and the OpAMP-delivered collector config only accepted the team's
+  UI-generated key.
+
+  The entrypoint now reports `all-in-one-auth` for the auth variant and
+  `all-in-one-noauth` for the no-auth variant, so a pre-shared `INGESTION_API_KEY`
+  is added to the collector's accepted bearer tokens. This lets demo/bootstrap
+  stacks specify a known ingestion key up front instead of retrieving the
+  generated key from the UI — the all-in-one equivalent of the standalone
+  collector's `OTLP_AUTH_TOKEN`.
+
+- ec11fae92: fix: allow creating and editing Sources in Local App Mode
+
+  In Local App Mode (`IS_LOCAL_APP_MODE`) the auth middleware injects a plain
+  string team id onto the request instead of a Mongoose `ObjectId`. The sources
+  router's create/update handlers called `teamId.toJSON()`, which only exists on
+  `ObjectId`, causing an HTTP 500 (`TypeError: teamId.toJSON is not a function`)
+  when saving a Source. Use `teamId.toString()` instead, which works for both
+  string and `ObjectId` team ids.
+
+- 328e7b437: Fix: Block webhook deletion when one or more alerts still reference it, prompting the user to reassign or remove those alerts first.
+- 60cf52842: fix(mcp): guide agents to size dashboard tiles correctly (HDX-4661)
+- bfc6fb5c: Classify MCP tool errors as `user` (bad input, not-found) or `server` (infrastructure failure, timeout) so alerting rules can filter on `error_category=server` without noise from agent input mistakes. Adds `error_category` attribute to spans and the `hyperdx.mcp.tool.errors` metric counter. ClickHouse errors are auto-classified by inspecting the error type and walking the cause chain for TCP-level codes.
+- d16db2557: Add `backgroundChart` support to number tiles in the MCP dashboard tools (`clickstack_save_dashboard` and `clickstack_patch_dashboard`). Builder number tiles can now carry an optional background trend sparkline (`type` line or area, with an optional palette-token `color`), matching the dashboard editor and the v2 REST API. Raw SQL number tiles do not support it.
+- 5081c8cbb: feat: include the source Section in MCP source tools
+
+  The `clickstack_list_sources` and `clickstack_describe_source` MCP tools now
+  return the optional Section label on each source, so agents see the same source
+  grouping that the source selector shows. Sources without a section are
+  unchanged.
+
+- 476add172: Improve API telemetry quality. The OpAMP message handler span is now a wide event
+  carrying agent correlation and self-description context (instance UID, sequence
+  number and gap, raw + decoded capability flags, new-vs-existing, service name and
+  version, OS type, host arch, health/last-error/uptime, remote config apply
+  status/error, last-applied and sent config hashes for drift detection, effective
+  config presence/size, teams count, request/response sizes). A new
+  `hyperdx.opamp.remote_config_applications` counter tracks whether pushed configs
+  actually applied on agents. The shared error middleware now recognizes body-parser
+  errors: client disconnects (`request.aborted` / `ECONNABORTED`) are classified as
+  operational, logged at debug instead of error, and kept out of error tracking, and
+  `hyperdx.api.errors` gains a bounded `error_type` dimension so aborts, oversized
+  bodies, and malformed payloads are distinguishable.
+- a01717e47: Bumped node version in .nvmrc to 22.23.1
+- bb7ae21e8: Upgrade the TypeScript devDependency from 5.9 to 6.0 across all packages.
+- Updated dependencies [c29d0df23]
+- Updated dependencies [ba598baba]
+- Updated dependencies [c29d0df23]
+- Updated dependencies [3f1e1fe4]
+- Updated dependencies [0c7254360]
+- Updated dependencies [617355378]
+- Updated dependencies [e2145678d]
+- Updated dependencies [bb7ae21e8]
+  - @hyperdx/common-utils@0.22.0
+
 ## 2.29.0
 
 ### Minor Changes
