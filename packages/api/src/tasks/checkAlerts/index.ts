@@ -330,7 +330,7 @@ export const getScheduledWindowStart = (
  * that history fetched up-front (see getConsecutiveWindowHistories) lines up
  * exactly with the window processAlert evaluates.
  */
-export const getAlertWindowStart = (alert: IAlert, now: Date): Date => {
+const getAlertWindowStart = (alert: IAlert, now: Date): Date => {
   const windowSizeInMins = ms(alert.interval) / 60000;
   const scheduleStartAt = normalizeScheduleStartAt({
     alertId: alert.id,
