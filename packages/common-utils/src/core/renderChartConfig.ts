@@ -1248,7 +1248,13 @@ async function renderWhere(
       '(',
       ')',
     ),
-    chartConfig.isRenderingRawSqlTemplate ? chSql`$__filters` : [],
+    // $__filters expands (at query time) to the dashboard filters, which
+    // reference columns of the real source table. Only emit it when this WHERE
+    // targets that source table (indicated by a non-empty databaseName).
+    chartConfig.isRenderingRawSqlTemplate &&
+      chartConfig.from.databaseName !== ''
+      ? chSql`$__filters`
+      : [],
   );
 }
 

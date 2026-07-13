@@ -305,7 +305,6 @@ WHERE
     __hdx_time_bucket2 >= $__fromTime_ms
     AND __hdx_time_bucket2 <= $__toTime_ms
   )
-  AND $__filters
 GROUP BY
   $__timeInterval(__hdx_time_bucket2) AS \`__hdx_time_bucket\`
 ORDER BY
@@ -432,7 +431,6 @@ WHERE
     \`__hdx_time_bucket\` >= $__fromTime_ms
     AND \`__hdx_time_bucket\` <= $__toTime_ms
   )
-  AND $__filters
 SETTINGS
   short_circuit_function_evaluation = 'force_enable'"
 `;
@@ -548,7 +546,6 @@ WHERE
     \`__hdx_time_bucket2\` >= $__fromTime_ms
     AND \`__hdx_time_bucket2\` <= $__toTime_ms
   )
-  AND $__filters
 GROUP BY
   $__timeInterval(\`__hdx_time_bucket2\`) AS \`__hdx_time_bucket\`
 ORDER BY

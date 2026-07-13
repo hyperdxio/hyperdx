@@ -309,6 +309,45 @@ describe('renderBuilderConfigAsSqlTemplate', () => {
       expect(expanded).toContain('`default`.`otel_metrics_gauge`');
     });
 
+    // $__filters expands to dashboard filters that reference the raw source
+    // columns. Metric charts wrap the source in CTEs and the outer query reads
+    // a CTE that only projects a fixed column set, so emitting $__filters there
+    // would expand to unknown identifiers and break the query. It must appear
+    // once — inside the source-table CTE — never in the outer query.
+    // The outer query reads the intermediate CTE (backtick-quoted by the
+    // formatter, and only ever referenced this way — the CTE definitions use
+    // `<name> AS (`), so this token uniquely marks the start of the outer query.
+    it.each([
+      [MetricsDataType.Gauge, 'avg', undefined, '`Bucketed`'],
+      [MetricsDataType.Sum, 'sum', undefined, '`Bucketed`'],
+      [MetricsDataType.Histogram, 'quantile', 0.95, '`metrics`'],
+    ] as const)(
+      'emits $__filters only in the source CTE for a %s metric chart',
+      async (metricType, aggFn, level, outerFrom) => {
+        const config = metricLineConfig(metricType, aggFn);
+        const sql = await renderBuilderConfigAsSqlTemplate(
+          level != null
+            ? {
+                ...config,
+                select: [{ ...((config as any).select as any[])[0], level }],
+              }
+            : config,
+          mockMetadata,
+        );
+        expect(sql).not.toBeNull();
+
+        // Exactly one $__filters — the duplicate in the outer query is the bug.
+        expect(sql!.match(/\$__filters/g)).toHaveLength(1);
+
+        // ...and it sits inside a source CTE, ahead of the outer FROM that
+        // reads the (column-limited) intermediate CTE.
+        expect(sql).toContain(outerFrom);
+        expect(sql!.indexOf('$__filters')).toBeLessThan(
+          sql!.indexOf(outerFrom),
+        );
+      },
+    );
+
     it('returns null for a multi-series metric chart', async () => {
       const config = metricLineConfig(MetricsDataType.Gauge);
       const sql = await renderBuilderConfigAsSqlTemplate(
