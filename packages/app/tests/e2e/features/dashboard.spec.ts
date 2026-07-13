@@ -533,6 +533,91 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   });
 
   test(
+    'should allow typing a freeform filter value not present in the dropdown',
+    {},
+    async () => {
+      test.setTimeout(30000);
+      const freeformValue = 'nonexistent-service-e2e';
+
+      await test.step('Create new dashboard', async () => {
+        await expect(dashboardPage.createButton).toBeVisible();
+        await dashboardPage.createNewDashboard();
+      });
+
+      await test.step('Create a table tile to filter', async () => {
+        await dashboardPage.addTile();
+
+        await dashboardPage.chartEditor.createTable({
+          chartName: 'Test Table',
+          sourceName: DEFAULT_LOGS_SOURCE_NAME,
+          groupBy: 'ServiceName',
+        });
+
+        const accountingCell = dashboardPage.page.getByTitle('accounting', {
+          exact: true,
+        });
+        await expect(accountingCell).toBeVisible();
+      });
+
+      await test.step('Add Service filter to dashboard', async () => {
+        await dashboardPage.openEditFiltersModal();
+        await expect(dashboardPage.emptyFiltersList).toBeVisible();
+
+        await dashboardPage.addFilterToDashboard(
+          'Service',
+          DEFAULT_LOGS_SOURCE_NAME,
+          'ServiceName',
+        );
+
+        await expect(
+          dashboardPage.getFilterItemByName('Service'),
+        ).toBeVisible();
+
+        await dashboardPage.closeFiltersModal();
+      });
+
+      await test.step("Type a value not present in the filter's dropdown", async () => {
+        await dashboardPage.typeFilterSearchValue('Service', freeformValue);
+        await expect(dashboardPage.getFilterEmptyDropdownState()).toBeVisible();
+      });
+
+      await test.step('Press Enter to add the typed value as a pill', async () => {
+        await dashboardPage.submitFilterSearchValue('Service');
+
+        await expect(
+          dashboardPage.getFilterPill('Service', freeformValue),
+        ).toBeVisible();
+        await expect(dashboardPage.getFilterSearchInput('Service')).toHaveValue(
+          '',
+        );
+
+        // Close the dropdown before asserting table contents below.
+        await dashboardPage.page.keyboard.press('Escape');
+      });
+
+      await test.step('Verify the freeform value filters the table', async () => {
+        const accountingCell = dashboardPage.page.getByTitle('accounting', {
+          exact: true,
+        });
+        await expect(accountingCell).toHaveCount(0);
+      });
+
+      await test.step('Remove the freeform value and verify the table is unfiltered again', async () => {
+        await dashboardPage.removeLastFilterPillViaBackspace('Service');
+
+        await expect(
+          dashboardPage.getFilterPill('Service', freeformValue),
+        ).toHaveCount(0);
+
+        const accountingCell = dashboardPage.page.getByTitle('accounting', {
+          exact: true,
+        });
+        await expect(accountingCell).toBeVisible();
+      });
+    },
+  );
+
+  test(
     'should scope a filter to a specific source via "Applies to sources"',
     {},
     async () => {
@@ -918,6 +1003,40 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         const tile = dashboardPage.getTiles().filter({ hasText: chartName });
         await expect(
           tile.locator('.recharts-responsive-container'),
+        ).toBeVisible({ timeout: 15000 });
+      });
+    });
+
+    test('Bar chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Bar ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Bar chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Bar);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        // Bar charts share the pie chart's categorical query shape.
+        await dashboardPage.chartEditor.typeSqlQuery(PIE_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the bar chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(
+          tile.locator(
+            '[data-testid="bar-chart-container"] .recharts-responsive-container',
+          ),
         ).toBeVisible({ timeout: 15000 });
       });
     });

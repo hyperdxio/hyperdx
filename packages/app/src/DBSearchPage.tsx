@@ -1965,7 +1965,7 @@ export function DBSearchPage() {
       return;
     }
     if (inputSource) {
-      window.location.assign(`${router.basePath}/team?source=${inputSource}`);
+      window.location.assign(`${router.basePath}/team#source-${inputSource}`);
     } else {
       window.location.assign(`${router.basePath}/team`);
     }

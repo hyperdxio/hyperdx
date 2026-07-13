@@ -35,6 +35,10 @@ import type { NumberFormat } from '@/types';
 import { COLORS, formatNumber, truncateMiddle } from '@/utils';
 
 import {
+  ChartAnnotation,
+  getAnnotationElements,
+} from './components/charts/chartAnnotations';
+import {
   ChartTooltipContainer,
   ChartTooltipItem,
 } from './components/charts/ChartTooltip';
@@ -58,6 +62,10 @@ const NEAREST_SERIES_MAX_DISTANCE_PX = 30;
 const Y_AXIS_WIDTH = 40;
 const SINGLE_POINT_BAR_RIGHT_PADDING = 10;
 const SINGLE_POINT_BAR_WIDTH_RATIO = 0.8;
+// Top margin (px) reserved above the plot for annotation labels ("Alert"/"OK"),
+// added only when a chart is showing annotations so other charts keep their
+// tighter default headroom.
+const ANNOTATION_LABEL_HEADROOM = 18;
 
 type TooltipPayload = {
   dataKey: string;
@@ -166,7 +174,10 @@ const HDXLineChartTooltip = withErrorBoundary(
 
       return (
         <ChartTooltipContainer header={header}>
-          {payload
+          {/* Copy before sorting: Recharts 3 keeps the payload in its
+              Immer-backed store and freezes it, so an in-place sort throws
+              "this object has been frozen". */}
+          {[...payload]
             .sort((a: TooltipPayload, b: TooltipPayload) => b.value - a.value)
             .map((p: TooltipPayload) => {
               const previousKey = lineDataMap[p.dataKey]?.previousPeriodKey;
@@ -308,7 +319,9 @@ const LegendRenderer = memo<{
       }
     });
 
-    return allSeriesPayload.sort((a, b) => {
+    // Copy before sorting: when this comes from Recharts' legend payload it is
+    // kept in the Immer-backed store and frozen, so an in-place sort throws.
+    return [...allSeriesPayload].sort((a, b) => {
       const keyA = lineDataMap[a.dataKey]?.currentPeriodKey ?? '';
       const keyB = lineDataMap[b.dataKey]?.currentPeriodKey ?? '';
 
@@ -371,23 +384,115 @@ const LegendRenderer = memo<{
 
 export const HARD_LINES_LIMIT = MAX_TIME_CHART_SERIES;
 
+// Debounce (ms) for the chart's ResponsiveContainer resize observer. Without
+// it the observer fires on every frame, and a resize → re-render → resize
+// cycle can keep the chart (and the form controls around it in the tile
+// editor) from ever settling.
+const RESPONSIVE_CONTAINER_DEBOUNCE_MS = 50;
+
+/** One series entry in a click-frozen tooltip's payload. */
+type ActiveClickSeries = {
+  value?: number;
+  dataKey?: string;
+  name?: string;
+  /**
+   * Series color (matches the legend swatch). Part of the drill-down payload
+   * contract so a popover can show a per-series swatch.
+   */
+  color?: string;
+};
+
+/**
+ * State for the click-frozen ("pinned") tooltip. Produced by MemoChart's
+ * onClick and consumed by DBTimeChart to render the drill-down popover.
+ */
+export type ActiveClickPayload = {
+  x: number;
+  y: number;
+  activeLabel: string;
+  xPerc: number;
+  yPerc: number;
+  activePayload?: ActiveClickSeries[];
+};
+
+/** Series label shown in the legend, tooltip, and line `name`. */
+const getSeriesDisplayName = (ld: LineData) => ld.displayName || ld.dataKey;
+
+/** Normalize a chart event's active label (number | string) to a string. */
+const getActiveLabel = (state?: {
+  activeLabel?: string | number;
+}): string | undefined =>
+  state?.activeLabel != null ? String(state.activeLabel) : undefined;
+
+/**
+ * Build the per-series payload for a click-frozen tooltip from the data row at
+ * the clicked bucket. Only the visible series (legend selection +
+ * HARD_LINES_LIMIT) with a numeric value at that bucket are included, so the
+ * drill-down popover mirrors exactly what is drawn. Exported for unit testing.
+ */
+export function buildActiveClickSeries(
+  visibleLineData: LineData[],
+  activeRow: Record<string, unknown> | undefined,
+): ActiveClickSeries[] {
+  if (activeRow == null) return [];
+  return visibleLineData.flatMap(ld => {
+    const value = activeRow[ld.dataKey];
+    if (typeof value !== 'number') return [];
+    return [
+      {
+        dataKey: ld.dataKey,
+        name: getSeriesDisplayName(ld),
+        value,
+        color: ld.color,
+      },
+    ];
+  });
+}
+
+/**
+ * The series actually drawn on the chart: the first HARD_LINES_LIMIT of
+ * lineData, narrowed to the legend selection when one is active. The rendered
+ * lines and the drill-down click payload both derive from this same set so
+ * they never diverge. Exported for unit testing.
+ */
+export function getVisibleLineData(
+  lineData: LineData[],
+  selectedSeriesNames: Set<string> | undefined,
+): LineData[] {
+  const hasSelection = !!selectedSeriesNames && selectedSeriesNames.size > 0;
+  return lineData
+    .slice(0, HARD_LINES_LIMIT)
+    .filter(
+      ld => !hasSelection || selectedSeriesNames.has(getSeriesDisplayName(ld)),
+    );
+}
+
 const StackedBarWithOverlap = (props: BarProps) => {
-  const { x, y, width, height, fill } = props;
+  const { x, y, width, fill } = props;
+  // `height` may arrive as a string, so coerce it to a number before the
+  // arithmetic below.
+  const height =
+    typeof props.height === 'number' ? props.height : Number(props.height ?? 0);
   // Add a tiny bit to the height to create overlap. Otherwise there's a gap
   return (
     <rect
       x={x}
       y={y}
       width={width}
-      height={height && height > 0 ? height + 0.5 : 0}
+      height={height > 0 ? height + 0.5 : 0}
       fill={fill}
     />
   );
 };
 
 type CaptureActiveDotProps = {
-  /** Shared ref the tooltip reads to find the series nearest the cursor. */
-  captureRef: React.MutableRefObject<Map<string, number>>;
+  /**
+   * Called with each series' active-point pixel Y. This is a stable callback
+   * (not the ref itself) so Recharts, which stores this element's props in its
+   * Immer-backed store and freezes them, never freezes the underlying Map —
+   * the write happens on the ref captured in the callback's closure instead.
+   */
+  onCapture: (dataKey: string, cy: number) => void;
   cx?: number;
   cy?: number;
   dataKey?: string | number;
@@ -399,14 +504,14 @@ type CaptureActiveDotProps = {
 
 /**
  * Active dot for an Area series. Records the active point's pixel Y (`cy`)
- * into `captureRef`, keyed by dataKey, then draws the same dot Recharts
+ * via `onCapture`, keyed by dataKey, then draws the same dot Recharts
  * renders by default. Recharts clones this element with the active-point
  * props (cx, cy, dataKey, r, fill, stroke, strokeWidth) during the render
- * that precedes the tooltip, so the ref is current when the tooltip reads
+ * that precedes the tooltip, so the capture is current when the tooltip reads
  * it to find the series nearest the cursor.
  */
 function CaptureActiveDot({
-  captureRef,
+  onCapture,
   cx,
   cy,
   dataKey,
@@ -419,8 +524,7 @@ function CaptureActiveDot({
     // Written synchronously during render so the tooltip, which Recharts
     // renders after the graphical items in the same commit, reads the
     // current frame's positions rather than the previous frame's.
-    // eslint-disable-next-line react-hooks/refs
-    captureRef.current.set(String(dataKey), cy);
+    onCapture(String(dataKey), cy);
   }
   if (typeof cx !== 'number' || typeof cy !== 'number') {
     return null;
@@ -470,6 +574,7 @@ export const MemoChart = memo(function MemoChart({
   dateRange,
   lineData,
   referenceLines,
+  annotations,
   logReferenceTimestamp,
   displayType = DisplayType.Line,
   axisNumberFormat,
@@ -487,11 +592,18 @@ export const MemoChart = memo(function MemoChart({
   fitYAxisToData = false,
 }: {
   graphResults: any[];
-  setIsClickActive: (v: any) => void;
-  isClickActive: any;
+  setIsClickActive: (v: ActiveClickPayload | undefined) => void;
+  isClickActive: ActiveClickPayload | undefined;
   dateRange: [Date, Date] | Readonly<[Date, Date]>;
   lineData: LineData[];
   referenceLines?: React.ReactNode;
+  /**
+   * Event markers (alerts, deploys, …) drawn as dashed vertical lines with a
+   * label above. Passed as data rather than pre-rendered elements so the chart
+   * can clamp them to its own x-axis domain. Distinct from `referenceLines`
+   * (threshold lines).
+   */
+  annotations?: ChartAnnotation[];
   displayType?: DisplayType;
   axisNumberFormat?: NumberFormat;
   fallbackNumberFormat?: NumberFormat;
@@ -522,6 +634,14 @@ export const MemoChart = memo(function MemoChart({
   // Read during the same render that draws the active dots.
   const activePointYByKeyRef = useRef<Map<string, number>>(new Map());
 
+  // Stable writer passed to the active-dot element instead of the ref itself.
+  // Recharts freezes the props of graphical-item elements in its Immer store;
+  // passing a callback (rather than the Map) keeps the mutation on the
+  // closed-over ref, which is never frozen.
+  const captureActivePointY = useCallback((dataKey: string, cy: number) => {
+    activePointYByKeyRef.current.set(dataKey, cy);
+  }, []);
+
   // Key of the series whose line is nearest the cursor, lifted into state so
   // the chart can emphasize that line (thicker stroke) and fade the rest.
   // Set from the chart's mouse-move using the pixel Y the active dots captured
@@ -537,33 +657,26 @@ export const MemoChart = memo(function MemoChart({
     [displayType],
   );
 
+  const visibleLineData = useMemo(
+    () => getVisibleLineData(lineData, selectedSeriesNames),
+    [lineData, selectedSeriesNames],
+  );
+
   const lines = useMemo(() => {
-    const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
-
-    const limitedGroupKeys = lineData
-      .map(ld => ld.dataKey)
-      .slice(0, HARD_LINES_LIMIT)
-      .filter((key, i) => {
-        const seriesName = lineData[i]?.displayName ?? key;
-        // If there's a selection, only show selected series
-        // If no selection, show all series
-        return !hasSelection || selectedSeriesNames.has(seriesName);
-      });
-
     // When a series is nearest the cursor (only meaningful with more than one
     // line shown), thicken its line and fade the others so the eye lands on
     // the same series the tooltip bolds. Mirrors the legend's selected style
     // (thicker stroke) with a gentle fade that keeps the rest readable.
     const hasNearest =
-      limitedGroupKeys.length > 1 &&
+      visibleLineData.length > 1 &&
       nearestSeriesKey != null &&
-      limitedGroupKeys.includes(nearestSeriesKey);
+      visibleLineData.some(ld => ld.dataKey === nearestSeriesKey);
 
-    return limitedGroupKeys.map(key => {
-      const lineDataIndex = lineData.findIndex(ld => ld.dataKey === key);
-      const color = lineData[lineDataIndex]?.color;
-      const strokeDasharray = lineData[lineDataIndex]?.isDashed ? '4 3' : '0';
-      const seriesName = lineData[lineDataIndex]?.displayName ?? key;
+    return visibleLineData.map(ld => {
+      const key = ld.dataKey;
+      const color = ld.color;
+      const strokeDasharray = ld.isDashed ? '4 3' : '0';
+      const seriesName = getSeriesDisplayName(ld);
 
       return displayType === 'stacked_bar' ? (
         <Bar
@@ -588,7 +701,7 @@ export const MemoChart = memo(function MemoChart({
           strokeOpacity={
             hasNearest && key !== nearestSeriesKey ? 0.5 : undefined
           }
-          activeDot={<CaptureActiveDot captureRef={activePointYByKeyRef} />}
+          activeDot={<CaptureActiveDot onCapture={captureActivePointY} />}
           {...(isHovered
             ? { fill: 'none', strokeDasharray }
             : {
@@ -602,12 +715,12 @@ export const MemoChart = memo(function MemoChart({
       );
     });
   }, [
-    lineData,
+    visibleLineData,
     displayType,
     id,
     isHovered,
-    selectedSeriesNames,
     nearestSeriesKey,
+    captureActivePointY,
   ]);
 
   const yAxisDomain: AxisDomain = useMemo(() => {
@@ -672,6 +785,17 @@ export const MemoChart = memo(function MemoChart({
   const sizeRef = useRef<[number, number]>([0, 0]);
   const [containerWidth, setContainerWidth] = useState(0);
 
+  // The chart's outer positioned container. Used to convert a pointer's
+  // viewport clientX into a stable container-relative X for measuring
+  // drag-to-zoom distance — a single origin that is always defined, unlike the
+  // chart's activeCoordinate (null off a data point) or a child SVG element's
+  // offsetX (relative to whichever bar/path is under the pointer).
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const getContainerX = useCallback((e?: { clientX?: number } | null) => {
+    if (e?.clientX == null || containerRef.current == null) return undefined;
+    return e.clientX - containerRef.current.getBoundingClientRect().left;
+  }, []);
+
   // Recharts computes bar width from the smallest gap between ticks on a
   // numerical XAxis. With a single data point there are no gaps, so the
   // computed width is 0 and bars become invisible. Provide an explicit
@@ -730,6 +854,11 @@ export const MemoChart = memo(function MemoChart({
   // Set right before we trigger our own brush-zoom so the dateRange effect can
   // tell an internal zoom apart from an external time-range change.
   const justZoomedRef = useRef(false);
+  // Set on a completed brush-zoom so the synthetic click that follows mouseup
+  // is swallowed (instead of freezing a stale drill-down tooltip). Kept
+  // separate from justZoomedRef and consumed/cleared by onClick, because the
+  // dateRange effect may never run when the post-zoom range is value-equal.
+  const suppressNextClickRef = useRef(false);
   const prevDateRangeRef = useRef<[number, number] | null>(null);
 
   // Clear the reset-zoom affordance whenever the time range changes for a
@@ -743,11 +872,17 @@ export const MemoChart = memo(function MemoChart({
     const changed = prev == null || prev[0] !== from || prev[1] !== to;
     prevDateRangeRef.current = [from, to];
 
+    // A brush-zoom sets justZoomedRef; consume it here so the range change it
+    // caused doesn't clear zoomOrigin. Clear it even when the range didn't
+    // actually change (a value-equal zoom), so it can't leak into a later
+    // unrelated range change and wrongly preserve a stale zoomOrigin.
+    const wasInternalZoom = justZoomedRef.current;
+    justZoomedRef.current = false;
+
     if (!changed) {
       return;
     }
-    if (justZoomedRef.current) {
-      justZoomedRef.current = false;
+    if (wasInternalZoom) {
       return;
     }
     setZoomOrigin(null);
@@ -792,8 +927,24 @@ export const MemoChart = memo(function MemoChart({
     return [startTime.getTime() / 1000, endTime.getTime() / 1000];
   }, [dateRange, granularity, dateRangeEndInclusive, displayType]);
 
+  // Alert/event markers as dashed lines, clamped to the chart's x-axis domain so
+  // an edge marker (e.g. an alert already firing at window open) stays visible
+  // instead of being dropped. Labels float in the reserved top headroom.
+  const annotationElements = useMemo(() => {
+    if (!annotations?.length) {
+      return null;
+    }
+    // xAxisDomain is a [min, max] tuple at runtime (declared as AxisDomain).
+    return getAnnotationElements(annotations, {
+      domain: xAxisDomain as [number, number],
+    });
+  }, [annotations, xAxisDomain]);
+
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div
+      ref={containerRef}
+      style={{ position: 'relative', width: '100%', height: '100%' }}
+    >
       {onTimeRangeSelect != null && zoomOrigin != null ? (
         <MantineTooltip label="Reset to the range before zooming in" withArrow>
           <Button
@@ -816,6 +967,10 @@ export const MemoChart = memo(function MemoChart({
         width="100%"
         height="100%"
         minWidth={0}
+        // Debounce resize handling so a resize → re-render → resize cycle
+        // can't thrash layout (which leaves surrounding form controls never
+        // "stable"); the observer otherwise fires undebounced on every frame.
+        debounce={RESPONSIVE_CONTAINER_DEBOUNCE_MS}
         onResize={(width, height) => {
           const w = width ?? 1;
           sizeRef.current = [w, height ?? 1];
@@ -827,6 +982,11 @@ export const MemoChart = memo(function MemoChart({
           width={500}
           height={300}
           data={graphResults}
+          margin={
+            annotationElements != null
+              ? { top: ANNOTATION_LABEL_HEADROOM, right: 5, bottom: 5, left: 5 }
+              : undefined
+          }
           syncId="hdx"
           syncMethod="value"
           barSize={singlePointBarSize}
@@ -839,13 +999,18 @@ export const MemoChart = memo(function MemoChart({
             setHighlightEnd(undefined);
             mouseDownPosRef.current = null;
           }}
-          onMouseDown={e => {
-            if (e != null && e.chartX != null && e.chartY != null) {
-              setHighlightStart(e.activeLabel);
-              mouseDownPosRef.current = e.chartX;
+          onMouseDown={(state, e) => {
+            // Record the drag start: the active bucket label and a
+            // container-relative pointer X (always defined, single origin) for
+            // measuring drag distance on mouse up.
+            const chartX = getContainerX(e?.nativeEvent);
+            const downLabel = getActiveLabel(state);
+            if (downLabel != null && chartX != null) {
+              setHighlightStart(downLabel);
+              mouseDownPosRef.current = chartX;
             }
           }}
-          onMouseMove={e => {
+          onMouseMove={state => {
             setIsHovered(true);
 
             // Track which series' line is nearest the cursor so the lines can
@@ -853,15 +1018,16 @@ export const MemoChart = memo(function MemoChart({
             // frame; comparing the pointer's chartY picks the nearest line. Skip
             // while a click-frozen tooltip is shown, matching the tooltip, and
             // only set state when the key changes to keep re-renders rare.
+            const chartY = state?.activeCoordinate?.y;
             const activePointYByKey = activePointYByKeyRef.current;
             const nextNearest =
               isClickActive == null &&
               activePointYByKey.size > 1 &&
-              e?.chartY != null
+              chartY != null
                 ? findNearestSeriesKey(
                     activePointYByKey,
                     Array.from(activePointYByKey.keys()),
-                    e.chartY,
+                    chartY,
                     NEAREST_SERIES_MAX_DISTANCE_PX,
                   )
                 : undefined;
@@ -869,20 +1035,26 @@ export const MemoChart = memo(function MemoChart({
               prev === nextNearest ? prev : nextNearest,
             );
 
-            if (highlightStart != null) {
-              setHighlightEnd(e.activeLabel);
+            const moveLabel = getActiveLabel(state);
+            if (highlightStart != null && moveLabel != null) {
+              setHighlightEnd(moveLabel);
               setIsClickActive(undefined); // Clear out any click state as we're highlighting
             }
           }}
-          onMouseUp={e => {
+          onMouseUp={(state, e) => {
             const MIN_DRAG_DISTANCE = 20; // Minimum horizontal drag distance in pixels
             let dragDistance = 0;
 
-            if (mouseDownPosRef.current != null && e?.chartX != null) {
-              dragDistance = Math.abs(e.chartX - mouseDownPosRef.current);
+            // Measure against the same container-relative origin recorded on
+            // mouse down so the distance is never skewed or dropped when the
+            // pointer maps to no data point.
+            const chartX = getContainerX(e?.nativeEvent);
+            if (mouseDownPosRef.current != null && chartX != null) {
+              dragDistance = Math.abs(chartX - mouseDownPosRef.current);
             }
 
-            if (e?.activeLabel != null && highlightStart === e.activeLabel) {
+            const activeLabel = getActiveLabel(state);
+            if (activeLabel != null && highlightStart === activeLabel) {
               // If it's just a click, don't zoom
               setHighlightStart(undefined);
               setHighlightEnd(undefined);
@@ -898,22 +1070,26 @@ export const MemoChart = memo(function MemoChart({
                 const originStart = dateRange[0];
                 const originEnd = dateRange[1];
                 setZoomOrigin(prev => prev ?? [originStart, originEnd]);
-                justZoomedRef.current = true;
+                // The synthetic click after this drag must be swallowed
+                // regardless of whether a range change follows; onClick
+                // consumes and clears this itself.
+                suppressNextClickRef.current = true;
+                // Only tell the [dateRange] effect to preserve zoomOrigin when a
+                // range change will actually happen; without onTimeRangeSelect
+                // the range never changes and the effect never runs.
+                if (onTimeRangeSelect != null) {
+                  justZoomedRef.current = true;
+                }
+                // Order the range numerically — the labels are epoch-second
+                // strings, so a lexicographic compare would misorder values of
+                // differing digit length.
+                const startSec = Number(highlightStart);
+                const endSec = Number(highlightEnd);
+                const lowSec = Math.min(startSec, endSec);
+                const highSec = Math.max(startSec, endSec);
                 onTimeRangeSelect?.(
-                  new Date(
-                    Number.parseInt(
-                      highlightStart <= highlightEnd
-                        ? highlightStart
-                        : highlightEnd,
-                    ) * 1000,
-                  ),
-                  new Date(
-                    Number.parseInt(
-                      highlightEnd >= highlightStart
-                        ? highlightEnd
-                        : highlightStart,
-                    ) * 1000,
-                  ),
+                  new Date(lowSec * 1000),
+                  new Date(highSec * 1000),
                 );
               } catch (e) {
                 console.error('failed to highlight range', e);
@@ -931,21 +1107,47 @@ export const MemoChart = memo(function MemoChart({
             }
           }}
           onClick={(state, e) => {
+            // A brush-to-zoom ends with a synthetic click; skip that one click
+            // so we don't freeze a drill-down tooltip with now-stale, pre-zoom
+            // data. Consume-and-clear the flag here so a value-equal zoom (which
+            // never triggers the dateRange effect) can't leave it stuck and
+            // suppress every later click.
+            if (suppressNextClickRef.current) {
+              suppressNextClickRef.current = false;
+              e.stopPropagation();
+              return;
+            }
+            // Freeze a tooltip at the clicked point: take the click position
+            // from the active coordinate and build the per-series payload from
+            // the active bucket in graphResults (the popover only needs
+            // value/name/color/dataKey per series).
+            const chartX = state?.activeCoordinate?.x;
+            const chartY = state?.activeCoordinate?.y;
+            const activeLabel = getActiveLabel(state);
             if (
-              state != null &&
-              state.chartX != null &&
-              state.chartY != null &&
-              state.activeLabel != null &&
+              chartX != null &&
+              chartY != null &&
+              activeLabel != null &&
               // If we didn't drag and highlight yet
               highlightStart == null
             ) {
+              const activeRow = graphResults.find(
+                row => String(row[timestampKey]) === activeLabel,
+              );
+              // Mirror the series actually drawn (legend selection +
+              // HARD_LINES_LIMIT) so the popover's "Filter by group" list never
+              // shows deselected or over-limit series.
+              const activePayload = buildActiveClickSeries(
+                visibleLineData,
+                activeRow,
+              );
               setIsClickActive({
-                x: state.chartX,
-                y: state.chartY,
-                activeLabel: state.activeLabel,
-                xPerc: state.chartX / sizeRef.current[0],
-                yPerc: state.chartY / sizeRef.current[1],
-                activePayload: state.activePayload,
+                x: chartX,
+                y: chartY,
+                activeLabel,
+                xPerc: chartX / sizeRef.current[0],
+                yPerc: chartY / sizeRef.current[1],
+                activePayload,
               });
               // The click-frozen tooltip hides the live tooltip, so drop any
               // line emphasis to match.
@@ -1022,11 +1224,14 @@ export const MemoChart = memo(function MemoChart({
             />
           )}
           {referenceLines}
+          {annotationElements}
           {highlightStart && highlightEnd ? (
             <ReferenceArea
               // yAxisId="1"
-              x1={highlightStart}
-              x2={highlightEnd}
+              // Numeric x on the numeric time axis (same as the click marker
+              // ReferenceLine); a string wouldn't position on scale="time".
+              x1={Number(highlightStart)}
+              x2={Number(highlightEnd)}
               strokeOpacity={0.3}
             />
           ) : null}
@@ -1047,7 +1252,12 @@ export const MemoChart = memo(function MemoChart({
           )}
           {/** Needs to be at the bottom to prevent re-rendering */}
           {isClickActive != null ? (
-            <ReferenceLine x={isClickActive.activeLabel} stroke="#ccc" />
+            // The x-axis is numeric (scale="time"); pass a number so the marker
+            // positions without relying on the axis coercing a string.
+            <ReferenceLine
+              x={Number(isClickActive.activeLabel)}
+              stroke="#ccc"
+            />
           ) : null}
           {logReferenceTimestamp != null ? (
             <ReferenceLine

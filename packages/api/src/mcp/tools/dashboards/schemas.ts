@@ -631,9 +631,70 @@ const mcpPieTileSchema = mcpTileLayoutSchema.extend({
         'Column that defines pie slices. Use PascalCase for top-level columns. ' +
           "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
       ),
+    orderBy: z
+      .string()
+      .optional()
+      .describe(
+        'Optional custom SQL ORDER BY expression. Overrides the default ' +
+          'value-descending ordering and, combined with `limit`, controls which ' +
+          'slices are kept. When ordering by an alias that contains spaces or ' +
+          `special characters, wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+      ),
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(tileLevelNumberFormatDescription),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        'Maximum number of slices (SQL LIMIT). Without a custom `orderBy`, keeps ' +
+          'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
+          'keeps the first N in that order. Omit to fetch all groups.',
+      ),
+  }),
+});
+
+// Categorical bar charts ('bar') behave exactly like pie charts: one
+// aggregated select item, optional groupBy, no time bucketing. Distinct
+// from 'stacked_bar', which is a time series.
+const mcpCategoricalBarTileSchema = mcpTileLayoutSchema.extend({
+  config: z.object({
+    displayType: z
+      .literal('bar')
+      .describe('Bar chart — one bar per group value (not a time series)'),
+    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+    select: z.array(mcpTileSelectItemSchema).length(1),
+    groupBy: z
+      .string()
+      .optional()
+      .describe(
+        'Column(s) that define the bars. Use PascalCase for top-level columns. ' +
+          "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
+      ),
+    orderBy: z
+      .string()
+      .optional()
+      .describe(
+        'Optional custom SQL ORDER BY expression. Overrides the default ' +
+          'value-descending ordering and, combined with `limit`, controls which ' +
+          'bars are kept. When ordering by an alias that contains spaces or ' +
+          `special characters, wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+      ),
+    numberFormat: mcpNumberFormatSchema
+      .optional()
+      .describe(tileLevelNumberFormatDescription),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        'Maximum number of bars (SQL LIMIT). Without a custom `orderBy`, keeps ' +
+          'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
+          'keeps the first N in that order. Omit to fetch all groups.',
+      ),
   }),
 });
 
@@ -763,7 +824,7 @@ const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
           'ADVANCED: Only use raw SQL tiles when the builder tile types cannot express the query you need.',
       ),
     displayType: z
-      .enum(['line', 'stacked_bar', 'table', 'number', 'pie'])
+      .enum(['line', 'stacked_bar', 'table', 'number', 'pie', 'bar'])
       .describe('How to render the SQL results'),
     connectionId: z
       .string()
@@ -840,6 +901,7 @@ const mcpTileSchema = z.union([
   mcpTableTileSchema,
   mcpNumberTileSchema,
   mcpPieTileSchema,
+  mcpCategoricalBarTileSchema,
   mcpHeatmapTileSchema,
   mcpSearchTileSchema,
   mcpEventPatternsTileSchema,
@@ -875,6 +937,9 @@ const mcpPatchTileSchema = z.union([
     config: mcpNumberTileSchema.shape.config,
   }),
   mcpPatchTileLayoutSchema.extend({ config: mcpPieTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpCategoricalBarTileSchema.shape.config,
+  }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpHeatmapTileSchema.shape.config,
   }),

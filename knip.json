@@ -36,7 +36,9 @@
   "ignore": [
     "scripts/dev-portal/**",
     ".github/scripts/**",
-    "docker/hyperdx/**"
+    ".github/actions/**",
+    "docker/hyperdx/**",
+    ".claude/**"
   ],
   "ignoreBinaries": ["make", "migrate"],
   "ignoreDependencies": [

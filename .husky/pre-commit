@@ -4,3 +4,10 @@ set -e
 . "$(dirname -- "$0")/_/husky.sh"
 
 npx lint-staged
+
+# Whole-project unused-code analysis. Runs the same check as the Knip CI
+# workflow so unused files/deps/exports are caught before push, not in CI.
+# --no-config-hints matches CI (which never counts hints) and drops the
+# cosmetic ".claude/** redundant ignore" false positive.
+echo "Running knip..."
+npx knip --no-config-hints

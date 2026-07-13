@@ -72,15 +72,20 @@ describe('useAlertAnnotations', () => {
     expect(result.current).toBeUndefined();
   });
 
-  it('returns reference lines when transitions exist', () => {
+  it('returns annotation data when transitions exist', () => {
+    const firedAt = '2026-07-01T00:30:00.000Z';
     mockHistory({
-      data: [
-        { createdAt: '2026-07-01T00:30:00.000Z', state: AlertState.ALERT },
-      ],
+      data: [{ createdAt: firedAt, state: AlertState.ALERT }],
     });
     const { result } = renderHook(() =>
       useAlertAnnotations('alert-1', range, true),
     );
     expect(result.current).toHaveLength(1);
+    // Returns annotation data (not rendered elements); the chart renders it.
+    expect(result.current?.[0]).toMatchObject({
+      time: firedAt,
+      label: 'Alert',
+      color: getChartColorError(),
+    });
   });
 });

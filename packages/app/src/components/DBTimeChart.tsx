@@ -47,7 +47,8 @@ import {
   shouldFillNullsWithZero,
   useTimeChartSettings,
 } from '@/ChartUtils';
-import { MemoChart } from '@/HDXMultiSeriesTimeChart';
+import { ChartAnnotation } from '@/components/charts/chartAnnotations';
+import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useChartNumberFormats, useSource } from '@/source';
@@ -59,21 +60,6 @@ import ChartErrorState, {
 import DateRangeIndicator from './charts/DateRangeIndicator';
 import DisplaySwitcher from './charts/DisplaySwitcher';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
-
-type ActiveClickPayload = {
-  x: number;
-  y: number;
-  activeLabel: string;
-  xPerc: number;
-  yPerc: number;
-  activePayload?: {
-    value?: number;
-    dataKey?: string;
-    name?: string;
-    /** Series color from Recharts, matching the legend swatch. */
-    color?: string;
-  }[];
-};
 
 /** A single group column / value pair decoded from a chart series key. */
 export type SeriesGroupFilter = { column: string; value: string };
@@ -371,6 +357,8 @@ type DBTimeChartComponentProps = {
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   queryKeyPrefix?: string;
   referenceLines?: React.ReactNode;
+  /** Event markers (e.g. alert firing/recovery) drawn as dashed lines with labels. */
+  annotations?: ChartAnnotation[];
   setDisplayType?: (type: DisplayType) => void;
   showDisplaySwitcher?: boolean;
   showLegend?: boolean;
@@ -404,6 +392,7 @@ function DBTimeChartComponent({
   onTimeRangeSelect,
   queryKeyPrefix,
   referenceLines,
+  annotations,
   setDisplayType,
   showDisplaySwitcher = true,
   showLegend = true,
@@ -912,6 +901,7 @@ function DBTimeChartComponent({
             tooltipNumberFormatsByKey={formatByColumn}
             onTimeRangeSelect={onTimeRangeSelect}
             referenceLines={referenceLines}
+            annotations={annotations}
             setIsClickActive={setActiveClickPayloadIfSourceAvailable}
             showLegend={showLegend}
             timestampKey={timestampColumn?.name}

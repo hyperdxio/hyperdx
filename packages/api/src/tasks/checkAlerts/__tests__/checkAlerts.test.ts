@@ -5854,8 +5854,9 @@ describe('checkAlerts', () => {
       ).toBe(true);
     });
 
-    // TODO: revisit this once the auto-resolve feature is implemented
-    it('should check 3 time buckets [1 error, 3 errors, 1 error] with threshold 2 and maintain ALERT state with 3 lastValues entries', async () => {
+    // The auto-resolve logic ensures that if a subsequent bucket within the same tick drops below the threshold,
+    // the alert state resets to OK, even though an alert notification might have already fired for the earlier bucket.
+    it('should check 3 time buckets [1 error, 3 errors, 1 error] with threshold 2 and auto-resolve to OK state with 3 lastValues entries', async () => {
       const {
         team,
         webhook,
@@ -5950,9 +5951,9 @@ describe('checkAlerts', () => {
         teamWebhooksById,
       );
 
-      // Alert should be in ALERT state because one of the buckets exceeded threshold
+      // Alert should be in OK state because the final bucket (bucket 3) dropped below the threshold and auto-resolved.
       const updatedAlert = await Alert.findById(details.alert.id);
-      expect(updatedAlert!.state).toBe('ALERT');
+      expect(updatedAlert!.state).toBe('OK');
 
       // Check alert history
       const alertHistories = await AlertHistory.find({
@@ -5964,7 +5965,7 @@ describe('checkAlerts', () => {
 
       // Get the new alert history (not the previous one we created)
       const history = alertHistories[1];
-      expect(history.state).toBe('ALERT');
+      expect(history.state).toBe('OK');
 
       // Should have 3 entries in lastValues (one for each time bucket checked)
       // Even though ClickHouse only returns rows with data, the system should populate all 3 buckets
@@ -5994,8 +5995,8 @@ describe('checkAlerts', () => {
       );
       expect(buckets[2].count).toBe(1);
 
-      // Verify webhook was called for the alert
-      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      // Verify webhook was called for the alert (ALERT followed by RESOLVED)
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
 
       // Second run: process alert at 22:22:00
       // Previous history was created at 22:15:00 (from first run)
@@ -6477,17 +6478,17 @@ describe('checkAlerts', () => {
         teamWebhooksById,
       );
 
-      // Alert should be in ALERT state because there are no logs in the second period
-      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+      // Period 3 has 1 log, which doesn't satisfy BELOW threshold (count < 1), so it auto-resolves to OK.
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
 
-      // Alert histories should reflect ALERT state for period 2 and OK state for period 3
+      // Period 3 didn't exceed threshold, so auto-resolve reset state to OK.
       const alertHistoriesPeriod2 = await AlertHistory.find({
         alert: details.alert.id,
       }).sort({ createdAt: 1 });
       expect(alertHistoriesPeriod2).toHaveLength(2);
 
-      expect(alertHistoriesPeriod2[1].state).toBe('ALERT');
-      expect(alertHistoriesPeriod2[1].counts).toBe(1);
+      expect(alertHistoriesPeriod2[1].state).toBe('OK');
+      expect(alertHistoriesPeriod2[1].counts).toBe(0);
       expect(alertHistoriesPeriod2[1].lastValues.length).toBe(2);
 
       // Period 2 - zero-filled
@@ -8538,6 +8539,96 @@ describe('checkAlerts', () => {
         teamWebhooksById,
       );
       expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+    });
+
+    it('same-tick breach-then-recover sends an alert followed by a resolved notification', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      // Prior OK history
+      await new AlertHistory({
+        alert: details.alert.id,
+        state: 'OK',
+        createdAt: new Date('2024-03-01T22:05:00Z'),
+        counts: 0,
+      }).save();
+      await Alert.findByIdAndUpdate(details.alert.id, { state: 'OK' });
+
+      // Buckets:
+      // (3 errors, breach)
+      // (1 error, ok)
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2024-03-01T22:06:00Z'),
+          SeverityText: 'error',
+          Body: 'err',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2024-03-01T22:07:00Z'),
+          SeverityText: 'error',
+          Body: 'err',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2024-03-01T22:08:00Z'),
+          SeverityText: 'error',
+          Body: 'err',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2024-03-01T22:11:00Z'),
+          SeverityText: 'error',
+          Body: 'err',
+        },
+      ]);
+
+      // now
+      await processAlertAtTime(
+        new Date('2024-03-01T22:18:00Z'),
+        details,
+        clickhouseClient,
+        connection.id as any,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+
+      const calls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
+      expect(JSON.stringify(calls[0][1])).toContain('Alert for');
+      expect(JSON.stringify(calls[1][1])).toContain(
+        'The alert has been resolved',
+      );
     });
 
     describe('multi-window alerting (numConsecutiveWindows)', () => {
