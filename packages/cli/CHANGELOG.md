@@ -1,5 +1,11 @@
 # @hyperdx/cli
 
+## 0.5.2
+
+### Patch Changes
+
+- bb7ae21e8: Upgrade the TypeScript devDependency from 5.9 to 6.0 across all packages.
+
 ## 0.5.1
 
 ### Patch Changes

@@ -1,5 +1,135 @@
 # @hyperdx/app
 
+## 2.30.0
+
+### Minor Changes
+
+- c29d0df23: feat: Add categorical bar chart display type
+- 880fb668c: feat: add event patterns as a first-class dashboard tile type
+
+  Event patterns can now be created, edited, and saved as dashboard tiles with a dedicated "Pattern Expression" editor. Supported across the UI, MCP server, and External API v2.
+
+- 232e87139: feat(dashboards): overlay alert firing/recovery markers on tile charts
+
+  Adds an optional "alert annotations" overlay to dashboard timeseries tiles.
+  When enabled via the dashboard menu ("Show alert annotations"), tiles that have
+  an alert draw a red vertical marker at the moment the alert fired and a green
+  marker when it recovered, so alert events can be correlated with the chart in
+  one view. The overlay is off by default and its state lives in the URL
+  (`?alertAnnotations=true`), not on the saved dashboard. Backed by a new
+  team-scoped `GET /api/alerts/:id/history` endpoint that returns only alert state
+  transitions within the requested time range, so annotations honor the
+  dashboard's selected window.
+
+- ba598baba: feat: Add a custom ORDER BY input for Bar and Pie charts
+- c29d0df23: feat: Allow specifying a limit on pie and bar chart series
+- 0c7254360: Adding consecutive-window configuration to alerts, so that you can specify a condition like "only fire this alert after some condition is met for N consecutive windows." This helps prevent flaky alerts (and pages), and cut down on alert noise in many cases.
+
+  Also adds a `PENDING` alert state for alarms that _will_ fire if current trends continue.
+
+- f6dbdd149: Redesign the event side panel into a single right-hand drawer with breadcrumb-stack navigation. Logs, traces, and sessions now navigate in-place (surrounding-context drilldowns, log → trace via a new "View Trace" action, and session → event) instead of stacking layered drawers.
+
+### Patch Changes
+
+- 707e64666: fix(table-chart): wrap mode now breaks long URLs/IDs instead of overflowing into adjacent columns
+- 36c34a0af: fix(dashboards): make alert annotations easier to read and keep the "already firing" marker on-screen at sub-minute granularity
+
+  Alert firing/recovery annotations on dashboard tiles now float their "Alert" /
+  "OK" labels in reserved headroom above the marker line — added only on tiles
+  that are showing annotations — so the labels stay clear of dense series and
+  stacked bars. Also fixes a case where the marker for an alert that was already
+  firing when the window opened could be dropped on tiles using a sub-minute
+  granularity (non-minute-aligned start): the marker now snaps to the chart's
+  visible left edge instead of falling outside the plot.
+
+- b53c03723: Polish dashboard tiles: white (surface) card backgrounds with a border, a subtle
+  muted page background, a modern dotted resize handle, and a compact, consistent
+  tile header. Tile actions are consolidated into a right-aligned kebab menu (with
+  the alert bell) that sits after each chart's own controls, and a full-bleed
+  separator gives every tile a consistent header strip.
+- ec3fd686f: Allow typing an arbitrary value when editing an active filter pill. The pill's value picker now accepts free text (committed on Enter or blur) in addition to selecting from the suggested values, so you can filter on values that aren't present in the sampled data.
+- ea9b8895: Fix "Accordion.Item component was rendered with invalid value or without
+  value" error when expanding a map attribute group (e.g. LogAttributes) in the
+  search filters sidebar. Telemetry containing an empty attribute key produced a
+  filter group with an empty name, which Mantine rejects; such groups now render
+  with an `(empty)` placeholder name instead of crashing the panel.
+- 555d88a9: Fix "Add to Filters" on a value inside parsed JSON from a String column (for example `Body`) building invalid SQL. The `JSONExtractString(...)` expression the JSON viewer produces is now passed through unchanged instead of being mis-parsed as a dot-form Map sub-key and mangled into a query ClickHouse rejects.
+- 81e2b3022: Fix primary button hover text color by using Mantine's `--button-hover-color`
+  variable (the theme previously set the non-existent `--button-color-hover`, so
+  the hover text color was never applied and could fall through to an inherited
+  page color).
+- ea27c1241: Fix trace waterfall span bars losing their duration proportions when zoomed
+  in. The span-bar minimum width was applied as a percentage of the events area,
+  which the zoom model widens via `width`, so the floor scaled with the zoom
+  factor and very short spans grew as wide as multi-second ones. The floor is now
+  a fixed pixel `minWidth`, so bar widths stay proportional to duration at every
+  zoom level while sub-pixel spans remain clickable.
+- 392a7749: Hide the left nav feedback control entirely when the nav is collapsed, since the thumbs up/down icons were not usable in that state.
+- 1838a58e: fix: brings back sessions source validation that was mysteriously deleted
+- d12fd914e: fix(charts): add a "Reset zoom" button to time-series charts so a brush-zoom can be undone back to the pre-zoom time range
+- 5a4621104: fix: Skip duplicate groups in heatmap query result
+- 617355378: Move the pinned-filter query parser (`parseQuery`) into `@hyperdx/common-utils`
+  as the inverse of `filtersToQuery`, and add an `isRenderablePinnedFilter`
+  helper. The app re-exports `parseQuery` from its previous location, so there is
+  no behavior change in the UI. The helper lets the external saved-search API
+  validate that a pinned filter will actually render as a sidebar facet (a
+  `type: 'sql'` `<column> IN (...)` / `NOT IN` / `BETWEEN` predicate) and reject
+  shapes that would be stored but never shown.
+- 33dd048e4: fix: Scroll deep-linked source into view on team settings page
+- a01717e47: Bumped node version in .nvmrc to 22.23.1
+- e2f750e36: Service map: add a metric-mode toggle (Latency / Error rate / Throughput) that
+  recolors the graph by the selected dimension, with a legend explaining the color
+  scale and that node size encodes throughput. The canvas and its controls now
+  follow the app's light/dark color scheme instead of being locked to dark. Node
+  colors use a sequential light-to-dark ramp per metric, and the node popover is
+  now a raised surface with a service-name header, grouped sections, and
+  severity-aware error coloring.
+- 39e062f0: storybook: Updates the sample rows data in TimelineChart.stories
+- 7019ab501: Side panel E2E tests
+- 36de29f1: chore: refactor facet filter fetching logic into a custom hook
+- a34b7fb39: Fix dashboard tile titles getting clipped unpredictably when tiles are resized small by applying multi-line ellipsis truncation.
+- 2b209d3ad: fix(TimePicker): keep relative/absolute toggle in sync with URL state
+
+  The time picker's relative-time toggle was only seeded from
+  `defaultRelativeTimeMode` at mount and never re-synced when the prop changed
+  (e.g. after switching live intervals via the URL). This left the picker
+  rendering in a mode that no longer matched the URL, causing nondeterministic
+  behavior. The toggle now follows `defaultRelativeTimeMode` whenever it changes.
+
+- 906edeb91: fix: display/heatmap settings changes now trigger the unsaved changes modal when closing the tile editor
+- d1802e1c: feat(trace): add a trace minimap above the waterfall
+- 6e25c1d5b: feat: redesign the trace waterfall — per-service span colors, vertical service color bar, child counts, duration outside the bar with the span body on hover, expand/collapse depth controls.
+- bb7ae21e8: Upgrade the TypeScript devDependency from 5.9 to 6.0 across all packages.
+- Updated dependencies [c29d0df23]
+- Updated dependencies [727d3274]
+- Updated dependencies [880fb668c]
+- Updated dependencies [232e87139]
+- Updated dependencies [73e6e876e]
+- Updated dependencies [617355378]
+- Updated dependencies [617355378]
+- Updated dependencies [617355378]
+- Updated dependencies [1aaa9388a]
+- Updated dependencies [ec11fae92]
+- Updated dependencies [328e7b437]
+- Updated dependencies [abf5b537]
+- Updated dependencies [60cf52842]
+- Updated dependencies [bfc6fb5c]
+- Updated dependencies [d16db2557]
+- Updated dependencies [5081c8cbb]
+- Updated dependencies [476add172]
+- Updated dependencies [ba598baba]
+- Updated dependencies [c29d0df23]
+- Updated dependencies [3f1e1fe4]
+- Updated dependencies [0c7254360]
+- Updated dependencies [617355378]
+- Updated dependencies [e2145678d]
+- Updated dependencies [a01717e47]
+- Updated dependencies [bdf9352a2]
+- Updated dependencies [bb7ae21e8]
+- Updated dependencies [27e80e965]
+  - @hyperdx/common-utils@0.22.0
+  - @hyperdx/api@2.30.0
+
 ## 2.29.0
 
 ### Minor Changes
