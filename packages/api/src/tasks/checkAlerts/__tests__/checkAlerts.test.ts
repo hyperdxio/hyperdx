@@ -6478,17 +6478,17 @@ describe('checkAlerts', () => {
         teamWebhooksById,
       );
 
-      // Alert should be in ALERT state because there are no logs in the second period
-      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+      // Period 3 has 1 log, which doesn't satisfy BELOW threshold (count < 1), so it auto-resolves to OK.
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
 
-      // Alert histories should reflect ALERT state for period 2 and OK state for period 3
+      // Period 3 didn't exceed threshold, so auto-resolve reset state to OK.
       const alertHistoriesPeriod2 = await AlertHistory.find({
         alert: details.alert.id,
       }).sort({ createdAt: 1 });
       expect(alertHistoriesPeriod2).toHaveLength(2);
 
-      expect(alertHistoriesPeriod2[1].state).toBe('ALERT');
-      expect(alertHistoriesPeriod2[1].counts).toBe(1);
+      expect(alertHistoriesPeriod2[1].state).toBe('OK');
+      expect(alertHistoriesPeriod2[1].counts).toBe(0);
       expect(alertHistoriesPeriod2[1].lastValues.length).toBe(2);
 
       // Period 2 - zero-filled
