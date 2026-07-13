@@ -88,6 +88,7 @@
     "react-markdown": "^10.1.0",
     "react-resizable": "^3.0.4",
     "recharts": "^2.12.7",
+    "remark-gfm": "^4.0.1",
     "rrweb": "2.0.0-alpha.8",
     "sass": "^1.54.8",
     "sql-formatter": "^15.7.2",

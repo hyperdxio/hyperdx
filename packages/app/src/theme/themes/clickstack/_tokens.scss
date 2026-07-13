@@ -210,6 +210,9 @@
 
   /* Shadows */
   --shadow-drawer: -4px 0 24px rgb(0 0 0 / 25%);
+  --logo-badge-shadow: inset 0 0 0 0 rgb(255 255 255 / 6%),
+    0 0 0 1px rgb(255 255 255 / 8%), 0 1px 2px 0 rgb(0 0 0 / 40%),
+    0 4px 8px -2px rgb(0 0 0 / 30%);
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
@@ -411,6 +414,9 @@
 
   /* Shadows */
   --shadow-drawer: -4px 0 24px rgb(0 0 0 / 4%);
+  --logo-badge-shadow: inset 0 0 0 0 rgb(255 255 255 / 70%),
+    0 0 0 1px rgb(0 0 0 / 6%), 0 1px 2px 0 rgb(0 0 0 / 8%),
+    0 2px 4px -1px rgb(0 0 0 / 6%);
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;

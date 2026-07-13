@@ -99,6 +99,19 @@ const preview: Preview = {
       const fontFamily = font.style.fontFamily;
       const brandTheme = (context.globals.brand || 'hyperdx') as ThemeName;
 
+      // Mantine renders Drawers/Modals/Tooltips in a portal on document.body,
+      // which is OUTSIDE the wrapping <div> below — so the font className never
+      // reaches them and they fall back to the browser default. Mirror the real
+      // app (pages/_app.tsx) by also applying the font to the <html> element so
+      // every portal inherits it too.
+      React.useEffect(() => {
+        const classes = font.className.split(' ').filter(Boolean);
+        if (classes.length === 0) return;
+        const el = document.documentElement;
+        el.classList.add(...classes);
+        return () => el.classList.remove(...classes);
+      }, [font.className]);
+
       return (
         <div className={font.className}>
           <QueryClientProvider client={queryClient}>
