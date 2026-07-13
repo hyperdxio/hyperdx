@@ -1,0 +1,147 @@
+name: Docker Build
+# Verifies the release Docker images actually build on PRs, without pushing.
+# A source-level type check (`make ci-lint`) cannot catch build failures that
+# only surface inside the image — e.g. a declaration file that exists in the
+# repo but was never COPYed into the Docker build stage. Each image is built
+# only when files that affect it change, so unrelated PRs stay fast.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  # OTel Collector image (Go build via OCB) — docker/otel-collector/Dockerfile.
+  otel-collector-image:
+    name: Build OTel Collector Image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v47.0.6
+        with:
+          files: |
+            docker/otel-collector/**
+            packages/otel-collector/**
+      - name: Setup Docker Buildx
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: docker/setup-buildx-action@v3
+      - name: Build (no push)
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/otel-collector/Dockerfile
+          target: prod
+          platforms: linux/amd64
+          push: false
+          cache-from: |
+            type=gha,scope=otel-collector-nightly-amd64
+            type=gha,scope=docker-build-pr-otel-collector
+          cache-to: type=gha,mode=max,scope=docker-build-pr-otel-collector
+
+  # App/prod image (API + App + common-utils Node build) — docker/hyperdx target prod.
+  # This is the image the nightly css.d.ts failure surfaced in; the same builder
+  # stage backs the all-in-one targets below.
+  app-image:
+    name: Build App Image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v47.0.6
+        with:
+          files: |
+            packages/api/**
+            packages/app/**
+            packages/common-utils/**
+            docker/hyperdx/**
+            package.json
+            yarn.lock
+            .yarn/**
+            tsconfig.base.json
+            nx.json
+      - name: Setup Docker Buildx
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: docker/setup-buildx-action@v3
+      - name: Build (no push)
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/hyperdx/Dockerfile
+          target: prod
+          platforms: linux/amd64
+          push: false
+          build-contexts: |
+            hyperdx=./docker/hyperdx
+            api=./packages/api
+            app=./packages/app
+          build-args: |
+            CODE_VERSION=pr-${{ github.event.pull_request.number }}
+          cache-from: |
+            type=gha,scope=app-nightly-amd64
+            type=gha,scope=docker-build-pr-app
+          cache-to: type=gha,mode=max,scope=docker-build-pr-app
+
+  # All-in-one image (adds ClickHouse, MongoDB, OTel Collector to the app build)
+  # — docker/hyperdx target all-in-one-auth. Building the auth target also
+  # exercises the shared all-in-one-base, so no-auth need not be built
+  # separately. Gated on the app inputs plus the bundled-service inputs.
+  all-in-one-image:
+    name: Build All-in-One Image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v47.0.6
+        with:
+          files: |
+            packages/api/**
+            packages/app/**
+            packages/common-utils/**
+            packages/otel-collector/**
+            docker/hyperdx/**
+            docker/clickhouse/**
+            docker/otel-collector/**
+            package.json
+            yarn.lock
+            .yarn/**
+            tsconfig.base.json
+            nx.json
+      - name: Setup Docker Buildx
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: docker/setup-buildx-action@v3
+      - name: Build (no push)
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/hyperdx/Dockerfile
+          target: all-in-one-auth
+          platforms: linux/amd64
+          push: false
+          build-contexts: |
+            clickhouse=./docker/clickhouse
+            otel-collector=./docker/otel-collector
+            hyperdx=./docker/hyperdx
+            api=./packages/api
+            app=./packages/app
+          build-args: |
+            CODE_VERSION=pr-${{ github.event.pull_request.number }}
+          cache-from: |
+            type=gha,scope=all-in-one-nightly-amd64
+            type=gha,scope=docker-build-pr-all-in-one
+          cache-to: type=gha,mode=max,scope=docker-build-pr-all-in-one
