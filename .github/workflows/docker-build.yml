@@ -96,7 +96,14 @@ jobs:
   # All-in-one image (adds ClickHouse, MongoDB, OTel Collector to the app build)
   # — docker/hyperdx target all-in-one-auth. Building the auth target also
   # exercises the shared all-in-one-base, so no-auth need not be built
-  # separately. Gated on the app inputs plus the bundled-service inputs.
+  # separately.
+  #
+  # This target's base does `COPY --from=prod /app /app`, so it already
+  # rebuilds the entire App/prod image. To avoid duplicating that ~8-minute
+  # Node build on every app change, this job is gated ONLY on the incremental
+  # bundling inputs (ClickHouse / OTel / the shared Dockerfile) — NOT on
+  # api/app/common-utils/deps. Those are covered by the App Image job above,
+  # and they can't break the bundling layers, which only COPY the prod output.
   all-in-one-image:
     name: Build All-in-One Image
     runs-on: ubuntu-24.04
@@ -109,18 +116,10 @@ jobs:
         uses: tj-actions/changed-files@v47.0.6
         with:
           files: |
-            packages/api/**
-            packages/app/**
-            packages/common-utils/**
             packages/otel-collector/**
             docker/hyperdx/**
             docker/clickhouse/**
             docker/otel-collector/**
-            package.json
-            yarn.lock
-            .yarn/**
-            tsconfig.base.json
-            nx.json
       - name: Setup Docker Buildx
         if: steps.changed-files.outputs.any_changed == 'true'
         uses: docker/setup-buildx-action@v3
