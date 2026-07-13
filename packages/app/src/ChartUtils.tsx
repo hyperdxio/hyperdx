@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { add, differenceInSeconds } from 'date-fns';
-import { omit } from 'lodash';
 import SqlString from 'sqlstring';
 import { z } from 'zod';
 import {
@@ -15,6 +14,8 @@ import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
   convertToCategoricalChartConfig,
+  convertToNumberChartConfig,
+  convertToTableChartConfig,
   getAlignedDateRange,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -22,7 +23,6 @@ import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunction as AggFnV2,
   BuilderChartConfigWithDateRange,
-  BuilderChartConfigWithOptTimestamp,
   BuilderSavedChartConfig,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
@@ -1140,37 +1140,11 @@ export function buildTableRowSearchUrl({
   });
 }
 
-export function convertToNumberChartConfig(
-  config: BuilderChartConfigWithDateRange,
-): BuilderChartConfigWithOptTimestamp {
-  return omit(config, ['granularity', 'groupBy']);
-}
-
-// The pie/bar seriesLimit→LIMIT translation lives in common-utils
-export { convertToCategoricalChartConfig };
-
-export function convertToTableChartConfig(
-  config: BuilderChartConfigWithOptTimestamp,
-): BuilderChartConfigWithOptTimestamp {
-  const convertedConfig = structuredClone(omit(config, ['granularity']));
-
-  // Set a default limit if not already set
-  if (!convertedConfig.limit) {
-    convertedConfig.limit = { limit: 200 };
-  }
-
-  // Set a default orderBy if groupBy is set but orderBy is not,
-  // so that the set of rows within the limit is stable.
-  if (
-    convertedConfig.groupBy &&
-    typeof convertedConfig.groupBy === 'string' &&
-    !convertedConfig.orderBy
-  ) {
-    convertedConfig.orderBy = convertedConfig.groupBy;
-  }
-
-  return convertedConfig;
-}
+export {
+  convertToCategoricalChartConfig,
+  convertToNumberChartConfig,
+  convertToTableChartConfig,
+};
 
 export function buildMVDateRangeIndicator({
   mvOptimizationData,

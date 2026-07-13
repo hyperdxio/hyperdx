@@ -212,15 +212,57 @@ export class ChartEditorComponent {
   }
 
   /**
-   * Type a SQL query into the CodeMirror SQL editor.
-   * Call switchToSqlMode() first to make the SQL editor visible.
+   * Switch the chart editor from SQL back to Builder mode.
+   */
+  async switchToBuilderMode() {
+    const builderLabel = this.page.locator(
+      '.mantine-SegmentedControl-label:has-text("Builder")',
+    );
+    await builderLabel.waitFor({ state: 'visible', timeout: 5000 });
+    await builderLabel.click();
+  }
+
+  /**
+   * Locator for the CodeMirror content of the SQL template editor. Scoped
+   * with .first() because the "Generated SQL" preview accordion further
+   * down the DOM renders another `.cm-editor` instance.
+   */
+  sqlEditorContent(): Locator {
+    return this.page.locator('.cm-editor .cm-content').first();
+  }
+
+  /**
+   * Read the current text of the SQL template editor.
+   */
+  async getSqlEditorText(): Promise<string> {
+    return this.sqlEditorContent().innerText();
+  }
+
+  /**
+   * Type a SQL query into the CodeMirror SQL editor, replacing any existing
+   * contents first. Call switchToSqlMode() first to make the editor visible.
+   *
+   * Clearing before typing is important: switching Builder → SQL can
+   * auto-generate a template into the editor, and appending to it would
+   * corrupt the query. This always yields exactly `sql`.
    */
   async typeSqlQuery(sql: string) {
-    // Target the cm-content (editable area) inside the SQL template editor.
-    // Use first() because the "Generated SQL" accordion may add another
-    // cm-editor further down the DOM.
-    const sqlContent = this.page.locator('.cm-editor .cm-content').first();
+    await this.replaceSqlQuery(sql);
+  }
+
+  /**
+   * Replace the entire contents of the SQL template editor with `sql`.
+   * Selects all existing text and deletes it before typing, so this fully
+   * replaces (rather than appends to) any auto-generated or hand-written SQL
+   * already in the editor.
+   */
+  async replaceSqlQuery(sql: string) {
+    const sqlContent = this.sqlEditorContent();
     await sqlContent.click();
+    await this.page.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    );
+    await this.page.keyboard.press('Delete');
     await this.page.keyboard.type(sql);
   }
 

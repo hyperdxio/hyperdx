@@ -2,6 +2,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { ChartExplorerPage } from '../page-objects/ChartExplorerPage';
 import { expect, test } from '../utils/base-test';
+import { DEFAULT_LOGS_SOURCE_NAME, E2E_LOGS_TABLE } from '../utils/constants';
 
 test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
   let chartExplorerPage: ChartExplorerPage;
@@ -212,4 +213,139 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
         .toEqual(descendingLabels.slice(0, seriesLimit));
     });
   });
+  test(
+    'should carry the builder config over to a macro-based SQL template when switching to SQL mode',
+    { tag: '@full-stack' },
+    async () => {
+      // (beforeEach already navigated to /chart.) Wait for the editor to load.
+      await test.step('Wait for the chart editor data to load', async () => {
+        await chartExplorerPage.chartEditor.waitForDataToLoad();
+      });
+
+      // Select the source, keeping the default Line display type + count() series.
+      await test.step('Select the E2E Logs source', async () => {
+        await chartExplorerPage.chartEditor.selectSource(
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+      });
+
+      await test.step('Switch to SQL mode', async () => {
+        await chartExplorerPage.chartEditor.switchToSqlMode();
+      });
+
+      await test.step('Verify the SQL editor is populated with a macro-based template derived from the builder config', async () => {
+        const sqlEditor = chartExplorerPage.chartEditor.sqlEditorContent();
+        await expect(sqlEditor).toContainText('$__sourceTable');
+        await expect(sqlEditor).toContainText('$__fromTime_ms');
+        await expect(sqlEditor).toContainText('$__toTime_ms');
+        await expect(sqlEditor).toContainText('$__timeInterval(');
+        await expect(sqlEditor).toContainText('$__filters');
+        await expect(sqlEditor).toContainText('count()');
+        // Macros, not hardcoded values
+        await expect(sqlEditor).not.toContainText(E2E_LOGS_TABLE);
+        await expect(sqlEditor).not.toContainText('INTERVAL 1');
+      });
+
+      await test.step('Run the generated SQL and verify a chart renders', async () => {
+        await chartExplorerPage.chartEditor.runQuery();
+        await expect(chartExplorerPage.getFirstChart()).toBeVisible();
+      });
+    },
+  );
+
+  test(
+    'should not overwrite hand-edited SQL when toggling back to SQL mode',
+    { tag: '@full-stack' },
+    async () => {
+      const handEditedSql = 'SELECT 1 AS hand_edited_marker';
+
+      await test.step('Wait for the chart editor data to load', async () => {
+        await chartExplorerPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Select the E2E Logs source', async () => {
+        await chartExplorerPage.chartEditor.selectSource(
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+      });
+
+      await test.step('Switch to SQL mode and wait for the auto-generated template', async () => {
+        await chartExplorerPage.chartEditor.switchToSqlMode();
+        await expect(
+          chartExplorerPage.chartEditor.sqlEditorContent(),
+        ).toContainText('$__sourceTable');
+      });
+
+      await test.step('Replace the SQL with a hand-written sentinel query', async () => {
+        await chartExplorerPage.chartEditor.replaceSqlQuery(handEditedSql);
+        await expect(
+          chartExplorerPage.chartEditor.sqlEditorContent(),
+        ).toContainText('hand_edited_marker');
+      });
+
+      await test.step('Switch back to Builder mode, then back to SQL mode', async () => {
+        await chartExplorerPage.chartEditor.switchToBuilderMode();
+        // Settle on a builder-only control (the series aggregation select)
+        // to confirm the mode switch registered before toggling back.
+        await expect(chartExplorerPage.chartEditor.aggFn).toBeVisible();
+        await chartExplorerPage.chartEditor.switchToSqlMode();
+      });
+
+      await test.step('Verify the hand-edited SQL was not overwritten by regeneration', async () => {
+        const sqlEditor = chartExplorerPage.chartEditor.sqlEditorContent();
+        await expect(sqlEditor).toContainText('hand_edited_marker');
+        await expect(sqlEditor).not.toContainText('$__sourceTable');
+      });
+    },
+  );
+
+  test(
+    'should regenerate SQL when the builder is edited more recently than the SQL',
+    { tag: '@full-stack' },
+    async () => {
+      const handEditedSql = 'SELECT 1 AS hand_edited_marker';
+
+      await test.step('Wait for the chart editor data to load', async () => {
+        await chartExplorerPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Select the E2E Logs source', async () => {
+        await chartExplorerPage.chartEditor.selectSource(
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+      });
+
+      await test.step('Switch to SQL mode and wait for the auto-generated template', async () => {
+        await chartExplorerPage.chartEditor.switchToSqlMode();
+        await expect(
+          chartExplorerPage.chartEditor.sqlEditorContent(),
+        ).toContainText('$__sourceTable');
+      });
+
+      await test.step('Replace the SQL with a hand-written sentinel query', async () => {
+        await chartExplorerPage.chartEditor.replaceSqlQuery(handEditedSql);
+        await expect(
+          chartExplorerPage.chartEditor.sqlEditorContent(),
+        ).toContainText('hand_edited_marker');
+      });
+
+      await test.step('Switch to Builder mode and make a builder edit (group by)', async () => {
+        await chartExplorerPage.chartEditor.switchToBuilderMode();
+        await expect(chartExplorerPage.chartEditor.aggFn).toBeVisible();
+        // A genuine builder edit — this is now the most recent edit, so the
+        // next switch to SQL should regenerate and discard the hand-edited SQL.
+        await chartExplorerPage.chartEditor.setGroupBy('ServiceName');
+      });
+
+      await test.step('Switch back to SQL mode', async () => {
+        await chartExplorerPage.chartEditor.switchToSqlMode();
+      });
+
+      await test.step('Verify the SQL was regenerated from the newer builder config', async () => {
+        const sqlEditor = chartExplorerPage.chartEditor.sqlEditorContent();
+        await expect(sqlEditor).toContainText('$__sourceTable');
+        await expect(sqlEditor).not.toContainText('hand_edited_marker');
+      });
+    },
+  );
 });
