@@ -990,6 +990,10 @@ export const processAlert = async (
 
     // Track state per group (or one history if no groupBy)
     const histories = new Map<string, IAlertHistory>();
+    const latestAlertContext = new Map<
+      string,
+      { value: number; attributes: Record<string, string>; startTime: Date }
+    >();
 
     // Helper to get or create history for a group
     const getOrCreateHistory = (groupKey: string): IAlertHistory => {
@@ -1231,10 +1235,9 @@ export const processAlert = async (
           if (shouldFireBasedOnConsecutiveWindows()) {
             history.state = AlertState.ALERT;
             history.fired = true;
-            await trySendNotification({
-              state: AlertState.ALERT,
-              group: '',
-              totalCount: 0,
+            latestAlertContext.set('', {
+              value: 0,
+              attributes: {},
               startTime: bucketStart,
             });
           } else {
@@ -1255,6 +1258,13 @@ export const processAlert = async (
       }
 
       // We have at least one data point for this bucket
+
+      // Track the worst-case state for each group in this bucket to prevent
+      // a subsequent OK row in the SAME bucket from overwriting an ALERT row.
+      const bucketEvaluations = new Map<
+        string,
+        { value: number; attributes: Record<string, string>; exceeds: boolean }
+      >();
       for (const checkData of dataForBucket) {
         const { value, extraFields } = parseAlertData(checkData, meta);
 
@@ -1268,19 +1278,27 @@ export const processAlert = async (
           ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
           : '';
         const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
+
+        const exceeds = doesExceedThreshold(alert, value);
+
+        const existing = bucketEvaluations.get(groupKey);
+        if (!existing || !existing.exceeds || exceeds) {
+          bucketEvaluations.set(groupKey, { value, attributes, exceeds });
+        }
+      }
+
+      for (const [groupKey, evaluation] of bucketEvaluations.entries()) {
         const history = getOrCreateHistory(groupKey);
 
-        if (doesExceedThreshold(alert, value)) {
+        if (evaluation.exceeds) {
           history.counts += 1;
           if (shouldFireBasedOnConsecutiveWindows(groupKey)) {
             history.state = AlertState.ALERT;
             history.fired = true;
-            await trySendNotification({
-              state: AlertState.ALERT,
-              group: groupKey,
-              totalCount: value,
+            latestAlertContext.set(groupKey, {
+              value: evaluation.value,
+              attributes: evaluation.attributes,
               startTime: bucketStart,
-              attributes,
             });
           } else {
             history.state = AlertState.PENDING;
@@ -1290,9 +1308,16 @@ export const processAlert = async (
                 ?.fired === true;
           }
         } else {
-          // TODO: if the alert was previously alerting (different bucket), should we set state to OK (plus auto-resolve)?
+          // If the threshold is not met, reset the state to OK.
+          // This ensures that if a previous window in this evaluation triggered an ALERT,
+          // a subsequent OK window correctly resolves it before the notification phase.
+          history.state = AlertState.OK;
+          history.counts = 0;
         }
-        history.lastValues.push({ count: value, startTime: bucketStart });
+        history.lastValues.push({
+          count: evaluation.value,
+          startTime: bucketStart,
+        });
       }
     }
 
@@ -1328,10 +1353,36 @@ export const processAlert = async (
       getOrCreateHistory('');
     }
 
-    // Check for auto-resolve: for each group, check if it transitioned from ALERT to OK
+    // Check for state transitions and send notifications
     for (const [groupKey, history] of histories.entries()) {
       const previousKey = computeHistoryMapKey(alert.id, groupKey);
-      const groupPrevious = previousMap.get(previousKey);
+      let groupPrevious = previousMap.get(previousKey);
+
+      const hitAlertThisRun = latestAlertContext.has(groupKey);
+      const wasAlertingBefore = groupPrevious?.state === AlertState.ALERT;
+
+      // If it hit ALERT during this run, send the notification (re-notifying every tick if it continuously breaches)
+      if (hitAlertThisRun) {
+        const context = latestAlertContext.get(groupKey);
+        if (context) {
+          await trySendNotification({
+            state: AlertState.ALERT,
+            group: groupKey,
+            totalCount: context.value,
+            startTime: context.startTime,
+            attributes: context.attributes,
+          });
+
+          // Inject a mock previous history so the resolve check below catches it
+          // if the final state for this group is OK (i.e. it breached then resolved).
+          groupPrevious = {
+            ...(groupPrevious || {}),
+            state: AlertState.ALERT,
+            fired: true,
+          } as AggregatedAlertHistory;
+        }
+      }
+
       await sendNotificationIfResolved(groupPrevious, history, groupKey);
     }
 
