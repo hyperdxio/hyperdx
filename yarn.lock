@@ -172,7 +172,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@asyncapi/specs@npm:^6.8.0":
+"@asyncapi/specs@npm:6.11.1":
   version: 6.11.1
   resolution: "@asyncapi/specs@npm:6.11.1"
   dependencies:
