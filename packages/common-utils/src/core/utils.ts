@@ -1352,3 +1352,30 @@ export const isTimeSeriesDisplayType = (
     displayType === DisplayType.Line || displayType === DisplayType.StackedBar
   );
 };
+
+// This type serves as options to fetch values from normal text indices.
+// This is a record of Column Name to required query parameters.
+export type TextIndexColumnQueryOptions = Map<
+  string,
+  {
+    indexName: string;
+    limit: number;
+  }
+>;
+
+// This type serves as options to fetch values from map text indices.
+// This is a record of Map Column Name to required query parameters.
+export type TextIndexMapColumnQueryOptions = Map<
+  string,
+  {
+    indexName: string;
+    limit: number;
+    separator: string;
+    keys: string[];
+  }
+>;
+
+export type MetadataMVQueryOptions = Map<
+  string,
+  Map<'NativeColumn' | string, string[]> // map from column name to keys
+>;

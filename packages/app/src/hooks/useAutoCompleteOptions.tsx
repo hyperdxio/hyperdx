@@ -185,6 +185,24 @@ export function useAutoCompleteOptions(
   );
 
   // Fetch fields, using rollup for map key discovery when available
+
+  // AVK: TODO use useFetchFacets here instead of useMultipleAllFields and useGetKeyValues
+  // const {
+  //   data: fetchFacetsData,
+  //   isLoading: isFacetsLoading,
+  //   isFetching: isFacetsFetching,
+  //   error,
+  //   loadMoreFacetsForKey,
+  //   loadMoreLoadingKeys,
+  //   extraFacetKeys,
+  // } = useFetchFacets({
+  //   chartConfig,
+  //   sourceId: sourceId ?? null,
+  //   dateRange,
+  //   mode: showAllValues ? 'all' : 'exact',
+  //   filterState,
+  //   showMoreFields,
+  // });
   const { data: fields } = useMultipleAllFields(tcs, {
     dateRange: effectiveDateRange,
     timestampValueExpression: source?.timestampValueExpression,
