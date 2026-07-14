@@ -784,7 +784,9 @@ function DBTimeChartComponent({
           <ChartTooltipOverlay
             payload={activeClickPayload}
             buildSearchUrl={buildSearchUrl}
-            onDismiss={() => setActiveClickPayload(undefined)}
+            // Stable reference so the overlay's scroll-dismissal effect doesn't
+            // re-register its window listener on every re-render.
+            onDismiss={dismissPinned}
             onFocusSeries={handleFocusSeries}
             fallbackNumberFormat={queriedConfig.numberFormat}
             numberFormatByKey={formatByColumn}

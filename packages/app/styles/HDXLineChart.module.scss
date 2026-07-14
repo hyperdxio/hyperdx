@@ -40,6 +40,7 @@
   border: 1px solid var(--color-border);
   border-radius: 2px;
   font-size: 11px;
+
   // Fixed width so hover and pinned tooltips match and don't reflow when a row's
   // content changes (e.g. the pinned copy icon swapping to a check).
   width: 280px;
@@ -48,6 +49,7 @@
 .chartTooltipHeader {
   padding: 2px 12px;
   border-bottom: 1px solid var(--color-border);
+
   // Flex so the header's X stays right-aligned across the full width.
   display: flex;
   align-items: center;
