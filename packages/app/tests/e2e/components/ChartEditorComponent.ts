@@ -68,6 +68,10 @@ export class ChartEditorComponent {
     const groupByInput = getSqlEditor(this.page, 'SQL Columns');
     await groupByInput.click();
     await this.page.keyboard.type(expression);
+    // Dismiss the autocomplete dropdown so it doesn't linger and overlay the
+    // next input (e.g. the ORDER BY editor), which otherwise fails the click's
+    // actionability check and times out. Mirrors setOrderBy below.
+    await this.page.keyboard.press('Escape');
   }
 
   /**
@@ -80,6 +84,9 @@ export class ChartEditorComponent {
     const editor = this.page
       .getByTestId('order-by-input')
       .locator('.cm-content');
+    // Dismiss any autocomplete popup left open by a prior editor interaction so
+    // it can't overlay this editor and stall the click on actionability.
+    await this.page.keyboard.press('Escape');
     await editor.click();
     // Clear any existing content before typing the new expression.
     await this.page.keyboard.press('ControlOrMeta+A');
