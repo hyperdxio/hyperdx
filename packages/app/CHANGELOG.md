@@ -1,5 +1,22 @@
 # @hyperdx/app
 
+## 2.30.1
+
+### Patch Changes
+
+- 0dd23e86d: Copy `css.d.ts` into the Docker build stage so the app image compiles. The
+  TypeScript 6 upgrade added ambient `declare module '*.css'` declarations in
+  `css.d.ts` to satisfy TS2882 for side-effect stylesheet imports, but the
+  Dockerfiles only copied `mdx.d.ts`, so `next build` failed inside the
+  container.
+- e8825763b: Fix "Save Alert" doing nothing when editing an existing saved-search alert. The
+  alert form schema now accepts the persisted `numConsecutiveWindows: null` value
+  (so form validation no longer silently blocks submission), and the update
+  request resolves the alert id from the selected tab instead of an unregistered
+  form field.
+- f865d887d: feat: Allow freeform text in VirtualMultiSelect
+  - @hyperdx/api@2.30.1
+
 ## 2.30.0
 
 ### Minor Changes
