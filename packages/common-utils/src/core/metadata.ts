@@ -1056,7 +1056,7 @@ export class Metadata {
     });
   }
 
-  private async getMapTextIndexValues({
+  private async getMapTextIndexKeyValues({
     databaseName,
     tableName,
     connectionId,
@@ -1070,7 +1070,7 @@ export class Metadata {
     timestampValueExpression: string;
     signal?: AbortSignal;
   }): Promise<KeyValues[]> {
-    const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${JSON.stringify(Array.from(queryOptions.entries()))}.${timestampValueExpression}.getMapTextIndexValues`;
+    const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${JSON.stringify(Array.from(queryOptions.entries()))}.${timestampValueExpression}.getMapTextIndexKeyValues`;
     return this.cache.getOrFetch(cacheKey, async () => {
       const sqlBranches: Array<ChSql> = [];
       for (const [columnName, info] of queryOptions.entries()) {
@@ -1130,7 +1130,7 @@ export class Metadata {
     });
   }
 
-  private async getTextIndexValues({
+  private async getTextIndexKeyValues({
     databaseName,
     tableName,
     connectionId,
@@ -1144,7 +1144,7 @@ export class Metadata {
     timestampValueExpression: string;
     signal?: AbortSignal;
   }): Promise<KeyValues[]> {
-    const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${JSON.stringify(Array.from(queryOptions.entries()))}.${timestampValueExpression}.getTextIndexValues`;
+    const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${JSON.stringify(Array.from(queryOptions.entries()))}.${timestampValueExpression}.getTextIndexKeyValues`;
     return this.cache.getOrFetch(cacheKey, async () => {
       const sqlBranches: Array<ChSql> = [];
       for (const [columnName, info] of queryOptions.entries()) {
@@ -2180,7 +2180,7 @@ export class Metadata {
     const promises: Array<Promise<KeyValues[] | undefined>> = [];
     if (mapTextIndexQueryOptions.size > 0) {
       promises.push(
-        this.getMapTextIndexValues({
+        this.getMapTextIndexKeyValues({
           databaseName,
           tableName,
           connectionId,
@@ -2193,7 +2193,7 @@ export class Metadata {
     }
     if (nativeTextIndexQueryOptions.size > 0) {
       promises.push(
-        this.getTextIndexValues({
+        this.getTextIndexKeyValues({
           databaseName,
           tableName,
           connectionId,
