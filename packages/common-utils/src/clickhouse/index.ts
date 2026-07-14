@@ -13,6 +13,7 @@ import objectHash from 'object-hash';
 
 import { getMetadata, Metadata } from '@/core/metadata';
 import {
+  FIXED_TIME_BUCKET_EXPR_ALIAS,
   renderChartConfig,
   setChartSelectsAlias,
   splitChartConfigs,
@@ -445,6 +446,16 @@ export const computeResultSetRatio = (
   };
 };
 
+// Resolves the time-bucket column that groups rows into buckets. The query
+// builder aliases the bucket FIXED_TIME_BUCKET_EXPR_ALIAS, so prefer that exact
+// column and only fall back to the first Date-typed column for shapes without
+// the alias. Without this preference a Date/DateTime group-by dimension ordered
+// ahead of the real bucket would be mistaken for it, so share_of_total totals
+// would be summed over the wrong column and the rendered shares silently wrong.
+const resolveBucketColumn = (meta: Array<{ name: string; type: string }>) =>
+  meta.find(m => m.name === FIXED_TIME_BUCKET_EXPR_ALIAS) ??
+  inferTimestampColumn(meta);
+
 // Builds a per-row lookup returning the total of the denominator column across
 // all rows sharing a time bucket (share-of-total mode). Rows with no timestamp
 // column all share one bucket, so a non-time-series grouped ratio becomes each
@@ -454,7 +465,7 @@ const buildBucketTotalDenominator = (
   meta: { name: string; type: string }[],
   denominatorName: string,
 ) => {
-  const timestampColumn = inferTimestampColumn(meta);
+  const timestampColumn = resolveBucketColumn(meta);
   const bucketKey = (row: Record<string, any>) =>
     timestampColumn ? String(row[timestampColumn.name]) : '__all__';
   const totalByBucket = new Map<string, number>();
@@ -542,7 +553,7 @@ export const mergeResultSets = ({
       }
     }
 
-    const timestampColumn = inferTimestampColumn(resultSet.meta ?? []);
+    const timestampColumn = resolveBucketColumn(resultSet.meta ?? []);
     const numericColumn = inferNumericColumn(resultSet.meta ?? []);
     const numericColumnName = numericColumn?.[0]?.name;
     for (const row of resultSet.data) {
@@ -580,13 +591,21 @@ export const mergeResultSets = ({
   };
 
   if (isRatio) {
-    const [numeratorName, denominatorName] = operandNames.filter(Boolean);
-    // TODO: we should compute the ratio on the db side
-    return computeResultSetRatio(
-      merged,
-      { numeratorName, denominatorName },
-      ratioMode,
-    );
+    // Read the operands positionally: a split with no inferable numeric value
+    // column pushed '' (see above), so compacting with filter(Boolean) would
+    // shift the surviving name into numeratorName and leave denominatorName
+    // undefined — throwing "Unable to compute ratio" and failing the whole
+    // chart response. If either operand is missing we can't divide, so fall
+    // through and return the merged rows undivided.
+    const [numeratorName, denominatorName] = operandNames;
+    if (numeratorName && denominatorName) {
+      // TODO: we should compute the ratio on the db side
+      return computeResultSetRatio(
+        merged,
+        { numeratorName, denominatorName },
+        ratioMode,
+      );
+    }
   }
   return merged;
 };

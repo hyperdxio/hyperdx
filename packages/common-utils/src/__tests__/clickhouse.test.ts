@@ -11,6 +11,7 @@ import {
 } from '@/clickhouse';
 import { ClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';
+import { FIXED_TIME_BUCKET_EXPR_ALIAS } from '@/core/renderChartConfig';
 
 describe('convertCHDataTypeToJSType - unit - type', () => {
   it('Date type', () => {
@@ -643,6 +644,105 @@ describe('computeResultSetRatio', () => {
       { 'errors/total': 0.1, tenant: 'globex' }, // 30/300
     ]);
   });
+
+  it('yields NaN in share_of_total mode when a bucket denominator total is zero', () => {
+    // Every group in the bucket has a zero denominator, so the bucket total is
+    // 0 and each share is a divide-by-zero -> NaN (computeRatio guards it).
+    const mockResultSet: ResponseJSON<any> = {
+      meta: [
+        { name: 'errors', type: 'UInt64' },
+        { name: 'total', type: 'UInt64' },
+        { name: 'tenant', type: 'String' },
+        { name: 'timestamp', type: 'DateTime' },
+      ],
+      data: [
+        { errors: '5', total: '0', tenant: 'acme', timestamp: 't0' },
+        { errors: '3', total: '0', tenant: 'globex', timestamp: 't0' },
+      ],
+      rows: 2,
+      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
+    };
+
+    const result = computeResultSetRatio(
+      mockResultSet,
+      { numeratorName: 'errors', denominatorName: 'total' },
+      'share_of_total',
+    );
+
+    expect(isNaN(result.data[0]['errors/total'])).toBe(true);
+    expect(isNaN(result.data[1]['errors/total'])).toBe(true);
+  });
+
+  it('yields NaN in per_group mode for a row missing its own denominator', () => {
+    // per_group divides each row by its own denominator; a row absent from the
+    // denominator split has undefined -> NaN, without poisoning other rows.
+    const mockResultSet: ResponseJSON<any> = {
+      meta: [
+        { name: 'errors', type: 'UInt64' },
+        { name: 'total', type: 'UInt64' },
+        { name: 'tenant', type: 'String' },
+        { name: 'timestamp', type: 'DateTime' },
+      ],
+      data: [
+        { errors: '20', total: '100', tenant: 'acme', timestamp: 't0' },
+        // numerator only, no denominator for this group
+        { errors: '5', tenant: 'globex', timestamp: 't0' },
+      ],
+      rows: 2,
+      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
+    };
+
+    const result = computeResultSetRatio(mockResultSet, {
+      numeratorName: 'errors',
+      denominatorName: 'total',
+    });
+
+    expect(result.data[0]['errors/total']).toBe(0.2); // 20/100
+    expect(isNaN(result.data[1]['errors/total'])).toBe(true); // 5/undefined
+  });
+
+  it('buckets share_of_total by the real time bucket, not a Date-typed group-by dimension ordered ahead of it', () => {
+    // A DateTime group-by dimension (`day`) precedes the real time bucket in the
+    // meta. inferTimestampColumn would pick `day` (first Date-typed column) and
+    // sum the denominator over the wrong column; resolving by the query
+    // builder's FIXED_TIME_BUCKET_EXPR_ALIAS picks the true bucket instead.
+    const mockResultSet: ResponseJSON<any> = {
+      meta: [
+        { name: 'errors', type: 'UInt64' },
+        { name: 'total', type: 'UInt64' },
+        { name: 'day', type: 'Date' }, // group-by dimension, Date-typed
+        { name: FIXED_TIME_BUCKET_EXPR_ALIAS, type: 'DateTime' }, // real bucket
+      ],
+      data: [
+        // Bucket t0 spans two distinct `day` values; the per-bucket total must
+        // be 100 + 300 = 400, not per-`day` (which the hijack would produce).
+        {
+          errors: '20',
+          total: '100',
+          day: '2025-04-15',
+          [FIXED_TIME_BUCKET_EXPR_ALIAS]: 't0',
+        },
+        {
+          errors: '30',
+          total: '300',
+          day: '2025-04-16',
+          [FIXED_TIME_BUCKET_EXPR_ALIAS]: 't0',
+        },
+      ],
+      rows: 2,
+      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
+    };
+
+    const result = computeResultSetRatio(
+      mockResultSet,
+      { numeratorName: 'errors', denominatorName: 'total' },
+      'share_of_total',
+    );
+
+    // Divided by the true bucket total (400), not by each row's own `day` total.
+    expect(result.data[0]['errors/total']).toBe(0.05); // 20/400
+    expect(result.data[1]['errors/total']).toBe(0.075); // 30/400
+  });
 });
 
 describe('mergeResultSets', () => {
@@ -806,6 +906,99 @@ describe('mergeResultSets', () => {
     expect(merged.data).toEqual([
       { 'count(request)/count(request)': 0.25, timestamp: 't0' },
     ]);
+  });
+
+  it('keeps colliding value columns distinct across splits that also carry a group dimension', () => {
+    // Same-alias operands (count(request) filtered / unfiltered) AND a group-by
+    // dimension carried through both splits. The colliding value column is
+    // renamed per split index while the group dimension merges, so each group
+    // keeps both operands and divides correctly.
+    const resultSets: ResponseJSON<any>[] = [
+      {
+        meta: [
+          { name: 'count(request)', type: 'UInt64' },
+          { name: 'tenant', type: 'String' },
+          { name: 'timestamp', type: 'DateTime' },
+        ],
+        data: [
+          { 'count(request)': '5', tenant: 'acme', timestamp: 't0' },
+          { 'count(request)': '9', tenant: 'globex', timestamp: 't0' },
+        ],
+        rows: 2,
+        statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
+      },
+      {
+        meta: [
+          { name: 'count(request)', type: 'UInt64' },
+          { name: 'tenant', type: 'String' },
+          { name: 'timestamp', type: 'DateTime' },
+        ],
+        data: [
+          { 'count(request)': '20', tenant: 'acme', timestamp: 't0' },
+          { 'count(request)': '30', tenant: 'globex', timestamp: 't0' },
+        ],
+        rows: 2,
+        statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
+      },
+    ];
+
+    const merged = mergeResultSets({
+      resultSets,
+      isTimeSeries: true,
+      isRatio: true,
+    });
+
+    expect(merged.data).toEqual([
+      {
+        'count(request)/count(request)': 0.25,
+        tenant: 'acme',
+        timestamp: 't0',
+      }, // 5/20
+      {
+        'count(request)/count(request)': 0.3,
+        tenant: 'globex',
+        timestamp: 't0',
+      }, // 9/30
+    ]);
+  });
+
+  it('returns the merged rows undivided when a ratio split has no numeric value column', () => {
+    // If one split yields no inferable numeric column, its operand name is ''.
+    // Reading positionally leaves denominatorName undefined; rather than throw
+    // "Unable to compute ratio" and fail the whole chart, the merge returns the
+    // rows undivided.
+    const resultSets: ResponseJSON<any>[] = [
+      {
+        meta: [
+          { name: 'errors', type: 'UInt64' },
+          { name: 'timestamp', type: 'DateTime' },
+        ],
+        data: [{ errors: '20', timestamp: 't0' }],
+        rows: 1,
+        statistics: { elapsed: 0.1, rows_read: 1, bytes_read: 100 },
+      },
+      {
+        // No numeric column at all (e.g. an empty/failed split projection).
+        meta: [{ name: 'timestamp', type: 'DateTime' }],
+        data: [{ timestamp: 't0' }],
+        rows: 1,
+        statistics: { elapsed: 0.1, rows_read: 1, bytes_read: 100 },
+      },
+    ];
+
+    expect(() =>
+      mergeResultSets({ resultSets, isTimeSeries: true, isRatio: true }),
+    ).not.toThrow();
+
+    const merged = mergeResultSets({
+      resultSets,
+      isTimeSeries: true,
+      isRatio: true,
+    });
+
+    // No ratio column — the merged rows pass through undivided.
+    expect(merged.data).toEqual([{ errors: '20', timestamp: 't0' }]);
+    expect(merged.meta?.some(m => m.name.includes('/'))).toBe(false);
   });
 });
 
