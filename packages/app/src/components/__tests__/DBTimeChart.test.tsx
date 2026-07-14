@@ -1,8 +1,12 @@
 import React from 'react';
 
 import api from '@/api';
+import { ChartKeyJoiner } from '@/ChartUtils';
 import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
-import { DBTimeChart } from '@/components/DBTimeChart';
+import {
+  DBTimeChart,
+  decodeSeriesGroupFilters,
+} from '@/components/DBTimeChart';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
@@ -369,6 +373,63 @@ describe('DBTimeChart', () => {
       expect(() =>
         renderWithMantine(<DBTimeChart config={rawSqlConfig} />),
       ).not.toThrow();
+    });
+  });
+
+  describe('decodeSeriesGroupFilters', () => {
+    it('maps a single-group series key to a column/value filter', () => {
+      expect(
+        decodeSeriesGroupFilters({
+          seriesKey: 'error',
+          groupColumns: ['severityText'],
+          isSingleValueColumn: true,
+        }),
+      ).toEqual([{ column: 'severityText', value: 'error' }]);
+    });
+
+    it('maps a multi-group series key to one filter per group column, in order', () => {
+      const seriesKey = ['error', 'api'].join(ChartKeyJoiner);
+      expect(
+        decodeSeriesGroupFilters({
+          seriesKey,
+          groupColumns: ['severityText', 'service'],
+          isSingleValueColumn: true,
+        }),
+      ).toEqual([
+        { column: 'severityText', value: 'error' },
+        { column: 'service', value: 'api' },
+      ]);
+    });
+
+    it('drops the leading value column when the series is not single-value', () => {
+      const seriesKey = ['errors', 'error'].join(ChartKeyJoiner);
+      expect(
+        decodeSeriesGroupFilters({
+          seriesKey,
+          groupColumns: ['severityText'],
+          isSingleValueColumn: false,
+        }),
+      ).toEqual([{ column: 'severityText', value: 'error' }]);
+    });
+
+    it('returns no filters when there are no group columns', () => {
+      expect(
+        decodeSeriesGroupFilters({
+          seriesKey: 'count',
+          groupColumns: [],
+          isSingleValueColumn: true,
+        }),
+      ).toEqual([]);
+    });
+
+    it('returns no filters when the series key is undefined', () => {
+      expect(
+        decodeSeriesGroupFilters({
+          seriesKey: undefined,
+          groupColumns: ['severityText'],
+          isSingleValueColumn: true,
+        }),
+      ).toEqual([]);
     });
   });
 

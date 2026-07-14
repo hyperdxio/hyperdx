@@ -369,6 +369,7 @@ router.delete(
       // Block deletion when alerts still reference this webhook.
       // The user must reassign or delete those alerts first.
       const referencingAlertCount = await Alert.countDocuments({
+        'channel.type': 'webhook',
         'channel.webhookId': req.params.id,
         team: teamId,
       });

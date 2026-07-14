@@ -1093,6 +1093,79 @@ describe('Metadata', () => {
       expect(sampledKeysCall.query).toContain('__TIME_FILTER__');
     });
 
+    // We read the Map keys via getSubcolumn(col, 'keys') rather than the
+    // `col.keys` dot form: on a multi-shard Distributed read of a Map subcolumn,
+    // some ClickHouse builds name the dot form inconsistently across the hop
+    // (`col.keys` vs `getSubcolumn(col,'keys')`), failing the query with
+    // NOT_FOUND_COLUMN_IN_BLOCK / THERE_IS_NO_COLUMN. The explicit function call
+    // serializes to one consistent name.
+    it('reads keys via getSubcolumn (not the .keys dot form) for LowCardinality maps', async () => {
+      const md = buildMetadata();
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [lowCardinalityMapColumn] }),
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [] }),
+        });
+
+      await md.getMapKeys({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+      });
+
+      const sampledKeysCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[1][0];
+      // The column is passed as an Identifier param, so the SQL reads
+      // getSubcolumn({<hash>:Identifier}, 'keys') and the old `<col>.keys`
+      // dot form must not appear.
+      expect(sampledKeysCall.query).toMatch(
+        /getSubcolumn\(\{[^}]+:Identifier\}, 'keys'\)/,
+      );
+      expect(sampledKeysCall.query).not.toMatch(/:Identifier\}\.keys/);
+      expect(Object.values(sampledKeysCall.query_params)).toContain(
+        'LogAttributes',
+      );
+    });
+
+    it('reads keys via getSubcolumn (not the .keys dot form) for plain String maps', async () => {
+      const md = buildMetadata();
+
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          json: () =>
+            Promise.resolve({
+              // Plain-String-key map -> groupUniqArrayArray strategy
+              data: [
+                { ...lowCardinalityMapColumn, type: 'Map(String, String)' },
+              ],
+            }),
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ keysArr: [] }] }),
+        });
+
+      await md.getMapKeys({
+        databaseName: 'otel',
+        tableName: 'generic_logs',
+        column: 'LogAttributes',
+        connectionId: 'conn-1',
+      });
+
+      const sampledKeysCall = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[1][0];
+      expect(sampledKeysCall.query).toMatch(
+        /getSubcolumn\(\{[^}]+:Identifier\}, 'keys'\)/,
+      );
+      expect(sampledKeysCall.query).not.toMatch(/:Identifier\}\.keys/);
+      expect(Object.values(sampledKeysCall.query_params)).toContain(
+        'LogAttributes',
+      );
+    });
+
     it('caches keys distinctly for different dateRange values', async () => {
       const md = buildMetadata();
 
