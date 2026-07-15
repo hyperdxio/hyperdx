@@ -209,7 +209,10 @@ function useFacets({
           });
           return {
             key,
-            value: newKeyVals[0].value?.map(val => val.toString()) ?? [],
+            value:
+              newKeyVals.length > 0
+                ? (newKeyVals[0].value?.map(val => val.toString()) ?? [])
+                : [],
           };
         }
       } catch (error) {

@@ -59,13 +59,6 @@ export type KeyValues = {
   value: string[] | number[];
 };
 
-function addMapTextIndexEntry(
-  kvIndexInfo: KvIndexInfo,
-  column: string,
-  key: string,
-  map: TextIndexMapColumnQueryOptions,
-) {}
-
 // See https://github.com/hyperdxio/hyperdx/issues/2163. Inlining a validated
 // integer literal avoids the `_CAST` wrapper entirely.
 const inlineNonNegativeInt = (value: number, label: string): string => {
@@ -660,8 +653,9 @@ export class Metadata {
         timestampValueExpression,
       });
       const index = textIndexInfo.kv.indexName;
+      const separator = textIndexInfo.kv.separator;
       const sql = chSql`
-        SELECT splitByString(${{ String: index }}, token)[1] AS key
+        SELECT splitByString(${{ String: separator }}, token)[1] AS key
         FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''
@@ -1208,7 +1202,7 @@ export class Metadata {
     maxValuesPerKey: number;
     signal?: AbortSignal;
   }): Promise<KeyValues[] | undefined> {
-    const cacheKey = `${databaseName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${maxValuesPerKey}.${JSON.stringify(Array.from(queryOptions.entries()))}.getMetadataMVKeyValues`;
+    const cacheKey = `${databaseName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${maxValuesPerKey}.${JSON.stringify(metadataMVs)}.${JSON.stringify(Array.from(queryOptions.entries()))}.getMetadataMVKeyValues`;
     return this.cache.getOrFetch(cacheKey, async () => {
       if (!metadataMVs) {
         console.warn('getMetadataMVKeyValues: metadataMVs is undefined');
@@ -1992,7 +1986,7 @@ export class Metadata {
     metadataMVs,
   }: TableConnection): Promise<KeyFetchingStrategies> {
     return this.cache.getOrFetch(
-      `${connectionId}.${databaseName}.${tableName}.${metadataMVs}.determineKeyValueFetchingStrategy`,
+      `${connectionId}.${databaseName}.${tableName}.${JSON.stringify(metadataMVs)}.determineKeyValueFetchingStrategy`,
       async () => {
         const columnMetadata = await this.getColumns({
           databaseName,
