@@ -1,10 +1,15 @@
 import crypto from 'crypto';
 
-// Symmetric encryption for secrets stored at rest (e.g. a team's Anthropic API
-// key). AES-256-GCM provides confidentiality plus an auth tag that detects
-// tampering on decrypt. The 32-byte key comes from HDX_ENCRYPTION_KEY, read at
-// use time (not module load) so misconfiguration surfaces a clear error and
-// tests can control it.
+// Symmetric encryption for secrets stored at rest. AES-256-GCM provides
+// confidentiality plus an auth tag that detects tampering on decrypt. The
+// 32-byte key comes from HDX_ENCRYPTION_KEY, read at use time (not module load)
+// so misconfiguration surfaces a clear error and tests can control it.
+//
+// NOTE: OSS does not currently call this — the managed-agent key is read from
+// the environment (see anthropicAgents.getTeamAnthropicKey), not stored
+// encrypted. It is retained as infrastructure for downstream distributions
+// (hyperdx-ee) that store per-team secrets encrypted at rest and inject the key
+// via the `resolveAnthropicKey` extension seam. Exercised by its unit test.
 const ALGORITHM = 'aes-256-gcm';
 const IV_BYTES = 12;
 

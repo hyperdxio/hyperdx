@@ -58,7 +58,6 @@ const AgentRunSchema = new Schema<IAgentRun>(
       enum: ['running', 'delivering', 'delivered', 'failed'],
       required: true,
       default: 'running',
-      index: true,
     },
     deliverToUrl: { type: String, required: true },
     dedupeKey: { type: String, required: true, unique: true },
@@ -73,6 +72,11 @@ const AgentRunSchema = new Schema<IAgentRun>(
   },
   { timestamps: true },
 );
+
+// The poll sweep queries `{ status: 'running' }` sorted by `createdAt`, so back
+// it with a compound index (the `status` prefix also covers status-only
+// lookups, replacing the standalone status index).
+AgentRunSchema.index({ status: 1, createdAt: 1 });
 
 // Runs are short-lived operational records; expire them so the collection (and
 // the unique dedupeKey space) doesn't grow unbounded.

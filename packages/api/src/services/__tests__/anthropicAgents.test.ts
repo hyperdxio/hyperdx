@@ -406,6 +406,48 @@ describe('anthropicAgents service', () => {
 
       expect(agentBodyFrom(fetchSpy).system).toContain('You are an SRE agent');
     });
+
+    it('rolls back the created environment and vault when agent creation fails', async () => {
+      const deleted: string[] = [];
+      fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockImplementation(async (url: any, init: any) => {
+          const u = String(url);
+          const ok = (data: unknown) =>
+            ({ ok: true, text: async () => JSON.stringify(data) }) as any;
+          if (u === MCP_URL) return ok({ ok: true });
+          if (init?.method === 'DELETE') {
+            deleted.push(u);
+            return ok({});
+          }
+          if (u.endsWith('/v1/environments')) return ok({ id: 'env_1' });
+          if (u.endsWith('/v1/vaults')) return ok({ id: 'vlt_1' });
+          if (u.includes('/credentials')) return ok({ id: 'cred_1' });
+          // Agent creation fails (e.g. invalid model) after env + vault exist.
+          if (u.endsWith('/v1/agents'))
+            return { ok: false, status: 400, text: async () => 'bad model' };
+          throw new Error(`unexpected fetch to ${u}`);
+        });
+      const { teamId, userId } = await seedKeyForProvision();
+
+      await expect(
+        provisionClickStackAgent({
+          teamId: teamId as any,
+          userId: userId as any,
+          userAccessKey: 'hdx_key',
+          name: 'SRE Responder',
+          model: 'bad-model',
+        }),
+      ).rejects.toBeInstanceOf(AnthropicApiError);
+
+      // The already-created vault and environment are best-effort deleted, and
+      // no local ManagedAgent record is persisted.
+      expect(deleted.some(u => u.endsWith('/v1/vaults/vlt_1'))).toBe(true);
+      expect(deleted.some(u => u.endsWith('/v1/environments/env_1'))).toBe(
+        true,
+      );
+      expect(await ManagedAgent.countDocuments({})).toBe(0);
+    });
   });
 
   // Seeds a team with a key + provisioned agent so startAgentSession has

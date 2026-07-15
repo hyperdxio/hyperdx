@@ -367,15 +367,26 @@ export const handleSendSlackWebhook = async (
 // without a round-trip, and it stays easy to extend with new fields. The
 // embedded `prompt` is the per-invocation instruction; the agent's standing
 // instructions live in its system prompt (see anthropicAgents).
+// Renders a Unix-ms timestamp as an ISO-8601 string, or '' if it isn't a valid
+// time (so a template slot never becomes the literal "Invalid Date").
+const toIsoTimestamp = (t: number): string => {
+  const d = new Date(t);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+};
+
 // The variable set exposed to user-editable webhook body templates (Generic,
 // IncidentIO, and the Claude kickoff prompt). Strings are JSON-escaped;
-// numbers are emitted raw for unquoted JSON slots.
+// numbers are emitted raw for unquoted JSON slots. `startTime`/`endTime` are
+// raw Unix ms; `startTimeISO`/`endTimeISO` are ISO strings for agent-friendly,
+// human-readable time ranges (what the Claude default template uses).
 const buildWebhookTemplateVariables = (message: Message) => ({
   body: escapeJsonString(message.body),
   endTime: message.endTime,
+  endTimeISO: escapeJsonString(toIsoTimestamp(message.endTime)),
   eventId: message.eventId,
   link: escapeJsonString(message.hdxLink),
   startTime: message.startTime,
+  startTimeISO: escapeJsonString(toIsoTimestamp(message.startTime)),
   state: message.state,
   title: escapeJsonString(message.title),
   alertId: escapeJsonString(message.alertId ?? ''),
@@ -463,6 +474,12 @@ export const handleStartAgentSession = async (
 ) => {
   const startedAt = performance.now();
   try {
+    // Feature-gated: don't start agent sessions when managed agents are off,
+    // even if a Claude webhook exists (the provisioning UI is 404'd, but a
+    // stale webhook could still be attached to an alert).
+    if (!config.IS_MANAGED_AGENTS_ENABLED) {
+      return;
+    }
     // Only investigate on the firing edge. notifyChannel also runs on resolve
     // (status resolved/no_data); the agent prompt is "an alert fired —
     // investigate", so starting a session on resolution is wrong and wasteful.

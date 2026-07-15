@@ -11,6 +11,7 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
+import { IS_MANAGED_AGENTS_ENABLED } from '@/config';
 import Alert, { AlertState } from '@/models/alert';
 import Webhook, { WebhookService } from '@/models/webhook';
 import {
@@ -168,6 +169,15 @@ router.post(
       }
       const { name, service, url, description, queryParams, headers, body } =
         req.body;
+      // Claude managed-agent webhooks only function when the feature is on
+      // (provisioning + the alert-dispatch path are both flag-gated), so reject
+      // creating one on a deployment where it would silently do nothing.
+      if (service === WebhookService.Claude && !IS_MANAGED_AGENTS_ENABLED) {
+        return res.status(400).json({
+          message:
+            'Claude managed-agent webhooks are not enabled on this deployment (set HDX_MANAGED_AGENTS_ENABLED).',
+        });
+      }
       // The unique index is on (team, service, name), so the pre-flight check
       // must query the same fields — otherwise a name+service collision slips
       // past this guard and surfaces as an uncaught duplicate-key 500 below.

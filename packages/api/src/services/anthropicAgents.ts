@@ -24,6 +24,27 @@ const ANTHROPIC_API_BASE = 'https://api.anthropic.com';
 const ANTHROPIC_VERSION = '2023-06-01';
 const ANTHROPIC_BETA = 'managed-agents-2026-04-01';
 
+// Every outbound Anthropic call is bounded so a hung/slow endpoint cannot stall
+// the shared check-alerts sweep (the poll loop runs inline on that cron).
+const ANTHROPIC_REQUEST_TIMEOUT_MS = 20_000;
+// Same rationale for the one Slack delivery per run (bounded locally in the
+// poll loop rather than in the shared slack util, which serves other alerts).
+const SLACK_DELIVERY_TIMEOUT_MS = 15_000;
+
+// Stops waiting on a promise after `ms` so one slow call can't block the shared
+// sweep. The underlying request may keep running in the background; we only
+// stop awaiting it. The timer is unref'd so it never holds the process open.
+const withTimeout = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
+  Promise.race([
+    p,
+    new Promise<never>((_, reject) => {
+      setTimeout(
+        () => reject(new Error(`${label} timed out after ${ms}ms`)),
+        ms,
+      ).unref();
+    }),
+  ]);
+
 const SRE_SYSTEM_PROMPT = `You are an SRE agent for ClickStack/HyperDX. A ClickStack alert has fired. Investigate the root cause using the clickstack MCP server (logs, traces, metrics, and alert history). Reconstruct and re-run the alert's source query over its time range, inspect related logs, traces, and metrics, follow any linked runbook, and check recent deploys. Produce a concise, evidence-linked root-cause summary and suggested next steps. Do not make changes to production systems.`;
 
 export class AnthropicApiError extends Error {
@@ -42,16 +63,29 @@ const anthropicRequest = async (
   path: string,
   body?: unknown,
 ): Promise<any> => {
-  const res = await fetch(`${ANTHROPIC_API_BASE}${path}`, {
-    method,
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
-      'anthropic-beta': ANTHROPIC_BETA,
-      'content-type': 'application/json',
-    },
-    ...(body != null ? { body: JSON.stringify(body) } : {}),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${ANTHROPIC_API_BASE}${path}`, {
+      method,
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': ANTHROPIC_VERSION,
+        'anthropic-beta': ANTHROPIC_BETA,
+        'content-type': 'application/json',
+      },
+      // Bounded so a hung request can't block the shared alert sweep forever.
+      signal: AbortSignal.timeout(ANTHROPIC_REQUEST_TIMEOUT_MS),
+      ...(body != null ? { body: JSON.stringify(body) } : {}),
+    });
+  } catch (e) {
+    // Network failure or the timeout above (AbortSignal → TimeoutError).
+    // Surface as an AnthropicApiError (504) so callers handle transport
+    // failures the same way as HTTP errors.
+    throw new AnthropicApiError(
+      `Anthropic API ${method} ${path} failed: ${e instanceof Error ? e.message : String(e)}`,
+      504,
+    );
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new AnthropicApiError(
@@ -190,71 +224,111 @@ export const provisionClickStackAgent = async ({
   // any Anthropic resources.
   await verifyMcpReachable(mcpServerUrl, userAccessKey);
 
-  const environment = await anthropicRequest(
-    apiKey,
-    'POST',
-    '/v1/environments',
-    {
-      name: `clickstack-sre-${name}`,
-      config: { type: 'cloud', networking: { type: 'unrestricted' } },
-    },
-  );
-
-  const vault = await anthropicRequest(apiKey, 'POST', '/v1/vaults', {
-    display_name: `ClickStack: ${name}`,
-  });
-
-  await anthropicRequest(apiKey, 'POST', `/v1/vaults/${vault.id}/credentials`, {
-    display_name: 'ClickStack Personal API Access Key',
-    auth: {
-      type: 'static_bearer',
-      mcp_server_url: mcpServerUrl,
-      token: userAccessKey,
-    },
-  });
-
-  // Extension seam: downstream may replace the standing system prompt
-  // wholesale (fail-open — the OSS default is used if nothing overrides).
-  // The prompt is baked into the Anthropic agent object, so a swap applies
-  // to newly provisioned agents only.
-  const { systemPrompt } = await runProvisionExtensions({
-    teamId: teamId.toString(),
-    name,
-    model,
-    mcpServerUrl,
-    defaultSystemPrompt: SRE_SYSTEM_PROMPT,
-  });
-
-  const agent = await anthropicRequest(apiKey, 'POST', '/v1/agents', {
-    name,
-    model,
-    system: systemPrompt,
-    mcp_servers: [{ type: 'url', name: 'clickstack', url: mcpServerUrl }],
-    tools: [
-      { type: 'agent_toolset_20260401' },
+  // Provisioning creates several Anthropic resources in sequence. If a later
+  // step (or the local persist) fails, best-effort delete the ones already
+  // created so a partial failure doesn't leave orphaned environments/vaults the
+  // user can't see or remove. IDs are captured as we go for the rollback.
+  let environmentId: string | undefined;
+  let vaultId: string | undefined;
+  try {
+    const environment = await anthropicRequest(
+      apiKey,
+      'POST',
+      '/v1/environments',
       {
-        type: 'mcp_toolset',
-        mcp_server_name: 'clickstack',
-        // MCP toolsets default to `always_ask`, which pauses the session waiting
-        // for human approval. This loop is unattended (fired from an alert), so
-        // auto-allow the ClickStack tools — they are read-only and the system
-        // prompt forbids changes. Without this the session idles immediately on
-        // the first tool call.
-        default_config: { permission_policy: { type: 'always_allow' } },
+        name: `clickstack-sre-${name}`,
+        config: { type: 'cloud', networking: { type: 'unrestricted' } },
       },
-    ],
-  });
+    );
+    environmentId = environment.id;
 
-  return ManagedAgent.create({
-    team: teamId,
-    name,
-    model,
-    anthropicAgentId: agent.id,
-    vaultId: vault.id,
-    environmentId: environment.id,
-    mcpServerUrl,
-    createdBy: userId,
-  });
+    const vault = await anthropicRequest(apiKey, 'POST', '/v1/vaults', {
+      display_name: `ClickStack: ${name}`,
+    });
+    vaultId = vault.id;
+
+    await anthropicRequest(
+      apiKey,
+      'POST',
+      `/v1/vaults/${vault.id}/credentials`,
+      {
+        display_name: 'ClickStack Personal API Access Key',
+        auth: {
+          type: 'static_bearer',
+          mcp_server_url: mcpServerUrl,
+          token: userAccessKey,
+        },
+      },
+    );
+
+    // Extension seam: downstream may replace the standing system prompt
+    // wholesale (fail-open — the OSS default is used if nothing overrides).
+    // The prompt is baked into the Anthropic agent object, so a swap applies
+    // to newly provisioned agents only.
+    const { systemPrompt } = await runProvisionExtensions({
+      teamId: teamId.toString(),
+      name,
+      model,
+      mcpServerUrl,
+      defaultSystemPrompt: SRE_SYSTEM_PROMPT,
+    });
+
+    const agent = await anthropicRequest(apiKey, 'POST', '/v1/agents', {
+      name,
+      model,
+      system: systemPrompt,
+      mcp_servers: [{ type: 'url', name: 'clickstack', url: mcpServerUrl }],
+      tools: [
+        { type: 'agent_toolset_20260401' },
+        {
+          type: 'mcp_toolset',
+          mcp_server_name: 'clickstack',
+          // MCP toolsets default to `always_ask`, which pauses the session
+          // waiting for human approval. This loop is unattended (fired from an
+          // alert), so auto-allow the ClickStack tools — they are read-only and
+          // the system prompt forbids changes. Without this the session idles
+          // immediately on the first tool call.
+          default_config: { permission_policy: { type: 'always_allow' } },
+        },
+      ],
+    });
+
+    return await ManagedAgent.create({
+      team: teamId,
+      name,
+      model,
+      anthropicAgentId: agent.id,
+      vaultId: vault.id,
+      environmentId: environment.id,
+      mcpServerUrl,
+      createdBy: userId,
+    });
+  } catch (e) {
+    await rollbackProvision(apiKey, { environmentId, vaultId });
+    throw e;
+  }
+};
+
+// Best-effort teardown of the Anthropic resources a failed provisioning run
+// created (vault first, then environment). Each deletion is independent and
+// swallows its own error — rollback must never mask the original failure.
+const rollbackProvision = async (
+  apiKey: string,
+  { environmentId, vaultId }: { environmentId?: string; vaultId?: string },
+): Promise<void> => {
+  const cleanup = async (label: string, path: string) => {
+    try {
+      await anthropicRequest(apiKey, 'DELETE', path);
+    } catch (e) {
+      logger.warn(
+        { error: serializeError(e), resource: label },
+        'Failed to roll back partially-provisioned Anthropic resource; it may be orphaned',
+      );
+    }
+  };
+  if (vaultId) await cleanup('vault', `/v1/vaults/${vaultId}`);
+  if (environmentId)
+    await cleanup('environment', `/v1/environments/${environmentId}`);
 };
 
 // Best-effort deletion of the agent on Anthropic. Failures are logged but do
@@ -412,8 +486,19 @@ export const startAgentSession = async ({
       ...(ext.runMetadata ? { metadata: ext.runMetadata } : {}),
     });
   } catch (e: any) {
-    // Lost a race to a concurrent firing — the other run owns this session.
+    // Lost a race to a concurrent firing — the other run owns the delivery.
+    // The session we just created is now untracked, so best-effort delete it
+    // rather than leave it running and consuming quota. (The findOne above
+    // avoids this in the common case; this only fires on a genuine race.)
     if (e?.code === 11000) {
+      try {
+        await anthropicRequest(apiKey, 'DELETE', `/v1/sessions/${session.id}`);
+      } catch (delErr) {
+        logger.warn(
+          { error: serializeError(delErr), sessionId: session.id },
+          'Failed to delete the losing race session; it may keep running',
+        );
+      }
       return AgentRun.findOne({ dedupeKey });
     }
     throw e;
@@ -526,6 +611,10 @@ const failRun = async (run: AgentRunDocument, error: string): Promise<void> => {
 // MAX_SESSION_AGE_MS. Designed to run on the check-alerts cadence. One bad run
 // is logged and skipped — it never aborts the sweep.
 export const pollAndDeliverAgentSessions = async (): Promise<void> => {
+  // Feature-gated: with managed agents off there are no runs to deliver, so
+  // skip the sweep entirely rather than query every check-alerts cadence.
+  if (!config.IS_MANAGED_AGENTS_ENABLED) return;
+
   // Reclaim runs whose delivery was interrupted (claimed `delivering` but the
   // process died before finishing), so they retry instead of stalling.
   await AgentRun.updateMany(
@@ -609,14 +698,18 @@ export const pollAndDeliverAgentSessions = async (): Promise<void> => {
       const ext = await runDeliveryExtensions({ run: claimed, summary });
 
       try {
-        await slack.postMessageToWebhook(
-          claimed.deliverToUrl,
-          buildAgentSlackMessage(
-            claimed.title,
-            summary,
-            claimed.anthropicSessionId,
-            ext.footerLinks,
+        await withTimeout(
+          slack.postMessageToWebhook(
+            claimed.deliverToUrl,
+            buildAgentSlackMessage(
+              claimed.title,
+              summary,
+              claimed.anthropicSessionId,
+              ext.footerLinks,
+            ),
           ),
+          SLACK_DELIVERY_TIMEOUT_MS,
+          'Slack delivery',
         );
         claimed.status = 'delivered';
         claimed.deliveredAt = new Date();
