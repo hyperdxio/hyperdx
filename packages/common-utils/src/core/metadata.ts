@@ -640,18 +640,26 @@ export class Metadata {
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''
         LIMIT ${{ Int32: maxKeys }}`;
-      const keys = await this.clickhouseClient
-        .query<'JSON'>({
-          query: sql.sql,
-          query_params: sql.params,
-          connectionId,
-          clickhouse_settings: this.getClickHouseSettings(),
-        })
-        .then(r => r.json<{ key: string }>())
-        .then(d => d.data.map(r => r.key).filter(Boolean));
-      if (keys.length > 0) {
-        this.cache.set(cacheKey, keys);
-        return keys;
+      try {
+        const keys = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(r => r.json<{ key: string }>())
+          .then(d => d.data.map(r => r.key).filter(Boolean));
+        if (keys.length > 0) {
+          this.cache.set(cacheKey, keys);
+          return keys;
+        }
+      } catch (e) {
+        console.warn(
+          'getMapKeys rollup query failed for key text index query',
+          e,
+        );
+        return [];
       }
     } else if (textIndexInfo?.kv?.indexName) {
       const partsFilter = await this.partsOverlapFilter({
@@ -668,18 +676,26 @@ export class Metadata {
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''
         LIMIT ${{ Int32: maxKeys }}`;
-      const keys = await this.clickhouseClient
-        .query<'JSON'>({
-          query: sql.sql,
-          query_params: sql.params,
-          connectionId,
-          clickhouse_settings: this.getClickHouseSettings(),
-        })
-        .then(r => r.json<{ key: string }>())
-        .then(d => d.data.map(r => r.key).filter(Boolean));
-      if (keys.length > 0) {
-        this.cache.set(cacheKey, keys);
-        return keys;
+      try {
+        const keys = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(r => r.json<{ key: string }>())
+          .then(d => d.data.map(r => r.key).filter(Boolean));
+        if (keys.length > 0) {
+          this.cache.set(cacheKey, keys);
+          return keys;
+        }
+      } catch (e) {
+        console.warn(
+          'getMapKeys rollup query failed for kv text index query',
+          e,
+        );
+        return [];
       }
     }
 
@@ -1243,7 +1259,7 @@ export class Metadata {
     maxValuesPerKey: number;
     signal?: AbortSignal;
   }): Promise<KeyValues[] | undefined> {
-    const cacheKey = `${databaseName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${maxValuesPerKey}.${JSON.stringify(metadataMVs)}.${JSON.stringify(Array.from(queryOptions.entries()))}.getMetadataMVKeyValues`;
+    const cacheKey = `${databaseName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${maxValuesPerKey}.${JSON.stringify(metadataMVs)}.${JSON.stringify(Array.from(queryOptions.entries()).map(o => [o[0], Array.from(o[1])]))}.getMetadataMVKeyValues`;
     return this.cache.getOrFetch(cacheKey, async () => {
       if (!metadataMVs) {
         console.warn('getMetadataMVKeyValues: metadataMVs is undefined');
@@ -2280,6 +2296,10 @@ export class Metadata {
     }
     if (rawQueryOptions.length > 0) {
       promises.push(
+        // Isolate raw-table failures (timeout, abort, network) the same way
+        // the three sibling strategies do internally, so a single rejection
+        // here doesn't discard already-successful text-index / MV results
+        // when they're aggregated through `Promise.all` below.
         this.getKeyValues({
           chartConfig: {
             from: {
@@ -2296,6 +2316,12 @@ export class Metadata {
           limit: maxValuesPerKey,
           source: undefined,
           signal,
+        }).catch(error => {
+          console.warn(
+            'getKeyValues (raw table) failed; skipping this strategy for the current batch',
+            error,
+          );
+          return undefined;
         }),
       );
     }

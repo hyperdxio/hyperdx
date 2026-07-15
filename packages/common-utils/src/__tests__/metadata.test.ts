@@ -1201,10 +1201,13 @@ describe('Metadata', () => {
       // Text-index returns rows like { key, value }; the MV rollup parses
       // { ColumnIdentifier, Key, Values } (see `getMetadataMVKeyValues`,
       // which maps NativeColumn rows back to { key: Key, value: Values }).
+      // The raw-table fallback aliases columns as paramN and returns a single
+      // row like { param0: [...], param1: [...] } (see `getKeyValues`).
       function mockQueryByStrategy(strategies: {
         onMapTextIndex?: () => Promise<any>;
         onNativeTextIndex?: () => Promise<any>;
         onMVRollup?: () => Promise<any>;
+        onRawTable?: () => Promise<any>;
       }) {
         (mockClickhouseClient.query as jest.Mock).mockImplementation(
           ({ query }: any) => {
@@ -1224,6 +1227,12 @@ describe('Metadata', () => {
             if (q.includes('ColumnIdentifier =')) {
               return (
                 strategies.onMVRollup?.() ??
+                Promise.resolve({ json: () => Promise.resolve({ data: [] }) })
+              );
+            }
+            if (q.includes('AS param')) {
+              return (
+                strategies.onRawTable?.() ??
                 Promise.resolve({ json: () => Promise.resolve({ data: [] }) })
               );
             }
@@ -1306,6 +1315,45 @@ describe('Metadata', () => {
         expect(result).toEqual([{ key: 'ServiceName', value: ['api'] }]);
         expect(consoleWarnSpy).toHaveBeenCalledWith(
           expect.stringContaining('getMapTextIndexKeyValues failed'),
+          expect.any(Error),
+        );
+
+        consoleWarnSpy.mockRestore();
+      });
+
+      it('returns results from other strategies when the raw-table getKeyValues fallback throws', async () => {
+        setupDefaultLogsSchema();
+        const consoleWarnSpy = jest
+          .spyOn(console, 'warn')
+          .mockImplementation(() => undefined);
+
+        mockQueryByStrategy({
+          onRawTable: () =>
+            Promise.reject(new Error('raw table query timed out')),
+          onMVRollup: () =>
+            Promise.resolve({
+              json: () =>
+                Promise.resolve({
+                  data: [
+                    {
+                      ColumnIdentifier: 'NativeColumn',
+                      Key: 'ServiceName',
+                      Values: ['api', 'web'],
+                      total_count: 42,
+                    },
+                  ],
+                }),
+            }),
+        });
+
+        const result = await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: ['Body', 'ServiceName'],
+        });
+
+        expect(result).toEqual([{ key: 'ServiceName', value: ['api', 'web'] }]);
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('getKeyValues (raw table) failed'),
           expect.any(Error),
         );
 
