@@ -11,6 +11,7 @@ import { SearchPageAlertModalComponent } from '../components/SearchPageAlertModa
 import { SidePanelComponent } from '../components/SidePanelComponent';
 import { TableComponent } from '../components/TableComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
+import { dismissSqlAutocomplete } from '../utils/locators';
 
 type SaveSearchModalProps = {
   update: boolean;
@@ -283,8 +284,8 @@ export class SearchPage {
     // which then gets faithfully saved and fails later assertions.
     await this.page.keyboard.insertText(selectStatement);
     // Dismiss the autocomplete popup so it can't linger and overlay the next
-    // control (e.g. the Save Search button), mirroring setCustomOrderBy.
-    await this.page.keyboard.press('Escape');
+    // control (e.g. the Save Search button).
+    await dismissSqlAutocomplete(this.page);
   }
 
   /**

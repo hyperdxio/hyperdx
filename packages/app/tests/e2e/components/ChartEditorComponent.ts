@@ -5,7 +5,7 @@
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Locator, Page } from '@playwright/test';
 
-import { getSqlEditor } from '../utils/locators';
+import { dismissSqlAutocomplete, getSqlEditor } from '../utils/locators';
 
 import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
 
@@ -70,8 +70,9 @@ export class ChartEditorComponent {
     await this.page.keyboard.type(expression);
     // Dismiss the autocomplete dropdown so it doesn't linger and overlay the
     // next input (e.g. the ORDER BY editor), which otherwise fails the click's
-    // actionability check and times out. Mirrors setOrderBy below.
-    await this.page.keyboard.press('Escape');
+    // actionability check and times out. Uses blur (not Escape) so it can't
+    // close a surrounding modal (the dashboard tile editor). See the helper.
+    await dismissSqlAutocomplete(this.page);
   }
 
   /**
@@ -86,14 +87,14 @@ export class ChartEditorComponent {
       .locator('.cm-content');
     // Dismiss any autocomplete popup left open by a prior editor interaction so
     // it can't overlay this editor and stall the click on actionability.
-    await this.page.keyboard.press('Escape');
+    await dismissSqlAutocomplete(this.page);
     await editor.click();
     // Clear any existing content before typing the new expression.
     await this.page.keyboard.press('ControlOrMeta+A');
     await this.page.keyboard.press('Delete');
     await this.page.keyboard.type(expression);
     // Dismiss the autocomplete dropdown so it doesn't intercept the next click.
-    await this.page.keyboard.press('Escape');
+    await dismissSqlAutocomplete(this.page);
   }
 
   /**
