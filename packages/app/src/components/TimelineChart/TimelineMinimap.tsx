@@ -113,7 +113,7 @@ export const TimelineMinimap = memo(function ({
       const val = i * interval;
       const frac = val / maxVal;
       if (frac > 1) break;
-      result.push({ frac, label: renderMs(val) });
+      result.push({ val, frac, label: renderMs(val) });
     }
     return result;
   }, [maxVal]);
@@ -275,9 +275,9 @@ export const TimelineMinimap = memo(function ({
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
     >
-      {ticks.map(({ frac, label }) => (
+      {ticks.map(({ val, frac, label }) => (
         <div
-          key={label}
+          key={val}
           className={styles.tick}
           style={{ left: `${frac * 100}%`, height: MINIMAP_HEIGHT }}
         >
