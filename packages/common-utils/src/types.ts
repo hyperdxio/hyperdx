@@ -1217,6 +1217,17 @@ const SharedChartSettingsSchema = z.object({
   backgroundChart: BackgroundChartSchema.optional(),
 });
 
+// How a grouped ratio divides once split into numerator/denominator series:
+// - `per_group` (default): each group's own rate (numerator/denominator within
+//   the group), e.g. a per-service error %.
+// - `share_of_total`: each group's numerator over the per-bucket total across
+//   all groups, so the lines decompose the blended rate and sum to the
+//   ungrouped value.
+// Ungrouped ratios are identical under both (one row per bucket -> the bucket
+// total is that row's denominator).
+export const RatioModeSchema = z.enum(['per_group', 'share_of_total']);
+export type RatioMode = z.infer<typeof RatioModeSchema>;
+
 export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
@@ -1233,6 +1244,9 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   selectGroupBy: z.boolean().optional(),
   metricTables: MetricTableSchema.optional(),
   seriesReturnType: z.enum(['ratio', 'column']).optional(),
+  // Only meaningful for grouped ratios (seriesReturnType === 'ratio' + a Group
+  // By). Defaults to per-group when unset. See RatioModeSchema.
+  ratioMode: RatioModeSchema.optional(),
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
   source: z.string().optional(),
