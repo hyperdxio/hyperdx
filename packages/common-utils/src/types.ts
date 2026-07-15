@@ -363,8 +363,10 @@ export enum WebhookService {
   Slack = 'slack',
   Generic = 'generic',
   IncidentIO = 'incidentio',
-  // Claude Managed Agents: posts an enriched, agent-ready JSON payload to a
-  // thin receiver that starts an agent session. Sent identically to Generic.
+  // Claude Managed Agents: on a firing alert, starts an in-process Anthropic
+  // agent session (handleStartAgentSession) that investigates via the
+  // ClickStack MCP server and delivers a summary to the webhook's Slack URL.
+  // The webhook `body` is the user-editable kickoff-prompt template.
   Claude = 'claude',
 }
 

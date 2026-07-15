@@ -16,6 +16,7 @@ import {
   runProvisionExtensions,
   runSessionStartExtensions,
 } from '@/services/agentRunExtensions';
+import { isDuplicateKeyError } from '@/utils/errors';
 import { setBusinessContext } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
@@ -153,6 +154,9 @@ export const verifyMcpReachable = async (
         // The streamable-HTTP transport requires both content types in Accept.
         accept: 'application/json, text/event-stream',
       },
+      // Bounded like the Anthropic calls, so a tunnel that accepts the
+      // connection but never responds can't hang the provisioning request.
+      signal: AbortSignal.timeout(ANTHROPIC_REQUEST_TIMEOUT_MS),
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 1,
@@ -230,6 +234,7 @@ export const provisionClickStackAgent = async ({
   // user can't see or remove. IDs are captured as we go for the rollback.
   let environmentId: string | undefined;
   let vaultId: string | undefined;
+  let agentId: string | undefined;
   try {
     const environment = await anthropicRequest(
       apiKey,
@@ -292,6 +297,7 @@ export const provisionClickStackAgent = async ({
         },
       ],
     });
+    agentId = agent.id;
 
     return await ManagedAgent.create({
       team: teamId,
@@ -304,17 +310,23 @@ export const provisionClickStackAgent = async ({
       createdBy: userId,
     });
   } catch (e) {
-    await rollbackProvision(apiKey, { environmentId, vaultId });
+    await deleteAnthropicResources(apiKey, { agentId, environmentId, vaultId });
     throw e;
   }
 };
 
-// Best-effort teardown of the Anthropic resources a failed provisioning run
-// created (vault first, then environment). Each deletion is independent and
-// swallows its own error — rollback must never mask the original failure.
-const rollbackProvision = async (
+// Best-effort teardown of an agent's supporting Anthropic resources (vault
+// first, then environment). Used both to roll back a failed provisioning run
+// and to fully tear an agent down on delete — the vault holds the team's
+// ClickStack bearer credential, so it must not be left behind. Each deletion is
+// independent and swallows its own error so it never masks the caller's flow.
+const deleteAnthropicResources = async (
   apiKey: string,
-  { environmentId, vaultId }: { environmentId?: string; vaultId?: string },
+  {
+    agentId,
+    environmentId,
+    vaultId,
+  }: { agentId?: string; environmentId?: string; vaultId?: string },
 ): Promise<void> => {
   const cleanup = async (label: string, path: string) => {
     try {
@@ -322,20 +334,42 @@ const rollbackProvision = async (
     } catch (e) {
       logger.warn(
         { error: serializeError(e), resource: label },
-        'Failed to roll back partially-provisioned Anthropic resource; it may be orphaned',
+        'Failed to delete Anthropic resource; it may be left orphaned',
       );
     }
   };
+  if (agentId) await cleanup('agent', `/v1/agents/${agentId}`);
   if (vaultId) await cleanup('vault', `/v1/vaults/${vaultId}`);
   if (environmentId)
     await cleanup('environment', `/v1/environments/${environmentId}`);
 };
 
-// Best-effort deletion of the agent on Anthropic. Failures are logged but do
-// not block local removal (the user can also delete it from the Claude console).
+// Best-effort delete of a session we created but couldn't fully record, so it
+// doesn't keep running (and consuming quota) untracked.
+const deleteSessionBestEffort = async (
+  apiKey: string,
+  sessionId: string,
+): Promise<void> => {
+  try {
+    await anthropicRequest(apiKey, 'DELETE', `/v1/sessions/${sessionId}`);
+  } catch (e) {
+    logger.warn(
+      { error: serializeError(e), sessionId },
+      'Failed to delete an untracked agent session; it may keep running',
+    );
+  }
+};
+
+// Best-effort deletion of an agent on Anthropic: the agent object plus its
+// supporting vault and environment. Deleting the vault matters for credential
+// hygiene — it holds the team's ClickStack bearer token, which would otherwise
+// sit on Anthropic indefinitely after the agent is removed. Failures are logged
+// but do not block local removal (the user can also delete from the Claude
+// console).
 export const deleteAnthropicAgent = async (
   teamId: ObjectId,
   anthropicAgentId: string,
+  resources: { vaultId?: string; environmentId?: string } = {},
 ): Promise<void> => {
   const apiKey = await getTeamAnthropicKey(teamId);
   if (!apiKey) return;
@@ -349,13 +383,16 @@ export const deleteAnthropicAgent = async (
         { anthropicAgentId },
         'Agent already absent on Anthropic (404); removing local record',
       );
-      return;
+    } else {
+      logger.warn(
+        { error: serializeError(e), anthropicAgentId },
+        'Failed to delete agent on Anthropic; removing local record anyway',
+      );
     }
-    logger.warn(
-      { error: serializeError(e), anthropicAgentId },
-      'Failed to delete agent on Anthropic; removing local record anyway',
-    );
   }
+  // Tear down the vault (holds the ClickStack credential) and environment too,
+  // regardless of the agent-delete outcome, so nothing sensitive is orphaned.
+  await deleteAnthropicResources(apiKey, resources);
 };
 
 // The Anthropic session `status` value that means the agent has finished its
@@ -379,6 +416,11 @@ const AGENT_DEDUPE_WINDOW_MS = 60 * 60 * 1000;
 
 // Oldest-first cap per sweep, so one poll can't fan out unbounded GETs.
 const MAX_RUNS_PER_SWEEP = 100;
+
+// Wall-clock budget for one sweep. The poll loop runs inline on the (awaited)
+// check-alerts cron, so it must return promptly even with many slow runs;
+// leftover runs are picked up on the next sweep.
+const MAX_SWEEP_DURATION_MS = 45_000;
 
 // Give up (and report the real reason) after this many failed delivery attempts,
 // rather than re-posting every sweep until the age ceiling.
@@ -456,24 +498,36 @@ export const startAgentSession = async ({
     title,
   });
 
-  // Extension seam: downstream may replace the kickoff payload wholesale,
-  // append instructions, and stash run metadata (fail-open — a broken
-  // extension contributes nothing and the investigation proceeds).
-  const ext = await runSessionStartExtensions({
-    teamId: teamId.toString(),
-    agent,
-    anthropicSessionId: session.id,
-    title,
-    prompt,
-  });
-
-  await anthropicRequest(apiKey, 'POST', `/v1/sessions/${session.id}/events`, {
-    events: [
-      { type: 'user.message', content: [{ type: 'text', text: ext.prompt }] },
-    ],
-  });
-
+  // Everything after session creation is wrapped so ANY failure (a failed
+  // kickoff events POST, a lost dedup race, or any other create error) cleans
+  // up the session rather than leaving it running untracked and consuming
+  // quota. Only a genuine duplicate-key race resolves to the winning run.
   try {
+    // Extension seam: downstream may replace the kickoff payload wholesale,
+    // append instructions, and stash run metadata (fail-open — a broken
+    // extension contributes nothing and the investigation proceeds).
+    const ext = await runSessionStartExtensions({
+      teamId: teamId.toString(),
+      agent,
+      anthropicSessionId: session.id,
+      title,
+      prompt,
+    });
+
+    await anthropicRequest(
+      apiKey,
+      'POST',
+      `/v1/sessions/${session.id}/events`,
+      {
+        events: [
+          {
+            type: 'user.message',
+            content: [{ type: 'text', text: ext.prompt }],
+          },
+        ],
+      },
+    );
+
     return await AgentRun.create({
       team: teamId,
       managedAgent: agent._id,
@@ -485,22 +539,12 @@ export const startAgentSession = async ({
       title,
       ...(ext.runMetadata ? { metadata: ext.runMetadata } : {}),
     });
-  } catch (e: any) {
-    // Lost a race to a concurrent firing — the other run owns the delivery.
-    // The session we just created is now untracked, so best-effort delete it
-    // rather than leave it running and consuming quota. (The findOne above
-    // avoids this in the common case; this only fires on a genuine race.)
-    if (e?.code === 11000) {
-      try {
-        await anthropicRequest(apiKey, 'DELETE', `/v1/sessions/${session.id}`);
-      } catch (delErr) {
-        logger.warn(
-          { error: serializeError(delErr), sessionId: session.id },
-          'Failed to delete the losing race session; it may keep running',
-        );
-      }
-      return AgentRun.findOne({ dedupeKey });
-    }
+  } catch (e) {
+    await deleteSessionBestEffort(apiKey, session.id);
+    // Lost a race to a concurrent firing — the other run owns the delivery, so
+    // return it (the findOne above avoids this in the common case; this only
+    // fires on a genuine race).
+    if (isDuplicateKeyError(e)) return AgentRun.findOne({ dedupeKey });
     throw e;
   }
 };
@@ -629,7 +673,14 @@ export const pollAndDeliverAgentSessions = async (): Promise<void> => {
     .sort({ createdAt: 1 })
     .limit(MAX_RUNS_PER_SWEEP);
 
+  // The sweep runs inline on the check-alerts cron (which awaits completion), so
+  // cap its wall-clock: once the budget is spent, defer the remaining `running`
+  // runs to the next sweep rather than block the next alert-evaluation tick
+  // during an incident storm with a slow Anthropic API.
+  const sweepDeadline = Date.now() + MAX_SWEEP_DURATION_MS;
+
   for (const run of runs) {
+    if (Date.now() > sweepDeadline) break;
     setBusinessContext({ teamId: run.team.toString() });
     // Evaluated independently of the session GET so a perpetually-failing poll
     // still gets abandoned rather than stuck `running` forever.

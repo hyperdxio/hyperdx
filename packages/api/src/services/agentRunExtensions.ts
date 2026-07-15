@@ -246,7 +246,10 @@ export const runSessionStartExtensions = async (
     prompt: (override ?? ctx.prompt) + promptSuffix,
     runMetadata:
       metadataEntries.length > 0
-        ? Object.assign({}, ...metadataEntries)
+        ? metadataEntries.reduce<Record<string, unknown>>(
+            (acc, m) => ({ ...acc, ...m }),
+            {},
+          )
         : undefined,
   };
 };

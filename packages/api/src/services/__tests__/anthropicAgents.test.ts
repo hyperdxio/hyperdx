@@ -220,6 +220,28 @@ describe('anthropicAgents service', () => {
       expect(warn).toHaveBeenCalledTimes(1);
       warn.mockRestore();
     });
+
+    it('also deletes the vault and environment so the ClickStack credential is not orphaned', async () => {
+      const deleted: string[] = [];
+      fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockImplementation(async (url: any, init: any) => {
+          if (init?.method === 'DELETE') deleted.push(String(url));
+          return { ok: true, text: async () => '{}' } as any;
+        });
+      const teamId = await seedKey();
+
+      await deleteAnthropicAgent(teamId as any, 'agent_1', {
+        vaultId: 'vlt_1',
+        environmentId: 'env_1',
+      });
+
+      expect(deleted.some(u => u.endsWith('/v1/agents/agent_1'))).toBe(true);
+      expect(deleted.some(u => u.endsWith('/v1/vaults/vlt_1'))).toBe(true);
+      expect(deleted.some(u => u.endsWith('/v1/environments/env_1'))).toBe(
+        true,
+      );
+    });
   });
 
   describe('chunkForSlack', () => {

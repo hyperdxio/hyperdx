@@ -100,9 +100,12 @@ router.delete(
         team: teamId,
       });
       if (!agent) return res.status(404).json({ message: 'Agent not found' });
-      await deleteAnthropicAgent(teamId, agent.anthropicAgentId);
+      await deleteAnthropicAgent(teamId, agent.anthropicAgentId, {
+        vaultId: agent.vaultId,
+        environmentId: agent.environmentId,
+      });
       await agent.deleteOne();
-      res.json({ message: 'Deleted' });
+      res.json({});
     } catch (e) {
       next(e);
     }
