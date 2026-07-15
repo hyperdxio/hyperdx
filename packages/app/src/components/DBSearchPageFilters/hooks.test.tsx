@@ -56,7 +56,6 @@ jest.mock('@/hooks/useMetadata', () => ({
   useJsonColumns: jest.fn(),
   useMapColumns: jest.fn(),
   useAllFields: jest.fn(),
-  useAllFieldsAndValues: jest.fn(),
   useGetKeyValues: jest.fn(),
 }));
 
@@ -71,9 +70,6 @@ const useDateTimeColumns = jest.mocked(useMetadataModule.useDateTimeColumns);
 const useJsonColumns = jest.mocked(useMetadataModule.useJsonColumns);
 const useMapColumns = jest.mocked(useMetadataModule.useMapColumns);
 const useAllFields = jest.mocked(useMetadataModule.useAllFields);
-const useAllFieldsAndValues = jest.mocked(
-  useMetadataModule.useAllFieldsAndValues,
-);
 const useGetKeyValues = jest.mocked(useMetadataModule.useGetKeyValues);
 
 const CHART_CONFIG: BuilderChartConfigWithDateRange = {
@@ -173,13 +169,6 @@ function setupDefaultMocks({ withMVs }: { withMVs: boolean }) {
     isFetching: false,
     error: null,
   } as any);
-
-  useAllFieldsAndValues.mockReturnValue({
-    data: undefined,
-    isLoading: false,
-    isFetching: false,
-    error: null,
-  } as any);
 }
 
 describe('useFetchFacets', () => {
@@ -204,9 +193,7 @@ describe('useFetchFacets', () => {
       );
 
       const rawCall = useGetKeyValues.mock.calls.at(-1);
-      const mvCall = useAllFieldsAndValues.mock.calls.at(-1);
       expect(rawCall?.[1]?.enabled).toBe(true);
-      expect(mvCall?.[1]?.enabled).toBe(false);
     });
 
     it('uses the raw-tables pipeline when mode is exact, even if MVs are available', () => {
@@ -225,9 +212,7 @@ describe('useFetchFacets', () => {
       );
 
       const rawCall = useGetKeyValues.mock.calls.at(-1);
-      const mvCall = useAllFieldsAndValues.mock.calls.at(-1);
       expect(rawCall?.[1]?.enabled).toBe(true);
-      expect(mvCall?.[1]?.enabled).toBe(false);
     });
 
     it('uses the MV pipeline when mode is all and MVs are available', () => {
@@ -246,8 +231,6 @@ describe('useFetchFacets', () => {
       );
 
       const rawCall = useGetKeyValues.mock.calls.at(-1);
-      const mvCall = useAllFieldsAndValues.mock.calls.at(-1);
-      expect(mvCall?.[1]?.enabled).toBe(true);
       expect(rawCall?.[1]?.enabled).toBe(false);
     });
   });
@@ -257,12 +240,6 @@ describe('useFetchFacets', () => {
       setupDefaultMocks({ withMVs: false });
       useGetKeyValues.mockReturnValue({
         data: [{ key: 'ServiceName', value: ['api', 'web'] }],
-        isLoading: false,
-        isFetching: false,
-        error: null,
-      } as any);
-      useAllFieldsAndValues.mockReturnValue({
-        data: [{ key: 'ShouldNotBeUsed', value: ['x'] }],
         isLoading: false,
         isFetching: false,
         error: null,
@@ -288,12 +265,6 @@ describe('useFetchFacets', () => {
 
     it('returns data from the MV pipeline when that pipeline is active', () => {
       setupDefaultMocks({ withMVs: true });
-      useAllFieldsAndValues.mockReturnValue({
-        data: [{ key: 'ServiceName', value: ['api', 'web'] }],
-        isLoading: false,
-        isFetching: false,
-        error: null,
-      } as any);
       useGetKeyValues.mockReturnValue({
         data: [{ key: 'ShouldNotBeUsed', value: ['x'] }],
         isLoading: false,
@@ -550,12 +521,6 @@ describe('useFetchFacets', () => {
   describe('loadMoreFacetsForKey (MV pipeline)', () => {
     it('delegates to getAllKeyValues and merges the result', async () => {
       setupDefaultMocks({ withMVs: true });
-      useAllFieldsAndValues.mockReturnValue({
-        data: [{ key: 'ServiceName', value: ['api'] }],
-        isLoading: false,
-        isFetching: false,
-        error: null,
-      } as any);
       const getAllKeyValues = jest
         .fn()
         .mockResolvedValue([{ key: 'ServiceName', value: ['api', 'web'] }]);

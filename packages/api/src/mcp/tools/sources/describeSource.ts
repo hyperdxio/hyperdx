@@ -114,7 +114,7 @@ async function sampleMetricNamesForKind({
     timestampValueExpression,
     signal,
   });
-  const names = nameResults[0]?.value ?? [];
+  const names = nameResults[0]?.value.map(v => v.toString()) ?? [];
   if (names.length === 0) return [];
 
   // Best-effort enrichment with unit + description. One small query
@@ -451,7 +451,7 @@ async function describeSourceSchema(
       });
       for (const { key, value } of results) {
         if (value.length > 0) {
-          lowCardinalityValues[key] = value;
+          lowCardinalityValues[key] = value.map(v => v.toString());
         }
       }
     } catch {
@@ -491,7 +491,7 @@ async function describeSourceSchema(
       });
       for (const { key, value } of results) {
         if (value.length > 0) {
-          mapAttributeValues[key] = value;
+          mapAttributeValues[key] = value.map(v => v.toString());
         }
       }
     } catch {
