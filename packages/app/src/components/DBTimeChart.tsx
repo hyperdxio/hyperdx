@@ -156,19 +156,30 @@ function ChartTooltipOverlay({
 
   const popoverZIndex = useChartTooltipZIndex();
 
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
   // The pinned tooltip anchors at `position: fixed` viewport coords captured
   // once at click time. When a surrounding scroll container scrolls, the chart
   // moves but the fixed tooltip stays glued to the viewport, detaching from its
   // data point (Mantine's closeOnClickOutside/closeOnEscape don't fire on
-  // scroll). Dismiss on scroll instead so it never floats away.
+  // scroll). Dismiss on scroll instead so it never floats away — but ignore
+  // scrolls originating inside the tooltip's own scrollable series list, or a
+  // long tooltip couldn't be scrolled without instantly closing.
   useEffect(() => {
     if (!isOpen) return;
-    window.addEventListener('scroll', onDismiss, {
+    const handleScroll = (e: Event) => {
+      const target = e.target as Node | null;
+      if (target != null && dropdownRef.current?.contains(target)) {
+        return;
+      }
+      onDismiss();
+    };
+    window.addEventListener('scroll', handleScroll, {
       capture: true,
       passive: true,
     });
     return () => {
-      window.removeEventListener('scroll', onDismiss, { capture: true });
+      window.removeEventListener('scroll', handleScroll, { capture: true });
     };
   }, [isOpen, onDismiss]);
 
@@ -212,6 +223,7 @@ function ChartTooltipOverlay({
           />
         </Popover.Target>
         <Popover.Dropdown
+          ref={dropdownRef}
           p={0}
           style={{
             // Width comes from the shared .chartTooltip class; fit-content stops
