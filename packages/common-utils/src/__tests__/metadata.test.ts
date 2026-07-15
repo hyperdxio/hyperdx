@@ -790,6 +790,290 @@ describe('Metadata', () => {
     });
   });
 
+  // Each of the four fetch strategies emits a distinct SQL shape (map-text-
+  // index, native-text-index, metadata-MV, raw-table). We assert against
+  // those shapes rather than exposing the private methods.
+  describe('getAllKeyValues (router)', () => {
+    const dateRange: [Date, Date] = [
+      new Date('2024-01-01'),
+      new Date('2024-01-02'),
+    ];
+    const baseArgs = {
+      databaseName: 'default',
+      tableName: 'otel_logs',
+      connectionId: 'test_connection',
+      dateRange,
+      timestampValueExpression: 'Timestamp',
+      metadataMVs: {
+        keyRollupTable: 'otel_logs_key_rollup_15m',
+        kvRollupTable: 'otel_logs_kv_rollup_15m',
+        granularity: '15 minute' as const,
+      },
+    };
+
+    const setupDefaultLogsSchema = () => {
+      mockCache.getOrFetch.mockImplementation((_key: string, fn: () => any) =>
+        fn(),
+      );
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () => Promise.resolve({ data: [{}] }),
+      });
+
+      jest.spyOn(metadata, 'getColumns').mockResolvedValue([
+        { name: 'Timestamp', type: 'DateTime64(9)' },
+        { name: 'TraceId', type: 'String' },
+        { name: 'SpanId', type: 'String' },
+        { name: 'ServiceName', type: 'LowCardinality(String)' },
+        { name: 'SeverityText', type: 'LowCardinality(String)' },
+        { name: 'Body', type: 'String' },
+        { name: 'LogAttributes', type: 'Map(LowCardinality(String), String)' },
+        {
+          name: 'ResourceAttributes',
+          type: 'Map(LowCardinality(String), String)',
+        },
+      ] as any);
+
+      jest.spyOn(metadata, 'getMapColumnTextIndexes').mockResolvedValue(
+        new Map([
+          [
+            'LogAttributes',
+            {
+              kv: {
+                columnName: 'LogAttributes',
+                mapColumn: 'LogAttributes',
+                indexName: 'idx_log_attr_items',
+                separator: '=',
+                useHasAny: false,
+              },
+            },
+          ],
+        ]) as any,
+      );
+
+      jest.spyOn(metadata, 'getNativeArrayColumnTextIndexes').mockResolvedValue(
+        new Map([
+          [
+            'TraceId',
+            {
+              name: 'idx_trace_id',
+              type: 'text',
+              typeFull: "text(tokenizer = 'array')",
+              expression: 'TraceId',
+              granularity: 1,
+            },
+          ],
+        ]),
+      );
+
+      jest
+        .spyOn(metadata as any, 'doMetadataMVsAggregateColumn')
+        .mockImplementation((...args: any[]) => {
+          const columnName = args[1] as string;
+          return Promise.resolve(
+            columnName === 'ServiceName' || columnName === 'SeverityText',
+          );
+        });
+    };
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('routes TraceId through getTextIndexKeyValues (native text index path)', async () => {
+      setupDefaultLogsSchema();
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ['TraceId'],
+      });
+
+      const calls = (mockClickhouseClient.query as jest.Mock).mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      const sql = calls[calls.length - 1][0].query as string;
+
+      expect(sql).toContain('mergeTreeTextIndex(');
+      expect(sql).toContain('groupUniqArray(');
+      expect(sql).toContain('GROUP BY key');
+      expect(sql).not.toContain('startsWith(token,');
+    });
+
+    it("routes LogAttributes['requestId'] through getMapTextIndexKeyValues (map KV text index path)", async () => {
+      setupDefaultLogsSchema();
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ["LogAttributes['requestId']"],
+      });
+
+      const calls = (mockClickhouseClient.query as jest.Mock).mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      const sql = calls[calls.length - 1][0].query as string;
+
+      expect(sql).toContain('mergeTreeTextIndex(');
+      expect(sql).toContain('startsWith(token,');
+      expect(sql).toContain('substring(token, position(token,');
+      expect(sql).toContain('GROUP BY column, key');
+    });
+
+    it('routes ServiceName and SeverityText through getMetadataMVKeyValues (KV rollup MV path)', async () => {
+      setupDefaultLogsSchema();
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ['ServiceName', 'SeverityText'],
+      });
+
+      const calls = (mockClickhouseClient.query as jest.Mock).mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      const lastCall = calls[calls.length - 1][0];
+      const sql = lastCall.query as string;
+      const params = lastCall.query_params as Record<string, string>;
+
+      expect(sql).toContain('ColumnIdentifier = ');
+      expect(sql).toContain('Key IN (');
+      expect(sql).toContain('BY ColumnIdentifier, Key');
+      expect(sql).not.toContain('mergeTreeTextIndex(');
+      expect(Object.values(params)).toContain('otel_logs_kv_rollup_15m');
+      expect(Object.values(params)).toContain('ServiceName');
+      expect(Object.values(params)).toContain('SeverityText');
+    });
+
+    it('routes columns without any index or MV entry through the getKeyValues fallback (raw table scan)', async () => {
+      setupDefaultLogsSchema();
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ['Body'],
+      });
+
+      expect(renderChartConfigSpy).toHaveBeenCalled();
+      const configArg = renderChartConfigSpy.mock.calls[
+        renderChartConfigSpy.mock.calls.length - 1
+      ][0] as any;
+      expect(configArg.select).toContain('groupUniqArray(');
+      expect(configArg.select).toContain('param0');
+    });
+
+    it('fans out across all four fetch paths in a single mixed call', async () => {
+      setupDefaultLogsSchema();
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: [
+          'TraceId',
+          'ServiceName',
+          "LogAttributes['requestId']",
+          'Body',
+        ],
+      });
+
+      const queries = (mockClickhouseClient.query as jest.Mock).mock.calls.map(
+        (c: any[]) => c[0].query as string,
+      );
+
+      expect(
+        queries.some(
+          (s: string) =>
+            s.includes('mergeTreeTextIndex(') &&
+            s.includes('startsWith(token,'),
+        ),
+      ).toBe(true);
+      expect(
+        queries.some(
+          (s: string) =>
+            s.includes('mergeTreeTextIndex(') &&
+            !s.includes('startsWith(token,'),
+        ),
+      ).toBe(true);
+      const paramValues = (
+        mockClickhouseClient.query as jest.Mock
+      ).mock.calls.flatMap((c: any[]) =>
+        Object.values(c[0].query_params ?? {}),
+      );
+      expect(paramValues).toContain('otel_logs_kv_rollup_15m');
+      expect(renderChartConfigSpy).toHaveBeenCalled();
+    });
+
+    it('returns [] immediately when keyExpressions is empty', async () => {
+      setupDefaultLogsSchema();
+
+      const result = await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: [],
+      });
+
+      expect(result).toEqual([]);
+      expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+    });
+
+    it('skips the Timestamp column when discovering strategies', async () => {
+      setupDefaultLogsSchema();
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ['Timestamp'],
+      });
+
+      expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+      expect(renderChartConfigSpy).not.toHaveBeenCalled();
+    });
+
+    // Without metadataMVs, ServiceName must remain servable via the raw
+    // table scan. Regression guard for commit 612bb2f9a which removed the
+    // recommended key/map MV branches from default log/trace rollup schemas.
+    it('falls back to raw table scan when metadataMVs is undefined', async () => {
+      setupDefaultLogsSchema();
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        metadataMVs: undefined,
+        keyExpressions: ['ServiceName'],
+      });
+
+      expect(renderChartConfigSpy).toHaveBeenCalled();
+      const configArg = renderChartConfigSpy.mock.calls[
+        renderChartConfigSpy.mock.calls.length - 1
+      ][0] as any;
+      expect(configArg.select).toContain('groupUniqArray(');
+    });
+
+    it('routes ResourceAttributes["k8s.pod.name"] to the raw table when its map has no KV text index', async () => {
+      setupDefaultLogsSchema();
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: ["ResourceAttributes['k8s.pod.name']"],
+      });
+
+      expect(renderChartConfigSpy).toHaveBeenCalled();
+      const configArg = renderChartConfigSpy.mock.calls[
+        renderChartConfigSpy.mock.calls.length - 1
+      ][0] as any;
+      expect(configArg.select).toContain('groupUniqArray(');
+      expect(configArg.select).toContain('param0');
+    });
+  });
+
   describe('getValuesDistribution', () => {
     const mockChartConfig: BuilderChartConfigWithDateRange = {
       from: {
@@ -1135,6 +1419,171 @@ describe('Metadata', () => {
       // Distinct cache entries => distinct fetched results, not a single shared cached value
       expect(keysA).toEqual(['a']);
       expect(keysB).toEqual(['b']);
+    });
+  });
+
+  // Regression guard for commit 612bb2f9a: the `keyRollupTable` MV is no
+  // longer in the recommended log/trace schemas, but users who still have
+  // the MV configured must be able to query it.
+  describe('getMapKeys (key rollup table path)', () => {
+    const buildMetadata = () => {
+      const realCache = new (
+        jest.requireActual('../core/metadata') as any
+      ).MetadataCache();
+      return new Metadata(mockClickhouseClient, realCache);
+    };
+
+    const dateRange: [Date, Date] = [
+      new Date('2024-01-01T00:00:00Z'),
+      new Date('2024-01-01T01:00:00Z'),
+    ];
+    const baseArgs = {
+      databaseName: 'default',
+      tableName: 'otel_logs',
+      column: 'LogAttributes',
+      connectionId: 'test_connection',
+      dateRange,
+      timestampValueExpression: 'Timestamp',
+      metadataMVs: {
+        keyRollupTable: 'otel_logs_key_rollup_15m',
+        kvRollupTable: 'otel_logs_kv_rollup_15m',
+        granularity: '15 minute' as const,
+      },
+    };
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+      (mockClickhouseClient.query as jest.Mock).mockReset();
+    });
+
+    it('queries the key rollup table when metadataMVs is configured and no text index exists', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as any);
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            data: [{ Key: 'user.id' }, { Key: 'request.path' }],
+          }),
+      });
+
+      const keys = await md.getMapKeys({ ...baseArgs });
+
+      expect(keys).toEqual(['user.id', 'request.path']);
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+      const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+      expect(call.query).toContain('ColumnIdentifier = ');
+      expect(call.query).toContain('GROUP BY Key');
+      expect(call.query).toContain('ORDER BY sum(count) DESC');
+      expect(Object.values(call.query_params)).toContain(
+        'otel_logs_key_rollup_15m',
+      );
+      expect(Object.values(call.query_params)).toContain('LogAttributes');
+    });
+
+    it('buckets the time filter to the configured MV granularity', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as any);
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () => Promise.resolve({ data: [{ Key: 'user.id' }] }),
+      });
+
+      await md.getMapKeys({ ...baseArgs });
+
+      const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+      expect(call.query).toContain('toStartOfFifteenMinutes(');
+      expect(call.query).toContain('Timestamp >=');
+      expect(call.query).toContain('Timestamp <=');
+    });
+
+    it('filters empty keys from the rollup response', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as any);
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            data: [{ Key: 'user.id' }, { Key: '' }, { Key: 'request.path' }],
+          }),
+      });
+
+      const keys = await md.getMapKeys({ ...baseArgs });
+
+      expect(keys).toEqual(['user.id', 'request.path']);
+    });
+
+    it('respects the maxKeys limit as a query LIMIT parameter', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as any);
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () => Promise.resolve({ data: [{ Key: 'k' }] }),
+      });
+
+      await md.getMapKeys({ ...baseArgs, maxKeys: 42 });
+
+      const call = (mockClickhouseClient.query as jest.Mock).mock.calls[0][0];
+      expect(Object.values(call.query_params)).toContain(42);
+    });
+
+    it('skips the rollup query entirely when metadataMVs is not provided', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as any);
+      jest.spyOn(md, 'getColumn').mockResolvedValue({
+        name: 'LogAttributes',
+        type: 'Map(LowCardinality(String), String)',
+      } as any);
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () => Promise.resolve({ data: [{ keysArr: ['k'] }] }),
+      });
+
+      await md.getMapKeys({
+        ...baseArgs,
+        metadataMVs: undefined,
+      });
+
+      const queries = (mockClickhouseClient.query as jest.Mock).mock.calls.map(
+        (c: any[]) => c[0].query as string,
+      );
+      expect(
+        queries.some((s: string) => s.includes('otel_logs_key_rollup_15m')),
+      ).toBe(false);
+    });
+
+    it('caches rollup keys by aligned date range', async () => {
+      const md = buildMetadata();
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as any);
+      (mockClickhouseClient.query as jest.Mock)
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ Key: 'first' }] }),
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ data: [{ Key: 'second' }] }),
+        });
+
+      const keysA = await md.getMapKeys({ ...baseArgs });
+      const keysARepeat = await md.getMapKeys({ ...baseArgs });
+      const keysB = await md.getMapKeys({
+        ...baseArgs,
+        dateRange: [
+          new Date('2024-01-02T00:00:00Z'),
+          new Date('2024-01-02T01:00:00Z'),
+        ],
+      });
+
+      expect(keysA).toEqual(['first']);
+      expect(keysARepeat).toEqual(['first']);
+      expect(keysB).toEqual(['second']);
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2);
     });
   });
 
