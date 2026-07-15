@@ -383,7 +383,8 @@ export function useMultipleGetKeyValues(
         return metadata.getAllKeyValues({
           databaseName,
           tableName,
-          keyExpressions: keys,
+          keyExpressions: keys.slice(0, maxKeys),
+          maxValuesPerKey: 20,
           connectionId,
           metadataMVs,
           dateRange,

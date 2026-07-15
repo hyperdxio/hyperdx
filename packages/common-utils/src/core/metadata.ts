@@ -28,7 +28,11 @@ import type {
 } from '@/types';
 import { isLogSource, isTraceSource, SourceKind } from '@/types';
 
-import { ClickHouseVersion, parseClickHouseVersion } from './clickhouseVersion';
+import {
+  ClickHouseVersion,
+  parseClickHouseVersion,
+  supportsMergeTreeTextIndex,
+} from './clickhouseVersion';
 import {
   optimizeGetKeyValuesCalls,
   renderStartOfBucketExpr,
@@ -624,9 +628,12 @@ export class Metadata {
       connectionId,
     });
 
+    const clickhouseVersion = await this.getServerVersion({ connectionId });
+    const canQueryMergeTreeTextIndex =
+      supportsMergeTreeTextIndex(clickhouseVersion);
     // Text Index path: query the key rollup index
     const textIndexInfo = textIndexInfoLookup.get(column);
-    if (textIndexInfo?.key?.indexName) {
+    if (textIndexInfo?.key?.indexName && canQueryMergeTreeTextIndex) {
       const partsFilter = await this.partsOverlapFilter({
         databaseName,
         tableName,
@@ -661,7 +668,7 @@ export class Metadata {
         );
         return [];
       }
-    } else if (textIndexInfo?.kv?.indexName) {
+    } else if (textIndexInfo?.kv?.indexName && canQueryMergeTreeTextIndex) {
       const partsFilter = await this.partsOverlapFilter({
         databaseName,
         tableName,
@@ -2045,6 +2052,9 @@ export class Metadata {
     return this.cache.getOrFetch(
       `${connectionId}.${databaseName}.${tableName}.${JSON.stringify(metadataMVs)}.determineKeyValueFetchingStrategy`,
       async () => {
+        const clickhouseVersion = await this.getServerVersion({ connectionId });
+        const canQueryMergeTreeTextIndex =
+          supportsMergeTreeTextIndex(clickhouseVersion);
         const columnMetadata = await this.getColumns({
           databaseName,
           tableName,
@@ -2072,14 +2082,20 @@ export class Metadata {
         for (const col of columnMetadata) {
           if (col.name === 'Timestamp') continue; // ignore the timestamp column
           // first check if this column is a map with a kv index
-          if (mapTextIndexInfoLookup.get(col.name)?.kv) {
+          if (
+            canQueryMergeTreeTextIndex &&
+            mapTextIndexInfoLookup.get(col.name)?.kv
+          ) {
             strategies.mapTextIndexLookup.push(
               mapTextIndexInfoLookup.get(col.name)!,
             );
             continue;
           }
           // second: check if this column is a native column with a kv index
-          if (nativeTextIndexInfoLookup.has(col.name)) {
+          if (
+            canQueryMergeTreeTextIndex &&
+            nativeTextIndexInfoLookup.has(col.name)
+          ) {
             strategies.nativeTextIndexLookup.push(
               nativeTextIndexInfoLookup.get(col.name)!,
             );
