@@ -595,6 +595,8 @@ export class Metadata {
     timestampValueExpression?: string;
     signal?: AbortSignal;
   }) {
+    inlineNonNegativeInt(maxKeys, 'maxKeys');
+
     // Align date range to rollup granularity for consistent cache keys
     const alignedDateRange =
       metadataMVs && dateRange

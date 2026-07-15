@@ -1109,13 +1109,14 @@ export function skipIndexMatches(
   },
 ): boolean {
   if (idx.type !== expectedType) return false;
-  if (
-    expectedType === 'text' &&
-    options?.tokenizer &&
-    idx.typeFull.replaceAll(' ', '') !==
-      `text(tokenizer='${options.tokenizer}')`
-  )
-    return false;
+  if (expectedType === 'text' && options?.tokenizer) {
+    // ClickHouse's system.data_skipping_indices.type_full can render the
+    // tokenizer as either `tokenizer=array` or `tokenizer='array'` depending on
+    // server version. Delegate to the shared parser, which strips quotes and
+    // handles whitespace, instead of matching a single literal shape.
+    const parsed = parseTokenizerFromTextIndex(idx);
+    if (parsed?.type !== options.tokenizer) return false;
+  }
   return true;
 }
 

@@ -1073,14 +1073,16 @@ describe('Metadata', () => {
       expect(configArg.select).toContain('param0');
     });
 
-    // Guards against HTTP 431 from too many URL-encoded query_params. If the
-    // internal chunk size ever grows past 25, or someone removes the chunking,
-    // this test flags it before the ClickHouse HTTP request goes over the wire.
+    // Guards against HTTP 431 from too many URL-encoded query_params. Passes
+    // more keys than the private GET_ALL_KEY_VALUES_CHUNK_SIZE (currently 40)
+    // so the recursion has to fire at least two chunks; if someone removes
+    // the chunking this test flags it before the ClickHouse HTTP request
+    // goes over the wire. Bump the key count if that constant ever exceeds 49.
     it('splits keyExpressions into multiple ClickHouse queries when count exceeds the internal chunk size', async () => {
       setupDefaultLogsSchema();
 
       const keyExpressions = Array.from(
-        { length: 30 },
+        { length: 50 },
         (_, i) => `LogAttributes['k${i}']`,
       );
 
@@ -1097,12 +1099,12 @@ describe('Metadata', () => {
           c[0].query.includes('startsWith(token,'),
       );
 
-      expect(mapTextIndexCalls).toHaveLength(2);
+      expect(mapTextIndexCalls.length).toBeGreaterThanOrEqual(2);
 
       const allParamValues = mapTextIndexCalls.flatMap((c: any[]) =>
         Object.values(c[0].query_params ?? {}),
       );
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 50; i++) {
         expect(allParamValues).toContain(`k${i}=`);
       }
     });
@@ -1312,12 +1314,21 @@ describe('Metadata', () => {
   });
 
   describe('getMapKeys', () => {
-    // Fresh real cache so cache-key assertions are meaningful per test
+    // Fresh real cache so cache-key assertions are meaningful per test.
+    // Also stub out getMapColumnTextIndexes — these tests exercise the
+    // raw-table sampledKeys path and don't set up a text index, so we don't
+    // want its underlying (getServerVersion / getColumns / getSkipIndices /
+    // isClickHouseCloud) queries consuming slots in the mockResolvedValueOnce
+    // chain each test carefully composes.
     const buildMetadata = () => {
       const realCache = new (
         jest.requireActual('../core/metadata') as any
       ).MetadataCache();
-      return new Metadata(mockClickhouseClient, realCache);
+      const md = new Metadata(mockClickhouseClient, realCache);
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as any);
+      return md;
     };
 
     const lowCardinalityMapColumn = {
@@ -1910,6 +1921,9 @@ describe('Metadata', () => {
         jest.requireActual('../core/metadata') as any
       ).MetadataCache();
       const md = new Metadata(mockClickhouseClient, realCache);
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as any);
 
       // Mock getColumns → returns one Map column
       (mockClickhouseClient.query as jest.Mock)
@@ -1974,6 +1988,9 @@ describe('Metadata', () => {
         jest.requireActual('../core/metadata') as any
       ).MetadataCache();
       const md = new Metadata(mockClickhouseClient, realCache);
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(new Map() as any);
 
       (mockClickhouseClient.query as jest.Mock)
         .mockResolvedValueOnce({
@@ -2364,7 +2381,11 @@ describe('parametric aggregate arguments are inlined as literals', () => {
     const realCache = new (
       jest.requireActual('../core/metadata') as any
     ).MetadataCache();
-    return new Metadata(mockClickhouseClient, realCache);
+    const md = new Metadata(mockClickhouseClient, realCache);
+    jest
+      .spyOn(md, 'getMapColumnTextIndexes')
+      .mockResolvedValue(new Map() as any);
+    return md;
   };
 
   beforeEach(() => {
@@ -2424,26 +2445,9 @@ describe('parametric aggregate arguments are inlined as literals', () => {
     ];
 
     it.each(badValues)(
-      'getMapKeys throws when maxKeys is %s and never runs the sampledKeys query',
+      'getMapKeys throws when maxKeys is %s and never runs any ClickHouse query',
       async (_label, badValue) => {
         const md = buildMetadata();
-
-        (mockClickhouseClient.query as jest.Mock).mockResolvedValueOnce({
-          json: () =>
-            Promise.resolve({
-              data: [
-                {
-                  name: 'LogAttributes',
-                  type: 'Map(String, String)',
-                  default_type: '',
-                  default_expression: '',
-                  comment: '',
-                  codec_expression: '',
-                  ttl_expression: '',
-                },
-              ],
-            }),
-        });
 
         await expect(
           md.getMapKeys({
@@ -2455,10 +2459,10 @@ describe('parametric aggregate arguments are inlined as literals', () => {
           }),
         ).rejects.toThrow(/maxKeys must be a non-negative integer/);
 
-        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
-        const onlyCall = (mockClickhouseClient.query as jest.Mock).mock
-          .calls[0][0];
-        expect(onlyCall.query).not.toContain('groupUniqArrayArray');
+        // Validation happens synchronously at the top of getMapKeys before
+        // any of the text-index / rollup / raw-scan paths fire, so no
+        // ClickHouse round-trip is wasted on a value we already know is bad.
+        expect(mockClickhouseClient.query).not.toHaveBeenCalled();
       },
     );
   });
