@@ -48,5 +48,6 @@
     "babel-plugin-react-compiler"
   ],
   "include": ["nsExports"],
-  "exclude": ["enumMembers", "duplicates"]
+  "exclude": ["enumMembers", "duplicates"],
+  "tags": ["-public"]
 }

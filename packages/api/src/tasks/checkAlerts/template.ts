@@ -125,6 +125,7 @@ const ALERT_STATUS_BY_STATE: Record<AlertState, string> = {
   [AlertState.OK]: 'resolved',
   [AlertState.INSUFFICIENT_DATA]: 'no_data',
   [AlertState.DISABLED]: 'no_data',
+  [AlertState.PENDING]: 'pending',
 };
 
 const COMPARATOR_BY_THRESHOLD_TYPE: Record<AlertThresholdType, string> = {
@@ -366,6 +367,58 @@ export const handleSendSlackWebhook = async (
 // without a round-trip, and it stays easy to extend with new fields. The
 // embedded `prompt` is the per-invocation instruction; the agent's standing
 // instructions live in its system prompt (see anthropicAgents).
+// The variable set exposed to user-editable webhook body templates (Generic,
+// IncidentIO, and the Claude kickoff prompt). Strings are JSON-escaped;
+// numbers are emitted raw for unquoted JSON slots.
+const buildWebhookTemplateVariables = (message: Message) => ({
+  body: escapeJsonString(message.body),
+  endTime: message.endTime,
+  eventId: message.eventId,
+  link: escapeJsonString(message.hdxLink),
+  startTime: message.startTime,
+  state: message.state,
+  title: escapeJsonString(message.title),
+  alertId: escapeJsonString(message.alertId ?? ''),
+  alertType: escapeJsonString(message.alertType ?? ''),
+  comparator: escapeJsonString(message.comparator ?? ''),
+  groupKey: escapeJsonString(message.groupKey ?? ''),
+  note: escapeJsonString(message.note ?? ''),
+  sourceQuery: escapeJsonString(message.sourceQuery ?? ''),
+  status: escapeJsonString(message.status ?? ''),
+  teamId: escapeJsonString(message.teamId ?? ''),
+  threshold: message.threshold,
+  value: message.value,
+});
+
+// Compiles the Claude webhook's user-editable Handlebars body into the agent
+// kickoff prompt, using the same variables the Generic path exposes.
+// Fail-open: an empty or uncompilable body returns null and the caller falls
+// back to the built-in enriched payload — a broken template must not stop an
+// investigation (unlike the Generic path, where the body IS the delivery and
+// failing loudly is correct). Exercised via handleStartAgentSession in tests.
+const compileClaudeWebhookBody = (
+  webhook: IWebhook,
+  message: Message,
+): string | null => {
+  if (!webhook.body?.trim()) return null;
+  try {
+    const handlebars = createHandlebarsWithHelpers();
+    const compiled = handlebars.compile(webhook.body, { noEscape: true })(
+      buildWebhookTemplateVariables(message),
+    );
+    // A body that renders blank (e.g. every variable resolved empty) must fall
+    // back too — `??` only catches null, so return null rather than starting an
+    // investigation with an empty kickoff message.
+    return compiled.trim() ? compiled : null;
+  } catch (e) {
+    logger.warn(
+      { error: serializeError(e) },
+      'Failed to compile Claude webhook body; using the built-in agent prompt',
+    );
+    return null;
+  }
+};
+
 export const buildAgentPrompt = (message: Message): string => {
   const payload = {
     source: 'clickstack',
@@ -431,7 +484,10 @@ export const handleStartAgentSession = async (
       alertId: message.alertId,
       eventId: message.eventId,
       title: message.title,
-      prompt: buildAgentPrompt(message),
+      // The webhook's user-editable body template is the kickoff prompt;
+      // the built-in enriched payload is the fail-open fallback.
+      prompt:
+        compileClaudeWebhookBody(webhook, message) ?? buildAgentPrompt(message),
       deliverToUrl: webhook.url,
     });
     webhookDeliveryCounter.add(1, {
@@ -510,27 +566,7 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
 
     body = handlebars.compile(webhook.body, {
       noEscape: true,
-    })({
-      body: escapeJsonString(message.body),
-      endTime: message.endTime,
-      eventId: message.eventId,
-      link: escapeJsonString(message.hdxLink),
-      startTime: message.startTime,
-      state: message.state,
-      title: escapeJsonString(message.title),
-      // Enriched fields (used by agent-ready templates e.g. Claude Managed Agents).
-      // Strings are JSON-escaped; numbers are emitted raw for unquoted JSON slots.
-      alertId: escapeJsonString(message.alertId ?? ''),
-      alertType: escapeJsonString(message.alertType ?? ''),
-      comparator: escapeJsonString(message.comparator ?? ''),
-      groupKey: escapeJsonString(message.groupKey ?? ''),
-      note: escapeJsonString(message.note ?? ''),
-      sourceQuery: escapeJsonString(message.sourceQuery ?? ''),
-      status: escapeJsonString(message.status ?? ''),
-      teamId: escapeJsonString(message.teamId ?? ''),
-      threshold: message.threshold,
-      value: message.value,
-    });
+    })(buildWebhookTemplateVariables(message));
   } catch (e) {
     logger.error(
       {

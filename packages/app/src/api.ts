@@ -38,7 +38,7 @@ type ServicesResponse = {
   >;
 };
 
-export type ManagedAgentData = {
+type ManagedAgentData = {
   _id: string;
   name: string;
   model: string;

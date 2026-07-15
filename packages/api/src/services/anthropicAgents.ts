@@ -1,3 +1,7 @@
+// Loads downstream extension registrations (no-op in OSS) — see
+// packages/api/src/extensions/index.ts for the contract.
+import '@/extensions';
+
 import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import { serializeError } from 'serialize-error';
 
@@ -6,6 +10,12 @@ import type { ObjectId } from '@/models';
 import AgentRun, { AgentRunDocument } from '@/models/agentRun';
 import AnthropicIntegration from '@/models/anthropicIntegration';
 import ManagedAgent from '@/models/managedAgent';
+import type { AgentDeliveryLink } from '@/services/agentRunExtensions';
+import {
+  runDeliveryExtensions,
+  runProvisionExtensions,
+  runSessionStartExtensions,
+} from '@/services/agentRunExtensions';
 import { decrypt } from '@/utils/encryption';
 import { setBusinessContext } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
@@ -188,10 +198,22 @@ export const provisionClickStackAgent = async ({
     },
   });
 
+  // Extension seam: downstream may replace the standing system prompt
+  // wholesale (fail-open — the OSS default is used if nothing overrides).
+  // The prompt is baked into the Anthropic agent object, so a swap applies
+  // to newly provisioned agents only.
+  const { systemPrompt } = await runProvisionExtensions({
+    teamId: teamId.toString(),
+    name,
+    model,
+    mcpServerUrl,
+    defaultSystemPrompt: SRE_SYSTEM_PROMPT,
+  });
+
   const agent = await anthropicRequest(apiKey, 'POST', '/v1/agents', {
     name,
     model,
-    system: SRE_SYSTEM_PROMPT,
+    system: systemPrompt,
     mcp_servers: [{ type: 'url', name: 'clickstack', url: mcpServerUrl }],
     tools: [
       { type: 'agent_toolset_20260401' },
@@ -345,9 +367,20 @@ export const startAgentSession = async ({
     title,
   });
 
+  // Extension seam: downstream may replace the kickoff payload wholesale,
+  // append instructions, and stash run metadata (fail-open — a broken
+  // extension contributes nothing and the investigation proceeds).
+  const ext = await runSessionStartExtensions({
+    teamId: teamId.toString(),
+    agent,
+    anthropicSessionId: session.id,
+    title,
+    prompt,
+  });
+
   await anthropicRequest(apiKey, 'POST', `/v1/sessions/${session.id}/events`, {
     events: [
-      { type: 'user.message', content: [{ type: 'text', text: prompt }] },
+      { type: 'user.message', content: [{ type: 'text', text: ext.prompt }] },
     ],
   });
 
@@ -361,6 +394,7 @@ export const startAgentSession = async ({
       deliverToUrl,
       dedupeKey,
       title,
+      ...(ext.runMetadata ? { metadata: ext.runMetadata } : {}),
     });
   } catch (e: any) {
     // Lost a race to a concurrent firing — the other run owns this session.
@@ -437,12 +471,18 @@ export const buildAgentSlackMessage = (
   title: string,
   summary: string,
   sessionId: string,
+  footerLinks: AgentDeliveryLink[] = [],
 ) => {
   const allChunks = summary.trim()
     ? chunkForSlack(summary)
     : ['_The agent produced no summary text — open the session for details._'];
   const chunks = allChunks.slice(0, MAX_SUMMARY_BLOCKS);
   const truncated = allChunks.length > MAX_SUMMARY_BLOCKS;
+  const footerParts = [
+    ...(truncated ? ['_(summary truncated)_'] : []),
+    ...footerLinks.map(link => `<${link.url}|${link.label}>`),
+    `Continue in the live agent session: ${sessionId}`,
+  ];
   return {
     text: title,
     blocks: [
@@ -453,12 +493,7 @@ export const buildAgentSlackMessage = (
       })),
       {
         type: 'context',
-        elements: [
-          {
-            type: 'mrkdwn',
-            text: `${truncated ? '_(summary truncated)_ · ' : ''}Continue in the live agent session: ${sessionId}`,
-          },
-        ],
+        elements: [{ type: 'mrkdwn', text: footerParts.join(' · ') }],
       },
     ],
   };
@@ -554,6 +589,10 @@ export const pollAndDeliverAgentSessions = async (): Promise<void> => {
         continue;
       }
 
+      // Extension seam: delivery decorations (fail-open — a broken extension
+      // yields none). Runs on every attempt, so extensions must be idempotent.
+      const ext = await runDeliveryExtensions({ run: claimed, summary });
+
       try {
         await slack.postMessageToWebhook(
           claimed.deliverToUrl,
@@ -561,6 +600,7 @@ export const pollAndDeliverAgentSessions = async (): Promise<void> => {
             claimed.title,
             summary,
             claimed.anthropicSessionId,
+            ext.footerLinks,
           ),
         );
         claimed.status = 'delivered';

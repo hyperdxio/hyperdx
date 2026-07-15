@@ -5,7 +5,7 @@ import type { ObjectId } from '.';
 // References to a Claude Managed Agent provisioned on Anthropic for a team.
 // Stores only non-secret identifiers (the agent/vault/environment IDs) so the
 // agent can be listed, managed, and (later) used by an in-product receiver.
-export interface IManagedAgent {
+interface IManagedAgent {
   _id: ObjectId;
   team: ObjectId;
   name: string;

@@ -5,7 +5,7 @@ import type { ObjectId } from '.';
 // A team's Anthropic API key, encrypted at rest (see utils/encryption.ts).
 // One per team. `encryptedApiKey` is `select: false` so it is never returned
 // unless explicitly requested; `keyHint` (last 4 chars) is safe to display.
-export interface IAnthropicIntegration {
+interface IAnthropicIntegration {
   _id: ObjectId;
   team: ObjectId;
   encryptedApiKey: string;
@@ -33,9 +33,6 @@ const AnthropicIntegrationSchema = new Schema<IAnthropicIntegration>(
   },
   { timestamps: true },
 );
-
-export type AnthropicIntegrationDocument =
-  mongoose.HydratedDocument<IAnthropicIntegration>;
 
 export default mongoose.model<IAnthropicIntegration>(
   'AnthropicIntegration',

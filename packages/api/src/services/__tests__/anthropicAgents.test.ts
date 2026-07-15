@@ -5,6 +5,11 @@ import AgentRun from '@/models/agentRun';
 import AnthropicIntegration from '@/models/anthropicIntegration';
 import ManagedAgent from '@/models/managedAgent';
 import {
+  registerAgentRunExtension,
+  resetAgentRunExtensionsForTests,
+  runSessionStartExtensions,
+} from '@/services/agentRunExtensions';
+import {
   AnthropicApiError,
   buildAgentSlackMessage,
   chunkForSlack,
@@ -53,6 +58,7 @@ describe('anthropicAgents service', () => {
   });
   afterEach(async () => {
     fetchSpy?.mockRestore();
+    resetAgentRunExtensionsForTests();
     await server.clearDBs();
   });
   afterAll(async () => {
@@ -74,6 +80,20 @@ describe('anthropicAgents service', () => {
       keyHint: 'ored',
     });
     expect(await getTeamAnthropicKey(teamId as any)).toBe('sk-ant-stored');
+  });
+
+  it('registers no extensions by default (OSS ships an empty registration point)', async () => {
+    // Importing the service pulls in @/extensions as a side effect; the OSS
+    // stub must leave the registry empty so behaviour is unchanged.
+    expect(
+      await runSessionStartExtensions({
+        teamId: 't',
+        agent: { name: 'x' } as any,
+        anthropicSessionId: 's',
+        title: 't',
+        prompt: 'p',
+      }),
+    ).toEqual({ prompt: 'p', runMetadata: undefined });
   });
 
   it('provisions env + vault + credential + agent and persists the record', async () => {
@@ -256,6 +276,28 @@ describe('anthropicAgents service', () => {
       const msg = buildAgentSlackMessage('Alert title', '', 'sesn_1');
       expect(JSON.stringify(msg)).toContain('no summary text');
     });
+
+    it('renders footer links before the session line', () => {
+      const msg = buildAgentSlackMessage('title', 'summary', 'sesn_1', [
+        {
+          label: 'Investigation notebook',
+          url: 'https://hdx.example/notebook/n1',
+        },
+      ]);
+      const footer = (msg.blocks.at(-1) as any).elements[0].text;
+      expect(footer).toContain(
+        '<https://hdx.example/notebook/n1|Investigation notebook>',
+      );
+      expect(footer.indexOf('Investigation notebook')).toBeLessThan(
+        footer.indexOf('Continue in the live agent session'),
+      );
+    });
+
+    it('is unchanged when no footer links are given', () => {
+      const msg = buildAgentSlackMessage('title', 'summary', 'sesn_1');
+      const footer = (msg.blocks.at(-1) as any).elements[0].text;
+      expect(footer).toBe('Continue in the live agent session: sesn_1');
+    });
   });
 
   describe('verifyMcpReachable', () => {
@@ -328,6 +370,61 @@ describe('anthropicAgents service', () => {
     expect(await ManagedAgent.countDocuments({})).toBe(0);
   });
 
+  describe('provisionClickStackAgent system-prompt seam', () => {
+    const agentBodyFrom = (spy: jest.SpyInstance) =>
+      JSON.parse(
+        spy.mock.calls.find(([u]: any) => String(u).endsWith('/v1/agents'))![1]
+          .body as string,
+      );
+
+    const seedKeyForProvision = async () => {
+      const teamId = new mongoose.Types.ObjectId();
+      const userId = new mongoose.Types.ObjectId();
+      await AnthropicIntegration.create({
+        team: teamId,
+        encryptedApiKey: encrypt('sk-ant-key'),
+        keyHint: 'key0',
+      });
+      return { teamId, userId };
+    };
+
+    it('provisions with the extension-resolved system prompt when one is registered', async () => {
+      fetchSpy = mockAnthropic();
+      const { teamId, userId } = await seedKeyForProvision();
+      registerAgentRunExtension({
+        name: 'sys-swap',
+        onProvisionAgent: async ctx => ({
+          systemPrompt: `EE SYSTEM PROMPT (extends: ${ctx.defaultSystemPrompt.slice(0, 10)}...)`,
+        }),
+      });
+
+      await provisionClickStackAgent({
+        teamId: teamId as any,
+        userId: userId as any,
+        userAccessKey: 'hdx_key',
+        name: 'SRE Responder',
+        model: 'claude-opus-4-8',
+      });
+
+      expect(agentBodyFrom(fetchSpy).system).toContain('EE SYSTEM PROMPT');
+    });
+
+    it('provisions with the OSS default system prompt when no extension overrides it', async () => {
+      fetchSpy = mockAnthropic();
+      const { teamId, userId } = await seedKeyForProvision();
+
+      await provisionClickStackAgent({
+        teamId: teamId as any,
+        userId: userId as any,
+        userAccessKey: 'hdx_key',
+        name: 'SRE Responder',
+        model: 'claude-opus-4-8',
+      });
+
+      expect(agentBodyFrom(fetchSpy).system).toContain('You are an SRE agent');
+    });
+  });
+
   // Seeds a team with a key + provisioned agent so startAgentSession has
   // something to work with.
   const seedAgent = async () => {
@@ -369,6 +466,24 @@ describe('anthropicAgents service', () => {
         if (u.endsWith('/v1/sessions')) return body({ id: 'sess_1' });
         throw new Error(`unexpected fetch to ${u}`);
       });
+
+    // Like mockSessions but captures the kickoff events body and returns a
+    // fixed session id, so the extension seam's resolved prompt is observable.
+    let capturedEventsBody: any;
+    const mockSessionsCapturing = () =>
+      jest
+        .spyOn(global, 'fetch')
+        .mockImplementation(async (url: any, init: any) => {
+          const u = String(url);
+          const body = (data: unknown) =>
+            ({ ok: true, text: async () => JSON.stringify(data) }) as any;
+          if (u.endsWith('/events')) {
+            capturedEventsBody = JSON.parse(init.body);
+            return body({});
+          }
+          if (u.endsWith('/v1/sessions')) return body({ id: 'sesn_test' });
+          throw new Error(`unexpected fetch to ${u}`);
+        });
 
     it('starts a session, injects the prompt, and persists a running run', async () => {
       fetchSpy = mockSessions();
@@ -423,6 +538,65 @@ describe('anthropicAgents service', () => {
         ),
       ).rejects.toMatchObject({ status: 400 });
       expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('applies session-start extensions: prompt suffix sent, metadata persisted', async () => {
+      fetchSpy = mockSessionsCapturing();
+      const teamId = await seedAgent();
+      registerAgentRunExtension({
+        name: 'fake-notebook',
+        onSessionStart: async ctx => ({
+          promptSuffix: `\nNOTEBOOK for ${ctx.anthropicSessionId}`,
+          runMetadata: { notebookId: 'nb1' },
+        }),
+      });
+
+      const run = await startAgentSession(
+        startArgs(teamId, { eventId: 'e-ext-1', prompt: '{"p":1}' }),
+      );
+
+      expect(run).not.toBeNull();
+      expect(run!.metadata).toEqual({ notebookId: 'nb1' });
+      const kickoffText = capturedEventsBody.events[0].content[0].text;
+      expect(kickoffText).toBe('{"p":1}\nNOTEBOOK for sesn_test');
+    });
+
+    it('lets an extension replace the kickoff prompt wholesale', async () => {
+      fetchSpy = mockSessionsCapturing();
+      const teamId = await seedAgent();
+      registerAgentRunExtension({
+        name: 'prompt-swap',
+        onSessionStart: async () => ({ promptOverride: 'CUSTOM EE PROMPT' }),
+      });
+
+      const run = await startAgentSession(
+        startArgs(teamId, { eventId: 'e-ext-3', prompt: '{"p":3}' }),
+      );
+
+      expect(run).not.toBeNull();
+      const kickoffText = capturedEventsBody.events[0].content[0].text;
+      expect(kickoffText).toBe('CUSTOM EE PROMPT');
+    });
+
+    it('starts the session unchanged when a session-start extension throws (fail-open)', async () => {
+      fetchSpy = mockSessionsCapturing();
+      const teamId = await seedAgent();
+      registerAgentRunExtension({
+        name: 'broken',
+        onSessionStart: async () => {
+          throw new Error('boom');
+        },
+      });
+
+      const run = await startAgentSession(
+        startArgs(teamId, { eventId: 'e-ext-2', prompt: '{"p":2}' }),
+      );
+
+      expect(run).not.toBeNull();
+      expect(run!.status).toBe('running');
+      expect(run!.metadata).toBeUndefined();
+      const kickoffText = capturedEventsBody.events[0].content[0].text;
+      expect(kickoffText).toBe('{"p":2}');
     });
   });
 
@@ -651,6 +825,49 @@ describe('anthropicAgents service', () => {
         { _id: run._id },
         { $set: { updatedAt: new Date(Date.now() - 10 * 60 * 1000) } },
       );
+      fetchSpy = mockSession('idle', msg('rca'));
+
+      await pollAndDeliverAgentSessions();
+
+      expect(slackSpy).toHaveBeenCalledTimes(1);
+      expect((await AgentRun.findById(run._id))!.status).toBe('delivered');
+    });
+
+    it('passes the run and summary to delivery extensions and renders their links', async () => {
+      const run = await seedRun({ metadata: { notebookId: 'n1' } });
+      const seen: any[] = [];
+      registerAgentRunExtension({
+        name: 'fake-notebook',
+        onBeforeDelivery: async ctx => {
+          seen.push({ metadata: ctx.run.metadata, summary: ctx.summary });
+          return {
+            footerLinks: [
+              { label: 'Notebook', url: 'https://hdx.example/notebook/n1' },
+            ],
+          };
+        },
+      });
+      fetchSpy = mockSession('idle', msg('rca'));
+
+      await pollAndDeliverAgentSessions();
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0].metadata).toEqual({ notebookId: 'n1' });
+      expect(seen[0].summary).toBeTruthy();
+      const slackBody = slackSpy.mock.calls[0][1] as any;
+      const footer = slackBody.blocks.at(-1).elements[0].text;
+      expect(footer).toContain('<https://hdx.example/notebook/n1|Notebook>');
+      expect((await AgentRun.findById(run._id))!.status).toBe('delivered');
+    });
+
+    it('delivers even when a delivery extension throws (fail-open)', async () => {
+      const run = await seedRun();
+      registerAgentRunExtension({
+        name: 'broken',
+        onBeforeDelivery: async () => {
+          throw new Error('boom');
+        },
+      });
       fetchSpy = mockSession('idle', msg('rca'));
 
       await pollAndDeliverAgentSessions();

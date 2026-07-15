@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 
 import { makeTile } from '@/fixtures';
 import { AlertSource } from '@/models/alert';
+import * as anthropicAgents from '@/services/anthropicAgents';
 import { loadProvider } from '@/tasks/checkAlerts/providers';
 import {
   AlertMessageTemplateDefaultView,
@@ -661,5 +662,86 @@ describe('handleStartAgentSession', () => {
         { status: 'resolved' } as any,
       ),
     ).resolves.toBeUndefined();
+  });
+
+  describe('kickoff prompt from the webhook body template', () => {
+    // A firing alert message with the fields the template variables reference.
+    const agentMessage = {
+      status: 'firing',
+      teamId: new mongoose.Types.ObjectId().toString(),
+      title: 'CPU high',
+      body: '80 lines found',
+      hdxLink: 'http://localhost/search/abc',
+      eventId: 'evt-1',
+      alertId: 'alert-1',
+      alertType: 'search',
+      comparator: '>=',
+      threshold: 1,
+      value: 80,
+      groupKey: 'us-east-1',
+      sourceQuery: 'StatusCode:"Error"',
+      note: 'Runbook: https://wiki/runbook',
+      startTime: Date.parse('2026-06-30T09:15:00.000Z'),
+      endTime: Date.parse('2026-06-30T09:20:00.000Z'),
+    };
+
+    const claudeWebhook = (body: string) =>
+      ({
+        url: 'https://hooks.slack.com/services/T/B/X',
+        service: WebhookService.Claude,
+        body,
+      }) as any;
+
+    let startAgentSessionSpy: jest.SpyInstance;
+    beforeEach(() => {
+      startAgentSessionSpy = jest
+        .spyOn(anthropicAgents, 'startAgentSession')
+        .mockResolvedValue(null);
+    });
+    afterEach(() => startAgentSessionSpy.mockRestore());
+
+    it('uses the webhook body template as the agent kickoff prompt', async () => {
+      await handleStartAgentSession(
+        claudeWebhook(
+          '{"custom":true,"title":"{{title}}","q":"{{sourceQuery}}"}',
+        ),
+        agentMessage as any,
+      );
+
+      const { prompt } = startAgentSessionSpy.mock.calls[0][0];
+      const parsed = JSON.parse(prompt);
+      expect(parsed.custom).toBe(true);
+      expect(parsed.title).toBe(agentMessage.title);
+    });
+
+    it('falls back to the built-in enriched payload when the body is empty', async () => {
+      await handleStartAgentSession(claudeWebhook(''), agentMessage as any);
+
+      const { prompt } = startAgentSessionSpy.mock.calls[0][0];
+      expect(JSON.parse(prompt).source).toBe('clickstack');
+    });
+
+    it('falls back (fail-open) when the body fails to compile', async () => {
+      await handleStartAgentSession(
+        claudeWebhook('{{#if}}'),
+        agentMessage as any,
+      );
+
+      const { prompt } = startAgentSessionSpy.mock.calls[0][0];
+      expect(JSON.parse(prompt).source).toBe('clickstack');
+    });
+
+    it('falls back when a non-empty body renders to a blank string', async () => {
+      // Stored body is non-empty but every referenced variable resolves empty,
+      // so it compiles to '' — the fallback must still fire (?? only catches
+      // null), not send an empty kickoff message.
+      await handleStartAgentSession(claudeWebhook('{{groupKey}}'), {
+        ...agentMessage,
+        groupKey: '',
+      } as any);
+
+      const { prompt } = startAgentSessionSpy.mock.calls[0][0];
+      expect(JSON.parse(prompt).source).toBe('clickstack');
+    });
   });
 });
