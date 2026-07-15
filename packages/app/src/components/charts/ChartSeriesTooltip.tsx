@@ -19,9 +19,11 @@ import {
 
 /**
  * One pinned-tooltip series row: the shared ChartTooltipItem plus, when
- * `actions` is set, the drill-down cluster (Search / Copy / Focus). The cluster
- * is flexShrink:0 so it doesn't shift as the name truncates or the copy icon
- * swaps to a check (which would move the buttons out from under the cursor).
+ * `actions` is set, the per-series action cluster (Search / Copy / Focus). The
+ * cluster is flexShrink:0 so it doesn't shift as the name truncates or the copy
+ * icon swaps to a check (which would move the buttons out from under the cursor).
+ *
+ * Search is hidden when `actions.drillInUrl` is undefined (source-less charts).
  */
 function SeriesRow({
   name,
@@ -38,9 +40,9 @@ function SeriesRow({
   value: number;
   previousValue?: number;
   numberFormat?: NumberFormat;
-  /** Drill-down actions; present only when the bucket has more than one series. */
   actions?: {
-    drillInUrl: string;
+    /** Drill-in URL; when undefined the Search action is hidden (no source). */
+    drillInUrl?: string;
     onDrillIn: () => void;
     onFocus: () => void;
   };
@@ -58,7 +60,6 @@ function SeriesRow({
     />
   );
 
-  // Single-series bucket: no per-series drill-down, just the bare item.
   if (actions == null) {
     return item;
   }
@@ -67,28 +68,30 @@ function SeriesRow({
     <Group gap={8} wrap="nowrap" justify="space-between">
       <div style={{ minWidth: 0, flex: 1 }}>{item}</div>
       <Group gap={2} wrap="nowrap" justify="flex-end" style={{ flexShrink: 0 }}>
-        <Tooltip
-          label="Search (Opens in New Tab)"
-          withArrow
-          withinPortal
-          color="gray"
-          position="top"
-        >
-          <ActionIcon
-            component={Link}
-            href={actions.drillInUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            prefetch={false}
-            variant="subtle"
-            size="xs"
-            data-testid={`chart-view-events-link-${dataKey}`}
-            aria-label="Search (Opens in New Tab)"
-            onClick={actions.onDrillIn}
+        {actions.drillInUrl != null && (
+          <Tooltip
+            label="Search (Opens in New Tab)"
+            withArrow
+            withinPortal
+            color="gray"
+            position="top"
           >
-            <IconSearch size={13} />
-          </ActionIcon>
-        </Tooltip>
+            <ActionIcon
+              component={Link}
+              href={actions.drillInUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              prefetch={false}
+              variant="subtle"
+              size="xs"
+              data-testid={`chart-view-events-link-${dataKey}`}
+              aria-label="Search (Opens in New Tab)"
+              onClick={actions.onDrillIn}
+            >
+              <IconSearch size={13} />
+            </ActionIcon>
+          </Tooltip>
+        )}
         <Tooltip
           label={clipboard.copied ? 'Copied!' : 'Copy Label'}
           withArrow
@@ -177,9 +180,15 @@ export function ChartSeriesTooltip({
     return null;
   }
 
-  // Per-series drill-down only makes sense when more than one group is shown;
-  // with a single series the "View All Events" footer already covers it.
+  // Per-series actions only make sense with more than one group (a single series
+  // is covered by the header/footer).
   const showPerSeriesActions = rows.length > 1;
+
+  // buildSearchUrl is always supplied but returns null when drill-down isn't
+  // possible (no source, or a raw-SQL/PromQL config). The whole-bucket URL is
+  // the drill-down signal; it gates the footer and per-series Search.
+  const bucketSearchUrl = buildSearchUrl?.() ?? null;
+  const canDrillDown = bucketSearchUrl != null;
 
   // onClose makes the header's X interactive (hover leaves it hidden).
   const header = (
@@ -190,23 +199,22 @@ export function ChartSeriesTooltip({
     />
   );
 
-  const footer =
-    buildSearchUrl != null ? (
-      <Link
-        data-testid="chart-view-events-link"
-        href={buildSearchUrl() ?? '/search'}
-        target="_blank"
-        rel="noopener noreferrer"
-        prefetch={false}
-        onClick={onDismiss}
-        style={{ textDecoration: 'none' }}
-      >
-        <Group gap={8} py={2}>
-          <IconSearch size={14} />
-          <Text size="xs">View All Events</Text>
-        </Group>
-      </Link>
-    ) : undefined;
+  const footer = canDrillDown ? (
+    <Link
+      data-testid="chart-view-events-link"
+      href={bucketSearchUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      prefetch={false}
+      onClick={onDismiss}
+      style={{ textDecoration: 'none' }}
+    >
+      <Group gap={8} py={2}>
+        <IconSearch size={14} />
+        <Text size="xs">View All Events</Text>
+      </Group>
+    </Link>
+  ) : undefined;
 
   return (
     <ChartTooltipContainer header={header} footer={footer}>
@@ -218,11 +226,11 @@ export function ChartSeriesTooltip({
               ? numberFormatByKey.get(payload.valueColumnName)
               : undefined) ?? fallbackNumberFormat;
           const seriesUrl =
-            showPerSeriesActions && buildSearchUrl != null
-              ? buildSearchUrl(
+            showPerSeriesActions && canDrillDown
+              ? (buildSearchUrl!(
                   payload.dataKey,
                   Number.isFinite(payload.value) ? payload.value : undefined,
-                )
+                ) ?? bucketSearchUrl)
               : undefined;
           return (
             <SeriesRow
@@ -236,7 +244,7 @@ export function ChartSeriesTooltip({
               actions={
                 showPerSeriesActions
                   ? {
-                      drillInUrl: seriesUrl ?? '/search',
+                      drillInUrl: seriesUrl ?? undefined,
                       onDrillIn: () => onDismiss?.(),
                       onFocus: () => {
                         onFocusSeries?.({

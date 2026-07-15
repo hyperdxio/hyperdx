@@ -517,11 +517,13 @@ function DBTimeChartComponent({
   const dismissPinned = useCallback(() => setActiveClickPayload(undefined), []);
   const notifyTooltipPinned = useCrossChartPinDismiss(dismissPinned);
 
-  // Wrap the setter to only allow setting if source is available
-  const setActiveClickPayloadIfSourceAvailable = useCallback(
+  // Pin the tooltip on click. Not gated on `source`: source-less charts still
+  // show values/percent-change, and the drill-down actions hide themselves when
+  // there's no source. `disableDrillDown` stays an explicit opt-out.
+  const setPinnedPayload = useCallback(
     (payload: ActiveClickPayload | undefined) => {
-      if (source == null || disableDrillDown) {
-        return; // Don't set if no source
+      if (disableDrillDown) {
+        return;
       }
       // Pinning here closes any other chart's pinned tooltip.
       if (payload != null) {
@@ -529,7 +531,7 @@ function DBTimeChartComponent({
       }
       setActiveClickPayload(payload);
     },
-    [source, disableDrillDown, notifyTooltipPinned],
+    [disableDrillDown, notifyTooltipPinned],
   );
 
   const clickedActiveLabelDate = useMemo(() => {
@@ -806,7 +808,7 @@ function DBTimeChartComponent({
             onTimeRangeSelect={onTimeRangeSelect}
             referenceLines={referenceLines}
             annotations={annotations}
-            setIsClickActive={setActiveClickPayloadIfSourceAvailable}
+            setIsClickActive={setPinnedPayload}
             showLegend={showLegend}
             timestampKey={timestampColumn?.name}
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
