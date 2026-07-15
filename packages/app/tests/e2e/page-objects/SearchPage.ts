@@ -278,7 +278,13 @@ export class SearchPage {
   async setCustomSELECT(selectStatement: string) {
     const selectEditor = this.getSELECTEditor();
     await selectEditor.click({ clickCount: 3 }); // Select all
-    await this.page.keyboard.type(selectStatement);
+    // Insert atomically rather than per-keystroke: under load CodeMirror can
+    // drop individual keys from keyboard.type (e.g. "Timestamp" -> "Timstamp"),
+    // which then gets faithfully saved and fails later assertions.
+    await this.page.keyboard.insertText(selectStatement);
+    // Dismiss the autocomplete popup so it can't linger and overlay the next
+    // control (e.g. the Save Search button), mirroring setCustomOrderBy.
+    await this.page.keyboard.press('Escape');
   }
 
   /**
