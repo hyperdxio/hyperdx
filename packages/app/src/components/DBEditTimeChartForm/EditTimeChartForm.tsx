@@ -83,7 +83,7 @@ import { ChartActionBar } from './ChartActionBar';
 import { ChartEditorControls } from './ChartEditorControls';
 import { ChartPreviewPanel } from './ChartPreviewPanel';
 import { ErrorNotificationMessage } from './ErrorNotificationMessage';
-import { useBuilderToSqlConversion } from './useBuilderToSqlConversion';
+import { useBuilderSqlConversion } from './useBuilderSqlConversion';
 import {
   buildChartConfigForExplanations,
   computeDbTimeChartConfig,
@@ -158,7 +158,7 @@ export default function EditTimeChartForm({
     setValue,
     getValues,
     // The callback form of `watch` is used to subscribe to field changes
-    // (without re-rendering) in useBuilderToSqlConversion; useWatch can't do this.
+    // (without re-rendering) in useBuilderSqlConversion; useWatch can't do this.
     // eslint-disable-next-line react-hook-form/no-use-watch
     watch,
     handleSubmit,
@@ -234,8 +234,9 @@ export default function EditTimeChartForm({
   const databaseName = tableSource?.from.databaseName;
   const tableName = tableSource?.from.tableName;
 
-  // Carry the builder config over as a SQL template when switching to SQL mode
-  useBuilderToSqlConversion({
+  // Carry the query over between builder and SQL modes when the config type is
+  // toggled (builder → SQL template, and SQL template → builder fields).
+  useBuilderSqlConversion({
     control,
     getValues,
     setValue,

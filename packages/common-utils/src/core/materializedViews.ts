@@ -27,7 +27,7 @@ import {
 } from './utils';
 
 // ClickHouse named time-bucketing functions and their granularity equivalents.
-const NAMED_BUCKET_FUNCTIONS: Record<string, SQLInterval> = {
+export const NAMED_BUCKET_FUNCTIONS: Record<string, SQLInterval> = {
   toStartOfSecond: '1 second',
   toStartOfMinute: '1 minute',
   toStartOfFiveMinutes: '5 minute',

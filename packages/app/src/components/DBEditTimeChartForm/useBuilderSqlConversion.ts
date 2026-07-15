@@ -10,7 +10,11 @@ import {
   renderBuilderConfigAsSqlTemplate,
   RenderedSqlTemplate,
 } from '@hyperdx/common-utils/dist/core/builderToRawSql';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  convertRawSqlToBuilderConfig,
+  SqlToBuilderError,
+} from '@hyperdx/common-utils/dist/core/rawSqlToBuilder';
+import { DisplayType, TSource } from '@hyperdx/common-utils/dist/types';
 import { usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 
@@ -58,15 +62,22 @@ export function classifyFormEdit({
 }
 
 /**
- * One-way Builder → SQL carry-over: when the chart editor switches from builder
- * mode to SQL mode, generates a macro-based SQL template from the current
- * builder config and populates the SQL editor with it.
+ * Two-way carry-over between the chart editor's builder config and its raw-SQL
+ * template. When the user toggles the config type, the query they were most
+ * recently editing is converted into the other representation:
  *
- * The SQL is regenerated only when the user edited the chart in builder mode
- * more recently than in SQL mode. Configs that can't be converted surface a
- * notification and leave the SQL editor untouched.
+ * - **Builder → SQL**: switching to SQL mode generates a macro-based SQL
+ *   template from the current builder config and populates the SQL editor.
+ * - **SQL → Builder**: switching to builder mode parses the current SQL
+ *   template back into builder fields.
+ *
+ * Each direction only fires when the user edited that source mode more recently
+ * than the target mode, so a hand-edited query is never clobbered by a
+ * regeneration derived from the stale other side. Either direction failing
+ * surfaces a notification and leaves the target representation untouched, so an
+ * unconvertible query never destroys the config the user already had.
  */
-export function useBuilderToSqlConversion({
+export function useBuilderSqlConversion({
   control,
   getValues,
   setValue,
@@ -108,6 +119,7 @@ export function useBuilderToSqlConversion({
     return () => subscription.unsubscribe();
   }, [watch, getValues]);
 
+  // Builder → SQL: regenerate the SQL template when switching to SQL mode.
   useEffect(() => {
     // Only generate a new SQL template when switching from builder mode to SQL mode.
     if (prevConfigType !== 'builder' || configType !== 'sql') {
@@ -181,4 +193,74 @@ export function useBuilderToSqlConversion({
       .then(applyResult)
       .catch(e => showError('Chart could not be auto-converted to SQL', e));
   }, [configType, tableSource, metadata, getValues, setValue, prevConfigType]);
+
+  // SQL → Builder: parse the SQL template back into builder fields when
+  // switching to builder mode (the inverse of the Builder → SQL effect above).
+  useEffect(() => {
+    // Only convert when switching from SQL mode to builder mode.
+    if (prevConfigType !== 'sql' || configType !== 'builder') {
+      return;
+    }
+
+    // Only convert when the user edited in SQL more recently than in builder,
+    // so a builder config the user was working on is never clobbered by a
+    // conversion derived from stale (e.g. auto-generated) SQL.
+    if (lastEditedModeRef.current !== 'sql') {
+      return;
+    }
+
+    const form = getValues();
+    const displayType = form.displayType ?? DisplayType.Line;
+    const opts = { shouldDirty: true } as const;
+
+    try {
+      const result = convertRawSqlToBuilderConfig({
+        sqlTemplate: form.sqlTemplate ?? '',
+        displayType,
+        from: tableSource?.from,
+        timestampValueExpression: tableSource?.timestampValueExpression,
+      });
+
+      const series = result.select.map(s => ({
+        ...s,
+        aggConditionLanguage: s.aggConditionLanguage ?? 'sql',
+      }));
+      setValue('select', series, opts);
+      setValue('series', series, opts);
+      setValue('where', result.where, opts);
+      setValue('whereLanguage', result.whereLanguage, opts);
+      setValue('groupBy', result.groupBy, opts);
+      setValue('granularity', result.granularity, opts);
+      setValue('having', result.having, opts);
+      setValue('havingLanguage', result.havingLanguage, opts);
+      setValue('orderBy', result.orderBy, opts);
+      setValue('limit', result.limit, opts);
+      setValue('seriesReturnType', result.seriesReturnType ?? 'column', opts);
+
+      notifications.show({
+        id: 'sql-to-builder',
+        title: 'Converted SQL to builder',
+        message: 'The SQL query was converted into a builder chart.',
+        color: 'green',
+      });
+    } catch (e) {
+      const message =
+        e instanceof SqlToBuilderError
+          ? e.message
+          : 'The SQL query could not be converted to the builder.';
+      // Logged so that failures can be monitored and fixed
+      console.warn('Could not convert SQL to builder', {
+        sqlTemplate: form.sqlTemplate ?? '',
+        displayType,
+        reason: message,
+        err: e,
+      });
+      notifications.show({
+        id: 'sql-to-builder',
+        title: 'Could not convert SQL to builder',
+        message,
+        color: 'yellow',
+      });
+    }
+  }, [configType, prevConfigType, getValues, setValue, tableSource]);
 }

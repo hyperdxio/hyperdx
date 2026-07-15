@@ -359,4 +359,49 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
       });
     },
   );
+
+  test(
+    'should convert a macro-based SQL template back into the builder when switching to Builder mode',
+    { tag: '@full-stack' },
+    async () => {
+      await test.step('Wait for the chart editor data to load', async () => {
+        await chartExplorerPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Select the E2E Logs source and add a group-by', async () => {
+        await chartExplorerPage.chartEditor.selectSource(
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+        // Keep the default Line + count() series; add a GROUP BY so the
+        // round-trip has a non-trivial builder field to preserve.
+        await chartExplorerPage.chartEditor.setGroupBy('ServiceName');
+      });
+
+      await test.step('Switch to SQL mode and get the auto-generated template', async () => {
+        await chartExplorerPage.chartEditor.switchToSqlMode();
+        const sqlEditor = chartExplorerPage.chartEditor.sqlEditorContent();
+        await expect(sqlEditor).toContainText('$__sourceTable');
+        await expect(sqlEditor).toContainText('ServiceName');
+        await expect(sqlEditor).toContainText('count()');
+      });
+
+      await test.step('Switch back to Builder mode (SQL → Builder conversion)', async () => {
+        await chartExplorerPage.chartEditor.switchToBuilderMode();
+        // The builder-only aggregation control confirms builder mode is active
+        // and the conversion did not fail into an unusable state.
+        await expect(chartExplorerPage.chartEditor.aggFn).toBeVisible();
+      });
+
+      await test.step('Re-generate SQL and verify the converted builder config round-trips', async () => {
+        // The template was never hand-edited, so switching back regenerates it
+        // from the (converted) builder config — the count() series and
+        // ServiceName group-by must survive the SQL → Builder conversion.
+        await chartExplorerPage.chartEditor.switchToSqlMode();
+        const sqlEditor = chartExplorerPage.chartEditor.sqlEditorContent();
+        await expect(sqlEditor).toContainText('$__sourceTable');
+        await expect(sqlEditor).toContainText('ServiceName');
+        await expect(sqlEditor).toContainText('count()');
+      });
+    },
+  );
 });

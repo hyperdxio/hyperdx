@@ -149,10 +149,12 @@ const MACROS: Macro[] = [
   },
 ];
 
+export const FILTERS_MACRO_NAME = 'filters';
+
 /** Macro metadata for autocomplete suggestions */
 export const MACRO_SUGGESTIONS = [
   ...MACROS.map(({ name, minArgs, maxArgs }) => ({ name, minArgs, maxArgs })),
-  { name: 'filters', minArgs: 0, maxArgs: 0 },
+  { name: FILTERS_MACRO_NAME, minArgs: 0, maxArgs: 0 },
   { name: 'sourceTable', minArgs: 0, maxArgs: 1 },
   ...Object.values(MetricsDataType).map(type => ({
     name: `sourceTable(${type})`,
@@ -172,7 +174,10 @@ export const MACRO_SUGGESTIONS = [
  * Every other macro only needs the dashboard time range / interval and takes
  * its column as an argument, so it does not require a source.
  */
-export const SOURCE_DEPENDENT_MACROS = ['filters', 'sourceTable'] as const;
+export const SOURCE_DEPENDENT_MACROS = [
+  FILTERS_MACRO_NAME,
+  'sourceTable',
+] as const;
 
 /**
  * Time-range macros. Any single one binds a raw
@@ -275,7 +280,7 @@ export function replaceMacros(
   const allMacros: Macro[] = [
     ...MACROS,
     {
-      name: 'filters',
+      name: FILTERS_MACRO_NAME,
       minArgs: 0,
       maxArgs: 0,
       replace: () => filtersSQL || NO_FILTERS,

@@ -43,6 +43,20 @@ export enum DisplayType {
   EventPatterns = 'event_patterns',
 }
 
+/** User-facing display-type labels */
+export const DISPLAY_TYPE_LABELS: Record<DisplayType, string> = {
+  [DisplayType.Line]: 'Time Series',
+  [DisplayType.StackedBar]: 'Bar',
+  [DisplayType.Table]: 'Table',
+  [DisplayType.Pie]: 'Pie',
+  [DisplayType.Bar]: 'Bar',
+  [DisplayType.Number]: 'Number',
+  [DisplayType.Search]: 'Search',
+  [DisplayType.Heatmap]: 'Heatmap',
+  [DisplayType.Markdown]: 'Markdown',
+  [DisplayType.EventPatterns]: 'Event Patterns',
+};
+
 export type KeyValue<Key = string, Value = string> = { key: Key; value: Value };
 
 export const MetricTableSchema = z
@@ -309,7 +323,7 @@ export type SelectList = z.infer<typeof SelectListSchema>;
 
 export type SortSpecificationList = z.infer<typeof SortSpecificationListSchema>;
 
-type Limit = { limit?: number; offset?: number };
+export type Limit = { limit?: number; offset?: number };
 
 export type SelectSQLStatement = {
   select: SelectList;

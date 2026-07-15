@@ -3139,6 +3139,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@clickhouse/parser@npm:0.3.0":
+  version: 0.3.0
+  resolution: "@clickhouse/parser@npm:0.3.0"
+  dependencies:
+    zod: "npm:^4.3.6"
+  checksum: 10c0/2f65cb64586922262a25c9ca202c38a8f67daf8ddc5c3e1fabbcee60314f1c3b9da9e102212f2bba795fde866aab2cfe32d3a33d7361f544036521a506fc632d
+  languageName: node
+  linkType: hard
+
 "@codemirror/autocomplete@npm:^6.0.0":
   version: 6.13.0
   resolution: "@codemirror/autocomplete@npm:6.13.0"
@@ -4693,6 +4702,7 @@ __metadata:
     "@clickhouse/client": "npm:1.23.0-head.fae5998.1"
     "@clickhouse/client-common": "npm:1.23.0-head.fae5998.1"
     "@clickhouse/client-web": "npm:1.23.0-head.fae5998.1"
+    "@clickhouse/parser": "npm:0.3.0"
     "@hyperdx/lucene": "npm:^3.1.1"
     "@types/hyperdx__lucene": "npm:@types/lucene@*"
     "@types/jest": "npm:^29.5.14"

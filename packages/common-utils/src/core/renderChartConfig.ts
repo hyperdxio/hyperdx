@@ -500,6 +500,18 @@ export const rewriteSqlFilterWithKvItems = (
   }
 };
 
+/**
+ * Whether the aggregate function operates on numeric values
+ * and is therefore wrapped with `toFloat64OrDefault(toString(...))`
+ **/
+export const isNumericAggFn = (
+  fn: AggregateFunction | AggregateFunctionWithCombinators,
+) => {
+  const isAny = fn === 'any';
+  const isNone = fn === 'none';
+  return !(isAny || isNone);
+};
+
 const aggFnExpr = ({
   fn,
   expr,
@@ -513,14 +525,14 @@ const aggFnExpr = ({
   where?: string;
   sampleWeightExpression?: string;
 }) => {
-  const isAny = fn === 'any';
-  const isNone = fn === 'none';
+  const isNumeric = isNumericAggFn(fn);
   const isCount = fn.startsWith('count');
   const isWhereUsed = isNonEmptyWhereExpr(where);
   // Cast to float64 because the expr might not be a number
   const unsafeExpr = {
-    UNSAFE_RAW_SQL:
-      isAny || isNone ? `${expr}` : `toFloat64OrDefault(toString(${expr}))`,
+    UNSAFE_RAW_SQL: !isNumeric
+      ? `${expr}`
+      : `toFloat64OrDefault(toString(${expr}))`,
   };
   const whereWithExtraNullCheck = `${where} AND ${unsafeExpr.UNSAFE_RAW_SQL} IS NOT NULL`;
 

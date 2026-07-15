@@ -1,4 +1,4 @@
-import { classifyFormEdit } from '@/components/DBEditTimeChartForm/useBuilderToSqlConversion';
+import { classifyFormEdit } from '@/components/DBEditTimeChartForm/useBuilderSqlConversion';
 
 describe('classifyFormEdit', () => {
   it('classifies a SQL editor change in SQL mode as a SQL edit', () => {
