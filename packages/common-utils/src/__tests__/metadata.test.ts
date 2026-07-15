@@ -1108,6 +1108,210 @@ describe('Metadata', () => {
         expect(allParamValues).toContain(`k${i}=`);
       }
     });
+
+    // Regression guard: prior to this fix, the text-index and raw-table
+    // branches hardcoded `limit: 20`, silently capping `loadMoreFacetsForKey`
+    // (which requests 10000 values) at 20. Only the MV branch honored
+    // `maxValuesPerKey`, so "Load More" was a no-op for any column resolved
+    // via text index or raw scan.
+    describe('maxValuesPerKey threading', () => {
+      // Pick a value that (a) isn't ambient in the test setup (like 20,
+      // dates, or granularity numbers) and (b) is easy to spot in a param
+      // dump when a test fails. Int32 chSql params render as numbers, so
+      // assertions compare against the numeric literal.
+      const MAX_VALUES = 7777;
+
+      it('threads maxValuesPerKey into the map text-index query', async () => {
+        setupDefaultLogsSchema();
+
+        await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: ["LogAttributes['requestId']"],
+          maxValuesPerKey: MAX_VALUES,
+        });
+
+        const mapTextIndexCall = (
+          mockClickhouseClient.query as jest.Mock
+        ).mock.calls.find(
+          (c: any[]) =>
+            typeof c[0].query === 'string' &&
+            c[0].query.includes('startsWith(token,'),
+        );
+        expect(mapTextIndexCall).toBeDefined();
+        const params = mapTextIndexCall![0].query_params as Record<
+          string,
+          unknown
+        >;
+        expect(Object.values(params)).toContain(MAX_VALUES);
+      });
+
+      it('threads maxValuesPerKey into the native text-index query', async () => {
+        setupDefaultLogsSchema();
+
+        await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: ['TraceId'],
+          maxValuesPerKey: MAX_VALUES,
+        });
+
+        const nativeTextIndexCall = (
+          mockClickhouseClient.query as jest.Mock
+        ).mock.calls.find(
+          (c: any[]) =>
+            typeof c[0].query === 'string' &&
+            c[0].query.includes('mergeTreeTextIndex(') &&
+            !c[0].query.includes('startsWith(token,'),
+        );
+        expect(nativeTextIndexCall).toBeDefined();
+        const params = nativeTextIndexCall![0].query_params as Record<
+          string,
+          unknown
+        >;
+        expect(Object.values(params)).toContain(MAX_VALUES);
+      });
+
+      it('threads maxValuesPerKey into the raw-table getKeyValues fallback', async () => {
+        setupDefaultLogsSchema();
+        const renderChartConfigSpy = jest.spyOn(
+          renderChartConfigModule,
+          'renderChartConfig',
+        );
+
+        await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: ['Body'],
+          maxValuesPerKey: MAX_VALUES,
+        });
+
+        expect(renderChartConfigSpy).toHaveBeenCalled();
+        const configArg = renderChartConfigSpy.mock.calls[
+          renderChartConfigSpy.mock.calls.length - 1
+        ][0] as any;
+        expect(configArg.select).toContain(`groupUniqArray(${MAX_VALUES})`);
+      });
+    });
+
+    // Text-index queries can fail transiently (e.g. an index part merged
+    // between plan and read, or an older server that doesn't support
+    // `mergeTreeTextIndex`). Prior to this fix, one rejection propagated
+    // through `Promise.all` and wiped filter values for every column in
+    // the batch — regardless of which strategy served each column.
+    describe('text-index failure isolation', () => {
+      // Match each strategy to the response shape its own parser expects.
+      // Text-index returns rows like { key, value }; the MV rollup parses
+      // { ColumnIdentifier, Key, Values } (see `getMetadataMVKeyValues`,
+      // which maps NativeColumn rows back to { key: Key, value: Values }).
+      function mockQueryByStrategy(strategies: {
+        onMapTextIndex?: () => Promise<any>;
+        onNativeTextIndex?: () => Promise<any>;
+        onMVRollup?: () => Promise<any>;
+      }) {
+        (mockClickhouseClient.query as jest.Mock).mockImplementation(
+          ({ query }: any) => {
+            const q = typeof query === 'string' ? query : '';
+            if (q.includes('startsWith(token,')) {
+              return (
+                strategies.onMapTextIndex?.() ??
+                Promise.resolve({ json: () => Promise.resolve({ data: [] }) })
+              );
+            }
+            if (q.includes('mergeTreeTextIndex(')) {
+              return (
+                strategies.onNativeTextIndex?.() ??
+                Promise.resolve({ json: () => Promise.resolve({ data: [] }) })
+              );
+            }
+            if (q.includes('ColumnIdentifier =')) {
+              return (
+                strategies.onMVRollup?.() ??
+                Promise.resolve({ json: () => Promise.resolve({ data: [] }) })
+              );
+            }
+            return Promise.resolve({
+              json: () => Promise.resolve({ data: [] }),
+            });
+          },
+        );
+      }
+
+      it('returns results from other strategies when the native text-index query throws', async () => {
+        setupDefaultLogsSchema();
+        const consoleWarnSpy = jest
+          .spyOn(console, 'warn')
+          .mockImplementation(() => undefined);
+
+        mockQueryByStrategy({
+          onNativeTextIndex: () =>
+            Promise.reject(new Error('text index unavailable')),
+          onMVRollup: () =>
+            Promise.resolve({
+              json: () =>
+                Promise.resolve({
+                  data: [
+                    {
+                      ColumnIdentifier: 'NativeColumn',
+                      Key: 'ServiceName',
+                      Values: ['api', 'web'],
+                      total_count: 42,
+                    },
+                  ],
+                }),
+            }),
+        });
+
+        const result = await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: ['TraceId', 'ServiceName'],
+        });
+
+        expect(result).toEqual([{ key: 'ServiceName', value: ['api', 'web'] }]);
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('getTextIndexKeyValues failed'),
+          expect.any(Error),
+        );
+
+        consoleWarnSpy.mockRestore();
+      });
+
+      it('returns results from other strategies when the map text-index query throws', async () => {
+        setupDefaultLogsSchema();
+        const consoleWarnSpy = jest
+          .spyOn(console, 'warn')
+          .mockImplementation(() => undefined);
+
+        mockQueryByStrategy({
+          onMapTextIndex: () =>
+            Promise.reject(new Error('map text index unavailable')),
+          onMVRollup: () =>
+            Promise.resolve({
+              json: () =>
+                Promise.resolve({
+                  data: [
+                    {
+                      ColumnIdentifier: 'NativeColumn',
+                      Key: 'ServiceName',
+                      Values: ['api'],
+                      total_count: 7,
+                    },
+                  ],
+                }),
+            }),
+        });
+
+        const result = await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: ["LogAttributes['requestId']", 'ServiceName'],
+        });
+
+        expect(result).toEqual([{ key: 'ServiceName', value: ['api'] }]);
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('getMapTextIndexKeyValues failed'),
+          expect.any(Error),
+        );
+
+        consoleWarnSpy.mockRestore();
+      });
+    });
   });
 
   describe('getValuesDistribution', () => {

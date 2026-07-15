@@ -1077,26 +1077,27 @@ export class Metadata {
     dateRange: [Date, Date];
     timestampValueExpression: string;
     signal?: AbortSignal;
-  }): Promise<KeyValues[]> {
+  }): Promise<KeyValues[] | undefined> {
     const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${JSON.stringify(Array.from(queryOptions.entries()))}.${timestampValueExpression}.getMapTextIndexKeyValues`;
     return this.cache.getOrFetch(cacheKey, async () => {
-      const sqlBranches: Array<ChSql> = [];
-      for (const [columnName, info] of queryOptions.entries()) {
-        const orChain = concatChSql(
-          ' OR ',
-          info.keys.map(
-            k =>
-              chSql`startsWith(token, ${{ String: `${k}${info.separator}` }})`,
-          ),
-        );
-        const partsFilter = await this.partsOverlapFilter({
-          databaseName,
-          tableName,
-          dateRange,
-          timestampValueExpression,
-        });
-        const valueSql = chSql`substring(token, position(token, ${{ String: info.separator }}) + ${{ Int32: info.separator.length }})`;
-        const sql = chSql`
+      try {
+        const sqlBranches: Array<ChSql> = [];
+        for (const [columnName, info] of queryOptions.entries()) {
+          const orChain = concatChSql(
+            ' OR ',
+            info.keys.map(
+              k =>
+                chSql`startsWith(token, ${{ String: `${k}${info.separator}` }})`,
+            ),
+          );
+          const partsFilter = await this.partsOverlapFilter({
+            databaseName,
+            tableName,
+            dateRange,
+            timestampValueExpression,
+          });
+          const valueSql = chSql`substring(token, position(token, ${{ String: info.separator }}) + ${{ Int32: info.separator.length }})`;
+          const sql = chSql`
         SELECT * FROM (
           SELECT ${{ String: columnName }} as column,
             substring(token, 1, position(token, ${{ String: info.separator }}) - 1) AS key,
@@ -1107,34 +1108,44 @@ export class Metadata {
             AND ${valueSql} != ''
           GROUP BY column, key
         )`;
-        sqlBranches.push(sql);
-      }
-      const sql = concatChSql(' UNION ALL ', sqlBranches);
+          sqlBranches.push(sql);
+        }
+        const sql = concatChSql(' UNION ALL ', sqlBranches);
 
-      return await this.clickhouseClient
-        .query<'JSON'>({
-          query: sql.sql,
-          query_params: sql.params,
-          connectionId,
-          clickhouse_settings: {
-            max_rows_to_read: String(
-              this.getClickHouseSettings().max_rows_to_read ??
-                DEFAULT_METADATA_MAX_ROWS_TO_READ,
-            ),
-            read_overflow_mode: 'break',
-            ...this.getClickHouseSettings(),
-          },
-          abort_signal: signal,
-        })
-        .then(res =>
-          res.json<{ column: string; key: string; value: string[] }>(),
-        )
-        .then(d =>
-          d.data.map(row => ({
-            key: `${row.column}['${row.key}']`,
-            value: row.value,
-          })),
+        return await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              max_rows_to_read: String(
+                this.getClickHouseSettings().max_rows_to_read ??
+                  DEFAULT_METADATA_MAX_ROWS_TO_READ,
+              ),
+              read_overflow_mode: 'break',
+              ...this.getClickHouseSettings(),
+            },
+            abort_signal: signal,
+          })
+          .then(res =>
+            res.json<{ column: string; key: string; value: string[] }>(),
+          )
+          .then(d =>
+            d.data.map(row => ({
+              key: `${row.column}['${row.key}']`,
+              value: row.value,
+            })),
+          );
+      } catch (error) {
+        // Text-index queries can fail transiently (part merged mid-read,
+        // unsupported server, etc.). Isolate the failure so sibling
+        // strategies (native text index, MV, raw table) still return data.
+        console.warn(
+          'getMapTextIndexKeyValues failed; skipping this strategy for the current batch',
+          error,
         );
+        return undefined;
+      }
     });
   }
 
@@ -1151,18 +1162,19 @@ export class Metadata {
     dateRange: [Date, Date];
     timestampValueExpression: string;
     signal?: AbortSignal;
-  }): Promise<KeyValues[]> {
+  }): Promise<KeyValues[] | undefined> {
     const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${JSON.stringify(Array.from(queryOptions.entries()))}.${timestampValueExpression}.getTextIndexKeyValues`;
     return this.cache.getOrFetch(cacheKey, async () => {
-      const sqlBranches: Array<ChSql> = [];
-      for (const [columnName, info] of queryOptions.entries()) {
-        const partsFilter = await this.partsOverlapFilter({
-          databaseName,
-          tableName,
-          dateRange,
-          timestampValueExpression,
-        });
-        const sql = chSql`
+      try {
+        const sqlBranches: Array<ChSql> = [];
+        for (const [columnName, info] of queryOptions.entries()) {
+          const partsFilter = await this.partsOverlapFilter({
+            databaseName,
+            tableName,
+            dateRange,
+            timestampValueExpression,
+          });
+          const sql = chSql`
         SELECT * FROM (
           SELECT ${{ String: columnName }} AS key,
             groupUniqArray(${{ Int32: info.limit }})(token) AS value
@@ -1171,28 +1183,36 @@ export class Metadata {
             AND token != ''
           GROUP BY key
         )`;
-        sqlBranches.push(sql);
-      }
-      const sql = concatChSql(' UNION ALL ', sqlBranches);
+          sqlBranches.push(sql);
+        }
+        const sql = concatChSql(' UNION ALL ', sqlBranches);
 
-      const values = await this.clickhouseClient
-        .query<'JSON'>({
-          query: sql.sql,
-          query_params: sql.params,
-          connectionId,
-          clickhouse_settings: {
-            max_rows_to_read: String(
-              this.getClickHouseSettings().max_rows_to_read ??
-                DEFAULT_METADATA_MAX_ROWS_TO_READ,
-            ),
-            read_overflow_mode: 'break',
-            ...this.getClickHouseSettings(),
-          },
-          abort_signal: signal,
-        })
-        .then(res => res.json<KeyValues>())
-        .then(d => d.data);
-      return values;
+        const values = await this.clickhouseClient
+          .query<'JSON'>({
+            query: sql.sql,
+            query_params: sql.params,
+            connectionId,
+            clickhouse_settings: {
+              max_rows_to_read: String(
+                this.getClickHouseSettings().max_rows_to_read ??
+                  DEFAULT_METADATA_MAX_ROWS_TO_READ,
+              ),
+              read_overflow_mode: 'break',
+              ...this.getClickHouseSettings(),
+            },
+            abort_signal: signal,
+          })
+          .then(res => res.json<KeyValues>())
+          .then(d => d.data);
+        return values;
+      } catch (error) {
+        // See `getMapTextIndexKeyValues` — same isolation rationale.
+        console.warn(
+          'getTextIndexKeyValues failed; skipping this strategy for the current batch',
+          error,
+        );
+        return undefined;
+      }
     });
   }
 
@@ -2151,7 +2171,7 @@ export class Metadata {
           if (!entry) {
             entry = {
               indexName: mapTextIndex.kv.indexName,
-              limit: 20,
+              limit: maxValuesPerKey,
               separator: mapTextIndex.kv.separator,
               keys: [],
             };
@@ -2168,7 +2188,7 @@ export class Metadata {
         if (nativeTextIndex) {
           nativeTextIndexQueryOptions.set(key.column, {
             indexName: nativeTextIndex.name,
-            limit: 20,
+            limit: maxValuesPerKey,
           });
           continue;
         }
@@ -2260,6 +2280,7 @@ export class Metadata {
             where: '',
           },
           keys: rawQueryOptions,
+          limit: maxValuesPerKey,
           source: undefined,
           signal,
         }),
