@@ -24,7 +24,6 @@ import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
@@ -50,6 +49,7 @@ import {
   Filter,
   getSampleWeightExpression,
   isLogSource,
+  isSearchableSource,
   isTraceSource,
   SearchCondition,
   SearchConditionLanguage,
@@ -690,16 +690,26 @@ const Tile = forwardRef(
         return null;
       }
 
-      // Metric charts drill into their associated log source. Do not call the
-      // URL builder when that association is missing because it would surface
-      // a notification while rendering the dashboard.
-      if (
-        isMetricChartConfig(queriedConfig) &&
-        ((source.kind !== SourceKind.Metric &&
-          source.kind !== SourceKind.Trace) ||
-          !source.logSourceId)
-      ) {
+      if (queriedConfig.metricTables != null || !isSearchableSource(source)) {
         return null;
+      }
+
+      if (Array.isArray(queriedConfig.select)) {
+        const hasPerSeriesCondition = queriedConfig.select.some(
+          select =>
+            typeof select !== 'string' &&
+            select.aggCondition != null &&
+            select.aggCondition.trim().length > 0,
+        );
+        const canPromoteSingleSeriesCondition =
+          queriedConfig.select.length === 1 && queriedConfig.where.length === 0;
+
+        // buildEventsSearchUrl can promote one per-series condition into the
+        // event query, but cannot faithfully replay multiple conditions or
+        // combine a series condition with a global where clause.
+        if (hasPerSeriesCondition && !canPromoteSingleSeriesCondition) {
+          return null;
+        }
       }
 
       return buildEventsSearchUrl({
