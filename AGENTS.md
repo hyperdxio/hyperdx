@@ -100,6 +100,9 @@ before stopping.
    them). Use the shared helpers in
    `packages/api/src/utils/instrumentation.ts`. See
    [`agent_docs/observability.md`](agent_docs/observability.md).
+8. **EE extensibility**: this repo is upstream of an enterprise fork — build
+   extension seams, not fork-edited function bodies. See "Designing for
+   Downstream (EE) Extensibility" below.
 
 ## Running Tests
 
@@ -168,6 +171,62 @@ make dev-e2e GREP="should navigate"             # Filter by test name across all
 make dev-e2e FILE=navigation REPORT=1           # Open HTML report after run
 make dev-e2e-clean                               # Remove test artifacts
 ```
+
+## Designing for Downstream (EE) Extensibility
+
+HyperDX has an enterprise fork (hyperdx-ee) that receives regular upstream
+merges from this repo. Every inline edit EE makes to an OSS file becomes a
+merge conflict on the next upstream merge — the EE "conflict resolution"
+agent exists to clean those up, and we would rather not need it. Design OSS
+features so EE can extend them **without editing OSS function bodies,
+schemas, or test files**:
+
+1. **Extension seams over inline edits.** When a feature has lifecycle
+   points downstream will plausibly hook into (a session starting, a
+   delivery going out), expose a typed hook registry with no-op defaults —
+   see `packages/api/src/services/agentRunExtensions.ts` for the reference
+   pattern. Hook runners must be fail-open (an extension error never breaks
+   the core flow) and instrumented (a span per hook invocation plus an
+   outcome counter).
+2. **Downstream-owned override files.** Registration happens in designated
+   files that upstream commits to never editing after creation — see
+   `packages/api/src/extensions/index.ts`. EE replaces the file's body
+   wholesale, so upstream merges never conflict on it.
+3. **Additive, schema-free extension data.** Give downstream a
+   `metadata: Mixed` field on models it needs to decorate (see
+   `AgentRun.metadata`) instead of having it add typed fields to OSS
+   schemas.
+4. **Options objects / optional trailing parameters** on exported functions
+   downstream feeds data into — adding an optional key never conflicts;
+   reshaping a signature does.
+5. **Swappable defaults.** Operator-visible defaults downstream may want to
+   replace wholesale — prompts, templates, message copy — should resolve
+   through a hook (see `onProvisionAgent`'s `systemPrompt` and
+   `onSessionStart`'s `promptOverride` in `agentRunExtensions.ts`), not sit as
+   hardcoded constants at the call site.
+6. **OSS tests never require EE edits.** Test the hook contract in OSS with
+   a fake extension; EE tests its own extensions in its own files.
+
+When building a feature EE is likely to extend, add the seam in the same PR.
+Retrofitting a seam after EE has already forked the file is exactly the
+conflict this section exists to prevent.
+
+### Seam exports and `knip`
+
+A seam contract (the interfaces/types EE implements against — e.g. the
+`Agent*Result` types in `agentRunExtensions.ts`) is exported public API that
+has **no importer inside this repo by design**: OSS ships no extensions, so
+only the downstream fork consumes it. Our `knip` check (run in the pre-commit
+hook and CI) would otherwise flag those exports as unused.
+
+The rule: mark a genuinely-downstream-only export with a JSDoc `@public` tag and
+a one-line reason. `knip.json` sets `"tags": ["-public"]`, so `@public`-tagged
+exports are treated as intentional public API rather than dead code. This is
+scoped per-export — an export that is used nowhere at all (not even in-file, not
+tagged) is still reported, so the check keeps its teeth. Do **not** reach for a
+blanket `ignoreExportsUsedInFile` category toggle to silence a seam export; tag
+the specific export instead. Conversely, an export that only turned out to be
+unused (no EE consumer planned) should be **unexported or removed**, not tagged.
 
 ## Important Context
 
