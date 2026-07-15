@@ -177,9 +177,20 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
       await chartExplorerPage.chartEditor.setOrderBy('ServiceName ASC');
       await chartExplorerPage.chartEditor.runQuery();
 
+      // Recharts populates the pie legend progressively as the chart animates
+      // in, so a single read can catch it with only one row. Poll until at
+      // least two slices are present (the ordering needs >1 to be observable)
+      // before capturing, mirroring the descending step below.
+      await expect
+        .poll(
+          async () => (await chartExplorerPage.getPieLegendLabels()).length,
+          {
+            timeout: 15000,
+          },
+        )
+        .toBeGreaterThan(1);
+
       ascendingLabels = await chartExplorerPage.getPieLegendLabels();
-      // Need at least two distinct slices for the ordering to be observable.
-      expect(ascendingLabels.length).toBeGreaterThan(1);
     });
 
     await test.step('Order by ServiceName descending and verify the order is reversed', async () => {
