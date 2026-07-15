@@ -51,96 +51,6 @@ const notifyError = (e: { message?: string }) =>
     autoClose: 5000,
   });
 
-function AnthropicKeyCard() {
-  const { data: key, refetch } = api.useAnthropicKey();
-  const saveKey = api.useSaveAnthropicKey();
-  const deleteKey = api.useDeleteAnthropicKey();
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState('');
-
-  const onSave = () => {
-    saveKey.mutate(
-      { apiKey: value },
-      {
-        onSuccess: () => {
-          notifications.show({
-            color: 'green',
-            message: 'Anthropic API key saved',
-          });
-          setValue('');
-          setEditing(false);
-          refetch();
-        },
-        onError: notifyError,
-      },
-    );
-  };
-
-  const onRemove = () => {
-    deleteKey.mutate(undefined, {
-      onSuccess: () => {
-        notifications.show({
-          color: 'green',
-          message: 'Anthropic API key removed',
-        });
-        refetch();
-      },
-      onError: notifyError,
-    });
-  };
-
-  const showInput = editing || !key?.exists;
-
-  return (
-    <Card mb="md">
-      <Text mb="md">Anthropic API Key</Text>
-      <Text size="xs" c="dimmed" mb="md">
-        Stored encrypted at rest. Used to provision agents on the Anthropic
-        platform; it is never sent to your alert destinations.
-      </Text>
-      {showInput ? (
-        <Group gap="xs" align="end">
-          <TextInput
-            style={{ flex: 1 }}
-            label={key?.exists ? 'Replace key' : 'API key'}
-            placeholder="sk-ant-..."
-            type="password"
-            value={value}
-            onChange={e => setValue(e.currentTarget.value)}
-          />
-          <Button
-            variant="primary"
-            disabled={!value.trim()}
-            loading={saveKey.isPending}
-            onClick={onSave}
-          >
-            Save
-          </Button>
-          {key?.exists && (
-            <Button variant="secondary" onClick={() => setEditing(false)}>
-              Cancel
-            </Button>
-          )}
-        </Group>
-      ) : (
-        <Group gap="xs">
-          <Text ff="monospace">••••••••{key?.keyHint}</Text>
-          <Button variant="secondary" onClick={() => setEditing(true)}>
-            Replace
-          </Button>
-          <Button
-            variant="danger"
-            loading={deleteKey.isPending}
-            onClick={onRemove}
-          >
-            Remove
-          </Button>
-        </Group>
-      )}
-    </Card>
-  );
-}
-
 function CreateAgentForm({ disabled }: { disabled: boolean }) {
   const createAgent = api.useCreateManagedAgent();
   const { refetch } = api.useManagedAgents();
@@ -246,11 +156,9 @@ export default function AgentsSection() {
 }
 
 function AgentsSectionInner() {
-  const { data: keyData } = api.useAnthropicKey();
   const { data: agentsData, refetch } = api.useManagedAgents();
   const deleteAgent = api.useDeleteManagedAgent();
 
-  const hasKey = !!keyData?.exists;
   const agents = agentsData?.data ?? [];
 
   const onDelete = (id: string) => {
@@ -275,37 +183,36 @@ function AgentsSectionInner() {
       </Text>
       <Divider my="md" />
 
-      <AnthropicKeyCard />
-
       <Card>
         <Text mb="md">ClickStack SRE Agent</Text>
-        {!hasKey ? (
-          <Text size="sm" c="dimmed">
-            Set your Anthropic API key above to create an agent.
-          </Text>
-        ) : (
-          <Stack>
-            <CreateAgentForm disabled={!hasKey} />
-            {agents.length > 0 && <Divider my="xs" />}
-            {agents.map(agent => (
-              <Group key={agent._id} justify="space-between">
-                <Box>
-                  <Text>{agent.name}</Text>
-                  <Text size="xs" c="dimmed">
-                    {agent.model} · {agent.anthropicAgentId}
-                  </Text>
-                </Box>
-                <Button
-                  variant="danger"
-                  size="xs"
-                  onClick={() => onDelete(agent._id)}
-                >
-                  Delete
-                </Button>
-              </Group>
-            ))}
-          </Stack>
-        )}
+        <Text size="xs" c="dimmed" mb="md">
+          The Anthropic API key is read from the server environment (
+          <Code>AI_API_KEY</Code> with <Code>AI_PROVIDER=anthropic</Code>, or
+          the legacy <Code>ANTHROPIC_API_KEY</Code>). Set it on the deployment
+          to provision agents; creating an agent fails with a clear error if it
+          is missing.
+        </Text>
+        <Stack>
+          <CreateAgentForm disabled={false} />
+          {agents.length > 0 && <Divider my="xs" />}
+          {agents.map(agent => (
+            <Group key={agent._id} justify="space-between">
+              <Box>
+                <Text>{agent.name}</Text>
+                <Text size="xs" c="dimmed">
+                  {agent.model} · {agent.anthropicAgentId}
+                </Text>
+              </Box>
+              <Button
+                variant="danger"
+                size="xs"
+                onClick={() => onDelete(agent._id)}
+              >
+                Delete
+              </Button>
+            </Group>
+          ))}
+        </Stack>
       </Card>
 
       <ManualSetupCard />

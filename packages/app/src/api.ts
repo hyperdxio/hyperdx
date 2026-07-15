@@ -483,31 +483,6 @@ const api = {
         hdxServer(`managed-agents/${id}`, { method: 'DELETE' }).json(),
     });
   },
-  useAnthropicKey() {
-    return useQuery<{ exists: boolean; keyHint: string | null }, Error>({
-      queryKey: ['managed-agents', 'anthropic-key'],
-      queryFn: () => hdxServer('managed-agents/anthropic-key').json(),
-    });
-  },
-  useSaveAnthropicKey() {
-    return useMutation<
-      { exists: boolean; keyHint: string },
-      Error | HTTPError,
-      { apiKey: string }
-    >({
-      mutationFn: async ({ apiKey }) =>
-        hdxServer('managed-agents/anthropic-key', {
-          method: 'PUT',
-          json: { apiKey },
-        }).json(),
-    });
-  },
-  useDeleteAnthropicKey() {
-    return useMutation<unknown, Error | HTTPError, void>({
-      mutationFn: async () =>
-        hdxServer('managed-agents/anthropic-key', { method: 'DELETE' }).json(),
-    });
-  },
   useTestWebhook() {
     return useMutation<
       WebhookTestApiResponse,
