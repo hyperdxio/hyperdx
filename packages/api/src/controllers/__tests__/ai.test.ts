@@ -41,11 +41,15 @@ const mockConfig: Record<string, unknown> = { __esModule: true };
 
 jest.mock('@/config', () => mockConfig);
 
+// AIProvider is a real enum value (not env-derived), so keep it in the mock
+// across resets — getAIModel compares the provider against its members.
+const { AIProvider } = jest.requireActual('@/config');
+
 function setConfig(overrides: Record<string, string | undefined>) {
   Object.keys(mockConfig).forEach(k => {
     if (k !== '__esModule') delete mockConfig[k];
   });
-  Object.assign(mockConfig, overrides);
+  Object.assign(mockConfig, { AIProvider }, overrides);
 }
 
 import { getAIModel } from '@/controllers/ai';

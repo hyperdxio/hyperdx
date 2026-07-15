@@ -48,7 +48,7 @@ export function getAIModel(): LanguageModel {
   // Legacy support: if no AI_PROVIDER but ANTHROPIC_API_KEY exists, use anthropic
   // We should deprecate this in the future, but want to avoid a breaking change until we add a second provider.
   if (!provider && config.ANTHROPIC_API_KEY) {
-    provider = 'anthropic';
+    provider = config.AIProvider.Anthropic;
   }
 
   if (!provider) {
@@ -60,10 +60,10 @@ export function getAIModel(): LanguageModel {
   logger.info({ provider }, 'Initializing AI provider');
 
   switch (provider) {
-    case 'anthropic':
+    case config.AIProvider.Anthropic:
       return getAnthropicModel();
 
-    case 'openai':
+    case config.AIProvider.OpenAI:
       return getOpenAIModel();
 
     default:
