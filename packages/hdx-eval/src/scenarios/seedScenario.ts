@@ -56,7 +56,7 @@ export type SeedResult = {
   tracesInserted: number;
   logsInserted: number;
   metricsInserted: MetricInsertCounts;
-  tables: { traces: string; logs: string };
+  tables: ScenarioTables;
 };
 
 export async function seedScenario(args: {
@@ -117,39 +117,40 @@ async function insertMetricBatch(
   metrics: MetricBatch,
   counts: MetricInsertCounts,
 ): Promise<void> {
-  if (metrics.gauge?.length) {
-    counts.gauge += await insertGaugeMetricRows(
-      client,
-      tables.metricsGauge,
-      metrics.gauge,
-    );
-  }
-  if (metrics.sum?.length) {
-    counts.sum += await insertSumMetricRows(
-      client,
-      tables.metricsSum,
-      metrics.sum,
-    );
-  }
-  if (metrics.histogram?.length) {
-    counts.histogram += await insertHistogramMetricRows(
-      client,
-      tables.metricsHistogram,
-      metrics.histogram,
-    );
-  }
-  if (metrics.exponentialHistogram?.length) {
-    counts.exponentialHistogram += await insertExponentialHistogramMetricRows(
-      client,
-      tables.metricsExponentialHistogram,
-      metrics.exponentialHistogram,
-    );
-  }
-  if (metrics.summary?.length) {
-    counts.summary += await insertSummaryMetricRows(
-      client,
-      tables.metricsSummary,
-      metrics.summary,
-    );
-  }
+  const [gauge, sum, histogram, exponentialHistogram, summary] =
+    await Promise.all([
+      metrics.gauge?.length
+        ? insertGaugeMetricRows(client, tables.metricsGauge, metrics.gauge)
+        : 0,
+      metrics.sum?.length
+        ? insertSumMetricRows(client, tables.metricsSum, metrics.sum)
+        : 0,
+      metrics.histogram?.length
+        ? insertHistogramMetricRows(
+            client,
+            tables.metricsHistogram,
+            metrics.histogram,
+          )
+        : 0,
+      metrics.exponentialHistogram?.length
+        ? insertExponentialHistogramMetricRows(
+            client,
+            tables.metricsExponentialHistogram,
+            metrics.exponentialHistogram,
+          )
+        : 0,
+      metrics.summary?.length
+        ? insertSummaryMetricRows(
+            client,
+            tables.metricsSummary,
+            metrics.summary,
+          )
+        : 0,
+    ]);
+
+  counts.gauge += gauge;
+  counts.sum += sum;
+  counts.histogram += histogram;
+  counts.exponentialHistogram += exponentialHistogram;
+  counts.summary += summary;
 }
