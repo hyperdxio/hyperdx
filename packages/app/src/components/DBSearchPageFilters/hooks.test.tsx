@@ -16,18 +16,26 @@ import { useFetchFacets } from './hooks';
 enableMapSet();
 
 /**
- * These tests focus on the two code paths inside `useFetchFacets`:
+ * These tests focus on the two code paths inside `useFacets`:
  *
- *  1. Raw-tables pipeline (`useFacetsFromRawTables`): triggered when the
- *     source has no metadata materialized views, OR when `mode === 'exact'`.
- *  2. Materialized-view pipeline (`useAllFacetsFromMVs`): triggered only when
- *     the source has metadata materialized views AND `mode === 'all'`.
+ *  1. Raw-tables pipeline: active when `mode === 'exact'`. Calls
+ *     `useGetKeyValues({ mode: 'exact' })` and scopes "Load more" through
+ *     `metadata.getKeyValuesWithMVs`.
+ *  2. "All" pipeline: active when `mode === 'all'`. Calls
+ *     `useGetKeyValues({ mode: 'all' })` — whose intelligent router picks
+ *     MV/text-index/raw internally — and delegates "Load more" to
+ *     `metadata.getAllKeyValues`.
  *
- * Plus the shared state layer that merges "load more" results into whichever
- * pipeline is active (union — primary values are preserved and never
- * overridden by extras) and resets that state whenever the query scope that
- * produced the extras changes (source, date range, mode, filter state, or
- * the where clause).
+ * Both paths share a single `useGetKeyValues` call whose behavior is driven
+ * entirely by the `mode` argument. Selection is mode-only; the presence or
+ * absence of metadata materialized views on the source does not affect which
+ * path runs.
+ *
+ * Plus the shared state layer that merges "load more" results into the
+ * active path (union — primary values are preserved and never overridden by
+ * extras) and resets that state whenever the query scope that produced the
+ * extras changes (source, date range, mode, filter state, or the where
+ * clause).
  */
 
 jest.mock('@/api', () => ({
@@ -177,7 +185,27 @@ describe('useFetchFacets', () => {
   });
 
   describe('pipeline selection', () => {
-    it('uses the raw-tables pipeline when the source has no metadata materialized views', () => {
+    it('routes useGetKeyValues with mode="exact" when mode is exact', () => {
+      setupDefaultMocks({ withMVs: false });
+      const { wrapper } = makeWrapper();
+
+      renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'exact',
+          }),
+        { wrapper },
+      );
+
+      const call = useGetKeyValues.mock.calls.at(-1);
+      expect(call?.[0]?.mode).toBe('exact');
+      expect(call?.[1]?.enabled).toBe(true);
+    });
+
+    it('routes useGetKeyValues with mode="all" when mode is all', () => {
       setupDefaultMocks({ withMVs: false });
       const { wrapper } = makeWrapper();
 
@@ -192,11 +220,12 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      const rawCall = useGetKeyValues.mock.calls.at(-1);
-      expect(rawCall?.[1]?.enabled).toBe(true);
+      const call = useGetKeyValues.mock.calls.at(-1);
+      expect(call?.[0]?.mode).toBe('all');
+      expect(call?.[1]?.enabled).toBe(true);
     });
 
-    it('uses the raw-tables pipeline when mode is exact, even if MVs are available', () => {
+    it('selection is mode-only: MV presence does not change which mode is passed', () => {
       setupDefaultMocks({ withMVs: true });
       const { wrapper } = makeWrapper();
 
@@ -211,12 +240,18 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      const rawCall = useGetKeyValues.mock.calls.at(-1);
-      expect(rawCall?.[1]?.enabled).toBe(true);
+      const call = useGetKeyValues.mock.calls.at(-1);
+      expect(call?.[0]?.mode).toBe('exact');
     });
+  });
 
-    it('uses the MV pipeline when mode is all and MVs are available', () => {
-      setupDefaultMocks({ withMVs: true });
+  // Autocomplete opts into `deferLoadingKeyValues: true` so it can render
+  // field-name suggestions from `data.keys` without triggering the values
+  // query — only firing that query once the user is actively searching on
+  // a fully-formed key. Guard against a regression that couples the two.
+  describe('deferLoadingKeyValues', () => {
+    it('disables the useGetKeyValues query when deferLoadingKeyValues is true', () => {
+      setupDefaultMocks({ withMVs: false });
       const { wrapper } = makeWrapper();
 
       renderHook(
@@ -226,24 +261,107 @@ describe('useFetchFacets', () => {
             sourceId: 'source1',
             dateRange: DATE_RANGE,
             mode: 'all',
+            deferLoadingKeyValues: true,
           }),
         { wrapper },
       );
 
-      const rawCall = useGetKeyValues.mock.calls.at(-1);
-      expect(rawCall?.[1]?.enabled).toBe(false);
+      const call = useGetKeyValues.mock.calls.at(-1);
+      expect(call?.[1]?.enabled).toBe(false);
+    });
+
+    it('enables the useGetKeyValues query when deferLoadingKeyValues is false or omitted', () => {
+      setupDefaultMocks({ withMVs: false });
+      const { wrapper } = makeWrapper();
+
+      renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+            deferLoadingKeyValues: false,
+          }),
+        { wrapper },
+      );
+
+      const call = useGetKeyValues.mock.calls.at(-1);
+      expect(call?.[1]?.enabled).toBe(true);
+    });
+
+    it('does not defer the field metadata query — useAllFields stays enabled', () => {
+      setupDefaultMocks({ withMVs: false });
+      const { wrapper } = makeWrapper();
+
+      renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+            deferLoadingKeyValues: true,
+          }),
+        { wrapper },
+      );
+
+      const call = useAllFields.mock.calls.at(-1);
+      expect(call?.[1]?.enabled).toBe(true);
+    });
+
+    it('still surfaces field metadata via data.keys even while deferring values', () => {
+      setupDefaultMocks({ withMVs: false });
+      const { wrapper } = makeWrapper();
+
+      const { result } = renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+            deferLoadingKeyValues: true,
+          }),
+        { wrapper },
+      );
+
+      expect(result.current.data.keys).toEqual([
+        {
+          path: ['ServiceName'],
+          type: 'LowCardinality(String)',
+          jsType: 'string',
+        },
+      ]);
+      expect(result.current.data.keyValues).toBeUndefined();
     });
   });
 
   describe('data selection', () => {
-    it('returns data from the raw-tables pipeline when that pipeline is active', () => {
+    // Route mock responses by the `mode` arg so each pipeline sees a
+    // distinct fixture — that way an assertion against `data.keyValues`
+    // actually proves the active pipeline's response is returned.
+    function mockGetKeyValuesByMode(byMode: { exact: unknown; all: unknown }) {
+      useGetKeyValues.mockImplementation(((args: { mode?: 'all' | 'exact' }) =>
+        args?.mode === 'all' ? byMode.all : byMode.exact) as any);
+    }
+
+    it('returns data from the raw-tables pipeline when mode is exact', () => {
       setupDefaultMocks({ withMVs: false });
-      useGetKeyValues.mockReturnValue({
-        data: [{ key: 'ServiceName', value: ['api', 'web'] }],
-        isLoading: false,
-        isFetching: false,
-        error: null,
-      } as any);
+      mockGetKeyValuesByMode({
+        exact: {
+          data: [{ key: 'ServiceName', value: ['api', 'web'] }],
+          isLoading: false,
+          isFetching: false,
+          error: null,
+        },
+        all: {
+          data: [{ key: 'ShouldNotBeUsed', value: ['x'] }],
+          isLoading: false,
+          isFetching: false,
+          error: null,
+        },
+      });
 
       const { wrapper } = makeWrapper();
 
@@ -258,19 +376,27 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      expect(result.current.data).toEqual([
+      expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api', 'web'] },
       ]);
     });
 
-    it('returns data from the MV pipeline when that pipeline is active', () => {
+    it('returns data from the "all" pipeline when mode is all', () => {
       setupDefaultMocks({ withMVs: true });
-      useGetKeyValues.mockReturnValue({
-        data: [{ key: 'ShouldNotBeUsed', value: ['x'] }],
-        isLoading: false,
-        isFetching: false,
-        error: null,
-      } as any);
+      mockGetKeyValuesByMode({
+        exact: {
+          data: [{ key: 'ShouldNotBeUsed', value: ['x'] }],
+          isLoading: false,
+          isFetching: false,
+          error: null,
+        },
+        all: {
+          data: [{ key: 'ServiceName', value: ['api', 'web'] }],
+          isLoading: false,
+          isFetching: false,
+          error: null,
+        },
+      });
 
       const { wrapper } = makeWrapper();
 
@@ -285,12 +411,12 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      expect(result.current.data).toEqual([
+      expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api', 'web'] },
       ]);
     });
 
-    it('returns undefined when the active pipeline has no data yet', () => {
+    it('returns undefined keyValues when the active pipeline has no data yet', () => {
       setupDefaultMocks({ withMVs: false });
       const { wrapper } = makeWrapper();
 
@@ -305,7 +431,10 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      expect(result.current.data).toBeUndefined();
+      // `data.keys` is field metadata (from `useAllFields`) and is
+      // independent of the values query; it stays defined once metadata
+      // loads. Only `keyValues` is gated on the active pipeline query.
+      expect(result.current.data.keyValues).toBeUndefined();
     });
   });
 
@@ -431,7 +560,7 @@ describe('useFetchFacets', () => {
         await result.current.loadMoreFacetsForKey('ServiceName');
       });
 
-      expect(result.current.data).toEqual([
+      expect(result.current.data.keyValues).toEqual([
         {
           key: 'ServiceName',
           value: ['api', 'primary-only', 'web', 'db'],
@@ -470,7 +599,7 @@ describe('useFetchFacets', () => {
         await result.current.loadMoreFacetsForKey('NewKey');
       });
 
-      expect(result.current.data).toEqual([
+      expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api'] },
         { key: 'NewKey', value: ['n1', 'n2'] },
       ]);
@@ -508,7 +637,7 @@ describe('useFetchFacets', () => {
         await result.current.loadMoreFacetsForKey('ServiceName');
       });
 
-      expect(result.current.data).toEqual([
+      expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api'] },
       ]);
       expect(result.current.loadMoreLoadingKeys.has('ServiceName')).toBe(false);
@@ -548,7 +677,7 @@ describe('useFetchFacets', () => {
 
       expect(getAllKeyValues).toHaveBeenCalledTimes(1);
       expect(getKeyValuesWithMVs).not.toHaveBeenCalled();
-      expect(result.current.data).toEqual([
+      expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api', 'web'] },
       ]);
     });
@@ -586,7 +715,7 @@ describe('useFetchFacets', () => {
       });
 
       expect(result.current.extraFacetKeys.has('NewKey')).toBe(true);
-      expect(result.current.data).toEqual([
+      expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api'] },
         { key: 'NewKey', value: ['n1'] },
       ]);
@@ -594,7 +723,7 @@ describe('useFetchFacets', () => {
       rerender({ sourceId: 'source2' });
 
       expect(result.current.extraFacetKeys.size).toBe(0);
-      expect(result.current.data).toEqual([
+      expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api'] },
       ]);
     });
@@ -629,7 +758,7 @@ describe('useFetchFacets', () => {
         await result.current.loadMoreFacetsForKey('NewKey');
       });
 
-      expect(result.current.data).toEqual([
+      expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api'] },
         { key: 'NewKey', value: ['n1'] },
       ]);
@@ -639,7 +768,7 @@ describe('useFetchFacets', () => {
       });
 
       expect(result.current.extraFacetKeys.size).toBe(0);
-      expect(result.current.data).toEqual([
+      expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api'] },
       ]);
     });
@@ -679,7 +808,7 @@ describe('useFetchFacets', () => {
       });
 
       expect(result.current.extraFacetKeys.has('NewKey')).toBe(true);
-      expect(result.current.data).toEqual([
+      expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api'] },
         { key: 'NewKey', value: ['n1'] },
       ]);
@@ -694,7 +823,7 @@ describe('useFetchFacets', () => {
       });
 
       expect(result.current.extraFacetKeys.size).toBe(0);
-      expect(result.current.data).toEqual([
+      expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api'] },
       ]);
     });
@@ -730,7 +859,7 @@ describe('useFetchFacets', () => {
       });
 
       expect(result.current.extraFacetKeys.has('NewKey')).toBe(true);
-      expect(result.current.data).toEqual([
+      expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api'] },
         { key: 'NewKey', value: ['n1'] },
       ]);
@@ -740,7 +869,7 @@ describe('useFetchFacets', () => {
       });
 
       expect(result.current.extraFacetKeys.size).toBe(0);
-      expect(result.current.data).toEqual([
+      expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api'] },
       ]);
     });

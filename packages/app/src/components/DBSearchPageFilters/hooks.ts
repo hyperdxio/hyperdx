@@ -147,7 +147,7 @@ function useFacets({
     [chartConfig, dateRange, mode],
   );
 
-  const { data: rawExactFacets, ...rest } = useGetKeyValues(
+  const { data: rawFacets, ...rest } = useGetKeyValues(
     {
       chartConfig: facetsChartConfig,
       limit: INITIAL_LOAD_LIMIT,
@@ -158,13 +158,13 @@ function useFacets({
   );
 
   // Map the (escaped) result keys back to the original UI keys.
-  const exactFacets = useMemo<Facet[] | undefined>(
+  const facets = useMemo<Facet[] | undefined>(
     () =>
-      rawExactFacets?.map(f => ({
+      rawFacets?.map(f => ({
         ...f,
         key: sqlKeyToUiKey.get(f.key) ?? f.key,
       })),
-    [rawExactFacets, sqlKeyToUiKey],
+    [rawFacets, sqlKeyToUiKey],
   );
 
   const metadata = useMetadataWithSettings();
@@ -172,10 +172,10 @@ function useFacets({
     async (key: string): Promise<Facet | undefined> => {
       try {
         const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
-        const strippedFilterState: FilterState = { ...filterState };
-        delete strippedFilterState[key];
-        if (sqlKey !== key) delete strippedFilterState[sqlKey];
         if (mode === 'exact') {
+          const strippedFilterState: FilterState = { ...filterState };
+          delete strippedFilterState[key];
+          if (sqlKey !== key) delete strippedFilterState[sqlKey];
           const newKeyVals = await metadata.getKeyValuesWithMVs({
             chartConfig: {
               ...chartConfig,
@@ -194,35 +194,36 @@ function useFacets({
             key,
             value: newKeyVals[0].value?.map(val => val.toString()) ?? [],
           };
-        } else {
-          if (!source)
-            throw new Error('loadMoreFacetsForKey: source must be defined');
-          const newKeyVals = await metadata.getAllKeyValues({
-            databaseName: source.from.databaseName,
-            tableName: source.from.tableName,
-            connectionId: source.connection,
-            metadataMVs: tableConnection.metadataMVs,
-            keyExpressions: [sqlKey],
-            maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
-            dateRange,
-            timestampValueExpression: source?.timestampValueExpression,
-          });
-          return {
-            key,
-            value:
-              newKeyVals.length > 0
-                ? (newKeyVals[0].value?.map(val => val.toString()) ?? [])
-                : [],
-          };
         }
+
+        if (!source) {
+          throw new Error('loadMoreFacetsForKey: source must be defined');
+        }
+        const newKeyVals = await metadata.getAllKeyValues({
+          databaseName: source.from.databaseName,
+          tableName: source.from.tableName,
+          connectionId: source.connection,
+          metadataMVs: tableConnection.metadataMVs,
+          keyExpressions: [sqlKey],
+          maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
+          dateRange,
+          timestampValueExpression: source.timestampValueExpression,
+        });
+        return {
+          key,
+          value:
+            newKeyVals.length > 0
+              ? (newKeyVals[0].value?.map(val => val.toString()) ?? [])
+              : [],
+        };
       } catch (error) {
         console.error('failed to fetch more keys', error);
       }
       return undefined;
     },
     [
-      tableConnection,
       mode,
+      tableConnection,
       metadata,
       chartConfig,
       dateRange,
@@ -236,7 +237,7 @@ function useFacets({
   return {
     ...rest,
     error: allFieldsError ?? rest.error,
-    data: { keys: allFields, keyValues: exactFacets },
+    data: { keys: allFields, keyValues: facets },
     isLoading: isAllFieldsLoading || rest.isLoading,
     loadMoreFacetsForKey,
   };
@@ -259,7 +260,6 @@ export function useFetchFacets({
   showMoreFields?: boolean;
   deferLoadingKeyValues?: boolean;
 }) {
-  // Exact pipeline: fetch values for discovered keys
   const facetsQuery = useFacets({
     chartConfig,
     sourceId,
@@ -272,14 +272,19 @@ export function useFetchFacets({
   });
 
   const [extraFacets, setExtraFacets] = useState<Facet[] | null>(null);
-  const facets = useMemo(() => {
-    const facets = facetsQuery.data.keyValues ?? [];
-    if (!extraFacets || extraFacets.length === 0) return facets;
-    const seenFacets = new Set();
+  const facets = useMemo<Facet[] | undefined>(() => {
+    const base = facetsQuery.data.keyValues;
+    const hasExtras = !!extraFacets && extraFacets.length > 0;
+
+    if (base === undefined && !hasExtras) return undefined;
+    if (!hasExtras) return base;
+    if (base === undefined) return extraFacets ?? undefined;
+
+    const seenFacets = new Set<string>();
     const output: Facet[] = [];
-    for (const facet of facets) {
+    for (const facet of base) {
       seenFacets.add(facet.key);
-      const extraFacet = extraFacets.find(ef => ef.key === facet.key);
+      const extraFacet = extraFacets!.find(ef => ef.key === facet.key);
       if (extraFacet) {
         // Union values: primary is query-scoped and must not be overridden;
         // extras from "Load More" only append (see PR #2329, commit 8938b05ef).
@@ -304,9 +309,11 @@ export function useFetchFacets({
     return output;
   }, [facetsQuery.data, extraFacets]);
 
-  const [extraFacetKeys, setExtraFacetKeys] = useState<Set<string>>(new Set());
+  const [extraFacetKeys, setExtraFacetKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [loadMoreLoadingKeys, setLoadMoreLoadingKeys] = useState<Set<string>>(
-    new Set(),
+    () => new Set(),
   );
   const areExtraFacetsLoading = loadMoreLoadingKeys.size > 0;
   const loadMoreFacetsForKey = useCallback(
@@ -352,7 +359,7 @@ export function useFetchFacets({
 
   return {
     ...facetsQuery,
-    data: { keys: facetsQuery.data?.keys, keyValues: facets },
+    data: { keys: facetsQuery.data.keys, keyValues: facets },
     loadMoreFacetsForKey,
     areExtraFacetsLoading,
     loadMoreLoadingKeys,
