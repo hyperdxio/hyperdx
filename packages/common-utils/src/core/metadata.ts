@@ -1300,14 +1300,13 @@ export class Metadata {
         }
         const sql = chSql`
           SELECT * FROM (
-            SELECT ColumnIdentifier, Key, groupUniqArray(${{ Int32: maxValuesPerKey }})(Value) as Values, sum(count) as total_count
+            SELECT ColumnIdentifier, Key, groupUniqArray(${{ Int32: maxValuesPerKey }})(Value) as Values
             FROM ${tableExpr({ database: databaseName, table: mvName })}
-            WHERE ${concatChSql(' OR ', branch)} 
+            WHERE ${concatChSql(' OR ', branch)}
               AND ${timeFilter}
-              AND Value != ''
+              AND notEmpty(Value)
             GROUP BY ColumnIdentifier, Key
-            ORDER BY ColumnIdentifier, Key, total_count DESC
-            LIMIT ${{ Int32: maxValuesPerKey }} BY ColumnIdentifier, Key
+            ORDER BY ColumnIdentifier, Key
           )`;
         sqlBranches.push(sql);
       }
@@ -2258,12 +2257,16 @@ export class Metadata {
         continue;
       }
 
-      // fallback to raw table scan
+      // Re-quote `key.column` for the raw-table SQL: it was stripped of
+      // backticks by `unquoteIdentifier` above, and column names with hyphens
+      // or dots (e.g. `Map-Attributes`, `service-name`) need them back or the
+      // whole batch fails, dropping facets for every key on this path.
       if (keyValueFetchingStrategies.rawTable.includes(key.column)) {
+        const quotedColumn = quoteIdentifierIfNeeded(key.column);
         if (key.mapKey) {
-          rawQueryOptions.push(`${key.column}['${key.mapKey}']`);
+          rawQueryOptions.push(`${quotedColumn}['${key.mapKey}']`);
         } else {
-          rawQueryOptions.push(`${key.column}`);
+          rawQueryOptions.push(quotedColumn);
         }
       }
     }

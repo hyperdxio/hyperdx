@@ -828,7 +828,9 @@ export function parameterizedQueryToSql({
   params: Record<string, any>;
 }) {
   return Object.entries(params).reduce((acc, [key, value]) => {
-    return acc.replace(new RegExp(`{${key}:\\w+}`, 'g'), value);
+    return acc.replace(new RegExp(`{${key}:(\\w+)}`, 'g'), (_, type) => {
+      return type === 'String' ? `'${value}'` : String(value);
+    });
   }, sql);
 }
 
