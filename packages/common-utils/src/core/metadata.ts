@@ -698,15 +698,28 @@ export class Metadata {
               chSql`fromUnixTimestamp64Milli(${{ Int64: alignedDateRange[1].getTime() }})`,
             );
             const timeFilter = chSql`AND Timestamp >= ${startExpr} AND Timestamp <= ${endExpr}`;
-            const sql = chSql`
-              SELECT Key
-              FROM ${tableExpr({ database: databaseName, table: metadataMVs.keyRollupTable })}
-              WHERE ColumnIdentifier = ${{ String: column }}
-                ${timeFilter}
-              GROUP BY Key
-              ORDER BY sum(count) DESC
-              LIMIT ${{ Int32: maxKeys }}
-            `;
+            let sql: ChSql;
+            if (metadataMVs.keyRollupTable) {
+              sql = chSql`
+                SELECT Key
+                FROM ${tableExpr({ database: databaseName, table: metadataMVs.keyRollupTable })}
+                WHERE ColumnIdentifier = ${{ String: column }}
+                  ${timeFilter}
+                GROUP BY Key
+                ORDER BY sum(count) DESC
+                LIMIT ${{ Int32: maxKeys }}
+              `;
+            } else {
+              sql = chSql`
+                SELECT Key
+                FROM ${tableExpr({ database: databaseName, table: metadataMVs.kvRollupTable })}
+                WHERE ColumnIdentifier = ${{ String: column }}
+                  ${timeFilter}
+                GROUP BY Key
+                ORDER BY sum(count) DESC
+                LIMIT ${{ Int32: maxKeys }}
+              `;
+            }
 
             return await this.clickhouseClient
               .query<'JSON'>({
@@ -2136,9 +2149,9 @@ export class Metadata {
       const isMapKey = path.length >= 2;
       return {
         keyExpression: keyExpr,
-        rollupColumn: isMapKey ? path[0] : 'NativeColumn',
-        rollupKey: isMapKey ? path[1] : path[0],
-        column: path[0],
+        rollupColumn: isMapKey ? unquoteIdentifier(path[0]) : 'NativeColumn',
+        rollupKey: isMapKey ? path[1] : unquoteIdentifier(path[0]),
+        column: unquoteIdentifier(path[0]),
         mapKey: isMapKey ? path[1] : undefined,
       };
     });
@@ -2196,7 +2209,7 @@ export class Metadata {
 
       // then check metadataMVs
       const metadataMVEntry = keyValueFetchingStrategies.metadataMVs.find(
-        v => v.columnName === key.column.replaceAll('`', ''),
+        v => v.columnName === key.column,
       );
       if (metadataMVEntry) {
         let tableEntry = metadataMVQueryOptions.get(metadataMVEntry.mvName);
