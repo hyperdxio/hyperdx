@@ -1,6 +1,7 @@
 import {
   registerAgentRunExtension,
   resetAgentRunExtensionsForTests,
+  runAnthropicKeyExtensions,
   runDeliveryExtensions,
   runProvisionExtensions,
   runSessionStartExtensions,
@@ -158,5 +159,29 @@ describe('agentRunExtensions', () => {
     expect((await runSessionStartExtensions(sessionCtx)).prompt).toBe(
       '{"source":"clickstack"}',
     );
+  });
+
+  it('resolves the anthropic key from the last extension that returns one; null when none', async () => {
+    expect(await runAnthropicKeyExtensions({ teamId: 't1' })).toBeNull();
+
+    registerAgentRunExtension({
+      name: 'k1',
+      resolveAnthropicKey: async () => ({ apiKey: 'sk-a' }),
+    });
+    registerAgentRunExtension({
+      name: 'k2',
+      resolveAnthropicKey: async () => ({ apiKey: 'sk-b' }),
+    });
+    expect(await runAnthropicKeyExtensions({ teamId: 't1' })).toBe('sk-b');
+  });
+
+  it('is fail-open for key resolution (a throwing resolver yields null)', async () => {
+    registerAgentRunExtension({
+      name: 'boom',
+      resolveAnthropicKey: async () => {
+        throw new Error('boom');
+      },
+    });
+    expect(await runAnthropicKeyExtensions({ teamId: 't1' })).toBeNull();
   });
 });

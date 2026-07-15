@@ -80,6 +80,19 @@ export interface AgentDeliveryResult {
   footerLinks?: AgentDeliveryLink[];
 }
 
+export interface AgentKeyResolutionContext {
+  teamId: string;
+}
+
+/**
+ * @public Part of the extension seam contract consumed by hyperdx-ee; no
+ * in-repo importer by design. See the EE-extensibility notes in AGENTS.md.
+ */
+export interface AgentKeyResolutionResult {
+  // The Anthropic API key to use for this team's managed-agent calls.
+  apiKey?: string;
+}
+
 export interface AgentRunExtension {
   // Stable identifier, used as a telemetry attribute.
   name: string;
@@ -97,6 +110,17 @@ export interface AgentRunExtension {
   onBeforeDelivery?(
     ctx: AgentDeliveryContext,
   ): Promise<AgentDeliveryResult | void>;
+  // Resolves the team's Anthropic API key. OSS resolves the key from env
+  // (see getTeamAnthropicKey); a downstream distribution can register this to
+  // provide a per-team key instead (last registered wins). Fail-open: a
+  // throwing resolver contributes nothing and the caller falls back to the env
+  // key — so a transient failure resolving a per-team key degrades to the
+  // operator's global key rather than failing closed. Implement the resolver
+  // robustly (return void to opt out, never throw for an expected "no key")
+  // if per-team key isolation must be strict.
+  resolveAnthropicKey?(
+    ctx: AgentKeyResolutionContext,
+  ): Promise<AgentKeyResolutionResult | void>;
 }
 
 const extensions: AgentRunExtension[] = [];
@@ -121,7 +145,11 @@ export const resetAgentRunExtensionsForTests = (): void => {
 // wide event; a throwing extension contributes nothing rather than failing
 // the core flow.
 const runHook = async <TCtx, TResult>(
-  hook: 'on_provision_agent' | 'on_session_start' | 'on_before_delivery',
+  hook:
+    | 'on_provision_agent'
+    | 'on_session_start'
+    | 'on_before_delivery'
+    | 'on_resolve_anthropic_key',
   pick: (
     ext: AgentRunExtension,
   ) => ((ctx: TCtx) => Promise<TResult | void>) | undefined,
@@ -232,4 +260,21 @@ export const runDeliveryExtensions = async (
     ctx,
   );
   return { footerLinks: results.flatMap(r => r.footerLinks ?? []) };
+};
+
+// Resolves the team's Anthropic API key via extensions: the last extension to
+// return a non-empty key wins. With none registered (the OSS default) this
+// returns null and the caller falls back to the env-configured key.
+export const runAnthropicKeyExtensions = async (
+  ctx: AgentKeyResolutionContext,
+): Promise<string | null> => {
+  const results = await runHook(
+    'on_resolve_anthropic_key',
+    ext => ext.resolveAnthropicKey,
+    ctx,
+  );
+  const keys = results
+    .map(r => r.apiKey)
+    .filter((k): k is string => typeof k === 'string' && k.length > 0);
+  return keys.at(-1) ?? null;
 };

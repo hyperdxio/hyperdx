@@ -8,15 +8,14 @@ import { serializeError } from 'serialize-error';
 import * as config from '@/config';
 import type { ObjectId } from '@/models';
 import AgentRun, { AgentRunDocument } from '@/models/agentRun';
-import AnthropicIntegration from '@/models/anthropicIntegration';
 import ManagedAgent from '@/models/managedAgent';
 import type { AgentDeliveryLink } from '@/services/agentRunExtensions';
 import {
+  runAnthropicKeyExtensions,
   runDeliveryExtensions,
   runProvisionExtensions,
   runSessionStartExtensions,
 } from '@/services/agentRunExtensions';
-import { decrypt } from '@/utils/encryption';
 import { setBusinessContext } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
@@ -65,15 +64,31 @@ const anthropicRequest = async (
   return text ? JSON.parse(text) : {};
 };
 
-// Returns the decrypted Anthropic key for a team, or null if none is set.
+// Resolves an Anthropic API key from the environment for managed-agent calls.
+// Managed agents are Anthropic-specific, so AI_API_KEY is trusted only when the
+// AI provider is EXPLICITLY Anthropic; a legacy setup (no AI_PROVIDER) uses only
+// the unambiguous ANTHROPIC_API_KEY. This guarantees a non-Anthropic AI_API_KEY
+// (e.g. an OpenAI key, or an ambiguous key in a misconfigured legacy setup) is
+// never sent to api.anthropic.com.
+const resolveEnvAnthropicKey = (): string | null => {
+  const key =
+    (config.AI_PROVIDER === config.AIProvider.Anthropic
+      ? config.AI_API_KEY
+      : '') || config.ANTHROPIC_API_KEY;
+  return key || null;
+};
+
+// Resolves the Anthropic API key for a team, or null if none is configured.
+// OSS resolves it from the environment; a downstream distribution can register
+// a `resolveAnthropicKey` extension to supply a per-team key, which takes
+// precedence (see services/agentRunExtensions.ts).
 export const getTeamAnthropicKey = async (
   teamId: ObjectId,
 ): Promise<string | null> => {
-  const integration = await AnthropicIntegration.findOne({
-    team: teamId,
-  }).select('+encryptedApiKey');
-  if (!integration) return null;
-  return decrypt(integration.encryptedApiKey);
+  const fromExtension = await runAnthropicKeyExtensions({
+    teamId: teamId.toString(),
+  });
+  return fromExtension ?? resolveEnvAnthropicKey();
 };
 
 // Confirms the agent will actually be able to reach the ClickStack MCP server

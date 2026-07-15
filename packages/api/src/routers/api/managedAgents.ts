@@ -5,17 +5,13 @@ import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
 import * as config from '@/config';
-import AnthropicIntegration from '@/models/anthropicIntegration';
 import ManagedAgent from '@/models/managedAgent';
 import {
   AnthropicApiError,
   deleteAnthropicAgent,
   provisionClickStackAgent,
 } from '@/services/anthropicAgents';
-import { encrypt } from '@/utils/encryption';
 import logger from '@/utils/logger';
-
-const REDACTED_VALUE = '****';
 
 const router = express.Router();
 
@@ -27,73 +23,11 @@ router.use((req, res, next) => {
   next();
 });
 
-// ----------------------- Anthropic API key ---------------------------
-// Stored encrypted at rest; never returned. Responses expose only existence
-// and a 4-char hint. Mirrors the webhook secret mask/preserve pattern.
-
-router.get('/anthropic-key', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    if (teamId == null) return res.sendStatus(403);
-    const integration = await AnthropicIntegration.findOne({ team: teamId });
-    res.json({
-      exists: integration != null,
-      keyHint: integration?.keyHint ?? null,
-    });
-  } catch (e) {
-    next(e);
-  }
-});
-
-router.put(
-  '/anthropic-key',
-  validateRequest({ body: z.object({ apiKey: z.string().min(1) }) }),
-  async (req, res, next) => {
-    try {
-      const teamId = req.user?.team;
-      const userId = req.user?._id;
-      if (teamId == null) return res.sendStatus(403);
-      const { apiKey } = req.body;
-
-      // Sentinel means "keep the existing key" (e.g. user saved the form
-      // without retyping the masked value).
-      if (apiKey === REDACTED_VALUE) {
-        const existing = await AnthropicIntegration.findOne({ team: teamId });
-        if (!existing) {
-          return res
-            .status(400)
-            .json({ message: 'No existing API key to preserve' });
-        }
-        return res.json({ exists: true, keyHint: existing.keyHint });
-      }
-
-      const integration = await AnthropicIntegration.findOneAndUpdate(
-        { team: teamId },
-        {
-          team: teamId,
-          encryptedApiKey: encrypt(apiKey),
-          keyHint: apiKey.slice(-4),
-          createdBy: userId,
-        },
-        { upsert: true, new: true },
-      );
-      res.json({ exists: true, keyHint: integration.keyHint });
-    } catch (e) {
-      next(e);
-    }
-  },
-);
-
-router.delete('/anthropic-key', async (req, res, next) => {
-  try {
-    const teamId = req.user?.team;
-    if (teamId == null) return res.sendStatus(403);
-    await AnthropicIntegration.deleteOne({ team: teamId });
-    res.json({ message: 'Deleted' });
-  } catch (e) {
-    next(e);
-  }
-});
+// The Anthropic API key is resolved from the environment in the open-source
+// distribution (see getTeamAnthropicKey / resolveEnvAnthropicKey). Per-team,
+// UI-managed key storage is a downstream (hyperdx-ee) concern registered via
+// the `resolveAnthropicKey` extension seam — it is intentionally not part of
+// the OSS surface.
 
 // ----------------------- Managed agents ------------------------------
 

@@ -2,7 +2,6 @@ import mongoose from 'mongoose';
 
 import { getServer } from '@/fixtures';
 import AgentRun from '@/models/agentRun';
-import AnthropicIntegration from '@/models/anthropicIntegration';
 import ManagedAgent from '@/models/managedAgent';
 import {
   registerAgentRunExtension,
@@ -20,7 +19,6 @@ import {
   startAgentSession,
   verifyMcpReachable,
 } from '@/services/anthropicAgents';
-import { encrypt } from '@/utils/encryption';
 import logger from '@/utils/logger';
 import * as slack from '@/utils/slack';
 
@@ -29,6 +27,15 @@ const SLACK_URL = 'https://hooks.slack.com/services/T0/B0/XXX';
 const KEY = 'b'.repeat(64);
 // Anthropic requires an HTTPS MCP URL; provisioning resolves it from this env.
 const MCP_URL = 'https://mcp.example.test/api/mcp';
+
+// The team's Anthropic key is resolved via the resolveAnthropicKey extension
+// seam (OSS falls back to env, which is unset in tests). Registering this
+// resolver is how EE injects a per-team key; afterEach resets the registry.
+const registerTestAnthropicKey = (apiKey = 'sk-ant-key') =>
+  registerAgentRunExtension({
+    name: 'test-key',
+    resolveAnthropicKey: async () => ({ apiKey }),
+  });
 
 // Sequenced Anthropic responses keyed by URL substring.
 const mockAnthropic = () =>
@@ -67,19 +74,15 @@ describe('anthropicAgents service', () => {
     await server.stop();
   });
 
-  it('getTeamAnthropicKey returns null when no integration exists', async () => {
+  it('getTeamAnthropicKey returns null when no key is configured (no env, no resolver)', async () => {
     const teamId = new mongoose.Types.ObjectId();
     expect(await getTeamAnthropicKey(teamId as any)).toBeNull();
   });
 
-  it('getTeamAnthropicKey decrypts the stored key', async () => {
+  it('getTeamAnthropicKey returns the key from a registered resolver extension', async () => {
+    registerTestAnthropicKey('sk-ant-resolved');
     const teamId = new mongoose.Types.ObjectId();
-    await AnthropicIntegration.create({
-      team: teamId,
-      encryptedApiKey: encrypt('sk-ant-stored'),
-      keyHint: 'ored',
-    });
-    expect(await getTeamAnthropicKey(teamId as any)).toBe('sk-ant-stored');
+    expect(await getTeamAnthropicKey(teamId as any)).toBe('sk-ant-resolved');
   });
 
   it('registers no extensions by default (OSS ships an empty registration point)', async () => {
@@ -100,11 +103,7 @@ describe('anthropicAgents service', () => {
     fetchSpy = mockAnthropic();
     const teamId = new mongoose.Types.ObjectId();
     const userId = new mongoose.Types.ObjectId();
-    await AnthropicIntegration.create({
-      team: teamId,
-      encryptedApiKey: encrypt('sk-ant-key'),
-      keyHint: 'key0',
-    });
+    registerTestAnthropicKey();
 
     const agent = await provisionClickStackAgent({
       teamId: teamId as any,
@@ -171,11 +170,7 @@ describe('anthropicAgents service', () => {
     } as any);
     const teamId = new mongoose.Types.ObjectId();
     const userId = new mongoose.Types.ObjectId();
-    await AnthropicIntegration.create({
-      team: teamId,
-      encryptedApiKey: encrypt('sk-ant-bad'),
-      keyHint: 'bad0',
-    });
+    registerTestAnthropicKey('sk-ant-bad');
     await expect(
       provisionClickStackAgent({
         teamId: teamId as any,
@@ -190,11 +185,7 @@ describe('anthropicAgents service', () => {
   describe('deleteAnthropicAgent', () => {
     const seedKey = async () => {
       const teamId = new mongoose.Types.ObjectId();
-      await AnthropicIntegration.create({
-        team: teamId,
-        encryptedApiKey: encrypt('sk-ant-key'),
-        keyHint: 'key0',
-      });
+      registerTestAnthropicKey();
       return teamId;
     };
 
@@ -348,11 +339,7 @@ describe('anthropicAgents service', () => {
       .mockResolvedValue({ ok: false, status: 404 } as any);
     const teamId = new mongoose.Types.ObjectId();
     const userId = new mongoose.Types.ObjectId();
-    await AnthropicIntegration.create({
-      team: teamId,
-      encryptedApiKey: encrypt('sk-ant-key'),
-      keyHint: 'key0',
-    });
+    registerTestAnthropicKey();
 
     await expect(
       provisionClickStackAgent({
@@ -380,11 +367,7 @@ describe('anthropicAgents service', () => {
     const seedKeyForProvision = async () => {
       const teamId = new mongoose.Types.ObjectId();
       const userId = new mongoose.Types.ObjectId();
-      await AnthropicIntegration.create({
-        team: teamId,
-        encryptedApiKey: encrypt('sk-ant-key'),
-        keyHint: 'key0',
-      });
+      registerTestAnthropicKey();
       return { teamId, userId };
     };
 
@@ -429,11 +412,7 @@ describe('anthropicAgents service', () => {
   // something to work with.
   const seedAgent = async () => {
     const teamId = new mongoose.Types.ObjectId();
-    await AnthropicIntegration.create({
-      team: teamId,
-      encryptedApiKey: encrypt('sk-ant-key'),
-      keyHint: 'key0',
-    });
+    registerTestAnthropicKey();
     await ManagedAgent.create({
       team: teamId,
       name: 'prod SRE',
@@ -611,11 +590,7 @@ describe('anthropicAgents service', () => {
 
     const seedRun = async (over = {}) => {
       const teamId = new mongoose.Types.ObjectId();
-      await AnthropicIntegration.create({
-        team: teamId,
-        encryptedApiKey: encrypt('sk-ant-key'),
-        keyHint: 'key0',
-      });
+      registerTestAnthropicKey();
       const agent = await ManagedAgent.create({
         team: teamId,
         name: 'a',
