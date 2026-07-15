@@ -1,20 +1,37 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Field,
   parseKeyPath,
   TableConnection,
+  tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
+import { useFetchFacets } from '@/components/DBSearchPageFilters/hooks';
 import { NOW } from '@/config';
-import {
-  deduplicate2dArray,
-  useGetKeyValues,
-  useMultipleAllFields,
-} from '@/hooks/useMetadata';
+import { deduplicate2dArray } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
-import { mergePath, toArray, useDebounce } from '@/utils';
+import { mergePath, useDebounce } from '@/utils';
+
+function chartConfigFromTableConnection(
+  tc: TableConnection,
+  timestampValueExpression: string,
+  dateRange: [Date, Date],
+): BuilderChartConfigWithDateRange {
+  return {
+    from: {
+      tableName: tc.tableName,
+      databaseName: tc.databaseName,
+    },
+    connection: tc.connectionId,
+    source: undefined,
+    select: '',
+    where: '',
+    timestampValueExpression,
+    dateRange,
+  };
+}
 
 // Derive top-level Map column names from a fields list. Matches on the
 // canonical `JSDataType.Map` rather than the raw ClickHouse type string so
@@ -162,7 +179,7 @@ export function useAutoCompleteOptions(
   formatter: ILanguageFormatter,
   _value: string,
   {
-    tableConnection,
+    tableConnection: _tableConnection,
     additionalSuggestions,
     sourceId,
     dateRange,
@@ -177,36 +194,40 @@ export function useAutoCompleteOptions(
 ) {
   const { data: source } = useSource({ id: sourceId });
   const value = useDebounce(_value, 300);
-  const tcs = useMemo(() => toArray(tableConnection), [tableConnection]);
 
   const effectiveDateRange: [Date, Date] = useMemo(
     () => dateRange ?? [new Date(NOW - 24 * 60 * 60 * 1000), new Date(NOW)],
     [dateRange],
   );
+  const tableConnection = _tableConnection
+    ? Array.isArray(_tableConnection)
+      ? _tableConnection[0]
+      : _tableConnection
+    : undefined;
 
-  // Fetch fields, using rollup for map key discovery when available
+  // Build chart config and keys for fetching values from rollup tables
+  const chartConfig = useMemo<BuilderChartConfigWithDateRange>(
+    () =>
+      chartConfigFromTableConnection(
+        tableConnection ? tableConnection : tcFromSource(source),
+        source?.timestampValueExpression ?? '',
+        effectiveDateRange,
+      ),
+    [effectiveDateRange, source, tableConnection],
+  );
 
-  // AVK: TODO use useFetchFacets here instead of useMultipleAllFields and useGetKeyValues
-  // const {
-  //   data: fetchFacetsData,
-  //   isLoading: isFacetsLoading,
-  //   isFetching: isFacetsFetching,
-  //   error,
-  //   loadMoreFacetsForKey,
-  //   loadMoreLoadingKeys,
-  //   extraFacetKeys,
-  // } = useFetchFacets({
-  //   chartConfig,
-  //   sourceId: sourceId ?? null,
-  //   dateRange,
-  //   mode: showAllValues ? 'all' : 'exact',
-  //   filterState,
-  //   showMoreFields,
-  // });
-  const { data: fields } = useMultipleAllFields(tcs, {
+  const {
+    data: fetchFacetsData,
+    isLoading: isFacetsLoading,
+    loadMoreFacetsForKey,
+  } = useFetchFacets({
+    chartConfig,
+    sourceId: sourceId ?? null,
     dateRange: effectiveDateRange,
-    timestampValueExpression: source?.timestampValueExpression,
+    mode: 'all',
+    deferLoadingKeyValues: true,
   });
+  const fields = fetchFacetsData.keys;
 
   const { fieldCompleteOptions, fieldCompleteMap } = useMemo(() => {
     const _columns = (fields ?? []).filter(c => c.jsType !== null);
@@ -252,25 +273,6 @@ export function useAutoCompleteOptions(
     [fieldCompleteMap, fieldNameAtCursor],
   );
 
-  // Build chart config and keys for fetching values from rollup tables
-  const chartConfig = useMemo<BuilderChartConfigWithDateRange | undefined>(
-    () =>
-      tcs.length > 0
-        ? {
-            connection: tcs[0].connectionId,
-            from: {
-              databaseName: tcs[0].databaseName,
-              tableName: tcs[0].tableName,
-            },
-            timestampValueExpression: source?.timestampValueExpression ?? '',
-            select: '',
-            where: '',
-            dateRange: effectiveDateRange,
-          }
-        : undefined,
-    [tcs, effectiveDateRange, source?.timestampValueExpression],
-  );
-
   // Map columns from the field list, so a path like `['LogAttributes', '1']`
   // on a Map(String, ...) renders as `LogAttributes['1']` instead of the
   // illegal array `LogAttributes[2]`. HDX-4369.
@@ -279,28 +281,20 @@ export function useAutoCompleteOptions(
     [fields],
   );
 
-  const searchKeys = useMemo(
-    () => (searchField ? [mergePath(searchField.path, [], mapColumns)] : []),
-    [searchField, mapColumns],
-  );
-
-  const metadataMVs = tcs[0]?.metadataMVs;
-  const mode = metadataMVs ? 'all' : 'exact';
-
-  const { data: keyValues, isFetching: isLoadingValues } = useGetKeyValues({
-    mode,
-    chartConfig,
-    keys: searchKeys,
-    metadataMVs,
-  });
+  useEffect(() => {
+    if (searchField && !searchField.type.startsWith('Map')) {
+      loadMoreFacetsForKey(mergePath(searchField.path, [], mapColumns));
+    }
+  }, [searchField, loadMoreFacetsForKey, mapColumns]);
 
   // Build key-value pair suggestions
   const keyValCompleteOptions = useMemo<
     { value: string; label: string }[]
   >(() => {
-    if (!keyValues || keyValues.length === 0) return [];
+    if (!fetchFacetsData.keyValues || fetchFacetsData.keyValues.length === 0)
+      return [];
 
-    return keyValues.flatMap(kv => {
+    return fetchFacetsData.keyValues.flatMap(kv => {
       const fieldName = parseKeyPath(kv.key).join('.');
       return kv.value.flatMap((v: string | Record<string, string>) => {
         if (typeof v === 'object' && v !== null) {
@@ -317,12 +311,12 @@ export function useAutoCompleteOptions(
         return { value: formatted, label: formatted };
       });
     });
-  }, [keyValues, formatter]);
+  }, [fetchFacetsData.keyValues, formatter]);
 
   // Combine all autocomplete options
   const options = useMemo(() => {
     return deduplicate2dArray([fieldCompleteOptions, keyValCompleteOptions]);
   }, [fieldCompleteOptions, keyValCompleteOptions]);
 
-  return { options, isLoadingValues, tokenInfo };
+  return { options, isLoadingValues: isFacetsLoading, tokenInfo };
 }

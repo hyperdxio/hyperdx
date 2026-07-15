@@ -36,6 +36,7 @@ function useFacets({
   filterState,
   showMoreFields,
   enabled,
+  deferLoadingKeyValues,
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
@@ -44,11 +45,12 @@ function useFacets({
   filterState?: FilterState;
   showMoreFields?: boolean;
   enabled?: boolean;
+  deferLoadingKeyValues?: boolean;
 }) {
   const { data: source } = useSource({
     id: sourceId,
   });
-  const tableConnection = tcFromSource(source);
+  const tableConnection = useMemo(() => tcFromSource(source), [source]);
   const { data: columns, isLoading: isColumnsLoading } =
     useColumns(tableConnection);
   const dateTimeColumns = useDateTimeColumns(columns);
@@ -152,7 +154,7 @@ function useFacets({
       keys: escapedKeysToFetch,
       mode,
     },
-    { enabled },
+    { enabled: enabled && !deferLoadingKeyValues },
   );
 
   // Map the (escaped) result keys back to the original UI keys.
@@ -173,30 +175,51 @@ function useFacets({
         const strippedFilterState: FilterState = { ...filterState };
         delete strippedFilterState[key];
         if (sqlKey !== key) delete strippedFilterState[sqlKey];
-        const newKeyVals = await metadata.getKeyValuesWithMVs({
-          chartConfig: {
-            ...chartConfig,
+        if (mode === 'exact') {
+          const newKeyVals = await metadata.getKeyValuesWithMVs({
+            chartConfig: {
+              ...chartConfig,
+              dateRange,
+              filters: filtersToQuery(
+                escapeFilterStateKeys(strippedFilterState, knownColumns),
+                { dateTimeColumns },
+              ),
+            },
+            keys: [sqlKey],
+            limit: LOAD_MORE_LOAD_LIMIT,
+            disableRowLimit: true,
+            source,
+          });
+          return {
+            key,
+            value: newKeyVals[0].value?.map(val => val.toString()) ?? [],
+          };
+        } else {
+          if (!source)
+            throw new Error('loadMoreFacetsForKey: source must be defined');
+          const newKeyVals = await metadata.getAllKeyValues({
+            databaseName: source.from.databaseName,
+            tableName: source.from.tableName,
+            connectionId: source.connection,
+            metadataMVs: tableConnection.metadataMVs,
+            keyExpressions: [sqlKey],
+            maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
             dateRange,
-            filters: filtersToQuery(
-              escapeFilterStateKeys(strippedFilterState, knownColumns),
-              { dateTimeColumns },
-            ),
-          },
-          keys: [sqlKey],
-          limit: LOAD_MORE_LOAD_LIMIT,
-          disableRowLimit: true,
-          source,
-        });
-        return {
-          key,
-          value: newKeyVals[0].value?.map(val => val.toString()) ?? [],
-        };
+            timestampValueExpression: source?.timestampValueExpression,
+          });
+          return {
+            key,
+            value: newKeyVals[0].value?.map(val => val.toString()) ?? [],
+          };
+        }
       } catch (error) {
         console.error('failed to fetch more keys', error);
       }
       return undefined;
     },
     [
+      tableConnection,
+      mode,
       metadata,
       chartConfig,
       dateRange,
@@ -223,6 +246,7 @@ export function useFetchFacets({
   mode,
   filterState,
   showMoreFields,
+  deferLoadingKeyValues,
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
@@ -230,6 +254,7 @@ export function useFetchFacets({
   mode: 'all' | 'exact';
   filterState?: FilterState;
   showMoreFields?: boolean;
+  deferLoadingKeyValues?: boolean;
 }) {
   // Exact pipeline: fetch values for discovered keys
   const facetsQuery = useFacets({
@@ -240,12 +265,12 @@ export function useFetchFacets({
     filterState,
     showMoreFields,
     enabled: true,
+    deferLoadingKeyValues,
   });
 
   const [extraFacets, setExtraFacets] = useState<Facet[] | null>(null);
   const facets = useMemo(() => {
-    const facets = facetsQuery.data.keyValues;
-    if (!facets) return undefined;
+    const facets = facetsQuery.data.keyValues ?? [];
     if (!extraFacets || extraFacets.length === 0) return facets;
     const seenFacets = new Set();
     const output: Facet[] = [];
