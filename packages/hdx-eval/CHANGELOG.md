@@ -1,5 +1,13 @@
 # @hyperdx/hdx-eval
 
+## 0.2.1
+
+### Patch Changes
+
+- 81e151c82: Add dashboard-build eval scenario with post-run artifact inspection
+- 64d0bbe5: Add optional scenario hooks for custom system prompts, tool permissions, judge preambles, and post-run artifact inspection
+- bb7ae21e8: Upgrade the TypeScript devDependency from 5.9 to 6.0 across all packages.
+
 ## 0.2.0
 
 ### Minor Changes

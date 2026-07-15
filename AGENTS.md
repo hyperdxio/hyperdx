@@ -92,8 +92,12 @@ before stopping.
    unit/integration tests
 7. **Observability**: This is an observability product - instrument new code as
    you write it. Every team-scoped operation must carry team/user context
-   (`setBusinessContext`), countable log events should also emit a metric, and
-   spans/metric attributes must stay low-cardinality. Use the shared helpers in
+   (`setBusinessContext`), and countable log events should also emit a metric.
+   For our own instrumentation we favor wide events — enrich the unit-of-work
+   span with rich, high-cardinality attributes and keep only span _names_ and
+   _metric_ attributes low-cardinality — while metrics stay first-class
+   (counters/histograms feed alerts and SLOs, and many deployments rely on
+   them). Use the shared helpers in
    `packages/api/src/utils/instrumentation.ts`. See
    [`agent_docs/observability.md`](agent_docs/observability.md).
 
