@@ -7,6 +7,7 @@ import { createEvalClient, defaultClickHouseUrl } from './clickhouse/client';
 import {
   dropScenarioTables,
   scenarioIsSeeded,
+  scenarioSlug,
   scenarioTables,
 } from './clickhouse/schema';
 import { buildBlindingEntries } from './grading/blind';
@@ -37,7 +38,11 @@ import { batchDirName } from './runs/path';
 import { writeRun } from './runs/store';
 import { listBatches, listRunsInBatch, readRun } from './runs/store';
 import { getScenario, SCENARIO_NAMES, SCENARIOS } from './scenarios';
-import { type SeedProgress, seedScenario } from './scenarios/seedScenario';
+import {
+  getTotalMetrics,
+  type SeedProgress,
+  seedScenario,
+} from './scenarios/seedScenario';
 
 if (!process.env.ANTHROPIC_API_KEY && process.env.AI_API_KEY) {
   process.env.ANTHROPIC_API_KEY = process.env.AI_API_KEY;
@@ -52,9 +57,16 @@ function formatCount(n: number): string {
 function logSeedProgress(prefix: string, startMs: number) {
   return (p: SeedProgress) => {
     const elapsed = ((Date.now() - startMs) / 1000).toFixed(0);
-    const total = p.tracesInserted + p.logsInserted;
+    const totalMetrics = getTotalMetrics(p.metricsInserted);
+    const total = p.tracesInserted + p.logsInserted + totalMetrics;
+
+    const totalRows = `${formatCount(total)} rows`;
+    const tracesRows = `${formatCount(p.tracesInserted)} traces`;
+    const logsRows = `${formatCount(p.logsInserted)} logs`;
+    const metricsRows = `${formatCount(totalMetrics)} metrics`;
+
     process.stdout.write(
-      `\r${prefix}${formatCount(total)} rows (${formatCount(p.tracesInserted)} traces, ${formatCount(p.logsInserted)} logs) · ${elapsed}s`,
+      `\r${prefix}${totalRows} (${tracesRows}, ${logsRows}, ${metricsRows}) · ${elapsed}s`,
     );
   };
 }
@@ -210,6 +222,15 @@ program
         console.log(
           `Inserted ${result.logsInserted} log rows    → default.${result.tables.logs}`,
         );
+        const totalMetrics = getTotalMetrics(result.metricsInserted);
+        if (totalMetrics > 0) {
+          const m = result.metricsInserted;
+          console.log(
+            `Inserted ${totalMetrics} metric rows → default.eval_${scenarioSlug(scenario.name)}_otel_metrics_* ` +
+              `(gauge ${m.gauge}, sum ${m.sum}, histogram ${m.histogram}, ` +
+              `exp-histogram ${m.exponentialHistogram}, summary ${m.summary})`,
+          );
+        }
         console.log(`Done in ${seedSecs}s`);
       } finally {
         await client.close();
@@ -595,8 +616,11 @@ program
           });
           const seedSecs = ((Date.now() - seedStart) / 1000).toFixed(1);
           process.stdout.write('\n');
+          const metricTotal = getTotalMetrics(r.metricsInserted);
+          const metricsPart =
+            metricTotal > 0 ? `, ${formatCount(metricTotal)} metrics` : '';
           console.log(
-            `Seeded ${scenario.name}: ${formatCount(r.tracesInserted)} traces, ${formatCount(r.logsInserted)} logs in ${seedSecs}s`,
+            `Seeded ${scenario.name}: ${formatCount(r.tracesInserted)} traces, ${formatCount(r.logsInserted)} logs${metricsPart} in ${seedSecs}s`,
           );
         } finally {
           await client.close();
