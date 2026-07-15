@@ -56,6 +56,9 @@ const ENRICHED_TEMPLATE_VARIABLES = [
   '{{sourceQuery}}',
   '{{teamId}}',
   '{{note}}',
+  // ISO-8601 variants of startTime/endTime (the raw defaults are Unix ms).
+  '{{startTimeISO}}',
+  '{{endTimeISO}}',
 ];
 const ALL_TEMPLATE_VARIABLES = [
   ...DEFAULT_GENERIC_WEBHOOK_BODY,
@@ -90,7 +93,7 @@ const CLAUDE_WEBHOOK_BODY = `{
     "source_query": "{{sourceQuery}}",
     "runbook": "{{note}}",
     "team_id": "{{teamId}}",
-    "time_range": { "start": "{{startTime}}", "end": "{{endTime}}" }
+    "time_range": { "start": "{{startTimeISO}}", "end": "{{endTimeISO}}" }
   }
 }`;
 
