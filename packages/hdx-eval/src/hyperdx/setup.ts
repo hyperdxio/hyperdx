@@ -1,5 +1,3 @@
-import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
-
 import { scenarioTables } from '@/clickhouse/schema';
 import { QUERY_TIMEOUT_SECONDS } from '@/harness/mcpConfig';
 import type { McpDefinition } from '@/harness/types';
@@ -282,7 +280,7 @@ function buildMetricSourceBody(
       histogram: metricTables.histogram,
       'exponential histogram': metricTables.exponentialHistogram,
       summary: metricTables.summary,
-    } satisfies Record<MetricsDataType, string>,
+    },
     logSourceId,
     querySettings: EVAL_QUERY_SETTINGS,
   };
