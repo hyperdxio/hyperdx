@@ -266,6 +266,11 @@ export function WebhookForm({
   "status": "{{#if (eq state "${AlertState.ALERT}")}}firing{{else}}resolved{{/if}}",
   "source_url": "{{link}}"
 }`;
+        } else if (service === WebhookService.Claude) {
+          // Persist the same default the test path uses, so an unedited Claude
+          // webhook is saved with a real kickoff template rather than an empty
+          // body (which would fall back to the built-in payload at fire time).
+          defaultBody = CLAUDE_WEBHOOK_BODY;
         }
       }
 
