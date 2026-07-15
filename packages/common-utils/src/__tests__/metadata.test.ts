@@ -1072,6 +1072,40 @@ describe('Metadata', () => {
       expect(configArg.select).toContain('groupUniqArray(');
       expect(configArg.select).toContain('param0');
     });
+
+    // Guards against HTTP 431 from too many URL-encoded query_params. If the
+    // internal chunk size ever grows past 25, or someone removes the chunking,
+    // this test flags it before the ClickHouse HTTP request goes over the wire.
+    it('splits keyExpressions into multiple ClickHouse queries when count exceeds the internal chunk size', async () => {
+      setupDefaultLogsSchema();
+
+      const keyExpressions = Array.from(
+        { length: 30 },
+        (_, i) => `LogAttributes['k${i}']`,
+      );
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions,
+      });
+
+      const mapTextIndexCalls = (
+        mockClickhouseClient.query as jest.Mock
+      ).mock.calls.filter(
+        (c: any[]) =>
+          typeof c[0].query === 'string' &&
+          c[0].query.includes('startsWith(token,'),
+      );
+
+      expect(mapTextIndexCalls).toHaveLength(2);
+
+      const allParamValues = mapTextIndexCalls.flatMap((c: any[]) =>
+        Object.values(c[0].query_params ?? {}),
+      );
+      for (let i = 0; i < 30; i++) {
+        expect(allParamValues).toContain(`k${i}=`);
+      }
+    });
   });
 
   describe('getValuesDistribution', () => {

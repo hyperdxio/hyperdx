@@ -1,5 +1,5 @@
 import type { ClickHouseSettings } from '@clickhouse/client-common';
-import { omit, pick } from 'lodash';
+import { chunk, omit, pick } from 'lodash';
 
 import {
   BaseClickhouseClient,
@@ -46,6 +46,12 @@ import {
 // Between 1e6 - 5e6 is a good range.
 export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 3e6;
 const DEFAULT_MAX_KEYS = 1000;
+
+// Cap keys per dispatched query: each key becomes one or more URL-encoded
+// query_params on the ClickHouse HTTP call, and a few dozen is enough to
+// exceed proxy header limits (HTTP 431). Recursive chunks reuse the cached
+// strategy lookup, so the only cost is extra parallel HTTP calls.
+const GET_ALL_KEY_VALUES_CHUNK_SIZE = 40;
 
 type KeyFetchingStrategies = {
   mapTextIndexLookup: TextIndexInfo[];
@@ -2082,6 +2088,25 @@ export class Metadata {
     signal?: AbortSignal;
   }): Promise<KeyValues[]> {
     if (keyExpressions.length === 0) return [];
+
+    if (keyExpressions.length > GET_ALL_KEY_VALUES_CHUNK_SIZE) {
+      const batched = await Promise.all(
+        chunk(keyExpressions, GET_ALL_KEY_VALUES_CHUNK_SIZE).map(batch =>
+          this.getAllKeyValues({
+            databaseName,
+            tableName,
+            keyExpressions: batch,
+            maxValuesPerKey,
+            connectionId,
+            metadataMVs,
+            dateRange,
+            timestampValueExpression,
+            signal,
+          }),
+        ),
+      );
+      return batched.flat();
+    }
 
     // Parse all keys into (rollupColumn, rollupKey) pairs
     const parsed = keyExpressions.map(keyExpr => {
