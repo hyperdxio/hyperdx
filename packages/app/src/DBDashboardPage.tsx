@@ -24,6 +24,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import RGL, { WidthProvider } from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
@@ -684,6 +685,30 @@ const Tile = forwardRef(
       );
     }, [filters, queriedConfig, source]);
 
+    const replaySearchUrl = useMemo(() => {
+      if (!queriedConfig || !source || !isBuilderChartConfig(queriedConfig)) {
+        return null;
+      }
+
+      // Metric charts drill into their associated log source. Do not call the
+      // URL builder when that association is missing because it would surface
+      // a notification while rendering the dashboard.
+      if (
+        isMetricChartConfig(queriedConfig) &&
+        ((source.kind !== SourceKind.Metric &&
+          source.kind !== SourceKind.Trace) ||
+          !source.logSourceId)
+      ) {
+        return null;
+      }
+
+      return buildEventsSearchUrl({
+        source,
+        config: queriedConfig,
+        dateRange,
+      });
+    }, [dateRange, queriedConfig, source]);
+
     const hoverToolbar = useMemo(() => {
       const isRawSql = isRawSqlSavedChartConfig(chart.config);
       const isPromQL = isPromqlSavedChartConfig(chart.config);
@@ -702,6 +727,25 @@ const Tile = forwardRef(
           key="hover-toolbar"
           my={2} // Margin to ensure that the Alert Indicator doesn't clip on non-Line/Bar display types
         >
+          {replaySearchUrl && (
+            <Tooltip label="Replay search" position="top" withArrow>
+              <ActionIcon
+                component={Link}
+                href={replaySearchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                prefetch={false}
+                data-testid={`tile-replay-search-button-${chart.id}`}
+                aria-label="Replay search (opens in new tab)"
+                variant="subtle"
+                size="sm"
+                mr={4}
+              >
+                <IconSearch size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+
           {displayTypeSupportsAlerts &&
             (alert ? (
               // Existing alert: bell with a colored status dot indicator.
@@ -851,6 +895,7 @@ const Tile = forwardRef(
       alertIndicatorColor,
       alertTooltip,
       moveTargets,
+      replaySearchUrl,
       chart.config,
       chart.id,
       chart.containerId,
@@ -877,6 +922,17 @@ const Tile = forwardRef(
         onMoveToGroup && moveTargets && moveTargets.length > 0;
       return (
         <>
+          {replaySearchUrl && (
+            <Menu.Item
+              component={Link}
+              href={replaySearchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              leftSection={<IconSearch size={14} />}
+            >
+              Replay search
+            </Menu.Item>
+          )}
           {showAlerts && (
             <>
               <Menu.Item
@@ -982,6 +1038,7 @@ const Tile = forwardRef(
       alert,
       alertTooltip,
       moveTargets,
+      replaySearchUrl,
       chart.config,
       chart.containerId,
       chart.tabId,
