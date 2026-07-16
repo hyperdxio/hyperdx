@@ -1,4 +1,13 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  isValidElement,
+  type ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import cx from 'classnames';
 import Fuse from 'fuse.js';
 import { Loader, Popover, Textarea, UnstyledButton } from '@mantine/core';
@@ -9,6 +18,20 @@ import { useQueryHistory } from '@/utils';
 import InputLanguageSwitch from './InputLanguageSwitch';
 
 import styles from './AutocompleteInput.module.scss';
+
+function hasRenderableContent(node: ReactNode): boolean {
+  if (node == null || typeof node === 'boolean') return false;
+  if (typeof node === 'string') return node.trim().length > 0;
+  if (typeof node === 'number') return true;
+  if (Array.isArray(node)) return node.some(hasRenderableContent);
+  if (
+    isValidElement<{ children?: ReactNode }>(node) &&
+    node.type === Fragment
+  ) {
+    return hasRenderableContent(node.props.children);
+  }
+  return true;
+}
 
 export default function AutocompleteInput({
   inputRef,
@@ -155,6 +178,7 @@ export default function AutocompleteInput({
 
   // Height including the 2px border from .textarea (1px top + 1px bottom)
   const baseHeight = size === 'xs' ? 30 : size === 'lg' ? 44 : 38;
+  const hasBelowSuggestions = hasRenderableContent(belowSuggestions);
 
   return (
     <div
@@ -292,87 +316,75 @@ export default function AutocompleteInput({
             }
           />
         </Popover.Target>
-        <Popover.Dropdown
-          className={styles.dropdown}
-          style={{ pointerEvents: 'none' }}
-        >
+        <Popover.Dropdown className={styles.dropdown}>
           {aboveSuggestions != null && (
-            <div
-              className={styles.aboveSuggestions}
-              style={{ pointerEvents: 'none' }}
-            >
-              {aboveSuggestions}
-            </div>
+            <div className={styles.aboveSuggestions}>{aboveSuggestions}</div>
           )}
-          <div style={{ pointerEvents: 'auto' }}>
-            {suggestedProperties.length > 0 && (
-              <div className={styles.suggestionsSection}>
-                <div className={styles.suggestionsHeaderRow}>
-                  <div className={styles.suggestionsHeader}>
-                    {suggestionsHeader}
-                    {isLoadingValues && (
-                      <Loader size={12} ml={6} color="var(--color-text)" />
-                    )}
-                  </div>
-                  {suggestedProperties.length > suggestionsLimit && (
-                    <div className={styles.suggestionsLimit}>
-                      (Showing Top {suggestionsLimit})
-                    </div>
+          {suggestedProperties.length > 0 && (
+            <div className={styles.suggestionsSection}>
+              <div className={styles.suggestionsHeaderRow}>
+                <div className={styles.suggestionsHeader}>
+                  {suggestionsHeader}
+                  {isLoadingValues && (
+                    <Loader size={12} ml={6} color="var(--color-text)" />
                   )}
                 </div>
-                {suggestedProperties
-                  .slice(0, suggestionsLimit)
-                  .map(({ value, label }, i) => (
-                    <div
-                      className={cx(
-                        styles.suggestionItem,
-                        selectedAutocompleteIndex === i && styles.selected,
-                      )}
-                      role="button"
-                      key={value}
-                      onMouseOver={() => {
-                        setSelectedAutocompleteIndex(i);
-                      }}
-                      onClick={() => {
-                        onAcceptSuggestion(value);
-                      }}
-                    >
-                      <span className={styles.suggestionLabel}>{label}</span>
-                    </div>
-                  ))}
+                {suggestedProperties.length > suggestionsLimit && (
+                  <div className={styles.suggestionsLimit}>
+                    (Showing Top {suggestionsLimit})
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          {belowSuggestions != null && (
+              {suggestedProperties
+                .slice(0, suggestionsLimit)
+                .map(({ value, label }, i) => (
+                  <div
+                    className={cx(
+                      styles.suggestionItem,
+                      selectedAutocompleteIndex === i && styles.selected,
+                    )}
+                    role="button"
+                    key={value}
+                    onMouseOver={() => {
+                      setSelectedAutocompleteIndex(i);
+                    }}
+                    onClick={() => {
+                      onAcceptSuggestion(value);
+                    }}
+                  >
+                    <span className={styles.suggestionLabel}>{label}</span>
+                  </div>
+                ))}
+            </div>
+          )}
+          {hasBelowSuggestions && (
             <div
               className={styles.belowSuggestions}
-              style={{ pointerEvents: 'auto' }}
+              data-testid="autocomplete-below-suggestions"
             >
               {belowSuggestions}
             </div>
           )}
-          <div style={{ pointerEvents: 'auto' }}>
-            {showSearchHistory && (
-              <div className={styles.historySection}>
-                <div className={styles.historyTitle}>Search History:</div>
-                {queryHistoryList.map(({ value, label }, i) => {
-                  return (
-                    <UnstyledButton
-                      className={cx(
-                        styles.historyItem,
-                        selectedQueryHistoryIndex === i && styles.selected,
-                      )}
-                      key={value}
-                      onMouseOver={() => setSelectedQueryHistoryIndex(i)}
-                      onClick={() => onSelectSearchHistory(value)}
-                    >
-                      <span className={styles.historyItemLabel}>{label}</span>
-                    </UnstyledButton>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          {showSearchHistory && (
+            <div className={styles.historySection}>
+              <div className={styles.historyTitle}>Search History:</div>
+              {queryHistoryList.map(({ value, label }, i) => {
+                return (
+                  <UnstyledButton
+                    className={cx(
+                      styles.historyItem,
+                      selectedQueryHistoryIndex === i && styles.selected,
+                    )}
+                    key={value}
+                    onMouseOver={() => setSelectedQueryHistoryIndex(i)}
+                    onClick={() => onSelectSearchHistory(value)}
+                  >
+                    <span className={styles.historyItemLabel}>{label}</span>
+                  </UnstyledButton>
+                );
+              })}
+            </div>
+          )}
         </Popover.Dropdown>
       </Popover>
     </div>
