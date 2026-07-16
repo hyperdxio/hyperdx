@@ -16,10 +16,8 @@ import {
 import { renderChartConfig, timeFilterExpr } from '@/core/renderChartConfig';
 import {
   buildTextIndexInfoLookup,
-  KvIndexInfo,
   skipIndexMatches,
   TextIndexInfo,
-  TextIndexInfoLookup,
 } from '@/queryParser';
 import type {
   BuilderChartConfig,
@@ -52,11 +50,8 @@ import {
 export const DEFAULT_METADATA_MAX_ROWS_TO_READ = 3e6;
 const DEFAULT_MAX_KEYS = 1000;
 
-// Cap keys per dispatched query: each key becomes one or more URL-encoded
-// query_params on the ClickHouse HTTP call, and a few dozen is enough to
-// exceed proxy header limits (HTTP 431). Recursive chunks reuse the cached
-// strategy lookup, so the only cost is extra parallel HTTP calls.
-const GET_ALL_KEY_VALUES_CHUNK_SIZE = 40;
+// Cap keys per dispatched query: each key is another operation for the db to fetch, and simply fetching all keys at once can be too much for the db to handle.
+export const GET_ALL_KEY_VALUES_CHUNK_SIZE = 100;
 
 type KeyFetchingStrategies = {
   mapTextIndexLookup: TextIndexInfo[];
@@ -1348,12 +1343,13 @@ export class Metadata {
           .then(res => res.json<BatchRow>())
           .then(d =>
             d.data.map(row => {
+              const value = row.Values.filter(v => v);
               if (row.ColumnIdentifier === 'NativeColumn') {
-                return { key: row.Key, value: row.Values };
+                return { key: row.Key, value };
               }
               return {
                 key: `${row.ColumnIdentifier}['${row.Key}']`,
-                value: row.Values,
+                value,
               };
             }),
           );
@@ -2148,7 +2144,7 @@ export class Metadata {
     databaseName,
     tableName,
     keyExpressions,
-    maxValuesPerKey = 1000,
+    maxValuesPerKey = 20,
     connectionId,
     metadataMVs,
     dateRange,

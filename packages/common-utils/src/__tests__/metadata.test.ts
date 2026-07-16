@@ -1,5 +1,10 @@
 import { ClickhouseClient } from '@/clickhouse/node';
-import { Metadata, MetadataCache, parseKeyPath } from '@/core/metadata';
+import {
+  GET_ALL_KEY_VALUES_CHUNK_SIZE,
+  Metadata,
+  MetadataCache,
+  parseKeyPath,
+} from '@/core/metadata';
 import * as renderChartConfigModule from '@/core/renderChartConfig';
 import { timeFilterExpr } from '@/core/renderChartConfig';
 import { isBuilderChartConfig } from '@/guards';
@@ -1101,15 +1106,15 @@ describe('Metadata', () => {
     });
 
     // Guards against HTTP 431 from too many URL-encoded query_params. Passes
-    // more keys than the private GET_ALL_KEY_VALUES_CHUNK_SIZE (currently 40)
-    // so the recursion has to fire at least two chunks; if someone removes
-    // the chunking this test flags it before the ClickHouse HTTP request
-    // goes over the wire. Bump the key count if that constant ever exceeds 49.
+    // more keys than GET_ALL_KEY_VALUES_CHUNK_SIZE so the recursion has to
+    // fire at least two chunks; if someone removes the chunking this test
+    // flags it before the ClickHouse HTTP request goes over the wire.
     it('splits keyExpressions into multiple ClickHouse queries when count exceeds the internal chunk size', async () => {
       setupDefaultLogsSchema();
 
+      const keyCount = GET_ALL_KEY_VALUES_CHUNK_SIZE + 10;
       const keyExpressions = Array.from(
-        { length: 50 },
+        { length: keyCount },
         (_, i) => `LogAttributes['k${i}']`,
       );
 
@@ -1131,7 +1136,7 @@ describe('Metadata', () => {
       const allParamValues = mapTextIndexCalls.flatMap((c: any[]) =>
         Object.values(c[0].query_params ?? {}),
       );
-      for (let i = 0; i < 50; i++) {
+      for (let i = 0; i < keyCount; i++) {
         expect(allParamValues).toContain(`k${i}=`);
       }
     });
