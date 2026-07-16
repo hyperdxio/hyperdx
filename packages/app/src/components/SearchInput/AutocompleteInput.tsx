@@ -292,11 +292,19 @@ export default function AutocompleteInput({
             }
           />
         </Popover.Target>
-        <Popover.Dropdown className={styles.dropdown}>
+        <Popover.Dropdown
+          className={styles.dropdown}
+          style={{ pointerEvents: 'none' }}
+        >
           {aboveSuggestions != null && (
-            <div className={styles.aboveSuggestions}>{aboveSuggestions}</div>
+            <div
+              className={styles.aboveSuggestions}
+              style={{ pointerEvents: 'none' }}
+            >
+              {aboveSuggestions}
+            </div>
           )}
-          <div>
+          <div style={{ pointerEvents: 'auto' }}>
             {suggestedProperties.length > 0 && (
               <div className={styles.suggestionsSection}>
                 <div className={styles.suggestionsHeaderRow}>
@@ -336,9 +344,14 @@ export default function AutocompleteInput({
             )}
           </div>
           {belowSuggestions != null && (
-            <div className={styles.belowSuggestions}>{belowSuggestions}</div>
+            <div
+              className={styles.belowSuggestions}
+              style={{ pointerEvents: 'auto' }}
+            >
+              {belowSuggestions}
+            </div>
           )}
-          <div>
+          <div style={{ pointerEvents: 'auto' }}>
             {showSearchHistory && (
               <div className={styles.historySection}>
                 <div className={styles.historyTitle}>Search History:</div>
