@@ -126,6 +126,7 @@ import { FavoriteButton } from '@/components/FavoriteButton';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
 import { PageHeader } from '@/components/PageHeader';
 import { PageLayout } from '@/components/PageLayout';
+import ShareLinkButton from '@/components/ShareLinkButton';
 import { TimePicker } from '@/components/TimePicker';
 import { parseTimeRangeInput } from '@/components/TimePicker/utils';
 import {
@@ -139,6 +140,7 @@ import { useAlertAnnotations } from '@/hooks/useAlertAnnotations';
 import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
+import { freezeTimeRange } from '@/utils/shareLink';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer, {
@@ -1788,6 +1790,13 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
     setDisplayedTimeInputValue,
   });
 
+  // Build the query string for the Share button, freezing the time range to an
+  // absolute window so recipients see the same data.
+  const getShareSearch = useCallback(
+    () => freezeTimeRange(window.location.search, searchedTimeRange),
+    [searchedTimeRange],
+  );
+
   const {
     granularityOverride,
     isRefreshEnabled,
@@ -2610,6 +2619,7 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           </Button>
         </Tags>
       )}
+      <ShareLinkButton getShareSearch={getShareSearch} px="xs" />
       {/* local dashboards cant be "deleted" */}
       <Menu width={250}>
         <Menu.Target>

@@ -44,6 +44,7 @@ import {
   copyTextToClipboard,
 } from '@/utils/clipboard';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
+import { buildShareUrl } from '@/utils/shareLink';
 import { ZIndexContext } from '@/zIndex';
 
 import useSidePanelStack from './hooks/useSidePanelStack';
@@ -147,7 +148,8 @@ export default function SessionSidePanel({
   useHotkeys(['esc'], handleClose, { enabled: !selectedEvent });
 
   const shareSession = useCallback(async () => {
-    const ok = await copyTextToClipboard(window.location.href);
+    const url = await buildShareUrl(window.location.search);
+    const ok = await copyTextToClipboard(url);
     notifications.show(
       ok
         ? { color: 'green', message: 'Copied link to clipboard' }
@@ -245,6 +247,7 @@ export default function SessionSidePanel({
                       leftSection={<IconLink size={14} />}
                       style={{ fontSize: '12px' }}
                       onClick={shareSession}
+                      data-testid="session-share-button"
                     >
                       Share Session
                     </Button>
