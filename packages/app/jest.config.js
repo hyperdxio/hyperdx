@@ -25,4 +25,15 @@ module.exports = {
     '^ky$': '<rootDir>/src/__mocks__/ky-universal.ts',
   },
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.tsx'],
+  // Coverage floor pinned just below measured reality so coverage can only
+  // ratchet up. Decay below these numbers fails the build. Raise them
+  // deliberately as coverage improves; never lower them silently.
+  coverageThreshold: {
+    global: {
+      statements: 53,
+      branches: 37,
+      functions: 38,
+      lines: 54,
+    },
+  },
 };
