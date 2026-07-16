@@ -4,6 +4,31 @@ export const EVAL_DATABASE = 'default';
 const SOURCE_TRACES_TABLE = 'otel_traces';
 const SOURCE_LOGS_TABLE = 'otel_logs';
 
+const METRIC_TABLES = [
+  {
+    field: 'metricsGauge',
+    source: 'otel_metrics_gauge',
+  },
+  {
+    field: 'metricsSum',
+    source: 'otel_metrics_sum',
+  },
+  {
+    field: 'metricsHistogram',
+    source: 'otel_metrics_histogram',
+  },
+  {
+    field: 'metricsExponentialHistogram',
+    source: 'otel_metrics_exponential_histogram',
+  },
+  {
+    field: 'metricsSummary',
+    source: 'otel_metrics_summary',
+  },
+] as const;
+
+type MetricTableField = (typeof METRIC_TABLES)[number]['field'];
+
 export type ScenarioTables = {
   traces: string;
   logs: string;
@@ -11,9 +36,9 @@ export type ScenarioTables = {
   tracesKeyRollup: string;
   logsKvRollup: string;
   logsKeyRollup: string;
-};
+} & Record<MetricTableField, string>;
 
-function scenarioSlug(scenario: string): string {
+export function scenarioSlug(scenario: string): string {
   if (!/^[a-z0-9_-]+$/.test(scenario)) {
     throw new Error(
       `Invalid scenario name "${scenario}": must match /^[a-z0-9_-]+$/`,
@@ -24,6 +49,9 @@ function scenarioSlug(scenario: string): string {
 
 export function scenarioTables(scenario: string): ScenarioTables {
   const slug = scenarioSlug(scenario);
+  const metricTables = Object.fromEntries(
+    METRIC_TABLES.map(({ field, source }) => [field, `eval_${slug}_${source}`]),
+  ) as Record<MetricTableField, string>;
   return {
     traces: `eval_${slug}_otel_traces`,
     logs: `eval_${slug}_otel_logs`,
@@ -31,6 +59,7 @@ export function scenarioTables(scenario: string): ScenarioTables {
     tracesKeyRollup: `eval_${slug}_otel_traces_key_rollup_15m`,
     logsKvRollup: `eval_${slug}_otel_logs_kv_rollup_15m`,
     logsKeyRollup: `eval_${slug}_otel_logs_key_rollup_15m`,
+    ...metricTables,
   };
 }
 
@@ -51,7 +80,12 @@ async function tableExists(
 async function assertSourceTablesExist(
   client: ClickHouseClient,
 ): Promise<void> {
-  for (const t of [SOURCE_TRACES_TABLE, SOURCE_LOGS_TABLE]) {
+  const required = [
+    SOURCE_TRACES_TABLE,
+    SOURCE_LOGS_TABLE,
+    ...METRIC_TABLES.map(({ source }) => source),
+  ];
+  for (const t of required) {
     if (!(await tableExists(client, EVAL_DATABASE, t))) {
       throw new Error(
         `Required source table ${EVAL_DATABASE}.${t} does not exist. ` +
@@ -83,6 +117,14 @@ export async function ensureScenarioTables(
   // Idempotent: subsequent runs error with "no TTL to remove" — ignore.
   await removeTtlIfPresent(client, tables.traces);
   await removeTtlIfPresent(client, tables.logs);
+
+  for (const { field, source } of METRIC_TABLES) {
+    const metricTable = tables[field];
+    await client.command({
+      query: `CREATE TABLE IF NOT EXISTS ${EVAL_DATABASE}.${metricTable} AS ${EVAL_DATABASE}.${source}`,
+    });
+    await removeTtlIfPresent(client, metricTable);
+  }
 
   // Create KV/Key rollup tables and materialized views so the HyperDX MCP
   // can use fast metadata discovery instead of scanning the full raw tables.
@@ -152,6 +194,11 @@ export async function truncateScenarioTables(
   await client.command({
     query: `TRUNCATE TABLE IF EXISTS ${EVAL_DATABASE}.${tables.logs}`,
   });
+  for (const { field } of METRIC_TABLES) {
+    await client.command({
+      query: `TRUNCATE TABLE IF EXISTS ${EVAL_DATABASE}.${tables[field]}`,
+    });
+  }
 }
 
 export async function dropScenarioTables(
@@ -167,6 +214,11 @@ export async function dropScenarioTables(
   await client.command({
     query: `DROP TABLE IF EXISTS ${EVAL_DATABASE}.${tables.logs}`,
   });
+  for (const { field } of METRIC_TABLES) {
+    await client.command({
+      query: `DROP TABLE IF EXISTS ${EVAL_DATABASE}.${tables[field]}`,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
