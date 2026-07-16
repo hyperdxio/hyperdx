@@ -78,6 +78,31 @@ describe('resampleSeries', () => {
       expect(out).toContain(-50);
     });
   });
+
+  describe('gaps (NaN values)', () => {
+    it('does not interpolate across a gap when upsampling', () => {
+      const out = resampleSeries([0, NaN, 2], 9);
+      expect(out[0]).toBe(0);
+      expect(out[8]).toBe(2);
+      // Every column between the two finite pins is part of the gap
+      for (let i = 1; i < 8; i++) {
+        expect(Number.isNaN(out[i])).toBe(true);
+      }
+    });
+
+    it('preserves finite values around a NaN when downsampling', () => {
+      const values = new Array<number>(100).fill(NaN);
+      values[50] = 5;
+      const out = resampleSeries(values, 10);
+      expect(out).toContain(5);
+      expect(out.filter(v => Number.isNaN(v))).toHaveLength(9);
+    });
+
+    it('keeps an all-NaN series all-NaN', () => {
+      const out = resampleSeries([NaN, NaN, NaN], 9);
+      expect(out.every(v => Number.isNaN(v))).toBe(true);
+    });
+  });
 });
 
 describe('niceTicks', () => {
@@ -187,6 +212,53 @@ describe('renderLineChart', () => {
     for (const label of labels) {
       expect(label % 5).toBe(0);
     }
+  });
+
+  it('renders NULL cells as line gaps, not zeros', () => {
+    // A flat line at 5 with a missing bucket in the middle: the line
+    // must break (blank columns), not dip to 0.
+    const values = [5, 5, NaN, 5, 5];
+    const output = stripAnsi(
+      renderLineChart({
+        data: makeTimeChartData({ latency: values }),
+        width: 30,
+        height: 8,
+      }),
+    );
+    const lineRow = output
+      .split('\n')
+      .find(line => line.includes('─')) as string;
+    expect(lineRow).toBeDefined();
+    // Two dash runs separated by at least one blank column
+    expect(lineRow).toMatch(/─+ +─+/);
+    // No dip glyphs — the gap is not drawn as a drop to zero
+    expect(output).not.toContain('╰');
+    expect(output).not.toContain('╭');
+  });
+
+  it('ignores NaN when computing the y-axis domain', () => {
+    const values = new Array<number>(40).fill(0);
+    values[10] = 26;
+    values[20] = NaN;
+    const output = stripAnsi(
+      renderLineChart({
+        data: makeTimeChartData({ requests: values }),
+        width: 120,
+        height: 14,
+      }),
+    );
+    expect(output.split('\n')[0]).toContain('30');
+  });
+
+  it('renders a no-data message when every value is NaN', () => {
+    const output = stripAnsi(
+      renderLineChart({
+        data: makeTimeChartData({ empty: [NaN, NaN, NaN] }),
+        width: 60,
+        height: 10,
+      }),
+    );
+    expect(output).toContain('No data');
   });
 
   it('labels tick rows only, leaving other rows blank', () => {

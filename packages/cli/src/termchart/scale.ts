@@ -37,6 +37,11 @@ export function resampleLinear(values: number[], targetLen: number): number[] {
  *   linearly interpolated.
  * - Downsampling: each column takes the max-magnitude value of the
  *   bucket range it covers, so spikes are never dropped.
+ *
+ * Gap-aware: NaN values (missing / NULL data points) are pinned like
+ *   any other value, spans touching a NaN endpoint are filled with NaN
+ *   instead of interpolating across the gap, and downsampling ignores
+ *   NaN unless a column's whole range is NaN.
  */
 export function resampleSeries(values: number[], targetLen: number): number[] {
   if (values.length === 0 || targetLen <= 0) return [];
@@ -46,7 +51,8 @@ export function resampleSeries(values: number[], targetLen: number): number[] {
   const out = new Array<number>(targetLen);
 
   if (values.length < targetLen) {
-    // Upsample: pin each bucket to its nearest column, interpolate between
+    // Upsample: pin each bucket to its nearest column; interpolate the
+    // columns between two finite pins, or fill with NaN across a gap
     const scale = (targetLen - 1) / (values.length - 1);
     let prevCol = 0;
     out[0] = values[0];
@@ -55,25 +61,31 @@ export function resampleSeries(values: number[], targetLen: number): number[] {
       out[col] = values[j];
       const prevVal = values[j - 1];
       const span = col - prevCol;
+      const bothFinite = Number.isFinite(prevVal) && Number.isFinite(values[j]);
       for (let c = prevCol + 1; c < col; c++) {
         const frac = (c - prevCol) / span;
-        out[c] = prevVal * (1 - frac) + values[j] * frac;
+        out[c] = bothFinite ? prevVal * (1 - frac) + values[j] * frac : NaN;
       }
       prevCol = col;
     }
     return out;
   }
 
-  // Downsample: keep the max-magnitude value in each column's bucket range
+  // Downsample: keep the max-magnitude finite value in each column's
+  // bucket range (NaN only when the whole range is NaN)
   for (let i = 0; i < targetLen; i++) {
     const start = Math.floor((i * values.length) / targetLen);
     const end = Math.max(
       start + 1,
       Math.floor(((i + 1) * values.length) / targetLen),
     );
-    let extremum = values[start];
-    for (let j = start + 1; j < end; j++) {
-      if (Math.abs(values[j]) > Math.abs(extremum)) {
+    let extremum = NaN;
+    for (let j = start; j < end; j++) {
+      if (!Number.isFinite(values[j])) continue;
+      if (
+        !Number.isFinite(extremum) ||
+        Math.abs(values[j]) > Math.abs(extremum)
+      ) {
         extremum = values[j];
       }
     }

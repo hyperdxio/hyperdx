@@ -4661,12 +4661,10 @@ __metadata:
     "@clickhouse/client": "npm:1.23.0-head.fae5998.1"
     "@hyperdx/common-utils": "npm:^0.22.0"
     "@jest/globals": "npm:^30.2.0"
-    "@types/asciichart": "npm:^1.5.8"
     "@types/crypto-js": "npm:^4.2.2"
     "@types/jest": "npm:^29.5.14"
     "@types/react": "npm:^19.0.0"
     "@types/sqlstring": "npm:^2.3.2"
-    asciichart: "npm:^1.5.25"
     chalk: "npm:^5.3.0"
     commander: "npm:^12.1.0"
     crypto-js: "npm:^4.2.0"
@@ -9486,13 +9484,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/asciichart@npm:^1.5.8":
-  version: 1.5.8
-  resolution: "@types/asciichart@npm:1.5.8"
-  checksum: 10c0/e304c0f75ea5a3d292243620bd0598421f46837d6a8c076b14e4392e3abc75b678bd7c0663809105eed3cef990086d82eee3c410f0b1d623a5f5fa6aaee3ca94
-  languageName: node
-  linkType: hard
-
 "@types/aws-lambda@npm:8.10.147":
   version: 8.10.147
   resolution: "@types/aws-lambda@npm:8.10.147"
@@ -11809,13 +11800,6 @@ __metadata:
   version: 2.0.6
   resolution: "asap@npm:2.0.6"
   checksum: 10c0/c6d5e39fe1f15e4b87677460bd66b66050cd14c772269cee6688824c1410a08ab20254bb6784f9afb75af9144a9f9a7692d49547f4d19d715aeb7c0318f3136d
-  languageName: node
-  linkType: hard
-
-"asciichart@npm:^1.5.25":
-  version: 1.5.25
-  resolution: "asciichart@npm:1.5.25"
-  checksum: 10c0/65b7e941a2af4330545f834e9d61508398e1c40c7d6280530ad61836d0ed28f24f5ced63a13a2f29b669da59a3626521c09f56fa7d2242ca561bb451f2fb4202
   languageName: node
   linkType: hard
 

@@ -43,8 +43,12 @@ resampling), `resampleLinear` (for linear axes like timestamps),
   `formatValue` / `formatNumericCell` callbacks so callers control units
   (durations, bytes, percentages) without this module knowing about any
   particular format schema.
+- **Gaps, not false zeros**: non-finite values (NaN) render as gaps in
+  line charts — missing data reads as missing. Resampling never
+  interpolates across a gap, and isolated points get a point marker.
 
 ## Provenance
 
-The line plotter is currently backed by
-[asciichart](https://github.com/kroitor/asciichart) (MIT).
+`plot.ts` is a gap-aware derivative of
+[asciichart](https://github.com/kroitor/asciichart) (MIT, © 2016 Igor
+Kroitor).

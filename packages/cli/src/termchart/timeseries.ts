@@ -4,7 +4,6 @@
  * string out.
  */
 
-import * as asciichart from 'asciichart';
 import chalk from 'chalk';
 
 import {
@@ -18,6 +17,7 @@ import {
   renderTimeAxis,
   truncate,
 } from '@/termchart/ansi';
+import { plotLines } from '@/termchart/plot';
 import { niceTicks, resampleLinear, resampleSeries } from '@/termchart/scale';
 import type { TimeChartData, ValueFormatter } from '@/termchart/types';
 
@@ -67,12 +67,12 @@ export function renderLineChart({
   // The plotter renders one column per point — resample every series to
   // exactly plotWidth points so the chart fills the full width. Peak
   // preserving: bucket values are placed exactly, never blended away.
+  // Missing / NULL cells become NaN and render as line gaps, not zeros.
   const seriesArrays = series.map(s =>
     resampleSeries(
       graphResults.map(r => {
         const v = r[s.dataKey];
-        // The plotter cannot render NaN gaps — draw missing points at 0
-        return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+        return typeof v === 'number' && Number.isFinite(v) ? v : NaN;
       }),
       plotWidth,
     ),
@@ -85,9 +85,12 @@ export function renderLineChart({
 
   // Nice y-axis domain + sparse tick labels (~5 nice values, not every
   // row). Rows without a tick get a blank gutter.
-  const flatValues = seriesArrays.flat();
-  const dataMin = Math.min(...flatValues);
-  const dataMax = Math.max(...flatValues);
+  const finiteValues = seriesArrays.flat().filter(v => Number.isFinite(v));
+  if (finiteValues.length === 0) {
+    return chalk.dim(NO_DATA_TEXT);
+  }
+  const dataMin = Math.min(...finiteValues);
+  const dataMax = Math.max(...finiteValues);
   const axisTicks = niceTicks(dataMin, dataMax);
 
   const pad = (s: string) => truncate(s, labelWidth).padStart(labelWidth);
@@ -125,7 +128,7 @@ export function renderLineChart({
     };
   }
 
-  const plot = asciichart.plot(seriesArrays, {
+  const plot = plotLines(seriesArrays, {
     height: plotHeight - 1,
     colors: plotColors,
     ...plotConfig,
