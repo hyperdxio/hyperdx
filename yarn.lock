@@ -4535,7 +4535,6 @@ __metadata:
     "@hyperdx/browser": "npm:^0.22.1"
     "@hyperdx/common-utils": "npm:^0.22.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
-    "@jedmao/location": "npm:^3.0.0"
     "@mantine/core": "npm:^9.0.0"
     "@mantine/dates": "npm:^9.0.0"
     "@mantine/dropzone": "npm:^9.0.0"
@@ -5191,13 +5190,6 @@ __metadata:
   version: 0.1.3
   resolution: "@istanbuljs/schema@npm:0.1.3"
   checksum: 10c0/61c5286771676c9ca3eb2bd8a7310a9c063fb6e0e9712225c8471c582d157392c88f5353581c8c9adbe0dff98892317d2fdfc56c3499aa42e0194405206a963a
-  languageName: node
-  linkType: hard
-
-"@jedmao/location@npm:^3.0.0":
-  version: 3.0.0
-  resolution: "@jedmao/location@npm:3.0.0"
-  checksum: 10c0/dded42a7991aaf625c9696519aec188834b205b066e1696cd42280b70dff080d85f79353c3c21dd9ec8e9c122f193080c5a552d0916368dc13e1b03b11507184
   languageName: node
   linkType: hard
 
