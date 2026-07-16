@@ -86,12 +86,21 @@ export function renderTileContent({
         displayType === DisplayType.StackedBar
           ? renderStackedBarChart
           : renderLineChart;
-      return renderFn({
+      const chart = renderFn({
         data: timeChartData,
         width,
         height,
         numberFormat: chartFormat,
       });
+      // The web overlays a dashed previous-period series; the CLI's
+      // chartData port intentionally drops it — call it out rather
+      // than silently ignoring the setting.
+      const comparesPrevious =
+        'compareToPreviousPeriod' in queriedConfig &&
+        queriedConfig.compareToPreviousPeriod === true;
+      return comparesPrevious
+        ? `${chart}\n${chalk.dim('(previous-period comparison not shown in the CLI)')}`
+        : chart;
     }
 
     case DisplayType.Number: {

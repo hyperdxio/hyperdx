@@ -179,10 +179,10 @@ function renderLegend(
 }
 
 /**
- * Linearly resample a numeric series to exactly `targetLen` points so a
- * chart fills the full terminal width regardless of bucket count.
- * (Granularity quantization typically yields far fewer buckets than
- * available columns — e.g. 36 five-minute buckets on a 160-col chart.)
+ * Linearly resample a numeric series to exactly `targetLen` points.
+ * Only used for the timestamp axis, which is linear by construction —
+ * data series must go through {@link resampleSeries} instead so peaks
+ * are preserved exactly.
  */
 function resampleLinear(values: number[], targetLen: number): number[] {
   if (values.length === 0 || targetLen <= 0) return [];
@@ -197,6 +197,64 @@ function resampleLinear(values: number[], targetLen: number): number[] {
     const hi = Math.min(values.length - 1, lo + 1);
     const frac = pos - lo;
     out[i] = values[lo] * (1 - frac) + values[hi] * frac;
+  }
+  return out;
+}
+
+/**
+ * Resample a data series to exactly `targetLen` points, preserving
+ * peaks — unlike plain linear resampling, which samples *between*
+ * buckets and attenuates narrow spikes (a 0→1→0 spike would render as
+ * ~0.94, and sub-row bumps vanish entirely).
+ *
+ * - Upsampling (buckets ≤ columns, the auto-granularity case): every
+ *   original value is placed exactly at its nearest column — matching
+ *   the web (recharts), where each bucket is an exact vertex — and the
+ *   columns in between are linearly interpolated.
+ * - Downsampling (explicit fine granularity): each column takes the
+ *   max-magnitude value of the bucket range it covers, so spikes are
+ *   never dropped.
+ */
+export function resampleSeries(values: number[], targetLen: number): number[] {
+  if (values.length === 0 || targetLen <= 0) return [];
+  if (values.length === 1) return new Array(targetLen).fill(values[0]);
+  if (values.length === targetLen) return values;
+
+  const out = new Array<number>(targetLen);
+
+  if (values.length < targetLen) {
+    // Upsample: pin each bucket to its nearest column, interpolate between
+    const scale = (targetLen - 1) / (values.length - 1);
+    let prevCol = 0;
+    out[0] = values[0];
+    for (let j = 1; j < values.length; j++) {
+      const col = Math.round(j * scale);
+      out[col] = values[j];
+      const prevVal = values[j - 1];
+      const span = col - prevCol;
+      for (let c = prevCol + 1; c < col; c++) {
+        const frac = (c - prevCol) / span;
+        out[c] = prevVal * (1 - frac) + values[j] * frac;
+      }
+      prevCol = col;
+    }
+    return out;
+  }
+
+  // Downsample: keep the max-magnitude value in each column's bucket range
+  for (let i = 0; i < targetLen; i++) {
+    const start = Math.floor((i * values.length) / targetLen);
+    const end = Math.max(
+      start + 1,
+      Math.floor(((i + 1) * values.length) / targetLen),
+    );
+    let extremum = values[start];
+    for (let j = start + 1; j < end; j++) {
+      if (Math.abs(values[j]) > Math.abs(extremum)) {
+        extremum = values[j];
+      }
+    }
+    out[i] = extremum;
   }
   return out;
 }
@@ -246,10 +304,10 @@ export function renderLineChart({
   const plotWidth = Math.max(10, width - gutterWidth);
 
   // asciichart renders one column per point — resample every series to
-  // exactly plotWidth points so the chart fills the full width (upscale
-  // via linear interpolation, downscale for narrow terminals).
+  // exactly plotWidth points so the chart fills the full width. Peak
+  // preserving: bucket values are placed exactly, never blended away.
   const seriesArrays = series.map(s =>
-    resampleLinear(
+    resampleSeries(
       graphResults.map(r => {
         const v = r[s.dataKey];
         // asciichart cannot render NaN gaps — draw missing points at 0
@@ -326,16 +384,30 @@ export function renderStackedBarChart({
     return chalk.dim('No data found within time range.');
   }
 
-  // Map every terminal column to a bucket (nearest-neighbor stretch) so
-  // the chart fills the full plot width — granularity quantization
-  // usually yields fewer buckets than available columns, and narrow
-  // terminals may have fewer columns than buckets.
-  const colToBucket = Array.from({ length: plotWidth }, (_, col) =>
-    Math.min(
+  // Map every terminal column to a bucket so the chart fills the full
+  // plot width. Upscaling (the common case — granularity quantization
+  // yields fewer buckets than columns) is a nearest-neighbor stretch.
+  // When downscaling (explicit fine granularity on a narrow terminal),
+  // each column covers a bucket range — pick the range's max-total
+  // bucket so spikes are never silently dropped.
+  const colToBucket = Array.from({ length: plotWidth }, (_, col) => {
+    const start = Math.min(
       buckets.length - 1,
       Math.floor((col * buckets.length) / plotWidth),
-    ),
-  );
+    );
+    const end = Math.max(
+      start + 1,
+      Math.min(
+        buckets.length,
+        Math.floor(((col + 1) * buckets.length) / plotWidth),
+      ),
+    );
+    let best = start;
+    for (let j = start + 1; j < end; j++) {
+      if (totals[j] > totals[best]) best = j;
+    }
+    return best;
+  });
 
   // Build the grid row by row (top row first)
   const rows: string[] = [];

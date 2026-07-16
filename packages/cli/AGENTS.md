@@ -151,9 +151,15 @@ web dashboard**:
 
 Supported display types: line, stacked_bar, number, table, bar, pie,
 markdown. Heatmap / search / event patterns / PromQL show a placeholder.
-Time-series charts stretch to the full terminal width via linear resampling
-(line) or nearest-neighbor column mapping (stacked bar); auto granularity is
-capped at 80 buckets like the web (`maxTimeBuckets`).
+The web's previous-period comparison overlay is not rendered; tiles with
+`compareToPreviousPeriod` set show a dim callout instead.
+Time-series charts stretch to the full terminal width via peak-preserving
+resampling (`resampleSeries`): bucket values are placed exactly at their
+nearest column (upscale) or each column keeps its bucket range's
+max-magnitude value (downscale) — plain linear interpolation would sample
+*between* buckets and attenuate narrow spikes. Stacked bars map columns to
+buckets nearest-neighbor (upscale) or by max-total bucket (downscale).
+Auto granularity is capped at 80 buckets like the web (`maxTimeBuckets`).
 
 The `hdx chart` command (designed for agent-driven troubleshooting) reuses
 this same pipeline in three modes: dashboard tiles (`-d`), ad-hoc builder
