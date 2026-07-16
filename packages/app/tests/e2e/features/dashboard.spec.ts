@@ -838,8 +838,12 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         await dashboardPage.saveQueryAndFiltersAsDefault();
 
-        // Wait for save confirmation
-        await dashboardPage.page.waitForTimeout(1000);
+        // Wait for the save success notification rather than a blind sleep, so
+        // we only read the URL once the save has actually landed.
+        const notification = dashboardPage.page.locator(
+          'text=/Filter query and dropdown values/i',
+        );
+        await expect(notification).toBeVisible({ timeout: 5000 });
 
         // Extract dashboard ID
         const url = dashboardPage.page.url();
