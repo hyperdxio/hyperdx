@@ -259,6 +259,73 @@ export function resampleSeries(values: number[], targetLen: number): number[] {
   return out;
 }
 
+// ---- Nice y-axis ticks -------------------------------------------------
+
+interface NiceAxis {
+  niceMin: number;
+  niceMax: number;
+  /** Ascending tick values, niceMin..niceMax inclusive. Empty for flat data. */
+  ticks: number[];
+}
+
+/** Round `x` to the nearest "nice" step: 1/2/2.5/5 ×10ⁿ. */
+function niceNum(x: number): number {
+  const exp = Math.floor(Math.log10(x));
+  const frac = x / 10 ** exp;
+  const nice =
+    frac < 1.5 ? 1 : frac < 2.25 ? 2 : frac < 3.75 ? 2.5 : frac < 7.5 ? 5 : 10;
+  return nice * 10 ** exp;
+}
+
+/**
+ * Compute a "nice" y-axis domain and tick values (Graphics Gems nice
+ * numbers, steps of 1/2/2.5/5 ×10ⁿ). Mirrors what the web charts get
+ * from recharts' `domain={[0, 'auto']}` + auto tick generation: the
+ * axis is pinned at zero (extended downward for negative data) and the
+ * top is rounded up to a tick boundary, so labels read 0/5/10/…30
+ * instead of raw fractions of the data range like 21.73/19.92/…
+ *
+ * @source packages/app/src/HDXMultiSeriesTimeChart.tsx (yAxisDomain +
+ *   recharts YAxis tick generation).
+ */
+export function niceTicks(
+  dataMin: number,
+  dataMax: number,
+  maxTicks = 5,
+): NiceAxis {
+  const lo = Math.min(0, dataMin);
+  const hi = dataMax;
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) {
+    return { niceMin: lo, niceMax: hi, ticks: [] };
+  }
+  const step = niceNum((hi - lo) / (maxTicks - 1));
+  const clean = (v: number) => Number(v.toPrecision(12));
+  const niceMin = clean(Math.floor(lo / step) * step);
+  const niceMax = clean(Math.ceil(hi / step) * step);
+  const count = Math.round((niceMax - niceMin) / step);
+  const ticks = Array.from({ length: count + 1 }, (_, i) =>
+    clean(niceMin + i * step),
+  );
+  return { niceMin, niceMax, ticks };
+}
+
+/**
+ * Format a y-axis tick value the way the web's tick formatter does:
+ * compact, no decimals from the configured format.
+ *
+ * @source packages/app/src/HDXMultiSeriesTimeChart.tsx (tickFormatter)
+ */
+function formatTick(value: number, numberFormat?: NumberFormat): string {
+  return numberFormat
+    ? formatNumber(value, {
+        ...numberFormat,
+        average: true,
+        mantissa: 0,
+        unit: undefined,
+      })
+    : formatValue(value);
+}
+
 // ---- Line chart ------------------------------------------------------
 
 export interface RenderTimeChartOptions {
@@ -324,11 +391,53 @@ export function renderLineChart({
     s => ASCIICHART_COLORS[s.color] ?? asciichart.blue,
   );
 
+  // Nice y-axis domain + sparse tick labels, mirroring the web charts
+  // (recharts labels ~5 nice values, not every pixel row). Rows without
+  // a tick get a blank gutter.
+  const flatValues = seriesArrays.flat();
+  const dataMin = Math.min(...flatValues);
+  const dataMax = Math.max(...flatValues);
+  const axisTicks = niceTicks(dataMin, dataMax);
+
+  const pad = (s: string) => truncate(s, labelWidth).padStart(labelWidth);
+  let plotConfig: {
+    min?: number;
+    max?: number;
+    format: (x: number, i: number) => string;
+  };
+  if (axisTicks.ticks.length > 0) {
+    const { niceMin, niceMax, ticks } = axisTicks;
+    // Replicate asciichart's row math to know which row index each tick
+    // lands on (row 0 = top = niceMax).
+    const ratio = (plotHeight - 1) / (niceMax - niceMin);
+    const axisRows = Math.abs(
+      Math.round(niceMax * ratio) - Math.round(niceMin * ratio),
+    );
+    const labelByRow = new Map<number, string>();
+    for (const tick of ticks) {
+      const row = Math.round(
+        ((niceMax - tick) / (niceMax - niceMin)) * axisRows,
+      );
+      if (!labelByRow.has(row)) {
+        labelByRow.set(row, formatTick(tick, numberFormat));
+      }
+    }
+    plotConfig = {
+      min: niceMin,
+      max: niceMax,
+      format: (_x: number, i: number) => pad(labelByRow.get(i) ?? ''),
+    };
+  } else {
+    // Flat data (single distinct value) — label the rows directly
+    plotConfig = {
+      format: (x: number) => pad(formatValue(x, numberFormat)),
+    };
+  }
+
   const plot = asciichart.plot(seriesArrays, {
     height: plotHeight - 1,
     colors: plotColors,
-    format: (x: number) =>
-      truncate(formatValue(x, numberFormat), labelWidth).padStart(labelWidth),
+    ...plotConfig,
   });
 
   const axis = renderTimeAxis({
@@ -384,6 +493,23 @@ export function renderStackedBarChart({
     return chalk.dim('No data found within time range.');
   }
 
+  // Nice y-axis: scale bars against a rounded-up axis max and label the
+  // rows nearest each nice tick, mirroring the web's recharts axis
+  // (stacked bars are always anchored at zero).
+  const axisTicks = niceTicks(0, maxTotal);
+  const axisMax = axisTicks.ticks.length > 0 ? axisTicks.niceMax : maxTotal;
+  const labelByRow = new Map<number, string>();
+  for (const tick of axisTicks.ticks) {
+    if (tick <= 0) continue; // row 0 spans (0, 1] — no zero baseline row
+    const row = Math.min(
+      plotHeight - 1,
+      Math.max(0, Math.round((tick / axisMax) * plotHeight) - 1),
+    );
+    if (!labelByRow.has(row)) {
+      labelByRow.set(row, formatTick(tick, numberFormat));
+    }
+  }
+
   // Map every terminal column to a bucket so the chart fills the full
   // plot width. Upscaling (the common case — granularity quantization
   // yields fewer buckets than columns) is a nearest-neighbor stretch.
@@ -417,7 +543,7 @@ export function renderStackedBarChart({
       const bucketIdx = colToBucket[col];
       const bucket = buckets[bucketIdx];
       // Total stacked height of this column, in rows
-      const totalRows = (totals[bucketIdx] / maxTotal) * plotHeight;
+      const totalRows = (totals[bucketIdx] / axisMax) * plotHeight;
       if (totalRows <= row) {
         line += ' ';
         continue;
@@ -430,7 +556,7 @@ export function renderStackedBarChart({
       for (const s of series) {
         const v = bucket[s.dataKey];
         const sv = typeof v === 'number' && Number.isFinite(v) ? v : 0;
-        cum += (sv / maxTotal) * plotHeight;
+        cum += (sv / axisMax) * plotHeight;
         if (cum > target) {
           cellColor = s.color;
           break;
@@ -446,14 +572,9 @@ export function renderStackedBarChart({
       }
     }
 
-    // y-axis label on top / middle / bottom rows
-    const rowValue = ((row + 1) / plotHeight) * maxTotal;
-    const isLabelRow =
-      row === plotHeight - 1 || row === 0 || row === Math.floor(plotHeight / 2);
-    const label = isLabelRow
-      ? truncate(formatValue(rowValue, numberFormat), labelWidth).padStart(
-          labelWidth,
-        )
+    // y-axis label on nice tick rows
+    const label = labelByRow.has(row)
+      ? truncate(labelByRow.get(row) as string, labelWidth).padStart(labelWidth)
       : ' '.repeat(labelWidth);
     rows.push(`${chalk.dim(label)} ${chalk.dim('┤')}${line}`);
   }

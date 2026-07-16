@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 
 import {
+  niceTicks,
   renderLineChart,
   renderStackedBarChart,
   resampleSeries,
@@ -79,6 +80,44 @@ describe('resampleSeries', () => {
   });
 });
 
+describe('niceTicks', () => {
+  it('rounds the axis max up to a nice tick boundary', () => {
+    const { niceMin, niceMax, ticks } = niceTicks(0, 26);
+    expect(niceMin).toBe(0);
+    expect(niceMax).toBe(30);
+    expect(ticks).toEqual([0, 5, 10, 15, 20, 25, 30]);
+  });
+
+  it('produces quarter ticks for a 0..1 range (matching the web)', () => {
+    const { niceMax, ticks } = niceTicks(0, 1);
+    expect(niceMax).toBe(1);
+    expect(ticks).toEqual([0, 0.25, 0.5, 0.75, 1]);
+  });
+
+  it('covers sub-1 maxima with clean fractions', () => {
+    const { niceMax, ticks } = niceTicks(0, 0.94);
+    expect(niceMax).toBe(1);
+    expect(ticks).toEqual([0, 0.25, 0.5, 0.75, 1]);
+  });
+
+  it('pins the axis at zero for positive data', () => {
+    const { niceMin, ticks } = niceTicks(3, 9);
+    expect(niceMin).toBe(0);
+    expect(ticks[0]).toBe(0);
+  });
+
+  it('extends downward on a nice boundary for negative data', () => {
+    const { niceMin, niceMax } = niceTicks(-7, 26);
+    expect(niceMin).toBeLessThanOrEqual(-7);
+    expect(niceMax).toBeGreaterThanOrEqual(26);
+    expect(Number.isInteger(niceMin)).toBe(true);
+  });
+
+  it('returns no ticks for flat data', () => {
+    expect(niceTicks(0, 0).ticks).toEqual([]);
+  });
+});
+
 // ---- Renderer integration ---------------------------------------------
 
 function makeTimeChartData(
@@ -130,7 +169,7 @@ describe('renderLineChart', () => {
     expect(output).not.toContain('0.94');
   });
 
-  it('labels the y-axis max with the true peak value', () => {
+  it('labels the y-axis with nice tick values only', () => {
     const values = new Array<number>(80).fill(0);
     values[75] = 26;
     const output = stripAnsi(
@@ -140,7 +179,35 @@ describe('renderLineChart', () => {
         height: 16,
       }),
     );
-    expect(output.split('\n')[0]).toContain('26');
+    // Axis rounds up to 30 with 5-step ticks — no raw range fractions
+    // like 21.73 / 19.92 (which plain per-row labeling produced).
+    expect(output.split('\n')[0]).toContain('30');
+    const labels = output
+      .split('\n')
+      .map(line => line.trim().split(/\s+/)[0])
+      .filter(label => /^[\d.]+$/.test(label))
+      .map(Number);
+    expect(labels.length).toBeGreaterThanOrEqual(3);
+    for (const label of labels) {
+      expect(label % 5).toBe(0);
+    }
+  });
+
+  it('labels tick rows only, leaving other rows blank', () => {
+    const values = new Array<number>(80).fill(0);
+    values[40] = 100;
+    const output = stripAnsi(
+      renderLineChart({
+        data: makeTimeChartData({ requests: values }),
+        width: 160,
+        height: 20,
+      }),
+    );
+    const plotLines = output
+      .split('\n')
+      .filter(line => line.includes('┤') || line.includes('┼'));
+    const blankGutters = plotLines.filter(line => /^\s*[┤┼]/.test(line)).length;
+    expect(blankGutters).toBeGreaterThan(0);
   });
 });
 

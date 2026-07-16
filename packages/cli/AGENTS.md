@@ -160,6 +160,10 @@ max-magnitude value (downscale) — plain linear interpolation would sample
 *between* buckets and attenuate narrow spikes. Stacked bars map columns to
 buckets nearest-neighbor (upscale) or by max-total bucket (downscale).
 Auto granularity is capped at 80 buckets like the web (`maxTimeBuckets`).
+Y-axes use "nice" tick domains (`niceTicks`, steps of 1/2/2.5/5×10ⁿ,
+zero-pinned, max rounded up) with sparse tick-row labels — mirroring the
+web's recharts `domain={[0, 'auto']}` axis rather than labeling every row
+with raw range fractions.
 
 The `hdx chart` command (designed for agent-driven troubleshooting) reuses
 this same pipeline in three modes: dashboard tiles (`-d`), ad-hoc builder
