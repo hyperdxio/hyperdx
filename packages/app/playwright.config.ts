@@ -30,14 +30,15 @@ export default defineConfig({
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
-  /* Retry on CI only. Overridable via E2E_RETRIES (e.g. the nightly zero-retry flake hunt). */
-  retries:
-    process.env.E2E_RETRIES !== undefined &&
-    !Number.isNaN(Number(process.env.E2E_RETRIES))
-      ? Number(process.env.E2E_RETRIES)
-      : process.env.CI
-        ? 2
-        : 1,
+  /* Retry on CI only. Overridable via E2E_RETRIES (e.g. the nightly zero-retry
+   * flake hunt). Honours an explicit 0; an unset/blank/negative/non-integer
+   * value falls back to the default rather than silently coercing to 0. */
+  retries: (() => {
+    const raw = process.env.E2E_RETRIES;
+    const parsed = raw ? Number(raw) : NaN;
+    if (Number.isInteger(parsed) && parsed >= 0) return parsed;
+    return process.env.CI ? 2 : 1;
+  })(),
   /* Use multiple workers on CI for faster execution */
   workers: process.env.CI ? 2 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
