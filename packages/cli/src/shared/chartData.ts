@@ -27,6 +27,11 @@ import type {
 } from '@hyperdx/common-utils/dist/types';
 
 import type { SourceResponse } from '@/api/client';
+import type {
+  CategoricalEntry,
+  TableColumn,
+  TimeChartSeries,
+} from '@/termchart';
 
 // ---- Column inference (mirror of app ChartUtils) --------------------
 
@@ -197,20 +202,21 @@ const ANSI_SERIES_COLORS = [
 
 const ChartKeyJoiner = ' · ';
 
-interface TimeChartSeries {
-  dataKey: string;
-  displayName: string;
+/**
+ * A shaped series carrying the original result column name alongside
+ * the termchart series fields.
+ */
+interface ShapedTimeChartSeries extends TimeChartSeries {
   /** The original result column name this series' values were pulled from. */
   valueColumnName: string;
-  /** ANSI color name for terminal rendering */
-  color: string;
 }
 
+/** termchart TimeChartData enriched with shaping metadata. */
 export interface TimeChartData {
   /** Sorted by timestamp ascending. Keys: timestamp column + series dataKeys */
   graphResults: Record<string, number | undefined>[];
   timestampColumn: ColumnMetaType;
-  series: TimeChartSeries[];
+  series: ShapedTimeChartSeries[];
   groupColumns: string[];
   valueColumns: string[];
   isSingleValueColumn: boolean;
@@ -270,7 +276,7 @@ export function formatResponseForTimeChart({
   > = new Map();
   const seriesMap: Record<
     string,
-    Omit<TimeChartSeries, 'color'> & { color?: string }
+    Omit<ShapedTimeChartSeries, 'color'> & { color?: string }
   > = {};
 
   const firstGroupIsLogLevel = firstGroupColumnIsLogLevel(source, groupColumns);
@@ -369,7 +375,7 @@ export function formatResponseForTimeChart({
 
   // Assign palette colors to series without a log-level color
   let colorIndex = 0;
-  const seriesWithColors: TimeChartSeries[] = sortedSeries.map(line => ({
+  const seriesWithColors: ShapedTimeChartSeries[] = sortedSeries.map(line => ({
     ...line,
     color:
       line.color ??
@@ -406,13 +412,6 @@ function firstGroupColumnIsLogLevel(
 // ---- Categorical (pie / bar) shaping ---------------------------------
 
 const DEFAULT_MAX_CATEGORICAL_GROUPS = 500;
-
-export interface CategoricalEntry {
-  label: string;
-  value: number;
-  /** ANSI color name */
-  color: string;
-}
 
 /**
  * @source packages/app/src/ChartUtils.tsx (formatResponseForCategoricalChart)
@@ -487,12 +486,6 @@ export function getNumberChartValue(
 
 // ---- Table chart -----------------------------------------------------
 
-export interface TableChartColumn {
-  dataKey: string;
-  displayName: string;
-  isGroupColumn: boolean;
-}
-
 /**
  * Derive table columns from result rows, mirroring the group-by column
  * detection logic of the web table chart.
@@ -510,7 +503,7 @@ export function deriveTableColumns({
   selectLength?: number;
   isRatio?: boolean;
   groupByColumnsOnLeft?: boolean;
-}): TableChartColumn[] {
+}): TableColumn[] {
   if (rows.length === 0) {
     return [];
   }

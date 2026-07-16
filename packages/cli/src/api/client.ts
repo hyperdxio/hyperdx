@@ -357,7 +357,6 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
   // This subclass always builds a node client, so narrow the base class's
   // platform-agnostic client type to the node-specific one.
   protected getClient(): NodeClickHouseClient {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- subclass always builds a node client
     return super.getClient() as NodeClickHouseClient;
   }
 
@@ -381,7 +380,7 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
       // (from @clickhouse/client-common). It is structurally identical to the
       // node client's own self-bundled ClickHouseSettings, but the two packages'
       // copies are distinct nominal types since 1.23, so bridge explicitly.
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- client library type mismatch
+
       clickhouseSettings = neutralSettings as ClickHouseSettings;
     }
 

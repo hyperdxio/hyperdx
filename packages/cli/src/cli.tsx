@@ -21,7 +21,7 @@ import type { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
 import App from '@/App';
 import { ApiClient, type SourceResponse, type MeTeam } from '@/api/client';
 import { AdhocChartError, buildAdhocChartConfig } from '@/shared/adhocChart';
-import { stripAnsi } from '@/shared/ansiChart';
+import { stripAnsi } from '@/termchart';
 import { sortTilesForDisplay } from '@/shared/tileConfig';
 import { fetchTileData } from '@/shared/tileQuery';
 import { renderTileContent } from '@/shared/tileRender';

@@ -6,8 +6,8 @@ import {
   renderStackedBarChart,
   resampleSeries,
   stripAnsi,
-} from '@/shared/ansiChart';
-import type { TimeChartData } from '@/shared/chartData';
+  type TimeChartData,
+} from '@/termchart';
 
 describe('resampleSeries', () => {
   it('returns the input unchanged when lengths match', () => {
@@ -139,16 +139,12 @@ function makeTimeChartData(
   const palette = ['blue', 'yellow', 'red', 'green'];
   return {
     graphResults,
-    timestampColumn: { name: 'ts', type: 'DateTime' },
+    timestampColumn: { name: 'ts' },
     series: keys.map((key, i) => ({
       dataKey: key,
       displayName: key,
-      valueColumnName: key,
       color: palette[i % palette.length],
     })),
-    groupColumns: [],
-    valueColumns: keys,
-    isSingleValueColumn: keys.length === 1,
   };
 }
 

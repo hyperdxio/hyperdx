@@ -68,9 +68,11 @@ src/
 │   ├── tileQuery.ts     # fetchTileData — executes via queryChartConfig (renderChartConfig)
 │   ├── tileRender.ts    # displayType → ANSI string dispatch (mirror of renderChartContent)
 │   ├── chartData.ts     # Response shaping (formatResponseForTimeChart etc. ports)
-│   ├── ansiChart.ts     # Pure ANSI renderers: line (asciichart), stacked bar, table,
-│   │                    #   categorical bars (bar/pie), number, markdown
 │   └── formatNumber.ts  # numbro-based formatNumber + number-format resolution ports
+├── termchart/           # Self-contained ANSI chart renderers (only dep: chalk) —
+│                        #   line, stacked bar, categorical, number, table, markdown,
+│                        #   peak-preserving resampling + nice y-axis ticks. No HyperDX
+│                        #   imports; candidate for open-sourcing. See termchart/README.md
 └── utils/
     ├── config.ts        # Session persistence (~/.config/hyperdx/cli/session.json)
     ├── editor.ts        # $EDITOR integration for time range and select clause editing
@@ -146,8 +148,11 @@ web dashboard**:
    optimization / PromQL).
 3. `shared/chartData.ts` shapes the response (ports of
    `formatResponseForTimeChart`, `formatResponseForCategoricalChart`, etc.).
-4. `shared/ansiChart.ts` renders pure ANSI strings, consumed by both the Ink
-   `TileChart` component and the non-interactive `hdx chart` command.
+4. `termchart/` renders pure ANSI strings, consumed by both the Ink
+   `TileChart` component and the non-interactive `hdx chart` command. It is
+   a self-contained module (only dependency: chalk) — number formatting is
+   injected via callbacks, and it must never import from the rest of the
+   CLI.
 
 Supported display types: line, stacked_bar, number, table, bar, pie,
 markdown. Heatmap / search / event patterns / PromQL show a placeholder.

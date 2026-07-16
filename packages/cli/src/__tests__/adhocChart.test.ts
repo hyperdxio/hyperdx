@@ -9,7 +9,7 @@ import {
   findSource,
   parseDisplayType,
 } from '@/shared/adhocChart';
-import { stripAnsi } from '@/shared/ansiChart';
+import { stripAnsi } from '@/termchart';
 
 const logSource: SourceResponse = {
   id: 'src-1',

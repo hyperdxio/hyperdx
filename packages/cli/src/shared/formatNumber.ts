@@ -475,3 +475,26 @@ export function resolveChartNumberFormats(
 
   return { formatByColumn, chartFormat };
 }
+
+/**
+ * Build a termchart y-axis tick formatter from a chart's number format:
+ * compact, no decimals — the same semantics as the web's y-axis.
+ * Returns undefined (termchart default formatting) when the chart has
+ * no number format.
+ *
+ * @source packages/app/src/HDXMultiSeriesTimeChart.tsx (tickFormatter)
+ */
+export function axisTickFormatter(
+  numberFormat: NumberFormat | undefined,
+): ((value: number) => string) | undefined {
+  if (!numberFormat) {
+    return undefined;
+  }
+  return (value: number) =>
+    formatNumber(value, {
+      ...numberFormat,
+      average: true,
+      mantissa: 0,
+      unit: undefined,
+    });
+}

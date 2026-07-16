@@ -14,14 +14,6 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import type { SourceResponse } from '@/api/client';
 import {
-  renderCategoricalChart,
-  renderLineChart,
-  renderMarkdown,
-  renderNumberChart,
-  renderStackedBarChart,
-  renderTableChart,
-} from '@/shared/ansiChart';
-import {
   deriveTableColumns,
   formatResponseForCategoricalChart,
   formatResponseForTimeChart,
@@ -29,10 +21,21 @@ import {
   shouldFillNullsWithZero,
 } from '@/shared/chartData';
 import {
+  axisTickFormatter,
+  formatNumber,
   resolveChartNumberFormats,
   resolveSingleSeriesNumberFormat,
 } from '@/shared/formatNumber';
 import type { TileQueryResult } from '@/shared/tileQuery';
+import {
+  defaultFormatValue,
+  renderCategoricalChart,
+  renderLineChart,
+  renderMarkdown,
+  renderNumberChart,
+  renderStackedBarChart,
+  renderTableChart,
+} from '@/termchart';
 
 export interface RenderTileContentParams {
   result: TileQueryResult;
@@ -90,7 +93,7 @@ export function renderTileContent({
         data: timeChartData,
         width,
         height,
-        numberFormat: chartFormat,
+        formatTick: axisTickFormatter(chartFormat),
       });
       // The web overlays a dashed previous-period series; the CLI's
       // chartData port intentionally drops it — call it out rather
@@ -105,10 +108,12 @@ export function renderTileContent({
 
     case DisplayType.Number: {
       return renderNumberChart({
-        value: getNumberChartValue(data),
+        text: formatNumber(
+          getNumberChartValue(data),
+          resolveSingleSeriesNumberFormat(queriedConfig, source),
+        ),
         width,
         height,
-        numberFormat: resolveSingleSeriesNumberFormat(queriedConfig, source),
       });
     }
 
@@ -140,19 +145,27 @@ export function renderTileContent({
         columns,
         width,
         height,
-        formatByColumn,
-        defaultNumberFormat: queriedConfig.numberFormat,
+        formatNumericCell: (dataKey, value) => {
+          const nf = formatByColumn.get(dataKey) ?? queriedConfig.numberFormat;
+          return nf ? formatNumber(value, nf) : defaultFormatValue(value);
+        },
       });
     }
 
     case DisplayType.Pie:
     case DisplayType.Bar: {
       const entries = formatResponseForCategoricalChart(data);
+      const numberFormat = resolveSingleSeriesNumberFormat(
+        queriedConfig,
+        source,
+      );
       return renderCategoricalChart({
         entries,
         width,
         height,
-        numberFormat: resolveSingleSeriesNumberFormat(queriedConfig, source),
+        formatValue: numberFormat
+          ? value => formatNumber(value, numberFormat)
+          : undefined,
         showPercentages: displayType === DisplayType.Pie,
       });
     }
