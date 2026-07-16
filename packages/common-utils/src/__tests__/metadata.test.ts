@@ -819,6 +819,8 @@ describe('Metadata', () => {
         json: () => Promise.resolve({ data: [{}] }),
       });
 
+      jest.spyOn(metadata, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
+
       jest.spyOn(metadata, 'getColumns').mockResolvedValue([
         { name: 'Timestamp', type: 'DateTime64(9)' },
         { name: 'TraceId', type: 'String' },
@@ -1580,6 +1582,7 @@ describe('Metadata', () => {
       jest
         .spyOn(md, 'getMapColumnTextIndexes')
         .mockResolvedValue(new Map() as any);
+      jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
       return md;
     };
 
@@ -1800,7 +1803,9 @@ describe('Metadata', () => {
       const realCache = new (
         jest.requireActual('../core/metadata') as any
       ).MetadataCache();
-      return new Metadata(mockClickhouseClient, realCache);
+      const md = new Metadata(mockClickhouseClient, realCache);
+      jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
+      return md;
     };
 
     const dateRange: [Date, Date] = [
@@ -2176,6 +2181,7 @@ describe('Metadata', () => {
       jest
         .spyOn(md, 'getMapColumnTextIndexes')
         .mockResolvedValue(new Map() as any);
+      jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
 
       // Mock getColumns → returns one Map column
       (mockClickhouseClient.query as jest.Mock)
@@ -2243,6 +2249,7 @@ describe('Metadata', () => {
       jest
         .spyOn(md, 'getMapColumnTextIndexes')
         .mockResolvedValue(new Map() as any);
+      jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
 
       (mockClickhouseClient.query as jest.Mock)
         .mockResolvedValueOnce({
@@ -2637,6 +2644,7 @@ describe('parametric aggregate arguments are inlined as literals', () => {
     jest
       .spyOn(md, 'getMapColumnTextIndexes')
       .mockResolvedValue(new Map() as any);
+    jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
     return md;
   };
 
