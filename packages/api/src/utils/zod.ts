@@ -707,10 +707,18 @@ const genericWebhookSchema = z.object({
   // headers are intentionally omitted from response schemas to avoid leaking sensitive information.
 });
 
+const claudeWebhookSchema = z.object({
+  ...baseWebhookSchema,
+  service: z.literal(WebhookService.Claude),
+  // The user-editable kickoff-prompt template (like the Generic body).
+  body: z.string().optional(),
+});
+
 export const externalWebhookSchema = z.discriminatedUnion('service', [
   slackWebhookSchema,
   incidentIOWebhookSchema,
   genericWebhookSchema,
+  claudeWebhookSchema,
 ]);
 
 export type ExternalWebhook = z.infer<typeof externalWebhookSchema>;

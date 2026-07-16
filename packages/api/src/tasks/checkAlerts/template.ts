@@ -20,6 +20,7 @@ import {
 import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import Handlebars, { HelperOptions } from 'handlebars';
 import _ from 'lodash';
+import mongoose from 'mongoose';
 import { performance } from 'perf_hooks';
 import PromisedHandlebars from 'promised-handlebars';
 import { serializeError } from 'serialize-error';
@@ -32,6 +33,7 @@ import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
+import { startAgentSession } from '@/services/anthropicAgents';
 import {
   computeAliasWithClauses,
   doesExceedThreshold,
@@ -115,6 +117,33 @@ const describeThreshold = (alert: AlertInput): string => {
     : `${alert.threshold}`;
 };
 
+// Enriched webhook payload mappings (e.g. Claude Managed Agents). These turn
+// internal enums into the stable, agent-friendly strings documented in the
+// webhook contract.
+const ALERT_STATUS_BY_STATE: Record<AlertState, string> = {
+  [AlertState.ALERT]: 'firing',
+  [AlertState.OK]: 'resolved',
+  [AlertState.INSUFFICIENT_DATA]: 'no_data',
+  [AlertState.DISABLED]: 'no_data',
+  [AlertState.PENDING]: 'pending',
+};
+
+const COMPARATOR_BY_THRESHOLD_TYPE: Record<AlertThresholdType, string> = {
+  [AlertThresholdType.ABOVE]: '>=',
+  [AlertThresholdType.ABOVE_EXCLUSIVE]: '>',
+  [AlertThresholdType.BELOW]: '<',
+  [AlertThresholdType.BELOW_OR_EQUAL]: '<=',
+  [AlertThresholdType.EQUAL]: '=',
+  [AlertThresholdType.NOT_EQUAL]: '!=',
+  [AlertThresholdType.BETWEEN]: 'between',
+  [AlertThresholdType.NOT_BETWEEN]: 'outside',
+};
+
+const ALERT_TYPE_BY_SOURCE: Record<AlertSource, string> = {
+  [AlertSource.SAVED_SEARCH]: 'search',
+  [AlertSource.TILE]: 'dashboard_chart',
+};
+
 const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
@@ -160,6 +189,18 @@ interface Message {
   startTime: number;
   endTime: number;
   eventId: string;
+  // Enriched fields for agent-ready payloads (Claude Managed Agents, etc).
+  // Optional so existing callers/tests and non-enriched templates are unaffected.
+  alertId?: string;
+  status?: string; // firing | resolved | no_data
+  alertType?: string; // search | dashboard_chart
+  comparator?: string; // >=, >, <=, <, =, !=, between, outside
+  threshold?: number;
+  value?: number; // the value that triggered/resolved the alert
+  groupKey?: string;
+  sourceQuery?: string; // the search expr / SQL that defines the alert
+  teamId?: string;
+  note?: string; // freeform alert note (markdown); commonly holds a runbook link
 }
 
 export const isAlertResolved = (state?: AlertState): boolean => {
@@ -206,6 +247,10 @@ const notifyChannel = async ({
       // TODO: migrate to use handleSendGenericWebhook so templates can be used
       if (webhook.service === WebhookService.Slack) {
         await handleSendSlackWebhook(webhook, message);
+      } else if (webhook.service === WebhookService.Claude) {
+        // First-class agent action: start a managed-agent session in-process
+        // rather than POSTing the payload to an external receiver.
+        await handleStartAgentSession(webhook, message);
       } else if (
         webhook.service === WebhookService.Generic ||
         webhook.service === WebhookService.IncidentIO
@@ -315,6 +360,170 @@ export const handleSendSlackWebhook = async (
   }
 };
 
+// Builds the agent-ready payload for the firing alert, serialized as the
+// session's user message. This is the enriched, structured JSON format (the same
+// schema the Claude webhook body documented) — the agent gets complete,
+// unambiguous context (condition + source_query + time_range) it can act on
+// without a round-trip, and it stays easy to extend with new fields. The
+// embedded `prompt` is the per-invocation instruction; the agent's standing
+// instructions live in its system prompt (see anthropicAgents).
+// Renders a Unix-ms timestamp as an ISO-8601 string, or '' if it isn't a valid
+// time (so a template slot never becomes the literal "Invalid Date").
+const toIsoTimestamp = (t: number): string => {
+  const d = new Date(t);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+};
+
+// The variable set exposed to user-editable webhook body templates (Generic,
+// IncidentIO, and the Claude kickoff prompt). Strings are JSON-escaped;
+// numbers are emitted raw for unquoted JSON slots. `startTime`/`endTime` are
+// raw Unix ms; `startTimeISO`/`endTimeISO` are ISO strings for agent-friendly,
+// human-readable time ranges (what the Claude default template uses).
+const buildWebhookTemplateVariables = (message: Message) => ({
+  body: escapeJsonString(message.body),
+  endTime: message.endTime,
+  endTimeISO: escapeJsonString(toIsoTimestamp(message.endTime)),
+  eventId: message.eventId,
+  link: escapeJsonString(message.hdxLink),
+  startTime: message.startTime,
+  startTimeISO: escapeJsonString(toIsoTimestamp(message.startTime)),
+  state: message.state,
+  title: escapeJsonString(message.title),
+  alertId: escapeJsonString(message.alertId ?? ''),
+  alertType: escapeJsonString(message.alertType ?? ''),
+  comparator: escapeJsonString(message.comparator ?? ''),
+  groupKey: escapeJsonString(message.groupKey ?? ''),
+  note: escapeJsonString(message.note ?? ''),
+  sourceQuery: escapeJsonString(message.sourceQuery ?? ''),
+  status: escapeJsonString(message.status ?? ''),
+  teamId: escapeJsonString(message.teamId ?? ''),
+  threshold: message.threshold,
+  value: message.value,
+});
+
+// Compiles the Claude webhook's user-editable Handlebars body into the agent
+// kickoff prompt, using the same variables the Generic path exposes.
+// Fail-open: an empty or uncompilable body returns null and the caller falls
+// back to the built-in enriched payload — a broken template must not stop an
+// investigation (unlike the Generic path, where the body IS the delivery and
+// failing loudly is correct). Exercised via handleStartAgentSession in tests.
+const compileClaudeWebhookBody = (
+  webhook: IWebhook,
+  message: Message,
+): string | null => {
+  if (!webhook.body?.trim()) return null;
+  try {
+    const handlebars = createHandlebarsWithHelpers();
+    const compiled = handlebars.compile(webhook.body, { noEscape: true })(
+      buildWebhookTemplateVariables(message),
+    );
+    // A body that renders blank (e.g. every variable resolved empty) must fall
+    // back too — `??` only catches null, so return null rather than starting an
+    // investigation with an empty kickoff message.
+    return compiled.trim() ? compiled : null;
+  } catch (e) {
+    logger.warn(
+      { error: serializeError(e) },
+      'Failed to compile Claude webhook body; using the built-in agent prompt',
+    );
+    return null;
+  }
+};
+
+export const buildAgentPrompt = (message: Message): string => {
+  const payload = {
+    source: 'clickstack',
+    schema_version: '1',
+    prompt:
+      'A ClickStack alert fired. Investigate the root cause using your pre-configured clickstack MCP server (logs, traces, metrics, and alert history). Reconstruct and re-run the alert source_query over the time_range, inspect related logs, traces, and metrics, follow context.runbook if present, check recent deploys, then post a concise, evidence-linked root-cause summary.',
+    alert: {
+      id: message.alertId,
+      event_id: message.eventId,
+      status: message.status,
+      type: message.alertType,
+      title: message.title,
+      body: message.body,
+      link: message.hdxLink,
+    },
+    condition: {
+      comparator: message.comparator,
+      threshold: message.threshold,
+      current_value: message.value,
+    },
+    context: {
+      group_key: message.groupKey,
+      source_query: message.sourceQuery,
+      runbook: message.note,
+      team_id: message.teamId,
+      time_range: {
+        start: new Date(message.startTime).toISOString(),
+        end: new Date(message.endTime).toISOString(),
+      },
+    },
+  };
+  return JSON.stringify(payload, null, 2);
+};
+
+// Claude managed-agent dispatch. Mirrors the other handle* senders (timed,
+// counted) but instead of an HTTP POST it starts an in-process agent session.
+// The webhook's `url` field is reused as the Slack URL the result is delivered
+// to once the session idles.
+export const handleStartAgentSession = async (
+  webhook: IWebhook,
+  message: Message,
+) => {
+  const startedAt = performance.now();
+  try {
+    // Feature-gated: don't start agent sessions when managed agents are off,
+    // even if a Claude webhook exists (the provisioning UI is 404'd, but a
+    // stale webhook could still be attached to an alert).
+    if (!config.IS_MANAGED_AGENTS_ENABLED) {
+      return;
+    }
+    // Only investigate on the firing edge. notifyChannel also runs on resolve
+    // (status resolved/no_data); the agent prompt is "an alert fired —
+    // investigate", so starting a session on resolution is wrong and wasteful.
+    if (message.status && message.status !== 'firing') {
+      return;
+    }
+    if (!message.teamId) {
+      throw new Error(
+        'Cannot start agent session: alert message has no teamId',
+      );
+    }
+    if (!webhook.url) {
+      throw new Error(
+        'Claude agent webhook requires a Slack delivery URL in its url field',
+      );
+    }
+    await startAgentSession({
+      teamId: new mongoose.Types.ObjectId(message.teamId),
+      alertId: message.alertId,
+      eventId: message.eventId,
+      title: message.title,
+      // The webhook's user-editable body template is the kickoff prompt;
+      // the built-in enriched payload is the fail-open fallback.
+      prompt:
+        compileClaudeWebhookBody(webhook, message) ?? buildAgentPrompt(message),
+      deliverToUrl: webhook.url,
+    });
+    webhookDeliveryCounter.add(1, {
+      service: WebhookService.Claude,
+      outcome: 'success',
+    });
+  } catch (e) {
+    webhookDeliveryCounter.add(1, {
+      service: WebhookService.Claude,
+      outcome: 'error',
+    });
+    throw e;
+  } finally {
+    webhookDeliveryDuration.record(performance.now() - startedAt, {
+      service: WebhookService.Claude,
+    });
+  }
+};
+
 export const handleSendGenericWebhook = async (
   webhook: IWebhook,
   message: Message,
@@ -374,15 +583,7 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
 
     body = handlebars.compile(webhook.body, {
       noEscape: true,
-    })({
-      body: escapeJsonString(message.body),
-      endTime: message.endTime,
-      eventId: message.eventId,
-      link: escapeJsonString(message.hdxLink),
-      startTime: message.startTime,
-      state: message.state,
-      title: escapeJsonString(message.title),
-    });
+    })(buildWebhookTemplateVariables(message));
   } catch (e) {
     logger.error(
       {
@@ -682,6 +883,17 @@ export const renderAlertTemplate = async ({
             startTime,
             endTime,
             eventId,
+            // Enriched fields for agent-ready payloads (Claude, etc).
+            alertId: alert.id ?? '',
+            status: ALERT_STATUS_BY_STATE[state],
+            alertType: alert.source ? ALERT_TYPE_BY_SOURCE[alert.source] : '',
+            comparator: COMPARATOR_BY_THRESHOLD_TYPE[alert.thresholdType],
+            threshold: alert.threshold,
+            value,
+            groupKey: group ?? '',
+            sourceQuery: savedSearch?.where ?? '',
+            teamId: (source?.team ?? dashboard?.team)?.toString() ?? '',
+            note: alert.note ?? '',
           },
         });
       }

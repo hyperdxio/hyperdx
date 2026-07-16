@@ -63,7 +63,18 @@ export const CLICKHOUSE_PASSWORD = env.CLICKHOUSE_PASSWORD as string;
 
 // AI Assistant
 // Provider-agnostic configuration (preferred)
-export const AI_PROVIDER = env.AI_PROVIDER as string; // 'anthropic' | 'openai'
+
+// Supported AI providers. Values are the accepted `AI_PROVIDER` env strings —
+// compare against these members rather than bare string literals.
+export enum AIProvider {
+  Anthropic = 'anthropic',
+  OpenAI = 'openai',
+}
+
+// Raw env string (validated against AIProvider at the point of use, e.g. the
+// getAIModel switch, so an unrecognised value fails loudly rather than being
+// silently cast).
+export const AI_PROVIDER = env.AI_PROVIDER as string;
 export const AI_API_KEY = env.AI_API_KEY as string;
 export const AI_BASE_URL = env.AI_BASE_URL as string;
 export const AI_MODEL_NAME = env.AI_MODEL_NAME as string;
@@ -71,3 +82,11 @@ export const AI_REQUEST_HEADERS = env.AI_REQUEST_HEADERS as string;
 
 // Legacy Anthropic-specific configuration (backward compatibility)
 export const ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY as string;
+
+// Managed Agents (in-product Claude Managed Agents provisioning).
+// Gated off by default. OSS reads the Anthropic key from the environment
+// (AI_API_KEY / ANTHROPIC_API_KEY — see anthropicAgents.getTeamAnthropicKey);
+// per-team encrypted key storage is a downstream (EE) concern injected via the
+// resolveAnthropicKey extension seam.
+export const IS_MANAGED_AGENTS_ENABLED =
+  env.HDX_MANAGED_AGENTS_ENABLED === 'true';

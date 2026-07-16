@@ -2,15 +2,19 @@ import {
   AlertState,
   AlertThresholdType,
   SourceKind,
+  WebhookService,
 } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
 import { makeTile } from '@/fixtures';
 import { AlertSource } from '@/models/alert';
+import * as anthropicAgents from '@/services/anthropicAgents';
 import { loadProvider } from '@/tasks/checkAlerts/providers';
 import {
   AlertMessageTemplateDefaultView,
+  buildAgentPrompt,
   buildAlertMessageTemplateTitle,
+  handleStartAgentSession,
   renderAlertTemplate,
 } from '@/tasks/checkAlerts/template';
 
@@ -398,6 +402,107 @@ describe('renderAlertTemplate', () => {
   });
 });
 
+// Enriched alert fields (alertId, status, sourceQuery, ...) render into a
+// webhook body. Claude no longer uses templated bodies (it starts an agent
+// session in-process — see anthropicAgents.test.ts), but these fields remain
+// available to Generic webhooks, which this covers.
+describe('enriched webhook payload fields', () => {
+  let fetchSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue({ ok: true, text: async () => '' } as any);
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it('substitutes enriched fields into the webhook body', async () => {
+    const webhookId = 'wh-claude-1';
+    const view = makeSearchView({
+      thresholdType: AlertThresholdType.ABOVE,
+      threshold: 5,
+      value: 10,
+    });
+    view.alert.id = 'alert-xyz';
+    view.alert.note = 'Runbook: https://wiki.example.com/runbook';
+    view.alert.channel = { type: 'webhook', webhookId };
+
+    const webhook = {
+      _id: new mongoose.Types.ObjectId(),
+      name: 'enriched-receiver',
+      service: WebhookService.Generic,
+      url: 'https://receiver.example.com/hook',
+      body: JSON.stringify({
+        alert_id: '{{alertId}}',
+        status: '{{status}}',
+        type: '{{alertType}}',
+        comparator: '{{comparator}}',
+        threshold: '{{threshold}}',
+        current_value: '{{value}}',
+        team_id: '{{teamId}}',
+        source_query: '{{sourceQuery}}',
+        runbook: '{{note}}',
+      }),
+    } as any;
+
+    await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.ALERT,
+      template: null,
+      title: 'Test Alert Title',
+      view,
+      teamWebhooksById: new Map([[webhookId, webhook]]),
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const sentBody = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
+    expect(sentBody).toMatchObject({
+      alert_id: 'alert-xyz',
+      status: 'firing',
+      type: 'search',
+      comparator: '>=',
+      threshold: '5',
+      current_value: '10',
+      team_id: 'team-123',
+      source_query: 'Body: "error"', // quotes survived JSON escaping
+      runbook: 'Runbook: https://wiki.example.com/runbook',
+    });
+  });
+
+  it('maps resolved state to status "resolved"', async () => {
+    const webhookId = 'wh-claude-2';
+    const view = makeSearchView({ value: 3 });
+    view.alert.channel = { type: 'webhook', webhookId };
+
+    const webhook = {
+      _id: new mongoose.Types.ObjectId(),
+      name: 'enriched-receiver',
+      service: WebhookService.Generic,
+      url: 'https://receiver.example.com/hook',
+      body: JSON.stringify({ status: '{{status}}' }),
+    } as any;
+
+    await renderAlertTemplate({
+      alertProvider,
+      clickhouseClient: mockClickhouseClient,
+      metadata: mockMetadata,
+      state: AlertState.OK,
+      template: null,
+      title: 'Test Alert Title',
+      view,
+      teamWebhooksById: new Map([[webhookId, webhook]]),
+    });
+
+    const sentBody = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
+    expect(sentBody.status).toBe('resolved');
+  });
+});
+
 describe('buildAlertMessageTemplateTitle', () => {
   describe('saved search alerts', () => {
     describe('ALERT state', () => {
@@ -490,6 +595,153 @@ describe('buildAlertMessageTemplateTitle', () => {
           expect(result).toMatchSnapshot();
         },
       );
+    });
+  });
+});
+
+describe('buildAgentPrompt', () => {
+  it('serializes the firing alert into the agent-ready JSON schema', () => {
+    const message = {
+      hdxLink: 'http://localhost/search/abc',
+      title: 'Trace Error',
+      body: '80 lines found',
+      startTime: Date.parse('2026-06-30T09:15:00.000Z'),
+      endTime: Date.parse('2026-06-30T09:20:00.000Z'),
+      eventId: 'evt-1',
+      alertId: 'alert-1',
+      status: 'firing',
+      alertType: 'search',
+      comparator: '>=',
+      threshold: 1,
+      value: 80,
+      groupKey: 'us-east-1',
+      sourceQuery: 'StatusCode:"Error"',
+      note: 'Runbook: https://wiki/runbook',
+      teamId: 'team-123',
+    };
+
+    const payload = JSON.parse(buildAgentPrompt(message as any));
+
+    expect(payload.source).toBe('clickstack');
+    expect(payload.schema_version).toBe('1');
+    expect(typeof payload.prompt).toBe('string');
+    expect(payload.alert).toMatchObject({
+      id: 'alert-1',
+      event_id: 'evt-1',
+      status: 'firing',
+      type: 'search',
+      title: 'Trace Error',
+      link: 'http://localhost/search/abc',
+    });
+    expect(payload.condition).toEqual({
+      comparator: '>=',
+      threshold: 1,
+      current_value: 80,
+    });
+    expect(payload.context.source_query).toBe('StatusCode:"Error"');
+    expect(payload.context.runbook).toBe('Runbook: https://wiki/runbook');
+    expect(payload.context.time_range).toEqual({
+      start: '2026-06-30T09:15:00.000Z',
+      end: '2026-06-30T09:20:00.000Z',
+    });
+    // Team id is included for multitenant routing/correlation downstream.
+    expect(payload.context.team_id).toBe('team-123');
+  });
+});
+
+describe('handleStartAgentSession', () => {
+  it('skips (no session) on a non-firing status, before the teamId/url guards', async () => {
+    // status 'resolved' must return early — otherwise the missing teamId would
+    // throw. Resolving cleanly proves the firing-only guard short-circuited.
+    await expect(
+      handleStartAgentSession(
+        {
+          url: 'https://hooks.slack.com/services/T/B/X',
+          service: WebhookService.Claude,
+        } as any,
+        { status: 'resolved' } as any,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  describe('kickoff prompt from the webhook body template', () => {
+    // A firing alert message with the fields the template variables reference.
+    const agentMessage = {
+      status: 'firing',
+      teamId: new mongoose.Types.ObjectId().toString(),
+      title: 'CPU high',
+      body: '80 lines found',
+      hdxLink: 'http://localhost/search/abc',
+      eventId: 'evt-1',
+      alertId: 'alert-1',
+      alertType: 'search',
+      comparator: '>=',
+      threshold: 1,
+      value: 80,
+      groupKey: 'us-east-1',
+      sourceQuery: 'StatusCode:"Error"',
+      note: 'Runbook: https://wiki/runbook',
+      startTime: Date.parse('2026-06-30T09:15:00.000Z'),
+      endTime: Date.parse('2026-06-30T09:20:00.000Z'),
+    };
+
+    const claudeWebhook = (body: string) =>
+      ({
+        url: 'https://hooks.slack.com/services/T/B/X',
+        service: WebhookService.Claude,
+        body,
+      }) as any;
+
+    let startAgentSessionSpy: jest.SpyInstance;
+    beforeEach(() => {
+      startAgentSessionSpy = jest
+        .spyOn(anthropicAgents, 'startAgentSession')
+        .mockResolvedValue(null);
+    });
+    afterEach(() => startAgentSessionSpy.mockRestore());
+
+    it('uses the webhook body template as the agent kickoff prompt', async () => {
+      await handleStartAgentSession(
+        claudeWebhook(
+          '{"custom":true,"title":"{{title}}","q":"{{sourceQuery}}"}',
+        ),
+        agentMessage as any,
+      );
+
+      const { prompt } = startAgentSessionSpy.mock.calls[0][0];
+      const parsed = JSON.parse(prompt);
+      expect(parsed.custom).toBe(true);
+      expect(parsed.title).toBe(agentMessage.title);
+    });
+
+    it('falls back to the built-in enriched payload when the body is empty', async () => {
+      await handleStartAgentSession(claudeWebhook(''), agentMessage as any);
+
+      const { prompt } = startAgentSessionSpy.mock.calls[0][0];
+      expect(JSON.parse(prompt).source).toBe('clickstack');
+    });
+
+    it('falls back (fail-open) when the body fails to compile', async () => {
+      await handleStartAgentSession(
+        claudeWebhook('{{#if}}'),
+        agentMessage as any,
+      );
+
+      const { prompt } = startAgentSessionSpy.mock.calls[0][0];
+      expect(JSON.parse(prompt).source).toBe('clickstack');
+    });
+
+    it('falls back when a non-empty body renders to a blank string', async () => {
+      // Stored body is non-empty but every referenced variable resolves empty,
+      // so it compiles to '' — the fallback must still fire (?? only catches
+      // null), not send an empty kickoff message.
+      await handleStartAgentSession(claudeWebhook('{{groupKey}}'), {
+        ...agentMessage,
+        groupKey: '',
+      } as any);
+
+      const { prompt } = startAgentSessionSpy.mock.calls[0][0];
+      expect(JSON.parse(prompt).source).toBe('clickstack');
     });
   });
 });

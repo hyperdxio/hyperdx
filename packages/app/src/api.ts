@@ -38,6 +38,18 @@ type ServicesResponse = {
   >;
 };
 
+type ManagedAgentData = {
+  _id: string;
+  name: string;
+  model: string;
+  anthropicAgentId: string;
+  vaultId: string;
+  environmentId: string;
+  mcpServerUrl: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 function loginHook(request: Request, options: any, response: Response) {
   // marketing pages
   const WHITELIST_PATHS = [
@@ -444,6 +456,31 @@ const api = {
         hdxServer(`webhooks/${id}`, {
           method: 'DELETE',
         }).json(),
+    });
+  },
+  useManagedAgents() {
+    return useQuery<{ data: ManagedAgentData[] }, Error>({
+      queryKey: ['managed-agents'],
+      queryFn: () => hdxServer('managed-agents').json(),
+    });
+  },
+  useCreateManagedAgent() {
+    return useMutation<
+      { data: ManagedAgentData },
+      Error | HTTPError,
+      { name: string; model: string }
+    >({
+      mutationFn: async ({ name, model }) =>
+        hdxServer('managed-agents', {
+          method: 'POST',
+          json: { name, model },
+        }).json(),
+    });
+  },
+  useDeleteManagedAgent() {
+    return useMutation<unknown, Error | HTTPError, { id: string }>({
+      mutationFn: async ({ id }) =>
+        hdxServer(`managed-agents/${id}`, { method: 'DELETE' }).json(),
     });
   },
   useTestWebhook() {
