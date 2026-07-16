@@ -46,7 +46,7 @@ jobs:
         run: make ci-build
       - name: Run unit tests
         run: make ci-unit
-  integration:
+  integration-shards:
     name: Integration - Shard ${{ matrix.shard }}
     timeout-minutes: 16
     runs-on: ubuntu-24.04
@@ -77,13 +77,32 @@ jobs:
       # MongoDB/ClickHouse database, so they must stay serial (--runInBand)
       # within a runner. We shard ACROSS runners instead: each shard is its own
       # VM with its own Docker stack, and jest's --shard splits the test files
-      # so the shards run in parallel. make ci-int is kept unchanged for local
-      # unsharded runs; here we start the same Docker stack and forward --shard
-      # through nx (args after `--` reach the underlying jest invocations).
+      # so the shards run in parallel. --shard is forwarded through nx (args
+      # after `--` reach the underlying jest invocations).
+      #
+      # Runs inline (not `make ci-int`) so the compose project stays `hdx-ci`
+      # (matching the bake step above); make ci-int's `-p int-<slot>` is local
+      # multi-worktree isolation that CI doesn't need, and routing through it
+      # would reintroduce a project-name mismatch against bake. Teardown and
+      # log-archival are omitted intentionally — the runner is ephemeral and
+      # Actions streams stdout.
       - name: Run integration tests
         run: |
           docker compose -f ./docker-compose.ci.yml up -d --quiet-pull
           npx nx run-many -t ci:int --parallel=false --output-style=stream -- --shard=${{ matrix.shard }}/4
+  # Stable aggregator context: `integration` is green only when all four shards
+  # pass. Merge-queue / required-status checks target this single context, since
+  # the per-shard contexts (Integration - Shard N) are not stable check names.
+  integration:
+    needs: [integration-shards]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify all integration shards passed
+        if: needs.integration-shards.result != 'success'
+        run: |
+          echo "::error::One or more integration shards failed"
+          exit 1
   otel-unit-test:
     timeout-minutes: 8
     runs-on: ubuntu-24.04
