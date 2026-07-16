@@ -18,7 +18,7 @@ TTL Timestamp + ${TABLES_TTL}
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 
 -- Single MV: CTE with UNION ALL across all columns, then aggregate
-CREATE MATERIALIZED VIEW IF NOT EXISTS ${DATABASE}.otel_logs_kv_rollup_15m_mv TO ${DATABASE}.otel_logs_kv_rollup_15m
+CREATE MATERIALIZED VIEW IF NOT EXISTS ${DATABASE}.otel_logs_attr_kv_rollup_15m_mv TO ${DATABASE}.otel_logs_kv_rollup_15m
 AS WITH elements AS (
     SELECT
         'NativeColumn' AS ColumnIdentifier,
