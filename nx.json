@@ -44,6 +44,10 @@
       "!{projectRoot}/jest.config.[jt]s",
       "!{projectRoot}/eslint.config.mjs"
     ],
-    "sharedGlobals": ["{workspaceRoot}/tsconfig.base.json"]
+    "sharedGlobals": [
+      "{workspaceRoot}/tsconfig.base.json",
+      "{workspaceRoot}/.prettierrc",
+      "{workspaceRoot}/.prettierignore"
+    ]
   }
 }
