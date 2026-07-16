@@ -1121,7 +1121,8 @@ export class Metadata {
     timestampValueExpression: string;
     signal?: AbortSignal;
   }): Promise<KeyValues[] | undefined> {
-    const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${JSON.stringify(Array.from(queryOptions.entries()))}.${timestampValueExpression}.getMapTextIndexKeyValues`;
+    const queryOptionsHash = objectHash(queryOptions);
+    const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${queryOptionsHash}.${timestampValueExpression}.getMapTextIndexKeyValues`;
     return this.cache.getOrFetch(cacheKey, async () => {
       try {
         const sqlBranches: Array<ChSql> = [];
@@ -1206,7 +1207,8 @@ export class Metadata {
     timestampValueExpression: string;
     signal?: AbortSignal;
   }): Promise<KeyValues[] | undefined> {
-    const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${JSON.stringify(Array.from(queryOptions.entries()))}.${timestampValueExpression}.getTextIndexKeyValues`;
+    const queryOptionsHash = objectHash(queryOptions);
+    const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${queryOptionsHash}.${timestampValueExpression}.getTextIndexKeyValues`;
     return this.cache.getOrFetch(cacheKey, async () => {
       try {
         const sqlBranches: Array<ChSql> = [];
@@ -1273,7 +1275,9 @@ export class Metadata {
     maxValuesPerKey: number;
     signal?: AbortSignal;
   }): Promise<KeyValues[] | undefined> {
-    const cacheKey = `${databaseName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${maxValuesPerKey}.${JSON.stringify(metadataMVs)}.${JSON.stringify(Array.from(queryOptions.entries()).map(o => [o[0], Array.from(o[1])]))}.getMetadataMVKeyValues`;
+    const queryOptionsHash = objectHash(queryOptions);
+    const metadataMVsHash = objectHash(metadataMVs ?? {});
+    const cacheKey = `${databaseName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${maxValuesPerKey}.${metadataMVsHash}.${queryOptionsHash}.getMetadataMVKeyValues`;
     return this.cache.getOrFetch(cacheKey, async () => {
       if (!metadataMVs) {
         console.warn('getMetadataMVKeyValues: metadataMVs is undefined');
