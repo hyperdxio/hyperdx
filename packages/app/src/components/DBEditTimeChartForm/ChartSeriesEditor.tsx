@@ -3,7 +3,6 @@ import {
   Control,
   FieldErrors,
   UseFormClearErrors,
-  UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
 import {
@@ -33,6 +32,7 @@ import { AGG_FNS } from '@/ChartUtils';
 import { AggFnSelectControlled } from '@/components/AggFnSelect';
 import {
   ChartEditorFormState,
+  ChartFormSetValue,
   SavedChartConfigWithSelectArray,
 } from '@/components/ChartEditor/types';
 import {
@@ -68,7 +68,7 @@ type ChartSeriesEditorProps = {
   onSwapSeries: (from: number, to: number) => void;
   onDuplicateSeries: (index: number) => void;
   onSubmit: () => void;
-  setValue: UseFormSetValue<ChartEditorFormState>;
+  setValue: ChartFormSetValue;
   showGroupBy: boolean;
   showHaving: boolean;
   showDuplicate: boolean;
@@ -175,7 +175,7 @@ export function ChartSeriesEditor({
       const currentValue = aggCondition || '';
 
       const newValue = currentValue ? `${currentValue} AND ${clause}` : clause;
-      setValue(`${namePrefix}aggCondition`, newValue);
+      setValue(`${namePrefix}aggCondition`, newValue, { isUserChange: true });
       onSubmit();
     },
     [aggCondition, namePrefix, setValue, onSubmit],
@@ -185,7 +185,7 @@ export function ChartSeriesEditor({
     (clause: string) => {
       const currentValue = groupBy || '';
       const newValue = currentValue ? `${currentValue}, ${clause}` : clause;
-      setValue('groupBy', newValue);
+      setValue('groupBy', newValue, { isUserChange: true });
       onSubmit();
     },
     [groupBy, setValue, onSubmit],
@@ -316,11 +316,17 @@ export function ChartSeriesEditor({
               metricName={metricName}
               metricType={metricType}
               setMetricName={value => {
-                setValue(`${namePrefix}metricName`, value);
-                setValue(`${namePrefix}valueExpression`, 'Value');
+                setValue(`${namePrefix}metricName`, value, {
+                  isUserChange: true,
+                });
+                setValue(`${namePrefix}valueExpression`, 'Value', {
+                  isUserChange: true,
+                });
               }}
               setMetricType={value =>
-                setValue(`${namePrefix}metricType`, value)
+                setValue(`${namePrefix}metricType`, value, {
+                  isUserChange: true,
+                })
               }
               metricSource={tableSource}
               data-testid="metric-name-selector"

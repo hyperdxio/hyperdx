@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   Control,
   UseFormGetValues,
@@ -18,7 +18,10 @@ import { DisplayType, TSource } from '@hyperdx/common-utils/dist/types';
 import { usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 
-import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import {
+  ChartEditorFormState,
+  ChartFormSetValue,
+} from '@/components/ChartEditor/types';
 import { convertFormStateToChartConfig } from '@/components/ChartEditor/utils';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 
@@ -95,8 +98,10 @@ export function useBuilderSqlConversion({
   const configType = useWatch({ control, name: 'configType' });
   const prevConfigType = usePrevious(configType);
 
-  // Which mode the user most recently edited in
-  const lastEditedModeRef = useRef<EditedMode>(
+  // Which mode has edits not yet synced to the other representation. `null`
+  // means the two are in sync (e.g. right after a successful conversion), so
+  // neither direction should re-convert until the user edits one side again.
+  const lastEditedModeRef = useRef<EditedMode | null>(
     getValues('configType') === 'sql' ? 'sql' : 'builder',
   );
 
@@ -118,6 +123,31 @@ export function useBuilderSqlConversion({
     });
     return () => subscription.unsubscribe();
   }, [watch, getValues]);
+
+  // A `setValue` wrapper handed to the form controls. Controls that mutate a
+  // query field without going through a registered react-hook-form input (so the
+  // `watch` subscription above never sees a `type: 'change'` event) pass
+  // `isUserChange: true`, which records the edit here so the correct direction
+  // re-converts on the next mode toggle. Programmatic writes omit the flag and
+  // behave like a plain `setValue`.
+  const setValueWithEditTracking = useCallback<ChartFormSetValue>(
+    (name, value, options) => {
+      const { isUserChange, ...setValueOptions } = options ?? {};
+      setValue(name, value, setValueOptions);
+      if (!isUserChange) {
+        return;
+      }
+      const editMode = classifyFormEdit({
+        name,
+        type: 'change',
+        configType: getValues('configType'),
+      });
+      if (editMode) {
+        lastEditedModeRef.current = editMode;
+      }
+    },
+    [setValue, getValues],
+  );
 
   // Builder → SQL: regenerate the SQL template when switching to SQL mode.
   useEffect(() => {
@@ -181,6 +211,9 @@ export function useBuilderSqlConversion({
         lastEditedModeRef.current === 'builder'
       ) {
         setValue('sqlTemplate', result.sql);
+        // The two representations are now in sync; neither has pending edits, so
+        // don't re-convert until the user edits one side again.
+        lastEditedModeRef.current = null;
         notifications.show({
           title: 'Chart converted to SQL',
           message: 'The existing chart configuration has been converted to SQL',
@@ -237,6 +270,10 @@ export function useBuilderSqlConversion({
       setValue('limit', result.limit, opts);
       setValue('seriesReturnType', result.seriesReturnType ?? 'column', opts);
 
+      // The two representations are now in sync; neither has pending edits, so
+      // don't re-convert until the user edits one side again.
+      lastEditedModeRef.current = null;
+
       notifications.show({
         id: 'sql-to-builder',
         title: 'Converted SQL to builder',
@@ -263,4 +300,6 @@ export function useBuilderSqlConversion({
       });
     }
   }, [configType, prevConfigType, getValues, setValue, tableSource]);
+
+  return { setValue: setValueWithEditTracking };
 }

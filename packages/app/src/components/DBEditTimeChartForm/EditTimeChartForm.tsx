@@ -236,7 +236,11 @@ export default function EditTimeChartForm({
 
   // Carry the query over between builder and SQL modes when the config type is
   // toggled (builder → SQL template, and SQL template → builder fields).
-  useBuilderSqlConversion({
+  // `setValueWithEditTracking` wraps `setValue` and additionally records genuine
+  // user edits (passed with `isUserChange: true`) so builder ⇄ SQL conversion
+  // knows which representation is freshest. Hand it to the form controls in
+  // place of the raw `setValue`.
+  const { setValue: setValueWithEditTracking } = useBuilderSqlConversion({
     control,
     getValues,
     setValue,
@@ -638,15 +642,26 @@ export default function EditTimeChartForm({
       if (numberFormat !== undefined) {
         setValue('numberFormat', numberFormat);
       }
-      setValue('alignDateRangeToGranularity', alignDateRangeToGranularity);
-      setValue('fillNulls', fillNulls);
-      setValue('compareToPreviousPeriod', compareToPreviousPeriod);
+      // These affect the generated query, so mark them as user edits.
+      setValueWithEditTracking(
+        'alignDateRangeToGranularity',
+        alignDateRangeToGranularity,
+        { isUserChange: true },
+      );
+      setValueWithEditTracking('fillNulls', fillNulls, { isUserChange: true });
+      setValueWithEditTracking(
+        'compareToPreviousPeriod',
+        compareToPreviousPeriod,
+        { isUserChange: true },
+      );
       setValue('fitYAxisToData', fitYAxisToData);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
       // Persist `null` (not undefined) when cleared so the disabled state
       // survives JSON round-tripping through the URL query state; otherwise
       // the dropped key lets RHF's `values` sync restore the stale value.
-      setValue('seriesLimit', seriesLimit ?? null);
+      setValueWithEditTracking('seriesLimit', seriesLimit ?? null, {
+        isUserChange: true,
+      });
       setValue('color', color);
       setValue('colorRules', colorRules);
       setValue('backgroundChart', backgroundChart);
@@ -658,21 +673,29 @@ export default function EditTimeChartForm({
       }
       onSubmit();
     },
-    [setValue, onDirtyChange, onSubmit],
+    [setValue, setValueWithEditTracking, onDirtyChange, onSubmit],
   );
 
   const handleUpdateHeatmapSettings = useCallback(
     (data: HeatmapSettingsValues) => {
-      setValue('series.0.valueExpression', data.value);
-      setValue('series.0.countExpression', data.count || 'count()');
-      setValue('series.0.heatmapScaleType', data.scaleType);
+      setValueWithEditTracking('series.0.valueExpression', data.value, {
+        isUserChange: true,
+      });
+      setValueWithEditTracking(
+        'series.0.countExpression',
+        data.count || 'count()',
+        { isUserChange: true },
+      );
+      setValueWithEditTracking('series.0.heatmapScaleType', data.scaleType, {
+        isUserChange: true,
+      });
       // Heatmap settings are applied outside RHF's change tracking.
       subFormDirty.current = true;
       onDirtyChange?.(true);
       onSubmit();
       closeHeatmapSettings();
     },
-    [setValue, onDirtyChange, onSubmit, closeHeatmapSettings],
+    [setValueWithEditTracking, onDirtyChange, onSubmit, closeHeatmapSettings],
   );
 
   const heatmapValueExpression = useWatch({
@@ -839,7 +862,7 @@ export default function EditTimeChartForm({
         ) : isRawSqlInput ? (
           <RawSqlChartEditor
             control={control}
-            setValue={setValue}
+            setValue={setValueWithEditTracking}
             onOpenDisplaySettings={openDisplaySettings}
             onSubmit={onSubmit}
             isDashboardForm={isDashboardForm}
@@ -849,7 +872,7 @@ export default function EditTimeChartForm({
         ) : (
           <ChartEditorControls
             control={control}
-            setValue={setValue}
+            setValue={setValueWithEditTracking}
             clearErrors={clearErrors}
             errors={errors}
             fields={fields}
@@ -909,7 +932,7 @@ export default function EditTimeChartForm({
         showGeneratedSql={showGeneratedSql}
         showSampleEvents={showSampleEvents}
         dbTimeChartConfig={dbTimeChartConfig}
-        setValue={(name, value) => setValue(name, value)}
+        setValue={setValueWithEditTracking}
         onSubmit={onSubmit}
       />
       <SaveToDashboardModal

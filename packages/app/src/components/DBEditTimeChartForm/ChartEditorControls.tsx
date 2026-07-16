@@ -4,7 +4,6 @@ import {
   FieldArrayWithId,
   FieldErrors,
   UseFormClearErrors,
-  UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
@@ -23,6 +22,7 @@ import { IconBell, IconCirclePlus } from '@tabler/icons-react';
 
 import {
   ChartEditorFormState,
+  ChartFormSetValue,
   SavedChartConfigWithSelectArray,
 } from '@/components/ChartEditor/types';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
@@ -44,7 +44,7 @@ import { buildGroupByConnectionProps } from './utils';
 
 type ChartEditorControlsProps = {
   control: Control<ChartEditorFormState>;
-  setValue: UseFormSetValue<ChartEditorFormState>;
+  setValue: ChartFormSetValue;
   clearErrors: UseFormClearErrors<ChartEditorFormState>;
   errors: FieldErrors<ChartEditorFormState>;
   fields: FieldArrayWithId<ChartEditorFormState, 'series', 'id'>[];
@@ -203,7 +203,7 @@ export function ChartEditorControls({
             name="where"
             onSubmit={onSubmit}
             onLanguageChange={(lang: 'sql' | 'lucene') =>
-              setValue('whereLanguage', lang)
+              setValue('whereLanguage', lang, { isUserChange: true })
             }
             showLabel={false}
           />
@@ -335,6 +335,7 @@ export function ChartEditorControls({
                     setValue(
                       'seriesReturnType',
                       seriesReturnType === 'ratio' ? 'column' : 'ratio',
+                      { isUserChange: true },
                     );
                     onSubmit();
                   }}
@@ -433,7 +434,7 @@ export function ChartEditorControls({
             name="where"
             onSubmit={onSubmit}
             onLanguageChange={(lang: 'sql' | 'lucene') =>
-              setValue('whereLanguage', lang)
+              setValue('whereLanguage', lang, { isUserChange: true })
             }
             showLabel={false}
           />

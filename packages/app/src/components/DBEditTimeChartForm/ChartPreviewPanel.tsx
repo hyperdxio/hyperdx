@@ -16,7 +16,10 @@ import { SortingState } from '@tanstack/react-table';
 
 import { buildTableRowSearchUrl } from '@/ChartUtils';
 import { getAlertReferenceLines } from '@/components/Alerts';
-import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import {
+  ChartEditorFormState,
+  ChartFormSetValueOptions,
+} from '@/components/ChartEditor/types';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import { DBBarChart } from '@/components/DBBarChart';
 import DBHeatmapChart, {
@@ -128,7 +131,11 @@ type ChartPreviewPanelProps = {
   showGeneratedSql: boolean;
   showSampleEvents: boolean;
   dbTimeChartConfig?: ChartConfigWithDateRange;
-  setValue: (name: 'orderBy', value: string) => void;
+  setValue: (
+    name: 'orderBy',
+    value: string,
+    options?: ChartFormSetValueOptions,
+  ) => void;
   onSubmit: () => void;
 };
 
@@ -153,7 +160,9 @@ export function ChartPreviewPanel({
 
   const onTableSortingChange = useCallback(
     (sortState: SortingState | null) => {
-      setValue('orderBy', sortingStateToOrderByString(sortState) ?? '');
+      setValue('orderBy', sortingStateToOrderByString(sortState) ?? '', {
+        isUserChange: true,
+      });
       onSubmit();
     },
     [setValue, onSubmit],
