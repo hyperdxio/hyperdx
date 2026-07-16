@@ -45,6 +45,79 @@ describe('renderMs', () => {
     // 0.9995ms rounds to 1000µs, so it should render as 1ms instead
     expect(renderMs(0.9995)).toBe('1ms');
   });
+
+  describe('with a tick interval (step)', () => {
+    it('adds ms precision so adjacent ticks stay distinct', () => {
+      expect(renderMs(1, 0.5)).toBe('1.0ms');
+      expect(renderMs(1.5, 0.5)).toBe('1.5ms');
+      expect(renderMs(2, 0.5)).toBe('2.0ms');
+      expect(renderMs(2.5, 0.5)).toBe('2.5ms');
+    });
+
+    it('produces no duplicate labels across a 0.5ms-spaced axis', () => {
+      const interval = 0.5;
+      const labels = [];
+      for (let i = 0; i * interval <= 4; i++) {
+        labels.push(renderMs(i * interval, interval));
+      }
+      expect(new Set(labels).size).toBe(labels.length);
+    });
+
+    it('uses two decimals when the interval requires it', () => {
+      expect(renderMs(1, 0.05)).toBe('1.00ms');
+      expect(renderMs(1.05, 0.05)).toBe('1.05ms');
+      expect(renderMs(1.1, 0.05)).toBe('1.10ms');
+    });
+
+    it('keeps integer labels when the interval is a whole number', () => {
+      expect(renderMs(2, 2)).toBe('2ms');
+      expect(renderMs(50, 50)).toBe('50ms');
+    });
+
+    it('adds precision to sub-millisecond (µs) ticks', () => {
+      expect(renderMs(0.5, 0.5)).toBe('500µs');
+      expect(renderMs(0.0005, 0.0005)).toBe('0.5µs');
+      expect(renderMs(0.001, 0.0005)).toBe('1.0µs');
+      expect(renderMs(0.0015, 0.0005)).toBe('1.5µs');
+    });
+
+    it('adds precision to second-scale ticks', () => {
+      expect(renderMs(1000, 500)).toBe('1.0s');
+      expect(renderMs(1500, 500)).toBe('1.5s');
+      expect(renderMs(2000, 500)).toBe('2.0s');
+    });
+
+    describe('edge cases', () => {
+      it('treats a null step like an omitted step (no added precision)', () => {
+        // @ts-expect-error null is not assignable to step, but is guarded at runtime
+        expect(renderMs(1, null)).toBe('1ms');
+        // @ts-expect-error null is not assignable to step, but is guarded at runtime
+        expect(renderMs(0.5, null)).toBe('500µs');
+        // @ts-expect-error null is not assignable to step, but is guarded at runtime
+        expect(renderMs(1500, null)).toBe('1.500s');
+        // @ts-expect-error null is not assignable to step, but is guarded at runtime
+        expect(renderMs(2000, null)).toBe('2s');
+      });
+
+      it('adds no precision for a 0 step', () => {
+        expect(renderMs(1, 0)).toBe('1ms');
+        expect(renderMs(0.5, 0)).toBe('500µs');
+        expect(renderMs(1000, 0)).toBe('1s');
+        expect(renderMs(1500, 0)).toBe('2s');
+      });
+
+      it('adds no precision for a negative step', () => {
+        expect(renderMs(1, -0.5)).toBe('1ms');
+        expect(renderMs(0.5, -0.0005)).toBe('500µs');
+        expect(renderMs(1000, -500)).toBe('1s');
+      });
+
+      it('adds no precision for a non-finite step', () => {
+        expect(renderMs(1, Infinity)).toBe('1ms');
+        expect(renderMs(1, NaN)).toBe('1ms');
+      });
+    });
+  });
 });
 
 describe('calculateInterval', () => {

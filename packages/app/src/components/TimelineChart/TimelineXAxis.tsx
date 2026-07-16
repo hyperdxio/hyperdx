@@ -111,7 +111,7 @@ export function TimelineXAxis({
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const label = tick.firstElementChild as HTMLDivElement;
       tick.style.marginLeft = marginLeft(i);
-      label.textContent = renderMs(i * interval);
+      label.textContent = renderMs(i * interval, interval);
     }
   }, [maxValRef, heightRef]);
 
