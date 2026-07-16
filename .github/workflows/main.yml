@@ -24,7 +24,7 @@ jobs:
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
       - name: Install root dependencies
-        run: yarn install
+        run: yarn install --immutable
       - name: Install core libs
         run: sudo apt-get install --yes curl bc
       - name: Cache nx computation
