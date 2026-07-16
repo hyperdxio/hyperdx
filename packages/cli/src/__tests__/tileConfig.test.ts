@@ -10,6 +10,7 @@ import {
   convertToTableChartConfig,
   convertToTimeChartConfig,
   getMetricTableName,
+  parseGranularityFlag,
   resolveTileConfig,
   sortTilesForDisplay,
 } from '@/shared/tileConfig';
@@ -321,5 +322,40 @@ describe('sortTilesForDisplay', () => {
       { id: 'a', x: 0, y: 0 },
     ];
     expect(sortTilesForDisplay(tiles).map(t => t.id)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('parseGranularityFlag', () => {
+  it('maps "auto" to undefined so the pipeline picks', () => {
+    expect(parseGranularityFlag('auto')).toEqual({ granularity: undefined });
+  });
+
+  it.each(['30 second', '1 minute', '5 minute', '12 hour', '1 day'])(
+    'accepts supported interval %s',
+    value => {
+      expect(parseGranularityFlag(value)).toEqual({ granularity: value });
+    },
+  );
+
+  it('trims surrounding whitespace', () => {
+    expect(parseGranularityFlag(' 5 minute ')).toEqual({
+      granularity: '5 minute',
+    });
+  });
+
+  it.each([
+    // week+ units are unsupported by the shaping pipeline — accepting
+    // them previously hung empty-bucket generation forever
+    '1 week',
+    '1 month',
+    '1 quarter',
+    '1 year',
+    '0 minute',
+    '-5 minute',
+    '1.5 hour',
+    'banana',
+    '',
+  ])('rejects unsupported value %j', value => {
+    expect(parseGranularityFlag(value)).toBeNull();
   });
 });

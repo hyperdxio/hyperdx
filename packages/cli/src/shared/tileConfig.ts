@@ -239,6 +239,26 @@ export function resolveTileConfig({
 // ---- Per-displayType config transforms -----------------------------
 
 /**
+ * Parse a user-supplied granularity ("auto" or "<n> second|minute|hour|day").
+ *
+ * Returns `{ granularity: undefined }` for "auto" (letting the pipeline
+ * pick), the normalized interval for valid input, or null for anything
+ * else. Units beyond day (week/month/…) are rejected because the
+ * response-shaping pipeline (convertGranularityToSeconds /
+ * toStartOfInterval, mirroring the web) does not support them — the web
+ * UI only offers second/minute/hour/day granularities too.
+ */
+export function parseGranularityFlag(
+  value: string,
+): { granularity: string | undefined } | null {
+  const trimmed = value.trim();
+  if (trimmed === 'auto') return { granularity: undefined };
+  return /^[1-9]\d* (second|minute|hour|day)$/.test(trimmed)
+    ? { granularity: trimmed }
+    : null;
+}
+
+/**
  * @source packages/app/src/ChartUtils.tsx (getTimeChartGranularity)
  *
  * `maxBuckets` defaults to 80 to match the web. CLI callers may pass a

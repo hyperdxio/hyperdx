@@ -115,8 +115,17 @@ function timeBucketByGranularity(
 ): Date[] {
   const buckets: Date[] = [];
 
-  let current = toStartOfInterval(start, granularity);
   const granularitySeconds = convertGranularityToSeconds(granularity);
+  // Deliberate divergence from the web port: convertGranularityToSeconds
+  // returns 0 for units it doesn't know (week/month/... or garbage), and
+  // a non-positive step would make this loop spin forever while growing
+  // `buckets` unboundedly. Skip empty-bucket generation instead — the
+  // chart still renders from the real result rows.
+  if (!(granularitySeconds > 0)) {
+    return buckets;
+  }
+
+  let current = toStartOfInterval(start, granularity);
   while (current < end) {
     buckets.push(current);
     current = new Date(current.getTime() + granularitySeconds * 1000);

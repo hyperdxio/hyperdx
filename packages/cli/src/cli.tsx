@@ -22,7 +22,7 @@ import App from '@/App';
 import { ApiClient, type SourceResponse, type MeTeam } from '@/api/client';
 import { AdhocChartError, buildAdhocChartConfig } from '@/shared/adhocChart';
 import { stripAnsi } from '@/termchart';
-import { sortTilesForDisplay } from '@/shared/tileConfig';
+import { parseGranularityFlag, sortTilesForDisplay } from '@/shared/tileConfig';
 import { fetchTileData } from '@/shared/tileQuery';
 import { renderTileContent } from '@/shared/tileRender';
 import { clearSession, loadSession, setActiveTeam } from '@/utils/config';
@@ -1305,8 +1305,16 @@ Examples:
       : Math.min(process.stdout.columns || 100, 140);
     const height = Number(opts.height);
     const dateRange: [Date, Date] = [from, to];
-    const granularity =
-      opts.granularity === 'auto' ? undefined : opts.granularity;
+    const parsedGranularity = parseGranularityFlag(String(opts.granularity));
+    if (!parsedGranularity) {
+      _origError(
+        chalk.red(
+          `Invalid --granularity "${opts.granularity}". Use "auto" or "<n> second|minute|hour|day" (e.g. "5 minute").\n`,
+        ),
+      );
+      process.exit(1);
+    }
+    const granularity = parsedGranularity.granularity;
     const maxTimeBuckets = Math.max(20, Math.min(80, width - 14));
 
     // Colors: strip ANSI when stdout is not a TTY (agents/pipes) unless
