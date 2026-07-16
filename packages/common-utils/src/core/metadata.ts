@@ -1,5 +1,6 @@
 import type { ClickHouseSettings } from '@clickhouse/client-common';
 import { chunk, omit, pick } from 'lodash';
+import SqlString from 'sqlstring';
 
 import {
   BaseClickhouseClient,
@@ -100,6 +101,17 @@ const quoteIdentifierIfNeeded = (identifier: string): string => {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(unquoted)
     ? unquoted
     : quoteJsonPathSegment(unquoted);
+};
+
+const columnAppearsInMvSelect = (sql: string, columnName: string): boolean => {
+  const escaped = columnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const isBareIdentifier = /^[A-Za-z_][A-Za-z0-9_]*$/.test(columnName);
+  const pattern = isBareIdentifier
+    ? new RegExp(
+        `\`${escaped}\`|(?<![A-Za-z0-9_\`-])${escaped}(?![A-Za-z0-9_\`-])`,
+      )
+    : new RegExp(`\`${escaped}\``);
+  return pattern.test(sql);
 };
 
 const JSON_STRING_TYPE_SUFFIX = '.:String';
@@ -2037,7 +2049,7 @@ export class Metadata {
       ) {
         continue;
       }
-      return table.as_select.includes(columnName);
+      return columnAppearsInMvSelect(table.as_select, columnName);
     }
     return false;
   }
@@ -2261,10 +2273,16 @@ export class Metadata {
       // backticks by `unquoteIdentifier` above, and column names with hyphens
       // or dots (e.g. `Map-Attributes`, `service-name`) need them back or the
       // whole batch fails, dropping facets for every key on this path.
+      // Map keys are ingest-controlled data (they come from user telemetry and
+      // from callers like the MCP describeSource tool), so they must be
+      // SQL-escaped before being embedded as a literal — `SqlString.escape`
+      // returns a fully-quoted, safely-escaped ClickHouse string literal.
       if (keyValueFetchingStrategies.rawTable.includes(key.column)) {
         const quotedColumn = quoteIdentifierIfNeeded(key.column);
         if (key.mapKey) {
-          rawQueryOptions.push(`${quotedColumn}['${key.mapKey}']`);
+          rawQueryOptions.push(
+            `${quotedColumn}[${SqlString.escape(key.mapKey)}]`,
+          );
         } else {
           rawQueryOptions.push(quotedColumn);
         }

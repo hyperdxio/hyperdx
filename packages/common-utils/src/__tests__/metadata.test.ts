@@ -1075,6 +1075,31 @@ describe('Metadata', () => {
       expect(configArg.select).toContain('param0');
     });
 
+    it('SQL-escapes map keys with single quotes on the raw-table fallback path (SQL-injection regression)', async () => {
+      setupDefaultLogsSchema();
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      const injectionPayload = "foo'); SELECT 1 FROM system.tables --";
+
+      await metadata.getAllKeyValues({
+        ...baseArgs,
+        keyExpressions: [`ResourceAttributes['${injectionPayload}']`],
+      });
+
+      expect(renderChartConfigSpy).toHaveBeenCalled();
+      const configArg = renderChartConfigSpy.mock.calls[
+        renderChartConfigSpy.mock.calls.length - 1
+      ][0] as any;
+      const innerSelect = configArg.with?.[0]?.chartConfig?.select as string;
+      expect(innerSelect).toBeDefined();
+
+      expect(innerSelect).toContain("foo\\'");
+      expect(innerSelect).not.toMatch(/'foo'\); SELECT 1 FROM system\.tables/);
+    });
+
     // Guards against HTTP 431 from too many URL-encoded query_params. Passes
     // more keys than the private GET_ALL_KEY_VALUES_CHUNK_SIZE (currently 40)
     // so the recursion has to fire at least two chunks; if someone removes
@@ -2594,6 +2619,120 @@ describe('Metadata', () => {
       });
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('doMetadataMVsAggregateColumn (word-boundary token match)', () => {
+    const tableConn = {
+      databaseName: 'default',
+      tableName: 'otel_traces',
+      connectionId: 'test_connection',
+    };
+
+    const mvWithNamesAndBackticks = {
+      database: 'default',
+      name: 'traces_kv_rollup_15m_mv',
+      engine: 'MaterializedView',
+      create_table_query:
+        'CREATE MATERIALIZED VIEW default.traces_kv_rollup_15m_mv TO default.otel_traces AS SELECT ...',
+      as_select: `WITH elements AS (
+        SELECT 'NativeColumn' AS ColumnIdentifier, 'StatusCode' AS Key, CAST(StatusCode, 'String') AS Value FROM default.otel_traces
+        UNION ALL
+        SELECT 'NativeColumn' AS ColumnIdentifier, 'SpanId' AS Key, CAST(SpanId, 'String') AS Value FROM default.otel_traces
+        UNION ALL
+        SELECT 'NativeColumn' AS ColumnIdentifier, 'ServiceName' AS Key, CAST(ServiceName, 'String') AS Value FROM default.otel_traces
+        UNION ALL
+        SELECT 'ResourceAttributes' AS ColumnIdentifier, entry.1 AS Key, CAST(entry.2, 'String') AS Value FROM default.otel_traces ARRAY JOIN \`Map-Attributes\` AS entry
+      ) SELECT Timestamp, ColumnIdentifier, Key, Value, count() AS count FROM elements GROUP BY Timestamp, ColumnIdentifier, Key, Value`,
+    };
+
+    beforeEach(() => {
+      jest
+        .spyOn(metadata, 'getAllTableMetadata')
+        .mockResolvedValue([mvWithNamesAndBackticks] as any);
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('matches columns whose exact name appears as a token', async () => {
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(
+          tableConn,
+          'StatusCode',
+        ),
+      ).toBe(true);
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(
+          tableConn,
+          'SpanId',
+        ),
+      ).toBe(true);
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(
+          tableConn,
+          'ServiceName',
+        ),
+      ).toBe(true);
+    });
+
+    it('does NOT false-match a column whose name is a substring of another token', async () => {
+      // Substring false-positive regression: `Status` inside `StatusCode`,
+      // `Span` inside `SpanId`, `Service` inside `ServiceName`. Prior naive
+      // `sql.includes(columnName)` would return true for all three, silently
+      // routing them to the rollup MV (which has no rows for them) instead of
+      // the raw-table fallback.
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(
+          tableConn,
+          'Status',
+        ),
+      ).toBe(false);
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(tableConn, 'Span'),
+      ).toBe(false);
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(
+          tableConn,
+          'Service',
+        ),
+      ).toBe(false);
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(
+          tableConn,
+          'Native',
+        ),
+      ).toBe(false);
+    });
+
+    it('matches a backtick-quoted identifier with hyphens', async () => {
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(
+          tableConn,
+          'Map-Attributes',
+        ),
+      ).toBe(true);
+    });
+
+    it('does NOT match a bare identifier that sits inside a backtick-quoted longer name', async () => {
+      // `Map` and `Attributes` are substrings of `Map-Attributes`; the
+      // hyphen boundary must not turn them into false positives.
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(tableConn, 'Map'),
+      ).toBe(false);
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(
+          tableConn,
+          'Attributes',
+        ),
+      ).toBe(false);
+    });
+
+    it('returns false for columns absent from the MV', async () => {
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(tableConn, 'Body'),
+      ).toBe(false);
     });
   });
 });

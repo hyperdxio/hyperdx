@@ -9,6 +9,7 @@ import {
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { type MetricTable, SourceKind } from '@hyperdx/common-utils/dist/types';
+import SqlString from 'sqlstring';
 import { z } from 'zod';
 
 import { getConnectionById } from '@/controllers/connection';
@@ -473,7 +474,11 @@ async function describeSourceSchema(
     const keyExprs: string[] = [];
     for (const [colName, keys] of Object.entries(mapKeysResults)) {
       for (const key of keys.slice(0, MAX_MAP_KEYS_TO_SAMPLE)) {
-        keyExprs.push(`${colName}['${key}']`);
+        // Map keys come from ClickHouse data (customer telemetry) so they can
+        // contain arbitrary characters, including single quotes. Escape as a
+        // SQL string literal — `SqlString.escape` returns a fully-quoted,
+        // safely-escaped value — before embedding in the key expression.
+        keyExprs.push(`${colName}[${SqlString.escape(key)}]`);
       }
     }
 
