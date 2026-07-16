@@ -47,6 +47,8 @@
     "dev:compose": "sh -c '. ./scripts/dev-env.sh && docker compose -p \"$HDX_DEV_PROJECT\" -f docker-compose.dev.yml'",
     "knip": "knip",
     "knip:ci": "knip --reporter json",
+    "ratchet": "node scripts/ci/ratchet.mjs",
+    "ratchet:update": "node scripts/ci/ratchet.mjs --update",
     "lint": "npx nx run-many -t ci:lint",
     "lint:fix": "npx nx run-many -t lint:fix",
     "version": "make version",
