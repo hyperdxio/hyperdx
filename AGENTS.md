@@ -113,11 +113,14 @@ yarn ci:unit           # Run unit tests
 yarn dev:unit          # Watch mode for unit tests
 ```
 
-**packages/api** (integration tests only):
+**packages/api** (unit and integration tests):
 
 ```bash
-make dev-int-build                  # Build dependencies (run once before tests)
-make dev-int FILE=<TEST_FILE_NAME>  # Spins up Docker services and runs tests.
+cd packages/api
+yarn ci:unit                        # Run unit tests (no services needed)
+
+make dev-int-build                  # Build dependencies (run once before integration tests)
+make dev-int FILE=<TEST_FILE_NAME>  # Spins up Docker services and runs integration tests.
                                     # Ctrl-C to stop and wait for all services to tear down.
 ```
 
