@@ -96,7 +96,22 @@ export default function TileChart({
     return <Box width={width} height={height} />;
   }
 
-  const content = renderTileContent({ result, source, width, height });
+  // Shaping/rendering can throw on non-conforming results (e.g. a raw-SQL
+  // line tile whose rows lack a Date or numeric column). Degrade to a
+  // per-tile error instead of crashing the whole Ink TUI — mirrors the
+  // try/catch around the same call in the `hdx chart` command.
+  let content: string;
+  try {
+    content = renderTileContent({ result, source, width, height });
+  } catch (err) {
+    return (
+      <Box width={width} height={height} overflow="hidden">
+        <Text color="red" wrap="truncate-end">
+          Render failed: {err instanceof Error ? err.message : String(err)}
+        </Text>
+      </Box>
+    );
+  }
 
   return (
     <Box width={width} height={height} overflow="hidden" flexDirection="column">
