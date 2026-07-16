@@ -113,6 +113,7 @@ ci-build:
 .PHONY: ci-lint
 ci-lint:
 	npx nx run-many -t ci:lint
+	node scripts/ci/ratchet.mjs
 
 .PHONY: dev-int-down
 dev-int-down:
