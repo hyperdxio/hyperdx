@@ -36,7 +36,7 @@
     "lint": "npx eslint . --ext .ts --max-warnings 3",
     "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
-    "ci:unit": "jest --ci --forceExit",
+    "ci:unit": "jest --ci --coverage --forceExit",
     "dev:unit": "jest --watch",
     "viewer": "node scripts/viewer/server.js"
   }
