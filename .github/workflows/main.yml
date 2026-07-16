@@ -21,7 +21,7 @@ jobs:
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
       - name: Install root dependencies
-        run: yarn install
+        run: yarn install --immutable
       - name: Build dependencies
         run: make ci-build
       - name: Install core libs
@@ -41,7 +41,7 @@ jobs:
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
       - name: Install root dependencies
-        run: yarn install
+        run: yarn install --immutable
       - name: Build dependencies
         run: make ci-build
       - name: Run unit tests
@@ -59,13 +59,13 @@ jobs:
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
       - name: Install root dependencies
-        run: yarn install
+        run: yarn install --immutable
       - name: Expose GitHub Runtime
         uses: crazy-max/ghaction-github-runtime@v4
       - name: Spin up docker services
         run: |
           docker buildx create --use --driver=docker-container
-          docker buildx bake -f ./docker-compose.ci.yml --set *.cache-to="type=gha" --set *.cache-from="type=gha" --load
+          docker buildx bake -f ./docker-compose.ci.yml --set *.cache-to="type=gha,mode=max,scope=ci-integration" --set *.cache-from="type=gha,scope=ci-integration" --load
       - name: Build dependencies
         run: make ci-build
       - name: Run integration tests
@@ -264,7 +264,7 @@ jobs:
           cache: 'yarn'
 
       - name: Install dependencies
-        run: yarn install
+        run: yarn install --immutable
 
       - name: Build App
         run: yarn build:clickhouse
