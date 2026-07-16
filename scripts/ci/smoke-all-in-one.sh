@@ -34,15 +34,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Pull with a small retry first, so a transient registry hiccup can't flake the
-# release gate (docker run would otherwise pull implicitly, with no retry).
-for attempt in 1 2 3; do
-  docker pull "$IMAGE" && break
-  if [ "$attempt" = 3 ]; then
-    echo "::error::failed to pull $IMAGE after 3 attempts"; exit 1
-  fi
-  echo "pull failed (attempt $attempt/3), retrying in 5s..."; sleep 5
-done
+# Pull with a small retry so a transient registry hiccup can't flake the release
+# gate (docker run would otherwise pull implicitly, with no retry). Skip the pull
+# when the image is already in the local daemon — the PR build loads its image
+# with `load: true` and never pushes it, so a `docker pull` would hit the
+# registry and fail for a tag that only exists locally.
+if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+  echo "using locally-loaded image $IMAGE (skipping pull)"
+else
+  for attempt in 1 2 3; do
+    docker pull "$IMAGE" && break
+    if [ "$attempt" = 3 ]; then
+      echo "::error::failed to pull $IMAGE after 3 attempts"; exit 1
+    fi
+    echo "pull failed (attempt $attempt/3), retrying in 5s..."; sleep 5
+  done
+fi
 
 if [ "$HEALTH_ONLY" = 1 ]; then
   docker run -d --name "$NAME" -p "$APP_PORT:8080" "$IMAGE"
