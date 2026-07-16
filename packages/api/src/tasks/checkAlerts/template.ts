@@ -43,7 +43,7 @@ import {
 import { escapeJsonString, unflattenObject } from '@/tasks/util';
 import { truncateString } from '@/utils/common';
 import { getCounter, getHistogram } from '@/utils/instrumentation';
-import { isPrivateIp } from '@/utils/validators';
+import { IPV6_BRACKET_RE, isPrivateIp } from '@/utils/validators';
 import logger from '@/utils/logger';
 import { withRetry } from '@/utils/retry';
 import * as slack from '@/utils/slack';
@@ -278,7 +278,7 @@ function validateWebhookUrl(
       throw new Error(`SSRF AllowedDomainError: ${message}`);
     }
     // Block direct private/reserved IP literals to prevent SSRF
-    const hostname = url.hostname.replace(/^\[|\]$/g, ''); // strip IPv6 brackets
+    const hostname = url.hostname.replace(IPV6_BRACKET_RE, ''); // strip IPv6 brackets
     if (isPrivateIp(hostname)) {
       const message = `Webhook URL resolves to a private or reserved address: ${hostname}`;
       logger.warn(

@@ -1,6 +1,9 @@
 import { Address4, Address6 } from 'ip-address';
 import { z } from 'zod';
 
+// Strips the surrounding brackets from IPv6 literals in URL hostnames (e.g. [::1] → ::1)
+export const IPV6_BRACKET_RE = /^\[|\]$/g;
+
 // Returns true for private/reserved IPv4 and IPv6 addresses that must not be
 // reachable from outbound requests (SSRF protection).
 export function isPrivateIp(ip: string): boolean {
@@ -11,9 +14,9 @@ export function isPrivateIp(ip: string): boolean {
       addr.isPrivate() ||
       addr.isLinkLocal() ||
       addr.isMulticast() ||
-      addr.isInSubnet(new Address4('100.64.0.0/10')) || // RFC 6598 shared
-      addr.isInSubnet(new Address4('0.0.0.0/8')) || // "this" network
-      addr.isInSubnet(new Address4('240.0.0.0/4')) // reserved/broadcast
+      addr.isCGNAT() || // RFC 6598 100.64.0.0/10 shared address space
+      addr.isUnspecified() || // 0.0.0.0 "this" network (RFC 1122)
+      addr.isInSubnet(new Address4('240.0.0.0/4')) // reserved/future-use (RFC 1112 §4)
     );
   }
   if (Address6.isValid(ip)) {
