@@ -18,7 +18,7 @@ MODE="${2:-full}"
 
 case "$MODE" in
   --health-only) HEALTH_ONLY=1 ;;
-  full | "") HEALTH_ONLY=0 ;;
+  full) HEALTH_ONLY=0 ;;
   *)
     echo "::error::unknown mode '$MODE' (expected --health-only or nothing)"
     exit 2
@@ -30,10 +30,19 @@ APP_PORT="${SMOKE_APP_PORT:-18080}"
 OTLP_PORT="${SMOKE_OTLP_PORT:-14318}"
 
 cleanup() {
-  docker logs "$NAME" --tail 200 > /tmp/hdx-smoke.log 2>&1 || true
   docker rm -f "$NAME" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+
+# Pull with a small retry first, so a transient registry hiccup can't flake the
+# release gate (docker run would otherwise pull implicitly, with no retry).
+for attempt in 1 2 3; do
+  docker pull "$IMAGE" && break
+  if [ "$attempt" = 3 ]; then
+    echo "::error::failed to pull $IMAGE after 3 attempts"; exit 1
+  fi
+  echo "pull failed (attempt $attempt/3), retrying in 5s..."; sleep 5
+done
 
 if [ "$HEALTH_ONLY" = 1 ]; then
   docker run -d --name "$NAME" -p "$APP_PORT:8080" "$IMAGE"
@@ -43,6 +52,11 @@ fi
 
 echo "waiting for app health..."
 for i in $(seq 1 90); do
+  # Fail fast if the container exited (bad entrypoint, port clash, missing env)
+  # instead of polling a dead container for the full timeout.
+  if [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" != "true" ]; then
+    echo "::error::container exited during startup"; docker logs "$NAME" --tail 200; exit 1
+  fi
   curl -fsS "http://localhost:$APP_PORT/api/health" >/dev/null 2>&1 && break
   if [ "$i" = 90 ]; then
     echo "::error::app never became healthy"; docker logs "$NAME" --tail 100; exit 1
@@ -68,15 +82,31 @@ fi
 
 CANARY="smoke-canary-$(date +%s)-$$"
 NOW_NS="$(date +%s)000000000"
-curl -fsS -X POST "http://localhost:$OTLP_PORT/v1/logs" \
-  -H 'Content-Type: application/json' \
-  -d "{\"resourceLogs\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"ci-smoke\"}}]},\"scopeLogs\":[{\"logRecords\":[{\"timeUnixNano\":\"$NOW_NS\",\"severityText\":\"INFO\",\"body\":{\"stringValue\":\"$CANARY\"}}]}]}]}"
-echo "canary sent"
+PAYLOAD="{\"resourceLogs\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"ci-smoke\"}}]},\"scopeLogs\":[{\"logRecords\":[{\"timeUnixNano\":\"$NOW_NS\",\"severityText\":\"INFO\",\"body\":{\"stringValue\":\"$CANARY\"}}]}]}]}"
+
+# The Node app reports /api/health before the separately-supervised collector's
+# :4318 receiver is necessarily listening, so retry the POST until it's accepted
+# rather than aborting on a transient connection-refused (which would false-fail
+# the release gate).
+echo "sending canary (collector may still be starting)..."
+for i in $(seq 1 45); do
+  if curl -fsS -X POST "http://localhost:$OTLP_PORT/v1/logs" \
+       -H 'Content-Type: application/json' -d "$PAYLOAD" >/dev/null 2>&1; then
+    echo "canary sent"
+    break
+  fi
+  if [ "$i" = 45 ]; then
+    echo "::error::collector never accepted the OTLP canary on :$OTLP_PORT"
+    docker logs "$NAME" --tail 200; exit 1
+  fi
+  sleep 2
+done
 
 echo "waiting for canary in ClickHouse..."
 for i in $(seq 1 45); do
   n="$(docker exec "$NAME" clickhouse-client --query \
     "SELECT count() FROM default.otel_logs WHERE Body LIKE '%$CANARY%'" 2>/dev/null || echo 0)"
+  n="${n//[!0-9]/}"
   if [ "${n:-0}" -ge 1 ]; then
     echo "canary ingested end-to-end: collector -> clickhouse"
     exit 0

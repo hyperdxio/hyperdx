@@ -197,4 +197,5 @@ jobs:
         if:
           steps.changed-files.outputs.any_changed == 'true' || github.event_name
           == 'workflow_dispatch'
+        timeout-minutes: 10
         run: scripts/ci/smoke-all-in-one.sh hyperdx-aio-smoke:pr
