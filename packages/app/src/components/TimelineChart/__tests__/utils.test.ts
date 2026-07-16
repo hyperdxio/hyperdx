@@ -1,7 +1,9 @@
 import {
   calculateInterval,
   getMaxEventValue,
+  MIN_TICK_PX,
   renderMs,
+  tickIntervalForWidth,
 } from '@/components/TimelineChart/utils';
 
 describe('renderMs', () => {
@@ -181,6 +183,39 @@ describe('calculateInterval', () => {
   it('returns a safe fallback for non-positive ranges', () => {
     expect(calculateInterval(0)).toBe(1);
     expect(calculateInterval(-5)).toBe(1);
+  });
+});
+
+describe('tickIntervalForWidth', () => {
+  it('budgets ticks by MIN_TICK_PX, matching calculateInterval', () => {
+    // 560px fits 10 ticks (560 / 56), so a 100ms range steps by 10ms.
+    expect(tickIntervalForWidth(100, 10 * MIN_TICK_PX)).toBe(
+      calculateInterval(100, 10),
+    );
+  });
+
+  it('yields finer intervals as the width grows', () => {
+    // A narrow axis packs fewer ticks (coarser interval); a wide one packs more
+    // (finer interval). This is what lets the cursor readout gain precision when
+    // the timeline is zoomed in.
+    const narrow = tickIntervalForWidth(100, 3 * MIN_TICK_PX);
+    const wide = tickIntervalForWidth(100, 20 * MIN_TICK_PX);
+    expect(wide).toBeLessThan(narrow);
+  });
+
+  it('formats a cursor time with the same precision as the tick labels', () => {
+    // A zoomed-in 5ms range across a wide axis steps by a sub-ms interval, so
+    // the readout keeps a decimal instead of rounding to a whole millisecond.
+    const interval = tickIntervalForWidth(5, 20 * MIN_TICK_PX);
+    expect(renderMs(2.3, interval)).toBe('2.3ms');
+    expect(renderMs(2.3)).toBe('2ms');
+  });
+
+  it('reserves at least one tick for tiny widths', () => {
+    expect(tickIntervalForWidth(100, 0)).toBe(calculateInterval(100, 1));
+    expect(tickIntervalForWidth(100, MIN_TICK_PX / 2)).toBe(
+      calculateInterval(100, 1),
+    );
   });
 });
 

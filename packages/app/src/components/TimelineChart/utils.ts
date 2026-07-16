@@ -86,3 +86,15 @@ export function calculateInterval(value: number, maxTicks = 10) {
   }
   return 10 * magnitude;
 }
+
+// Minimum horizontal space reserved per tick label. The widest label we render
+// (e.g. "1.234s") is ~45px; the extra headroom keeps adjacent labels from
+// touching. Tune up for a sparser axis, down for a denser one.
+export const MIN_TICK_PX = 56;
+
+// Derives the tick interval for a timeline of range `maxVal` rendered across
+// `ticksWidthPx` pixels, budgeting ticks by MIN_TICK_PX so labels never overlap.
+export function tickIntervalForWidth(maxVal: number, ticksWidthPx: number) {
+  const maxTicks = Math.max(1, Math.floor(ticksWidthPx / MIN_TICK_PX));
+  return calculateInterval(maxVal, maxTicks);
+}
