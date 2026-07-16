@@ -47,8 +47,13 @@ jobs:
       - name: Run unit tests
         run: make ci-unit
   integration:
+    name: Integration - Shard ${{ matrix.shard }}
     timeout-minutes: 16
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -68,8 +73,17 @@ jobs:
           docker buildx bake -f ./docker-compose.ci.yml --set *.cache-to="type=gha" --set *.cache-from="type=gha" --load
       - name: Build dependencies
         run: make ci-build
+      # Integration tests boot a MockServer on fixed ports and share a single
+      # MongoDB/ClickHouse database, so they must stay serial (--runInBand)
+      # within a runner. We shard ACROSS runners instead: each shard is its own
+      # VM with its own Docker stack, and jest's --shard splits the test files
+      # so the shards run in parallel. make ci-int is kept unchanged for local
+      # unsharded runs; here we start the same Docker stack and forward --shard
+      # through nx (args after `--` reach the underlying jest invocations).
       - name: Run integration tests
-        run: make ci-int
+        run: |
+          docker compose -f ./docker-compose.ci.yml up -d --quiet-pull
+          npx nx run-many -t ci:int --parallel=false --output-style=stream -- --shard=${{ matrix.shard }}/4
   otel-unit-test:
     timeout-minutes: 8
     runs-on: ubuntu-24.04
