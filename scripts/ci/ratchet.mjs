@@ -2,10 +2,13 @@
 /**
  * Ratchet: counts of tracked escape hatches may only go down.
  * Above baseline -> fail (you added one; remove it).
- * Below baseline -> fail (run `yarn ratchet:update` to lock the improvement in).
+ * Below baseline -> warn only (run `yarn ratchet:update` to lock the
+ *   improvement in). Non-fatal so an improvement can never turn `main` red —
+ *   e.g. when two count-lowering PRs merge close together and `main`'s
+ *   committed baseline briefly sits above the real count.
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -22,6 +25,10 @@ const PATTERNS = {
 };
 
 function count(pattern, dir) {
+  // A renamed/removed package (or a new PACKAGES entry added before its source
+  // exists) would make grep exit 2, not 1; treat a missing dir as zero rather
+  // than crashing the whole ratchet with an opaque stack trace.
+  if (!existsSync(dir)) return 0;
   try {
     const out = execFileSync(
       'grep',
@@ -61,9 +68,10 @@ for (const pkg of PACKAGES) {
         `x ${pkg}/${name}: ${now} > baseline ${max} — remove the new occurrence(s)`,
       );
     } else if (now < max) {
-      failed = true;
-      console.error(
-        `x ${pkg}/${name}: ${now} < baseline ${max} — run \`yarn ratchet:update\` to lock the improvement in`,
+      // Non-fatal: an improvement must never fail CI (it would red `main` and
+      // every open PR until someone re-baselines). Just nudge to lock it in.
+      console.warn(
+        `! ${pkg}/${name}: ${now} < baseline ${max} — run \`yarn ratchet:update\` to lock the improvement in`,
       );
     }
   }
