@@ -14,6 +14,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # Full history so `nx affected` can diff against the PR base ref.
+          fetch-depth: 0
       - name: Setup node
         uses: actions/setup-node@v6
         with:
@@ -22,12 +25,25 @@ jobs:
           cache: 'yarn'
       - name: Install root dependencies
         run: yarn install
-      - name: Build dependencies
-        run: make ci-build
       - name: Install core libs
         run: sudo apt-get install --yes curl bc
-      - name: Run lint + type check
-        run: make ci-lint
+      - name: Cache nx computation
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-
+      # Upstream `ci:build` runs automatically via the `dependsOn` wiring in
+      # nx.json, so unchanged projects are served from the nx cache.
+      - name: Run lint + type check (affected)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: npx nx affected -t ci:lint --base="origin/${BASE_REF}"
+      - name: Run lint + type check (full)
+        if: github.event_name != 'pull_request'
+        run: npx nx run-many -t ci:lint
   unit:
     timeout-minutes: 8
     runs-on: ubuntu-24.04
