@@ -32,7 +32,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   /* Retry on CI only. Overridable via E2E_RETRIES (e.g. the nightly zero-retry flake hunt). */
   retries:
-    process.env.E2E_RETRIES !== undefined
+    process.env.E2E_RETRIES !== undefined &&
+    !Number.isNaN(Number(process.env.E2E_RETRIES))
       ? Number(process.env.E2E_RETRIES)
       : process.env.CI
         ? 2
