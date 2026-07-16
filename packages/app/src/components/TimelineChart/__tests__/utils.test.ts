@@ -83,6 +83,12 @@ describe('renderMs', () => {
       expect(renderMs(0.0015, 0.0005)).toBe('1.5µs');
     });
 
+    it('falls through to ms (with ms precision) when the µs form rounds to 1000', () => {
+      expect(renderMs(0.99996, 0.0005)).toBe('1.0000ms');
+      expect(renderMs(0.9999, 0.05)).toBe('1.00ms');
+      expect(renderMs(0.9996, 0.5)).toBe('1.0ms');
+    });
+
     it('adds precision to second-scale ticks', () => {
       expect(renderMs(1000, 500)).toBe('1.0s');
       expect(renderMs(1500, 500)).toBe('1.5s');
