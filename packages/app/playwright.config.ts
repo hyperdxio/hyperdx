@@ -34,12 +34,11 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 1,
   /* Use multiple workers on CI for faster execution. CI runners have 4 vCPUs;
    * override with E2E_WORKERS if this over-subscribes the shared app/CH stack. */
-  workers:
-    process.env.E2E_WORKERS !== undefined
-      ? Number(process.env.E2E_WORKERS)
-      : process.env.CI
-        ? 4
-        : undefined,
+  workers: (() => {
+    const parsed = Number.parseInt(process.env.E2E_WORKERS ?? '', 10);
+    if (!Number.isNaN(parsed)) return parsed;
+    return process.env.CI ? 4 : undefined;
+  })(),
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
     ['html'],
