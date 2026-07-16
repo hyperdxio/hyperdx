@@ -1,4 +1,6 @@
-jest.retryTimes(1, { logErrorsBeforeRetry: true });
+jest.retryTimes(Number(process.env.JEST_RETRY_TIMES ?? '1'), {
+  logErrorsBeforeRetry: true,
+});
 
 // http-proxy-middleware v4 is ESM-only and Jest's CJS module loader cannot
 // load ESM packages. Auto-mock since no test exercises the proxy directly.
