@@ -32,11 +32,14 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 1,
-  /* Use multiple workers on CI for faster execution. CI runners have 4 vCPUs;
-   * override with E2E_WORKERS if this over-subscribes the shared app/CH stack. */
+  /* Use multiple workers on CI for faster execution. CI e2e shards run on
+   * 8-core runners (see .github/workflows/e2e-tests.yml), so 4 workers leave
+   * headroom for the app + ClickHouse + Mongo. Override with E2E_WORKERS
+   * (a positive integer); anything else falls back to the default. */
   workers: (() => {
-    const parsed = Number.parseInt(process.env.E2E_WORKERS ?? '', 10);
-    if (!Number.isNaN(parsed)) return parsed;
+    const raw = process.env.E2E_WORKERS;
+    const parsed = raw ? Number(raw) : NaN;
+    if (Number.isInteger(parsed) && parsed >= 1) return parsed;
     return process.env.CI ? 4 : undefined;
   })(),
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
