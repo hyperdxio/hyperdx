@@ -89,7 +89,7 @@ jobs:
       - name: Run integration tests
         run: |
           docker compose -f ./docker-compose.ci.yml up -d --quiet-pull
-          npx nx run-many -t ci:int --parallel=false --output-style=stream -- --shard=${{ matrix.shard }}/4
+          npx nx run-many -t ci:int --parallel=false --output-style=stream -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
   # Stable aggregator context: `integration` is green only when all four shards
   # pass. Merge-queue / required-status checks target this single context, since
   # the per-shard contexts (Integration - Shard N) are not stable check names.
@@ -97,6 +97,7 @@ jobs:
     needs: [integration-shards]
     if: always()
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Verify all integration shards passed
         if: needs.integration-shards.result != 'success'
