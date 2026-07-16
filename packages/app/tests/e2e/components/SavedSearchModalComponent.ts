@@ -93,6 +93,10 @@ export class SavedSearchModalComponent {
     // Start waiting for URL change BEFORE clicking submit to avoid race condition
     const urlPromise = this.page.waitForURL(/\/search\/[a-f0-9]+/, {
       timeout: 15000,
+      // Saving now uses a document navigation to avoid useQueryStates restoring
+      // the stale search URL. The URL is the behavior under test, so do not
+      // wait for unrelated resources to finish loading.
+      waitUntil: 'domcontentloaded',
     });
 
     await this.submit();

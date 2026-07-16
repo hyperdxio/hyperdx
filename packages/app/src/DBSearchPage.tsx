@@ -543,7 +543,12 @@ function SaveSearchModalComponent({
             tags: tags,
           });
 
-          router.push(`/search/${savedSearch.id}${window.location.search}`);
+          // useQueryStates can restore the previous search URL during a
+          // client-side transition. Reload the saved-search route instead so
+          // the newly created search is not replaced by the stale URL state.
+          window.location.assign(
+            `${router.basePath}/search/${savedSearch.id}${window.location.search}`,
+          );
           onClose();
         } catch (error) {
           console.error('Error creating saved search:', error);
