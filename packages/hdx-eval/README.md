@@ -261,6 +261,7 @@ mirrors HyperDX's `otel_traces` / `otel_logs` exactly.
 |---|---|---|
 | `error-root-cause` | "Checkout requests are failing..." | `payment-service` DB timeout cascading into `checkout-api` 5xx. 6M+ spans, 12M logs, 5 distractors. |
 | `latency-spike` | "p99 latency on api-server has jumped..." | `/api/orders/search` p99 spike for enterprise tenants. 12M+ spans, 5 regions, 5 distractors. |
+| `metric-saturation` | "recommendation-service is intermittently slow / 503s..." | JVM heap leak → GC-pause tail → latency shift → pod-restart cadence. Root cause is **metrics-only** (traces/logs show just mild latency + generic 503s). Exercises all five metric types (gauge/sum/histogram/exp-histogram/summary). Distractors: coincidental deploy, flat CPU, stable neighbor Summary. |
 | `noisy-signals` | "We want to cut log ingest cost..." | ~16M logs across composite cells. Each noisy cell has a load-bearing pattern mixed in. |
 | `segmented-regression` | "API error rate has gone up..." | Enterprise x cache-miss errors at ~12%. Single-axis aggregates dilute the signal. |
 | `service-health-check` | "Generate a service health report..." | Peace-time report — no incident, but 4 novel signals to call out. |
