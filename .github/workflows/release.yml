@@ -437,11 +437,13 @@ jobs:
           cache-from: type=gha,scope=all-in-one-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=all-in-one-${{ matrix.arch }}
 
-  # Boot the freshly built amd64 All-in-One image and push one OTLP log
-  # end-to-end into ClickHouse before we publish the multi-arch manifest. Gates
-  # publishing on the artefact actually running, not just building. Reuses the
-  # per-arch tag the build job already pushed (same reference the publish job
-  # merges below).
+  # Boot the freshly built amd64 All-in-One (auth) image and assert it comes up
+  # healthy with ClickHouse answering, before we publish the multi-arch manifest.
+  # Health-only (not full OTLP ingest): the auth image gates ingestion behind an
+  # INGESTION_API_KEY, so its collector never opens a keyless OTLP receiver — a
+  # canary push would always fail. Gates publishing on the artefact actually
+  # booting, not just building. Reuses the per-arch tag the build job already
+  # pushed (same reference the publish job merges below).
   smoke-all-in-one:
     name: Smoke Test All-in-One Image
     needs: [check_version, build-all-in-one]
@@ -457,9 +459,13 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      # The auth all-in-one image gates ingestion behind an INGESTION_API_KEY
+      # bootstrap, so its bundled collector never opens a keyless OTLP receiver
+      # — a canary POST can't land. Health-only mode asserts the app is healthy
+      # and ClickHouse is up, which is the runnable check this artefact supports.
       - name: Smoke test built image
         run: |
-          scripts/ci/smoke-all-in-one.sh "${{ env.ALL_IN_ONE_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}-amd64"
+          scripts/ci/smoke-all-in-one.sh "${{ env.ALL_IN_ONE_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}-amd64" --health-only
 
   publish-all-in-one:
     name: Publish All-in-One Manifest
