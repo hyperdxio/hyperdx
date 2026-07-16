@@ -44,6 +44,11 @@ jobs:
       - name: Run lint + type check (full)
         if: github.event_name != 'pull_request'
         run: npx nx run-many -t ci:lint
+      # Whole-repo escape-hatch ratchet — runs unconditionally (not via `nx
+      # affected`, and not via `make ci-lint`, which this job no longer calls),
+      # so the gate can't be silently skipped for a PR that touches few projects.
+      - name: Escape-hatch ratchet
+        run: node scripts/ci/ratchet.mjs
   unit:
     timeout-minutes: 8
     runs-on: ubuntu-24.04
