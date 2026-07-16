@@ -42,6 +42,26 @@ runs:
       shell: bash
       run: npx nx run-many -t ci:build
 
+    # Cache the Chromium binary (~120MB) keyed on the resolved Playwright
+    # version, so it isn't re-downloaded every shard/run. Browser versions are
+    # pinned to the Playwright package version, so the version is the correct
+    # cache key. On a hit, `playwright install` finds the browser present and
+    # only installs OS deps.
+    - name: Resolve Playwright version
+      id: playwright-version
+      shell: bash
+      run:
+        echo "version=$(cd packages/app && node -p
+        "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Playwright browsers
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key:
+          ${{ runner.os }}-playwright-${{
+          steps.playwright-version.outputs.version }}
+
     - name: Install Playwright browsers
       shell: bash
       run: cd packages/app && npx playwright install --with-deps chromium
