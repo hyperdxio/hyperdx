@@ -107,11 +107,22 @@ services:
       HDX_EVAL_OUT_COMMENT: /work/eval-output/verdict.md
       HDX_EVAL_RUN_URL: ${HDX_EVAL_RUN_URL:-}
       HDX_EVAL_COMMIT_SHA: ${HDX_EVAL_COMMIT_SHA:-}
+      HDX_EVAL_ANCHOR: ${HDX_EVAL_ANCHOR:-2026-06-01T00:00:00Z}
+      # M2 Parquet snapshot fast-seed path. When HDX_EVAL_SNAPSHOT_DIR is set,
+      # the runner loads a cached snapshot (fast) or generates+exports one
+      # (miss). The workflow backs this dir with actions/cache keyed on the
+      # seed-logic hash. Empty by default → M1 low-volume live seed.
+      HDX_EVAL_SNAPSHOT_DIR: ${HDX_EVAL_SNAPSHOT_DIR:-}
+      HDX_EVAL_SNAPSHOT_VOLUME_FACTOR: ${HDX_EVAL_SNAPSHOT_VOLUME_FACTOR:-1}
     volumes:
       # Persist runs + rendered verdict to the host so CI can upload artifacts
       # and post the PR comment.
       - ${HDX_EVALS_OUTPUT_DIR:-./eval-output}:/work/eval-output
       - ${HDX_EVALS_RUNS_DIR:-./eval-output/runs}:/work/packages/hdx-eval/runs
+      # Parquet snapshot dir (host-side, cached by the workflow). Mounted even
+      # when unused so the container path is stable; the runner only touches it
+      # when HDX_EVAL_SNAPSHOT_DIR points inside it.
+      - ${HDX_EVALS_SNAPSHOT_DIR:-./eval-snapshot}:/work/eval-snapshot
     networks:
       - evals
 

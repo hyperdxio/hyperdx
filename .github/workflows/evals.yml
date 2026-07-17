@@ -18,9 +18,11 @@ on:
         type: string
         default: latency-spike
       volume_factor:
-        description: 'Seed volume factor (fraction of full volume)'
+        description:
+          'Snapshot generation volume factor (1 = full; lower = cheaper test
+          seed)'
         type: string
-        default: '0.01'
+        default: '1'
       runs:
         description: 'Runs per (scenario, MCP) cell'
         type: string
@@ -40,13 +42,22 @@ jobs:
       contents: read
       pull-requests: write
     env:
-      # M1 defaults; workflow_dispatch inputs override on manual runs.
+      # M2: single scenario for the fast-seed test, FULL volume via snapshot.
       HDX_EVAL_SCENARIO: ${{ github.event.inputs.scenario || 'latency-spike' }}
-      HDX_EVAL_VOLUME_FACTOR: ${{ github.event.inputs.volume_factor || '0.01' }}
       HDX_EVAL_RUNS: ${{ github.event.inputs.runs || '1' }}
       HDX_EVAL_OUTPUT_DIR: ${{ github.workspace }}/eval-output
       HDX_EVALS_OUTPUT_DIR: ${{ github.workspace }}/eval-output
       HDX_EVALS_RUNS_DIR: ${{ github.workspace }}/eval-output/runs
+      # M2 Parquet snapshot fast-seed path.
+      HDX_EVALS_SNAPSHOT_DIR: ${{ github.workspace }}/eval-snapshot
+      # Path INSIDE the runner container (matches the compose mount target).
+      HDX_EVAL_SNAPSHOT_DIR: /work/eval-snapshot
+      # Generate at FULL volume on a snapshot miss (the point of M2). Override
+      # via workflow_dispatch input for a cheaper test.
+      HDX_EVAL_SNAPSHOT_VOLUME_FACTOR:
+        ${{ github.event.inputs.volume_factor || '1' }}
+      # Stable anchor so cached snapshot timestamps stay valid across runs.
+      HDX_EVAL_ANCHOR: '2026-06-01T00:00:00Z'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -59,13 +70,45 @@ jobs:
       - name: Expose GitHub Actions cache to BuildKit
         uses: crazy-max/ghaction-github-runtime@v4
 
-      - name: Prepare output dir
+      - name: Prepare output + snapshot dirs
         # World-writable so the runner container's non-root `node` user (uid
-        # 1000) can write runs/ + verdict.md into these bind mounts regardless
-        # of the host runner's uid.
+        # 1000) can write runs/ + verdict.md + the exported snapshot into these
+        # bind mounts regardless of the host runner's uid.
         run: |
           mkdir -p "${HDX_EVAL_OUTPUT_DIR}/runs"
-          chmod -R 777 "${HDX_EVAL_OUTPUT_DIR}"
+          mkdir -p "${HDX_EVALS_SNAPSHOT_DIR}"
+          chmod -R 777 "${HDX_EVAL_OUTPUT_DIR}" "${HDX_EVALS_SNAPSHOT_DIR}"
+
+      # Compute the seed-logic hash — the cache key. It changes ONLY when the
+      # seed-generation source changes, so a cached snapshot is reused across
+      # runs and regenerated exactly when (and only when) seeding logic changes.
+      # hashFiles() here must cover the same files the CLI's seedLogicHash()
+      # hashes (see src/clickhouse/parquetSnapshot.ts SEED_LOGIC_GLOBS).
+      - name: Compute seed-logic hash
+        id: seedhash
+        run: |
+          HASH="${{ hashFiles(
+            'packages/hdx-eval/src/generators/**',
+            'packages/hdx-eval/src/scenarios/**',
+            'packages/hdx-eval/src/rng/**',
+            'packages/hdx-eval/src/clickhouse/insert.ts',
+            'packages/hdx-eval/src/clickhouse/schema.ts',
+            'packages/hdx-eval/src/clickhouse/parquetSnapshot.ts'
+          ) }}"
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+          echo "Seed-logic hash: $HASH"
+
+      # Restore (and, at job end, save) the full-volume Parquet snapshot keyed
+      # on the seed-logic hash + scenario. No restore-keys: a stale snapshot is
+      # never partially reused across a logic change — a miss regenerates.
+      - name: Restore/save eval seed snapshot
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.HDX_EVALS_SNAPSHOT_DIR }}
+          key:
+            eval-seed-${{ env.HDX_EVAL_SCENARIO }}-v${{
+            env.HDX_EVAL_SNAPSHOT_VOLUME_FACTOR }}-${{
+            steps.seedhash.outputs.hash }}
 
       # Build both DISTINCT images with GHA layer caching. The HyperDX
       # all-in-one build is heavy (OTel collector + Next.js); caching keeps
