@@ -73,7 +73,7 @@
     },
     {
       "id": "rum-sessions",
-      "title": "Sessions & Replay",
+      "title": "Sessions",
       "collapsed": false
     },
     {
@@ -1125,27 +1125,10 @@
       }
     },
     {
-      "id": "rum-029",
-      "containerId": "rum-sessions",
-      "x": 0,
-      "y": 0,
-      "w": 24,
-      "h": 3,
-      "config": {
-        "name": "Session Replay & Client-Side Traces",
-        "source": "Traces",
-        "displayType": "markdown",
-        "select": [],
-        "where": "",
-        "whereLanguage": "lucene",
-        "markdown": "🎬 **[Open Session Replay →](/sessions)** — watch full client-side sessions with DOM playback, console output, and network activity.\n\nClick any session in the table below to open its **client-side spans (trace waterfall)** in Search."
-      }
-    },
-    {
       "id": "rum-030",
       "containerId": "rum-sessions",
       "x": 0,
-      "y": 3,
+      "y": 0,
       "w": 24,
       "h": 8,
       "config": {
