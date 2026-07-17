@@ -101,12 +101,13 @@ const quoteIdentifierIfNeeded = (identifier: string): string => {
 const columnAppearsInMvSelect = (sql: string, columnName: string): boolean => {
   const escaped = columnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const isBareIdentifier = /^[A-Za-z_][A-Za-z0-9_]*$/.test(columnName);
-  const pattern = isBareIdentifier
-    ? new RegExp(
-        `\`${escaped}\`|(?<![A-Za-z0-9_\`-])${escaped}(?![A-Za-z0-9_\`-])`,
-      )
-    : new RegExp(`\`${escaped}\``);
-  return pattern.test(sql);
+  const patternSource = isBareIdentifier
+    ? `\`${escaped}\`|(?<![A-Za-z0-9_\`-])${escaped}(?![A-Za-z0-9_\`-])`
+    : `\`${escaped}\``;
+  // Pattern source is a ClickHouse column identifier from system.columns,
+  // not user input.
+  // eslint-disable-next-line security/detect-non-literal-regexp
+  return new RegExp(patternSource).test(sql);
 };
 
 // Builds a regex fragment that matches an identifier either as a raw
@@ -2052,6 +2053,7 @@ export class Metadata {
       connectionId,
     });
     for (const table of allTableMetadata) {
+      // eslint-disable-next-line security/detect-non-literal-regexp
       const expectedPrefix = new RegExp(
         `^CREATE MATERIALIZED VIEW ${identifierPattern(databaseName)}\\.${identifierPattern(table.name)} TO ${identifierPattern(databaseName)}\\.${identifierPattern(tableName)}`,
       );
