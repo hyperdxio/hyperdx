@@ -156,21 +156,21 @@
         "colorRules": [
           {
             "operator": "lte",
-            "value": 2500,
+            "value": 2500000000,
             "color": "chart-success",
-            "label": "Good"
+            "label": "Good (≤ 2.5 s)"
           },
           {
             "operator": "gt",
-            "value": 2500,
+            "value": 2500000000,
             "color": "chart-warning",
-            "label": "Needs improvement"
+            "label": "Needs improvement (2.5–4 s)"
           },
           {
             "operator": "gt",
-            "value": 4000,
+            "value": 4000000000,
             "color": "chart-error",
-            "label": "Poor"
+            "label": "Poor (> 4 s)"
           }
         ]
       }
@@ -202,21 +202,21 @@
         "colorRules": [
           {
             "operator": "lte",
-            "value": 4000,
+            "value": 4000000000,
             "color": "chart-success",
-            "label": "Good"
+            "label": "Good (≤ 4 s)"
           },
           {
             "operator": "gt",
-            "value": 4000,
+            "value": 4000000000,
             "color": "chart-warning",
-            "label": "Needs improvement"
+            "label": "Needs improvement (4–6 s)"
           },
           {
             "operator": "gt",
-            "value": 6000,
+            "value": 6000000000,
             "color": "chart-error",
-            "label": "Poor"
+            "label": "Poor (> 6 s)"
           }
         ]
       }
