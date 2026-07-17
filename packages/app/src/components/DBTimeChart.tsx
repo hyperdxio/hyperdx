@@ -1,5 +1,12 @@
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { add, differenceInSeconds } from 'date-fns';
 import {
   convertGranularityToSeconds,
@@ -15,25 +22,8 @@ import {
   ChartConfigWithDateRange,
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  ActionIcon,
-  Divider,
-  Group,
-  Popover,
-  Portal,
-  Stack,
-  Text,
-  Tooltip,
-} from '@mantine/core';
-import { useClipboard } from '@mantine/hooks';
-import {
-  IconChartBar,
-  IconChartLine,
-  IconCheck,
-  IconCopy,
-  IconFocusCentered,
-  IconSearch,
-} from '@tabler/icons-react';
+import { Popover, Portal } from '@mantine/core';
+import { IconChartBar, IconChartLine } from '@tabler/icons-react';
 
 import api from '@/api';
 import {
@@ -43,15 +33,17 @@ import {
   convertToTimeChartConfig,
   formatResponseForTimeChart,
   getPreviousDateRange,
-  PreviousPeriodSuffix,
   shouldFillNullsWithZero,
   useTimeChartSettings,
 } from '@/ChartUtils';
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
+import { ChartSeriesTooltip } from '@/components/charts/ChartSeriesTooltip';
+import { useChartTooltipZIndex } from '@/components/charts/ChartTooltip';
 import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useChartNumberFormats, useSource } from '@/source';
+import type { NumberFormat } from '@/types';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
@@ -63,6 +55,39 @@ import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator
 
 /** A single group column / value pair decoded from a chart series key. */
 export type SeriesGroupFilter = { column: string; value: string };
+
+// Only one pinned tooltip at a time across all charts. Module-level (not
+// context) because charts can be scattered with no common provider, and their
+// onClick stopPropagation hides cross-chart clicks from Mantine's click-outside.
+const pinnedTooltipRegistry = new Map<string, () => void>();
+
+function broadcastTooltipPinned(activeId: string) {
+  pinnedTooltipRegistry.forEach((dismiss, id) => {
+    if (id !== activeId) {
+      dismiss();
+    }
+  });
+}
+
+// Registers this chart's dismiss handler and returns a callback to close every
+// other chart's pinned tooltip (call it when pinning this one).
+function useCrossChartPinDismiss(onDismiss: () => void): () => void {
+  const id = useId();
+  // Keep the latest onDismiss without re-subscribing each render.
+  const onDismissRef = useRef(onDismiss);
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
+
+  useEffect(() => {
+    pinnedTooltipRegistry.set(id, () => onDismissRef.current());
+    return () => {
+      pinnedTooltipRegistry.delete(id);
+    };
+  }, [id]);
+
+  return useCallback(() => broadcastTooltipPinned(id), [id]);
+}
 
 // Decode a Recharts series key (e.g. "count · error · api") into the
 // underlying group-column filters. This is the same decode `buildSearchUrl`
@@ -102,184 +127,95 @@ export function decodeSeriesGroupFilters({
   return groupFilters;
 }
 
-// A single series row in the "Filter by group" list. Shows a color swatch and
-// the series name, plus a row of icon actions: drill into the underlying
-// events, copy the name, and focus the series on the chart (same as clicking
-// its legend item). The swatch mirrors the chart legend so a row stays
-// visually tied to its line.
-function FilterByGroupRow({
-  name,
-  dataKey,
-  color,
-  drillInUrl,
-  onDrillIn,
-  onFocus,
-}: {
-  name: string;
-  dataKey?: string;
-  color?: string;
-  drillInUrl: string;
-  onDrillIn: () => void;
-  onFocus: () => void;
-}) {
-  const clipboard = useClipboard({ timeout: 1500 });
-
-  return (
-    <Group gap={8} wrap="nowrap">
-      {color != null && (
-        // Same line swatch the legend renders, so the row reads as the same
-        // series as its chart line.
-        <svg width="12" height="4" style={{ flexShrink: 0 }} aria-hidden>
-          <line x1="0" y1="2" x2="12" y2="2" stroke={color} strokeWidth={1.5} />
-        </svg>
-      )}
-      <Text size="xs" truncate flex="1" title={name}>
-        {name}
-      </Text>
-      {/* flexShrink:0 so the action cluster never resizes as the name
-          truncates or the copy icon swaps, which would shift the row and
-          make the buttons move out from under the cursor mid-click. */}
-      <Group gap={2} wrap="nowrap" style={{ flexShrink: 0 }}>
-        <Tooltip
-          label="Search (Opens in New Tab)"
-          withArrow
-          withinPortal
-          color="gray"
-          position="top"
-        >
-          <ActionIcon
-            component={Link}
-            href={drillInUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            prefetch={false}
-            variant="subtle"
-            size="xs"
-            data-testid={`chart-view-events-link-${dataKey}`}
-            aria-label="Search (Opens in New Tab)"
-            onClick={onDrillIn}
-          >
-            <IconSearch size={13} />
-          </ActionIcon>
-        </Tooltip>
-        <Tooltip
-          label={clipboard.copied ? 'Copied!' : 'Copy Label'}
-          withArrow
-          withinPortal
-          color="gray"
-          position="top"
-        >
-          <ActionIcon
-            variant="subtle"
-            size="xs"
-            aria-label="Copy Label"
-            data-testid={`chart-copy-name-${dataKey}`}
-            onClick={() => clipboard.copy(name)}
-          >
-            {clipboard.copied ? (
-              <IconCheck size={13} />
-            ) : (
-              <IconCopy size={13} />
-            )}
-          </ActionIcon>
-        </Tooltip>
-        <Tooltip
-          label="Focus"
-          withArrow
-          withinPortal
-          color="gray"
-          position="top"
-        >
-          <ActionIcon
-            variant="subtle"
-            size="xs"
-            aria-label="Focus"
-            data-testid={`chart-focus-series-${dataKey}`}
-            onClick={onFocus}
-          >
-            <IconFocusCentered size={13} />
-          </ActionIcon>
-        </Tooltip>
-      </Group>
-    </Group>
-  );
-}
-
-function ActiveTimeTooltip({
-  activeClickPayload,
+// The interactive PINNED tooltip, rendered over the chart in a body-portaled
+// Mantine Popover anchored at the clicked point. Hover uses the recharts tooltip
+// in MemoChart instead; this is only for the click-locked state.
+function ChartTooltipOverlay({
+  payload,
   buildSearchUrl,
   onDismiss,
   onFocusSeries,
+  fallbackNumberFormat,
+  numberFormatByKey,
+  previousPeriodOffsetSeconds,
 }: {
-  activeClickPayload: ActiveClickPayload | undefined;
+  payload: ActiveClickPayload | undefined;
   buildSearchUrl: (key?: string, value?: number) => string | null;
   onDismiss: () => void;
   /** Focus a series by its raw series key (dataKey) and display name. */
   onFocusSeries: (payload: { dataKey?: string; name: string }) => void;
+  fallbackNumberFormat?: NumberFormat;
+  /** Per-value-column formats, keyed by result column name. */
+  numberFormatByKey: Map<string, NumberFormat>;
+  previousPeriodOffsetSeconds?: number;
 }) {
   const isOpen =
-    activeClickPayload != null &&
-    activeClickPayload.activePayload != null &&
-    activeClickPayload.activePayload.length > 0;
+    payload != null &&
+    payload.activePayload != null &&
+    payload.activePayload.length > 0;
+
+  const popoverZIndex = useChartTooltipZIndex();
+
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // The pinned tooltip anchors at `position: fixed` viewport coords captured
+  // once at click time. When a surrounding scroll container scrolls, the chart
+  // moves but the fixed tooltip stays glued to the viewport, detaching from its
+  // data point (Mantine's closeOnClickOutside/closeOnEscape don't fire on
+  // scroll). Dismiss on scroll instead so it never floats away — but ignore
+  // scrolls originating inside the tooltip's own scrollable series list, or a
+  // long tooltip couldn't be scrolled without instantly closing.
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleScroll = (e: Event) => {
+      const target = e.target as Node | null;
+      if (target != null && dropdownRef.current?.contains(target)) {
+        return;
+      }
+      onDismiss();
+    };
+    window.addEventListener('scroll', handleScroll, {
+      capture: true,
+      passive: true,
+    });
+    return () => {
+      window.removeEventListener('scroll', handleScroll, { capture: true });
+    };
+  }, [isOpen, onDismiss]);
 
   if (!isOpen) {
     return null;
   }
 
-  const validPayloads = activeClickPayload
-    .activePayload!.filter(
-      p =>
-        p.value != null &&
-        // Exclude previous period series
-        // TODO: it would be cool to support this in the future
-        !p.dataKey?.endsWith(PreviousPeriodSuffix),
-    )
-    .sort((a, b) => b.value! - a.value!); // Sort by value descending (highest first)
-
   return (
-    <>
-      {/* Backdrop to capture clicks and prevent propagation to chart */}
-      <Portal>
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 199, // Just below Mantine Popover default (200)
-          }}
-          onClick={e => {
-            e.stopPropagation();
-            e.preventDefault();
-            onDismiss();
-          }}
-          onMouseDown={e => {
-            e.stopPropagation();
-          }}
-        />
-      </Portal>
-
+    // Portal to body so the `position: fixed` anchor resolves against the
+    // viewport: dashboard tiles use CSS transforms, and a transformed ancestor
+    // would otherwise make `fixed` resolve against it and throw the tooltip off.
+    <Portal>
       <Popover
-        opened={isOpen}
+        opened
         onChange={opened => {
           if (!opened) {
             onDismiss();
           }
         }}
-        position="bottom-start"
-        offset={4}
-        withinPortal
+        closeOnClickOutside
         closeOnEscape
-        withArrow
-        shadow="md"
+        trapFocus={false}
+        withinPortal
+        position="bottom"
+        offset={12}
+        middlewares={{ flip: true, shift: true }}
+        returnFocus={false}
+        zIndex={popoverZIndex}
       >
         <Popover.Target>
+          {/* 1x1 anchor at the clicked data point. */}
           <div
             style={{
-              position: 'absolute',
-              left: activeClickPayload.x ?? 0,
-              top: activeClickPayload.y ?? 0,
+              position: 'fixed',
+              left: payload.viewportX ?? 0,
+              top: payload.viewportY ?? 0,
               width: 1,
               height: 1,
               pointerEvents: 'none',
@@ -287,62 +223,29 @@ function ActiveTimeTooltip({
           />
         </Popover.Target>
         <Popover.Dropdown
-          p={8}
-          // Fixed width (not maw) so the dropdown never re-measures when a row's
-          // content changes (e.g. the copy icon swapping to a check). A
-          // content-driven width would make Floating UI reposition the popover
-          // mid-interaction, shifting the buttons out from under the cursor.
-          w={280}
-          onClick={e => e.stopPropagation()}
-          onMouseDown={e => e.stopPropagation()}
+          ref={dropdownRef}
+          p={0}
+          style={{
+            // Width comes from the shared .chartTooltip class; fit-content stops
+            // Mantine's default dropdown width from overriding it.
+            width: 'fit-content',
+            border: 'none',
+            background: 'transparent',
+          }}
         >
-          <Stack gap={4} style={{ maxHeight: '220px', overflowY: 'auto' }}>
-            <Link
-              data-testid="chart-view-events-link"
-              href={buildSearchUrl() ?? '/search'}
-              target="_blank"
-              rel="noopener noreferrer"
-              prefetch={false}
-              onClick={onDismiss}
-            >
-              <Group gap={8} py={2}>
-                <IconSearch size={14} />
-                <Text size="xs">View All Events</Text>
-              </Group>
-            </Link>
-            {validPayloads.length > 1 && (
-              <>
-                <Divider my={4} />
-                <Text c="gray.5" size="xs">
-                  Filter by group:
-                </Text>
-                {validPayloads.map((payload, idx) => {
-                  const seriesUrl = buildSearchUrl(
-                    payload.dataKey,
-                    payload.value,
-                  );
-                  const name = payload.name ?? payload.dataKey ?? '';
-                  return (
-                    <FilterByGroupRow
-                      key={idx}
-                      name={name}
-                      dataKey={payload.dataKey}
-                      color={payload.color}
-                      drillInUrl={seriesUrl ?? '/search'}
-                      onDrillIn={onDismiss}
-                      onFocus={() => {
-                        onFocusSeries({ dataKey: payload.dataKey, name });
-                        onDismiss();
-                      }}
-                    />
-                  );
-                })}
-              </>
-            )}
-          </Stack>
+          <ChartSeriesTooltip
+            activeLabel={payload.activeLabel}
+            activePayload={payload.activePayload!}
+            fallbackNumberFormat={fallbackNumberFormat}
+            numberFormatByKey={numberFormatByKey}
+            previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+            buildSearchUrl={buildSearchUrl}
+            onDismiss={onDismiss}
+            onFocusSeries={onFocusSeries}
+          />
         </Popover.Dropdown>
       </Popover>
-    </>
+    </Portal>
   );
 }
 
@@ -623,15 +526,24 @@ function DBTimeChartComponent({
     ActiveClickPayload | undefined
   >(undefined);
 
-  // Wrap the setter to only allow setting if source is available
-  const setActiveClickPayloadIfSourceAvailable = useCallback(
+  const dismissPinned = useCallback(() => setActiveClickPayload(undefined), []);
+  const notifyTooltipPinned = useCrossChartPinDismiss(dismissPinned);
+
+  // Pin the tooltip on click. Not gated on `source`: source-less charts still
+  // show values/percent-change, and the drill-down actions hide themselves when
+  // there's no source. `disableDrillDown` stays an explicit opt-out.
+  const setPinnedPayload = useCallback(
     (payload: ActiveClickPayload | undefined) => {
-      if (source == null || disableDrillDown) {
-        return; // Don't set if no source
+      if (disableDrillDown) {
+        return;
+      }
+      // Pinning here closes any other chart's pinned tooltip.
+      if (payload != null) {
+        notifyTooltipPinned();
       }
       setActiveClickPayload(payload);
     },
-    [source, disableDrillDown],
+    [disableDrillDown, notifyTooltipPinned],
   );
 
   const clickedActiveLabelDate = useMemo(() => {
@@ -882,11 +794,17 @@ function DBTimeChartComponent({
         </div>
       ) : (
         <>
-          <ActiveTimeTooltip
-            activeClickPayload={activeClickPayload}
+          {/* Pinned (click-locked) tooltip; hover is handled in MemoChart. */}
+          <ChartTooltipOverlay
+            payload={activeClickPayload}
             buildSearchUrl={buildSearchUrl}
-            onDismiss={() => setActiveClickPayload(undefined)}
+            // Stable reference so the overlay's scroll-dismissal effect doesn't
+            // re-register its window listener on every re-render.
+            onDismiss={dismissPinned}
             onFocusSeries={handleFocusSeries}
+            fallbackNumberFormat={queriedConfig.numberFormat}
+            numberFormatByKey={formatByColumn}
+            previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
           />
           <MemoChart
             dateRange={dateRange}
@@ -896,13 +814,13 @@ function DBTimeChartComponent({
             lineData={lineData}
             isLoading={isLoadingOrPlaceholder}
             logReferenceTimestamp={logReferenceTimestamp}
-            fallbackNumberFormat={queriedConfig.numberFormat}
             axisNumberFormat={axisNumberFormat}
+            fallbackNumberFormat={queriedConfig.numberFormat}
             tooltipNumberFormatsByKey={formatByColumn}
             onTimeRangeSelect={onTimeRangeSelect}
             referenceLines={referenceLines}
             annotations={annotations}
-            setIsClickActive={setActiveClickPayloadIfSourceAvailable}
+            setIsClickActive={setPinnedPayload}
             showLegend={showLegend}
             timestampKey={timestampColumn?.name}
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
