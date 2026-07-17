@@ -43,7 +43,7 @@
     "dev:build": "tsup && tsc --emitDeclarationOnly --declaration",
     "build": "tsup",
     "ci:build": "tsup",
-    "lint": "npx eslint --quiet . --ext .ts",
+    "lint": "npx eslint . --ext .ts --max-warnings 92",
     "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
     "ci:unit": "jest --ci --coverage",

@@ -19,6 +19,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # Fetch existing tags so `changeset tag` (run via `yarn release`)
+          # skips packages whose current version is already tagged. With the
+          # default shallow, tag-less checkout it re-creates ALL package tags
+          # locally, and the changesets action's `git push origin <tag>` is
+          # rejected for any package that didn't bump in this release (tags
+          # are annotated, so even same-commit re-pushes are rejected).
+          # See the 2.30.1 release failure (run 29261242580).
+          fetch-depth: 0
+          fetch-tags: true
       - name: Setup node
         uses: actions/setup-node@v6
         with:
