@@ -67,6 +67,11 @@
       "collapsed": false
     },
     {
+      "id": "rum-sessions",
+      "title": "Sessions & Replay",
+      "collapsed": false
+    },
+    {
       "id": "rum-errors",
       "title": "Errors",
       "collapsed": false,
@@ -1109,6 +1114,91 @@
             "id": "Traces"
           },
           "whereTemplate": "(SpanAttributes.component:\"fetch\" OR SpanAttributes.component:\"xml-http-request\") AND SpanAttributes.http.url:\"{{Endpoint}}\"",
+          "whereLanguage": "lucene"
+        },
+        "groupByColumnsOnLeft": true
+      }
+    },
+    {
+      "id": "rum-029",
+      "containerId": "rum-sessions",
+      "x": 0,
+      "y": 0,
+      "w": 24,
+      "h": 3,
+      "config": {
+        "name": "Session Replay & Client-Side Traces",
+        "source": "Traces",
+        "displayType": "markdown",
+        "select": [],
+        "where": "",
+        "whereLanguage": "lucene",
+        "markdown": "🎬 **[Open Session Replay →](/sessions)** — watch full client-side sessions with DOM playback, console output, and network activity.\n\nClick any session in the table below to open its **client-side spans (trace waterfall)** in Search."
+      }
+    },
+    {
+      "id": "rum-030",
+      "containerId": "rum-sessions",
+      "x": 0,
+      "y": 3,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Recent Sessions",
+        "source": "Traces",
+        "displayType": "table",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "aggCondition": "SpanName:\"documentLoad\" OR SpanName:\"routeChange\" OR SpanAttributes.component:\"page-view\" OR SpanAttributes.component:\"navigation\"",
+            "aggConditionLanguage": "lucene",
+            "alias": "Page Views"
+          },
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "aggCondition": "StatusCode:error",
+            "aggConditionLanguage": "lucene",
+            "alias": "Errors"
+          },
+          {
+            "aggFn": "count_distinct",
+            "valueExpression": "TraceId",
+            "alias": "Traces"
+          },
+          {
+            "aggFn": "any",
+            "valueExpression": "nullif(SpanAttributes['userEmail'], '')",
+            "alias": "User"
+          },
+          {
+            "aggFn": "any",
+            "valueExpression": "ServiceName",
+            "alias": "Service"
+          },
+          {
+            "aggFn": "max",
+            "valueExpression": "Timestamp",
+            "alias": "Last Active"
+          }
+        ],
+        "where": "ResourceAttributes.rum.sessionId:*",
+        "whereLanguage": "lucene",
+        "groupBy": "ResourceAttributes['rum.sessionId'] AS \"Session\"",
+        "orderBy": "`Last Active` DESC",
+        "limit": {
+          "limit": 20
+        },
+        "onClick": {
+          "type": "search",
+          "target": {
+            "mode": "id",
+            "id": "Traces"
+          },
+          "whereTemplate": "ResourceAttributes.rum.sessionId:\"{{Session}}\"",
           "whereLanguage": "lucene"
         },
         "groupByColumnsOnLeft": true
