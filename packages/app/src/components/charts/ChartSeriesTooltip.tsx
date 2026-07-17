@@ -234,7 +234,7 @@ export function ChartSeriesTooltip({
               : undefined;
           return (
             <SeriesRow
-              key={idx}
+              key={payload.dataKey ?? name ?? idx}
               name={name}
               dataKey={payload.dataKey}
               color={payload.color}
