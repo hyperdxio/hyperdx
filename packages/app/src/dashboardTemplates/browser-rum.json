@@ -135,7 +135,27 @@
           }
         ],
         "where": "",
-        "whereLanguage": "lucene"
+        "whereLanguage": "lucene",
+        "colorRules": [
+          {
+            "operator": "lte",
+            "value": 2500,
+            "color": "chart-success",
+            "label": "Good"
+          },
+          {
+            "operator": "gt",
+            "value": 2500,
+            "color": "chart-warning",
+            "label": "Needs improvement"
+          },
+          {
+            "operator": "gt",
+            "value": 4000,
+            "color": "chart-error",
+            "label": "Poor"
+          }
+        ]
       }
     },
     {
@@ -161,7 +181,27 @@
           }
         ],
         "where": "",
-        "whereLanguage": "lucene"
+        "whereLanguage": "lucene",
+        "colorRules": [
+          {
+            "operator": "lte",
+            "value": 4000,
+            "color": "chart-success",
+            "label": "Good"
+          },
+          {
+            "operator": "gt",
+            "value": 4000,
+            "color": "chart-warning",
+            "label": "Needs improvement"
+          },
+          {
+            "operator": "gt",
+            "value": 6000,
+            "color": "chart-error",
+            "label": "Poor"
+          }
+        ]
       }
     },
     {
@@ -191,7 +231,27 @@
           "output": "number",
           "mantissa": 0,
           "thousandSeparated": true
-        }
+        },
+        "colorRules": [
+          {
+            "operator": "lte",
+            "value": 2500,
+            "color": "chart-success",
+            "label": "Good"
+          },
+          {
+            "operator": "gt",
+            "value": 2500,
+            "color": "chart-warning",
+            "label": "Needs improvement"
+          },
+          {
+            "operator": "gt",
+            "value": 4000,
+            "color": "chart-error",
+            "label": "Poor"
+          }
+        ]
       }
     },
     {
@@ -221,7 +281,27 @@
           "output": "number",
           "mantissa": 0,
           "thousandSeparated": true
-        }
+        },
+        "colorRules": [
+          {
+            "operator": "lte",
+            "value": 200,
+            "color": "chart-success",
+            "label": "Good"
+          },
+          {
+            "operator": "gt",
+            "value": 200,
+            "color": "chart-warning",
+            "label": "Needs improvement"
+          },
+          {
+            "operator": "gt",
+            "value": 500,
+            "color": "chart-error",
+            "label": "Poor"
+          }
+        ]
       }
     },
     {
@@ -251,7 +331,27 @@
           "output": "number",
           "mantissa": 3,
           "thousandSeparated": true
-        }
+        },
+        "colorRules": [
+          {
+            "operator": "lte",
+            "value": 0.1,
+            "color": "chart-success",
+            "label": "Good"
+          },
+          {
+            "operator": "gt",
+            "value": 0.1,
+            "color": "chart-warning",
+            "label": "Needs improvement"
+          },
+          {
+            "operator": "gt",
+            "value": 0.25,
+            "color": "chart-error",
+            "label": "Poor"
+          }
+        ]
       }
     },
     {
@@ -311,7 +411,15 @@
           "output": "number",
           "mantissa": 0,
           "thousandSeparated": true
-        }
+        },
+        "colorRules": [
+          {
+            "operator": "gt",
+            "value": 0,
+            "color": "chart-warning",
+            "label": "Errors present"
+          }
+        ]
       }
     },
     {
@@ -746,7 +854,15 @@
           "output": "number",
           "mantissa": 0,
           "thousandSeparated": true
-        }
+        },
+        "colorRules": [
+          {
+            "operator": "gt",
+            "value": 0,
+            "color": "chart-warning",
+            "label": "Errors present"
+          }
+        ]
       }
     },
     {
@@ -777,7 +893,15 @@
           "output": "number",
           "mantissa": 0,
           "thousandSeparated": true
-        }
+        },
+        "colorRules": [
+          {
+            "operator": "gt",
+            "value": 0,
+            "color": "chart-warning",
+            "label": "Errors present"
+          }
+        ]
       }
     },
     {
