@@ -36,7 +36,10 @@ export const PLOT_COLORS: Record<string, string> = {
 /** Map ANSI color names to chalk functions for legend / bar text. */
 export function chalkColor(color: SeriesColor): (s: string) => string {
   const fn = (chalk as unknown as Record<string, unknown>)[color];
-  return typeof fn === 'function' ? (fn as (s: string) => string) : s => s;
+  if (typeof fn === 'function') {
+    return fn as (s: string) => string;
+  }
+  return (s: string) => s;
 }
 
 export function truncate(s: string, max: number): string {
