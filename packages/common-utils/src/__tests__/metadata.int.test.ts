@@ -2,6 +2,7 @@ import { createClient } from '@clickhouse/client';
 import { ClickHouseClient } from '@clickhouse/client';
 
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
+import { supportsMergeTreeTextIndex } from '@/core/clickhouseVersion';
 import { Metadata, MetadataCache } from '@/core/metadata';
 import {
   parseKvItemsCastExpression,
@@ -774,6 +775,200 @@ describe('Metadata Integration Tests', () => {
       expect(parsed).toBeDefined();
       expect(parsed!.mapColumn).toBe('LogAttributes');
       expect(parsed!.separator).toBe('=');
+    });
+  });
+
+  describe('getAllKeyValues (strategy routing)', () => {
+    // Exercises the four strategies `getAllKeyValues` routes to, against the
+    // production `default.otel_logs` schema (auto-created by the OTel
+    // Collector's migration on stack startup — see
+    // docker/otel-collector/schema/seed/00002_otel_logs.sql and
+    // 00006_otel_logs_rollups.sql). No custom tables or MVs are created here.
+    const connectionId = 'test_connection';
+    const tag = `getAllKeyValues-routing-${Date.now()}`;
+
+    // Anchor timestamps to now so they stay inside the otel_logs 1-day TTL.
+    // The 15-minute-bucketed MV rows for these inserts land in the bucket
+    // containing `testTime`, so the query dateRange below must cover it.
+    const testTime = new Date();
+    const dateRange: [Date, Date] = [
+      new Date(testTime.getTime() - 60 * 60 * 1000),
+      new Date(testTime.getTime() + 60 * 1000),
+    ];
+
+    const commonArgs = {
+      databaseName: 'default',
+      tableName: 'otel_logs',
+      connectionId,
+      dateRange,
+      timestampValueExpression: 'Timestamp',
+      metadataMVs: {
+        kvRollupTable: 'otel_logs_kv_rollup_15m',
+        granularity: '15 minute' as const,
+      },
+    };
+
+    // Values unique to this suite so `expect.arrayContaining` still passes
+    // when the shared table already holds other rows (dev stacks with live
+    // telemetry). The MV's default maxValuesPerKey=20 could otherwise drop
+    // our values if the target key already has >20 distinct entries.
+    const podNameA = `pod-a-${tag}`;
+    const podNameB = `pod-b-${tag}`;
+    const traceIdA = `trace-a-${tag}`;
+    const traceIdB = `trace-b-${tag}`;
+    const traceIdC = `trace-c-${tag}`;
+    const bodyA = `Body A ${tag}`;
+    const bodyB = `Body B ${tag}`;
+    const bodyC = `Body C ${tag}`;
+    const schemaUrlA = `https://example.test/${tag}/a`;
+    const schemaUrlB = `https://example.test/${tag}/b`;
+    const mapKey = `pod.name.${tag}`;
+
+    let metadata: Metadata;
+    // `mergeTreeTextIndex(...)` — used by both getMapTextIndexKeyValues and
+    // getTextIndexKeyValues — was introduced in 26.3. Older servers skip
+    // those code paths entirely, which would make the routing assertions
+    // meaningless. Detect once and skip those two cases on older servers.
+    let textIndexSupported = false;
+
+    beforeAll(async () => {
+      const probe = new Metadata(hdxClient, new MetadataCache());
+      const version = await probe.getServerVersion({ connectionId });
+      textIndexSupported = supportsMergeTreeTextIndex(version);
+
+      const timestamp = testTime.toISOString().replace('T', ' ').slice(0, 23);
+      await client.command({
+        query: `INSERT INTO default.otel_logs
+          (Timestamp, TraceId, ServiceName, SeverityText, Body, ResourceSchemaUrl, ResourceAttributes) VALUES
+          ('${timestamp}', '${traceIdA}', 'api', 'info',    '${bodyA}', '${schemaUrlA}', {'${mapKey}': '${podNameA}'}),
+          ('${timestamp}', '${traceIdB}', 'api', 'error',   '${bodyB}', '${schemaUrlA}', {'${mapKey}': '${podNameB}'}),
+          ('${timestamp}', '${traceIdC}', 'web', 'warning', '${bodyC}', '${schemaUrlB}', {'${mapKey}': '${podNameA}'})
+        `,
+      });
+    });
+
+    beforeEach(() => {
+      metadata = new Metadata(hdxClient, new MetadataCache());
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    type StrategySpies = {
+      mapTextIndex: jest.SpyInstance;
+      textIndex: jest.SpyInstance;
+      mv: jest.SpyInstance;
+      raw: jest.SpyInstance;
+    };
+
+    const spyOnAllStrategies = (m: Metadata): StrategySpies => ({
+      mapTextIndex: jest.spyOn(m as any, 'getMapTextIndexKeyValues'),
+      textIndex: jest.spyOn(m as any, 'getTextIndexKeyValues'),
+      mv: jest.spyOn(m as any, 'getMetadataMVKeyValues'),
+      raw: jest.spyOn(m, 'getKeyValues'),
+    });
+
+    const expectOnlyCalled = (
+      spies: StrategySpies,
+      called: keyof StrategySpies,
+    ) => {
+      for (const [name, spy] of Object.entries(spies)) {
+        if (name === called) {
+          expect(spy).toHaveBeenCalledTimes(1);
+        } else {
+          expect(spy).not.toHaveBeenCalled();
+        }
+      }
+    };
+
+    it(`routes ResourceAttributes[<mapKey>] through getMapTextIndexKeyValues`, async () => {
+      if (!textIndexSupported) {
+        console.warn(
+          'Skipping: ClickHouse < 26.3 does not support mergeTreeTextIndex()',
+        );
+        return;
+      }
+      const spies = spyOnAllStrategies(metadata);
+
+      const result = await metadata.getAllKeyValues({
+        ...commonArgs,
+        keyExpressions: [`ResourceAttributes['${mapKey}']`],
+      });
+
+      expectOnlyCalled(spies, 'mapTextIndex');
+
+      const podNames = result.find(
+        r => r.key === `ResourceAttributes['${mapKey}']`,
+      );
+      expect(podNames).toBeDefined();
+      expect(podNames!.value).toEqual(
+        expect.arrayContaining([podNameA, podNameB]),
+      );
+    });
+
+    it('routes TraceId through getTextIndexKeyValues', async () => {
+      if (!textIndexSupported) {
+        console.warn(
+          'Skipping: ClickHouse < 26.3 does not support mergeTreeTextIndex()',
+        );
+        return;
+      }
+      const spies = spyOnAllStrategies(metadata);
+
+      const result = await metadata.getAllKeyValues({
+        ...commonArgs,
+        keyExpressions: ['TraceId'],
+      });
+
+      expectOnlyCalled(spies, 'textIndex');
+
+      const traceIds = result.find(r => r.key === 'TraceId');
+      expect(traceIds).toBeDefined();
+      expect(traceIds!.value).toEqual(
+        expect.arrayContaining([traceIdA, traceIdB, traceIdC]),
+      );
+    });
+
+    it('routes ResourceSchemaUrl through getMetadataMVKeyValues', async () => {
+      // ResourceSchemaUrl has no text index but appears as a NativeColumn
+      // in the otel_logs_attr_kv_rollup_15m_mv SELECT, so it should be
+      // routed through the MV.
+      const spies = spyOnAllStrategies(metadata);
+
+      const result = await metadata.getAllKeyValues({
+        ...commonArgs,
+        keyExpressions: ['ResourceSchemaUrl'],
+      });
+
+      expectOnlyCalled(spies, 'mv');
+
+      const schemas = result.find(r => r.key === 'ResourceSchemaUrl');
+      expect(schemas).toBeDefined();
+      expect(schemas!.value).toEqual(
+        expect.arrayContaining([schemaUrlA, schemaUrlB]),
+      );
+    });
+
+    it('routes Body through getKeyValues (raw table fallback)', async () => {
+      // The `idx_lower_body` skip index is on the expression `lower(Body)`,
+      // not the bare `Body` column, so getNativeArrayColumnTextIndexes will
+      // not match it. Body is also absent from the KV rollup MV SELECT.
+      // The only remaining route is the raw-table fallback via getKeyValues.
+      const spies = spyOnAllStrategies(metadata);
+
+      const result = await metadata.getAllKeyValues({
+        ...commonArgs,
+        keyExpressions: ['Body'],
+      });
+
+      expectOnlyCalled(spies, 'raw');
+
+      const bodies = result.find(r => r.key === 'Body');
+      expect(bodies).toBeDefined();
+      expect(bodies!.value).toEqual(
+        expect.arrayContaining([bodyA, bodyB, bodyC]),
+      );
     });
   });
 });
