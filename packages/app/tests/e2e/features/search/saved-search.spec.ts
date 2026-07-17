@@ -245,6 +245,17 @@ test.describe('Saved Search Functionality', () => {
           'Info Logs Navigation Test',
         );
 
+        const savedSearchParams = new URL(page.url()).searchParams;
+        expect(savedSearchParams.has('from')).toBe(true);
+        expect(savedSearchParams.has('to')).toBe(true);
+        expect(savedSearchParams.has('where')).toBe(false);
+        expect(savedSearchParams.has('orderBy')).toBe(false);
+
+        await expect(searchPage.input).toHaveValue('SeverityText:info');
+        await expect(searchPage.getOrderByEditor()).toContainText(
+          customOrderBy,
+        );
+
         // Capture the saved search URL (without query params)
         savedSearchUrl = page.url().split('?')[0];
       });
