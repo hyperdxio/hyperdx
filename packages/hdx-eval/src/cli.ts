@@ -5,10 +5,24 @@ import { join, resolve } from 'path';
 
 import { createEvalClient, defaultClickHouseUrl } from './clickhouse/client';
 import {
+  type ChHttp,
+  exportScenarioSnapshot,
+  loadScenarioSnapshot,
+  readManifest,
+  seedLogicHash,
+  seedLogicHashShort,
+  writeManifest,
+} from './clickhouse/parquetSnapshot';
+import {
+  backfillRollups,
+  createRollupMaterializedViews,
+  dropRollupMaterializedViews,
   dropScenarioTables,
+  ensureScenarioTables,
   scenarioIsSeeded,
   scenarioSlug,
   scenarioTables,
+  truncateScenarioTables,
 } from './clickhouse/schema';
 import { buildBlindingEntries } from './grading/blind';
 import {
@@ -55,6 +69,13 @@ function formatCount(n: number): string {
   return String(n);
 }
 
+function formatBytes(n: number): string {
+  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(2)} GB`;
+  if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${n} B`;
+}
+
 function logSeedProgress(prefix: string, startMs: number) {
   return (p: SeedProgress) => {
     const elapsed = ((Date.now() - startMs) / 1000).toFixed(0);
@@ -84,6 +105,15 @@ function buildClient(opts: GlobalOpts) {
     username: opts.chUser,
     password: opts.chPassword,
   });
+}
+
+/** Raw-HTTP ClickHouse connection info for Parquet snapshot import/export. */
+function buildChHttp(opts: GlobalOpts): ChHttp {
+  return {
+    url: opts.chUrl ?? defaultClickHouseUrl(),
+    username: opts.chUser ?? 'default',
+    password: opts.chPassword ?? '',
+  };
 }
 
 function buildClientFromConfig(
@@ -252,6 +282,142 @@ program
       console.log(
         `Dropped default.${tables.traces} and default.${tables.logs}`,
       );
+    } finally {
+      await client.close();
+    }
+  });
+
+program
+  .command('seed-logic-hash')
+  .description(
+    'Print a deterministic hash of the seed-generation source. Used as the CI ' +
+      'cache key so the Parquet snapshot is reused only while seeding logic is ' +
+      'unchanged.',
+  )
+  .option('--short', 'Print the 12-char short form')
+  .action((cmdOpts: { short?: boolean }) => {
+    console.log(cmdOpts.short ? seedLogicHashShort() : seedLogicHash());
+  });
+
+program
+  .command('export-snapshot <scenario>')
+  .description(
+    'Export the currently-seeded eval tables for a scenario to Parquet files ' +
+      '(M2 fast-seed snapshot). Writes one <table>.parquet per non-empty table ' +
+      'plus a manifest.json.',
+  )
+  .requiredOption('--dir <path>', 'Output directory for the Parquet snapshot')
+  .option(
+    '--volume-factor <f>',
+    'Record the volume factor this snapshot was generated at (manifest only)',
+  )
+  .option('--seed <n>', 'Record the PRNG seed used (manifest only)', '42')
+  .option(
+    '--anchor <iso>',
+    'Record the anchor time this snapshot was generated at (manifest only)',
+  )
+  .action(
+    async (
+      scenarioName: string,
+      cmdOpts: {
+        dir: string;
+        volumeFactor?: string;
+        seed: string;
+        anchor?: string;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const scenario = getScenario(scenarioName);
+      const http = buildChHttp(opts);
+      const tables = scenarioTables(scenario.name);
+      const anchorMs = cmdOpts.anchor ? Date.parse(cmdOpts.anchor) : Date.now();
+      const dir = resolve(cmdOpts.dir);
+      console.log(`Exporting snapshot for "${scenario.name}" → ${dir}`);
+      const start = Date.now();
+      const result = await exportScenarioSnapshot({
+        http,
+        scenarioName: scenario.name,
+        dir,
+        tables,
+      });
+      const secs = ((Date.now() - start) / 1000).toFixed(1);
+      for (const f of result.files) {
+        console.log(
+          `  ${f.table}: ${formatCount(f.rows)} rows, ${formatBytes(f.bytes)}`,
+        );
+      }
+      writeManifest(dir, {
+        scenarioName: scenario.name,
+        seedLogicHash: seedLogicHash(),
+        volumeFactor: cmdOpts.volumeFactor ? Number(cmdOpts.volumeFactor) : 1,
+        seed: Number(cmdOpts.seed),
+        anchorMs,
+        anchorIso: new Date(anchorMs).toISOString(),
+        createdAt: new Date().toISOString(),
+        tables: result.files.map(f => ({
+          table: f.table,
+          rows: f.rows,
+          bytes: f.bytes,
+        })),
+        totalRows: result.totalRows,
+        totalBytes: result.totalBytes,
+      });
+      console.log(
+        `Exported ${formatCount(result.totalRows)} rows, ${formatBytes(result.totalBytes)} in ${secs}s`,
+      );
+      console.log(`Wrote manifest → ${dir}/manifest.json`);
+    },
+  );
+
+program
+  .command('load-snapshot <scenario>')
+  .description(
+    'Load a Parquet snapshot for a scenario into ClickHouse (M2 fast-seed path). ' +
+      'Ensures tables + rollup MVs exist, truncates, then inserts each Parquet ' +
+      'file — rollups repopulate automatically via the MVs.',
+  )
+  .requiredOption('--dir <path>', 'Directory containing the Parquet snapshot')
+  .action(async (scenarioName: string, cmdOpts: { dir: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const scenario = getScenario(scenarioName);
+    const http = buildChHttp(opts);
+    const dir = resolve(cmdOpts.dir);
+    const client = buildClient(opts);
+    const manifest = readManifest(dir);
+    if (manifest) {
+      console.log(
+        `Loading snapshot for "${scenario.name}" (built ${manifest.createdAt}, ` +
+          `anchor ${manifest.anchorIso}, volumeFactor ${manifest.volumeFactor})`,
+      );
+      if (manifest.scenarioName !== scenario.name) {
+        throw new Error(
+          `Snapshot manifest is for scenario "${manifest.scenarioName}", not "${scenario.name}"`,
+        );
+      }
+    } else {
+      console.log(
+        `Loading snapshot for "${scenario.name}" (no manifest.json found in ${dir})`,
+      );
+    }
+    try {
+      const start = Date.now();
+      const result = await loadScenarioSnapshot({
+        http,
+        ensure: () => ensureScenarioTables(client, scenario.name),
+        truncate: () => truncateScenarioTables(client, scenario.name),
+        dropMaterializedViews: tables =>
+          dropRollupMaterializedViews(client, tables),
+        backfillRollups: tables => backfillRollups(client, tables),
+        createMaterializedViews: tables =>
+          createRollupMaterializedViews(client, tables),
+        scenarioName: scenario.name,
+        dir,
+      });
+      const secs = ((Date.now() - start) / 1000).toFixed(1);
+      for (const f of result.files) {
+        console.log(`  ${f.table}: ${formatCount(f.rows)} rows`);
+      }
+      console.log(`Loaded ${formatCount(result.totalRows)} rows in ${secs}s`);
     } finally {
       await client.close();
     }

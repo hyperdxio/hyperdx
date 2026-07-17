@@ -391,6 +391,90 @@ async function ensureRollupTables(
   });
 }
 
+/**
+ * Drop only the rollup materialized views (not the rollup tables). Used by the
+ * Parquet snapshot load path so a bulk raw insert does NOT trigger the MV
+ * fan-out (which is the dominant cost of a large load — each inserted block is
+ * aggregated and written to the SummingMergeTree rollups per-block, then merged).
+ * After the raw load we backfill the rollups in one shot and recreate the MVs.
+ */
+export async function dropRollupMaterializedViews(
+  client: ClickHouseClient,
+  tables: ScenarioTables,
+): Promise<void> {
+  const db = EVAL_DATABASE;
+  for (const mv of [
+    mvName(tables.tracesKvRollup),
+    keyMvName(tables.tracesKeyRollup),
+    mvName(tables.logsKvRollup),
+    keyMvName(tables.logsKeyRollup),
+  ]) {
+    await client.command({ query: `DROP VIEW IF EXISTS ${db}.${mv}` });
+  }
+}
+
+/** (Re)create just the rollup materialized views for a scenario's tables. */
+export async function createRollupMaterializedViews(
+  client: ClickHouseClient,
+  tables: ScenarioTables,
+): Promise<void> {
+  const db = EVAL_DATABASE;
+  await client.command({
+    query: `CREATE MATERIALIZED VIEW IF NOT EXISTS ${db}.${mvName(tables.tracesKvRollup)} TO ${db}.${tables.tracesKvRollup} AS ${tracesKvMvSelect(db, tables.traces)}`,
+  });
+  await client.command({
+    query: `CREATE MATERIALIZED VIEW IF NOT EXISTS ${db}.${keyMvName(tables.tracesKeyRollup)} TO ${db}.${tables.tracesKeyRollup} AS ${keyRollupMvSelect(db, tables.tracesKvRollup)}`,
+  });
+  await client.command({
+    query: `CREATE MATERIALIZED VIEW IF NOT EXISTS ${db}.${mvName(tables.logsKvRollup)} TO ${db}.${tables.logsKvRollup} AS ${logsKvMvSelect(db, tables.logs)}`,
+  });
+  await client.command({
+    query: `CREATE MATERIALIZED VIEW IF NOT EXISTS ${db}.${keyMvName(tables.logsKeyRollup)} TO ${db}.${tables.logsKeyRollup} AS ${keyRollupMvSelect(db, tables.logsKvRollup)}`,
+  });
+}
+
+/**
+ * One-shot bulk backfill of the rollup tables from already-loaded raw tables,
+ * reusing the exact same SELECTs the materialized views run. This is the fast
+ * alternative to letting the MVs fan out on a bulk Parquet insert: aggregating
+ * the whole table once is far cheaper than maintaining the SummingMergeTree
+ * incrementally per insert block. Produces byte-identical rollup content.
+ *
+ * Only backfills a raw table's rollups when that raw table has rows (so a
+ * traces-only scenario doesn't write empty log rollups).
+ */
+export async function backfillRollups(
+  client: ClickHouseClient,
+  tables: ScenarioTables,
+): Promise<void> {
+  const db = EVAL_DATABASE;
+
+  const hasRows = async (table: string): Promise<boolean> => {
+    const rs = await client.query({
+      query: `SELECT 1 FROM ${db}.${table} LIMIT 1`,
+      format: 'JSONEachRow',
+    });
+    return (await rs.json<unknown>()).length > 0;
+  };
+
+  if (await hasRows(tables.traces)) {
+    await client.command({
+      query: `INSERT INTO ${db}.${tables.tracesKvRollup} ${tracesKvMvSelect(db, tables.traces)}`,
+    });
+    await client.command({
+      query: `INSERT INTO ${db}.${tables.tracesKeyRollup} ${keyRollupMvSelect(db, tables.tracesKvRollup)}`,
+    });
+  }
+  if (await hasRows(tables.logs)) {
+    await client.command({
+      query: `INSERT INTO ${db}.${tables.logsKvRollup} ${logsKvMvSelect(db, tables.logs)}`,
+    });
+    await client.command({
+      query: `INSERT INTO ${db}.${tables.logsKeyRollup} ${keyRollupMvSelect(db, tables.logsKvRollup)}`,
+    });
+  }
+}
+
 async function dropRollupTables(
   client: ClickHouseClient,
   tables: ScenarioTables,
