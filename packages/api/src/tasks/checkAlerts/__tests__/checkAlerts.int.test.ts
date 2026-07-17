@@ -3043,6 +3043,7 @@ describe('checkAlerts', () => {
           responseDescription: 'an error response',
           status: 500,
           responseBody: 'webhook exploded',
+          expectedRequestCount: 3,
           expectedErrorMessage:
             'Failed to send webhook notification. Check the webhook configuration and destination.',
         },
@@ -3050,12 +3051,18 @@ describe('checkAlerts', () => {
           responseDescription: 'a redirect response',
           status: 302,
           responseBody: 'redirecting',
+          expectedRequestCount: 1,
           expectedErrorMessage:
             'Webhook destination responded with a redirect. Redirects are not supported.',
         },
       ])(
         'sets state to ALERT and records a WEBHOOK_ERROR when the generic webhook returns $responseDescription',
-        async ({ status, responseBody, expectedErrorMessage }) => {
+        async ({
+          status,
+          responseBody,
+          expectedRequestCount,
+          expectedErrorMessage,
+        }) => {
           const redirectTarget = 'http://169.254.169.254/latest/meta-data/';
           const fetchMock = jest.fn().mockImplementation(async () => {
             return new Response(responseBody, {
@@ -3150,6 +3157,7 @@ describe('checkAlerts', () => {
             'https://webhook.site/fail',
             expect.objectContaining({ redirect: 'manual' }),
           );
+          expect(fetchMock).toHaveBeenCalledTimes(expectedRequestCount);
           expect(
             fetchMock.mock.calls.every(
               ([requestUrl]) => requestUrl === 'https://webhook.site/fail',
