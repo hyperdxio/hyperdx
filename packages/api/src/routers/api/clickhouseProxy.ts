@@ -97,13 +97,13 @@ router.post(
     // Restrict to http/https to prevent file://, gopher://, etc.
     const parsedHost = new URL(host);
     if (parsedHost.protocol !== 'http:' && parsedHost.protocol !== 'https:') {
-      return res.status(400).json({ success: false, error: 'Invalid protocol' });
+      return res
+        .status(400)
+        .json({ success: false, error: 'Invalid protocol' });
     }
     const hostname = parsedHost.hostname.replace(IPV6_BRACKET_RE, '');
     if (isPrivateIp(hostname)) {
-      return res
-        .status(400)
-        .json({ success: false, error: 'Invalid host' });
+      return res.status(400).json({ success: false, error: 'Invalid host' });
     }
 
     const startedAt = performance.now();

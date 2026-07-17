@@ -43,10 +43,10 @@ import {
 import { escapeJsonString, unflattenObject } from '@/tasks/util';
 import { truncateString } from '@/utils/common';
 import { getCounter, getHistogram } from '@/utils/instrumentation';
-import { IPV6_BRACKET_RE, isPrivateIp } from '@/utils/validators';
 import logger from '@/utils/logger';
 import { withRetry } from '@/utils/retry';
 import * as slack from '@/utils/slack';
+import { IPV6_BRACKET_RE, isPrivateIp } from '@/utils/validators';
 
 // Webhook delivery is the last (and most failure-prone) hop of an alert. It
 // happens in the background task, so failures only show up in logs today.
@@ -219,7 +219,6 @@ const notifyChannel = async ({
       throw new Error(`Unsupported channel type: ${channel.type}`);
   }
 };
-
 
 const blacklistedWebhookHosts = (() => {
   const map = new Map<string, string>();
