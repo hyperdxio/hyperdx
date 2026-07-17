@@ -4674,6 +4674,7 @@ __metadata:
     ink-spinner: "npm:^5.0.0"
     ink-text-input: "npm:^6.0.0"
     jest: "npm:^30.2.0"
+    numbro: "npm:^2.5.0"
     react: "npm:^19.0.0"
     react-devtools-core: "npm:^7.0.1"
     sqlstring: "npm:^2.3.3"
@@ -22108,6 +22109,15 @@ __metadata:
   dependencies:
     bignumber.js: "npm:^8 || ^9"
   checksum: 10c0/50b32c372f11fbc177c32cae743ac738c6814ef549a059b89233694b69a7fc28f81a1c8f1109f01f22498dbc0bed51454a89361bebc89d4a9220b2de1b952ca9
+  languageName: node
+  linkType: hard
+
+"numbro@npm:^2.5.0":
+  version: 2.5.0
+  resolution: "numbro@npm:2.5.0"
+  dependencies:
+    bignumber.js: "npm:^8 || ^9"
+  checksum: 10c0/5fce44fb0e9dd9e3d48b74f0f29910af515284ac35eff0c14911ccaa7a666c2b95a55be02d2605f30fd3fac7d522ffecb5c1f24acb91c1a1880eb53b268a2ccc
   languageName: node
   linkType: hard
 

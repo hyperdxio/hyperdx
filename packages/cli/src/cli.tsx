@@ -16,9 +16,17 @@ import {
   TemplateMinerConfig,
 } from '@hyperdx/common-utils/dist/drain';
 
+import type { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
+
 import App from '@/App';
-import { ApiClient, type MeTeam } from '@/api/client';
+import { ApiClient, type SourceResponse, type MeTeam } from '@/api/client';
+import { AdhocChartError, buildAdhocChartConfig } from '@/shared/adhocChart';
+import { stripAnsi } from '@/termchart';
+import { parseGranularityFlag, sortTilesForDisplay } from '@/shared/tileConfig';
+import { fetchTileData } from '@/shared/tileQuery';
+import { renderTileContent } from '@/shared/tileRender';
 import { clearSession, loadSession, setActiveTeam } from '@/utils/config';
+import { parseTimeValue } from '@/utils/editor';
 import { uploadSourcemaps } from '@/sourcemaps';
 
 // ---- Standalone interactive login for `hdx auth login` -------------
@@ -1006,9 +1014,10 @@ Examples:
         tiles: d.tiles.map(t => ({
           id: t.id,
           name: t.config.name ?? null,
-          type: t.config.type ?? t.config.displayType ?? null,
-          source: t.config.source ?? null,
-          sql: t.config.sql ?? null,
+          type: t.config.displayType ?? null,
+          source: ('source' in t.config ? t.config.source : null) ?? null,
+          sql:
+            ('sqlTemplate' in t.config ? t.config.sqlTemplate : null) ?? null,
         })),
       }));
       process.stdout.write(JSON.stringify(output, null, 2) + '\n');
@@ -1042,12 +1051,13 @@ Examples:
         const isLast = i === d.tiles.length - 1;
         const prefix = isLast ? '  └─ ' : '  ├─ ';
         const name = t.config.name || '(untitled)';
-        const chartType = t.config.type ?? t.config.displayType ?? 'chart';
+        const chartType = t.config.displayType ?? 'chart';
+        const tileSource = 'source' in t.config ? t.config.source : undefined;
         let sourceLabel = '';
-        if (t.config.sql) {
+        if ('sqlTemplate' in t.config) {
           sourceLabel = 'raw SQL';
-        } else if (t.config.source) {
-          sourceLabel = `source: ${sourceNames[t.config.source] ?? t.config.source}`;
+        } else if (tileSource) {
+          sourceLabel = `source: ${sourceNames[tileSource] ?? tileSource}`;
         }
         const meta = [chartType, sourceLabel].filter(Boolean).join(', ');
         process.stdout.write(
@@ -1056,6 +1066,442 @@ Examples:
       }
 
       process.stdout.write('\n');
+    }
+  });
+
+// ---- Chart ---------------------------------------------------------
+
+/** Parse a relative duration like "15m", "1h", "7d" into milliseconds. */
+function parseDuration(input: string): number | null {
+  const match = input.trim().match(/^(\d+)\s*(s|m|h|d|w)$/i);
+  if (!match) return null;
+  const n = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  const ms =
+    unit === 's'
+      ? 1000
+      : unit === 'm'
+        ? 60_000
+        : unit === 'h'
+          ? 3_600_000
+          : unit === 'd'
+            ? 86_400_000
+            : 7 * 86_400_000;
+  return n * ms;
+}
+
+program
+  .command('chart')
+  .description(
+    'Render charts in the terminal — dashboard tiles or ad-hoc queries',
+  )
+  .option('-d, --dashboard <name-or-id>', 'Dashboard name or ID (tile mode)')
+  .option(
+    '-t, --tile <name-or-id>',
+    'Render only the tile matching this name or ID (default: all tiles)',
+  )
+  .option('-s, --source <name-or-id>', 'Source name or ID (ad-hoc mode)')
+  .option(
+    '--display <type>',
+    'Chart type: line, stacked_bar, number, table, bar, pie (ad-hoc mode)',
+    'line',
+  )
+  .option(
+    '--agg <fn>',
+    'Aggregation: count, sum, avg, min, max, count_distinct, quantile',
+    'count',
+  )
+  .option('--value <expression>', 'Column/SQL expression to aggregate')
+  .option('--level <fraction>', 'Quantile level for --agg quantile (0.95)')
+  .option('--where <condition>', 'Filter condition (Lucene by default)')
+  .option('--language <lang>', 'Filter language: lucene or sql', 'lucene')
+  .option('--group-by <expression>', 'Group-by column/expression')
+  .option(
+    '--metric-type <type>',
+    'Metric kind for metric sources: gauge, sum, histogram',
+  )
+  .option('--metric-name <name>', 'OTel metric name for metric sources')
+  .option(
+    '--series <json>',
+    'Full select item as JSON (repeatable, overrides --agg/--value)',
+    (value: string, prev: string[]) => [...prev, value],
+    [] as string[],
+  )
+  .option('--sql <query>', 'Raw ClickHouse SQL to chart (raw SQL mode)')
+  .option(
+    '--connection-id <id>',
+    'ClickHouse connection for --sql (alternative to --source)',
+  )
+  .option('--since <duration>', 'Relative time range (e.g. 15m, 1h, 7d)', '1h')
+  .option(
+    '--from <time>',
+    'Range start: ISO 8601, date (2026-07-01), or relative (now-24h). Overrides --since',
+  )
+  .option(
+    '--to <time>',
+    'Range end: ISO 8601, date, or relative (now-1h). Default: now',
+  )
+  .option(
+    '--granularity <interval>',
+    'Time bucket size (e.g. "5 minute") or "auto"',
+    'auto',
+  )
+  .option('--width <n>', 'Chart width in columns (default: terminal width)')
+  .option('--height <n>', 'Chart height in rows', '16')
+  .option(
+    '--color <mode>',
+    'ANSI colors: auto (TTY only), always, never',
+    'auto',
+  )
+  .option('--json', 'Output the queried rows + metadata as JSON instead')
+  .option('-a, --app-url <url>', 'HyperDX app URL')
+  .addHelpText(
+    'after',
+    `
+About:
+  Renders charts as terminal output. Designed for troubleshooting from
+  the CLI (including by AI agents): visualize a metric, spot the spike,
+  then narrow down with --where, 'hdx query', or 'hdx stream'.
+
+  All modes query through the exact same renderChartConfig pipeline the
+  web dashboards use, so SQL and results match the web UI.
+
+Modes (pick one):
+  1. Dashboard tiles:  -d <dashboard> [-t <tile>]
+     Renders saved dashboard tiles. Use 'hdx dashboards' to discover
+     dashboards and tile names/IDs.
+  2. Ad-hoc builder:   -s <source> [--agg ... --value ... --where ...]
+     Charts an aggregation over a source. Use 'hdx sources --json' to
+     discover sources (log, trace, and metric kinds all work).
+  3. Ad-hoc raw SQL:   --sql <query> with -s <source> or --connection-id
+     Charts arbitrary SQL. Time-series SQL should produce a time bucket
+     column and numeric value column(s); macros are supported:
+       $__timeFilter(col)    — expands to the --since/--from/--to range
+       $__timeInterval(col)  — buckets by the chart granularity
+
+Display types (--display):
+  line (default), stacked_bar, number, table, bar, pie.
+  For line/stacked_bar the result is bucketed over time. number shows a
+  single value. table prints rows. bar/pie aggregate per --group-by.
+
+Time range:
+  --since takes a relative duration ending now (15m, 1h, 7d).
+  --from / --to take absolute or relative times and override --since:
+    ISO 8601:   2026-07-01T00:00:00Z
+    Date only:  2026-07-01 (start of day UTC)
+    Relative:   now, now-30m, now-24h, now-7d
+
+Output:
+  ANSI colors are stripped automatically when stdout is not a TTY
+  (override with --color always|never). Use --json for raw rows + column
+  metadata instead of a rendered chart.
+
+Exit codes:
+  0  Success.
+  1  Failure (unknown dashboard/tile/source, invalid flags, query error).
+
+Examples:
+  # Dashboard tiles
+  $ hdx chart -d "Service Health"                # All tiles, past 1h
+  $ hdx chart -d "Service Health" -t "P95 Latency" --since 24h
+
+  # Ad-hoc: error log volume by service, past 3h
+  $ hdx chart -s Logs --where 'SeverityText:error' --group-by ServiceName --since 3h
+
+  # Ad-hoc: p95 span duration for one service
+  $ hdx chart -s Traces --agg quantile --level 0.95 --value Duration \\
+      --where 'ServiceName:api' --since 6h
+
+  # Ad-hoc: top services by error count (bar chart)
+  $ hdx chart -s Logs --display bar --where 'SeverityText:error' --group-by ServiceName
+
+  # Ad-hoc: metric source
+  $ hdx chart -s Metrics --metric-type sum --metric-name otelcol_exporter_sent_spans
+
+  # Ad-hoc: raw SQL over a time range
+  $ hdx chart -s Logs --sql "SELECT \\$__timeInterval(TimestampTime) AS ts, count()
+      FROM default.otel_logs WHERE \\$__timeFilter(TimestampTime) GROUP BY ts ORDER BY ts"
+
+  # Agent-friendly structured output
+  $ hdx chart -s Logs --group-by ServiceName --json | jq '.[0].data'
+`,
+  )
+  .action(async opts => {
+    const client = await ensureSession(opts.appUrl);
+    const chClient = client.createClickHouseClient();
+    const metadata = client.createMetadata();
+
+    // ---- Resolve time range
+    // --from/--to accept ISO 8601, date-only, or relative (now-1h) via
+    // the same parser as the TUI's $EDITOR time-range editor.
+    const timeFormatHint =
+      'Supported formats: ISO 8601 (2026-07-01T00:00:00Z), date (2026-07-01), relative (now, now-30m, now-24h, now-7d).';
+    let to: Date;
+    if (opts.to) {
+      const parsed = parseTimeValue(opts.to);
+      if (!parsed) {
+        _origError(
+          chalk.red(`Invalid --to value "${opts.to}". ${timeFormatHint}\n`),
+        );
+        process.exit(1);
+      }
+      to = parsed;
+    } else {
+      to = new Date();
+    }
+    let from: Date;
+    if (opts.from) {
+      const parsed = parseTimeValue(opts.from);
+      if (!parsed) {
+        _origError(
+          chalk.red(`Invalid --from value "${opts.from}". ${timeFormatHint}\n`),
+        );
+        process.exit(1);
+      }
+      from = parsed;
+    } else {
+      const durationMs = parseDuration(opts.since);
+      if (durationMs == null) {
+        _origError(
+          chalk.red(
+            `Invalid --since value "${opts.since}". Use formats like 15m, 1h, 7d.\n`,
+          ),
+        );
+        process.exit(1);
+      }
+      from = new Date(to.getTime() - durationMs);
+    }
+    if (from >= to) {
+      _origError(
+        chalk.red(
+          `Invalid time range: start (${from.toISOString()}) must be before end (${to.toISOString()}).\n`,
+        ),
+      );
+      process.exit(1);
+    }
+
+    // ---- Mode validation
+    const isAdhoc = !!(opts.source || opts.sql);
+    if (opts.dashboard && isAdhoc) {
+      _origError(
+        chalk.red(
+          'Pick one mode: -d/--dashboard (tile mode) or -s/--source / --sql (ad-hoc mode).\n',
+        ),
+      );
+      process.exit(1);
+    }
+    if (!opts.dashboard && !isAdhoc) {
+      _origError(
+        chalk.red(
+          'Nothing to chart. Use -d <dashboard> for saved tiles, or -s <source> / --sql for ad-hoc charts. See: hdx chart --help\n',
+        ),
+      );
+      process.exit(1);
+    }
+
+    // ---- Output settings
+    const width = opts.width
+      ? Number(opts.width)
+      : Math.min(process.stdout.columns || 100, 140);
+    const height = Number(opts.height);
+    const dateRange: [Date, Date] = [from, to];
+    const parsedGranularity = parseGranularityFlag(String(opts.granularity));
+    if (!parsedGranularity) {
+      _origError(
+        chalk.red(
+          `Invalid --granularity "${opts.granularity}". Use "auto" or "<n> second|minute|hour|day" (e.g. "5 minute").\n`,
+        ),
+      );
+      process.exit(1);
+    }
+    const granularity = parsedGranularity.granularity;
+    const maxTimeBuckets = Math.max(20, Math.min(80, width - 14));
+
+    // Colors: strip ANSI when stdout is not a TTY (agents/pipes) unless
+    // forced. chalk auto-detects TTY on its own; forcing "always" bumps
+    // its level so headers stay colored when piped too.
+    const colorMode = String(opts.color);
+    if (!['auto', 'always', 'never'].includes(colorMode)) {
+      _origError(
+        chalk.red(
+          `Invalid --color value "${opts.color}". Use auto, always, or never.\n`,
+        ),
+      );
+      process.exit(1);
+    }
+    const useColors =
+      colorMode === 'always' ||
+      (colorMode === 'auto' && !!process.stdout.isTTY);
+    if (colorMode === 'always' && chalk.level === 0) {
+      chalk.level = 3;
+    }
+    const finalize = (s: string): string => (useColors ? s : stripAnsi(s));
+
+    const jsonOutput: Array<Record<string, unknown>> = [];
+    let hadError = false;
+
+    /** Query + render one chart config; shared by both modes. */
+    const renderOne = async ({
+      id,
+      name,
+      config,
+      source,
+    }: {
+      id: string | null;
+      name: string;
+      config: SavedChartConfig;
+      source: SourceResponse | undefined;
+    }) => {
+      try {
+        const result = await fetchTileData({
+          clickhouseClient: chClient,
+          metadata,
+          config,
+          source,
+          dateRange,
+          granularity,
+          maxTimeBuckets,
+        });
+
+        if (opts.json) {
+          jsonOutput.push({
+            id,
+            name,
+            displayType: config.displayType ?? null,
+            status: result.status,
+            ...(result.status === 'ok'
+              ? { data: result.data.data, meta: result.data.meta }
+              : {}),
+            ...(result.status === 'unsupported'
+              ? { message: result.message }
+              : {}),
+            ...(result.status === 'unresolved'
+              ? { message: result.resolution.message }
+              : {}),
+          });
+          return;
+        }
+
+        process.stdout.write(
+          finalize(
+            `${chalk.bold.cyan(name)} ${chalk.dim(`(${config.displayType ?? 'chart'})`)}\n`,
+          ),
+        );
+        const content = renderTileContent({ result, source, width, height });
+        process.stdout.write(finalize(content) + '\n\n');
+      } catch (err) {
+        hadError = true;
+        const msg = err instanceof Error ? err.message : String(err);
+        if (opts.json) {
+          jsonOutput.push({ id, name, status: 'error', error: msg });
+        } else {
+          process.stdout.write(finalize(`${chalk.bold.cyan(name)}\n`));
+          process.stdout.write(finalize(chalk.red(`Query failed: ${msg}\n\n`)));
+        }
+      }
+    };
+
+    if (isAdhoc) {
+      // ---- Ad-hoc mode (builder or raw SQL)
+      const sources = await client.getSources();
+      let adhoc;
+      try {
+        adhoc = buildAdhocChartConfig(
+          {
+            source: opts.source,
+            sql: opts.sql,
+            connectionId: opts.connectionId,
+            display: opts.display,
+            agg: opts.agg,
+            value: opts.value,
+            level: opts.level,
+            metricType: opts.metricType,
+            metricName: opts.metricName,
+            where: opts.where,
+            language: opts.language,
+            groupBy: opts.groupBy,
+            series: opts.series,
+          },
+          sources,
+        );
+      } catch (err) {
+        if (err instanceof AdhocChartError) {
+          _origError(chalk.red(`${err.message}\n`));
+          process.exit(1);
+        }
+        throw err;
+      }
+
+      await renderOne({
+        id: null,
+        name: adhoc.label,
+        config: adhoc.config,
+        source: adhoc.source,
+      });
+    } else {
+      // ---- Dashboard tile mode
+      const [dashboards, sources] = await Promise.all([
+        client.getDashboards(),
+        client.getSources(),
+      ]);
+      const needle = String(opts.dashboard).toLowerCase();
+      const dashboard = dashboards.find(
+        d =>
+          d.id === opts.dashboard ||
+          d._id === opts.dashboard ||
+          d.name.toLowerCase() === needle,
+      );
+      if (!dashboard) {
+        _origError(chalk.red(`Dashboard "${opts.dashboard}" not found.\n`));
+        _origError('Available dashboards:');
+        for (const d of dashboards) {
+          _origError(`  - ${d.name} [${d.id ?? d._id}]`);
+        }
+        process.exit(1);
+      }
+
+      let tiles = sortTilesForDisplay(dashboard.tiles);
+      if (opts.tile) {
+        const tileNeedle = String(opts.tile).toLowerCase();
+        tiles = tiles.filter(
+          t =>
+            t.id === opts.tile ||
+            (t.config.name ?? '').toLowerCase() === tileNeedle,
+        );
+        if (tiles.length === 0) {
+          _origError(
+            chalk.red(
+              `Tile "${opts.tile}" not found in dashboard "${dashboard.name}".\n`,
+            ),
+          );
+          _origError('Available tiles:');
+          for (const t of sortTilesForDisplay(dashboard.tiles)) {
+            _origError(`  - ${t.config.name || '(untitled)'} [${t.id}]`);
+          }
+          process.exit(1);
+        }
+      }
+
+      for (const tile of tiles) {
+        const sourceId =
+          'source' in tile.config ? tile.config.source : undefined;
+        const source = sources.find(
+          s => s.id === sourceId || s._id === sourceId,
+        );
+        await renderOne({
+          id: tile.id,
+          name: tile.config.name || '(untitled)',
+          config: tile.config,
+          source,
+        });
+      }
+    }
+
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(jsonOutput, null, 2) + '\n');
+    }
+    if (hadError) {
+      process.exit(1);
     }
   });
 
