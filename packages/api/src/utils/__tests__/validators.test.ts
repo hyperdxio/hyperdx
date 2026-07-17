@@ -1,3 +1,5 @@
+import { WebhookService } from '@hyperdx/common-utils/dist/types';
+
 import * as validators from '@/utils/validators';
 
 describe('validators', () => {
@@ -118,6 +120,125 @@ describe('validators', () => {
       '2001:db8:::1',
     ])('rejects the non-canonical or invalid IP input %j', ip => {
       expect(validators.isPrivateIp(ip)).toBe(false);
+    });
+  });
+
+  describe('validateWebhookUrl', () => {
+    const loadValidatorsWithConfig = (config: {
+      clickhouseHost?: string;
+      isDev?: boolean;
+    }): typeof validators => {
+      let isolatedValidators: typeof validators | undefined;
+
+      jest.isolateModules(() => {
+        jest.doMock('@/config', () => ({
+          CLICKHOUSE_HOST: config.clickhouseHost,
+          IS_DEV: config.isDev ?? false,
+          MONGO_URI: undefined,
+        }));
+
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, n/no-missing-require
+        isolatedValidators = require('@/utils/validators');
+      });
+      jest.dontMock('@/config');
+
+      return isolatedValidators!;
+    };
+
+    it.each([
+      [
+        'generic webhook',
+        {
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+        },
+      ],
+      [
+        'Slack webhook',
+        {
+          service: WebhookService.Slack,
+          url: 'https://hooks.slack.com/services/T00/B00/token',
+        },
+      ],
+    ])('allows a public %s URL', (_description, webhook) => {
+      expect(() => validators.validateWebhookUrl(webhook)).not.toThrow();
+    });
+
+    it.each([
+      ['missing URL', { service: WebhookService.Generic }],
+      [
+        'invalid URL',
+        { service: WebhookService.Generic, url: 'not-a-valid-url' },
+      ],
+      [
+        'unsupported protocol',
+        { service: WebhookService.Generic, url: 'ftp://example.com/webhook' },
+      ],
+      [
+        'private IPv4 address',
+        { service: WebhookService.Generic, url: 'http://10.0.0.1/webhook' },
+      ],
+      [
+        'private IPv6 address',
+        {
+          service: WebhookService.Generic,
+          url: 'http://[fd00::1]/webhook',
+        },
+      ],
+      [
+        'localhost hostname',
+        { service: WebhookService.Generic, url: 'http://localhost/webhook' },
+      ],
+      [
+        'localhost subdomain',
+        {
+          service: WebhookService.Generic,
+          url: 'http://api.localhost/webhook',
+        },
+      ],
+      [
+        'localhost hostname with a trailing root dot',
+        {
+          service: WebhookService.Generic,
+          url: 'http://localhost./webhook',
+        },
+      ],
+      [
+        'localhost subdomain with a trailing root dot',
+        {
+          service: WebhookService.Generic,
+          url: 'http://api.localhost./webhook',
+        },
+      ],
+      [
+        'non-Slack URL for a Slack webhook',
+        { service: WebhookService.Slack, url: 'https://example.com/webhook' },
+      ],
+    ])('blocks a %s', (_description, webhook) => {
+      expect(() => validators.validateWebhookUrl(webhook)).toThrow(
+        validators.WebhookUrlValidationError,
+      );
+    });
+
+    it('blocks an exact configured host, including its port', () => {
+      const isolatedValidators = loadValidatorsWithConfig({
+        clickhouseHost: 'http://localhost:8123',
+        isDev: true,
+      });
+
+      expect(() =>
+        isolatedValidators.validateWebhookUrl({
+          service: WebhookService.Generic,
+          url: 'http://localhost:8123/webhook',
+        }),
+      ).toThrow('Webhook attempting to query disallowed route.');
+
+      expect(() =>
+        isolatedValidators.validateWebhookUrl({
+          service: WebhookService.Generic,
+          url: 'http://localhost:9000/webhook',
+        }),
+      ).not.toThrow();
     });
   });
 
