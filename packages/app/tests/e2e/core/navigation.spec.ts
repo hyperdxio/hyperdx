@@ -159,31 +159,3 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
     });
   });
 });
-
-// Full-server tests that require authentication and backend services
-test.skip('Navigation - Full Server Features', { tag: ['@core'] }, () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/search');
-  });
-
-  test('should show full server navigation links', async ({ page }) => {
-    await test.step('Verify team settings link is visible', async () => {
-      const teamSettingsLink = page.locator(
-        '[data-testid="nav-link-team-settings"]',
-      );
-      await expect(teamSettingsLink).toBeVisible();
-      await expect(teamSettingsLink).toHaveAttribute('href', '/team-settings');
-    });
-
-    await test.step('Verify alerts link functionality', async () => {
-      const alertsLink = page.locator('[data-testid="nav-link-alerts"]');
-      await expect(alertsLink).toBeVisible();
-      await expect(alertsLink).toHaveAttribute('href', '/alerts');
-
-      // In full-server mode, we can actually navigate to alerts
-      await alertsLink.click();
-      await page.waitForURL('**/alerts**');
-      await expect(page).toHaveURL(/.*\/alerts/);
-    });
-  });
-});

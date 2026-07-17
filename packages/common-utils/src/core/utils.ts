@@ -818,6 +818,44 @@ export function convertToCategoricalChartConfig(
   return convertedConfig;
 }
 
+/**
+ * Number charts collapse to a single aggregate value, so drop the time bucket
+ * (granularity) and any group-by.
+ */
+export function convertToNumberChartConfig(
+  config: BuilderChartConfigWithOptTimestamp,
+): BuilderChartConfigWithOptTimestamp {
+  return omit(config, ['granularity', 'groupBy']);
+}
+
+/**
+ * Table charts drop the time bucket (granularity) and, so the set of rows kept
+ * within the limit is stable, default to a row limit and a group-by ordering
+ * when the user hasn't set them.
+ */
+export function convertToTableChartConfig(
+  config: BuilderChartConfigWithOptTimestamp,
+): BuilderChartConfigWithOptTimestamp {
+  const convertedConfig = structuredClone(omit(config, ['granularity']));
+
+  // Set a default limit if not already set
+  if (!convertedConfig.limit) {
+    convertedConfig.limit = { limit: 200 };
+  }
+
+  // Set a default orderBy if groupBy is set but orderBy is not,
+  // so that the set of rows within the limit is stable.
+  if (
+    convertedConfig.groupBy &&
+    typeof convertedConfig.groupBy === 'string' &&
+    !convertedConfig.orderBy
+  ) {
+    convertedConfig.orderBy = convertedConfig.groupBy;
+  }
+
+  return convertedConfig;
+}
+
 export const getFirstOrderingItem = (
   orderBy: BuilderChartConfigWithDateRange['orderBy'],
 ) => {
