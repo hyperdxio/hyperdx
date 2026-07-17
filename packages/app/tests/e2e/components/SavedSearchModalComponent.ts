@@ -91,21 +91,22 @@ export class SavedSearchModalComponent {
     await expect(this.submitButton).toBeEnabled({ timeout: 5000 });
 
     // Start waiting for URL change BEFORE clicking submit to avoid race condition
-    const urlPromise = this.page.waitForURL(/\/search\/[a-f0-9]+/, {
-      timeout: 15000,
-      // Saving now uses a document navigation to avoid useQueryStates restoring
-      // the stale search URL. The URL is the behavior under test, so do not
-      // wait for unrelated resources to finish loading.
-      waitUntil: 'domcontentloaded',
-    });
+    const urlPromise = this.page.waitForURL(
+      url =>
+        /\/search\/[a-f0-9]+/.test(url.pathname) && url.search.length === 0,
+      {
+        timeout: 15000,
+        // Saving now uses a document navigation to avoid useQueryStates restoring
+        // stale search URL. A saved-search route must have no query state so it
+        // hydrates its stored configuration. Do not wait for unrelated resources.
+        waitUntil: 'domcontentloaded',
+      },
+    );
 
     await this.submit();
 
     // Wait for navigation to complete
     await urlPromise;
-
-    // Wait for modal to fully close
-    await expect(this.container).toBeHidden();
 
     await expect(this.savedSearchNameTitle).toBeVisible({ timeout: 5000 });
     await expect(this.savedSearchNameTitle).toHaveText(name, { timeout: 5000 });
