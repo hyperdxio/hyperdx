@@ -8,7 +8,7 @@ import {
 
 import { useStableCallback } from '@/hooks/useStableCallback';
 
-import { renderMs } from './utils';
+import { renderMs, tickIntervalForWidth } from './utils';
 
 import styles from './TimelineChart.module.scss';
 
@@ -107,7 +107,13 @@ export function TimelineMouseCursor({
     const cursorPx = x - labelW; // = xPerc * (clientWidth - labelW)
     cursor.style.transform = `translateX(${cursorPx.toFixed(2)}px)`;
     overlay.style.transform = `translateX(${xPerc < 0.5 ? 12 : -150}px)`;
-    label.textContent = renderMs(Math.max(time, 0));
+    // Format with the same tick interval the X-axis derives from this width, so
+    // the readout carries the same precision (and unit) as the tick labels.
+    const interval = tickIntervalForWidth(
+      maxValRef.current,
+      eventsContentWidth,
+    );
+    label.textContent = renderMs(Math.max(time, 0), interval);
     line.style.height = `${heightRef.current ?? 0}px`;
   });
 

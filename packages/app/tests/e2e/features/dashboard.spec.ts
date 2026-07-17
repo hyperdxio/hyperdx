@@ -533,6 +533,91 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
   });
 
   test(
+    'should allow typing a freeform filter value not present in the dropdown',
+    {},
+    async () => {
+      test.setTimeout(30000);
+      const freeformValue = 'nonexistent-service-e2e';
+
+      await test.step('Create new dashboard', async () => {
+        await expect(dashboardPage.createButton).toBeVisible();
+        await dashboardPage.createNewDashboard();
+      });
+
+      await test.step('Create a table tile to filter', async () => {
+        await dashboardPage.addTile();
+
+        await dashboardPage.chartEditor.createTable({
+          chartName: 'Test Table',
+          sourceName: DEFAULT_LOGS_SOURCE_NAME,
+          groupBy: 'ServiceName',
+        });
+
+        const accountingCell = dashboardPage.page.getByTitle('accounting', {
+          exact: true,
+        });
+        await expect(accountingCell).toBeVisible();
+      });
+
+      await test.step('Add Service filter to dashboard', async () => {
+        await dashboardPage.openEditFiltersModal();
+        await expect(dashboardPage.emptyFiltersList).toBeVisible();
+
+        await dashboardPage.addFilterToDashboard(
+          'Service',
+          DEFAULT_LOGS_SOURCE_NAME,
+          'ServiceName',
+        );
+
+        await expect(
+          dashboardPage.getFilterItemByName('Service'),
+        ).toBeVisible();
+
+        await dashboardPage.closeFiltersModal();
+      });
+
+      await test.step("Type a value not present in the filter's dropdown", async () => {
+        await dashboardPage.typeFilterSearchValue('Service', freeformValue);
+        await expect(dashboardPage.getFilterEmptyDropdownState()).toBeVisible();
+      });
+
+      await test.step('Press Enter to add the typed value as a pill', async () => {
+        await dashboardPage.submitFilterSearchValue('Service');
+
+        await expect(
+          dashboardPage.getFilterPill('Service', freeformValue),
+        ).toBeVisible();
+        await expect(dashboardPage.getFilterSearchInput('Service')).toHaveValue(
+          '',
+        );
+
+        // Close the dropdown before asserting table contents below.
+        await dashboardPage.page.keyboard.press('Escape');
+      });
+
+      await test.step('Verify the freeform value filters the table', async () => {
+        const accountingCell = dashboardPage.page.getByTitle('accounting', {
+          exact: true,
+        });
+        await expect(accountingCell).toHaveCount(0);
+      });
+
+      await test.step('Remove the freeform value and verify the table is unfiltered again', async () => {
+        await dashboardPage.removeLastFilterPillViaBackspace('Service');
+
+        await expect(
+          dashboardPage.getFilterPill('Service', freeformValue),
+        ).toHaveCount(0);
+
+        const accountingCell = dashboardPage.page.getByTitle('accounting', {
+          exact: true,
+        });
+        await expect(accountingCell).toBeVisible();
+      });
+    },
+  );
+
+  test(
     'should scope a filter to a specific source via "Applies to sources"',
     {},
     async () => {
@@ -753,8 +838,12 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         await dashboardPage.saveQueryAndFiltersAsDefault();
 
-        // Wait for save confirmation
-        await dashboardPage.page.waitForTimeout(1000);
+        // Wait for the save success notification rather than a blind sleep, so
+        // we only read the URL once the save has actually landed.
+        const notification = dashboardPage.page.locator(
+          'text=/Filter query and dropdown values/i',
+        );
+        await expect(notification).toBeVisible({ timeout: 5000 });
 
         // Extract dashboard ID
         const url = dashboardPage.page.url();

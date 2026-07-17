@@ -126,6 +126,11 @@
   --color-bg-header: var(--click-global-color-background-default);
   --color-bg-hover: var(--palette-neutral-725);
   --color-bg-active: var(--palette-neutral-800);
+
+  /* Highlight background for an interactive row inside a floating surface
+     (Select/Combobox options, Menu items, popover/dropdown lists) when it is
+     hovered or is the currently-selected entry. */
+  --color-bg-option-active: var(--palette-neutral-712);
   --color-bg-field: var(--click-field-color-background-default);
   --color-bg-field-highlighted: var(--palette-neutral-650);
   --color-bg-field-addon: var(--palette-neutral-712);
@@ -328,6 +333,11 @@
   --color-bg-modal: var(--click-global-color-background-default);
   --color-bg-hover: #e9ecef;
   --color-bg-active: #dee2e6;
+
+  /* Highlight background for an interactive row inside a floating surface
+     (Select/Combobox options, Menu items, popover/dropdown lists) when it is
+     hovered or is the currently-selected entry. */
+  --color-bg-option-active: var(--click-global-color-background-muted);
   --color-bg-field: var(--click-field-color-background-default);
   --color-bg-field-highlighted: var(--click-global-color-background-default);
   --color-bg-field-addon: var(--click-global-color-background-default);

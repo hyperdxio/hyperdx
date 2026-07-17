@@ -1351,6 +1351,44 @@ describe('webhooks router', () => {
       expect(sentWebhook.url).toBe('https://example.com/webhook');
     });
 
+    it('returns an error without making a request for a private IP webhook (SSRF prevention)', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      genericSpy.mockRestore();
+      const fetchMock = jest.mocked(global.fetch);
+      fetchMock.mockClear();
+
+      const response = await agent
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Generic,
+          url: 'http://10.0.0.1/webhook',
+          body: '{"message": "{{body}}"}',
+        })
+        .expect(500);
+
+      expect(response.body.message).toBe('Something went wrong :(');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('returns an error without making a request for a private IPv6 webhook', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      genericSpy.mockRestore();
+      const fetchMock = jest.mocked(global.fetch);
+      fetchMock.mockClear();
+
+      const response = await agent
+        .post('/webhooks/test')
+        .send({
+          service: WebhookService.Generic,
+          url: 'http://[fd00::1]/webhook',
+          body: '{"message": "{{body}}"}',
+        })
+        .expect(500);
+
+      expect(response.body.message).toBe('Something went wrong :(');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it('returns 400 when service is missing', async () => {
       const { agent } = await getLoggedInAgent(server);
 
@@ -1373,8 +1411,10 @@ describe('webhooks router', () => {
         .expect(400);
     });
 
-    it('returns 400 when URL is invalid', async () => {
+    it('returns 400 without making a request when URL is invalid', async () => {
       const { agent } = await getLoggedInAgent(server);
+      const fetchMock = jest.mocked(global.fetch);
+      fetchMock.mockClear();
 
       await agent
         .post('/webhooks/test')
@@ -1383,6 +1423,8 @@ describe('webhooks router', () => {
           url: 'not-a-valid-url',
         })
         .expect(400);
+
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('returns 400 when service is invalid', async () => {
