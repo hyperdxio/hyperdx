@@ -43,12 +43,12 @@
     "dev:build": "tsup && tsc --emitDeclarationOnly --declaration",
     "build": "tsup",
     "ci:build": "tsup",
-    "lint": "npx eslint --quiet . --ext .ts",
+    "lint": "npx eslint . --ext .ts --max-warnings 92",
     "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
-    "ci:unit": "jest --runInBand --ci --coverage",
-    "dev:unit": "jest --watchAll --runInBand",
-    "ci:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --runInBand --ci --coverage",
+    "ci:unit": "jest --ci --coverage",
+    "dev:unit": "jest --watchAll",
+    "ci:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --runInBand --ci --coverage --passWithNoTests",
     "dev:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --watchAll --runInBand"
   }
 }

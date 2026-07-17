@@ -13,6 +13,7 @@ import objectHash from 'object-hash';
 
 import { getMetadata, Metadata } from '@/core/metadata';
 import {
+  FIXED_TIME_BUCKET_EXPR_ALIAS,
   renderChartConfig,
   setChartSelectsAlias,
   splitChartConfigs,
@@ -24,7 +25,7 @@ import {
   splitAndTrimWithBracket,
 } from '@/core/utils';
 import { isBuilderChartConfig } from '@/guards';
-import { ChartConfigWithOptDateRange, QuerySettings } from '@/types';
+import { ChartConfigWithOptDateRange, QuerySettings, RatioMode } from '@/types';
 
 // export @clickhouse/client-common types
 export type {
@@ -386,48 +387,227 @@ export const computeRatio = (
   return numerator / denominator;
 };
 
-export const computeResultSetRatio = (resultSet: ResponseJSON<any>) => {
-  const _meta = resultSet.meta;
+export const computeResultSetRatio = (
+  resultSet: ResponseJSON<any>,
+  // The numerator/denominator value columns. Passed explicitly by the only
+  // caller (mergeResultSets) so we don't depend on column order — group-by
+  // dimensions can be numeric and would otherwise be mistaken for an operand.
+  operands: { numeratorName: string; denominatorName: string },
+  // How a grouped ratio divides; see RatioModeSchema. Defaults to per-group.
+  // Has no effect on ungrouped ratios (one row per bucket).
+  mode: RatioMode = 'per_group',
+) => {
+  const _meta = resultSet.meta ?? [];
   const _data = resultSet.data;
-  const timestampColumn = inferTimestampColumn(_meta ?? []);
-  const _restColumns = _meta?.filter(m => m.name !== timestampColumn?.name);
-  const firstColumn = _restColumns?.[0];
-  const secondColumn = _restColumns?.[1];
-  if (!firstColumn || !secondColumn) {
+  const numerator = _meta.find(m => m.name === operands.numeratorName);
+  const denominator = _meta.find(m => m.name === operands.denominatorName);
+  if (!numerator || !denominator) {
     throw new Error(
       `Unable to compute ratio - meta information: ${JSON.stringify(_meta)}.`,
     );
   }
-  const ratioColumnName = `${firstColumn.name}/${secondColumn.name}`;
-  const result = {
+  // Strip the collision-disambiguation suffix (see mergeResultSets) from the
+  // rendered label so a same-alias ratio reads `count(x)/count(x)`, not
+  // `count(x)/count(x)__1`.
+  const denominatorLabel = denominator.name.replace(/__\d+$/, '');
+  const ratioColumnName = `${numerator.name}/${denominatorLabel}`;
+  // Carry through every non-operand column — the timestamp and any group-by
+  // dimensions — so a grouped ratio renders one series per group instead of
+  // collapsing into a single line.
+  const passthroughColumns = _meta.filter(
+    m => m.name !== numerator.name && m.name !== denominator.name,
+  );
+
+  // per_group: each row is divided by its own denominator (each group's own
+  // rate). share_of_total: each row is divided by the total of the denominator
+  // column across ALL groups in the same time bucket, so the grouped lines
+  // decompose the blended rate and sum to the ungrouped value. For an ungrouped
+  // ratio there's one row per bucket, so the bucket total equals that row's own
+  // denominator and both modes coincide.
+  const denominatorForRow =
+    mode === 'share_of_total'
+      ? buildBucketTotalDenominator(_data, _meta, denominator.name)
+      : (row: Record<string, any>) => row[denominator.name] ?? NaN;
+
+  return {
     ...resultSet,
-    data: _data.map(row => ({
-      [ratioColumnName]: computeRatio(
-        row[firstColumn.name],
-        row[secondColumn.name],
-      ),
-      ...(timestampColumn
-        ? {
-            [timestampColumn.name]: row[timestampColumn.name],
-          }
-        : {}),
-    })),
-    meta: [
-      {
-        name: ratioColumnName,
-        type: 'Float64',
-      },
-      ...(timestampColumn
-        ? [
-            {
-              name: timestampColumn.name,
-              type: timestampColumn.type,
-            },
-          ]
-        : []),
-    ],
+    data: _data.map(row => {
+      // A group absent from the (filtered) numerator query contributes zero, not
+      // "no data" — so a zero-error group reads 0%, not N/A.
+      const numeratorValue = row[numerator.name] ?? 0;
+      return {
+        [ratioColumnName]: computeRatio(numeratorValue, denominatorForRow(row)),
+        ...Object.fromEntries(
+          passthroughColumns.map(c => [c.name, row[c.name]]),
+        ),
+      };
+    }),
+    meta: [{ name: ratioColumnName, type: 'Float64' }, ...passthroughColumns],
   };
-  return result;
+};
+
+// Resolves the time-bucket column that groups rows into buckets. The query
+// builder aliases the bucket FIXED_TIME_BUCKET_EXPR_ALIAS, so prefer that exact
+// column and only fall back to the first Date-typed column for shapes without
+// the alias. Without this preference a Date/DateTime group-by dimension ordered
+// ahead of the real bucket would be mistaken for it, so share_of_total totals
+// would be summed over the wrong column and the rendered shares silently wrong.
+const resolveBucketColumn = (meta: Array<{ name: string; type: string }>) =>
+  meta.find(m => m.name === FIXED_TIME_BUCKET_EXPR_ALIAS) ??
+  inferTimestampColumn(meta);
+
+// Builds a per-row lookup returning the total of the denominator column across
+// all rows sharing a time bucket (share-of-total mode). Rows with no timestamp
+// column all share one bucket, so a non-time-series grouped ratio becomes each
+// group's share of the grand total.
+const buildBucketTotalDenominator = (
+  data: Record<string, any>[],
+  meta: { name: string; type: string }[],
+  denominatorName: string,
+) => {
+  const timestampColumn = resolveBucketColumn(meta);
+  const bucketKey = (row: Record<string, any>) =>
+    timestampColumn ? String(row[timestampColumn.name]) : '__all__';
+  const totalByBucket = new Map<string, number>();
+  for (const row of data) {
+    const value = row[denominatorName];
+    // A group missing from the denominator split has an undefined value;
+    // castToNumber returns it as-is and Number.isNaN(undefined) is false, so
+    // guard explicitly or it would poison the whole bucket total with NaN.
+    const denom = value == null ? NaN : castToNumber(value);
+    if (!Number.isNaN(denom)) {
+      const key = bucketKey(row);
+      totalByBucket.set(key, (totalByBucket.get(key) ?? 0) + denom);
+    }
+  }
+  return (row: Record<string, any>) => totalByBucket.get(bucketKey(row)) ?? NaN;
+};
+
+/**
+ * Joins the per-series result sets of a split metric query (one query per
+ * series) back into a single result set, merging rows that share a time bucket
+ * (and group-by dimensions, when grouped). When `isRatio` is set, the two
+ * series are divided via {@link computeResultSetRatio}.
+ *
+ * Exported so the merge — the root of the grouped-ratio fix — can be unit
+ * tested without a live ClickHouse.
+ */
+export const mergeResultSets = ({
+  resultSets,
+  isTimeSeries,
+  isRatio,
+  ratioMode,
+}: {
+  resultSets: ResponseJSON<any>[];
+  isTimeSeries: boolean;
+  isRatio: boolean;
+  ratioMode?: RatioMode;
+}): ResponseJSON<any> => {
+  const metaSet = new Map<string, { name: string; type: string }>();
+  const tsBucketMap = new Map<string, Record<string, string | number>>();
+
+  // Seed metaSet with each split's value column in resultSet order, so the
+  // joined meta is [value0, value1, ..., non-value columns]. This matches the
+  // order of config.select that useChartNumberFormats indexes into.
+  //
+  // Two splits can resolve to the SAME value-column alias (e.g. a ratio of
+  // count(request) filtered / unfiltered — the alias omits the WHERE filter).
+  // If we let them share a column, the row merge below would clobber one
+  // operand with the other and the ratio would be undefined. So rename a
+  // colliding value column per split index and remember the (possibly renamed)
+  // operand name so the ratio divides the right two columns.
+  const operandNames: string[] = [];
+  const renamedResultSets = resultSets.map((resultSet, splitIdx) => {
+    const valueColumn = inferNumericColumn(resultSet.meta ?? [])?.[0];
+    if (!valueColumn) {
+      operandNames.push('');
+      return resultSet;
+    }
+    const name = metaSet.has(valueColumn.name)
+      ? `${valueColumn.name}__${splitIdx}`
+      : valueColumn.name;
+    operandNames.push(name);
+    metaSet.set(name, { ...valueColumn, name });
+    if (name === valueColumn.name) {
+      return resultSet;
+    }
+    return {
+      ...resultSet,
+      meta: (resultSet.meta ?? []).map(m =>
+        m.name === valueColumn.name ? { ...m, name } : m,
+      ),
+      data: resultSet.data.map(row => {
+        const { [valueColumn.name]: value, ...rest } = row;
+        return { ...rest, [name]: value };
+      }),
+    };
+  });
+
+  // Add other (non-value) columns to metaSet and merge rows.
+  for (const resultSet of renamedResultSets) {
+    if (Array.isArray(resultSet.meta)) {
+      for (const meta of resultSet.meta) {
+        if (!metaSet.has(meta.name)) {
+          metaSet.set(meta.name, meta);
+        }
+      }
+    }
+
+    const timestampColumn = resolveBucketColumn(resultSet.meta ?? []);
+    const numericColumn = inferNumericColumn(resultSet.meta ?? []);
+    const numericColumnName = numericColumn?.[0]?.name;
+    for (const row of resultSet.data) {
+      const _rowWithoutValue = numericColumnName
+        ? Object.fromEntries(
+            Object.entries(row).filter(([key]) => key !== numericColumnName),
+          )
+        : { ...row };
+      // When the series are grouped, two rows at the same time bucket but
+      // different group values must stay distinct — key by (bucket + group
+      // dims) via the hash of the row minus its value column. Without a
+      // group dimension this collapses to the timestamp (or a fixed key),
+      // preserving the original behavior.
+      const hasGroupCols = Object.keys(_rowWithoutValue).some(
+        key => key !== timestampColumn?.name,
+      );
+      const mergeKey = hasGroupCols
+        ? objectHash(_rowWithoutValue)
+        : timestampColumn != null
+          ? row[timestampColumn.name]
+          : isTimeSeries
+            ? objectHash(_rowWithoutValue)
+            : '__FIXED_TIMESTAMP__';
+      if (tsBucketMap.has(mergeKey)) {
+        tsBucketMap.set(mergeKey, { ...tsBucketMap.get(mergeKey), ...row });
+      } else {
+        tsBucketMap.set(mergeKey, row);
+      }
+    }
+  }
+
+  const merged: ResponseJSON<any> = {
+    meta: Array.from(metaSet.values()),
+    data: Array.from(tsBucketMap.values()),
+  };
+
+  if (isRatio) {
+    // Read the operands positionally: a split with no inferable numeric value
+    // column pushed '' (see above), so compacting with filter(Boolean) would
+    // shift the surviving name into numeratorName and leave denominatorName
+    // undefined — throwing "Unable to compute ratio" and failing the whole
+    // chart response. If either operand is missing we can't divide, so fall
+    // through and return the merged rows undivided.
+    const [numeratorName, denominatorName] = operandNames;
+    if (numeratorName && denominatorName) {
+      // TODO: we should compute the ratio on the db side
+      return computeResultSetRatio(
+        merged,
+        { numeratorName, denominatorName },
+        ratioMode,
+      );
+    }
+  }
+  return merged;
 };
 
 export interface QueryInputs<Format extends DataFormat> {
@@ -683,66 +863,12 @@ export abstract class BaseClickhouseClient {
     }
     // metrics -> join resultSets
     else if (isBuilderChartConfig(config) && resultSets.length > 1) {
-      const metaSet = new Map<string, { name: string; type: string }>();
-      const tsBucketMap = new Map<string, Record<string, string | number>>();
-      // Seed metaSet with each split's value column in resultSet order, so the
-      // joined meta is [value0, value1, ..., non-value columns]. This matches the
-      // order of config.select that useChartNumberFormats indexes into.
-      for (const resultSet of resultSets) {
-        const valueColumn = inferNumericColumn(resultSet.meta ?? [])?.[0];
-        if (valueColumn && !metaSet.has(valueColumn.name)) {
-          metaSet.set(valueColumn.name, valueColumn);
-        }
-      }
-      // Add other (non-value) columns to metaSet
-      for (const resultSet of resultSets) {
-        if (Array.isArray(resultSet.meta)) {
-          for (const meta of resultSet.meta) {
-            const key = meta.name;
-            if (!metaSet.has(key)) {
-              metaSet.set(key, meta);
-            }
-          }
-        }
-
-        const timestampColumn = inferTimestampColumn(resultSet.meta ?? []);
-        const numericColumn = inferNumericColumn(resultSet.meta ?? []);
-        const numericColumnName = numericColumn?.[0]?.name;
-        for (const row of resultSet.data) {
-          const _rowWithoutValue = numericColumnName
-            ? Object.fromEntries(
-                Object.entries(row).filter(
-                  ([key]) => key !== numericColumnName,
-                ),
-              )
-            : { ...row };
-          const ts =
-            timestampColumn != null
-              ? row[timestampColumn.name]
-              : isTimeSeries
-                ? objectHash(_rowWithoutValue)
-                : '__FIXED_TIMESTAMP__';
-          if (tsBucketMap.has(ts)) {
-            const existingRow = tsBucketMap.get(ts);
-            tsBucketMap.set(ts, {
-              ...existingRow,
-              ...row,
-            });
-          } else {
-            tsBucketMap.set(ts, row);
-          }
-        }
-      }
-
-      const isRatio =
-        config.seriesReturnType === 'ratio' && resultSets.length === 2;
-
-      const _resultSet: ResponseJSON<any> = {
-        meta: Array.from(metaSet.values()),
-        data: Array.from(tsBucketMap.values()),
-      };
-      // TODO: we should compute the ratio on the db side
-      return isRatio ? computeResultSetRatio(_resultSet) : _resultSet;
+      return mergeResultSets({
+        resultSets,
+        isTimeSeries,
+        isRatio: config.seriesReturnType === 'ratio' && resultSets.length === 2,
+        ratioMode: config.ratioMode,
+      });
     }
     throw new Error('No result sets');
   }
