@@ -177,7 +177,7 @@ function NodeLogs({
                 { label: 'Errors', value: 'error' },
               ]}
             />
-            {/* 
+            {/*
               <Link
                 href={`/search?q=${encodeURIComponent(_where)}`}
                 passHref
@@ -186,7 +186,7 @@ function NodeLogs({
                 <Anchor size="xs" c="dimmed">
                   Search <IconExternalLink size={12} style={{ display: 'inline' }} />
                 </Anchor>
-              </Link> 
+              </Link>
               */}
           </Flex>
         </Flex>
@@ -194,8 +194,6 @@ function NodeLogs({
       <Card.Section p="md" py="sm" h={CHART_HEIGHT}>
         <DBSqlRowTableWithSideBar
           sourceId={logSource.id}
-          isNestedPanel
-          breadcrumbPath={[{ label: 'Node Details' }]}
           config={{
             ...logSource,
             where: _where,

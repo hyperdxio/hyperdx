@@ -11,6 +11,7 @@ import { SearchPageAlertModalComponent } from '../components/SearchPageAlertModa
 import { SidePanelComponent } from '../components/SidePanelComponent';
 import { TableComponent } from '../components/TableComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
+import { dismissSqlAutocomplete } from '../utils/locators';
 
 type SaveSearchModalProps = {
   update: boolean;
@@ -140,6 +141,18 @@ export class SearchPage {
   }
 
   /**
+   * Open a log row that carries trace context (a non-empty TraceId) so the side
+   * panel renders the cross-source "View Trace" action.
+   */
+  async openTraceLinkedLogRow(traceId: string = 'trace-0') {
+    await this.timePicker.selectRelativeTime('Last 1 days');
+    await this.performSearch(`TraceId:"${traceId}"`);
+    await expect(this.table.firstRow).toBeVisible();
+    await this.table.clickFirstRow();
+    await expect(this.sidePanel.tabs).toBeVisible();
+  }
+
+  /**
    * Clear the search input
    */
   async clearSearch() {
@@ -266,7 +279,13 @@ export class SearchPage {
   async setCustomSELECT(selectStatement: string) {
     const selectEditor = this.getSELECTEditor();
     await selectEditor.click({ clickCount: 3 }); // Select all
-    await this.page.keyboard.type(selectStatement);
+    // Insert atomically rather than per-keystroke: under load CodeMirror can
+    // drop individual keys from keyboard.type (e.g. "Timestamp" -> "Timstamp"),
+    // which then gets faithfully saved and fails later assertions.
+    await this.page.keyboard.insertText(selectStatement);
+    // Dismiss the autocomplete popup so it can't linger and overlay the next
+    // control (e.g. the Save Search button).
+    await dismissSqlAutocomplete(this.page);
   }
 
   /**

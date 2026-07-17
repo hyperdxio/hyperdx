@@ -1,5 +1,9 @@
 import z from 'zod';
 import {
+  TableConnection,
+  TableConnectionChoice,
+} from '@hyperdx/common-utils/dist/core/metadata';
+import {
   isBuilderChartConfig,
   isPromqlChartConfig,
   isRawSqlChartConfig,
@@ -20,13 +24,14 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 import {
+  convertToCategoricalChartConfig,
   convertToNumberChartConfig,
-  convertToPieChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
 } from '@/ChartUtils';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { getFirstTimestampValueExpression } from '@/source';
+import { getMetricTableName } from '@/utils';
 import {
   extendDateRangeToInterval,
   intervalToGranularity,
@@ -97,10 +102,14 @@ export function displayTypeToActiveTab(displayType: DisplayType): string {
       return 'table';
     case DisplayType.Pie:
       return 'pie';
+    case DisplayType.Bar:
+      return 'bar';
     case DisplayType.Number:
       return 'number';
     case DisplayType.Heatmap:
       return 'heatmap';
+    case DisplayType.EventPatterns:
+      return 'event_patterns';
     default:
       return 'time';
   }
@@ -111,6 +120,7 @@ export const TABS_WITH_GENERATED_SQL = new Set([
   'time',
   'number',
   'pie',
+  'bar',
   'heatmap',
 ]);
 
@@ -244,11 +254,61 @@ export function buildChartConfigForExplanations({
     return convertToNumberChartConfig(builderConfig);
   } else if (activeTab === 'table') {
     return convertToTableChartConfig(builderConfig);
-  } else if (activeTab === 'pie') {
-    return convertToPieChartConfig(builderConfig);
+  } else if (activeTab === 'pie' || activeTab === 'bar') {
+    return convertToCategoricalChartConfig(builderConfig);
   } else if (activeTab === 'heatmap') {
     return config;
   }
 
   return config;
+}
+
+/**
+ * Picks the table connection(s) that drive attribute autocomplete for the
+ * chart-level Group By.
+ *
+ * Metric sources have no single `from.tableName` (they fan out to per-type
+ * metric tables), so we build one connection per series' metric table + name
+ * (deduped) and ask the editor to offer only fields present in ALL of them
+ * (`intersectFields`). A ratio can mix metric types (e.g. gauge / sum) whose
+ * tables have different native columns — a union would suggest a column that
+ * only exists in one series and make the other series' query fail, so the Group
+ * By must be restricted to fields valid for every series.
+ *
+ * Non-metric sources (and metric sources with no resolvable series) fall back
+ * to the source's single `tableConnection`.
+ */
+export function buildGroupByConnectionProps({
+  tableSource,
+  series,
+  tableConnection,
+}: {
+  tableSource: TSource | undefined;
+  series: { metricType?: string; metricName?: string }[] | undefined;
+  tableConnection: TableConnection;
+}): TableConnectionChoice & { intersectFields?: boolean } {
+  if (tableSource?.kind !== SourceKind.Metric || !Array.isArray(series)) {
+    return { tableConnection };
+  }
+
+  const seen = new Set<string>();
+  const connections: TableConnection[] = [];
+  for (const s of series) {
+    if (!s?.metricType || !s?.metricName) continue;
+    const metricTable = getMetricTableName(tableSource, s.metricType);
+    if (!metricTable) continue;
+    const key = `${metricTable}::${s.metricName}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    connections.push({
+      databaseName: tableSource.from.databaseName,
+      tableName: metricTable,
+      connectionId: tableSource.connection,
+      metricName: s.metricName,
+    });
+  }
+
+  return connections.length > 0
+    ? { tableConnections: connections, intersectFields: true }
+    : { tableConnection };
 }

@@ -3,7 +3,10 @@ import dynamic from 'next/dynamic';
 import type { Plugin } from 'uplot';
 import uPlot from 'uplot';
 import UplotReact from 'uplot-react';
-import { inferTimestampColumn } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  ColumnMetaType,
+  inferTimestampColumn,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
@@ -596,6 +599,83 @@ export function ColorLegend({ colors }: { colors: string[] }) {
 
 export type HeatmapScaleType = 'log' | 'linear';
 
+export function formatDataForHeatmap({
+  data,
+  timestampColumn,
+  generatedTsBuckets,
+  scaleType,
+  effectiveMin,
+  max,
+  nBuckets,
+}: {
+  data: Record<string, any>[];
+  timestampColumn: ColumnMetaType;
+  generatedTsBuckets: Date[];
+  scaleType: HeatmapScaleType;
+  effectiveMin: number;
+  max: number;
+  nBuckets: number;
+}): Mode2DataArray {
+  const time: number[] = [];
+  const bucket: number[] = [];
+  const count: number[] = [];
+
+  // Compute the y-axis value for a given bucket index.
+  // For log scale we store values in log space so that bins are uniformly
+  // spaced on the linear uPlot y-axis.  The heatmapPaths renderer assumes
+  // uniform increments (yBinIncr = ys[1] - ys[0]) to compute tile height;
+  // with actual log-spaced values the first increment is tiny relative to
+  // the full range and tiles render at ~0px height (invisible).
+  const bucketToYValue = (j: number) => {
+    if (scaleType === 'log' && effectiveMin > 0 && max > effectiveMin) {
+      // Return the natural-log of the actual bucket boundary so that the
+      // y-values are uniformly spaced.  Tick labels are exponentiated back
+      // via the tickFormatter below.
+      const actualValue =
+        effectiveMin * Math.pow(max / effectiveMin, j / nBuckets);
+      return Math.log(actualValue);
+    }
+    // Linear: min + j * step
+    return effectiveMin + j * ((max - effectiveMin) / nBuckets);
+  };
+
+  let dataIndex = 0;
+  for (let i = 0; i < generatedTsBuckets.length; i++) {
+    const generatedTs = generatedTsBuckets[i].getTime();
+
+    // CH widthBucket will return buckets from 0 to nBuckets + 1
+    for (let j = 0; j <= nBuckets + 1; j++) {
+      const row = data[dataIndex];
+
+      if (
+        row != null &&
+        new Date(row[timestampColumn.name]).getTime() == generatedTs &&
+        row['x_bucket'] == j
+      ) {
+        time.push(new Date(row[timestampColumn.name]).getTime());
+        bucket.push(bucketToYValue(row['x_bucket']));
+        count.push(Number.parseInt(row['count'], 10)); // UInt64 returns as string
+
+        // Skip duplicate buckets (from unmerged distributed table results)
+        while (
+          dataIndex < data.length &&
+          new Date(data[dataIndex][timestampColumn.name]).getTime() ==
+            generatedTs &&
+          data[dataIndex]['x_bucket'] == j
+        ) {
+          dataIndex++;
+        }
+      } else {
+        time.push(generatedTs);
+        bucket.push(bucketToYValue(j));
+        count.push(0);
+      }
+    }
+  }
+
+  return [time, bucket, count];
+}
+
 function HeatmapContainer({
   config,
   enabled = true,
@@ -693,63 +773,19 @@ function HeatmapContainer({
   // any chart recreation, this memo prevents the recreation in the
   // common case.
   const heatmapData = useMemo<Mode2DataArray>(() => {
-    const time: number[] = [];
-    const bucket: number[] = [];
-    const count: number[] = [];
-
-    // timestampColumn is derived from data.meta, so data covers the dep.
     const timestampColumn = inferTimestampColumn(data?.meta ?? []);
+    if (data == null || data.data == null || timestampColumn == null)
+      return [[], [], []];
 
-    if (data == null || timestampColumn == null) {
-      return [time, bucket, count];
-    }
-
-    // Compute the y-axis value for a given bucket index.
-    // For log scale we store values in log space so that bins are uniformly
-    // spaced on the linear uPlot y-axis.  The heatmapPaths renderer assumes
-    // uniform increments (yBinIncr = ys[1] - ys[0]) to compute tile height;
-    // with actual log-spaced values the first increment is tiny relative to
-    // the full range and tiles render at ~0px height (invisible).
-    const bucketToYValue = (j: number) => {
-      if (scaleType === 'log' && effectiveMin > 0 && max > effectiveMin) {
-        // Return the natural-log of the actual bucket boundary so that the
-        // y-values are uniformly spaced.  Tick labels are exponentiated back
-        // via the tickFormatter below.
-        const actualValue =
-          effectiveMin * Math.pow(max / effectiveMin, j / nBuckets);
-        return Math.log(actualValue);
-      }
-      // Linear: min + j * step
-      return effectiveMin + j * ((max - effectiveMin) / nBuckets);
-    };
-
-    let dataIndex = 0;
-    for (let i = 0; i < generatedTsBuckets.length; i++) {
-      const generatedTs = generatedTsBuckets[i].getTime();
-
-      // CH widthBucket will return buckets from 0 to nBuckets + 1
-      for (let j = 0; j <= nBuckets + 1; j++) {
-        const row = data?.data?.[dataIndex];
-
-        if (
-          row != null &&
-          new Date(row[timestampColumn.name]).getTime() == generatedTs &&
-          row['x_bucket'] == j
-        ) {
-          time.push(new Date(row[timestampColumn.name]).getTime());
-          bucket.push(bucketToYValue(row['x_bucket']));
-          count.push(Number.parseInt(row['count'], 10)); // UInt64 returns as string
-
-          dataIndex++;
-        } else {
-          time.push(generatedTs);
-          bucket.push(bucketToYValue(j));
-          count.push(0);
-        }
-      }
-    }
-
-    return [time, bucket, count];
+    return formatDataForHeatmap({
+      data: data.data,
+      timestampColumn,
+      generatedTsBuckets,
+      scaleType,
+      effectiveMin,
+      max,
+      nBuckets,
+    });
   }, [data, generatedTsBuckets, scaleType, effectiveMin, max, nBuckets]);
 
   const time = heatmapData[0];

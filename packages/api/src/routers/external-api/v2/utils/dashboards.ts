@@ -244,9 +244,19 @@ const convertToExternalTileChartConfig = (
           sourceId: config.source,
           numberFormat: config.numberFormat,
         };
+      case DisplayType.Bar:
+        return {
+          configType: 'sql',
+          displayType: DisplayType.Bar,
+          connectionId: config.connection,
+          sqlTemplate: config.sqlTemplate,
+          sourceId: config.source,
+          numberFormat: config.numberFormat,
+        };
       case DisplayType.Search:
       case DisplayType.Markdown:
       case DisplayType.Heatmap:
+      case DisplayType.EventPatterns:
         logger.error(
           { config },
           'Error converting chart config to external chart - unsupported display type for raw SQL config',
@@ -340,7 +350,21 @@ const convertToExternalTileChartConfig = (
           ? [convertToExternalSelectItem(config.select[0])]
           : [DEFAULT_SELECT_ITEM],
         groupBy: stringValueOrDefault(config.groupBy, undefined),
+        orderBy: stringValueOrDefault(config.orderBy, undefined),
         numberFormat: config.numberFormat,
+        limit: config.seriesLimit ?? undefined,
+      };
+    case DisplayType.Bar:
+      return {
+        displayType: config.displayType,
+        sourceId,
+        select: Array.isArray(config.select)
+          ? [convertToExternalSelectItem(config.select[0])]
+          : [DEFAULT_SELECT_ITEM],
+        groupBy: stringValueOrDefault(config.groupBy, undefined),
+        orderBy: stringValueOrDefault(config.orderBy, undefined),
+        numberFormat: config.numberFormat,
+        limit: config.seriesLimit ?? undefined,
       };
     case DisplayType.Table:
       return {
@@ -420,6 +444,14 @@ const convertToExternalTileChartConfig = (
         numberFormat: config.numberFormat,
       };
     }
+    case DisplayType.EventPatterns:
+      return {
+        displayType: config.displayType,
+        sourceId,
+        select: stringValueOrDefault(config.select, ''),
+        where: stringValueOrDefault(config.where, ''),
+        whereLanguage: config.whereLanguage ?? 'lucene',
+      };
     case undefined:
       logger.error(
         { config },
@@ -614,6 +646,7 @@ export function convertToInternalTileConfig(
       case 'table':
       case 'number':
       case 'pie':
+      case 'bar':
         internalConfig = {
           configType: 'sql',
           displayType:
@@ -621,7 +654,9 @@ export function convertToInternalTileConfig(
               ? DisplayType.Table
               : externalConfig.displayType === 'number'
                 ? DisplayType.Number
-                : DisplayType.Pie,
+                : externalConfig.displayType === 'bar'
+                  ? DisplayType.Bar
+                  : DisplayType.Pie,
           name,
           connection: externalConfig.connectionId,
           sqlTemplate: externalConfig.sqlTemplate,
@@ -709,12 +744,17 @@ export function convertToInternalTileConfig(
         } satisfies BuilderSavedChartConfig;
         break;
       case 'pie':
+      case 'bar':
         internalConfig = {
-          ...pick(externalConfig, ['groupBy', 'numberFormat']),
-          displayType: DisplayType.Pie,
+          ...pick(externalConfig, ['groupBy', 'numberFormat', 'orderBy']),
+          displayType:
+            externalConfig.displayType === 'bar'
+              ? DisplayType.Bar
+              : DisplayType.Pie,
           select: [convertToInternalSelectItem(externalConfig.select[0])],
           source: externalConfig.sourceId,
           where: '',
+          seriesLimit: externalConfig.limit,
           name,
         } satisfies BuilderSavedChartConfig;
         break;
@@ -783,6 +823,15 @@ export function convertToInternalTileConfig(
         internalConfig = {
           ...pick(externalConfig, ['select', 'where']),
           displayType: DisplayType.Search,
+          source: externalConfig.sourceId,
+          name,
+          whereLanguage: externalConfig.whereLanguage ?? 'lucene',
+        } satisfies BuilderSavedChartConfig;
+        break;
+      case 'event_patterns':
+        internalConfig = {
+          ...pick(externalConfig, ['select', 'where']),
+          displayType: DisplayType.EventPatterns,
           source: externalConfig.sourceId,
           name,
           whereLanguage: externalConfig.whereLanguage ?? 'lucene',

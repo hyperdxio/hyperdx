@@ -7,6 +7,7 @@ import { createEvalClient, defaultClickHouseUrl } from './clickhouse/client';
 import {
   dropScenarioTables,
   scenarioIsSeeded,
+  scenarioSlug,
   scenarioTables,
 } from './clickhouse/schema';
 import { buildBlindingEntries } from './grading/blind';
@@ -16,14 +17,17 @@ import {
   resolveBatchDir,
 } from './grading/grade';
 import { runCell } from './harness/runRun';
-import type { McpKind, PromptVariant } from './harness/types';
+import { type McpKind, PLUGIN_NONE, type PromptVariant } from './harness/types';
 import {
   configExists,
   configMcpNames,
   configPath,
+  configPluginNames,
   enabledMcpNames,
   ensureAnchorTime,
+  type EvalConfig,
   getMcpDefinition,
+  getPluginDefinition,
   readConfig,
 } from './hyperdx/config';
 import { runCheck, runSetup } from './hyperdx/setup';
@@ -34,7 +38,11 @@ import { batchDirName } from './runs/path';
 import { writeRun } from './runs/store';
 import { listBatches, listRunsInBatch, readRun } from './runs/store';
 import { getScenario, SCENARIO_NAMES, SCENARIOS } from './scenarios';
-import { type SeedProgress, seedScenario } from './scenarios/seedScenario';
+import {
+  getTotalMetrics,
+  type SeedProgress,
+  seedScenario,
+} from './scenarios/seedScenario';
 
 if (!process.env.ANTHROPIC_API_KEY && process.env.AI_API_KEY) {
   process.env.ANTHROPIC_API_KEY = process.env.AI_API_KEY;
@@ -49,9 +57,16 @@ function formatCount(n: number): string {
 function logSeedProgress(prefix: string, startMs: number) {
   return (p: SeedProgress) => {
     const elapsed = ((Date.now() - startMs) / 1000).toFixed(0);
-    const total = p.tracesInserted + p.logsInserted;
+    const totalMetrics = getTotalMetrics(p.metricsInserted);
+    const total = p.tracesInserted + p.logsInserted + totalMetrics;
+
+    const totalRows = `${formatCount(total)} rows`;
+    const tracesRows = `${formatCount(p.tracesInserted)} traces`;
+    const logsRows = `${formatCount(p.logsInserted)} logs`;
+    const metricsRows = `${formatCount(totalMetrics)} metrics`;
+
     process.stdout.write(
-      `\r${prefix}${formatCount(total)} rows (${formatCount(p.tracesInserted)} traces, ${formatCount(p.logsInserted)} logs) · ${elapsed}s`,
+      `\r${prefix}${totalRows} (${tracesRows}, ${logsRows}, ${metricsRows}) · ${elapsed}s`,
     );
   };
 }
@@ -85,24 +100,9 @@ function buildClientFromConfig(
   });
 }
 
-function defaultApiUrl(): string {
-  if (process.env.HDX_EVAL_API_URL) return process.env.HDX_EVAL_API_URL;
-  if (process.env.HYPERDX_API_PORT) {
-    return `http://localhost:${process.env.HYPERDX_API_PORT}`;
-  }
-  if (process.env.HDX_DEV_API_PORT) {
-    return `http://localhost:${process.env.HDX_DEV_API_PORT}`;
-  }
-  return 'http://localhost:8000';
-}
-
-// Default eval account credentials — used by setup-hyperdx, run, and grade.
-const DEFAULT_EVAL_EMAIL = 'eval@local.test';
-const DEFAULT_EVAL_PASSWORD = 'EvalPass123!#';
-
-/** Build the inspection config from an eval config + CLI credentials. */
+/** Shared builder for post-run inspection config used by both `run` and `grade`. */
 function buildInspectionConfig(
-  config: import('./hyperdx/config').EvalConfig,
+  config: EvalConfig,
   creds: { email: string; password: string },
   anchorTimeIso?: string,
 ):
@@ -118,6 +118,21 @@ function buildInspectionConfig(
     cleanup: true,
   };
 }
+
+function defaultApiUrl(): string {
+  if (process.env.HDX_EVAL_API_URL) return process.env.HDX_EVAL_API_URL;
+  if (process.env.HYPERDX_API_PORT) {
+    return `http://localhost:${process.env.HYPERDX_API_PORT}`;
+  }
+  if (process.env.HDX_DEV_API_PORT) {
+    return `http://localhost:${process.env.HDX_DEV_API_PORT}`;
+  }
+  return 'http://localhost:8000';
+}
+
+// Default eval account credentials — used by setup-hyperdx, run, and grade.
+const DEFAULT_EVAL_EMAIL = 'eval@local.test';
+const DEFAULT_EVAL_PASSWORD = 'EvalPass123!#';
 
 const program = new Command();
 
@@ -207,6 +222,15 @@ program
         console.log(
           `Inserted ${result.logsInserted} log rows    → default.${result.tables.logs}`,
         );
+        const totalMetrics = getTotalMetrics(result.metricsInserted);
+        if (totalMetrics > 0) {
+          const m = result.metricsInserted;
+          console.log(
+            `Inserted ${totalMetrics} metric rows → default.eval_${scenarioSlug(scenario.name)}_otel_metrics_* ` +
+              `(gauge ${m.gauge}, sum ${m.sum}, histogram ${m.histogram}, ` +
+              `exp-histogram ${m.exponentialHistogram}, summary ${m.summary})`,
+          );
+        }
         console.log(`Done in ${seedSecs}s`);
       } finally {
         await client.close();
@@ -339,8 +363,16 @@ program
     'all',
   )
   .option(
+    '--plugin <names>',
+    'Comma-separated Claude Code plugin variants from config (like --mcp/--model). ' +
+      'The literal "none" is the no-plugin variant. Default when omitted: "none". ' +
+      'Pass "none,<name>" to compare a plugin against the no-plugin baseline.',
+  )
+  .option(
     '--baseline <name>',
-    'MCP to use as baseline in reports (default: first MCP in list)',
+    'Column key to use as baseline in reports. Keys are the MCP name, plus ' +
+      '"/<model>", "/<plugin>", or "/<model>+<plugin>" when models/plugins ' +
+      'vary (default: the first listed mcp/model/plugin variants)',
   )
   .option('--runs <n>', 'Number of runs per (scenario,MCP) cell', '3')
   .option(
@@ -416,6 +448,7 @@ program
       scenarioName: string,
       cmdOpts: {
         mcp: string;
+        plugin?: string;
         baseline?: string;
         runs: string;
         model: string;
@@ -457,15 +490,28 @@ program
         getMcpDefinition(config, mcp);
       }
       const models = parseModelFlag(cmdOpts.model);
-      const multiModel = models.length > 1;
-      // For baseline resolution: when multi-model, the column key is
-      // mcp/sanitizedModel; otherwise just mcp.
-      const firstColumnKey = columnKeyFor(mcpKinds[0], models[0], multiModel);
+      const plugins = parsePluginFlag(cmdOpts.plugin, config);
+      const keyOpts = {
+        multiModel: models.length > 1,
+        multiPlugin: plugins.length > 1,
+      };
+      // Default baseline: the first listed variant of each dimension (first
+      // mcp, first model, first plugin — or their defaults when a flag is
+      // omitted). The auto-report persists it in _summary.json, and `report`
+      // regenerations reuse the persisted value, so delta signs stay stable.
+      const firstColumnKey = columnKeyFor(
+        mcpKinds[0],
+        models[0],
+        plugins[0],
+        keyOpts,
+      );
       const baseline = cmdOpts.baseline ?? firstColumnKey;
       if (cmdOpts.baseline) {
         // Validate: baseline must match one of the column keys.
         const allColumnKeys = mcpKinds.flatMap(m =>
-          models.map(mod => columnKeyFor(m, mod, multiModel)),
+          models.flatMap(mod =>
+            plugins.map(pl => columnKeyFor(m, mod, pl, keyOpts)),
+          ),
         );
         if (!allColumnKeys.includes(cmdOpts.baseline)) {
           throw new Error(
@@ -500,6 +546,19 @@ program
       // --anchor-time <iso>: override + save to config.
       // --live: ignore saved anchor, use wall-clock now (no FIXED CURRENT
       //         TIME in system prompt), and force reseed.
+      //
+      // The anchor is "sticky": once generated it persists in eval.config.json
+      // and is reused across runs. We intentionally do NOT refresh a stale
+      // anchor or force a reseed when wall-clock time advances. Previously we
+      // did, solely so clickstack_describe_source's fixed 24h WALL-CLOCK
+      // sampling window could still see the seeded data — but that coupled the
+      // anchor to real time and forced frequent reseeds (slow in CI with
+      // cached seed data). Instead, the system prompt now tells the agent that
+      // describe_source's sampled value fields may be empty/stale and to
+      // discover real values via anchored queries (see SAMPLING_CAVEAT_BLOCK
+      // in harness/systemPrompt.ts). That removes the only reason the anchor
+      // had to track wall-clock, so seeded data can age indefinitely without a
+      // reseed.
       let anchorTimeIso: string | undefined;
       let anchorMs: number;
       if (cmdOpts.live) {
@@ -557,8 +616,11 @@ program
           });
           const seedSecs = ((Date.now() - seedStart) / 1000).toFixed(1);
           process.stdout.write('\n');
+          const metricTotal = getTotalMetrics(r.metricsInserted);
+          const metricsPart =
+            metricTotal > 0 ? `, ${formatCount(metricTotal)} metrics` : '';
           console.log(
-            `Seeded ${scenario.name}: ${formatCount(r.tracesInserted)} traces, ${formatCount(r.logsInserted)} logs in ${seedSecs}s`,
+            `Seeded ${scenario.name}: ${formatCount(r.tracesInserted)} traces, ${formatCount(r.logsInserted)} logs${metricsPart} in ${seedSecs}s`,
           );
         } finally {
           await client.close();
@@ -570,6 +632,7 @@ program
       console.log(`Scenario: ${scenario.name}`);
       console.log(`MCPs: ${mcpKinds.join(', ')}`);
       console.log(`Models: ${models.join(', ')}`);
+      console.log(`Plugins: ${plugins.join(', ')}`);
       console.log(
         `Runs/cell: ${runs}, max-turns: ${maxTurns}, concurrency: ${concurrency}, prompt-variant: ${promptVariant}\n`,
       );
@@ -577,6 +640,7 @@ program
       type SummaryRow = {
         mcp: McpKind;
         model: string;
+        plugin: string;
         i: number;
         toolCalls: number;
         inputTokens: number;
@@ -586,12 +650,20 @@ program
         path: string;
       };
 
-      // Flatten the (mcp, model, runIndex) matrix into a single queue and
-      // pull from it with a worker pool of size `concurrency`.
-      const cells: Array<{ mcp: McpKind; model: string; i: number }> = [];
+      // Flatten the (mcp, model, plugin, runIndex) matrix into a single queue
+      // and pull from it with a worker pool of size `concurrency`.
+      const cells: Array<{
+        mcp: McpKind;
+        model: string;
+        plugin: string;
+        i: number;
+      }> = [];
       for (const mcp of mcpKinds) {
         for (const model of models) {
-          for (let i = 0; i < runs; i++) cells.push({ mcp, model, i });
+          for (const plugin of plugins) {
+            for (let i = 0; i < runs; i++)
+              cells.push({ mcp, model, plugin, i });
+          }
         }
       }
 
@@ -600,6 +672,7 @@ program
       const errors: Array<{
         mcp: string;
         model: string;
+        plugin: string;
         i: number;
         error: string;
       }> = [];
@@ -607,8 +680,8 @@ program
         while (true) {
           const idx = cursor++;
           if (idx >= cells.length) return;
-          const { mcp, model, i } = cells[idx];
-          const cellLabel = columnKeyFor(mcp, model, multiModel);
+          const { mcp, model, plugin, i } = cells[idx];
+          const cellLabel = columnKeyFor(mcp, model, plugin, keyOpts);
           const label = concurrency > 1 ? `[w${workerId}] ` : '  ';
           try {
             process.stdout.write(
@@ -621,6 +694,7 @@ program
               agentPrompt: scenario.agentPrompt,
               mcp,
               model,
+              plugin,
               maxTurns,
               timeoutMs,
               runIndex: i,
@@ -637,6 +711,7 @@ program
             summary.push({
               mcp,
               model,
+              plugin,
               i,
               toolCalls: record.toolCalls.length,
               inputTokens: record.tokens.input,
@@ -650,7 +725,7 @@ program
             console.error(
               `${label}${cellLabel} run ${i + 1}/${runs}: FAILED — ${msg}`,
             );
-            errors.push({ mcp, model, i, error: msg });
+            errors.push({ mcp, model, plugin, i, error: msg });
           }
         }
       }
@@ -664,24 +739,26 @@ program
           `\n${errors.length} run(s) failed:\n` +
             errors
               .map(e => {
-                const cl = columnKeyFor(e.mcp, e.model, multiModel);
+                const cl = columnKeyFor(e.mcp, e.model, e.plugin, keyOpts);
                 return `  ${cl} #${e.i}: ${e.error}`;
               })
               .join('\n'),
         );
       }
       console.log('\nResults written under runs/' + batchDir);
-      // Sort by (mcp, model, i) for stable summary output.
+      // Sort by (mcp, model, plugin, i) for stable summary output.
       summary.sort(
         (a, b) =>
           a.mcp.localeCompare(b.mcp) ||
           a.model.localeCompare(b.model) ||
+          a.plugin.localeCompare(b.plugin) ||
           a.i - b.i,
       );
+      const labelWidth = keyOpts.multiModel || keyOpts.multiPlugin ? 34 : 10;
       for (const row of summary) {
-        const cl = columnKeyFor(row.mcp, row.model, multiModel);
+        const cl = columnKeyFor(row.mcp, row.model, row.plugin, keyOpts);
         console.log(
-          `  ${cl.padEnd(multiModel ? 30 : 10)} #${row.i}  ${row.termination.padEnd(13)}  tools=${row.toolCalls}  tokens=${row.inputTokens}+${row.outputTokens}  ${row.durationS}s`,
+          `  ${cl.padEnd(labelWidth)} #${row.i}  ${row.termination.padEnd(13)}  tools=${row.toolCalls}  tokens=${row.inputTokens}+${row.outputTokens}  ${row.durationS}s`,
         );
       }
 
@@ -940,7 +1017,8 @@ program
   .option('--out <path>', 'Output markdown path (default: <batch>/_summary.md)')
   .option(
     '--baseline <name>',
-    'MCP to use as baseline for delta computation (default: first MCP found)',
+    'Column key to use as baseline for delta computation (default: the ' +
+      "baseline recorded in the batch's _summary.json, else the first column)",
   )
   .action(
     async (batch: string, cmdOpts: { out?: string; baseline?: string }) => {
@@ -1012,6 +1090,43 @@ function parsePromptVariant(v: string): PromptVariant {
   throw new Error(
     `--prompt-variant must be "baseline" or "hypothesis", got: ${v}`,
   );
+}
+
+/**
+ * Resolve the plugin variants for a run. Mirrors `--model`/`--mcp`: the plugins are
+ * exactly the names passed (deduped, order-preserving). When `--plugin` is
+ * omitted the default is the single no-plugin arm (`PLUGIN_NONE`).
+ */
+function parsePluginFlag(v: string | undefined, config: EvalConfig): string[] {
+  if (!v) return [PLUGIN_NONE];
+  const names = [
+    ...new Set(
+      v
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (names.length === 0) return [PLUGIN_NONE];
+  const available = configPluginNames(config);
+  const arms: string[] = [];
+  for (const name of names) {
+    if (name === PLUGIN_NONE) {
+      arms.push(PLUGIN_NONE);
+      continue;
+    }
+    if (!available.includes(name)) {
+      throw new Error(
+        `--plugin: "${name}" not found in config 'plugins'. Available: ${
+          available.join(', ') || '(none defined)'
+        }`,
+      );
+    }
+    // Validate the definition (exactly one of url/dir) up front.
+    getPluginDefinition(config, name);
+    arms.push(name);
+  }
+  return arms;
 }
 
 program.parseAsync(process.argv).catch(err => {

@@ -35,7 +35,6 @@
 .sourceSelectGroup {
   display: inline-flex;
   align-items: stretch;
-  gap: 0;
 
   &[data-with-menu] {
     /* Square only the right edge of the input. */
@@ -88,6 +87,29 @@
  */
 .sourceMenuButton {
   flex-shrink: 0;
+}
+
+/* Option hover + selection backgrounds, both driven by the shared
+ * `--color-bg-option-active` floating-surface token. Mantine's Select marks the
+ * chosen option with `data-checked` (the keyboard-highlighted row uses
+ * `data-combobox-active` instead), so we target that for selection; hover reuses
+ * the same token. The class + attribute selectors out-specify Mantine's own
+ * zero-specificity `:where(...)` rules without `!important`. Selection also
+ * carries a trailing check rendered in `renderOption`.
+ */
+.sourceSelectOption {
+  /* Small breathing room between options so the rows (and their hover/selected
+     backgrounds) read as distinct pills rather than one continuous list. */
+  margin-block: 2px;
+
+  &:hover,
+  &[data-checked] {
+    background-color: var(--color-bg-option-active);
+  }
+
+  &[data-checked] {
+    color: inherit;
+  }
 }
 
 /* Grouped dropdown decoupled from the compact picker (comboboxProps

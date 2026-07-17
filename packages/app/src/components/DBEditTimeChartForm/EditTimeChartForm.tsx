@@ -32,6 +32,8 @@ import {
 import { useDisclosure, usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconBracketsContain,
+  IconChartBar,
   IconChartLine,
   IconChartPie,
   IconGrid3x3,
@@ -57,6 +59,7 @@ import {
   convertSavedChartConfigToFormState,
   isPromqlDisplayType,
   isRawSqlDisplayType,
+  isStringSelectDisplayType,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
 import type { HeatmapScaleType } from '@/components/DBHeatmapChart';
@@ -80,6 +83,7 @@ import { ChartActionBar } from './ChartActionBar';
 import { ChartEditorControls } from './ChartEditorControls';
 import { ChartPreviewPanel } from './ChartPreviewPanel';
 import { ErrorNotificationMessage } from './ErrorNotificationMessage';
+import { useBuilderToSqlConversion } from './useBuilderToSqlConversion';
 import {
   buildChartConfigForExplanations,
   computeDbTimeChartConfig,
@@ -153,6 +157,10 @@ export default function EditTimeChartForm({
     control,
     setValue,
     getValues,
+    // The callback form of `watch` is used to subscribe to field changes
+    // (without re-rendering) in useBuilderToSqlConversion; useWatch can't do this.
+    // eslint-disable-next-line react-hook-form/no-use-watch
+    watch,
     handleSubmit,
     register,
     setError,
@@ -192,8 +200,15 @@ export default function EditTimeChartForm({
     [insertSeries, getValues],
   );
 
+  // Track whether sub-form changes (display settings, heatmap settings) have
+  // been applied. These bypass RHF's dirty tracking, so we latch here: once
+  // set, only a parent reset (new tile opened) clears it via onDirtyChange.
+  const subFormDirty = useRef(false);
+
   useEffect(() => {
-    onDirtyChange?.(isDirty);
+    // Don't let RHF's isDirty=false clear the flag after sub-form changes
+    // were applied (RHF resets isDirty when its `values` prop re-syncs).
+    onDirtyChange?.(isDirty || subFormDirty.current);
   }, [isDirty, onDirtyChange]);
 
   const select = useWatch({ control, name: 'select' });
@@ -201,6 +216,7 @@ export default function EditTimeChartForm({
   const sourceId = useWatch({ control, name: 'source' });
   const alert = useWatch({ control, name: 'alert' });
   const seriesReturnType = useWatch({ control, name: 'seriesReturnType' });
+  const ratioMode = useWatch({ control, name: 'ratioMode' });
   const groupBy = useWatch({ control, name: 'groupBy' });
   const displayType =
     useWatch({ control, name: 'displayType' }) ?? DisplayType.Line;
@@ -217,6 +233,15 @@ export default function EditTimeChartForm({
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
   const tableName = tableSource?.from.tableName;
+
+  // Carry the builder config over as a SQL template when switching to SQL mode
+  useBuilderToSqlConversion({
+    control,
+    getValues,
+    setValue,
+    watch,
+    tableSource,
+  });
 
   const activeTab = displayTypeToActiveTab(displayType);
 
@@ -488,7 +513,10 @@ export default function EditTimeChartForm({
       prevDisplayTypeRef.current = displayType;
       prevConfigTypeRef.current = configType;
 
-      if (displayType === DisplayType.Search && typeof select !== 'string') {
+      if (
+        isStringSelectDisplayType(displayType) &&
+        typeof select !== 'string'
+      ) {
         setValue('select', '');
         setValue('series', []);
       } else if (displayType === DisplayType.Heatmap) {
@@ -588,18 +616,21 @@ export default function EditTimeChartForm({
   const [parentRef, setParentRef] = useState<HTMLElement | null>(null);
 
   const handleUpdateDisplaySettings = useCallback(
-    ({
-      numberFormat,
-      alignDateRangeToGranularity,
-      fillNulls,
-      compareToPreviousPeriod,
-      fitYAxisToData,
-      groupByColumnsOnLeft,
-      seriesLimit,
-      color,
-      colorRules,
-      backgroundChart,
-    }: ChartConfigDisplaySettings) => {
+    (
+      {
+        numberFormat,
+        alignDateRangeToGranularity,
+        fillNulls,
+        compareToPreviousPeriod,
+        fitYAxisToData,
+        groupByColumnsOnLeft,
+        seriesLimit,
+        color,
+        colorRules,
+        backgroundChart,
+      }: ChartConfigDisplaySettings,
+      isDirty: boolean,
+    ) => {
       // Only persist an explicit numberFormat. When the drawer emits undefined
       // (the user never chose a format), leave it unset so render-time
       // auto-detection keeps driving the format from the datasource.
@@ -618,9 +649,15 @@ export default function EditTimeChartForm({
       setValue('color', color);
       setValue('colorRules', colorRules);
       setValue('backgroundChart', backgroundChart);
+      // Display settings live in a separate drawer form, so RHF can't track
+      // them. Latch dirty state only when the drawer reports actual changes.
+      if (isDirty) {
+        subFormDirty.current = true;
+        onDirtyChange?.(true);
+      }
       onSubmit();
     },
-    [setValue, onSubmit],
+    [setValue, onDirtyChange, onSubmit],
   );
 
   const handleUpdateHeatmapSettings = useCallback(
@@ -628,10 +665,13 @@ export default function EditTimeChartForm({
       setValue('series.0.valueExpression', data.value);
       setValue('series.0.countExpression', data.count || 'count()');
       setValue('series.0.heatmapScaleType', data.scaleType);
+      // Heatmap settings are applied outside RHF's change tracking.
+      subFormDirty.current = true;
+      onDirtyChange?.(true);
       onSubmit();
       closeHeatmapSettings();
     },
-    [setValue, onSubmit, closeHeatmapSettings],
+    [setValue, onDirtyChange, onSubmit, closeHeatmapSettings],
   );
 
   const heatmapValueExpression = useWatch({
@@ -681,7 +721,7 @@ export default function EditTimeChartForm({
                   value={DisplayType.Line}
                   leftSection={<IconChartLine size={16} />}
                 >
-                  Line/Bar
+                  Time Series
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Table}
@@ -694,6 +734,12 @@ export default function EditTimeChartForm({
                   leftSection={<IconNumbers size={16} />}
                 >
                   Number
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.Bar}
+                  leftSection={<IconChartBar size={16} />}
+                >
+                  Bar
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Pie}
@@ -712,6 +758,12 @@ export default function EditTimeChartForm({
                   leftSection={<IconGrid3x3 size={16} />}
                 >
                   Heatmap
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.EventPatterns}
+                  leftSection={<IconBracketsContain size={16} />}
+                >
+                  Patterns
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Markdown}
@@ -813,6 +865,7 @@ export default function EditTimeChartForm({
             displayType={displayType}
             activeTab={activeTab}
             seriesReturnType={seriesReturnType}
+            ratioMode={ratioMode}
             alert={alert}
             isRawSqlInput={isRawSqlInput}
             dashboardId={dashboardId}

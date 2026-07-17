@@ -39,10 +39,17 @@ export function VirtualMultiSelect({
 
   const [search, setSearch] = useState('');
 
+  const sorted = useMemo(() => {
+    return data.toSorted((a, b) => a.localeCompare(b));
+  }, [data]);
+
   const options = useMemo(() => {
     const searchLowerCase = search.trim().toLowerCase();
-    return data.filter(item => item.toLowerCase().includes(searchLowerCase));
-  }, [data, search]);
+    return sorted.filter(
+      item =>
+        item.toLowerCase().includes(searchLowerCase) && item.trim().length > 0,
+    );
+  }, [sorted, search]);
 
   const virtualizer = useVirtualizer({
     count: options.length,
@@ -69,10 +76,30 @@ export function VirtualMultiSelect({
 
   const handleRemoveAllValues = () => onChange([]);
 
+  const handleAddValue = (val: string) => {
+    if (!values.includes(val)) {
+      onChange([...values, val]);
+    }
+  };
+
   const handleKeyDown: KeyboardEventHandler<HTMLInputElement> = event => {
     if (event.key === 'Backspace' && search.length === 0 && values.length > 0) {
       event.preventDefault();
       handleRemoveValue(values[values.length - 1]);
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      const trimmed = search.trim();
+      // When the user has explicitly highlighted a dropdown option with the
+      // arrow keys, defer to the combobox's default behavior of selecting it.
+      // Otherwise, treat Enter as "add the typed value" so arbitrary values can
+      // be entered without picking a specific dropdown option.
+      if (trimmed.length > 0 && combobox.getSelectedOptionIndex() === -1) {
+        event.preventDefault();
+        handleAddValue(trimmed);
+        setSearch('');
+      }
     }
   };
 

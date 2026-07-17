@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { add, differenceInSeconds } from 'date-fns';
-import { omit } from 'lodash';
 import SqlString from 'sqlstring';
 import { z } from 'zod';
 import {
@@ -14,6 +13,9 @@ import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChart
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
+  convertToCategoricalChartConfig,
+  convertToNumberChartConfig,
+  convertToTableChartConfig,
   getAlignedDateRange,
   Granularity,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -21,7 +23,6 @@ import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   AggregateFunction as AggFnV2,
   BuilderChartConfigWithDateRange,
-  BuilderChartConfigWithOptTimestamp,
   BuilderSavedChartConfig,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
@@ -421,9 +422,12 @@ function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
   ]);
 }
 
-export function formatResponseForPieChart(
+const DEFAULT_MAX_CATEGORICAL_GROUPS = 500;
+
+export function formatResponseForCategoricalChart(
   data: ResponseJSON<Record<string, unknown>>,
   getColor: (index: number, label: string) => string,
+  applyDefaultOrder: boolean = true,
 ): Array<{ label: string; value: number; color: string }> {
   if (data.meta == null) {
     throw new Error('No meta data found in response');
@@ -441,27 +445,31 @@ export function formatResponseForPieChart(
 
   const groupByColumns = inferGroupColumns(data.meta);
 
-  return (
-    data.data
-      .map(row => {
-        const label = groupByColumns?.length
-          ? groupByColumns.map(({ name }) => row[name]).join(' - ')
-          : valueColumn;
-        const rawValue = row[valueColumn];
-        const value =
-          typeof rawValue === 'number'
-            ? rawValue
-            : Number.parseFloat(`${rawValue}`);
-        return { label, value };
-      })
-      .filter(entry => !isNaN(entry.value) && isFinite(entry.value))
-      // Sort in descending order so the largest slice is always first and gets the first color in the palette
-      .sort((a, b) => b.value - a.value)
-      .map((entry, index) => ({
-        ...entry,
-        color: getColor(index, entry.label),
-      }))
-  );
+  const labelsAndValues = data.data
+    .map(row => {
+      const label = groupByColumns?.length
+        ? groupByColumns.map(({ name }) => row[name]).join(' - ')
+        : valueColumn;
+      const rawValue = row[valueColumn];
+      const value =
+        typeof rawValue === 'number'
+          ? rawValue
+          : Number.parseFloat(`${rawValue}`);
+      return { label, value };
+    })
+    .filter(entry => !isNaN(entry.value) && isFinite(entry.value));
+
+  if (applyDefaultOrder) {
+    // Sort in descending order so the largest entry is always first and gets the first color in the palette
+    labelsAndValues.sort((a, b) => b.value - a.value);
+  }
+
+  return labelsAndValues
+    .slice(0, DEFAULT_MAX_CATEGORICAL_GROUPS)
+    .map((entry, index) => ({
+      ...entry,
+      color: getColor(index, entry.label),
+    }));
 }
 
 export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {
@@ -1132,40 +1140,11 @@ export function buildTableRowSearchUrl({
   });
 }
 
-export function convertToNumberChartConfig(
-  config: BuilderChartConfigWithDateRange,
-): BuilderChartConfigWithOptTimestamp {
-  return omit(config, ['granularity', 'groupBy']);
-}
-
-export function convertToPieChartConfig(
-  config: BuilderChartConfigWithOptTimestamp,
-): BuilderChartConfigWithOptTimestamp {
-  return omit(config, ['granularity']);
-}
-
-export function convertToTableChartConfig(
-  config: BuilderChartConfigWithOptTimestamp,
-): BuilderChartConfigWithOptTimestamp {
-  const convertedConfig = structuredClone(omit(config, ['granularity']));
-
-  // Set a default limit if not already set
-  if (!convertedConfig.limit) {
-    convertedConfig.limit = { limit: 200 };
-  }
-
-  // Set a default orderBy if groupBy is set but orderBy is not,
-  // so that the set of rows within the limit is stable.
-  if (
-    convertedConfig.groupBy &&
-    typeof convertedConfig.groupBy === 'string' &&
-    !convertedConfig.orderBy
-  ) {
-    convertedConfig.orderBy = convertedConfig.groupBy;
-  }
-
-  return convertedConfig;
-}
+export {
+  convertToCategoricalChartConfig,
+  convertToNumberChartConfig,
+  convertToTableChartConfig,
+};
 
 export function buildMVDateRangeIndicator({
   mvOptimizationData,

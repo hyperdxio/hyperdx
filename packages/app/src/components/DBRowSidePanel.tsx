@@ -1,20 +1,18 @@
 import {
   createContext,
-  Dispatch,
-  SetStateAction,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from 'react';
 import { add } from 'date-fns';
 import { isString } from 'lodash';
-import { parseAsStringEnum, useQueryState } from 'nuqs';
-import { ErrorBoundary } from 'react-error-boundary';
+import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
+import SqlString from 'sqlstring';
 import {
   isLogSource,
-  isSessionSource,
   isTraceSource,
   SourceKind,
   TLogSource,
@@ -22,30 +20,59 @@ import {
   TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
-import { Box, Drawer, Flex, Stack } from '@mantine/core';
+import {
+  ActionIcon,
+  Badge,
+  Box,
+  Button,
+  CopyButton,
+  Drawer,
+  Flex,
+  Group,
+  Stack,
+  Text,
+  Tooltip,
+} from '@mantine/core';
+import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
 
-import DBRowSidePanelHeader, {
-  BreadcrumbNavigationCallback,
-  BreadcrumbPath,
-} from '@/components/DBRowSidePanelHeader';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
+import useSidePanelStack, {
+  reconcileTab,
+  SidePanelStack,
+} from '@/hooks/useSidePanelStack';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
-import { getEventBody } from '@/source';
+import { KeyboardShortcutsModal } from '@/LogSidePanelElements';
+import { getEventBody, useSource } from '@/source';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
+import { FormatTime } from '@/useFormatTime';
+import { formatDistanceToNowStrictShort } from '@/utils';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
+import { renderMs } from './TimelineChart/utils';
 import ContextSubpanel from './ContextSidePanel';
 import DBInfraPanel from './DBInfraPanel';
-import { RowDataPanel, rowHasK8sContext, useRowData } from './DBRowDataPanel';
+import {
+  ROW_DATA_ALIASES,
+  RowDataPanel,
+  rowHasK8sContext,
+  useRowData,
+} from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
+import { SourceFrame, Tab } from './DBRowSidePanel.types';
 import { DBRowSidePanelErrorState } from './DBRowSidePanelErrorState';
+import DBRowSidePanelHeader from './DBRowSidePanelHeader';
 import { DBSessionPanel, useSessionId } from './DBSessionPanel';
 import DBTracePanel from './DBTracePanel';
-import { INITIAL_DRAWER_WIDTH_PERCENT } from './DrawerUtils';
+import {
+  DrawerFullWidthToggle,
+  INITIAL_DRAWER_WIDTH_PERCENT,
+} from './DrawerUtils';
+import LogLevel from './LogLevel';
+import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -80,43 +107,168 @@ export type RowSidePanelContextProps = {
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});
 
-enum Tab {
-  Overview = 'overview',
-  Parsed = 'parsed',
-  Debug = 'debug',
-  Trace = 'trace',
-  ServiceMap = 'serviceMap',
-  Context = 'context',
-  Replay = 'replay',
-  Infrastructure = 'infrastructure',
+function SidePanelHeaderActions({
+  onClose,
+  isFullWidth,
+  onToggleFullWidth,
+}: {
+  onClose: () => void;
+  isFullWidth?: boolean;
+  onToggleFullWidth?: () => void;
+}) {
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  return (
+    <>
+      <Group gap={4} wrap="nowrap">
+        {onToggleFullWidth && (
+          <DrawerFullWidthToggle
+            isFullWidth={isFullWidth}
+            onToggle={onToggleFullWidth}
+          />
+        )}
+        <Tooltip label="Keyboard shortcuts" position="bottom">
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="sm"
+            onClick={() => setShortcutsOpen(true)}
+            aria-label="Keyboard shortcuts"
+          >
+            <IconKeyboard size={16} />
+          </ActionIcon>
+        </Tooltip>
+        <CopyButton
+          value={typeof window !== 'undefined' ? window.location.href : ''}
+        >
+          {({ copied, copy }) => (
+            <Tooltip
+              label={copied ? 'Copied!' : 'Share link'}
+              position="bottom"
+            >
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="sm"
+                onClick={copy}
+                aria-label="Share"
+              >
+                <IconShare size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </CopyButton>
+        <Tooltip label="Close" position="bottom">
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="sm"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <IconX size={16} />
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+      <KeyboardShortcutsModal
+        opened={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
+      />
+    </>
+  );
 }
+
+const SPAN_KIND_LABELS: Record<string, string> = {
+  '1': 'Internal',
+  '2': 'Server',
+  '3': 'Client',
+  '4': 'Producer',
+  '5': 'Consumer',
+  Internal: 'Internal',
+  Server: 'Server',
+  Client: 'Client',
+  Producer: 'Producer',
+  Consumer: 'Consumer',
+  SPAN_KIND_INTERNAL: 'Internal',
+  SPAN_KIND_SERVER: 'Server',
+  SPAN_KIND_CLIENT: 'Client',
+  SPAN_KIND_PRODUCER: 'Producer',
+  SPAN_KIND_CONSUMER: 'Consumer',
+};
 
 type DBRowSidePanelProps = {
   source: TSource;
   rowId: string | undefined;
   aliasWith?: WithClause[];
   onClose: () => void;
-  isNestedPanel?: boolean;
-  breadcrumbPath?: BreadcrumbPath;
-  onBreadcrumbClick?: BreadcrumbNavigationCallback;
 };
 
-const DBRowSidePanel = ({
-  rowId: rowId,
-  aliasWith,
-  source,
-  isNestedPanel = false,
-  setSubDrawerOpen,
-  onClose,
-  breadcrumbPath,
-  onBreadcrumbClick,
-  isFullWidth,
-  onToggleFullWidth,
-}: DBRowSidePanelProps & {
-  setSubDrawerOpen: Dispatch<SetStateAction<boolean>>;
+type DBRowSidePanelInnerProps = DBRowSidePanelProps & {
   isFullWidth?: boolean;
   onToggleFullWidth?: () => void;
-}) => {
+  persistStacksInUrl?: boolean;
+  parentBreadcrumbs?: BreadcrumbItem[];
+  onNavigateToParent?: () => void;
+  sidePanelStack: SidePanelStack;
+};
+
+export const DBRowSidePanelInner = ({
+  rowId: initialRowId,
+  aliasWith: initialAliasWith,
+  source: rootSource,
+  onClose,
+  isFullWidth,
+  onToggleFullWidth,
+  parentBreadcrumbs,
+  onNavigateToParent,
+  sidePanelStack,
+}: DBRowSidePanelInnerProps) => {
+  const {
+    sourceStack,
+    navStack,
+    tab: persistedTab,
+    pushSource,
+    pushNav,
+    popOne,
+    truncateTo,
+    setTab,
+  } = sidePanelStack;
+
+  const activeSourceFrame =
+    sourceStack.length > 0 ? sourceStack[sourceStack.length - 1] : null;
+
+  // Resolve the leaf source (cross-source navigation). Intermediate frames only
+  // need their stored label/kind for breadcrumbs.
+  const {
+    data: activeStackSource,
+    isLoading: isStackSourceLoading,
+    isSuccess: isStackSourceSettled,
+    isError: isStackSourceErrored,
+  } = useSource({
+    id: activeSourceFrame?.sourceId ?? null,
+  });
+  const isResolvingSource = activeSourceFrame != null && isStackSourceLoading;
+
+  const isStackSourceMissing =
+    activeSourceFrame != null &&
+    ((isStackSourceSettled && activeStackSource == null) ||
+      isStackSourceErrored);
+  const source = activeStackSource ?? rootSource;
+
+  const baseRowId = activeSourceFrame?.rowId ?? initialRowId;
+  const baseAliasWith = activeSourceFrame?.aliasWith ?? initialAliasWith;
+
+  const leafNav = navStack.length > 0 ? navStack[navStack.length - 1] : null;
+  const resolvedRowId = leafNav?.rowId ?? baseRowId;
+  const resolvedAliasWith = leafNav?.aliasWith ?? baseAliasWith;
+
+  // Avoid querying the (transiently wrong or unavailable) root source with a
+  // leaf row id while the leaf source is still loading or can no longer be
+  // resolved.
+  const skipRowQuery = isResolvingSource || isStackSourceMissing;
+  const activeRowId = skipRowQuery ? undefined : resolvedRowId;
+  const activeAliasWith = skipRowQuery ? undefined : resolvedAliasWith;
+
   const {
     data: rowData,
     isLoading: isRowLoading,
@@ -125,39 +277,17 @@ const DBRowSidePanel = ({
     error: rowError,
   } = useRowData({
     source,
-    rowId,
-    aliasWith,
+    rowId: activeRowId,
+    aliasWith: activeAliasWith,
   });
 
-  const { dbSqlRowTableConfig } = useContext(RowSidePanelContext);
+  const hasActiveStacks = activeSourceFrame != null || leafNav != null;
 
-  const handleBreadcrumbClick = useCallback(
-    (targetLevel: number) => {
-      // Current panel's level in the hierarchy
-      const currentLevel = breadcrumbPath?.length ?? 0;
-
-      // The target panel level corresponds to the breadcrumb index:
-      // - targetLevel 0 = root panel (breadcrumbPath.length = 0)
-      // - targetLevel 1 = first nested panel (breadcrumbPath.length = 1)
-      // - etc.
-
-      // If our current level is greater than the target panel level, close this panel
-      if (currentLevel > targetLevel) {
-        onClose();
-        onBreadcrumbClick?.(targetLevel);
-      }
-      // If our current level equals the target panel level, we're the target - don't close
-      else if (currentLevel === targetLevel) {
-        // This is the panel the user wants to navigate to - do nothing (stay open)
-        return;
-      }
-      // If our current level is less than target, propagate up (this panel should stay open)
-      else {
-        onBreadcrumbClick?.(targetLevel);
-      }
-    },
-    [breadcrumbPath?.length, onBreadcrumbClick, onClose],
-  );
+  const parentContext = useContext(RowSidePanelContext);
+  // Nested rows shouldn't inherit the parent table's row config.
+  const dbSqlRowTableConfig = hasActiveStacks
+    ? undefined
+    : parentContext.dbSqlRowTableConfig;
 
   const hasOverviewPanel = useMemo(() => {
     if (isLogSource(source) || isTraceSource(source)) {
@@ -178,30 +308,63 @@ const DBRowSidePanel = ({
     return false;
   }, [source]);
 
-  const defaultTab =
-    source.kind === 'trace'
-      ? Tab.Trace
-      : hasOverviewPanel
-        ? Tab.Overview
-        : Tab.Parsed;
+  const sourceIsTrace = source.kind === SourceKind.Trace;
 
-  const [queryTab, setQueryTab] = useQueryState(
-    'sidePanelTab',
-    parseAsStringEnum<Tab>(Object.values(Tab)).withDefault(defaultTab),
+  const defaultTab = sourceIsTrace
+    ? Tab.Trace
+    : hasOverviewPanel
+      ? Tab.Overview
+      : Tab.Parsed;
+
+  const handleNavigateToRow = useCallback(
+    (
+      rowId: string,
+      aliasWith: WithClause[],
+      label: string,
+      sourceKind?: SourceKind,
+    ) => {
+      // Same-source drilldown (e.g. surrounding context) → jump to this
+      // source's default tab.
+      pushNav({ rowId, aliasWith, label, sourceKind }, defaultTab);
+    },
+    [pushNav, defaultTab],
   );
 
-  const [stateTab, setStateTab] = useState<Tab>(defaultTab);
-  // Nested panels can't share the query param or else they'll conflict, so we'll use local state for nested panels
-  // We'll need to handle this properly eventually...
-  const tab = isNestedPanel ? stateTab : queryTab;
-  const setTab = isNestedPanel ? setStateTab : setQueryTab;
+  const handleSourceStackPush = useCallback(
+    (frame: SourceFrame) => {
+      // Cross-source push (e.g. "View Trace") → jump to the destination
+      // source's default tab.
+      const destinationTab =
+        frame.sourceKind === SourceKind.Trace ? Tab.Trace : Tab.Overview;
+      pushSource(frame, destinationTab);
+    },
+    [pushSource],
+  );
 
-  const displayedTab = tab;
+  const handlePanelBack = useCallback(() => {
+    // Pop one level (nav → source), restoring the tab active before that level
+    // was entered. When the trail is empty, leave the panel: hand off to an
+    // embedding parent (session) or close.
+    if (popOne() === 'none') {
+      if (onNavigateToParent) {
+        onNavigateToParent();
+      } else {
+        onClose();
+      }
+    }
+  }, [popOne, onNavigateToParent, onClose]);
+
+  useHotkeys(['esc'], handlePanelBack);
+
+  const handleBreadcrumbNavigation = useCallback(
+    (sourceLevel: number, navLevel: number) =>
+      truncateTo(sourceLevel, navLevel),
+    [truncateTo],
+  );
 
   const normalizedRow = rowData?.data?.[0];
   const timestampValue = normalizedRow?.['__hdx_timestamp'];
 
-  // TODO: Improve parsing
   let timestampDate: Date;
   if (typeof timestampValue === 'number') {
     timestampDate = new Date(timestampValue * 1000);
@@ -217,6 +380,18 @@ const DBRowSidePanel = ({
       : undefined;
   const severityText: string | undefined =
     normalizedRow?.['__hdx_severity_text'];
+
+  // Capture the root event body once for the root breadcrumb label.
+  const [initialMainContent, setInitialMainContent] = useState<
+    string | undefined
+  >(undefined);
+
+  useEffect(() => {
+    if (mainContent != null && initialMainContent == null && !hasActiveStacks) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setInitialMainContent(mainContent);
+    }
+  }, [mainContent, initialMainContent, hasActiveStacks]);
 
   const highlightedAttributeValues = useMemo(() => {
     const attributeExpressions: NonNullable<
@@ -266,7 +441,10 @@ const DBRowSidePanel = ({
   }, [timestampDate]);
 
   const focusDate = timestampDate;
-  const traceId: string | undefined = normalizedRow?.['__hdx_trace_id'];
+  // Coerce empty / falsy trace ids to undefined so "View Trace" / Trace ID
+  // is hidden for logs without trace context.
+  const traceId: string | undefined =
+    normalizedRow?.['__hdx_trace_id'] || undefined;
 
   const childSourceId = isLogSource(source)
     ? source.traceSourceId
@@ -278,17 +456,61 @@ const DBRowSidePanel = ({
     ? source.id
     : isLogSource(source)
       ? source.traceSourceId
-      : isSessionSource(source)
+      : source.kind === SourceKind.Session
         ? source.traceSourceId
         : undefined;
 
   const enableServiceMap = traceId && traceSourceId;
 
+  const { data: traceSourceData } = useSource({ id: traceSourceId });
+
+  const spanId = normalizedRow?.['__hdx_span_id'];
+  const traceIdExpression =
+    traceSourceData?.kind === SourceKind.Log ||
+    traceSourceData?.kind === SourceKind.Trace
+      ? traceSourceData.traceIdExpression
+      : undefined;
+  const spanIdExpression =
+    traceSourceData?.kind === SourceKind.Log ||
+    traceSourceData?.kind === SourceKind.Trace
+      ? traceSourceData.spanIdExpression
+      : undefined;
+
+  const traceSpanRowId = useMemo(() => {
+    const clauses: string[] = [];
+    if (traceIdExpression && traceId) {
+      clauses.push(
+        SqlString.format('?=?', [SqlString.raw(traceIdExpression), traceId]),
+      );
+    }
+    if (spanIdExpression && spanId) {
+      clauses.push(
+        SqlString.format('?=?', [SqlString.raw(spanIdExpression), spanId]),
+      );
+    }
+    return clauses.length > 0 ? clauses.join(' AND ') : undefined;
+  }, [traceIdExpression, traceId, spanIdExpression, spanId]);
+
+  const handleSessionEventNavigate = useCallback(
+    (rowId: string, aliasWith: WithClause[]) => {
+      if (traceSourceData) {
+        handleSourceStackPush({
+          sourceId: traceSourceData.id,
+          rowId,
+          aliasWith,
+          label: mainContent || 'Session Replay',
+          sourceKind: traceSourceData.kind as SourceKind,
+        });
+      }
+    },
+    [traceSourceData, handleSourceStackPush, mainContent],
+  );
+
   const { rumSessionId, rumServiceName } = useSessionId({
     sourceId: traceSourceId,
     traceId,
     dateRange: oneHourRange,
-    enabled: rowId != null,
+    enabled: activeRowId != null,
   });
 
   const hasK8sContext = useMemo(
@@ -306,49 +528,304 @@ const DBRowSidePanel = ({
     }
   }, [normalizedRow]);
 
-  if (isRowLoading) {
+  const durationMs = normalizedRow?.[ROW_DATA_ALIASES.DURATION_MS];
+  const spanKind = normalizedRow?.[ROW_DATA_ALIASES.SPAN_KIND];
+  const serviceName = normalizedRow?.[ROW_DATA_ALIASES.SERVICE_NAME];
+  const statusCode = normalizedRow?.[ROW_DATA_ALIASES.SEVERITY_TEXT];
+
+  const formattedDuration = useMemo(() => {
+    if (durationMs == null || isNaN(Number(durationMs))) return undefined;
+    return renderMs(Number(durationMs));
+  }, [durationMs]);
+
+  const spanKindLabel = useMemo(() => {
+    if (spanKind == null) return undefined;
+    return SPAN_KIND_LABELS[String(spanKind)] ?? String(spanKind);
+  }, [spanKind]);
+
+  const allBreadcrumbs = useMemo((): BreadcrumbItem[] => {
+    const items: BreadcrumbItem[] = [];
+
+    if (parentBreadcrumbs) {
+      items.push(...parentBreadcrumbs);
+    }
+
+    const crumbSourceStack = sourceStack;
+    const crumbNavStack = navStack;
+    const hasStack = crumbSourceStack.length > 0 || crumbNavStack.length > 0;
+    const rootLabel =
+      initialMainContent ||
+      (rootSource.kind === SourceKind.Trace ? 'Trace' : 'Log');
+
+    if (hasStack) {
+      items.push({
+        label: rootLabel,
+        sourceKind: rootSource.kind as SourceKind,
+        onClick: () => handleBreadcrumbNavigation(0, 0),
+      });
+    }
+
+    crumbSourceStack.forEach((entry, i) => {
+      const isLeafSource = i === crumbSourceStack.length - 1;
+      const isCurrent = isLeafSource && crumbNavStack.length === 0;
+      items.push({
+        label: entry.label,
+        sourceKind: entry.sourceKind,
+        onClick: isCurrent
+          ? undefined
+          : () => handleBreadcrumbNavigation(i + 1, 0),
+      });
+    });
+
+    crumbNavStack.forEach((entry, i) => {
+      const isCurrent = i === crumbNavStack.length - 1;
+      items.push({
+        label: entry.label,
+        sourceKind: entry.sourceKind,
+        onClick: isCurrent
+          ? undefined
+          : () => handleBreadcrumbNavigation(crumbSourceStack.length, i + 1),
+      });
+    });
+
+    if (!hasStack) {
+      items.push({
+        label: mainContent || (sourceIsTrace ? 'Trace' : 'Log'),
+        sourceKind: source.kind as SourceKind,
+      });
+    }
+
+    return items;
+  }, [
+    sourceStack,
+    navStack,
+    rootSource.kind,
+    sourceIsTrace,
+    mainContent,
+    initialMainContent,
+    source.kind,
+    handleBreadcrumbNavigation,
+    parentBreadcrumbs,
+  ]);
+
+  const availableTabs = useMemo<Tab[]>(() => {
+    const tabs: Tab[] = [];
+    if (hasOverviewPanel && !sourceIsTrace) tabs.push(Tab.Overview);
+    if (!sourceIsTrace) tabs.push(Tab.Parsed);
+    if (sourceIsTrace) tabs.push(Tab.Trace);
+    if (enableServiceMap) tabs.push(Tab.ServiceMap);
+    tabs.push(Tab.Context);
+    if (rumSessionId != null) tabs.push(Tab.Replay);
+    if (hasK8sContext) tabs.push(Tab.Infrastructure);
+    return tabs;
+  }, [
+    hasOverviewPanel,
+    sourceIsTrace,
+    enableServiceMap,
+    rumSessionId,
+    hasK8sContext,
+  ]);
+
+  const displayedTab = reconcileTab(persistedTab, availableTabs, defaultTab);
+
+  const controls = useMemo(
+    () => (
+      <Flex align="center" justify="space-between" gap="sm" mb={8}>
+        <SidePanelBreadcrumbs items={allBreadcrumbs} onBack={handlePanelBack} />
+        <SidePanelHeaderActions
+          onClose={onClose}
+          isFullWidth={isFullWidth}
+          onToggleFullWidth={onToggleFullWidth}
+        />
+      </Flex>
+    ),
+    [allBreadcrumbs, handlePanelBack, onClose, isFullWidth, onToggleFullWidth],
+  );
+
+  if (isRowLoading || isResolvingSource) {
     return <div className={styles.loadingState}>Loading...</div>;
+  }
+
+  // The leaf cross-source frame points at a source that no longer resolves
+  // (deleted / renamed / another workspace via a shared link). Render an
+  // explicit message that keeps the breadcrumb trail, Back, and Close controls
+  // working instead of hanging on an indefinite "Loading...".
+  if (isStackSourceMissing) {
+    return (
+      <>
+        <Box px="sm" pt="sm" pb="xs">
+          {controls}
+        </Box>
+        <Box p="sm" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <Text size="sm" c="dimmed">
+            This source is no longer available. It may have been deleted,
+            renamed, or belong to a different workspace. Use the back button or
+            the breadcrumbs above to return.
+          </Text>
+        </Box>
+      </>
+    );
   }
 
   if (!isRowSuccess) {
     if (isRowError && rowError) {
       return (
-        <Box p="sm" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-          <DBRowSidePanelErrorState error={rowError} source={source} />
-        </Box>
+        <>
+          <Box px="sm" pt="sm" pb="xs">
+            {controls}
+          </Box>
+          <Box p="sm" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            <DBRowSidePanelErrorState error={rowError} source={source} />
+          </Box>
+        </>
       );
     }
-    return <div className={styles.loadingState}>Error loading row data</div>;
+    return (
+      <>
+        <Box px="sm" pt="sm" pb="xs">
+          {controls}
+        </Box>
+        <div className={styles.loadingState}>Error loading row data</div>
+      </>
+    );
   }
+
+  const showLogTraceActions = !sourceIsTrace && traceId && traceSourceId;
 
   return (
     <>
-      <Box p="sm">
+      <Box px="sm" pt="sm" pb="xs">
+        {controls}
+        <Group gap="xs" wrap="wrap">
+          {!sourceIsTrace && severityText && <LogLevel level={severityText} />}
+          {timestampDate && !isNaN(timestampDate.getTime()) && (
+            <Text size="xs" c="dimmed">
+              <FormatTime value={timestampDate} /> ·{' '}
+              {formatDistanceToNowStrictShort(timestampDate)} ago
+            </Text>
+          )}
+          {serviceName && (
+            <>
+              <Text size="xs" c="dimmed">
+                ·
+              </Text>
+              <Group gap={4}>
+                <Text size="xs" c="dimmed">
+                  Service
+                </Text>
+                <Text size="xs" fw={500}>
+                  {serviceName}
+                </Text>
+              </Group>
+            </>
+          )}
+          {sourceIsTrace && formattedDuration && (
+            <>
+              <Text size="xs" c="dimmed">
+                ·
+              </Text>
+              <Group gap={4}>
+                <Text size="xs" c="dimmed">
+                  Duration
+                </Text>
+                <Text size="xs" fw={500}>
+                  {formattedDuration}
+                </Text>
+              </Group>
+            </>
+          )}
+          {sourceIsTrace && statusCode && (
+            <>
+              <Text size="xs" c="dimmed">
+                ·
+              </Text>
+              <Group gap={4}>
+                <Text size="xs" c="dimmed">
+                  Status
+                </Text>
+                <Text
+                  size="xs"
+                  fw={500}
+                  c={
+                    statusCode === 'Error'
+                      ? 'red'
+                      : statusCode === 'Ok'
+                        ? 'green'
+                        : undefined
+                  }
+                >
+                  {statusCode}
+                </Text>
+              </Group>
+            </>
+          )}
+          {sourceIsTrace && spanKindLabel && (
+            <Badge size="sm" variant="light" radius="sm">
+              {spanKindLabel}
+            </Badge>
+          )}
+          {(sourceIsTrace ? traceId : showLogTraceActions) && (
+            <>
+              <Text size="xs" c="dimmed">
+                ·
+              </Text>
+              <CopyButton value={traceId ?? ''}>
+                {({ copied, copy }) => (
+                  <Tooltip
+                    label={copied ? 'Copied!' : 'Copy Trace ID'}
+                    position="bottom"
+                  >
+                    <Group
+                      gap={4}
+                      wrap="nowrap"
+                      style={{ cursor: 'pointer' }}
+                      onClick={copy}
+                    >
+                      <IconCopy size={12} color="var(--mantine-color-dimmed)" />
+                      <Text size="xs" c="dimmed">
+                        Trace ID
+                      </Text>
+                    </Group>
+                  </Tooltip>
+                )}
+              </CopyButton>
+            </>
+          )}
+          {showLogTraceActions && (
+            <Button
+              data-testid="side-panel-view-trace"
+              variant="subtle"
+              size="compact-xs"
+              onClick={() => {
+                if (traceSourceData && traceSpanRowId) {
+                  handleSourceStackPush({
+                    sourceId: traceSourceData.id,
+                    rowId: traceSpanRowId,
+                    label: mainContent || 'Log',
+                    sourceKind: traceSourceData.kind as SourceKind,
+                    aliasWith: [],
+                  });
+                }
+              }}
+              disabled={!traceSourceData || !traceSpanRowId}
+            >
+              View Trace →
+            </Button>
+          )}
+        </Group>
         <DBRowSidePanelHeader
-          date={timestampDate}
           attributes={highlightedAttributeValues}
           mainContent={mainContent}
           mainContentHeader={mainContentColumn}
           severityText={severityText}
           rowData={normalizedRow}
-          breadcrumbPath={breadcrumbPath}
-          onBreadcrumbClick={handleBreadcrumbClick}
-          isFullWidth={isFullWidth}
-          onToggleFullWidth={onToggleFullWidth}
         />
       </Box>
-      {/* <SidePanelHeader
-                logData={logData}
-                generateShareUrl={generateShareUrl}
-                onPropertyAddClick={onPropertyAddClick}
-                generateSearchUrl={generateSearchUrl}
-                onClose={_onClose}
-              /> */}
       <TabBar
         data-testid="side-panel-tabs"
         className="fs-8 mt-2"
         items={[
-          ...(hasOverviewPanel
+          ...(hasOverviewPanel && !sourceIsTrace
             ? [
                 {
                   text: 'Overview',
@@ -356,14 +833,22 @@ const DBRowSidePanel = ({
                 },
               ]
             : []),
-          {
-            text: 'Column Values',
-            value: Tab.Parsed,
-          },
-          {
-            text: 'Trace',
-            value: Tab.Trace,
-          },
+          ...(!sourceIsTrace
+            ? [
+                {
+                  text: 'Column Values',
+                  value: Tab.Parsed,
+                },
+              ]
+            : []),
+          ...(sourceIsTrace
+            ? [
+                {
+                  text: 'Trace',
+                  value: Tab.Trace,
+                },
+              ]
+            : []),
           ...(enableServiceMap
             ? [
                 {
@@ -410,13 +895,13 @@ const DBRowSidePanel = ({
           <RowOverviewPanel
             data-testid="side-panel-tab-overview"
             source={source}
-            rowId={rowId}
-            aliasWith={aliasWith}
+            rowId={activeRowId}
+            aliasWith={activeAliasWith}
             hideHeader={true}
           />
         </ErrorBoundary>
       )}
-      {displayedTab === Tab.Trace && (
+      {displayedTab === Tab.Trace && sourceIsTrace && (
         <ErrorBoundary
           onError={err => {
             console.error(err);
@@ -474,8 +959,8 @@ const DBRowSidePanel = ({
           <RowDataPanel
             data-testid="side-panel-tab-parsed"
             source={source}
-            rowId={rowId}
-            aliasWith={aliasWith}
+            rowId={activeRowId}
+            aliasWith={activeAliasWith}
           />
         </ErrorBoundary>
       )}
@@ -495,9 +980,8 @@ const DBRowSidePanel = ({
             source={source}
             dbSqlRowTableConfig={dbSqlRowTableConfig}
             rowData={normalizedRow}
-            rowId={rowId}
-            breadcrumbPath={breadcrumbPath}
-            onBreadcrumbClick={handleBreadcrumbClick}
+            rowId={activeRowId}
+            onNavigateToRow={handleNavigateToRow}
           />
         </ErrorBoundary>
       )}
@@ -519,7 +1003,7 @@ const DBRowSidePanel = ({
             <DBSessionPanel
               dateRange={fourHourRange}
               focusDate={focusDate}
-              setSubDrawerOpen={setSubDrawerOpen}
+              onEventNavigate={handleSessionEventNavigate}
               traceSourceId={traceSourceId}
               serviceName={rumServiceName}
               rumSessionId={rumSessionId}
@@ -551,14 +1035,38 @@ const DBRowSidePanel = ({
   );
 };
 
+export const SidePanelErrorFallback = ({
+  error,
+  onClose,
+}: FallbackProps & { onClose: () => void }) => (
+  <Stack>
+    <Group justify="flex-end" p="xs">
+      <Button
+        variant="subtle"
+        color="gray"
+        size="compact-sm"
+        leftSection={<IconX size={14} />}
+        onClick={onClose}
+        aria-label="Close"
+      >
+        Close
+      </Button>
+    </Group>
+    <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+      An error occurred while rendering this event.
+    </div>
+
+    <div className="px-2 py-1 m-2 fs-7 font-monospace bg-body p-4">
+      {error?.message}
+    </div>
+  </Stack>
+);
+
 export default function DBRowSidePanelErrorBoundary({
   onClose,
   rowId,
   aliasWith,
   source,
-  isNestedPanel,
-  breadcrumbPath,
-  onBreadcrumbClick,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
@@ -572,42 +1080,35 @@ export default function DBRowSidePanelErrorBoundary({
     setSize(isFullWidth ? INITIAL_DRAWER_WIDTH_PERCENT : 100);
   }, [isFullWidth, setSize]);
 
-  // Keep track of sub-drawers so we can disable closing this root drawer
-  const [subDrawerOpen, setSubDrawerOpen] = useState(false);
-
-  const [_, setQueryTab] = useQueryState(
-    'tab',
-    parseAsStringEnum<Tab>(Object.values(Tab)),
-  );
-
   const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
 
+  const sidePanelStack = useSidePanelStack({ initialRowId: rowId });
+
   const _onClose = useCallback(() => {
-    // Reset tab to undefined when unmounting, so that when we open the drawer again, it doesn't open to the last tab
-    // (which might not be valid, ex session replay)
-    if (!isNestedPanel) {
-      setQueryTab(null);
-    }
+    // Reset the tab and navigation stacks so re-opening the drawer starts fresh.
+    sidePanelStack.clearTrail();
     // Clear waterfall search state on close, so that filters don't
     // persist when reopening another trace.
     clearTraceWaterfallSearchState();
     onClose();
-  }, [setQueryTab, isNestedPanel, onClose, clearTraceWaterfallSearchState]);
-
-  useHotkeys(['esc'], _onClose, { enabled: subDrawerOpen === false });
+  }, [sidePanelStack, onClose, clearTraceWaterfallSearchState]);
 
   return (
     <Drawer
       opened={rowId != null}
       withCloseButton={false}
-      onClose={() => {
-        if (!subDrawerOpen) {
-          _onClose();
-        }
-      }}
+      closeOnEscape={false}
+      lockScroll={false}
+      withOverlay={false}
+      trapFocus={false}
+      onClose={_onClose}
       position="right"
       size={`${size}vw`}
       styles={{
+        content: {
+          border: 'none',
+          boxShadow: 'var(--shadow-drawer)',
+        },
         body: {
           padding: '0',
           height: '100%',
@@ -615,37 +1116,26 @@ export default function DBRowSidePanelErrorBoundary({
       }}
       zIndex={drawerZIndex}
     >
-      <ZIndexContext.Provider value={drawerZIndex}>
+      <ZIndexContext value={drawerZIndex}>
         <div className={styles.panel} data-testid="row-side-panel">
           <Box className={styles.panelDragBar} onMouseDown={startResize} />
           <ErrorBoundary
-            fallbackRender={error => (
-              <Stack>
-                <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-                  An error occurred while rendering this event.
-                </div>
-
-                <div className="px-2 py-1 m-2 fs-7 font-monospace bg-body p-4">
-                  {error?.error?.message}
-                </div>
-              </Stack>
+            fallbackRender={fallbackProps => (
+              <SidePanelErrorFallback {...fallbackProps} onClose={_onClose} />
             )}
           >
-            <DBRowSidePanel
+            <DBRowSidePanelInner
               source={source}
               rowId={rowId}
               aliasWith={aliasWith}
+              sidePanelStack={sidePanelStack}
               onClose={_onClose}
-              isNestedPanel={isNestedPanel}
-              breadcrumbPath={breadcrumbPath}
-              setSubDrawerOpen={setSubDrawerOpen}
-              onBreadcrumbClick={onBreadcrumbClick}
               isFullWidth={isFullWidth}
-              onToggleFullWidth={isNestedPanel ? undefined : toggleFullWidth}
+              onToggleFullWidth={toggleFullWidth}
             />
           </ErrorBoundary>
         </div>
-      </ZIndexContext.Provider>
+      </ZIndexContext>
     </Drawer>
   );
 }
