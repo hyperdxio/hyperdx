@@ -62,6 +62,11 @@
       "collapsed": false
     },
     {
+      "id": "rum-memory",
+      "title": "Memory",
+      "collapsed": false
+    },
+    {
       "id": "rum-traffic",
       "title": "Traffic & Page Views",
       "collapsed": false
@@ -1199,6 +1204,148 @@
             "id": "Traces"
           },
           "whereTemplate": "ResourceAttributes.rum.sessionId:\"{{Session}}\"",
+          "whereLanguage": "lucene"
+        },
+        "groupByColumnsOnLeft": true
+      }
+    },
+    {
+      "id": "rum-031",
+      "containerId": "rum-memory",
+      "x": 0,
+      "y": 0,
+      "w": 24,
+      "h": 2,
+      "config": {
+        "name": "About these tiles",
+        "source": "Traces",
+        "displayType": "markdown",
+        "select": [],
+        "where": "",
+        "whereLanguage": "lucene",
+        "markdown": "🧠 Per-page **JS heap** usage from the browser's `performance.memory` API (bytes). **Chromium-only** — Firefox and Safari don't expose per-page memory, so these tiles reflect Chromium visitors and require a HyperDX Browser SDK build that emits `performance.memory.*` on `documentLoad` spans."
+      }
+    },
+    {
+      "id": "rum-032",
+      "containerId": "rum-memory",
+      "x": 0,
+      "y": 2,
+      "w": 12,
+      "h": 4,
+      "config": {
+        "name": "Median JS Heap Used",
+        "source": "Traces",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.5,
+            "valueExpression": "toFloat64OrZero(SpanAttributes['performance.memory.usedJSHeapSize'])",
+            "aggCondition": "SpanName:\"documentLoad\" AND SpanAttributes.performance.memory.usedJSHeapSize:*",
+            "aggConditionLanguage": "lucene"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "rum-033",
+      "containerId": "rum-memory",
+      "x": 12,
+      "y": 2,
+      "w": 12,
+      "h": 4,
+      "config": {
+        "name": "p90 JS Heap Used",
+        "source": "Traces",
+        "displayType": "number",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.9,
+            "valueExpression": "toFloat64OrZero(SpanAttributes['performance.memory.usedJSHeapSize'])",
+            "aggCondition": "SpanName:\"documentLoad\" AND SpanAttributes.performance.memory.usedJSHeapSize:*",
+            "aggConditionLanguage": "lucene"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "lucene",
+        "numberFormat": {
+          "output": "byte",
+          "mantissa": 1
+        }
+      }
+    },
+    {
+      "id": "rum-034",
+      "containerId": "rum-memory",
+      "x": 0,
+      "y": 6,
+      "w": 24,
+      "h": 8,
+      "config": {
+        "name": "Memory by Page — used JS heap",
+        "source": "Traces",
+        "displayType": "table",
+        "granularity": "auto",
+        "alignDateRangeToGranularity": true,
+        "select": [
+          {
+            "aggFn": "quantile",
+            "level": 0.5,
+            "valueExpression": "toFloat64OrZero(SpanAttributes['performance.memory.usedJSHeapSize'])",
+            "aggCondition": "SpanName:\"documentLoad\" AND SpanAttributes.performance.memory.usedJSHeapSize:*",
+            "aggConditionLanguage": "lucene",
+            "alias": "Used p50",
+            "numberFormat": {
+              "output": "byte",
+              "mantissa": 1
+            }
+          },
+          {
+            "aggFn": "quantile",
+            "level": 0.9,
+            "valueExpression": "toFloat64OrZero(SpanAttributes['performance.memory.usedJSHeapSize'])",
+            "aggCondition": "SpanName:\"documentLoad\" AND SpanAttributes.performance.memory.usedJSHeapSize:*",
+            "aggConditionLanguage": "lucene",
+            "alias": "Used p90",
+            "numberFormat": {
+              "output": "byte",
+              "mantissa": 1
+            }
+          },
+          {
+            "aggFn": "count",
+            "valueExpression": "",
+            "aggCondition": "SpanName:\"documentLoad\" AND SpanAttributes.performance.memory.usedJSHeapSize:*",
+            "aggConditionLanguage": "lucene",
+            "alias": "Views"
+          }
+        ],
+        "where": "",
+        "whereLanguage": "lucene",
+        "groupBy": "coalesce(nullif(SpanAttributes['http.url'], ''), nullif(SpanAttributes['page.url'], ''), nullif(SpanAttributes['location.href'], '')) AS \"URL\"",
+        "orderBy": "`Used p90` DESC",
+        "limit": {
+          "limit": 20
+        },
+        "onClick": {
+          "type": "search",
+          "target": {
+            "mode": "id",
+            "id": "Traces"
+          },
+          "whereTemplate": "SpanName:\"documentLoad\" AND (SpanAttributes.http.url:\"{{URL}}\" OR SpanAttributes.page.url:\"{{URL}}\" OR SpanAttributes.location.href:\"{{URL}}\")",
           "whereLanguage": "lucene"
         },
         "groupByColumnsOnLeft": true
