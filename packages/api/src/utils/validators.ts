@@ -67,6 +67,20 @@ export function isPrivateIp(ip: string): boolean {
 const normalizeWebhookHostname = (hostname: string): string =>
   hostname.replace(IPV6_BRACKET_RE, '').replace(/\.+$/, '').toLowerCase();
 
+const WEBHOOK_HOSTNAME_ALLOWLIST = (config.WEBHOOK_HOSTNAME_ALLOWLIST ?? '')
+  .split(',')
+  .map(hostname => normalizeWebhookHostname(hostname.trim()))
+  .filter(Boolean);
+
+const isAllowlistedWebhookHostname = (hostname: string): boolean =>
+  WEBHOOK_HOSTNAME_ALLOWLIST.some(
+    allowedHostname =>
+      hostname === allowedHostname ||
+      (!Address4.isValid(allowedHostname) &&
+        !Address6.isValid(allowedHostname) &&
+        hostname.endsWith(`.${allowedHostname}`)),
+  );
+
 const getWebhookHostKey = (url: URL): string =>
   `${normalizeWebhookHostname(url.hostname)}:${url.port}`;
 
@@ -137,10 +151,8 @@ export function validateWebhookUrl(
   const hostname = normalizeWebhookHostname(url.hostname);
   const isLocalhost =
     hostname === 'localhost' || hostname.endsWith('.localhost');
-  // Local webhook receivers are useful in development mode. Keep
-  // numeric loopback addresses subject to isPrivateIp so the exemption stays
-  // limited to the explicit localhost hostname convention.
-  if ((!config.IS_DEV && isLocalhost) || isPrivateIp(hostname)) {
+  const isAllowlistedHostname = isAllowlistedWebhookHostname(hostname);
+  if (!isAllowlistedHostname && (isLocalhost || isPrivateIp(hostname))) {
     throw new WebhookUrlValidationError(
       `Webhook URL resolves to a private or reserved address.`,
     );

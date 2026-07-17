@@ -126,15 +126,15 @@ describe('validators', () => {
   describe('validateWebhookUrl', () => {
     const loadValidatorsWithConfig = (config: {
       clickhouseHost?: string;
-      isDev?: boolean;
+      hostnameAllowlist?: string;
     }): typeof validators => {
       let isolatedValidators: typeof validators | undefined;
 
       jest.isolateModules(() => {
         jest.doMock('@/config', () => ({
           CLICKHOUSE_HOST: config.clickhouseHost,
-          IS_DEV: config.isDev ?? false,
           MONGO_URI: undefined,
+          WEBHOOK_HOSTNAME_ALLOWLIST: config.hostnameAllowlist ?? '',
         }));
 
         // eslint-disable-next-line @typescript-eslint/no-require-imports, n/no-missing-require
@@ -223,7 +223,7 @@ describe('validators', () => {
     it('blocks an exact configured host, including its port', () => {
       const isolatedValidators = loadValidatorsWithConfig({
         clickhouseHost: 'http://localhost:8123',
-        isDev: true,
+        hostnameAllowlist: 'localhost',
       });
 
       expect(() =>
@@ -239,6 +239,81 @@ describe('validators', () => {
           url: 'http://localhost:9000/webhook',
         }),
       ).not.toThrow();
+    });
+
+    it('allows a configured hostname and its subdomains regardless of URL port or path', () => {
+      const isolatedValidators = loadValidatorsWithConfig({
+        hostnameAllowlist: 'HOOKS.LOCALHOST.',
+      });
+
+      for (const url of [
+        'http://hooks.localhost/webhook',
+        'http://tenant.hooks.localhost:9000/a/deep/path?next=other.localhost',
+        'http://hooks.localhost./webhook#other.localhost',
+      ]) {
+        expect(() =>
+          isolatedValidators.validateWebhookUrl({
+            service: WebhookService.Generic,
+            url,
+          }),
+        ).not.toThrow();
+      }
+    });
+
+    it('allows exact private IP literals regardless of URL port or path', () => {
+      const isolatedValidators = loadValidatorsWithConfig({
+        hostnameAllowlist: '10.0.0.1, fd00::1',
+      });
+
+      for (const url of [
+        'http://10.0.0.1:9000/a/deep/path?next=10.0.0.2',
+        'http://[fd00::1]:9000/a/deep/path?next=fd00::2',
+      ]) {
+        expect(() =>
+          isolatedValidators.validateWebhookUrl({
+            service: WebhookService.Generic,
+            url,
+          }),
+        ).not.toThrow();
+      }
+    });
+
+    it('does not confuse hostname prefixes or URL paths with an allowlisted domain', () => {
+      const isolatedValidators = loadValidatorsWithConfig({
+        hostnameAllowlist: 'hooks.localhost',
+      });
+
+      for (const url of [
+        'http://prefixhooks.localhost/webhook',
+        'http://other.localhost/hooks.localhost/webhook',
+        'http://hooks.localhost.evil.localhost/webhook',
+      ]) {
+        expect(() =>
+          isolatedValidators.validateWebhookUrl({
+            service: WebhookService.Generic,
+            url,
+          }),
+        ).toThrow(isolatedValidators.WebhookUrlValidationError);
+      }
+    });
+
+    it('does not confuse IP prefixes or URL paths with an allowlisted IP', () => {
+      const isolatedValidators = loadValidatorsWithConfig({
+        hostnameAllowlist: '10.0.0.1, fd00::1',
+      });
+
+      for (const url of [
+        'http://10.0.0.10/10.0.0.1/webhook',
+        'http://[fd00::10]/fd00::1/webhook',
+        'http://127.0.0.1/webhook?next=10.0.0.1',
+      ]) {
+        expect(() =>
+          isolatedValidators.validateWebhookUrl({
+            service: WebhookService.Generic,
+            url,
+          }),
+        ).toThrow(isolatedValidators.WebhookUrlValidationError);
+      }
     });
   });
 
