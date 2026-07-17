@@ -245,12 +245,12 @@ describe('useFetchFacets', () => {
     });
   });
 
-  // Autocomplete opts into `deferLoadingKeyValues: true` so it can render
+  // Autocomplete opts into `disableValues: true` so it can render
   // field-name suggestions from `data.keys` without triggering the values
   // query — only firing that query once the user is actively searching on
   // a fully-formed key. Guard against a regression that couples the two.
-  describe('deferLoadingKeyValues', () => {
-    it('disables the useGetKeyValues query when deferLoadingKeyValues is true', () => {
+  describe('disableValues', () => {
+    it('disables the useGetKeyValues query when disableValues is true', () => {
       setupDefaultMocks({ withMVs: false });
       const { wrapper } = makeWrapper();
 
@@ -261,7 +261,7 @@ describe('useFetchFacets', () => {
             sourceId: 'source1',
             dateRange: DATE_RANGE,
             mode: 'all',
-            deferLoadingKeyValues: true,
+            disableValues: true,
           }),
         { wrapper },
       );
@@ -270,7 +270,7 @@ describe('useFetchFacets', () => {
       expect(call?.[1]?.enabled).toBe(false);
     });
 
-    it('enables the useGetKeyValues query when deferLoadingKeyValues is false or omitted', () => {
+    it('enables the useGetKeyValues query when disableValues is false or omitted', () => {
       setupDefaultMocks({ withMVs: false });
       const { wrapper } = makeWrapper();
 
@@ -281,7 +281,7 @@ describe('useFetchFacets', () => {
             sourceId: 'source1',
             dateRange: DATE_RANGE,
             mode: 'all',
-            deferLoadingKeyValues: false,
+            disableValues: false,
           }),
         { wrapper },
       );
@@ -301,7 +301,7 @@ describe('useFetchFacets', () => {
             sourceId: 'source1',
             dateRange: DATE_RANGE,
             mode: 'all',
-            deferLoadingKeyValues: true,
+            disableValues: true,
           }),
         { wrapper },
       );
@@ -321,7 +321,7 @@ describe('useFetchFacets', () => {
             sourceId: 'source1',
             dateRange: DATE_RANGE,
             mode: 'all',
-            deferLoadingKeyValues: true,
+            disableValues: true,
           }),
         { wrapper },
       );

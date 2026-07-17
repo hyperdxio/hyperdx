@@ -36,7 +36,7 @@ function useFacets({
   filterState,
   showMoreFields,
   enabled,
-  deferLoadingKeyValues,
+  disableValues,
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
@@ -45,7 +45,7 @@ function useFacets({
   filterState?: FilterState;
   showMoreFields?: boolean;
   enabled?: boolean;
-  deferLoadingKeyValues?: boolean;
+  disableValues?: boolean;
 }) {
   const { data: source } = useSource({
     id: sourceId,
@@ -154,7 +154,7 @@ function useFacets({
       keys: escapedKeysToFetch,
       mode,
     },
-    { enabled: enabled && !deferLoadingKeyValues },
+    { enabled: enabled && !disableValues },
   );
 
   // Map the (escaped) result keys back to the original UI keys.
@@ -250,7 +250,7 @@ export function useFetchFacets({
   mode,
   filterState,
   showMoreFields,
-  deferLoadingKeyValues,
+  disableValues,
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
@@ -258,7 +258,7 @@ export function useFetchFacets({
   mode: 'all' | 'exact';
   filterState?: FilterState;
   showMoreFields?: boolean;
-  deferLoadingKeyValues?: boolean;
+  disableValues?: boolean;
 }) {
   const facetsQuery = useFacets({
     chartConfig,
@@ -268,7 +268,7 @@ export function useFetchFacets({
     filterState,
     showMoreFields,
     enabled: true,
-    deferLoadingKeyValues,
+    disableValues,
   });
 
   const [extraFacets, setExtraFacets] = useState<Facet[] | null>(null);

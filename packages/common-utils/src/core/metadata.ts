@@ -109,6 +109,17 @@ const columnAppearsInMvSelect = (sql: string, columnName: string): boolean => {
   return pattern.test(sql);
 };
 
+// Builds a regex fragment that matches an identifier either as a raw
+// unquoted token or wrapped in backticks.
+const identifierPattern = (identifier: string): string => {
+  const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const rawEscaped = escapeRegex(identifier);
+  // Backticks inside an identifier are escaped by doubling them in
+  // ClickHouse's formatted output.
+  const quotedEscaped = escapeRegex(identifier.replace(/`/g, '``'));
+  return `(?:\`${quotedEscaped}\`|${rawEscaped})`;
+};
+
 const JSON_STRING_TYPE_SUFFIX = '.:String';
 
 const renderJsonStringSubcolumn = (
@@ -2041,11 +2052,12 @@ export class Metadata {
       connectionId,
     });
     for (const table of allTableMetadata) {
+      const expectedPrefix = new RegExp(
+        `^CREATE MATERIALIZED VIEW ${identifierPattern(databaseName)}\\.${identifierPattern(table.name)} TO ${identifierPattern(databaseName)}\\.${identifierPattern(tableName)}`,
+      );
       if (
         table.engine !== 'MaterializedView' ||
-        !table.create_table_query.startsWith(
-          `CREATE MATERIALIZED VIEW ${databaseName}.${table.name} TO ${databaseName}.${tableName}`,
-        )
+        !expectedPrefix.test(table.create_table_query)
       ) {
         continue;
       }
@@ -2168,7 +2180,7 @@ export class Metadata {
     if (keyExpressions.length === 0) return [];
 
     if (keyExpressions.length > GET_ALL_KEY_VALUES_CHUNK_SIZE) {
-      const batched = await Promise.all(
+      const batched = await Promise.allSettled(
         chunk(keyExpressions, GET_ALL_KEY_VALUES_CHUNK_SIZE).map(batch =>
           this.getAllKeyValues({
             databaseName,
@@ -2183,7 +2195,9 @@ export class Metadata {
           }),
         ),
       );
-      return batched.flat();
+      return batched
+        .filter(v => v.status === 'fulfilled')
+        .flatMap(v => v.value);
     }
 
     // Parse all keys into (rollupColumn, rollupKey) pairs
@@ -2362,9 +2376,11 @@ export class Metadata {
         }),
       );
     }
-    return (await Promise.all(promises))
+    return (await Promise.allSettled(promises))
+      .filter(res => res.status === 'fulfilled')
+      .map(v => v.value)
       .filter(v => v !== undefined)
-      .flatMap(v => v);
+      .flat();
   }
 
   async getKeyValues({

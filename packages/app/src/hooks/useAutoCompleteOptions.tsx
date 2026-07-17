@@ -225,7 +225,7 @@ export function useAutoCompleteOptions(
     sourceId: sourceId ?? null,
     dateRange: effectiveDateRange,
     mode: 'all',
-    deferLoadingKeyValues: true,
+    disableValues: true,
   });
   const fields = fetchFacetsData.keys;
 

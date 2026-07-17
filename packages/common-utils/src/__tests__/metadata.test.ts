@@ -2740,6 +2740,166 @@ describe('Metadata', () => {
       ).toBe(false);
     });
   });
+
+  describe('doMetadataMVsAggregateColumn (backtick-quoted db/table names)', () => {
+    const asSelectWithStatusCode = `WITH elements AS (
+      SELECT 'NativeColumn' AS ColumnIdentifier, 'StatusCode' AS Key, CAST(StatusCode, 'String') AS Value FROM \`my-db\`.\`otel-traces\`
+    ) SELECT Timestamp, ColumnIdentifier, Key, Value, count() AS count FROM elements GROUP BY Timestamp, ColumnIdentifier, Key, Value`;
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('matches when database name has a hyphen (backticked in create_table_query)', async () => {
+      const tableConn = {
+        databaseName: 'my-db',
+        tableName: 'otel_traces',
+        connectionId: 'test_connection',
+      };
+      jest.spyOn(metadata, 'getAllTableMetadata').mockResolvedValue([
+        {
+          database: 'my-db',
+          name: 'traces_kv_rollup_15m_mv',
+          engine: 'MaterializedView',
+          create_table_query:
+            'CREATE MATERIALIZED VIEW `my-db`.traces_kv_rollup_15m_mv TO `my-db`.otel_traces AS SELECT ...',
+          as_select: asSelectWithStatusCode,
+        },
+      ] as any);
+
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(
+          tableConn,
+          'StatusCode',
+        ),
+      ).toBe(true);
+    });
+
+    it('matches when target table name has special chars (backticked in create_table_query)', async () => {
+      const tableConn = {
+        databaseName: 'default',
+        tableName: 'otel-traces',
+        connectionId: 'test_connection',
+      };
+      jest.spyOn(metadata, 'getAllTableMetadata').mockResolvedValue([
+        {
+          database: 'default',
+          name: 'traces_kv_rollup_15m_mv',
+          engine: 'MaterializedView',
+          create_table_query:
+            'CREATE MATERIALIZED VIEW default.traces_kv_rollup_15m_mv TO default.`otel-traces` AS SELECT ...',
+          as_select: asSelectWithStatusCode,
+        },
+      ] as any);
+
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(
+          tableConn,
+          'StatusCode',
+        ),
+      ).toBe(true);
+    });
+
+    it('matches when MV name has special chars (backticked in create_table_query)', async () => {
+      const tableConn = {
+        databaseName: 'default',
+        tableName: 'otel_traces',
+        connectionId: 'test_connection',
+      };
+      jest.spyOn(metadata, 'getAllTableMetadata').mockResolvedValue([
+        {
+          database: 'default',
+          name: 'traces-kv-rollup-15m-mv',
+          engine: 'MaterializedView',
+          create_table_query:
+            'CREATE MATERIALIZED VIEW default.`traces-kv-rollup-15m-mv` TO default.otel_traces AS SELECT ...',
+          as_select: asSelectWithStatusCode,
+        },
+      ] as any);
+
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(
+          tableConn,
+          'StatusCode',
+        ),
+      ).toBe(true);
+    });
+
+    it('matches when all identifiers are backticked', async () => {
+      const tableConn = {
+        databaseName: 'my-db',
+        tableName: 'otel-traces',
+        connectionId: 'test_connection',
+      };
+      jest.spyOn(metadata, 'getAllTableMetadata').mockResolvedValue([
+        {
+          database: 'my-db',
+          name: 'traces-kv-rollup-15m-mv',
+          engine: 'MaterializedView',
+          create_table_query:
+            'CREATE MATERIALIZED VIEW `my-db`.`traces-kv-rollup-15m-mv` TO `my-db`.`otel-traces` AS SELECT ...',
+          as_select: asSelectWithStatusCode,
+        },
+      ] as any);
+
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(
+          tableConn,
+          'StatusCode',
+        ),
+      ).toBe(true);
+    });
+
+    it('does NOT match a different target table even when names are backticked', async () => {
+      const tableConn = {
+        databaseName: 'my-db',
+        tableName: 'otel_traces',
+        connectionId: 'test_connection',
+      };
+      jest.spyOn(metadata, 'getAllTableMetadata').mockResolvedValue([
+        {
+          database: 'my-db',
+          name: 'unrelated_mv',
+          engine: 'MaterializedView',
+          create_table_query:
+            'CREATE MATERIALIZED VIEW `my-db`.unrelated_mv TO `my-db`.some_other_table AS SELECT ...',
+          as_select: asSelectWithStatusCode,
+        },
+      ] as any);
+
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(
+          tableConn,
+          'StatusCode',
+        ),
+      ).toBe(false);
+    });
+
+    it('escapes regex metacharacters in identifiers when they appear backticked', async () => {
+      const tableConn = {
+        databaseName: 'default',
+        tableName: 'weird.name',
+        connectionId: 'test_connection',
+      };
+      jest.spyOn(metadata, 'getAllTableMetadata').mockResolvedValue([
+        {
+          database: 'default',
+          name: 'mv1',
+          engine: 'MaterializedView',
+          create_table_query:
+            'CREATE MATERIALIZED VIEW default.mv1 TO default.`weird.name` AS SELECT ...',
+          as_select: asSelectWithStatusCode,
+        },
+      ] as any);
+
+      expect(
+        await (metadata as any).doMetadataMVsAggregateColumn(
+          tableConn,
+          'StatusCode',
+        ),
+      ).toBe(true);
+    });
+  });
 });
 
 describe('parseKeyPath', () => {
