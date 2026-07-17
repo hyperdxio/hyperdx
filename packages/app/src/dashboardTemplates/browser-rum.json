@@ -83,10 +83,27 @@
   ],
   "tiles": [
     {
-      "id": "rum-006",
+      "id": "rum-legend",
       "containerId": "rum-perf",
       "x": 0,
       "y": 0,
+      "w": 24,
+      "h": 4,
+      "config": {
+        "name": "Core Web Vitals — color legend",
+        "source": "Traces",
+        "displayType": "markdown",
+        "select": [],
+        "where": "",
+        "whereLanguage": "lucene",
+        "markdown": "🟢 **Good**  ·  🟡 **Needs improvement**  ·  🔴 **Poor** — [Core Web Vitals](https://web.dev/articles/vitals) targets, measured at the 75th percentile:\n\n- **LCP** (loading): Good ≤ 2.5 s · Poor > 4 s\n- **INP** (responsiveness): Good ≤ 200 ms · Poor > 500 ms\n- **CLS** (visual stability): Good ≤ 0.1 · Poor > 0.25"
+      }
+    },
+    {
+      "id": "rum-006",
+      "containerId": "rum-perf",
+      "x": 0,
+      "y": 4,
       "w": 6,
       "h": 4,
       "config": {
@@ -116,7 +133,7 @@
       "id": "rum-017",
       "containerId": "rum-perf",
       "x": 6,
-      "y": 0,
+      "y": 4,
       "w": 6,
       "h": 4,
       "config": {
@@ -162,7 +179,7 @@
       "id": "rum-018",
       "containerId": "rum-perf",
       "x": 12,
-      "y": 0,
+      "y": 4,
       "w": 6,
       "h": 4,
       "config": {
@@ -208,7 +225,7 @@
       "id": "rum-001",
       "containerId": "rum-perf",
       "x": 18,
-      "y": 0,
+      "y": 4,
       "w": 6,
       "h": 4,
       "config": {
@@ -258,7 +275,7 @@
       "id": "rum-002",
       "containerId": "rum-perf",
       "x": 0,
-      "y": 4,
+      "y": 8,
       "w": 6,
       "h": 4,
       "config": {
@@ -308,7 +325,7 @@
       "id": "rum-003",
       "containerId": "rum-perf",
       "x": 6,
-      "y": 4,
+      "y": 8,
       "w": 6,
       "h": 4,
       "config": {
@@ -358,7 +375,7 @@
       "id": "rum-005",
       "containerId": "rum-perf",
       "x": 12,
-      "y": 4,
+      "y": 8,
       "w": 6,
       "h": 4,
       "config": {
@@ -388,7 +405,7 @@
       "id": "rum-019",
       "containerId": "rum-perf",
       "x": 18,
-      "y": 4,
+      "y": 8,
       "w": 6,
       "h": 4,
       "config": {
@@ -426,7 +443,7 @@
       "id": "rum-020",
       "containerId": "rum-perf",
       "x": 0,
-      "y": 8,
+      "y": 12,
       "w": 24,
       "h": 7,
       "config": {
@@ -469,7 +486,7 @@
       "id": "rum-021",
       "containerId": "rum-perf",
       "x": 0,
-      "y": 15,
+      "y": 19,
       "w": 12,
       "h": 6,
       "config": {
@@ -500,7 +517,7 @@
       "id": "rum-024",
       "containerId": "rum-perf",
       "x": 12,
-      "y": 15,
+      "y": 19,
       "w": 12,
       "h": 6,
       "config": {
