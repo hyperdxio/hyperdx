@@ -11,6 +11,7 @@ import {
 type ScenarioSourceIds = {
   tracesSourceId: string;
   logsSourceId: string;
+  metricsSourceId?: string;
 };
 
 /**

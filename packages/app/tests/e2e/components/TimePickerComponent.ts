@@ -114,12 +114,15 @@ export class TimePickerComponent {
    */
   private async isPopoverStablyOpen(): Promise<boolean> {
     if (!(await this.pickerPopover.isVisible())) return false;
-    // Dwell long enough to outlast the post-apply / post-select re-render
-    // cascade (URL update + results reload) that can close a just-opened
-    // popover. Sample twice so a mid-cascade flicker is caught.
-    await this.page.waitForTimeout(250);
-    if (!(await this.pickerPopover.isVisible())) return false;
-    await this.page.waitForTimeout(250);
+    // A just-opened popover can be closed again by the post-apply /
+    // post-select re-render cascade (URL update + results reload). Rather than
+    // blindly sleeping to outlast it, wait for that reload's network activity
+    // to go idle — the observable end of the cascade — then confirm the
+    // popover survived. Bounded + swallowed so a perpetually-busy page (e.g.
+    // live tail) can't hang here; on timeout we simply re-check visibility.
+    await this.page
+      .waitForLoadState('networkidle', { timeout: 2000 })
+      .catch(() => {});
     return await this.pickerPopover.isVisible();
   }
 

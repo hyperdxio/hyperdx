@@ -470,6 +470,32 @@ describe('renderChartConfig', () => {
     expect(actual).not.toContain('TopGroups');
   });
 
+  it('renders bound values (not template macros) when generateSqlTemplate is unset', async () => {
+    // Regression guard for the generateSqlTemplate flag threaded through
+    // timeFilterExpr / timeBucketExpr / renderFrom / renderWhere: real query
+    // paths never set it, so the output must keep bound params and literals.
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      from: { databaseName: 'default', tableName: 'logs' },
+      select: [{ aggFn: 'count', aggCondition: '', valueExpression: '' }],
+      groupBy: [{ aggCondition: '', valueExpression: 'ServiceName' }],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-13')],
+      granularity: '5 minute',
+    };
+    const sql = parameterizedQueryToSql(
+      await renderChartConfig(config, mockMetadata, querySettings),
+    );
+    expect(sql).not.toContain('$__');
+    expect(sql).toContain('fromUnixTimestamp64Milli(');
+    expect(sql).toContain('INTERVAL 5 minute');
+    // parameterizedQueryToSql inlines Identifier params without backticks
+    expect(sql).toContain('FROM default.logs');
+  });
+
   describe('seriesLimit (group-by series cap)', () => {
     const baseLogsConfig: ChartConfigWithOptDateRange = {
       displayType: DisplayType.Line,
