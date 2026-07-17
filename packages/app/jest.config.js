@@ -25,15 +25,30 @@ module.exports = {
     '^ky$': '<rootDir>/src/__mocks__/ky-universal.ts',
   },
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.tsx'],
-  // Coverage floor pinned just below measured reality so coverage can only
-  // ratchet up. Decay below these numbers fails the build. Raise them
+  // Coverage floors are scoped to hooks/ and utils/ only — the genuinely
+  // unit-testable code. React components carry no coverage requirement (unit
+  // tests on them tend to be low-value and fragile; E2E and Storybook cover
+  // them better). Each floor is pinned just below measured reality so coverage
+  // can only ratchet up; decay below these numbers fails the build. Raise them
   // deliberately as coverage improves; never lower them silently.
   coverageThreshold: {
-    global: {
-      statements: 53,
-      branches: 37,
-      functions: 38,
-      lines: 54,
+    './src/hooks/': {
+      statements: 72,
+      branches: 59,
+      functions: 66,
+      lines: 73,
+    },
+    './src/utils/': {
+      statements: 74,
+      branches: 59,
+      functions: 72,
+      lines: 76,
+    },
+    './src/utils.ts': {
+      statements: 76,
+      branches: 77,
+      functions: 75,
+      lines: 76,
     },
   },
 };
