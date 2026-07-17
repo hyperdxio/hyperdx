@@ -150,45 +150,57 @@ export type LoadResult = {
   totalRows: number;
 };
 
-/**
- * SummingMergeTree rollup tables accumulate one row per MV-insert block and
- * only collapse duplicate keys on background merge. Right after a bulk Parquet
- * load the parts are unmerged, so a plain `count()` over a rollup is inflated
- * (though `sum(count)` — how the HyperDX MCP reads them — is already correct).
- * OPTIMIZE FINAL forces the merge so the rollup state is deterministic and
- * matches a settled live seed. Best-effort: failures here don't fail the load.
- */
-async function optimizeRollups(
+/** Stream one Parquet file from disk into an INSERT over the HTTP interface. */
+async function insertParquetFile(
   http: ChHttp,
-  tables: ScenarioTables,
+  table: string,
+  filePath: string,
 ): Promise<void> {
-  const rollups = [
-    tables.tracesKvRollup,
-    tables.tracesKeyRollup,
-    tables.logsKvRollup,
-    tables.logsKeyRollup,
-  ];
-  for (const t of rollups) {
-    try {
-      await chExec(http, `OPTIMIZE TABLE ${EVAL_DATABASE}.${t} FINAL`);
-    } catch {
-      // Rollup may not exist for a scenario with no such data — ignore.
-    }
+  const query = `INSERT INTO ${EVAL_DATABASE}.${table} FORMAT Parquet`;
+  const url = `${http.url}/?query=${encodeURIComponent(query)}`;
+  // Node's fetch accepts a Readable body but requires `duplex: 'half'`; neither
+  // is in the DOM RequestInit type, so build the init as `unknown` and cast.
+  const init = {
+    method: 'POST',
+    headers: {
+      ...authHeaders(http),
+      'Content-Type': 'application/octet-stream',
+    },
+    body: createReadStream(filePath),
+    duplex: 'half',
+  } as unknown as RequestInit;
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(
+      `Parquet load of ${table} failed (${res.status}): ${errText.slice(0, 500)}`,
+    );
   }
 }
 
 /**
  * Load a previously exported Parquet snapshot for a scenario into ClickHouse.
- * Ensures the scenario tables + rollup MVs exist, truncates them, then inserts
- * each Parquet file. Because the MVs are attached before the insert, the rollup
- * metadata tables are repopulated automatically — no separate rollup snapshot
- * is needed.
+ *
+ * Fast path: rather than let the rollup materialized views fan out on the bulk
+ * insert (aggregating + writing the SummingMergeTree rollups per insert block,
+ * the dominant cost of a large load), we
+ *   1. drop the rollup MVs,
+ *   2. bulk-insert the raw Parquet with no fan-out,
+ *   3. backfill the rollups in one shot (same SELECTs the MVs run), and
+ *   4. recreate the MVs so any later inserts still maintain them.
+ * This produces byte-identical rollup content and is meaningfully faster at
+ * scale. The drop/backfill/recreate steps are supplied by the caller (they
+ * need the @clickhouse/client instance) via the same callback pattern as
+ * ensure/truncate.
  */
 export async function loadScenarioSnapshot(args: {
   http: ChHttp;
-  // The @clickhouse/client instance, used only for DDL (ensure/truncate).
+  // DDL callbacks backed by the @clickhouse/client instance.
   ensure: () => Promise<ScenarioTables>;
   truncate: () => Promise<void>;
+  dropMaterializedViews: (tables: ScenarioTables) => Promise<void>;
+  backfillRollups: (tables: ScenarioTables) => Promise<void>;
+  createMaterializedViews: (tables: ScenarioTables) => Promise<void>;
   scenarioName: string;
   dir: string;
 }): Promise<LoadResult> {
@@ -198,6 +210,10 @@ export async function loadScenarioSnapshot(args: {
   const tables = await args.ensure();
   await args.truncate();
 
+  // Detach the MVs so the raw bulk insert below does not trigger per-block
+  // rollup maintenance.
+  await args.dropMaterializedViews(tables);
+
   const files: LoadResult['files'] = [];
   let totalRows = 0;
 
@@ -206,35 +222,16 @@ export async function loadScenarioSnapshot(args: {
     const filePath = join(args.dir, snapshotFileName(table));
     if (!existsSync(filePath)) continue; // table had zero rows at export time
 
-    const query = `INSERT INTO ${EVAL_DATABASE}.${table} FORMAT Parquet`;
-    const url = `${args.http.url}/?query=${encodeURIComponent(query)}`;
-    // Stream the file from disk into the insert. Node's fetch accepts a
-    // Readable body but requires `duplex: 'half'`; neither is in the DOM
-    // RequestInit type, so build the init as `unknown` and cast.
-    const init = {
-      method: 'POST',
-      headers: {
-        ...authHeaders(args.http),
-        'Content-Type': 'application/octet-stream',
-      },
-      body: createReadStream(filePath),
-      duplex: 'half',
-    } as unknown as RequestInit;
-    const res = await fetch(url, init);
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      throw new Error(
-        `Parquet load of ${table} failed (${res.status}): ${errText.slice(0, 500)}`,
-      );
-    }
+    await insertParquetFile(args.http, table, filePath);
     const rows = await tableRowCount(args.http, table);
     files.push({ table, rows });
     totalRows += rows;
   }
 
-  // Collapse the SummingMergeTree rollup parts so their state is deterministic
-  // (matches a settled live seed) rather than depending on background merges.
-  await optimizeRollups(args.http, tables);
+  // Rebuild the rollups in one shot from the loaded raw tables, then re-attach
+  // the MVs for consistency with a live-seeded scenario.
+  await args.backfillRollups(tables);
+  await args.createMaterializedViews(tables);
 
   return { files, totalRows };
 }

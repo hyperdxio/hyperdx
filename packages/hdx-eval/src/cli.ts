@@ -14,6 +14,9 @@ import {
   writeManifest,
 } from './clickhouse/parquetSnapshot';
 import {
+  backfillRollups,
+  createRollupMaterializedViews,
+  dropRollupMaterializedViews,
   dropScenarioTables,
   ensureScenarioTables,
   scenarioIsSeeded,
@@ -402,6 +405,11 @@ program
         http,
         ensure: () => ensureScenarioTables(client, scenario.name),
         truncate: () => truncateScenarioTables(client, scenario.name),
+        dropMaterializedViews: tables =>
+          dropRollupMaterializedViews(client, tables),
+        backfillRollups: tables => backfillRollups(client, tables),
+        createMaterializedViews: tables =>
+          createRollupMaterializedViews(client, tables),
         scenarioName: scenario.name,
         dir,
       });
