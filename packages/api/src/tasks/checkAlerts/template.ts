@@ -36,6 +36,7 @@ import {
   computeAliasWithClauses,
   doesExceedThreshold,
 } from '@/tasks/checkAlerts';
+import { WebhookRedirectError } from '@/tasks/checkAlerts/errors';
 import {
   AlertProvider,
   PopulatedAlertChannel,
@@ -394,12 +395,22 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
   }
 
   try {
-    const response = await withRetry(async () => {
+    await withRetry(async () => {
       const res = await fetch(url, {
         method: 'POST',
+        redirect: 'manual',
         headers: headers as Record<string, string>,
         body,
       });
+
+      // Disallow redirects to avoid redirect-based SSRF.
+      if (res.status >= 300 && res.status < 400) {
+        logger.error(
+          { webhookId: webhook._id.toString(), teamId: webhook.team },
+          'Webhook request was redirected, which is not allowed',
+        );
+        throw new WebhookRedirectError(res.status);
+      }
 
       if (!res.ok) {
         const errorText = await res.text();

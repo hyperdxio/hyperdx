@@ -57,6 +57,10 @@ import { ISavedSearch } from '@/models/savedSearch';
 import { ISource } from '@/models/source';
 import { IWebhook } from '@/models/webhook';
 import {
+  WEBHOOK_REDIRECT_ERROR_MESSAGE,
+  WebhookRedirectError,
+} from '@/tasks/checkAlerts/errors';
+import {
   AlertDetails,
   AlertProvider,
   AlertTask,
@@ -204,6 +208,20 @@ const getErrorMessage = (e: unknown): string => {
     return e.message;
   }
   return String(e);
+};
+
+// Most webhook errors show a hardcoded message to avoid leaking sensitive request details in the UI.
+// Redirect errors are a known class of errors which we want to surface to the user, so it has a specific message.
+const makeWebhookAlertError = (error: unknown): IAlertError => {
+  if (error instanceof WebhookRedirectError) {
+    return {
+      timestamp: new Date(),
+      type: AlertErrorType.WEBHOOK_ERROR,
+      message: WEBHOOK_REDIRECT_ERROR_MESSAGE,
+    };
+  }
+
+  return makeAlertError(AlertErrorType.WEBHOOK_ERROR, getErrorMessage(error));
 };
 
 export const doesExceedThreshold = (
@@ -1080,9 +1098,7 @@ export const processAlert = async (
           { alertId: alert.id, group, error: serializeError(e) },
           'Failed to fire channel event',
         );
-        executionErrors.push(
-          makeAlertError(AlertErrorType.WEBHOOK_ERROR, getErrorMessage(e)),
-        );
+        executionErrors.push(makeWebhookAlertError(e));
       }
     };
 
