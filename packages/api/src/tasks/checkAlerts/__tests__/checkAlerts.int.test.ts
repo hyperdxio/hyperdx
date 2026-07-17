@@ -3128,6 +3128,85 @@ describe('checkAlerts', () => {
         );
       });
 
+      it('records a WEBHOOK_ERROR without calling a generic webhook at a private IP', async () => {
+        const fetchMock = jest.fn();
+        global.fetch = jest.mocked(fetchMock);
+
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          teamWebhooksById,
+          clickhouseClient,
+          dashboard,
+        } = await setupTileAlertForErrors({
+          webhookSettings: {
+            service: WebhookService.Generic,
+            url: 'http://10.0.0.1/webhook',
+            name: 'Private Webhook',
+            description: 'generic webhook at a private IP',
+            body: JSON.stringify({ text: '{{title}}' }),
+          },
+        });
+
+        const now = new Date('2023-11-16T22:12:00.000Z');
+        const eventMs = now.getTime() - ms('5m');
+        await bulkInsertLogs([
+          {
+            ServiceName: 'api',
+            Timestamp: new Date(eventMs),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+          {
+            ServiceName: 'api',
+            Timestamp: new Date(eventMs),
+            SeverityText: 'error',
+            Body: 'oh no',
+          },
+        ]);
+
+        const tile = dashboard.tiles?.find((t: any) => t.id === 'tile-err');
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.TILE,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            dashboardId: dashboard.id,
+            tileId: 'tile-err',
+          },
+          {
+            taskType: AlertTaskType.TILE,
+            tile: tile!,
+            dashboard,
+          },
+        );
+
+        await processAlertAtTime(
+          now,
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+        const updated = await Alert.findById(details.alert.id);
+        expect(updated!.executionErrors).toHaveLength(1);
+        expect(updated!.executionErrors![0].type).toBe(
+          AlertErrorType.WEBHOOK_ERROR,
+        );
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+
       it('sets state to OK and records a WEBHOOK_ERROR when a resolving webhook send fails', async () => {
         const fetchMock = jest.fn();
         fetchMock
