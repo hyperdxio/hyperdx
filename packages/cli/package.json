@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/cli",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -40,7 +40,7 @@
   },
   "devDependencies": {
     "@clickhouse/client": "1.23.0-head.fae5998.1",
-    "@hyperdx/common-utils": "^0.22.0",
+    "@hyperdx/common-utils": "^0.23.0",
     "@jest/globals": "^30.2.0",
     "@types/crypto-js": "^4.2.2",
     "@types/jest": "^29.5.14",
