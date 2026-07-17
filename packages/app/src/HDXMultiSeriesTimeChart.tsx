@@ -40,15 +40,19 @@ import {
 } from './components/charts/chartAnnotations';
 import {
   ChartTooltipContainer,
+  ChartTooltipHeader,
   ChartTooltipItem,
+  toViewportPoint,
+  useChartTooltipZIndex,
 } from './components/charts/ChartTooltip';
+import { useChartSyncId } from './chartSync';
 import {
   findNearestSeriesKey,
   LineData,
   MAX_TIME_CHART_SERIES,
   toStartOfInterval,
 } from './ChartUtils';
-import { FormatTime, useFormatTime } from './useFormatTime';
+import { useFormatTime } from './useFormatTime';
 
 import styles from '@styles/HDXLineChart.module.scss';
 
@@ -58,6 +62,10 @@ const MAX_LEGEND_ITEMS = 4;
 // cursor for tooltip highlighting. Beyond this, no row is emphasized so the
 // tooltip is not misleading when the pointer is in empty space.
 const NEAREST_SERIES_MAX_DISTANCE_PX = 30;
+
+// Gap below the data point for the hover tooltip. Kept equal to the pinned
+// tooltip's Popover `offset` so both land in the same spot.
+const TOOLTIP_POINT_OFFSET_PX = 12;
 
 const Y_AXIS_WIDTH = 40;
 const SINGLE_POINT_BAR_RIGHT_PADDING = 10;
@@ -116,8 +124,19 @@ type HDXLineChartTooltipProps = {
   numberFormatByKey: Map<string, NumberFormat>;
   /** Per-series active-point pixel Y, captured by the Area active dots. */
   activePointYByKeyRef: React.MutableRefObject<Map<string, number>>;
+  /** The chart's outer container; its viewport rect anchors this tooltip. */
+  containerRef: React.MutableRefObject<HTMLDivElement | null>;
 } & Record<string, any>;
 
+/**
+ * The recharts `<Tooltip>` content used for the HOVER tooltip (on the hovered
+ * chart and its synced followers). Clicking pins ChartSeriesTooltip instead.
+ *
+ * Because it's given `portal={document.body}`, recharts skips its own transform
+ * positioning, so this content self-anchors at the active point with
+ * `position: fixed` (container rect + `coordinate`) — matching the pinned
+ * tooltip's anchor, and escaping the chart's bounds so edges aren't clipped.
+ */
 const HDXLineChartTooltip = withErrorBoundary(
   memo((props: HDXLineChartTooltipProps) => {
     const {
@@ -129,8 +148,11 @@ const HDXLineChartTooltip = withErrorBoundary(
       lineDataMap,
       previousPeriodOffsetSeconds,
       activePointYByKeyRef,
+      containerRef,
     } = props;
     const typedPayload = payload as TooltipPayload[];
+
+    const tooltipZIndex = useChartTooltipZIndex();
 
     const payloadByKey = useMemo(
       () => new Map(typedPayload.map(p => [p.dataKey, p])),
@@ -138,30 +160,20 @@ const HDXLineChartTooltip = withErrorBoundary(
     );
 
     if (active && payload && payload.length) {
+      // No onClose: hover renders the X hidden (kept for layout parity).
       const header = (
-        <>
-          <FormatTime value={label * 1000} />
-          {previousPeriodOffsetSeconds != null && (
-            <>
-              {' (vs '}
-              <FormatTime
-                value={(label - previousPeriodOffsetSeconds) * 1000}
-              />
-              {')'}
-            </>
-          )}
-        </>
+        <ChartTooltipHeader
+          labelSeconds={label}
+          previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+        />
       );
 
-      // `coordinate.y` is the cursor's pixel Y; compare it to each series'
-      // active-dot pixel Y to bold the nearest line. The active dots wrote
-      // their positions earlier in this same render (Recharts renders
-      // graphical items before the tooltip), so the capture is current.
+      // Bold the line nearest the cursor by comparing pointer Y to each series'
+      // active-dot Y. The dots write their positions earlier in this same render
+      // (Recharts draws graphical items before the tooltip), so it's current.
       const pointerY: number | undefined = props.coordinate?.y;
       // eslint-disable-next-line react-hooks/refs
       const activePointYByKey = activePointYByKeyRef?.current ?? undefined;
-      // Only disambiguate when there is more than one series; a single-series
-      // tooltip has nothing to map back to a line.
       const nearestSeriesKey =
         typedPayload.length > 1
           ? findNearestSeriesKey(
@@ -172,39 +184,65 @@ const HDXLineChartTooltip = withErrorBoundary(
             )
           : undefined;
 
-      return (
-        <ChartTooltipContainer header={header}>
-          {/* Copy before sorting: Recharts 3 keeps the payload in its
-              Immer-backed store and freezes it, so an in-place sort throws
-              "this object has been frozen". */}
-          {[...payload]
-            .sort((a: TooltipPayload, b: TooltipPayload) => b.value - a.value)
-            .map((p: TooltipPayload) => {
-              const previousKey = lineDataMap[p.dataKey]?.previousPeriodKey;
-              const isPreviousPeriod = previousKey === p.dataKey;
-              const previousPayload =
-                !isPreviousPeriod && previousKey
-                  ? payloadByKey.get(previousKey)
-                  : undefined;
-              const valueColumnName =
-                lineDataMap[p.dataKey]?.valueColumnName ?? p.dataKey;
-              const numberFormatForKey =
-                numberFormatByKey.get(valueColumnName) ?? numberFormat;
+      // Anchor at the active point (see the component docblock for why fixed).
+      const pointX = props.coordinate?.x;
+      const pointY = props.coordinate?.y;
+      // eslint-disable-next-line react-hooks/refs
+      const containerRect = containerRef?.current?.getBoundingClientRect();
+      const anchor =
+        typeof pointX === 'number' &&
+        typeof pointY === 'number' &&
+        containerRect != null
+          ? toViewportPoint(containerRect, { x: pointX, y: pointY })
+          : undefined;
+      const anchorStyle: React.CSSProperties =
+        anchor != null
+          ? {
+              position: 'fixed',
+              left: anchor.x,
+              top: anchor.y + TOOLTIP_POINT_OFFSET_PX,
+              transform: 'translateX(-50%)',
+              pointerEvents: 'none',
+              // z-index must live here: recharts leaves the portaled wrapper
+              // `position: static`, where z-index has no effect.
+              zIndex: tooltipZIndex,
+            }
+          : {};
 
-              return (
-                <TooltipItem
-                  key={p.dataKey}
-                  p={p}
-                  numberFormat={numberFormatForKey}
-                  previous={previousPayload}
-                  highlighted={p.dataKey === nearestSeriesKey}
-                  dimmed={
-                    nearestSeriesKey != null && p.dataKey !== nearestSeriesKey
-                  }
-                />
-              );
-            })}
-        </ChartTooltipContainer>
+      return (
+        <div style={anchorStyle}>
+          <ChartTooltipContainer header={header}>
+            {/* Copy before sorting: Recharts 3 freezes the payload, so an
+                in-place sort throws "this object has been frozen". */}
+            {[...payload]
+              .sort((a: TooltipPayload, b: TooltipPayload) => b.value - a.value)
+              .map((p: TooltipPayload) => {
+                const previousKey = lineDataMap[p.dataKey]?.previousPeriodKey;
+                const isPreviousPeriod = previousKey === p.dataKey;
+                const previousPayload =
+                  !isPreviousPeriod && previousKey
+                    ? payloadByKey.get(previousKey)
+                    : undefined;
+                const valueColumnName =
+                  lineDataMap[p.dataKey]?.valueColumnName ?? p.dataKey;
+                const numberFormatForKey =
+                  numberFormatByKey.get(valueColumnName) ?? numberFormat;
+
+                return (
+                  <TooltipItem
+                    key={p.dataKey}
+                    p={p}
+                    numberFormat={numberFormatForKey}
+                    previous={previousPayload}
+                    highlighted={p.dataKey === nearestSeriesKey}
+                    dimmed={
+                      nearestSeriesKey != null && p.dataKey !== nearestSeriesKey
+                    }
+                  />
+                );
+              })}
+          </ChartTooltipContainer>
+        </div>
       );
     }
     return null;
@@ -390,28 +428,31 @@ export const HARD_LINES_LIMIT = MAX_TIME_CHART_SERIES;
 // editor) from ever settling.
 const RESPONSIVE_CONTAINER_DEBOUNCE_MS = 50;
 
-/** One series entry in a click-frozen tooltip's payload. */
-type ActiveClickSeries = {
+/** One series entry in a tooltip's per-bucket payload (hover or click-frozen). */
+export type ActiveClickSeries = {
   value?: number;
   dataKey?: string;
   name?: string;
-  /**
-   * Series color (matches the legend swatch). Part of the drill-down payload
-   * contract so a popover can show a per-series swatch.
-   */
+  /** Series color, matching the legend swatch. */
   color?: string;
+  /** Previous-period value at the same bucket, for the percent-change chip. */
+  previousValue?: number;
+  /** Whether this series is a dashed previous-period line. */
+  isPreviousPeriod?: boolean;
+  /** Result column the values came from, for per-column number formatting. */
+  valueColumnName?: string;
 };
 
 /**
- * State for the click-frozen ("pinned") tooltip. Produced by MemoChart's
- * onClick and consumed by DBTimeChart to render the drill-down popover.
+ * State for the pinned (click-locked) tooltip. Produced by MemoChart's onClick
+ * and rendered by DBTimeChart via ChartSeriesTooltip. (Hover uses recharts' own
+ * <Tooltip>; recharts' <Tooltip> is also kept for its synced cursor.)
  */
 export type ActiveClickPayload = {
-  x: number;
-  y: number;
+  /** Active point in viewport coords; the Popover anchor. */
+  viewportX: number;
+  viewportY: number;
   activeLabel: string;
-  xPerc: number;
-  yPerc: number;
   activePayload?: ActiveClickSeries[];
 };
 
@@ -438,12 +479,23 @@ export function buildActiveClickSeries(
   return visibleLineData.flatMap(ld => {
     const value = activeRow[ld.dataKey];
     if (typeof value !== 'number') return [];
+    const isPreviousPeriod = ld.previousPeriodKey === ld.dataKey;
+    // Pair each current-period series with its previous-period value for the
+    // percent-change chip. Only current-period rows carry a comparison.
+    const previousRaw =
+      !isPreviousPeriod && ld.previousPeriodKey
+        ? activeRow[ld.previousPeriodKey]
+        : undefined;
     return [
       {
         dataKey: ld.dataKey,
         name: getSeriesDisplayName(ld),
         value,
         color: ld.color,
+        isPreviousPeriod,
+        valueColumnName: ld.valueColumnName,
+        previousValue:
+          typeof previousRaw === 'number' ? previousRaw : undefined,
       },
     ];
   });
@@ -627,6 +679,9 @@ export const MemoChart = memo(function MemoChart({
   const _id = useId();
   const id = _id.replace(/:/g, '');
 
+  // recharts sync group, scoped via context (see chartSync).
+  const syncId = useChartSyncId();
+
   const [isHovered, setIsHovered] = useState(false);
 
   // Filled by each Area's active dot with the series' active-point pixel Y,
@@ -782,7 +837,6 @@ export const MemoChart = memo(function MemoChart({
     displayType,
   ]);
 
-  const sizeRef = useRef<[number, number]>([0, 0]);
   const [containerWidth, setContainerWidth] = useState(0);
 
   // The chart's outer positioned container. Used to convert a pointer's
@@ -795,6 +849,38 @@ export const MemoChart = memo(function MemoChart({
     if (e?.clientX == null || containerRef.current == null) return undefined;
     return e.clientX - containerRef.current.getBoundingClientRect().left;
   }, []);
+
+  // Build the pinned-tooltip payload for the clicked bucket from a recharts
+  // chart event `state`, including the viewport coords Mantine anchors to.
+  const buildActivePayloadFromState = useCallback(
+    (state?: {
+      activeCoordinate?: { x?: number; y?: number };
+      activeLabel?: string | number;
+    }): ActiveClickPayload | undefined => {
+      const chartX = state?.activeCoordinate?.x;
+      const chartY = state?.activeCoordinate?.y;
+      const activeLabel = getActiveLabel(state);
+      if (chartX == null || chartY == null || activeLabel == null) {
+        return undefined;
+      }
+      const activeRow = graphResults.find(
+        row => String(row[timestampKey]) === activeLabel,
+      );
+      const activePayload = buildActiveClickSeries(visibleLineData, activeRow);
+      if (activePayload.length === 0) {
+        return undefined;
+      }
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      const anchor = toViewportPoint(containerRect, { x: chartX, y: chartY });
+      return {
+        viewportX: anchor.x,
+        viewportY: anchor.y,
+        activeLabel,
+        activePayload,
+      };
+    },
+    [graphResults, timestampKey, visibleLineData],
+  );
 
   // Recharts computes bar width from the smallest gap between ticks on a
   // numerical XAxis. With a single data point there are no gaps, so the
@@ -971,9 +1057,8 @@ export const MemoChart = memo(function MemoChart({
         // can't thrash layout (which leaves surrounding form controls never
         // "stable"); the observer otherwise fires undebounced on every frame.
         debounce={RESPONSIVE_CONTAINER_DEBOUNCE_MS}
-        onResize={(width, height) => {
+        onResize={width => {
           const w = width ?? 1;
-          sizeRef.current = [w, height ?? 1];
           setContainerWidth(prev => (prev === w ? prev : w));
         }}
         className={isLoading ? 'effect-pulse' : ''}
@@ -987,7 +1072,7 @@ export const MemoChart = memo(function MemoChart({
               ? { top: ANNOTATION_LABEL_HEADROOM, right: 5, bottom: 5, left: 5 }
               : undefined
           }
-          syncId="hdx"
+          syncId={syncId}
           syncMethod="value"
           barSize={singlePointBarSize}
           onMouseEnter={() => setIsHovered(true)}
@@ -1117,40 +1202,15 @@ export const MemoChart = memo(function MemoChart({
               e.stopPropagation();
               return;
             }
-            // Freeze a tooltip at the clicked point: take the click position
-            // from the active coordinate and build the per-series payload from
-            // the active bucket in graphResults (the popover only needs
-            // value/name/color/dataKey per series).
-            const chartX = state?.activeCoordinate?.x;
-            const chartY = state?.activeCoordinate?.y;
-            const activeLabel = getActiveLabel(state);
-            if (
-              chartX != null &&
-              chartY != null &&
-              activeLabel != null &&
-              // If we didn't drag and highlight yet
+            // Freeze a tooltip at the clicked point. The builder mirrors the
+            // series actually drawn (legend selection + HARD_LINES_LIMIT).
+            const clickPayload =
               highlightStart == null
-            ) {
-              const activeRow = graphResults.find(
-                row => String(row[timestampKey]) === activeLabel,
-              );
-              // Mirror the series actually drawn (legend selection +
-              // HARD_LINES_LIMIT) so the popover's "Filter by group" list never
-              // shows deselected or over-limit series.
-              const activePayload = buildActiveClickSeries(
-                visibleLineData,
-                activeRow,
-              );
-              setIsClickActive({
-                x: chartX,
-                y: chartY,
-                activeLabel,
-                xPerc: chartX / sizeRef.current[0],
-                yPerc: chartY / sizeRef.current[1],
-                activePayload,
-              });
-              // The click-frozen tooltip hides the live tooltip, so drop any
-              // line emphasis to match.
+                ? buildActivePayloadFromState(state)
+                : undefined;
+            if (clickPayload != null) {
+              setIsClickActive(clickPayload);
+              // Pinned replaces hover; drop line emphasis to match.
               setNearestSeriesKey(undefined);
             } else {
               // We clicked on the chart but outside of a line
@@ -1207,6 +1267,10 @@ export const MemoChart = memo(function MemoChart({
             domain={yAxisDomain}
           />
           {lines}
+          {/* HOVER tooltip (also drives cross-chart shadow tooltips via syncId).
+              Hidden once a point is clicked, where the pinned tooltip takes over.
+              Portaled to body so HDXLineChartTooltip can self-position (see its
+              docblock) and escape the chart's bounds near an edge. */}
           {isClickActive == null && (
             <Tooltip
               content={
@@ -1216,11 +1280,10 @@ export const MemoChart = memo(function MemoChart({
                   lineDataMap={lineDataMap}
                   previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
                   activePointYByKeyRef={activePointYByKeyRef}
+                  containerRef={containerRef}
                 />
               }
-              wrapperStyle={{
-                zIndex: 1,
-              }}
+              portal={typeof document !== 'undefined' ? document.body : null}
             />
           )}
           {referenceLines}

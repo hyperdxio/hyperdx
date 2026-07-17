@@ -7,18 +7,24 @@ interface SourcePickerProps {
   sources: SourceResponse[];
   onSelect: (source: SourceResponse) => void;
   onOpenAlerts?: () => void;
+  onOpenDashboards?: () => void;
 }
 
 export default function SourcePicker({
   sources,
   onSelect,
   onOpenAlerts,
+  onOpenDashboards,
 }: SourcePickerProps) {
   const [selected, setSelected] = useState(0);
 
   useInput((input, key) => {
     if (input === 'A' && onOpenAlerts) {
       onOpenAlerts();
+      return;
+    }
+    if (input === 'd' && !key.ctrl && onOpenDashboards) {
+      onOpenDashboards();
       return;
     }
     if (key.upArrow || input === 'k') {
@@ -48,7 +54,9 @@ export default function SourcePicker({
         </Text>
       ))}
       <Text> </Text>
-      <Text dimColor>j/k to navigate, Enter/l to select, A=alerts</Text>
+      <Text dimColor>
+        j/k to navigate, Enter/l to select, A=alerts, d=dashboards
+      </Text>
     </Box>
   );
 }
