@@ -149,13 +149,18 @@ describe('BaseClickhouseClient.logDebugQuery', () => {
     );
   });
 
-  it('stays silent otherwise', () => {
+  it('stays silent when unset', () => {
     delete process.env.HYPERDX_LOG_QUERIES;
     logDebugQuery('SELECT 1 FROM system.one');
-    for (const value of ['', 'false', '1', 'TRUE']) {
-      process.env.HYPERDX_LOG_QUERIES = value;
-      logDebugQuery('SELECT 1 FROM system.one');
-    }
     expect(debugSpy).not.toHaveBeenCalled();
   });
+
+  it.each(['', 'false', '1', 'TRUE'])(
+    'stays silent when set to %j',
+    value => {
+      process.env.HYPERDX_LOG_QUERIES = value;
+      logDebugQuery('SELECT 1 FROM system.one');
+      expect(debugSpy).not.toHaveBeenCalled();
+    },
+  );
 });
