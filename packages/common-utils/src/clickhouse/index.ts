@@ -664,6 +664,67 @@ export abstract class BaseClickhouseClient {
 
     const isTimeSeries = config.displayType === 'line';
 
+    if (
+      isBuilderChartConfig(config) &&
+      config.seriesReturnType === 'ratio' &&
+      queries.length === 2 &&
+      Array.isArray(config.select)
+    ) {
+      const q0Alias = config.select[0].alias ?? 'q0_val';
+      const q1Alias = config.select[1].alias ?? 'q1_val';
+      const ratioAlias = `${q0Alias}/${q1Alias}`;
+
+      const joinKeys: string[] = [];
+      if (isTimeSeries) {
+        joinKeys.push('__hdx_time_bucket');
+      }
+
+      if (config.groupBy) {
+        if (Array.isArray(config.groupBy)) {
+          for (const gb of config.groupBy) {
+            if (typeof gb === 'string') {
+              joinKeys.push(gb);
+            } else {
+              joinKeys.push(gb.alias || gb.valueExpression);
+            }
+          }
+        } else if (typeof config.groupBy === 'string') {
+          joinKeys.push(...splitAndTrimWithBracket(config.groupBy));
+        }
+      }
+
+      // De-duplicate join keys just in case
+      const uniqueJoinKeys = Array.from(new Set(joinKeys));
+
+      let ratioSql: ChSql;
+      const selectCols = [
+        chSql`(q0.${{ Identifier: q0Alias }} / q1.${{ Identifier: q1Alias }}) AS ${{ Identifier: ratioAlias }}`,
+        ...uniqueJoinKeys.map(k => chSql`${{ Identifier: k }}`),
+      ];
+      const selectClause = concatChSql(', ', selectCols);
+
+      if (uniqueJoinKeys.length > 0) {
+        const joinKeysSql = uniqueJoinKeys.map(
+          k => chSql`${{ Identifier: k }}`,
+        );
+        const usingClause = concatChSql(', ', joinKeysSql);
+        ratioSql = chSql`WITH q0 AS (${queries[0]}), q1 AS (${queries[1]}) SELECT ${selectClause} FROM q0 ANY LEFT JOIN q1 USING (${usingClause})`;
+      } else {
+        ratioSql = chSql`WITH q0 AS (${queries[0]}), q1 AS (${queries[1]}) SELECT ${selectClause} FROM q0 CROSS JOIN q1`;
+      }
+
+      const resp = await this.query<'JSON'>({
+        query: ratioSql.sql,
+        query_params: ratioSql.params,
+        format: 'JSON',
+        abort_signal: opts?.abort_signal,
+        connectionId: config.connection,
+        clickhouse_settings: opts?.clickhouse_settings,
+      });
+
+      return resp.json<any>();
+    }
+
     const resultSets = await Promise.all(
       queries.map(async query => {
         const resp = await this.query<'JSON'>({
@@ -734,15 +795,14 @@ export abstract class BaseClickhouseClient {
         }
       }
 
-      const isRatio =
-        config.seriesReturnType === 'ratio' && resultSets.length === 2;
-
       const _resultSet: ResponseJSON<any> = {
         meta: Array.from(metaSet.values()),
         data: Array.from(tsBucketMap.values()),
       };
-      // TODO: we should compute the ratio on the db side
-      return isRatio ? computeResultSetRatio(_resultSet) : _resultSet;
+
+      // Native DB-side ratio calculation intercepts the ratio chart before this block.
+      // This legacy join block now only applies to multi-metric line charts.
+      return _resultSet;
     }
     throw new Error('No result sets');
   }
