@@ -847,12 +847,17 @@ export abstract class BaseClickhouseClient {
     if (
       isBuilderChartConfig(config) &&
       config.seriesReturnType === 'ratio' &&
+      config.ratioMode !== 'share_of_total' &&
       queries.length === 2 &&
       Array.isArray(config.select)
     ) {
       const q0Alias = config.select[0].alias ?? 'q0_val';
-      const q1Alias = config.select[1].alias ?? 'q1_val';
-      const ratioAlias = `${q0Alias}/${q1Alias}`;
+      const originalQ1Alias = config.select[1].alias ?? 'q1_val';
+      let q1AliasOut = originalQ1Alias;
+      if (q0Alias === originalQ1Alias) {
+        q1AliasOut = `${originalQ1Alias}__1`;
+      }
+      const ratioAlias = `${q0Alias}/${originalQ1Alias}`;
 
       const joinKeys: string[] = [];
       if (isTimeSeries) {
@@ -892,9 +897,9 @@ export abstract class BaseClickhouseClient {
 
       let ratioSql: ChSql;
       const selectCols = [
-        chSql`(q0.${{ Identifier: q0Alias }} / q1.${{ Identifier: q1Alias }}) AS ${{ Identifier: ratioAlias }}`,
+        chSql`(q0.${{ Identifier: q0Alias }} / q1.${{ Identifier: originalQ1Alias }}) AS ${{ Identifier: ratioAlias }}`,
         chSql`q0.${{ Identifier: q0Alias }} AS ${{ Identifier: q0Alias }}`,
-        chSql`q1.${{ Identifier: q1Alias }} AS ${{ Identifier: q1Alias }}`,
+        chSql`q1.${{ Identifier: originalQ1Alias }} AS ${{ Identifier: q1AliasOut }}`,
         ...uniqueJoinKeys.map(k => chSql`${{ Identifier: k }}`),
       ];
       const selectClause = concatChSql(', ', selectCols);
