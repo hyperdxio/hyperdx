@@ -21,6 +21,7 @@ import {
 import {
   extractSettingsClauseFromEnd,
   hashCode,
+  isNode,
   replaceJsonExpressions,
   splitAndTrimWithBracket,
 } from '@/core/utils';
@@ -683,6 +684,8 @@ export abstract class BaseClickhouseClient {
     query: string,
     query_params: Record<string, any> = {},
   ): void {
+    if (!isNode || process.env.HYPERDX_LOG_QUERIES !== 'true') return;
+
     let debugSql = '';
     try {
       debugSql = parameterizedQueryToSql({ sql: query, params: query_params });

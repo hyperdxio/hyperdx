@@ -5,6 +5,7 @@ import {
   isMissingColumnError,
   JSDataType,
 } from '@/clickhouse';
+import { ClickhouseClient } from '@/clickhouse/node';
 
 describe('isMissingColumnError', () => {
   it.each([
@@ -122,5 +123,39 @@ describe('convertCHDataTypeToJSType', () => {
 
   it('should handle Nullable(Bool) as Bool', () => {
     expect(convertCHDataTypeToJSType('Nullable(Bool)')).toBe(JSDataType.Bool);
+  });
+});
+
+describe('BaseClickhouseClient.logDebugQuery', () => {
+  const client = new ClickhouseClient({ host: 'http://localhost' });
+  const logDebugQuery = (query: string) => (client as any).logDebugQuery(query);
+  let debugSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    delete process.env.HYPERDX_LOG_QUERIES;
+  });
+
+  it('logs the query when HYPERDX_LOG_QUERIES=true', () => {
+    process.env.HYPERDX_LOG_QUERIES = 'true';
+    logDebugQuery('SELECT 1 FROM system.one');
+    expect(debugSpy).toHaveBeenCalledWith(
+      'Sending Query:',
+      'SELECT 1 FROM system.one',
+    );
+  });
+
+  it('stays silent otherwise', () => {
+    delete process.env.HYPERDX_LOG_QUERIES;
+    logDebugQuery('SELECT 1 FROM system.one');
+    for (const value of ['', 'false', '1', 'TRUE']) {
+      process.env.HYPERDX_LOG_QUERIES = value;
+      logDebugQuery('SELECT 1 FROM system.one');
+    }
+    expect(debugSpy).not.toHaveBeenCalled();
   });
 });
