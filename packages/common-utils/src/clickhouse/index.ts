@@ -860,16 +860,30 @@ export abstract class BaseClickhouseClient {
       }
 
       if (config.groupBy) {
-        if (Array.isArray(config.groupBy)) {
-          for (const gb of config.groupBy) {
+        if (typeof config.groupBy === 'string') {
+          config.groupBy = splitAndTrimWithBracket(config.groupBy).map(gb => ({
+            type: 'string',
+            valueExpression: gb,
+            alias: gb, // Assign the raw expression as the alias so the CTE outputs exactly this column name
+          }));
+        } else if (Array.isArray(config.groupBy)) {
+          config.groupBy = config.groupBy.map(gb => {
             if (typeof gb === 'string') {
-              joinKeys.push(gb);
-            } else {
-              joinKeys.push(gb.alias || gb.valueExpression);
+              return { type: 'string', valueExpression: gb, alias: gb };
             }
+            if (!gb.alias) {
+              return { ...gb, alias: gb.valueExpression };
+            }
+            return gb;
+          });
+        }
+
+        for (const gb of config.groupBy) {
+          if (typeof gb === 'string') {
+            joinKeys.push(gb);
+          } else {
+            joinKeys.push(gb.alias || gb.valueExpression);
           }
-        } else if (typeof config.groupBy === 'string') {
-          joinKeys.push(...splitAndTrimWithBracket(config.groupBy));
         }
       }
 
@@ -879,6 +893,8 @@ export abstract class BaseClickhouseClient {
       let ratioSql: ChSql;
       const selectCols = [
         chSql`(q0.${{ Identifier: q0Alias }} / q1.${{ Identifier: q1Alias }}) AS ${{ Identifier: ratioAlias }}`,
+        chSql`q0.${{ Identifier: q0Alias }} AS ${{ Identifier: q0Alias }}`,
+        chSql`q1.${{ Identifier: q1Alias }} AS ${{ Identifier: q1Alias }}`,
         ...uniqueJoinKeys.map(k => chSql`${{ Identifier: k }}`),
       ];
       const selectClause = concatChSql(', ', selectCols);
