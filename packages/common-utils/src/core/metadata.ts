@@ -601,13 +601,19 @@ export class Metadata {
       ? chSql`WHERE ${concatChSql(' AND ', ...whereConditions)}`
       : '';
 
+    // NOTE: getSubcolumn(col, 'keys') is used instead of the `col.keys` dot
+    // form because, on a multi-shard Distributed read of a Map subcolumn, some
+    // ClickHouse builds name that plan column inconsistently across the
+    // distributed hop (one side `col.keys`, the other `getSubcolumn(col,'keys')`),
+    // failing with THERE_IS_NO_COLUMN / NOT_FOUND_COLUMN_IN_BLOCK. The explicit
+    // function form serializes to a single consistent name and avoids it.
     let sql: ChSql;
     if (strategy === 'groupUniqArrayArray') {
       sql = chSql`
         WITH sampledKeys as (
-          SELECT ${{
+          SELECT getSubcolumn(${{
             Identifier: column,
-          }}.keys AS keys
+          }}, 'keys') AS keys
           FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
           LIMIT ${{
             Int32: this.getClickHouseSettings().max_rows_to_read
@@ -620,9 +626,9 @@ export class Metadata {
     } else {
       sql = chSql`
         WITH sampledKeys as (
-          SELECT ${{
+          SELECT getSubcolumn(${{
             Identifier: column,
-          }}.keys AS keysArr
+          }}, 'keys') AS keysArr
           FROM ${tableExpr({ database: databaseName, table: tableName })} ${where}
           LIMIT ${{
             Int32: this.getClickHouseSettings().max_rows_to_read

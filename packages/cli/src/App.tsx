@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
 
@@ -10,12 +10,19 @@ import {
   type SavedSearchResponse,
 } from '@/api/client';
 import AlertsPage from '@/components/AlertsPage';
+import DashboardPage from '@/components/DashboardPage';
 import ErrorDisplay from '@/components/ErrorDisplay';
 import LoginForm from '@/components/LoginForm';
 import SourcePicker from '@/components/SourcePicker';
 import EventViewer from '@/components/EventViewer';
 
-type Screen = 'loading' | 'login' | 'pick-source' | 'events' | 'alerts';
+type Screen =
+  | 'loading'
+  | 'login'
+  | 'pick-source'
+  | 'events'
+  | 'alerts'
+  | 'dashboards';
 
 interface AppProps {
   appUrl: string;
@@ -33,12 +40,23 @@ export default function App({ appUrl, query, sourceName, follow }: AppProps) {
   const [currentAppUrl, setCurrentAppUrl] = useState(appUrl);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [eventSources, setLogSources] = useState<SourceResponse[]>([]);
+  // All sources (incl. metric/session) — dashboard tiles may reference any kind
+  const [allSources, setAllSources] = useState<SourceResponse[]>([]);
   const [savedSearches, setSavedSearches] = useState<SavedSearchResponse[]>([]);
   const [selectedSource, setSelectedSource] = useState<SourceResponse | null>(
     null,
   );
   const [activeQuery, setActiveQuery] = useState(query ?? '');
   const [error, setError] = useState<string | null>(null);
+
+  // Stable ClickHouse client + metadata instances — recreating them on
+  // every render would re-trigger data-fetch effects downstream (each
+  // effect aborts its in-flight query when its deps change).
+  const clickhouseClient = useMemo(
+    () => client.createClickHouseClient(),
+    [client],
+  );
+  const metadata = useMemo(() => client.createMetadata(), [client]);
 
   // Check existing session on mount
   useEffect(() => {
@@ -59,6 +77,8 @@ export default function App({ appUrl, query, sourceName, follow }: AppProps) {
         apiClient.getSources(),
         apiClient.getSavedSearches().catch(() => [] as SavedSearchResponse[]),
       ]);
+
+      setAllSources(sources);
 
       const queryableSources = sources.filter(
         s => s.kind === SourceKind.Log || s.kind === SourceKind.Trace,
@@ -146,17 +166,26 @@ export default function App({ appUrl, query, sourceName, follow }: AppProps) {
     [eventSources],
   );
 
-  // Track the screen before alerts so we can return to it
-  const [preAlertsScreen, setPreAlertsScreen] = useState<Screen>('events');
+  // Track the screen before alerts/dashboards so we can return to it
+  const [preOverlayScreen, setPreOverlayScreen] = useState<Screen>('events');
 
   const handleOpenAlerts = useCallback(() => {
-    setPreAlertsScreen(screen);
+    setPreOverlayScreen(screen);
     setScreen('alerts');
   }, [screen]);
 
   const handleCloseAlerts = useCallback(() => {
-    setScreen(preAlertsScreen);
-  }, [preAlertsScreen]);
+    setScreen(preOverlayScreen);
+  }, [preOverlayScreen]);
+
+  const handleOpenDashboards = useCallback(() => {
+    setPreOverlayScreen(screen);
+    setScreen('dashboards');
+  }, [screen]);
+
+  const handleCloseDashboards = useCallback(() => {
+    setScreen(preOverlayScreen);
+  }, [preOverlayScreen]);
 
   if (error) {
     return (
@@ -202,6 +231,7 @@ export default function App({ appUrl, query, sourceName, follow }: AppProps) {
             sources={eventSources}
             onSelect={handleSourceSelect}
             onOpenAlerts={handleOpenAlerts}
+            onOpenDashboards={handleOpenDashboards}
           />
         </Box>
       );
@@ -209,18 +239,30 @@ export default function App({ appUrl, query, sourceName, follow }: AppProps) {
     case 'alerts':
       return <AlertsPage client={client} onClose={handleCloseAlerts} />;
 
+    case 'dashboards':
+      return (
+        <DashboardPage
+          client={client}
+          clickhouseClient={clickhouseClient}
+          metadata={metadata}
+          sources={allSources}
+          onClose={handleCloseDashboards}
+        />
+      );
+
     case 'events':
       if (!selectedSource) return null;
       return (
         <EventViewer
-          clickhouseClient={client.createClickHouseClient()}
-          metadata={client.createMetadata()}
+          clickhouseClient={clickhouseClient}
+          metadata={metadata}
           appUrl={currentAppUrl}
           source={selectedSource}
           sources={eventSources}
           savedSearches={savedSearches}
           onSavedSearchSelect={handleSavedSearchSelect}
           onOpenAlerts={handleOpenAlerts}
+          onOpenDashboards={handleOpenDashboards}
           initialQuery={activeQuery}
           follow={follow}
         />

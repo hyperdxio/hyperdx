@@ -76,6 +76,10 @@ const savedSearchSchema = new Schema<
   },
 );
 
+// Team-scoped list/count queries (e.g. external API pagination) filter on team
+// and sort by _id. Compound so the sort is index-covered (no in-memory sort).
+savedSearchSchema.index({ team: 1, _id: 1 });
+
 savedSearchSchema.methods.toExternalJSON = function (): ExternalSavedSearch {
   return {
     id: String(this._id),

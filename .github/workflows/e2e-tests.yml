@@ -5,7 +5,10 @@ on:
 jobs:
   e2e-tests:
     name: E2E Tests - Shard ${{ matrix.shard }}
-    runs-on: ubuntu-24.04
+    # 8-core runner so the 4 Playwright workers (see playwright.config.ts) have
+    # CPU headroom alongside the app + ClickHouse + MongoDB — 4 workers
+    # over-subscribed the 4-vCPU ubuntu-24.04 runner and caused timeouts.
+    runs-on: 8-core-playwright
     timeout-minutes: 15
     permissions:
       contents: read

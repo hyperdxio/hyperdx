@@ -65,6 +65,10 @@ type SQLInlineEditorProps = {
   allowMultiline?: boolean;
   dateRange?: [Date, Date];
   sourceId?: string;
+  // With multiple tableConnections, offer only fields present in ALL of them
+  // (intersection) rather than the union — for an expression that must be valid
+  // against every connection, e.g. a chart-level Group By over multiple series.
+  intersectFields?: boolean;
 };
 
 const MAX_EDITOR_HEIGHT = '150px';
@@ -91,6 +95,7 @@ export default function SQLInlineEditor({
   allowMultiline = true,
   dateRange,
   sourceId,
+  intersectFields,
 }: SQLInlineEditorProps & TableConnectionChoice) {
   const { colorScheme } = useMantineColorScheme();
   const _tableConnections = tableConnection
@@ -100,6 +105,7 @@ export default function SQLInlineEditor({
   const { data: fields } = useMultipleAllFields(_tableConnections ?? [], {
     dateRange,
     timestampValueExpression: source?.timestampValueExpression,
+    intersect: intersectFields,
   });
   const filteredFields = useMemo(() => {
     return filterField ? fields?.filter(filterField) : fields;

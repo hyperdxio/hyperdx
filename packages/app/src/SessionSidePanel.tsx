@@ -1,32 +1,73 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useQueryState } from 'nuqs';
+import { ErrorBoundary } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { z } from 'zod';
 import {
   DateRange,
   SearchCondition,
   SearchConditionLanguage,
+  SourceKind,
   TSessionSource,
   TTraceSource,
+  WithClauseSchema,
 } from '@hyperdx/common-utils/dist/types';
-import { ActionIcon, Box, Button, Drawer, Group } from '@mantine/core';
+import {
+  ActionIcon,
+  Box,
+  Button,
+  Drawer,
+  Flex,
+  Group,
+  Text,
+  Tooltip,
+} from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconLink, IconX } from '@tabler/icons-react';
 
 import {
+  DBRowSidePanelInner,
+  RowSidePanelContext,
+  SidePanelErrorFallback,
+} from '@/components/DBRowSidePanel';
+import {
   DrawerFullWidthToggle,
   INITIAL_DRAWER_WIDTH_PERCENT,
 } from '@/components/DrawerUtils';
+import SidePanelBreadcrumbs, {
+  BreadcrumbItem,
+} from '@/components/SidePanelBreadcrumbs';
 import useResizable from '@/hooks/useResizable';
+import { WithClause } from '@/hooks/useRowWhere';
 import {
   CLIPBOARD_ERROR_MESSAGE,
   copyTextToClipboard,
 } from '@/utils/clipboard';
+import { parseAsJsonEncoded } from '@/utils/queryParsers';
+import { ZIndexContext } from '@/zIndex';
 
+import useSidePanelStack from './hooks/useSidePanelStack';
 import { Session } from './sessions';
 import SessionSubpanel from './SessionSubpanel';
 import { formatDistanceToNowStrictShort } from './utils';
-import { ZIndexContext } from './zIndex';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
+
+type SelectedEvent = {
+  rowId: string;
+  aliasWith: WithClause[];
+  sessionId: string;
+};
+
+const sessionEventSchema = z.object({
+  rowId: z.string(),
+  aliasWith: z.array(WithClauseSchema),
+  sessionId: z.string(),
+});
+
+const sessionEventParser = parseAsJsonEncoded<SelectedEvent>(
+  sessionEventSchema.parse,
+);
 
 export default function SessionSidePanel({
   traceSource,
@@ -50,8 +91,24 @@ export default function SessionSidePanel({
   onClose: () => void;
   zIndex?: number;
 }) {
-  // Keep track of sub-drawers so we can disable closing this root drawer
-  const [subDrawerOpen, setSubDrawerOpen] = useState(false);
+  // A single in-place event view (session → event), persisted to the URL so it
+  // survives reload and shared links. Deeper navigation (View Trace,
+  // surrounding context) is handled by `DBRowSidePanelInner`, which persists
+  // its own state to the shared `sidePanel*` params below.
+  const [persistedEvent, setSelectedEvent] = useQueryState(
+    'sessionPanelEvent',
+    sessionEventParser,
+  );
+
+  // Read-time ownership gate: a persisted event belongs to the session it was
+  // opened in. If the user clicks a different session card (which updates the
+  // session params without going through this drawer's handlers), the old event
+  // is simply not selected — it can never render inside the wrong session,
+  // regardless of remount timing. No evict effect required.
+  const selectedEvent =
+    persistedEvent != null && persistedEvent.sessionId === sessionId
+      ? persistedEvent
+      : null;
 
   const { size, setSize, startResize } = useResizable(
     INITIAL_DRAWER_WIDTH_PERCENT,
@@ -61,14 +118,48 @@ export default function SessionSidePanel({
     setSize(isFullWidth ? INITIAL_DRAWER_WIDTH_PERCENT : 100);
   }, [isFullWidth, setSize]);
 
-  useHotkeys(
-    ['esc'],
-    () => {
-      onClose();
+  const sessionLabel = session?.userEmail || `Anonymous Session ${sessionId}`;
+
+  const sidePanelStack = useSidePanelStack({
+    initialRowId: selectedEvent?.rowId,
+  });
+
+  const handleBackToSession = useCallback(() => {
+    setSelectedEvent(null);
+    sidePanelStack.clearTrail();
+  }, [setSelectedEvent, sidePanelStack]);
+
+  const handleEventNavigate = useCallback(
+    (rowId: string, aliasWith: WithClause[]) => {
+      sidePanelStack.clearTrail();
+      setSelectedEvent({ rowId, aliasWith, sessionId });
     },
-    {
-      enabled: subDrawerOpen === false,
-    },
+    [setSelectedEvent, sidePanelStack, sessionId],
+  );
+
+  // X / Esc-at-root closes the whole panel and clears the session-panel params.
+  const handleClose = useCallback(() => {
+    setSelectedEvent(null);
+    sidePanelStack.clearTrail();
+    onClose();
+  }, [setSelectedEvent, sidePanelStack, onClose]);
+
+  useHotkeys(['esc'], handleClose, { enabled: !selectedEvent });
+
+  const shareSession = useCallback(async () => {
+    const ok = await copyTextToClipboard(window.location.href);
+    notifications.show(
+      ok
+        ? { color: 'green', message: 'Copied link to clipboard' }
+        : { color: 'red', message: CLIPBOARD_ERROR_MESSAGE },
+    );
+  }, []);
+
+  const breadcrumbs = useMemo(
+    (): BreadcrumbItem[] => [
+      { label: sessionLabel, sourceKind: SourceKind.Session },
+    ],
+    [sessionLabel],
   );
 
   const timeAgo = useMemo(() => {
@@ -81,93 +172,130 @@ export default function SessionSidePanel({
   return (
     <Drawer
       opened={sessionId != null}
-      onClose={() => {
-        if (!subDrawerOpen) {
-          onClose();
-        }
-      }}
+      onClose={handleClose}
       position="right"
       size={`${size}vw`}
       withCloseButton={false}
+      closeOnEscape={false}
+      lockScroll={false}
+      withOverlay={false}
+      trapFocus={false}
       zIndex={zIndex}
       styles={{
+        content: {
+          border: 'none',
+          boxShadow: 'var(--shadow-drawer)',
+        },
         body: {
           padding: 0,
-          height: '100vh',
+          height: '100%',
         },
       }}
-      className="border-start"
     >
-      <ZIndexContext.Provider value={zIndex}>
+      <ZIndexContext value={zIndex}>
         <div
-          className="d-flex flex-column h-100"
+          className={styles.panel}
           data-testid="session-side-panel"
           style={{ position: 'relative' }}
         >
           <Box className={styles.panelDragBar} onMouseDown={startResize} />
-          <div>
-            <div className="p-3 d-flex align-items-center justify-content-between border-bottom border-dark">
-              <div style={{ width: '50%', maxWidth: 500 }}>
-                {session?.userEmail || `Anonymous Session ${sessionId}`}
-                <div className="text-muted fs-8 mt-1">
-                  <span>Last active {timeAgo} ago</span>
-                  <span className="mx-2">·</span>
-                  {Number.parseInt(session?.errorCount ?? '0') > 0 ? (
-                    <>
-                      <span className="text-danger fs-8">
-                        {session?.errorCount} Errors
-                      </span>
-                      <span className="mx-2">·</span>
-                    </>
-                  ) : null}
-                  <span>{session?.sessionCount} Events</span>
-                </div>
-              </div>
-              <Group gap="xs" align="center" wrap="nowrap">
-                <DrawerFullWidthToggle
+          {selectedEvent ? (
+            <RowSidePanelContext
+              value={{ isChildModalOpen: false, source: traceSource }}
+            >
+              <ErrorBoundary
+                fallbackRender={fallbackProps => (
+                  <SidePanelErrorFallback
+                    {...fallbackProps}
+                    onClose={handleClose}
+                  />
+                )}
+              >
+                <DBRowSidePanelInner
+                  source={traceSource}
+                  rowId={selectedEvent.rowId}
+                  aliasWith={selectedEvent.aliasWith}
+                  sidePanelStack={sidePanelStack}
+                  onClose={handleClose}
+                  onNavigateToParent={handleBackToSession}
                   isFullWidth={isFullWidth}
-                  onToggle={toggleFullWidth}
+                  onToggleFullWidth={toggleFullWidth}
+                  parentBreadcrumbs={[
+                    {
+                      label: sessionLabel,
+                      sourceKind: SourceKind.Session,
+                      onClick: handleBackToSession,
+                    },
+                  ]}
                 />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  leftSection={<IconLink size={14} />}
-                  style={{ fontSize: '12px' }}
-                  onClick={async () => {
-                    const ok = await copyTextToClipboard(window.location.href);
-                    notifications.show(
-                      ok
-                        ? {
-                            color: 'green',
-                            message: 'Copied link to clipboard',
-                          }
-                        : { color: 'red', message: CLIPBOARD_ERROR_MESSAGE },
-                    );
-                  }}
-                >
-                  Share Session
-                </Button>
-                <ActionIcon variant="secondary" size="md" onClick={onClose}>
-                  <IconX size={14} />
-                </ActionIcon>
-              </Group>
-            </div>
-          </div>
-          {sessionId != null ? (
-            <SessionSubpanel
-              traceSource={traceSource}
-              sessionSource={sessionSource}
-              session={session}
-              start={dateRange[0]}
-              end={dateRange[1]}
-              rumSessionId={sessionId}
-              setDrawerOpen={setSubDrawerOpen}
-              whereLanguage={whereLanguage}
-              onLanguageChange={onLanguageChange}
-            />
-          ) : null}
+              </ErrorBoundary>
+            </RowSidePanelContext>
+          ) : (
+            <>
+              <Box px="sm" pt="sm" pb="xs">
+                <Flex align="center" justify="space-between" gap="sm" mb={8}>
+                  <SidePanelBreadcrumbs
+                    items={breadcrumbs}
+                    onBack={handleClose}
+                  />
+                  <Group gap="xs" align="center" wrap="nowrap">
+                    <Button
+                      variant="secondary"
+                      size="compact-sm"
+                      leftSection={<IconLink size={14} />}
+                      style={{ fontSize: '12px' }}
+                      onClick={shareSession}
+                    >
+                      Share Session
+                    </Button>
+                    <DrawerFullWidthToggle
+                      isFullWidth={isFullWidth}
+                      onToggle={toggleFullWidth}
+                    />
+                    <Tooltip label="Close" position="bottom">
+                      <ActionIcon
+                        variant="subtle"
+                        color="gray"
+                        size="sm"
+                        onClick={handleClose}
+                        aria-label="Close"
+                      >
+                        <IconX size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
+                </Flex>
+                <Text size="xs" c="dimmed">
+                  Last active {timeAgo} ago
+                  {Number.parseInt(session?.errorCount ?? '0') > 0 && (
+                    <>
+                      {' · '}
+                      <Text component="span" size="xs" c="red">
+                        {session?.errorCount} Errors
+                      </Text>
+                    </>
+                  )}
+                  {' · '}
+                  {session?.sessionCount} Events
+                </Text>
+              </Box>
+              <div className="d-flex flex-column overflow-hidden flex-grow-1">
+                <SessionSubpanel
+                  traceSource={traceSource}
+                  sessionSource={sessionSource}
+                  session={session}
+                  start={dateRange[0]}
+                  end={dateRange[1]}
+                  rumSessionId={sessionId}
+                  onEventNavigate={handleEventNavigate}
+                  whereLanguage={whereLanguage}
+                  onLanguageChange={onLanguageChange}
+                />
+              </div>
+            </>
+          )}
         </div>
-      </ZIndexContext.Provider>
+      </ZIndexContext>
     </Drawer>
   );
 }

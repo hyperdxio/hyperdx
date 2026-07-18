@@ -521,9 +521,3 @@ export function useNewTimeQuery({
     ),
   };
 }
-
-export function getLiveTailTimeRange(): [Date, Date] {
-  // eslint-disable-next-line no-restricted-syntax
-  const end = startOfSecond(new Date());
-  return [sub(end, { minutes: 15 }), end];
-}

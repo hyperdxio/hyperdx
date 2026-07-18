@@ -30,7 +30,16 @@ export type TileConfig = {
   groupBy?: string;
   markdown?: string;
 };
-type SeriesType = 'time' | 'number' | 'table' | 'search' | 'markdown' | 'pie';
+type SeriesType =
+  | 'time'
+  | 'number'
+  | 'table'
+  | 'search'
+  | 'markdown'
+  | 'pie'
+  | 'event_patterns'
+  | 'bar';
+
 /**
  * Series data structure for chart verification
  * Supports all chart types: time, number, table, search, markdown
@@ -589,10 +598,21 @@ export class DashboardPage {
   }
 
   /**
+   * Open a tile's actions (kebab) menu, revealing the Duplicate / View
+   * fullscreen / Edit / Delete items (which now live inside the menu).
+   */
+  async openTileActionsMenu(tileIndex: number) {
+    await this.page
+      .locator('[data-testid^="tile-actions-button-"]')
+      .nth(tileIndex)
+      .click();
+  }
+
+  /**
    * Edit a tile
    */
   async editTile(tileIndex: number) {
-    await this.hoverOverTile(tileIndex);
+    await this.openTileActionsMenu(tileIndex);
     await this.getTileButton('edit').click();
   }
 
@@ -600,7 +620,7 @@ export class DashboardPage {
    * Duplicate a tile
    */
   async duplicateTile(tileIndex: number) {
-    await this.hoverOverTile(tileIndex);
+    await this.openTileActionsMenu(tileIndex);
     await this.getTileButton('duplicate').click();
 
     const confirmButton = this.page.locator(
@@ -613,7 +633,7 @@ export class DashboardPage {
    * Delete a tile
    */
   async deleteTile(tileIndex: number) {
-    await this.hoverOverTile(tileIndex);
+    await this.openTileActionsMenu(tileIndex);
     await this.getTileButton('delete').click();
 
     const confirmButton = this.page.locator(
@@ -810,6 +830,74 @@ export class DashboardPage {
   }
 
   /**
+   * Locator for the freeform search/text field inside a dashboard filter's
+   * select (the underlying Mantine `PillsInput.Field`). Scoped to the
+   * filter's select test id so it stays unambiguous across multiple filters.
+   */
+  getFilterSearchInput(filterName: string): Locator {
+    return this.getFilterSelectByName(filterName).getByRole('textbox');
+  }
+
+  /**
+   * Locator for the pill rendered for `value` inside a dashboard filter's
+   * select. Pills (Mantine `Pill`) render the selected value as their text
+   * content; scoping to the filter select keeps this from matching an
+   * equally-named dropdown option or another filter's pill.
+   */
+  getFilterPill(filterName: string, value: string): Locator {
+    return this.getFilterSelectByName(filterName).getByText(value, {
+      exact: true,
+    });
+  }
+
+  /**
+   * Locator for the "Nothing found..." Combobox.Empty state rendered when a
+   * dashboard filter's search text matches no dropdown option. This renders
+   * in a portaled Combobox.Dropdown outside the filter select's DOM subtree,
+   * so it's located at the page level. `.first()` guards against multiple
+   * (mostly-hidden) dropdown portals coexisting in the DOM.
+   */
+  getFilterEmptyDropdownState(): Locator {
+    return this.page.getByText('Nothing found...').first();
+  }
+
+  /**
+   * Click into a dashboard filter's select and type `value` into its search
+   * field without submitting. Used to drive the freeform-filter-value flow,
+   * where the caller asserts the "Nothing found..." empty dropdown state
+   * before pressing Enter (see `submitFilterSearchValue`) to add the typed
+   * value as a pill.
+   */
+  async typeFilterSearchValue(filterName: string, value: string) {
+    const select = this.getFilterSelectByName(filterName);
+    await select.click();
+    const input = this.getFilterSearchInput(filterName);
+    await input.click();
+    await input.fill(value);
+  }
+
+  /**
+   * Press Enter in a dashboard filter's search field. When no dropdown
+   * option is keyboard-highlighted, `VirtualMultiSelect` treats this as
+   * "add the typed value as a pill" rather than submitting a highlighted
+   * option (see `handleKeyDown` in VirtualMultiSelect.tsx).
+   */
+  async submitFilterSearchValue(filterName: string) {
+    await this.getFilterSearchInput(filterName).press('Enter');
+  }
+
+  /**
+   * Focus a dashboard filter's (empty) search field and press Backspace,
+   * removing the most recently added pill. Mirrors `handleKeyDown`'s
+   * "Backspace with empty search removes the last value" behavior.
+   */
+  async removeLastFilterPillViaBackspace(filterName: string) {
+    const input = this.getFilterSearchInput(filterName);
+    await input.click();
+    await input.press('Backspace');
+  }
+
+  /**
    * Create a Number tile that counts events from `sourceName`. The tile editor's
    * default aggregation is "Count of Events", so no agg configuration is needed.
    * Leaves exactly one tile on the dashboard.
@@ -909,7 +997,7 @@ export class DashboardPage {
 
   getChartTypeTab(type: SeriesType) {
     if (type === 'time') {
-      return this.page.getByRole('tab', { name: /line/i });
+      return this.page.getByRole('tab', { name: /time series/i });
     }
     return this.page.getByRole('tab', { name: new RegExp(type, 'i') });
   }
@@ -1267,7 +1355,7 @@ export class DashboardPage {
    * Waits for the fullscreen modal's TimePicker to appear before returning.
    */
   async openFullscreenForTile(index: number) {
-    await this.hoverOverTile(index);
+    await this.openTileActionsMenu(index);
     const fullscreenBtn = this.page
       .locator('[data-testid^="tile-fullscreen-button-"]')
       .first();

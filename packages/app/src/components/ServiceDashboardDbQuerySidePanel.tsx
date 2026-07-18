@@ -10,6 +10,7 @@ import {
 import { Drawer, Grid, Text } from '@mantine/core';
 import { IconServer } from '@tabler/icons-react';
 
+import { IsolatedChartSyncProvider } from '@/chartSync';
 import { INTEGER_NUMBER_FORMAT, MS_NUMBER_FORMAT } from '@/ChartUtils';
 import { ChartBox } from '@/components/ChartBox';
 import { DBTimeChart } from '@/components/DBTimeChart';
@@ -79,112 +80,114 @@ export default function ServiceDashboardDbQuerySidePanel({
       }}
     >
       <ZIndexContext.Provider value={drawerZIndex}>
-        <div className={styles.panel}>
-          <DrawerHeader
-            header={
-              <>
-                Details for {dbQuery}
-                {service && (
-                  <Text component="span" c="gray" fz="xs">
-                    <IconServer size={14} className="ms-3 me-1" />
-                    {service}
-                  </Text>
-                )}
-              </>
-            }
-            onClose={onClose}
-          />
-          <DrawerBody>
-            <Grid grow={false} w="100%" maw="100%">
-              <Grid.Col span={6}>
-                <ChartBox style={{ height: 350 }}>
-                  {source && expressions && (
-                    <DBTimeChart
-                      title="Total Query Time"
-                      sourceId={sourceId}
-                      hiddenSeries={['total_duration_ns']}
-                      config={{
-                        source: source.id,
-                        ...pick(source, [
-                          'timestampValueExpression',
-                          'connection',
-                          'from',
-                        ]),
-                        ...pickSampleWeightExpressionProps(source),
-                        where: '',
-                        whereLanguage: 'sql',
-                        select: [
-                          // Separate the aggregations from the conversion to ms so that AggregatingMergeTree MVs can be used
-                          {
-                            aggFn: 'sum',
-                            valueExpression: expressions.duration,
-                            alias: 'total_duration_ns',
-                            aggCondition: '',
+        <IsolatedChartSyncProvider>
+          <div className={styles.panel}>
+            <DrawerHeader
+              header={
+                <>
+                  Details for {dbQuery}
+                  {service && (
+                    <Text component="span" c="gray" fz="xs">
+                      <IconServer size={14} className="ms-3 me-1" />
+                      {service}
+                    </Text>
+                  )}
+                </>
+              }
+              onClose={onClose}
+            />
+            <DrawerBody>
+              <Grid grow={false} w="100%" maw="100%">
+                <Grid.Col span={6}>
+                  <ChartBox style={{ height: 350 }}>
+                    {source && expressions && (
+                      <DBTimeChart
+                        title="Total Query Time"
+                        sourceId={sourceId}
+                        hiddenSeries={['total_duration_ns']}
+                        config={{
+                          source: source.id,
+                          ...pick(source, [
+                            'timestampValueExpression',
+                            'connection',
+                            'from',
+                          ]),
+                          ...pickSampleWeightExpressionProps(source),
+                          where: '',
+                          whereLanguage: 'sql',
+                          select: [
+                            // Separate the aggregations from the conversion to ms so that AggregatingMergeTree MVs can be used
+                            {
+                              aggFn: 'sum',
+                              valueExpression: expressions.duration,
+                              alias: 'total_duration_ns',
+                              aggCondition: '',
+                            },
+                            {
+                              valueExpression: `total_duration_ns / ${expressions.durationDivisorForMillis}`,
+                              alias: 'Total Query Time',
+                            },
+                          ],
+                          displayType: DisplayType.Line,
+                          numberFormat: MS_NUMBER_FORMAT,
+                          filters: dbQueryFilters,
+                          dateRange: searchedTimeRange,
+                        }}
+                      />
+                    )}
+                  </ChartBox>
+                </Grid.Col>
+                <Grid.Col span={6}>
+                  <ChartBox style={{ height: 350 }}>
+                    {source && expressions && (
+                      <DBTimeChart
+                        title="Query Throughput"
+                        sourceId={sourceId}
+                        config={{
+                          source: source.id,
+                          ...pick(source, [
+                            'timestampValueExpression',
+                            'connection',
+                            'from',
+                          ]),
+                          ...pickSampleWeightExpressionProps(source),
+                          where: '',
+                          whereLanguage: 'sql',
+                          select: [
+                            {
+                              aggFn: 'count' as const,
+                              valueExpression: 'value',
+                              alias: 'Requests',
+                              aggCondition: '',
+                              aggConditionLanguage: 'sql',
+                            },
+                          ],
+                          numberFormat: {
+                            ...INTEGER_NUMBER_FORMAT,
+                            unit: 'requests',
                           },
-                          {
-                            valueExpression: `total_duration_ns / ${expressions.durationDivisorForMillis}`,
-                            alias: 'Total Query Time',
-                          },
-                        ],
-                        displayType: DisplayType.Line,
-                        numberFormat: MS_NUMBER_FORMAT,
-                        filters: dbQueryFilters,
-                        dateRange: searchedTimeRange,
-                      }}
+                          displayType: DisplayType.Line,
+                          filters: dbQueryFilters,
+                          dateRange: searchedTimeRange,
+                        }}
+                      />
+                    )}
+                  </ChartBox>
+                </Grid.Col>
+                <Grid.Col span={12}>
+                  {source && (
+                    <SlowestEventsTile
+                      title="Slowest 5% of Queries"
+                      source={source}
+                      dateRange={searchedTimeRange}
+                      extraFilters={dbQueryFilters}
                     />
                   )}
-                </ChartBox>
-              </Grid.Col>
-              <Grid.Col span={6}>
-                <ChartBox style={{ height: 350 }}>
-                  {source && expressions && (
-                    <DBTimeChart
-                      title="Query Throughput"
-                      sourceId={sourceId}
-                      config={{
-                        source: source.id,
-                        ...pick(source, [
-                          'timestampValueExpression',
-                          'connection',
-                          'from',
-                        ]),
-                        ...pickSampleWeightExpressionProps(source),
-                        where: '',
-                        whereLanguage: 'sql',
-                        select: [
-                          {
-                            aggFn: 'count' as const,
-                            valueExpression: 'value',
-                            alias: 'Requests',
-                            aggCondition: '',
-                            aggConditionLanguage: 'sql',
-                          },
-                        ],
-                        numberFormat: {
-                          ...INTEGER_NUMBER_FORMAT,
-                          unit: 'requests',
-                        },
-                        displayType: DisplayType.Line,
-                        filters: dbQueryFilters,
-                        dateRange: searchedTimeRange,
-                      }}
-                    />
-                  )}
-                </ChartBox>
-              </Grid.Col>
-              <Grid.Col span={12}>
-                {source && (
-                  <SlowestEventsTile
-                    title="Slowest 5% of Queries"
-                    source={source}
-                    dateRange={searchedTimeRange}
-                    extraFilters={dbQueryFilters}
-                  />
-                )}
-              </Grid.Col>
-            </Grid>
-          </DrawerBody>
-        </div>
+                </Grid.Col>
+              </Grid>
+            </DrawerBody>
+          </div>
+        </IsolatedChartSyncProvider>
       </ZIndexContext.Provider>
     </Drawer>
   );

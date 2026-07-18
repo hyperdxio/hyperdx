@@ -1,7 +1,7 @@
 {
   "name": "@hyperdx/common-utils",
   "description": "Common utilities for HyperDX application",
-  "version": "0.21.0",
+  "version": "0.23.0",
   "license": "MIT",
   "private": true,
   "files": [
@@ -34,21 +34,21 @@
     "dotenv": "^17.2.3",
     "jest": "^30.2.0",
     "nodemon": "^2.0.20",
-    "ts-jest": "^29.4.5",
+    "ts-jest": "^29.4.11",
     "tsup": "^8.4.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "scripts": {
     "dev": "nodemon --on-change-only --watch ./src --ext ts --exec \"yarn dev:build\"",
     "dev:build": "tsup && tsc --emitDeclarationOnly --declaration",
     "build": "tsup",
     "ci:build": "tsup",
-    "lint": "npx eslint --quiet . --ext .ts",
+    "lint": "npx eslint . --ext .ts --max-warnings 92",
     "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
-    "ci:unit": "jest --runInBand --ci --coverage",
-    "dev:unit": "jest --watchAll --runInBand",
-    "ci:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --runInBand --ci --coverage",
+    "ci:unit": "jest --ci --coverage",
+    "dev:unit": "jest --watchAll",
+    "ci:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --runInBand --ci --coverage --passWithNoTests",
     "dev:int": "DOTENV_CONFIG_PATH=.env.test jest --config jest.int.config.js --watchAll --runInBand"
   }
 }

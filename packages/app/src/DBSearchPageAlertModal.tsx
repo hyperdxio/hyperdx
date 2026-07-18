@@ -77,6 +77,9 @@ const SavedSearchAlertFormSchema = z
     scheduleStartAt: scheduleStartAtSchema,
     thresholdType: z.nativeEnum(AlertThresholdType),
     channel: zAlertChannel,
+    // nullish() (not optional()): persisted alerts store this as null, which
+    // optional() would reject.
+    numConsecutiveWindows: z.number().int().min(1).nullish(),
   })
   .passthrough()
   .superRefine(validateAlertScheduleOffsetMinutes)
@@ -122,6 +125,9 @@ const AlertForm = ({
           ...defaultValues,
           scheduleOffsetMinutes: defaultValues.scheduleOffsetMinutes ?? 0,
           scheduleStartAt: defaultValues.scheduleStartAt ?? null,
+          // Persisted null -> undefined for the NumberInput.
+          numConsecutiveWindows:
+            defaultValues.numConsecutiveWindows ?? undefined,
         }
       : {
           interval: '5m',
@@ -150,6 +156,10 @@ const AlertForm = ({
   const groupByValue = useWatch({ control, name: 'groupBy' });
   const threshold = useWatch({ control, name: 'threshold' });
   const thresholdMax = useWatch({ control, name: 'thresholdMax' });
+  const numConsecutiveWindows = useWatch({
+    control,
+    name: 'numConsecutiveWindows',
+  });
   const maxScheduleOffsetMinutes = Math.max(
     intervalToMinutes(interval ?? '5m') - 1,
     0,
@@ -163,12 +173,20 @@ const AlertForm = ({
     <form
       onSubmit={handleSubmit(data =>
         onSubmit(
-          normalizeNoOpAlertScheduleFields(data, defaultValues, {
-            preserveExplicitScheduleOffsetMinutes:
-              dirtyFields.scheduleOffsetMinutes === true,
-            preserveExplicitScheduleStartAt:
-              dirtyFields.scheduleStartAt === true,
-          }),
+          normalizeNoOpAlertScheduleFields(
+            // `id` is not a registered form field, so carry it from the alert
+            // this form was opened with. This binds the submission to the
+            // originally-edited alert rather than whatever the parent's alerts
+            // list happens to index at submit time.
+            { ...data, id: defaultValues?.id },
+            defaultValues,
+            {
+              preserveExplicitScheduleOffsetMinutes:
+                dirtyFields.scheduleOffsetMinutes === true,
+              preserveExplicitScheduleStartAt:
+                dirtyFields.scheduleStartAt === true,
+            },
+          ),
         ),
       )}
     >
@@ -264,6 +282,8 @@ const AlertForm = ({
             scheduleOffsetMinutes={scheduleOffsetMinutes}
             maxScheduleOffsetMinutes={maxScheduleOffsetMinutes}
             offsetWindowLabel={`from each ${intervalLabel} window`}
+            numConsecutiveWindowsName="numConsecutiveWindows"
+            numConsecutiveWindows={numConsecutiveWindows ?? undefined}
           />
           <Text size="xxs" opacity={0.5} mb={4} mt="xs">
             grouped by
@@ -460,7 +480,7 @@ export const DBSearchPageAlertModal = ({
           filters: searchedConfig.filters ?? [],
           tags: [],
         });
-        await createAlert.mutate({
+        await createAlert.mutateAsync({
           ...data,
           source: AlertSource.SAVED_SEARCH,
           savedSearchId: result.id,
@@ -470,14 +490,17 @@ export const DBSearchPageAlertModal = ({
       } else if (id) {
         // Create new alert
         if (activeIndex === 'stage') {
-          await createAlert.mutate({
+          await createAlert.mutateAsync({
             ...data,
             source: AlertSource.SAVED_SEARCH,
             savedSearchId: id,
           });
         } else if (data.id) {
-          // Update existing alert
-          await updateAlert.mutate({
+          // Update existing alert. `data.id` is the id of the alert the form
+          // was opened with (carried through by AlertForm), not a live
+          // re-index of the alerts list, so edits always target the intended
+          // alert even if the list changes while the modal is open.
+          await updateAlert.mutateAsync({
             ...data,
             id: data.id,
             source: AlertSource.SAVED_SEARCH,
@@ -506,7 +529,7 @@ export const DBSearchPageAlertModal = ({
 
   const onDelete = async (id: string) => {
     try {
-      await deleteAlert.mutate(id);
+      await deleteAlert.mutateAsync(id);
       notifications.show({
         color: 'green',
         message: 'Alert deleted!',
