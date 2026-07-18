@@ -7,6 +7,11 @@ import { themes } from '@/theme';
 // Applied before React hydrates to prevent a flash of the wrong theme.
 // Reads the runtime value from window.__ENV (set by __ENV.js) and swaps
 // the theme class on <html> so CSS variables are correct on first paint.
+// Vercel deployments of this repo only serve the public play demo
+// (play.hyperdx.io) and previews — never customer installs. Render a robots
+// meta tag there as a fallback for the X-Robots-Tag header in next.config.mjs.
+const IS_VERCEL = process.env.VERCEL === '1';
+
 const validThemes = Object.keys(themes);
 const themeClasses = validThemes.map(t => `theme-${t}`);
 const THEME_INIT_SCRIPT = `
@@ -33,6 +38,7 @@ export default function Document() {
   return (
     <Html lang="en" className={`${fontClasses} theme-hyperdx`}>
       <Head>
+        {IS_VERCEL && <meta name="robots" content="noindex, nofollow" />}
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script src="/__ENV.js" />
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />

@@ -86,6 +86,12 @@ const nextConfig = {
             key: 'X-Frame-Options',
             value: 'DENY',
           },
+          // Vercel deployments of this repo only serve the public play demo
+          // (play.hyperdx.io) and previews — never customer installs — so keep
+          // them out of search engine indexes. Self-hosted builds are unaffected.
+          ...(process.env.VERCEL === '1'
+            ? [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }]
+            : []),
         ],
       },
     ];
