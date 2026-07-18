@@ -874,10 +874,6 @@ export abstract class BaseClickhouseClient {
     ) {
       const q0Alias = config.select[0].alias ?? 'q0_val';
       const originalQ1Alias = config.select[1].alias ?? 'q1_val';
-      let q1AliasOut = originalQ1Alias;
-      if (q0Alias === originalQ1Alias) {
-        q1AliasOut = `${originalQ1Alias}__1`;
-      }
       const ratioAlias = `${q0Alias}/${originalQ1Alias}`;
 
       const joinKeys: string[] = [];
@@ -900,8 +896,6 @@ export abstract class BaseClickhouseClient {
       let ratioSql: ChSql;
       const selectCols = [
         chSql`(COALESCE(q0.${{ Identifier: q0Alias }}, 0) / q1.${{ Identifier: originalQ1Alias }}) AS ${{ Identifier: ratioAlias }}`,
-        chSql`COALESCE(q0.${{ Identifier: q0Alias }}, 0) AS ${{ Identifier: q0Alias }}`,
-        chSql`q1.${{ Identifier: originalQ1Alias }} AS ${{ Identifier: q1AliasOut }}`,
         ...uniqueJoinKeys.map(k => chSql`${{ Identifier: k }}`),
       ];
       const selectClause = concatChSql(', ', selectCols);
