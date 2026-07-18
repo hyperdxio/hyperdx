@@ -216,14 +216,14 @@ export const chSql = (
       return {
         ...acc,
         ...(value == null ||
-          typeof value === 'string' ||
-          'UNSAFE_RAW_SQL' in value
+        typeof value === 'string' ||
+        'UNSAFE_RAW_SQL' in value
           ? {}
           : Array.isArray(value)
             ? value.reduce((acc, v) => {
-              Object.assign(acc, v.params);
-              return acc;
-            }, {})
+                Object.assign(acc, v.params);
+                return acc;
+              }, {})
             : 'params' in value
               ? value.params
               : 'Identifier' in value
@@ -559,8 +559,8 @@ export const mergeResultSets = ({
     for (const row of resultSet.data) {
       const _rowWithoutValue = numericColumnName
         ? Object.fromEntries(
-          Object.entries(row).filter(([key]) => key !== numericColumnName),
-        )
+            Object.entries(row).filter(([key]) => key !== numericColumnName),
+          )
         : { ...row };
       // When the series are grouped, two rows at the same time bucket but
       // different group values must stay distinct — key by (bucket + group
@@ -1049,9 +1049,9 @@ function selectColumnsToAliasMap(
           aliasMap[column.as] =
             column.expr.array_index && column.expr.array_index[0]?.brackets
               ? // alias with brackets, ex: ResourceAttributes['service.name'] as service_name
-              `${column.expr.column.expr.value}['${column.expr.array_index[0].index.value}']`
+                `${column.expr.column.expr.value}['${column.expr.array_index[0].index.value}']`
               : // normal alias
-              column.expr.column.expr.value;
+                column.expr.column.expr.value;
         } else if (column.expr.loc != null) {
           aliasMap[column.as] = parsedSql.slice(
             column.expr.loc.start.offset,
