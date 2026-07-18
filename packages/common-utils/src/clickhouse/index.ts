@@ -899,8 +899,8 @@ export abstract class BaseClickhouseClient {
 
       let ratioSql: ChSql;
       const selectCols = [
-        chSql`(q0.${{ Identifier: q0Alias }} / q1.${{ Identifier: originalQ1Alias }}) AS ${{ Identifier: ratioAlias }}`,
-        chSql`q0.${{ Identifier: q0Alias }} AS ${{ Identifier: q0Alias }}`,
+        chSql`(COALESCE(q0.${{ Identifier: q0Alias }}, 0) / q1.${{ Identifier: originalQ1Alias }}) AS ${{ Identifier: ratioAlias }}`,
+        chSql`COALESCE(q0.${{ Identifier: q0Alias }}, 0) AS ${{ Identifier: q0Alias }}`,
         chSql`q1.${{ Identifier: originalQ1Alias }} AS ${{ Identifier: q1AliasOut }}`,
         ...uniqueJoinKeys.map(k => chSql`${{ Identifier: k }}`),
       ];
@@ -911,7 +911,7 @@ export abstract class BaseClickhouseClient {
           k => chSql`${{ Identifier: k }}`,
         );
         const usingClause = concatChSql(', ', joinKeysSql);
-        ratioSql = chSql`WITH q0 AS (${queries[0]}), q1 AS (${queries[1]}) SELECT ${selectClause} FROM q0 ANY LEFT JOIN q1 USING (${usingClause})`;
+        ratioSql = chSql`WITH q0 AS (${queries[0]}), q1 AS (${queries[1]}) SELECT ${selectClause} FROM q0 FULL OUTER JOIN q1 USING (${usingClause})`;
       } else {
         ratioSql = chSql`WITH q0 AS (${queries[0]}), q1 AS (${queries[1]}) SELECT ${selectClause} FROM q0 CROSS JOIN q1`;
       }
