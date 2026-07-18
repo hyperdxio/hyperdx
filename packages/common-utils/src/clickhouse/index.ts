@@ -833,9 +833,30 @@ export abstract class BaseClickhouseClient {
     };
     querySettings: QuerySettings | undefined;
   }): Promise<ResponseJSON<Record<string, string | number>>> {
-    config = isBuilderChartConfig(config)
-      ? setChartSelectsAlias(config)
-      : config;
+    if (isBuilderChartConfig(config)) {
+      config = setChartSelectsAlias(config);
+      if (config.seriesReturnType === 'ratio' && config.ratioMode !== 'share_of_total') {
+        if (config.groupBy) {
+          if (typeof config.groupBy === 'string') {
+            config.groupBy = splitAndTrimWithBracket(config.groupBy).map(gb => ({
+              type: 'string',
+              valueExpression: gb,
+              alias: gb, // Assign the raw expression as the alias so the CTE outputs exactly this column name
+            }));
+          } else if (Array.isArray(config.groupBy)) {
+            config.groupBy = config.groupBy.map(gb => {
+              if (typeof gb === 'string') {
+                return { type: 'string', valueExpression: gb, alias: gb };
+              }
+              if (!gb.alias) {
+                return { ...gb, alias: gb.valueExpression };
+              }
+              return gb;
+            });
+          }
+        }
+      }
+    }
     const queries: ChSql[] = await Promise.all(
       splitChartConfigs(config).map(c =>
         renderChartConfig(c, metadata, querySettings),
@@ -863,26 +884,7 @@ export abstract class BaseClickhouseClient {
       if (isTimeSeries) {
         joinKeys.push('__hdx_time_bucket');
       }
-
       if (config.groupBy) {
-        if (typeof config.groupBy === 'string') {
-          config.groupBy = splitAndTrimWithBracket(config.groupBy).map(gb => ({
-            type: 'string',
-            valueExpression: gb,
-            alias: gb, // Assign the raw expression as the alias so the CTE outputs exactly this column name
-          }));
-        } else if (Array.isArray(config.groupBy)) {
-          config.groupBy = config.groupBy.map(gb => {
-            if (typeof gb === 'string') {
-              return { type: 'string', valueExpression: gb, alias: gb };
-            }
-            if (!gb.alias) {
-              return { ...gb, alias: gb.valueExpression };
-            }
-            return gb;
-          });
-        }
-
         for (const gb of config.groupBy) {
           if (typeof gb === 'string') {
             joinKeys.push(gb);
