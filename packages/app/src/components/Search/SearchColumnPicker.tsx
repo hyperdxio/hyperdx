@@ -6,6 +6,7 @@ import {
   Group,
   Popover,
   ScrollArea,
+  SegmentedControl,
   Text,
   TextInput,
 } from '@mantine/core';
@@ -21,15 +22,18 @@ export function SearchColumnPicker({
   selectedColumns,
   onApply,
   disabled,
+  sqlSlot,
 }: {
   availableColumns: string[];
   selectedColumns: string[];
   onApply: (columns: string[]) => void;
   disabled?: boolean;
+  sqlSlot?: React.ReactNode;
 }) {
   const [opened, setOpened] = useState(false);
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState<string[]>(selectedColumns);
+  const [mode, setMode] = useState<'fields' | 'sql'>('fields');
 
   // Re-seed the draft from the committed columns each time the popover opens.
   const handleOpenChange = (next: boolean) => {
@@ -87,61 +91,82 @@ export function SearchColumnPicker({
         </Button>
       </Popover.Target>
       <Popover.Dropdown p="xs">
-        <TextInput
-          size="xs"
-          placeholder="Search columns…"
-          value={search}
-          onChange={e => setSearch(e.currentTarget.value)}
-          mb="xs"
-          autoFocus
-        />
-        <Group gap="xs" mb="xs" grow>
-          <Button
-            variant="secondary"
-            size="compact-xs"
-            onClick={() =>
-              setDraft(Array.from(new Set([...draft, ...filtered])))
-            }
-          >
-            + All
-          </Button>
-          <Button
-            variant="secondary"
-            size="compact-xs"
-            onClick={() => setDraft(draft.filter(c => !filtered.includes(c)))}
-          >
-            − None
-          </Button>
-        </Group>
-        <ScrollArea.Autosize mah={260} type="auto">
-          <Box>
-            {filtered.length === 0 ? (
-              <Text size="xs" c="dimmed" py="xs" ta="center">
-                No columns found
-              </Text>
-            ) : (
-              filtered.map(column => (
-                <Checkbox
-                  key={column}
-                  size="xs"
-                  my={4}
-                  label={column}
-                  checked={draft.includes(column)}
-                  onChange={() => toggle(column)}
-                />
-              ))
-            )}
-          </Box>
-        </ScrollArea.Autosize>
-        <Button
-          fullWidth
-          size="xs"
-          mt="xs"
-          onClick={apply}
-          disabled={draft.length === 0}
-        >
-          Apply
-        </Button>
+        {Boolean(sqlSlot) && (
+          <SegmentedControl
+            fullWidth
+            size="xs"
+            mb="xs"
+            value={mode}
+            onChange={value => setMode(value as 'fields' | 'sql')}
+            data={[
+              { label: 'Fields', value: 'fields' },
+              { label: 'SQL', value: 'sql' },
+            ]}
+          />
+        )}
+        {mode === 'sql' && sqlSlot ? (
+          <Box>{sqlSlot}</Box>
+        ) : (
+          <>
+            <TextInput
+              size="xs"
+              placeholder="Search columns…"
+              value={search}
+              onChange={e => setSearch(e.currentTarget.value)}
+              mb="xs"
+              autoFocus
+            />
+            <Group gap="xs" mb="xs" grow>
+              <Button
+                variant="secondary"
+                size="compact-xs"
+                onClick={() =>
+                  setDraft(Array.from(new Set([...draft, ...filtered])))
+                }
+              >
+                + All
+              </Button>
+              <Button
+                variant="secondary"
+                size="compact-xs"
+                onClick={() =>
+                  setDraft(draft.filter(c => !filtered.includes(c)))
+                }
+              >
+                − None
+              </Button>
+            </Group>
+            <ScrollArea.Autosize mah={260} type="auto">
+              <Box>
+                {filtered.length === 0 ? (
+                  <Text size="xs" c="dimmed" py="xs" ta="center">
+                    No columns found
+                  </Text>
+                ) : (
+                  filtered.map(column => (
+                    <Checkbox
+                      key={column}
+                      size="xs"
+                      my={4}
+                      label={column}
+                      checked={draft.includes(column)}
+                      onChange={() => toggle(column)}
+                    />
+                  ))
+                )}
+              </Box>
+            </ScrollArea.Autosize>
+            <Button
+              fullWidth
+              size="xs"
+              mt="xs"
+              onClick={apply}
+              disabled={draft.length === 0}
+            >
+              Apply
+            </Button>
+          </>
+        )}
       </Popover.Dropdown>
     </Popover>
   );

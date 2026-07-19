@@ -59,7 +59,6 @@ import {
   Group,
   Modal,
   Paper,
-  Popover,
   Select,
   Stack,
   Text,
@@ -74,7 +73,6 @@ import { notifications } from '@mantine/notifications';
 import {
   IconArrowBarToRight,
   IconBolt,
-  IconChevronDown,
   IconCode,
   IconPlayerPlay,
   IconPlus,
@@ -2490,6 +2488,19 @@ export function DBSearchPage() {
                             onChange={applyListSort}
                             onRevert={revertListSort}
                             canRevert={!!searchedConfig.orderBy}
+                            sqlSlot={
+                              <SQLInlineEditorControlled
+                                tableConnection={inputSourceTableConnection}
+                                control={control}
+                                name="orderBy"
+                                defaultValue={defaultSearchConfig.orderBy}
+                                onSubmit={onSubmit}
+                                label="ORDER BY"
+                                size="xs"
+                                dateRange={searchedTimeRange}
+                                sourceId={inputSource}
+                              />
+                            }
                           />
                         )}
                         {(view === 'table' ||
@@ -2526,67 +2537,24 @@ export function DBSearchPage() {
                             availableColumns={availableColumns}
                             selectedColumns={displayedColumns}
                             onApply={applyColumns}
-                          />
-                        )}
-                        {view === 'list' && (
-                          <Popover
-                            position="bottom-end"
-                            withinPortal
-                            shadow="md"
-                            width={420}
-                          >
-                            <Popover.Target>
-                              <Button
-                                variant="subtle"
-                                color="gray"
+                            sqlSlot={
+                              <SQLInlineEditorControlled
+                                tableConnection={inputSourceTableConnection}
+                                control={control}
+                                name="select"
+                                defaultValue={defaultSearchConfig.select}
+                                placeholder={
+                                  defaultSearchConfig.select || 'SELECT Columns'
+                                }
+                                onSubmit={onSubmit}
+                                label="SELECT"
                                 size="xs"
-                                leftSection={<IconCode size={14} />}
-                                rightSection={<IconChevronDown size={14} />}
-                                data-testid="search-advanced-sql"
-                              >
-                                Advanced
-                              </Button>
-                            </Popover.Target>
-                            <Popover.Dropdown p="sm">
-                              <Stack gap="sm">
-                                <Text
-                                  size="xxs"
-                                  c="dimmed"
-                                  fw={700}
-                                  tt="uppercase"
-                                >
-                                  Raw SQL
-                                </Text>
-                                <SQLInlineEditorControlled
-                                  tableConnection={inputSourceTableConnection}
-                                  control={control}
-                                  name="select"
-                                  defaultValue={defaultSearchConfig.select}
-                                  placeholder={
-                                    defaultSearchConfig.select ||
-                                    'SELECT Columns'
-                                  }
-                                  onSubmit={onSubmit}
-                                  label="SELECT"
-                                  size="xs"
-                                  allowMultiline
-                                  dateRange={searchedTimeRange}
-                                  sourceId={inputSource}
-                                />
-                                <SQLInlineEditorControlled
-                                  tableConnection={inputSourceTableConnection}
-                                  control={control}
-                                  name="orderBy"
-                                  defaultValue={defaultSearchConfig.orderBy}
-                                  onSubmit={onSubmit}
-                                  label="ORDER BY"
-                                  size="xs"
-                                  dateRange={searchedTimeRange}
-                                  sourceId={inputSource}
-                                />
-                              </Stack>
-                            </Popover.Dropdown>
-                          </Popover>
+                                allowMultiline
+                                dateRange={searchedTimeRange}
+                                sourceId={inputSource}
+                              />
+                            }
+                          />
                         )}
                         <SearchNumRows
                           config={{
