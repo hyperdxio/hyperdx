@@ -114,11 +114,8 @@ describe('convertFormStateToSavedChartConfig', () => {
       alternateRowBackground: true,
       series: [],
     };
-    const result = convertFormStateToSavedChartConfig(
-      form,
-      undefined,
-    ) as RawSqlSavedChartConfig;
-    expect(result.alternateRowBackground).toBe(true);
+    const result = convertFormStateToSavedChartConfig(form, undefined);
+    expect(result).toMatchObject({ alternateRowBackground: true });
   });
 
   it('persists alternateRowBackground for a promql+table config', () => {
@@ -160,14 +157,12 @@ describe('convertFormStateToSavedChartConfig', () => {
       connection: 'conn-1',
       series: [],
     };
-    const result = convertFormStateToSavedChartConfig(
-      form,
-      undefined,
-    ) as BuilderSavedChartConfig;
-    expect(result).toBeDefined();
-    expect(result.displayType).toBe(DisplayType.Markdown);
-    expect(result.markdown).toBe('## Note');
-    expect(result.select).toEqual([]);
+    const result = convertFormStateToSavedChartConfig(form, undefined);
+    expect(result).toMatchObject({
+      displayType: DisplayType.Markdown,
+      markdown: '## Note',
+      select: [],
+    });
   });
 
   it('uses sqlTemplate empty string as default when undefined', () => {
@@ -176,12 +171,8 @@ describe('convertFormStateToSavedChartConfig', () => {
       displayType: DisplayType.Table,
       series: [],
     };
-    const result = convertFormStateToSavedChartConfig(
-      form,
-      undefined,
-    ) as RawSqlSavedChartConfig;
-    expect(result.sqlTemplate).toBe('');
-    expect(result.connection).toBe('');
+    const result = convertFormStateToSavedChartConfig(form, undefined);
+    expect(result).toMatchObject({ sqlTemplate: '', connection: '' });
   });
 
   it('maps series to select for builder config', () => {

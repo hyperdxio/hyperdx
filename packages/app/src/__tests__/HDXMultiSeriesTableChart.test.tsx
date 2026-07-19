@@ -399,7 +399,7 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
           columns={baseColumns}
           alternateRowBackground
           sorting={[]}
-          onSortingChange={() => {}}
+          onSortingChange={() => undefined}
         />,
       );
 
@@ -421,7 +421,7 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
           data={stripeData}
           columns={baseColumns}
           sorting={[]}
-          onSortingChange={() => {}}
+          onSortingChange={() => undefined}
         />,
       );
 
