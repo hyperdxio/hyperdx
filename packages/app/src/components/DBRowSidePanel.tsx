@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { add } from 'date-fns';
@@ -400,6 +401,31 @@ export const DBRowSidePanelInner = ({
     }
   }, [mainContent, initialMainContent, hasActiveStacks]);
 
+  // A span-link hop is pushed onto the source stack before its destination
+  // span name is known (the link carries only a Trace/Span id), so its
+  // breadcrumb starts as a `Trace <id>` fallback. Once the hop's row loads we
+  // learn the landed span name and use it as the crumb label. Only span-link
+  // frames are tracked here, so the "View Trace" hop (which already labels
+  // itself from its originating row) is left untouched. In-memory only: after a
+  // hard reload a hop shows its `Trace <id>` label until revisited, which is
+  // acceptable for a display-only convenience.
+  const spanLinkFrameRowIdsRef = useRef<Set<string>>(new Set());
+  const [resolvedFrameLabels, setResolvedFrameLabels] = useState<
+    Record<string, string>
+  >({});
+
+  useEffect(() => {
+    if (
+      activeRowId != null &&
+      mainContent != null &&
+      spanLinkFrameRowIdsRef.current.has(activeRowId) &&
+      resolvedFrameLabels[activeRowId] !== mainContent
+    ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setResolvedFrameLabels(prev => ({ ...prev, [activeRowId]: mainContent }));
+    }
+  }, [activeRowId, mainContent, resolvedFrameLabels]);
+
   const highlightedAttributeValues = useMemo(() => {
     const attributeExpressions: NonNullable<
       (TLogSource | TTraceSource)['highlightedRowAttributeExpressions']
@@ -530,6 +556,9 @@ export const DBRowSidePanelInner = ({
         ]),
         SqlString.format('?=?', [SqlString.raw(spanIdExpression), link.SpanId]),
       ].join(' AND ');
+      // Mark this frame so its breadcrumb switches from the `Trace <id>`
+      // fallback below to the landed span name once the row loads.
+      spanLinkFrameRowIdsRef.current.add(rowId);
       handleSourceStackPush({
         sourceId: traceSourceData.id,
         rowId,
@@ -618,7 +647,9 @@ export const DBRowSidePanelInner = ({
       const isLeafSource = i === crumbSourceStack.length - 1;
       const isCurrent = isLeafSource && crumbNavStack.length === 0;
       items.push({
-        label: entry.label,
+        // Span-link hops resolve to the landed span name once loaded; every
+        // other frame keeps the label it was pushed with.
+        label: resolvedFrameLabels[entry.rowId] ?? entry.label,
         sourceKind: entry.sourceKind,
         onClick: isCurrent
           ? undefined
@@ -652,6 +683,7 @@ export const DBRowSidePanelInner = ({
     sourceIsTrace,
     mainContent,
     initialMainContent,
+    resolvedFrameLabels,
     source.kind,
     handleBreadcrumbNavigation,
     parentBreadcrumbs,

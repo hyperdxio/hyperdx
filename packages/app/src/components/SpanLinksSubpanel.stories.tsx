@@ -26,12 +26,10 @@ const mockSpanLinks = [
   },
 ];
 
-export const Default = () => (
-  <SpanLinksSubpanel spanLinks={mockSpanLinks} onOpenTrace={() => {}} />
-);
+export const Default = () => <SpanLinksSubpanel spanLinks={mockSpanLinks} />;
 
 export const SingleLink = () => (
-  <SpanLinksSubpanel spanLinks={[mockSpanLinks[0]]} onOpenTrace={() => {}} />
+  <SpanLinksSubpanel spanLinks={[mockSpanLinks[0]]} />
 );
 
 export const Empty = () => <SpanLinksSubpanel spanLinks={[]} />;

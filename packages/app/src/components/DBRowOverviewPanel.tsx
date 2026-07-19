@@ -20,7 +20,7 @@ import EventTag from './EventTag';
 import { ExceptionSubpanel } from './ExceptionSubpanel';
 import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 import { SpanEventsSubpanel } from './SpanEventsSubpanel';
-import { SpanLinksSubpanel } from './SpanLinksSubpanel';
+import { getValidSpanLinks, SpanLinksSubpanel } from './SpanLinksSubpanel';
 
 const EMPTY_OBJ = {};
 export function RowOverviewPanel({
@@ -184,11 +184,12 @@ export function RowOverviewPanel({
     );
   }, [firstRow?.__hdx_span_events]);
 
+  // Gate on the presence of at least one *valid* link, matching what
+  // SpanLinksSubpanel actually renders. A non-empty array of malformed
+  // entries resolves to zero valid links, so the section stays hidden
+  // instead of showing an empty-state message inside an open accordion.
   const hasSpanLinks = useMemo(() => {
-    return (
-      Array.isArray(firstRow?.__hdx_span_links) &&
-      firstRow?.__hdx_span_links.length > 0
-    );
+    return getValidSpanLinks(firstRow?.__hdx_span_links).length > 0;
   }, [firstRow?.__hdx_span_links]);
 
   const mainContentColumn = getEventBody(source);

@@ -18,6 +18,28 @@ export interface SpanLinkData extends Record<string, unknown> {
   Attributes: Record<string, string>;
 }
 
+// A raw `Links` element is a usable span link only when it has the string
+// TraceId + SpanId the "Open trace" action needs and an Attributes object.
+// Exported so the parent can gate the "Span Links" section on the same notion
+// of "valid" this component renders by, rather than on the raw array length
+// (a non-empty array of malformed entries would otherwise show an empty
+// section). Span links carry no timestamp, so they keep the order ClickHouse
+// returns them in (the order they appear in the span's Links column).
+export function getValidSpanLinks(
+  spanLinks?: Record<string, unknown>[] | null,
+): SpanLinkData[] {
+  if (!Array.isArray(spanLinks) || spanLinks.length === 0) {
+    return [];
+  }
+  return spanLinks.filter((link): link is SpanLinkData => {
+    return (
+      typeof link.TraceId === 'string' &&
+      typeof link.SpanId === 'string' &&
+      link.Attributes !== undefined
+    );
+  });
+}
+
 // A single span link rendered as a compact row. The linked trace id is the
 // widest, least-scannable part of a link, so it is not printed inline: the
 // row leads with a labelled "Open trace" action (themed link color, visible
@@ -98,22 +120,7 @@ export const SpanLinksSubpanel = ({
   spanLinks?: Record<string, unknown>[] | null;
   onOpenTrace?: (link: SpanLinkData) => void;
 }) => {
-  const links = useMemo(() => {
-    if (!spanLinks || spanLinks.length === 0) {
-      return [];
-    }
-
-    // Ensure links have the right shape with type checking. Span links carry
-    // no timestamp, so they keep the order ClickHouse returns them in (the
-    // order they appear in the span's Links column).
-    return spanLinks.filter((link): link is SpanLinkData => {
-      return (
-        typeof link.TraceId === 'string' &&
-        typeof link.SpanId === 'string' &&
-        link.Attributes !== undefined
-      );
-    });
-  }, [spanLinks]);
+  const links = useMemo(() => getValidSpanLinks(spanLinks), [spanLinks]);
 
   const { handleToggleMoreRows, hiddenRowsCount, visibleRows, isExpanded } =
     useShowMoreRows({
@@ -121,7 +128,7 @@ export const SpanLinksSubpanel = ({
       maxRows: 5,
     });
 
-  if (!links || links.length === 0) {
+  if (links.length === 0) {
     return (
       <div className="p-3 text-muted fs-7" data-testid="span-links-empty">
         No span links available for this trace
@@ -145,7 +152,7 @@ export const SpanLinksSubpanel = ({
           <Stack gap="sm" px="xs" py="xs">
             {visibleRows.map((link, index) => (
               <div
-                key={`${link.TraceId}-${link.SpanId}-${index}`}
+                key={`${link.TraceId}-${link.SpanId}`}
                 data-testid="span-link-row"
                 className={
                   index > 0 ? 'pt-2 border-top border-dark' : undefined

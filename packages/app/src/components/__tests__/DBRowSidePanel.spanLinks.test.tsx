@@ -56,6 +56,7 @@ const LINK = {
 const mockUseRowData = jest.fn();
 jest.mock('../DBRowDataPanel', () => ({
   __esModule: true,
+  // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
   useRowData: (args: unknown) => mockUseRowData(args),
   ROW_DATA_ALIASES: {
     DURATION_MS: '__hdx_duration',
@@ -81,12 +82,14 @@ const TRACE_SOURCE = {
 jest.mock('@/source', () => ({
   __esModule: true,
   getEventBody: () => undefined,
+  // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
   useSource: ({ id }: { id: string | null }) =>
     id === 'trace-src' ? { data: TRACE_SOURCE } : { data: undefined },
 }));
 
 jest.mock('../DBSessionPanel', () => ({
   __esModule: true,
+  // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
   useSessionId: () => ({ rumSessionId: undefined, rumServiceName: undefined }),
   DBSessionPanel: () => null,
 }));
@@ -224,6 +227,7 @@ describe('DBRowSidePanelInner, span link "Open trace" push wiring (HDX-3191)', (
   it('does not push when the current row has no resolvable trace source', () => {
     // Root source with no traceSourceId: traceSourceData never resolves, so
     // the guard in handleOpenLinkedTrace should no-op instead of throwing.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const sourceWithoutTrace = {
       ...ROOT_SOURCE,
       traceSourceId: undefined,

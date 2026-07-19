@@ -1,6 +1,9 @@
 import { fireEvent, screen } from '@testing-library/react';
 
-import { SpanLinksSubpanel } from '@/components/SpanLinksSubpanel';
+import {
+  getValidSpanLinks,
+  SpanLinksSubpanel,
+} from '@/components/SpanLinksSubpanel';
 
 const LINK_A = {
   TraceId: 'aaaa1111bbbb2222cccc3333dddd4444',
@@ -86,12 +89,12 @@ describe('SpanLinksSubpanel', () => {
   });
 
   it('filters out malformed links missing a string TraceId or SpanId', () => {
-    const malformed = {
+    const malformed: Record<string, unknown> = {
       TraceId: 12345,
       SpanId: 'deadbeefdeadbeef',
       TraceState: '',
       Attributes: {},
-    } as unknown as Record<string, unknown>;
+    };
 
     renderWithMantine(<SpanLinksSubpanel spanLinks={[LINK_A, malformed]} />);
 
@@ -100,15 +103,57 @@ describe('SpanLinksSubpanel', () => {
   });
 
   it('renders the empty state when every link is malformed', () => {
-    const malformed = {
+    const malformed: Record<string, unknown> = {
       SpanId: 'deadbeefdeadbeef',
       Attributes: {},
-    } as unknown as Record<string, unknown>;
+    };
 
     renderWithMantine(<SpanLinksSubpanel spanLinks={[malformed]} />);
 
     expect(
       screen.getByText('No span links available for this trace'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('getValidSpanLinks', () => {
+  it('returns [] for null, undefined, and empty input', () => {
+    expect(getValidSpanLinks(null)).toEqual([]);
+    expect(getValidSpanLinks(undefined)).toEqual([]);
+    expect(getValidSpanLinks([])).toEqual([]);
+  });
+
+  it('keeps well-formed links and preserves their order', () => {
+    expect(getValidSpanLinks([LINK_A, LINK_B, LINK_C])).toEqual([
+      LINK_A,
+      LINK_B,
+      LINK_C,
+    ]);
+  });
+
+  it('drops links missing a string TraceId/SpanId or an Attributes object', () => {
+    const noTraceId: Record<string, unknown> = {
+      SpanId: 'deadbeefdeadbeef',
+      TraceState: '',
+      Attributes: {},
+    };
+    const numericSpanId: Record<string, unknown> = {
+      TraceId: 'aaaa1111bbbb2222cccc3333dddd4444',
+      SpanId: 42,
+      TraceState: '',
+      Attributes: {},
+    };
+
+    expect(getValidSpanLinks([LINK_A, noTraceId, numericSpanId])).toEqual([
+      LINK_A,
+    ]);
+  });
+
+  it('returns [] when every link is malformed (parent gate stays hidden)', () => {
+    const malformed: Record<string, unknown> = {
+      SpanId: 'deadbeefdeadbeef',
+    };
+
+    expect(getValidSpanLinks([malformed])).toEqual([]);
   });
 });
