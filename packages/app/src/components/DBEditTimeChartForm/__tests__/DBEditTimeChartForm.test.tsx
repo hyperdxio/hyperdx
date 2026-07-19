@@ -573,7 +573,10 @@ describe('DBEditTimeChartForm - Column color', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (useSource as jest.Mock).mockReturnValue({ data: logSource });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    jest.mocked(useSource).mockReturnValue({
+      data: logSource,
+    } as ReturnType<typeof useSource>);
   });
 
   const colorSeries = {

@@ -420,7 +420,7 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
             },
           ]}
           sorting={[]}
-          onSortingChange={() => {}}
+          onSortingChange={jest.fn()}
         />,
       );
 
@@ -452,7 +452,7 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
             },
           ]}
           sorting={[]}
-          onSortingChange={() => {}}
+          onSortingChange={jest.fn()}
         />,
       );
 
@@ -484,7 +484,7 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
             },
           ]}
           sorting={[]}
-          onSortingChange={() => {}}
+          onSortingChange={jest.fn()}
         />,
       );
 
@@ -505,11 +505,12 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
                 displayName: 'Count',
                 // Simulates a legacy / hand-edited token absent from the
                 // current palette; the renderer must not crash.
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                 color: 'chart-1' as unknown as ChartPaletteToken,
               },
             ]}
             sorting={[]}
-            onSortingChange={() => {}}
+            onSortingChange={jest.fn()}
           />,
         ),
       ).not.toThrow();

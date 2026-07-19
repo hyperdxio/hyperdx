@@ -10,10 +10,16 @@ import SeriesColorDrawer from '@/components/SeriesColorDrawer';
 // ColorRulesEditor uses for stable dnd keys. Back it with Node's
 // implementation when absent so the rules path is deterministic.
 if (typeof globalThis.crypto === 'undefined') {
-  (globalThis as any).crypto = {};
+  Object.defineProperty(globalThis, 'crypto', {
+    value: {},
+    configurable: true,
+  });
 }
-if (typeof (globalThis.crypto as any).randomUUID !== 'function') {
-  (globalThis.crypto as any).randomUUID = randomUUID;
+if (typeof globalThis.crypto.randomUUID !== 'function') {
+  Object.defineProperty(globalThis.crypto, 'randomUUID', {
+    value: randomUUID,
+    configurable: true,
+  });
 }
 
 describe('SeriesColorDrawer', () => {
@@ -22,7 +28,7 @@ describe('SeriesColorDrawer', () => {
     const onChange = jest.fn();
 
     renderWithMantine(
-      <SeriesColorDrawer opened onChange={onChange} onClose={() => {}} />,
+      <SeriesColorDrawer opened onChange={onChange} onClose={jest.fn()} />,
     );
 
     await user.click(screen.getByTestId('color-swatch-input-trigger'));
@@ -47,7 +53,7 @@ describe('SeriesColorDrawer', () => {
         opened
         colorRules={colorRules}
         onChange={onChange}
-        onClose={() => {}}
+        onClose={jest.fn()}
       />,
     );
 
@@ -70,7 +76,7 @@ describe('SeriesColorDrawer', () => {
         opened
         color="chart-error"
         onChange={onChange}
-        onClose={() => {}}
+        onClose={jest.fn()}
       />,
     );
 
