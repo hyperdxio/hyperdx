@@ -386,7 +386,6 @@ function SessionsPage() {
             onClose={() => {
               setSelectedSession(undefined);
             }}
-            closeOnClickOutside
             keepOpenSelector={SESSION_LIST_KEEP_OPEN_SELECTOR}
             whereLanguage={whereLanguage || undefined}
             where={where || undefined}

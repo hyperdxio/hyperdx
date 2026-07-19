@@ -46,11 +46,15 @@ interface Props {
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
   onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
-  // When enabled, clicking outside the row side panel (and outside
-  // `keepOpenSelector`) closes it.
+  // Clicking outside the row side panel (and outside `keepOpenSelector`) closes
+  // it. Enabled by default; pass `false` to opt out.
   closeOnClickOutside?: boolean;
   keepOpenSelector?: string;
 }
+
+// Clicking the results table (selecting/switching rows, scrolling) keeps the
+// row side panel open by default; callers can widen this via `keepOpenSelector`.
+const DEFAULT_KEEP_OPEN_SELECTOR = '[data-testid="search-results-table"]';
 
 export default function DBSqlRowTableWithSideBar({
   sourceId,
@@ -71,8 +75,8 @@ export default function DBSqlRowTableWithSideBar({
   tableId,
   errorVariant,
   onResolvedColumnsChange,
-  closeOnClickOutside = false,
-  keepOpenSelector,
+  closeOnClickOutside = true,
+  keepOpenSelector = DEFAULT_KEEP_OPEN_SELECTOR,
 }: Props) {
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);

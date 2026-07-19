@@ -2303,7 +2303,6 @@ export function DBSearchPage() {
         focusDate={directTraceFocusDate}
         onClose={closeDirectTraceSidePanel}
         onSourceChange={onDirectTraceSourceChange}
-        closeOnClickOutside
         keepOpenSelector={SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR}
       />
       <Flex
@@ -2635,7 +2634,6 @@ export function DBSearchPage() {
                             config={dbSqlRowTableConfig}
                             sourceId={searchedConfig.source}
                             tableId={columnSizeTableId}
-                            closeOnClickOutside
                             keepOpenSelector={
                               SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR
                             }

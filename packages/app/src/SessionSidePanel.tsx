@@ -80,7 +80,7 @@ export default function SessionSidePanel({
   onLanguageChange,
   onClose,
   zIndex = 100,
-  closeOnClickOutside = false,
+  closeOnClickOutside = true,
   keepOpenSelector,
 }: {
   traceSource: TTraceSource;

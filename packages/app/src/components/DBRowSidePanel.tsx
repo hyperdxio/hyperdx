@@ -202,8 +202,8 @@ type DBRowSidePanelProps = {
   rowId: string | undefined;
   aliasWith?: WithClause[];
   onClose: () => void;
-  // When enabled, clicking outside the drawer (and outside `keepOpenSelector`)
-  // closes it. Off by default so other consumers keep their existing behavior.
+  // Clicking outside the drawer (and outside `keepOpenSelector`) closes it.
+  // Enabled by default; pass `false` to opt out.
   closeOnClickOutside?: boolean;
   keepOpenSelector?: string;
 };
@@ -1072,7 +1072,7 @@ export default function DBRowSidePanelErrorBoundary({
   rowId,
   aliasWith,
   source,
-  closeOnClickOutside = false,
+  closeOnClickOutside = true,
   keepOpenSelector,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();

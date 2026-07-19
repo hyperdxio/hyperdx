@@ -30,7 +30,7 @@ export default function DirectTraceSidePanel({
   focusDate,
   onClose,
   onSourceChange,
-  closeOnClickOutside = false,
+  closeOnClickOutside = true,
   keepOpenSelector,
 }: DirectTraceSidePanelProps) {
   useCloseOnClickOutside({
