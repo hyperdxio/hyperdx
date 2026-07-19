@@ -90,6 +90,17 @@ export function getEventBody(eventModel: TSource) {
   return multiExpr.length === 1 ? expression : multiExpr[0];
 }
 
+/**
+ * Check if a select string is a single expression (valid as a pattern body
+ * expression) rather than a multi-column list (stale
+ * `defaultTableSelectExpression`). Uses bracket-aware comma splitting so
+ * expressions like `COALESCE(SpanName, Body)` are correctly treated as a
+ * single expression.
+ */
+export function isSingleExpression(select: string): boolean {
+  return splitAndTrimWithBracket(select).length <= 1;
+}
+
 // This function is for supporting legacy sources, which did not require this field.
 // Will be defaulted to `TimestampTime` when queried, if undefined.
 function addDefaultsToSource(source: TSource): TSource {

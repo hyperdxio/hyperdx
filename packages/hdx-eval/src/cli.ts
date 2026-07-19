@@ -7,6 +7,7 @@ import { createEvalClient, defaultClickHouseUrl } from './clickhouse/client';
 import {
   dropScenarioTables,
   scenarioIsSeeded,
+  scenarioSlug,
   scenarioTables,
 } from './clickhouse/schema';
 import { buildBlindingEntries } from './grading/blind';
@@ -37,7 +38,11 @@ import { batchDirName } from './runs/path';
 import { writeRun } from './runs/store';
 import { listBatches, listRunsInBatch, readRun } from './runs/store';
 import { getScenario, SCENARIO_NAMES, SCENARIOS } from './scenarios';
-import { type SeedProgress, seedScenario } from './scenarios/seedScenario';
+import {
+  getTotalMetrics,
+  type SeedProgress,
+  seedScenario,
+} from './scenarios/seedScenario';
 
 if (!process.env.ANTHROPIC_API_KEY && process.env.AI_API_KEY) {
   process.env.ANTHROPIC_API_KEY = process.env.AI_API_KEY;
@@ -52,9 +57,16 @@ function formatCount(n: number): string {
 function logSeedProgress(prefix: string, startMs: number) {
   return (p: SeedProgress) => {
     const elapsed = ((Date.now() - startMs) / 1000).toFixed(0);
-    const total = p.tracesInserted + p.logsInserted;
+    const totalMetrics = getTotalMetrics(p.metricsInserted);
+    const total = p.tracesInserted + p.logsInserted + totalMetrics;
+
+    const totalRows = `${formatCount(total)} rows`;
+    const tracesRows = `${formatCount(p.tracesInserted)} traces`;
+    const logsRows = `${formatCount(p.logsInserted)} logs`;
+    const metricsRows = `${formatCount(totalMetrics)} metrics`;
+
     process.stdout.write(
-      `\r${prefix}${formatCount(total)} rows (${formatCount(p.tracesInserted)} traces, ${formatCount(p.logsInserted)} logs) · ${elapsed}s`,
+      `\r${prefix}${totalRows} (${tracesRows}, ${logsRows}, ${metricsRows}) · ${elapsed}s`,
     );
   };
 }
@@ -88,24 +100,9 @@ function buildClientFromConfig(
   });
 }
 
-function defaultApiUrl(): string {
-  if (process.env.HDX_EVAL_API_URL) return process.env.HDX_EVAL_API_URL;
-  if (process.env.HYPERDX_API_PORT) {
-    return `http://localhost:${process.env.HYPERDX_API_PORT}`;
-  }
-  if (process.env.HDX_DEV_API_PORT) {
-    return `http://localhost:${process.env.HDX_DEV_API_PORT}`;
-  }
-  return 'http://localhost:8000';
-}
-
-// Default eval account credentials — used by setup-hyperdx, run, and grade.
-const DEFAULT_EVAL_EMAIL = 'eval@local.test';
-const DEFAULT_EVAL_PASSWORD = 'EvalPass123!#';
-
-/** Build the inspection config from an eval config + CLI credentials. */
+/** Shared builder for post-run inspection config used by both `run` and `grade`. */
 function buildInspectionConfig(
-  config: import('./hyperdx/config').EvalConfig,
+  config: EvalConfig,
   creds: { email: string; password: string },
   anchorTimeIso?: string,
 ):
@@ -121,6 +118,21 @@ function buildInspectionConfig(
     cleanup: true,
   };
 }
+
+function defaultApiUrl(): string {
+  if (process.env.HDX_EVAL_API_URL) return process.env.HDX_EVAL_API_URL;
+  if (process.env.HYPERDX_API_PORT) {
+    return `http://localhost:${process.env.HYPERDX_API_PORT}`;
+  }
+  if (process.env.HDX_DEV_API_PORT) {
+    return `http://localhost:${process.env.HDX_DEV_API_PORT}`;
+  }
+  return 'http://localhost:8000';
+}
+
+// Default eval account credentials — used by setup-hyperdx, run, and grade.
+const DEFAULT_EVAL_EMAIL = 'eval@local.test';
+const DEFAULT_EVAL_PASSWORD = 'EvalPass123!#';
 
 const program = new Command();
 
@@ -210,6 +222,15 @@ program
         console.log(
           `Inserted ${result.logsInserted} log rows    → default.${result.tables.logs}`,
         );
+        const totalMetrics = getTotalMetrics(result.metricsInserted);
+        if (totalMetrics > 0) {
+          const m = result.metricsInserted;
+          console.log(
+            `Inserted ${totalMetrics} metric rows → default.eval_${scenarioSlug(scenario.name)}_otel_metrics_* ` +
+              `(gauge ${m.gauge}, sum ${m.sum}, histogram ${m.histogram}, ` +
+              `exp-histogram ${m.exponentialHistogram}, summary ${m.summary})`,
+          );
+        }
         console.log(`Done in ${seedSecs}s`);
       } finally {
         await client.close();
@@ -525,6 +546,19 @@ program
       // --anchor-time <iso>: override + save to config.
       // --live: ignore saved anchor, use wall-clock now (no FIXED CURRENT
       //         TIME in system prompt), and force reseed.
+      //
+      // The anchor is "sticky": once generated it persists in eval.config.json
+      // and is reused across runs. We intentionally do NOT refresh a stale
+      // anchor or force a reseed when wall-clock time advances. Previously we
+      // did, solely so clickstack_describe_source's fixed 24h WALL-CLOCK
+      // sampling window could still see the seeded data — but that coupled the
+      // anchor to real time and forced frequent reseeds (slow in CI with
+      // cached seed data). Instead, the system prompt now tells the agent that
+      // describe_source's sampled value fields may be empty/stale and to
+      // discover real values via anchored queries (see SAMPLING_CAVEAT_BLOCK
+      // in harness/systemPrompt.ts). That removes the only reason the anchor
+      // had to track wall-clock, so seeded data can age indefinitely without a
+      // reseed.
       let anchorTimeIso: string | undefined;
       let anchorMs: number;
       if (cmdOpts.live) {
@@ -582,8 +616,11 @@ program
           });
           const seedSecs = ((Date.now() - seedStart) / 1000).toFixed(1);
           process.stdout.write('\n');
+          const metricTotal = getTotalMetrics(r.metricsInserted);
+          const metricsPart =
+            metricTotal > 0 ? `, ${formatCount(metricTotal)} metrics` : '';
           console.log(
-            `Seeded ${scenario.name}: ${formatCount(r.tracesInserted)} traces, ${formatCount(r.logsInserted)} logs in ${seedSecs}s`,
+            `Seeded ${scenario.name}: ${formatCount(r.tracesInserted)} traces, ${formatCount(r.logsInserted)} logs${metricsPart} in ${seedSecs}s`,
           );
         } finally {
           await client.close();

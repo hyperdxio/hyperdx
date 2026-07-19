@@ -397,7 +397,7 @@ export function useFetchFacets({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setExtraFacets(null);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+
     setExtraFacetKeys(new Set());
   }, [
     sourceId,

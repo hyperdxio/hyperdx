@@ -1,6 +1,7 @@
 import { Box, Modal } from '@mantine/core';
 import { useHotkeys } from '@mantine/hooks';
 
+import { IsolatedChartSyncProvider } from '@/chartSync';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 export default function FullscreenPanelModal({
@@ -53,17 +54,22 @@ export default function FullscreenPanelModal({
       lockScroll
     >
       <ZIndexContext.Provider value={modalZIndex}>
-        <Box
-          h="100%"
-          w="100%"
-          p="md"
-          style={{
-            overflow: 'auto',
-            position: 'relative',
-          }}
-        >
-          {children}
-        </Box>
+        {/* Isolate chart cross-syncing to this modal: a chart shown fullscreen
+            should not drive shadow tooltips on the dashboard tiles behind it
+            (which now render over the modal). */}
+        <IsolatedChartSyncProvider>
+          <Box
+            h="100%"
+            w="100%"
+            p="md"
+            style={{
+              overflow: 'auto',
+              position: 'relative',
+            }}
+          >
+            {children}
+          </Box>
+        </IsolatedChartSyncProvider>
       </ZIndexContext.Provider>
     </Modal>
   );

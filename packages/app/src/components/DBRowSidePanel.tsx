@@ -250,6 +250,7 @@ export const DBRowSidePanelInner = ({
     data: activeStackSource,
     isLoading: isStackSourceLoading,
     isSuccess: isStackSourceSettled,
+    isError: isStackSourceErrored,
   } = useSource({
     id: activeSourceFrame?.sourceId ?? null,
   });
@@ -257,8 +258,8 @@ export const DBRowSidePanelInner = ({
 
   const isStackSourceMissing =
     activeSourceFrame != null &&
-    isStackSourceSettled &&
-    activeStackSource == null;
+    ((isStackSourceSettled && activeStackSource == null) ||
+      isStackSourceErrored);
   const source = activeStackSource ?? rootSource;
 
   const baseRowId = activeSourceFrame?.rowId ?? initialRowId;
@@ -676,6 +677,20 @@ export const DBRowSidePanelInner = ({
 
   const displayedTab = reconcileTab(persistedTab, availableTabs, defaultTab);
 
+  const controls = useMemo(
+    () => (
+      <Flex align="center" justify="space-between" gap="sm" mb={8}>
+        <SidePanelBreadcrumbs items={allBreadcrumbs} onBack={handlePanelBack} />
+        <SidePanelHeaderActions
+          onClose={onClose}
+          isFullWidth={isFullWidth}
+          onToggleFullWidth={onToggleFullWidth}
+        />
+      </Flex>
+    ),
+    [allBreadcrumbs, handlePanelBack, onClose, isFullWidth, onToggleFullWidth],
+  );
+
   if (isRowLoading || isResolvingSource) {
     return <div className={styles.loadingState}>Loading...</div>;
   }
@@ -688,17 +703,7 @@ export const DBRowSidePanelInner = ({
     return (
       <>
         <Box px="sm" pt="sm" pb="xs">
-          <Flex align="center" justify="space-between" gap="sm" mb={8}>
-            <SidePanelBreadcrumbs
-              items={allBreadcrumbs}
-              onBack={handlePanelBack}
-            />
-            <SidePanelHeaderActions
-              onClose={onClose}
-              isFullWidth={isFullWidth}
-              onToggleFullWidth={onToggleFullWidth}
-            />
-          </Flex>
+          {controls}
         </Box>
         <Box p="sm" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
           <Text size="sm" c="dimmed">
@@ -714,12 +719,24 @@ export const DBRowSidePanelInner = ({
   if (!isRowSuccess) {
     if (isRowError && rowError) {
       return (
-        <Box p="sm" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-          <DBRowSidePanelErrorState error={rowError} source={source} />
-        </Box>
+        <>
+          <Box px="sm" pt="sm" pb="xs">
+            {controls}
+          </Box>
+          <Box p="sm" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            <DBRowSidePanelErrorState error={rowError} source={source} />
+          </Box>
+        </>
       );
     }
-    return <div className={styles.loadingState}>Error loading row data</div>;
+    return (
+      <>
+        <Box px="sm" pt="sm" pb="xs">
+          {controls}
+        </Box>
+        <div className={styles.loadingState}>Error loading row data</div>
+      </>
+    );
   }
 
   const showLogTraceActions = !sourceIsTrace && traceId && traceSourceId;
@@ -727,17 +744,7 @@ export const DBRowSidePanelInner = ({
   return (
     <RowSidePanelContext value={rowSidePanelContextValue}>
       <Box px="sm" pt="sm" pb="xs">
-        <Flex align="center" justify="space-between" gap="sm" mb={8}>
-          <SidePanelBreadcrumbs
-            items={allBreadcrumbs}
-            onBack={handlePanelBack}
-          />
-          <SidePanelHeaderActions
-            onClose={onClose}
-            isFullWidth={isFullWidth}
-            onToggleFullWidth={onToggleFullWidth}
-          />
-        </Flex>
+        {controls}
         <Group gap="xs" wrap="wrap">
           {!sourceIsTrace && severityText && <LogLevel level={severityText} />}
           {timestampDate && !isNaN(timestampDate.getTime()) && (
@@ -835,6 +842,7 @@ export const DBRowSidePanelInner = ({
           )}
           {showLogTraceActions && (
             <Button
+              data-testid="side-panel-view-trace"
               variant="subtle"
               size="compact-xs"
               onClick={() => {

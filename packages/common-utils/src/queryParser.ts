@@ -9,7 +9,10 @@ import {
   extractInnerCHArrayJSType,
   JSDataType,
 } from '@/clickhouse';
-import { supportsDirectReadMap } from '@/core/clickhouseVersion';
+import {
+  isClickHouseVersionAtLeast,
+  supportsDirectReadMap,
+} from '@/core/clickhouseVersion';
 import {
   Metadata,
   parseKeyPath,
@@ -857,6 +860,14 @@ function renderArrayFieldExpression({
 export type KvItemsInfo = {
   kvItemsColumn: string;
   separator: string;
+  /**
+   * Whether the connected ClickHouse server supports `hasAny(items, array(...))`
+   * over the KV items column. `hasAny` on the direct_read map items column only
+   * ships in mainline 26.5+; earlier backport branches (26.2/26.3/26.4) support
+   * `has(...)` but not `hasAny(...)` and must fall back to a chain of `has()`
+   * calls combined with `OR`.
+   */
+  useHasAny: boolean;
 };
 
 /** Map from map column name to its KV items info */
@@ -1113,6 +1124,7 @@ export async function buildKvItemsLookup({
     ]);
 
     const directReadSupported = supportsDirectReadMap(serverVersion, isCloud);
+    const useHasAny = isClickHouseVersionAtLeast(serverVersion, [26, 5, 0, 0]);
 
     const kvItemsCandidates = columns.filter(
       c =>
@@ -1146,6 +1158,7 @@ export async function buildKvItemsLookup({
         lookup.set(parsed.mapColumn, {
           kvItemsColumn: candidate.name,
           separator: parsed.separator,
+          useHasAny,
         });
       }
     }
@@ -1536,10 +1549,9 @@ export class CustomSchemaSQLSerializerV2 extends SQLSerializer {
           ...(kvItemsInfo
             ? {
                 kvItemsExpression: {
-                  kvItemsColumn: kvItemsInfo.kvItemsColumn,
+                  ...kvItemsInfo,
                   mapColumn: prefixMatch.name,
                   mapKey: fieldPostfix,
-                  separator: kvItemsInfo.separator,
                 },
               }
             : {}),

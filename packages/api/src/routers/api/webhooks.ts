@@ -17,6 +17,13 @@ import {
   handleSendGenericWebhook,
   handleSendSlackWebhook,
 } from '@/tasks/checkAlerts/template';
+import { isDuplicateKeyError } from '@/utils/errors';
+import {
+  webhookHeaderNameSchema,
+  webhookHeaderValueSchema,
+  webhookQueryParamKeySchema,
+  webhookQueryParamValueSchema,
+} from '@/utils/zod';
 
 const router = express.Router();
 
@@ -132,23 +139,6 @@ router.get(
   },
 );
 
-const httpHeaderNameValidator = z
-  .string()
-  .min(1, 'Header name cannot be empty')
-  .regex(
-    /^[!#$%&'*+\-.0-9A-Z^_`a-z|~]+$/,
-    "Invalid header name. Only alphanumeric characters and !#$%&'*+-.^_`|~ are allowed",
-  )
-  .refine(name => !name.match(/^\d/), 'Header name cannot start with a number');
-
-// Validation for header values: no control characters allowed
-const httpHeaderValueValidator = z
-  .string()
-  // eslint-disable-next-line no-control-regex
-  .refine(val => !/[\r\n\t\x00-\x1F\x7F]/.test(val), {
-    message: 'Header values cannot contain control characters',
-  });
-
 router.post(
   '/',
   validateRequest({
@@ -156,10 +146,12 @@ router.post(
       body: z.string().optional(),
       description: z.string().optional(),
       headers: z
-        .record(httpHeaderNameValidator, httpHeaderValueValidator)
+        .record(webhookHeaderNameSchema, webhookHeaderValueSchema)
         .optional(),
       name: z.string(),
-      queryParams: z.record(z.string()).optional(),
+      queryParams: z
+        .record(webhookQueryParamKeySchema, webhookQueryParamValueSchema)
+        .optional(),
       service: z.nativeEnum(WebhookService),
       url: z.string().url(),
     }),
@@ -176,7 +168,10 @@ router.post(
       }
       const { name, service, url, description, queryParams, headers, body } =
         req.body;
-      if (await Webhook.findOne({ team: teamId, service, url })) {
+      // The unique index is on (team, service, name), so the pre-flight check
+      // must query the same fields — otherwise a name+service collision slips
+      // past this guard and surfaces as an uncaught duplicate-key 500 below.
+      if (await Webhook.findOne({ team: teamId, service, name })) {
         return res.status(400).json({
           message: 'Webhook already exists',
         });
@@ -196,6 +191,11 @@ router.post(
         data: sanitizeWebhook(serializeWebhook(webhook)),
       });
     } catch (err) {
+      // Backstop the pre-flight check against a concurrent create racing on the
+      // same (team, service, name): the unique index rejects it as a duplicate.
+      if (isDuplicateKeyError(err)) {
+        return res.status(400).json({ message: 'Webhook already exists' });
+      }
       next(err);
     }
   },
@@ -213,10 +213,12 @@ router.put(
       body: z.string().optional(),
       description: z.string().optional(),
       headers: z
-        .record(httpHeaderNameValidator, httpHeaderValueValidator)
+        .record(webhookHeaderNameSchema, webhookHeaderValueSchema)
         .optional(),
       name: z.string(),
-      queryParams: z.record(z.string()).optional(),
+      queryParams: z
+        .record(webhookQueryParamKeySchema, webhookQueryParamValueSchema)
+        .optional(),
       service: z.nativeEnum(WebhookService),
       url: z.string().url(),
     }),
@@ -277,15 +279,17 @@ router.put(
         ? emptyToUndefined(queryParams)
         : mergeRedactedMap(existingPlain.queryParams, queryParams);
 
+      // Match the unique index (team, service, name) so a rename onto an
+      // existing (service, name) is caught here rather than as a 500 below.
       const duplicateWebhook = await Webhook.findOne({
         team: teamId,
         service,
-        url: resolvedUrl,
+        name,
         _id: { $ne: id },
       });
       if (duplicateWebhook) {
         return res.status(400).json({
-          message: 'A webhook with this service and URL already exists',
+          message: 'A webhook with this service and name already exists',
         });
       }
 
@@ -334,6 +338,13 @@ router.put(
         data: sanitizeWebhook(serializeWebhook(updatedWebhook)),
       });
     } catch (err) {
+      // Backstop the pre-flight check against a concurrent rename racing onto
+      // the same (team, service, name): the unique index rejects it.
+      if (isDuplicateKeyError(err)) {
+        return res.status(400).json({
+          message: 'A webhook with this service and name already exists',
+        });
+      }
       next(err);
     }
   },
@@ -358,6 +369,7 @@ router.delete(
       // Block deletion when alerts still reference this webhook.
       // The user must reassign or delete those alerts first.
       const referencingAlertCount = await Alert.countDocuments({
+        'channel.type': 'webhook',
         'channel.webhookId': req.params.id,
         team: teamId,
       });
@@ -381,9 +393,11 @@ router.post(
     body: z.object({
       body: z.string().optional(),
       headers: z
-        .record(httpHeaderNameValidator, httpHeaderValueValidator)
+        .record(webhookHeaderNameSchema, webhookHeaderValueSchema)
         .optional(),
-      queryParams: z.record(z.string()).optional(),
+      queryParams: z
+        .record(webhookQueryParamKeySchema, webhookQueryParamValueSchema)
+        .optional(),
       service: z.nativeEnum(WebhookService),
       url: z.string().url(),
       webhookId: z

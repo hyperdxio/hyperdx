@@ -13,7 +13,8 @@ interface RetryOptions {
 
 /**
  * Executes a promise-returning function with exponential backoff and retries.
- * Automatically skips retries for 4xx client errors (excluding 429 Too Many Requests).
+ * Automatically skips retries for redirects and 4xx client errors (excluding
+ * 429 Too Many Requests).
  */
 export const withRetry = async <T>(
   fn: () => Promise<T>,
@@ -49,6 +50,12 @@ export const withRetry = async <T>(
         error?.original?.status ??
         error?.code;
       const isStatusNumber = typeof status === 'number';
+
+      // A redirect response is deterministic and retrying would re-send the
+      // request body to the same endpoint without changing the outcome.
+      if (isStatusNumber && status >= 300 && status < 400) {
+        throw error;
+      }
 
       if (options.retryOnlyOnStatus && options.retryOnlyOnStatus.length > 0) {
         // If an explicit whitelist of retryable statuses is provided, ONLY retry those.
