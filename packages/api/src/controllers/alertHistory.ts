@@ -2,6 +2,7 @@ import PQueue from '@esm2cjs/p-queue';
 import {
   ALERT_INTERVAL_TO_MINUTES,
   AlertInterval,
+  AlertTransition,
 } from '@hyperdx/common-utils/dist/types';
 import { ObjectId } from 'mongodb';
 
@@ -128,4 +129,86 @@ export async function getRecentAlertHistoriesBatch(
       (e): e is [string, Omit<IAlertHistory, 'alert'>[]] => e !== undefined,
     ),
   );
+}
+
+/**
+ * Returns alert firing/recovery transitions (ALERT-boundary crossings) within
+ * [startTime, endTime] for one alert, for drawing chart annotations. One window
+ * before startTime is fetched to know the state on entry: if the alert is
+ * already firing then, a firing marker is pinned to startTime so a later
+ * in-range recovery isn't orphaned. PENDING/INSUFFICIENT_DATA count as
+ * non-firing, so only ALERT crossings are reported.
+ */
+export async function getAlertTransitionsInRange({
+  alertId,
+  interval,
+  startTime,
+  endTime,
+}: {
+  alertId: ObjectId;
+  interval: AlertInterval;
+  startTime: Date;
+  endTime: Date;
+}): Promise<AlertTransition[]> {
+  const intervalMs = ALERT_INTERVAL_TO_MINUTES[interval] * 60 * 1000;
+  const lookbackStart = new Date(startTime.getTime() - intervalMs);
+
+  // Only the per-window state is needed to detect crossings.
+  const windows = await AlertHistory.aggregate<{ _id: Date; states: string[] }>(
+    [
+      {
+        $match: {
+          alert: new ObjectId(alertId),
+          createdAt: { $gte: lookbackStart, $lte: endTime },
+        },
+      },
+      { $group: { _id: '$createdAt', states: { $push: '$state' } } },
+      { $sort: { _id: 1 } },
+    ],
+  );
+
+  const transitions: AlertTransition[] = [];
+  // Assume "not firing" before the earliest known window, so an alert whose
+  // history begins already in ALERT still yields a firing marker.
+  let prevIsAlert = false;
+  let enteredRange = false;
+
+  // Pin a firing marker to the range start if the alert was already firing on
+  // entry (carried in from before startTime).
+  const pinCarryInIfFiring = () => {
+    if (prevIsAlert) {
+      transitions.push({
+        createdAt: startTime.toISOString(),
+        state: AlertState.ALERT,
+      });
+    }
+  };
+
+  for (const evalWindow of windows) {
+    const isAlert =
+      groupStateToOverallState(evalWindow.states) === AlertState.ALERT;
+    const inRange = evalWindow._id >= startTime;
+
+    if (inRange && !enteredRange) {
+      enteredRange = true;
+      pinCarryInIfFiring();
+    }
+
+    if (inRange && isAlert !== prevIsAlert) {
+      transitions.push({
+        createdAt: evalWindow._id.toISOString(),
+        state: isAlert ? AlertState.ALERT : AlertState.OK,
+      });
+    }
+
+    prevIsAlert = isAlert;
+  }
+
+  // No window landed inside the range (e.g. the alert interval is wider than
+  // the dashboard window) but the pre-range state was firing — pin it anyway.
+  if (!enteredRange) {
+    pinCarryInIfFiring();
+  }
+
+  return transitions;
 }

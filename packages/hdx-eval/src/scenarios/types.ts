@@ -1,4 +1,12 @@
-import type { LogRow, TraceRow } from '@/generators/types';
+import type {
+  ExponentialHistogramMetricRow,
+  GaugeMetricRow,
+  HistogramMetricRow,
+  LogRow,
+  SummaryMetricRow,
+  SumMetricRow,
+  TraceRow,
+} from '@/generators/types';
 import type { PromptVariant, ToolCallRecord } from '@/harness/types';
 import type { SeededRng } from '@/rng/seeded';
 
@@ -18,9 +26,22 @@ export type GenerateContext = {
   batchSize?: number;
 };
 
+export type MetricBatch = {
+  gauge?: GaugeMetricRow[];
+  sum?: SumMetricRow[];
+  histogram?: HistogramMetricRow[];
+  exponentialHistogram?: ExponentialHistogramMetricRow[];
+  summary?: SummaryMetricRow[];
+};
+
 export type ScenarioBatch = {
   traces: TraceRow[];
   logs: LogRow[];
+  /**
+   * Optional metric rows. Omitted (or empty) for scenarios that don't emit
+   * metrics — the metric tables/source still exist but stay empty.
+   */
+  metrics?: MetricBatch;
 };
 
 // ─── Scenario hooks ──────────────────────────────────────────────────────────
@@ -133,9 +154,27 @@ export type Scenario = {
 export function collectScenario(iter: Iterable<ScenarioBatch>): ScenarioBatch {
   const traces: TraceRow[] = [];
   const logs: LogRow[] = [];
+  const metrics: Required<MetricBatch> = {
+    gauge: [],
+    sum: [],
+    histogram: [],
+    exponentialHistogram: [],
+    summary: [],
+  };
+  let sawMetrics = false;
   for (const b of iter) {
     if (b.traces.length) traces.push(...b.traces);
     if (b.logs.length) logs.push(...b.logs);
+    if (b.metrics) {
+      sawMetrics = true;
+      if (b.metrics.gauge?.length) metrics.gauge.push(...b.metrics.gauge);
+      if (b.metrics.sum?.length) metrics.sum.push(...b.metrics.sum);
+      if (b.metrics.histogram?.length)
+        metrics.histogram.push(...b.metrics.histogram);
+      if (b.metrics.exponentialHistogram?.length)
+        metrics.exponentialHistogram.push(...b.metrics.exponentialHistogram);
+      if (b.metrics.summary?.length) metrics.summary.push(...b.metrics.summary);
+    }
   }
-  return { traces, logs };
+  return sawMetrics ? { traces, logs, metrics } : { traces, logs };
 }

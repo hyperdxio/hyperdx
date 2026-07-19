@@ -4,7 +4,6 @@
     "moduleResolution": "NodeNext",
     "lib": ["ES2022", "dom"],
     "allowSyntheticDefaultImports": true,
-    "downlevelIteration": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "importHelpers": true,

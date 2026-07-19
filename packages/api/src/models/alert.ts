@@ -241,4 +241,8 @@ const AlertSchema = new Schema<IAlert>(
   },
 );
 
+// Team-scoped list/count queries (e.g. external API pagination) filter on team
+// and sort by _id. Compound so the sort is index-covered (no in-memory sort).
+AlertSchema.index({ team: 1, _id: 1 });
+
 export default mongoose.model<IAlert>('Alert', AlertSchema);

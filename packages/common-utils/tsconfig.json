@@ -2,12 +2,13 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "declarationMap": true,
-    "baseUrl": "./src",
+    "types": ["jest", "node"],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./src/*"]
     },
     "declaration": true,
     "isolatedModules": true,
+    "rootDir": "./src",
     "outDir": "dist"
   },
   "include": ["src"],

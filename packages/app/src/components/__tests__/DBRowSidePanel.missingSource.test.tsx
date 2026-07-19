@@ -65,7 +65,7 @@ jest.mock('../DBRowDataPanel', () => ({
 // after the query has settled successfully.
 const mockSourceStore: Record<
   string,
-  { data: unknown; isLoading: boolean; isSuccess: boolean }
+  { data: unknown; isLoading: boolean; isSuccess: boolean; isError?: boolean }
 > = {};
 jest.mock('@/source', () => ({
   __esModule: true,
@@ -271,5 +271,34 @@ describe('DBRowSidePanelInner — unresolvable stack source (HDX-3942 permanent-
     ).not.toBeInTheDocument();
     const resolvedRowId = mockUseRowData.mock.calls.at(-1)?.[0]?.rowId;
     expect(resolvedRowId).toBe('leaf-row');
+  });
+
+  it('renders the error state (not a hang) when the leaf source query itself errors', () => {
+    mockSourceStore['deleted-src'] = {
+      data: undefined,
+      isLoading: false,
+      isSuccess: false,
+      isError: true,
+    };
+    seedParam('sidePanelSourceStack', [MISSING_FRAME]);
+    seedParam('sidePanelNavStack', []);
+    seedParam('sidePanelStackRoot', 'root-row');
+
+    renderInner('root-row');
+
+    // Actionable error state instead of a permanent spinner.
+    expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/source is no longer available/i),
+    ).toBeInTheDocument();
+
+    // Trail collapse controls remain usable.
+    expect(screen.getByLabelText('Back')).toBeInTheDocument();
+    expect(screen.getByLabelText('Close')).toBeInTheDocument();
+
+    // The wrong-source row query is never issued: the row query is skipped
+    // (rowId undefined) for the broken frame.
+    const lastRowIdArg = mockUseRowData.mock.calls.at(-1)?.[0]?.rowId;
+    expect(lastRowIdArg).toBeUndefined();
   });
 });

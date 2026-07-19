@@ -852,6 +852,50 @@ describe('searchFilters', () => {
       ]);
     });
 
+    it('setOnlyFilters applies all filters in a single onFilterChange emit', () => {
+      onFilterChange.mockClear();
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [],
+          onFilterChange,
+          knownColumns: new Set(),
+        }),
+      );
+
+      act(() => {
+        result.current.setOnlyFilters([
+          { property: 'service', value: 'app' },
+          { property: 'level', value: 'error' },
+        ]);
+      });
+
+      // Batched: a single re-query, not one per property.
+      expect(onFilterChange).toHaveBeenCalledTimes(1);
+      expect(onFilterChange).toHaveBeenLastCalledWith([
+        { type: 'sql', condition: "service IN ('app')" },
+        { type: 'sql', condition: "level IN ('error')" },
+      ]);
+    });
+
+    it('setOnlyFilters replaces any existing values for the given property', () => {
+      onFilterChange.mockClear();
+      const { result } = renderHook(() =>
+        useSearchPageFilterState({
+          searchQuery: [{ type: 'sql', condition: `level IN ('info', 'ok')` }],
+          onFilterChange,
+          knownColumns: new Set(),
+        }),
+      );
+
+      act(() => {
+        result.current.setOnlyFilters([{ property: 'level', value: 'error' }]);
+      });
+
+      expect(onFilterChange).toHaveBeenLastCalledWith([
+        { type: 'sql', condition: "level IN ('error')" },
+      ]);
+    });
+
     it('updating filter query', () => {
       const { result } = renderHook(() =>
         useSearchPageFilterState({

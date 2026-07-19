@@ -9,7 +9,7 @@ COPY .yarnrc.yml yarn.lock package.json nx.json .prettierrc .prettierignore ./ts
 # Only copy package.json for workspace resolution during yarn install;
 # full source is copied in the build stages that need it.
 COPY ./packages/common-utils/package.json ./packages/common-utils/package.json
-COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.build.json ./packages/app/package.json ./packages/app/next.config.mjs ./packages/app/mdx.d.ts ./packages/app/eslint.config.mjs ./packages/app/
+COPY ./packages/app/jest.config.js ./packages/app/tsconfig.json ./packages/app/tsconfig.build.json ./packages/app/package.json ./packages/app/next.config.mjs ./packages/app/mdx.d.ts ./packages/app/css.d.ts ./packages/app/eslint.config.mjs ./packages/app/
 RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=yarn-cache \
     yarn install --mode=skip-build && yarn cache clean
 

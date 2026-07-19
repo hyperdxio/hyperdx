@@ -46,10 +46,12 @@ export type ChartConfigDisplaySettings = Pick<
 > & {
   groupByColumnsOnLeft?: boolean;
   alternateRowBackground?: boolean;
-  // Per-tile cap on the number of series fetched for a group-by time chart.
-  // null/undefined = disabled (no __hdx_series_limit CTE; every series is
-  // fetched). The editor clears to `null` (not `undefined`) so the cleared
-  // state survives JSON round-tripping through the URL query state.
+  // Per-tile cap on the number of series fetched. On group-by time charts it
+  // drives the __hdx_series_limit CTE; on pie/bar builder charts it becomes a
+  // plain SQL LIMIT.
+  // null/undefined = disabled (every series is fetched). The editor clears to
+  // `null` (not `undefined`) so the cleared state survives JSON
+  // round-tripping through the URL query state.
   seriesLimit?: number | null;
 };
 
@@ -184,12 +186,19 @@ export default function ChartDisplaySettingsDrawer({
   const showSeriesLimit =
     isTimeChart && configType !== 'sql' && configType !== 'promql';
 
+  // On pie/bar builder charts, seriesLimit becomes a plain SQL LIMIT on the
+  // number of slices/bars; raw SQL configs author their own LIMIT directly.
+  const isCategoricalChart =
+    displayType === DisplayType.Pie || displayType === DisplayType.Bar;
+  const showCategoricalLimit =
+    isCategoricalChart && configType !== 'sql' && configType !== 'promql';
+
   // Table display options. Alternate Row Background is purely presentational
   // (it stripes rendered rows), so it applies to any table tile. Group By
   // column ordering needs the builder `select` structure to know which columns
   // are group-by keys, so it stays builder-only.
   const showTableOptions = displayType === DisplayType.Table;
-  const showBuilderTableOptions = showTableOptions && configType !== 'sql';
+  const showGroupByColumnsOnLeft = showTableOptions && configType !== 'sql';
 
   // Tile-level color is only meaningful for number tiles today.
   // Per-series colors on line / bar / pie ship in a follow-up PR via
@@ -279,9 +288,35 @@ export default function ChartDisplaySettingsDrawer({
           </>
         )}
 
+        {showCategoricalLimit && (
+          <>
+            <Box>
+              <Controller
+                control={control}
+                name="seriesLimit"
+                render={({ field: { onChange, value } }) => (
+                  <NumberInput
+                    size="xs"
+                    label="Series Limit"
+                    description="Maximum number of values displayed, keeping those with the largest values. Leave empty to fetch all."
+                    placeholder="Disabled (e.g. 10)"
+                    min={1}
+                    allowDecimal={false}
+                    value={value ?? ''}
+                    onChange={v =>
+                      onChange(v === '' || v == null ? null : Number(v))
+                    }
+                  />
+                )}
+              />
+            </Box>
+            <Divider />
+          </>
+        )}
+
         {showTableOptions && (
           <>
-            {showBuilderTableOptions && (
+            {showGroupByColumnsOnLeft && (
               <CheckBoxControlled
                 control={control}
                 name="groupByColumnsOnLeft"

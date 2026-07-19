@@ -33,6 +33,7 @@ import { useDisclosure, usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconBracketsContain,
+  IconChartBar,
   IconChartLine,
   IconChartPie,
   IconGrid3x3,
@@ -82,6 +83,7 @@ import { ChartActionBar } from './ChartActionBar';
 import { ChartEditorControls } from './ChartEditorControls';
 import { ChartPreviewPanel } from './ChartPreviewPanel';
 import { ErrorNotificationMessage } from './ErrorNotificationMessage';
+import { useBuilderToSqlConversion } from './useBuilderToSqlConversion';
 import {
   buildChartConfigForExplanations,
   computeDbTimeChartConfig,
@@ -155,6 +157,10 @@ export default function EditTimeChartForm({
     control,
     setValue,
     getValues,
+    // The callback form of `watch` is used to subscribe to field changes
+    // (without re-rendering) in useBuilderToSqlConversion; useWatch can't do this.
+    // eslint-disable-next-line react-hook-form/no-use-watch
+    watch,
     handleSubmit,
     register,
     setError,
@@ -210,6 +216,7 @@ export default function EditTimeChartForm({
   const sourceId = useWatch({ control, name: 'source' });
   const alert = useWatch({ control, name: 'alert' });
   const seriesReturnType = useWatch({ control, name: 'seriesReturnType' });
+  const ratioMode = useWatch({ control, name: 'ratioMode' });
   const groupBy = useWatch({ control, name: 'groupBy' });
   const displayType =
     useWatch({ control, name: 'displayType' }) ?? DisplayType.Line;
@@ -226,6 +233,15 @@ export default function EditTimeChartForm({
   const { data: tableSource } = useSource({ id: sourceId });
   const databaseName = tableSource?.from.databaseName;
   const tableName = tableSource?.from.tableName;
+
+  // Carry the builder config over as a SQL template when switching to SQL mode
+  useBuilderToSqlConversion({
+    control,
+    getValues,
+    setValue,
+    watch,
+    tableSource,
+  });
 
   const activeTab = displayTypeToActiveTab(displayType);
 
@@ -711,7 +727,7 @@ export default function EditTimeChartForm({
                   value={DisplayType.Line}
                   leftSection={<IconChartLine size={16} />}
                 >
-                  Line/Bar
+                  Time Series
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Table}
@@ -724,6 +740,12 @@ export default function EditTimeChartForm({
                   leftSection={<IconNumbers size={16} />}
                 >
                   Number
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.Bar}
+                  leftSection={<IconChartBar size={16} />}
+                >
+                  Bar
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Pie}
@@ -849,6 +871,7 @@ export default function EditTimeChartForm({
             displayType={displayType}
             activeTab={activeTab}
             seriesReturnType={seriesReturnType}
+            ratioMode={ratioMode}
             alert={alert}
             isRawSqlInput={isRawSqlInput}
             dashboardId={dashboardId}

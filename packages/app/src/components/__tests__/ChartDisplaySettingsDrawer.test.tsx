@@ -264,6 +264,83 @@ describe('ChartDisplaySettingsDrawer', () => {
     });
   });
 
+  describe('categorical series limit setting (pie/bar)', () => {
+    const builderProps = { ...baseProps, configType: 'builder' as const };
+
+    it.each([DisplayType.Pie, DisplayType.Bar])(
+      'shows the Series Limit input for builder %s charts',
+      displayType => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...builderProps}
+            displayType={displayType}
+          />,
+        );
+
+        expect(
+          screen.getByRole('textbox', { name: /series limit/i }),
+        ).toBeInTheDocument();
+      },
+    );
+
+    it('does not show the Series Limit input for raw SQL pie charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Pie}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('textbox', { name: /series limit/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('calls onChange with the entered seriesLimit when applied', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Bar}
+          onChange={onChange}
+        />,
+      );
+
+      await user.type(
+        screen.getByRole('textbox', { name: /series limit/i }),
+        '10',
+      );
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({ seriesLimit: 10 });
+    });
+
+    // Emits null (not undefined) for the same URL round-tripping reason as
+    // the time-chart series limit above.
+    it('clears seriesLimit to null (disabled) when emptied', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...builderProps}
+          displayType={DisplayType.Pie}
+          settings={{ seriesLimit: 10 } as ChartConfigDisplaySettings}
+          onChange={onChange}
+        />,
+      );
+
+      await user.clear(screen.getByRole('textbox', { name: /series limit/i }));
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0].seriesLimit).toBeNull();
+    });
+  });
+
   describe('alternate row background setting', () => {
     const builderProps = { ...baseProps, configType: 'builder' as const };
 

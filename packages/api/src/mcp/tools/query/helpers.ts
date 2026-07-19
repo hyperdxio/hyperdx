@@ -2,6 +2,7 @@ import { ClickHouseError } from '@clickhouse/client-common';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  convertToCategoricalChartConfig,
   getFirstTimestampValueExpression,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -545,10 +546,18 @@ export async function runConfigTile(
       dateRange: [startDate, endDate] as [Date, Date],
     } satisfies ChartConfigWithDateRange;
 
+    // Apply seriesLimit as LIMIT to categorical charts (pie/bar)
+    const isCategorical =
+      builderConfig.displayType === DisplayType.Pie ||
+      builderConfig.displayType === DisplayType.Bar;
+    const renderConfig = isCategorical
+      ? convertToCategoricalChartConfig(chartConfig)
+      : chartConfig;
+
     const metadata = getMetadata(clickhouseClient);
     try {
       const result = await clickhouseClient.queryChartConfig({
-        config: chartConfig,
+        config: renderConfig,
         metadata,
         querySettings: source.querySettings,
         opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
