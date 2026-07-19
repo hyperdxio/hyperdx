@@ -2320,21 +2320,22 @@ export function DBSearchPage() {
           onClose={setNewSourceModalClosed}
           onCreate={onNewSourceCreate}
         />
-        <Flex gap="sm" mt="sm" px="sm" wrap="wrap">
-          <SearchWhereInput
-            tableConnection={inputSourceTableConnection}
-            control={control}
-            name="where"
-            onSubmit={onSubmit}
-            sqlQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
-            luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
-            enableHotkey
-            data-testid="search-input"
-            minWidth="min(600px, 100%)"
-            dateRange={searchedTimeRange}
-            sourceId={inputSource}
-            size="xs"
-          />
+        <Flex gap="sm" mt="sm" px="sm" wrap="wrap" align="center">
+          <Box style={{ flex: '1 1 320px', minWidth: 'min(320px, 100%)' }}>
+            <SearchWhereInput
+              tableConnection={inputSourceTableConnection}
+              control={control}
+              name="where"
+              onSubmit={onSubmit}
+              sqlQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
+              luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
+              enableHotkey
+              data-testid="search-input"
+              dateRange={searchedTimeRange}
+              sourceId={inputSource}
+              size="xs"
+            />
+          </Box>
           <Flex
             gap="sm"
             style={{ flex: '0 1 500px', minWidth: 0 }}
