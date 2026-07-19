@@ -1,12 +1,8 @@
 {
   "extends": "./tsconfig.json",
-  "include": [
-    "src",
-    "migrations",
-    "scripts"
-  ],
-  "exclude": [
-    "node_modules",
-    "**/*.test.ts"
-  ]
+  "compilerOptions": {
+    "rootDir": "./src"
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "**/*.test.ts"]
 }

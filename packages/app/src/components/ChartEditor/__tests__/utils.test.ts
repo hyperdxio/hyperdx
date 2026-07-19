@@ -573,6 +573,21 @@ describe('validateChartForm', () => {
     expect(setError).not.toHaveBeenCalled();
   });
 
+  it('returns no errors for a Bar chart with exactly one series', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Bar,
+        source: 'source-log',
+        series: [seriesItem],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors).toHaveLength(0);
+    expect(setError).not.toHaveBeenCalled();
+  });
+
   it('returns no errors for a Search chart (skips series validation)', () => {
     const setError = jest.fn();
     const errors = validateChartForm(
@@ -1129,6 +1144,25 @@ describe('validateChartForm', () => {
       expect.objectContaining({
         path: 'series',
         message: `Only one series is allowed for ${DisplayType.Pie} charts`,
+      }),
+    );
+  });
+
+  it('errors when Bar chart has more than one series', () => {
+    const setError = jest.fn();
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Bar,
+        source: 'source-log',
+        series: [seriesItem, seriesItem],
+      }),
+      logSource,
+      setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        path: 'series',
+        message: `Only one series is allowed for ${DisplayType.Bar} charts`,
       }),
     );
   });

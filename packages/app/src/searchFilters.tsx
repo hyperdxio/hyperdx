@@ -3,6 +3,7 @@ import produce from 'immer';
 import {
   type FilterState,
   filtersToQuery,
+  parseQuery,
 } from '@hyperdx/common-utils/dist/filters';
 import type { Filter } from '@hyperdx/common-utils/dist/types';
 
@@ -73,332 +74,9 @@ export const areFiltersEqual = (a: FilterState, b: FilterState) => {
   return true;
 };
 
-// Helper function to parse a string value as boolean if possible, or otherwise
-// return as string with surrounding quotes removed and SQL-escaped quotes unescaped.
-const getBooleanOrUnquotedString = (value: string): string | boolean => {
-  const trimmed = value.trim();
-
-  if (['true', 'false'].includes(trimmed.toLowerCase())) {
-    return trimmed.toLowerCase() === 'true';
-  }
-
-  // Remove surrounding quotes and reverse the escape sequences produced by
-  // filtersToQuery's escapeString. Order matters: collapse \\ → \ first so
-  // that the following '' → ' pass doesn't mistake content for an escape.
-  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
-    return trimmed.slice(1, -1).replace(/\\\\/g, '\\').replace(/''/g, "'");
-  }
-  return trimmed;
-};
-
-// Returns true when the single-quote at position `i` is a real string delimiter
-// rather than an escape sequence.  Handles both ClickHouse/SQL '' escaping and
-// backslash \' escaping.  An odd number of preceding backslashes means the
-// quote is escaped via \'; an even number (including zero) means the
-// backslashes are themselves escaped (\\) and the quote is a real boundary.
-function isQuoteBoundary(s: string, i: number): boolean {
-  if (s[i] !== "'") return false;
-  let backslashes = 0;
-  for (let j = i - 1; j >= 0 && s[j] === '\\'; j--) {
-    backslashes++;
-  }
-  return backslashes % 2 === 0;
-}
-
-// If we're inside a quoted string and hit a quote, check whether the next
-// character is also a quote ('' escape).  If so, skip both and stay in the
-// string.  Returns the new index to continue iteration from.
-function handleQuoteEscape(
-  s: string,
-  i: number,
-): { skip: boolean; next: number } {
-  if (i + 1 < s.length && s[i + 1] === "'") {
-    return { skip: true, next: i + 1 };
-  }
-  return { skip: false, next: i };
-}
-
-// Helper function to split on commas while respecting quoted strings and booleans.
-// Handles SQL-escaped single quotes ('') inside quoted strings.
-function splitValuesOnComma(valuesStr: string): (string | boolean)[] {
-  const values: (string | boolean)[] = [];
-  let currentValue = '';
-  let inString = false;
-
-  for (let i = 0; i < valuesStr.length; i++) {
-    const char = valuesStr[i];
-
-    if (isQuoteBoundary(valuesStr, i)) {
-      if (inString) {
-        const esc = handleQuoteEscape(valuesStr, i);
-        if (esc.skip) {
-          currentValue += "''";
-          i = esc.next;
-          continue;
-        }
-      }
-      inString = !inString;
-      currentValue += char;
-      continue;
-    }
-
-    if (!inString && char === ',') {
-      if (currentValue.trim()) {
-        values.push(getBooleanOrUnquotedString(currentValue));
-      }
-      currentValue = '';
-      continue;
-    }
-
-    currentValue += char;
-  }
-
-  // Add the last value
-  if (currentValue.trim()) {
-    values.push(getBooleanOrUnquotedString(currentValue));
-  }
-
-  return values;
-}
-
-// Check whether a SQL fragment contains a keyword or operator outside of
-// single-quoted strings.  Accepts either single characters (=, <, >) or
-// multi-character keywords (' OR ', ' BETWEEN ') to search for.
-function containsOutsideQuotes(
-  text: string,
-  targets: (string | { char: string })[],
-): boolean {
-  let inString = false;
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    if (isQuoteBoundary(text, i)) {
-      if (inString) {
-        const esc = handleQuoteEscape(text, i);
-        if (esc.skip) {
-          i = esc.next;
-          continue;
-        }
-      }
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-
-    for (const target of targets) {
-      if (typeof target === 'object') {
-        if (char === target.char) return true;
-      } else {
-        if (text.slice(i, i + target.length).toUpperCase() === target)
-          return true;
-      }
-    }
-  }
-  return false;
-}
-
-function containsOperatorOutsideQuotes(part: string): boolean {
-  return containsOutsideQuotes(part, [
-    { char: '=' },
-    { char: '<' },
-    { char: '>' },
-    ' OR ',
-  ]);
-}
-
-// Split a string on the first occurrence of `delimiter` that is outside
-// single-quoted strings.  Returns [before, after] or null if not found.
-function splitOnFirstOutsideQuotes(
-  text: string,
-  delimiter: string,
-): [string, string] | null {
-  let inString = false;
-  const upper = delimiter.toUpperCase();
-  for (let i = 0; i < text.length; i++) {
-    if (isQuoteBoundary(text, i)) {
-      if (inString) {
-        const esc = handleQuoteEscape(text, i);
-        if (esc.skip) {
-          i = esc.next;
-          continue;
-        }
-      }
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (text.slice(i, i + upper.length).toUpperCase() === upper) {
-      return [text.slice(0, i), text.slice(i + upper.length)];
-    }
-  }
-  return null;
-}
-
-// Helper function to extract simple IN/NOT IN clauses from a condition
-// This handles both simple conditions and compound conditions with AND
-function extractInClauses(condition: string): Array<{
-  key: string;
-  values: (string | boolean)[];
-  isExclude: boolean;
-}> {
-  const results: Array<{
-    key: string;
-    values: (string | boolean)[];
-    isExclude: boolean;
-  }> = [];
-
-  // Split on ' AND ' while respecting quoted strings (including SQL-escaped quotes)
-  const parts: string[] = [];
-  let currentPart = '';
-  let inString = false;
-
-  for (let i = 0; i < condition.length; i++) {
-    const char = condition[i];
-
-    if (isQuoteBoundary(condition, i)) {
-      if (inString) {
-        const esc = handleQuoteEscape(condition, i);
-        if (esc.skip) {
-          currentPart += "''";
-          i = esc.next;
-          continue;
-        }
-      }
-      inString = !inString;
-      currentPart += char;
-      continue;
-    }
-
-    if (!inString && condition.slice(i, i + 5).toUpperCase() === ' AND ') {
-      if (currentPart.trim()) {
-        parts.push(currentPart.trim());
-      }
-      currentPart = '';
-      i += 4; // Skip past ' AND '
-      continue;
-    }
-
-    currentPart += char;
-  }
-
-  if (currentPart.trim()) {
-    parts.push(currentPart.trim());
-  }
-
-  // Process each part to extract IN/NOT IN clauses
-  for (const part of parts) {
-    // Skip parts that contain OR (not supported) or comparison operators,
-    // but only when those operators appear outside of quoted strings.
-    if (containsOperatorOutsideQuotes(part)) {
-      continue;
-    }
-
-    const isExclude = containsOutsideQuotes(part, [' NOT IN ']);
-    const hasIn = isExclude || containsOutsideQuotes(part, [' IN ']);
-
-    if (hasIn) {
-      // Split on the first unquoted ' IN ' / ' NOT IN '
-      const splitResult = splitOnFirstOutsideQuotes(
-        part,
-        isExclude ? ' NOT IN ' : ' IN ',
-      );
-      if (!splitResult) continue;
-      const [key, values] = splitResult;
-
-      const keyStr = key.trim();
-      const trimmedValues = values.trim();
-      const withoutParens =
-        trimmedValues.startsWith('(') && trimmedValues.endsWith(')')
-          ? trimmedValues.slice(1, -1)
-          : trimmedValues;
-
-      // Unwrap the date-value expressions filtersToQuery emits for date columns
-      // back into the plain quoted literal 'X' before splitting on commas. The
-      // DateTime64 wrapper contains an unquoted comma (before its precision
-      // argument), so this must run before splitValuesOnComma. The capture
-      // group `'(?:[^']|'')*'` consumes the SQL-escaped quoted string ('' for
-      // embedded quotes), keeping the round-trip exact even if a value
-      // contained quotes; the optional `, N` covers parseDateTime64BestEffort's
-      // precision argument. Matches the four producers in `dateTimeValueExpr`:
-      // parseDateTime64BestEffort, parseDateTimeBestEffort, toDate32, toDate.
-      const unwrapped = withoutParens.replace(
-        /(?:parseDateTime64BestEffort|parseDateTimeBestEffort|toDate32|toDate)\(('(?:[^']|'')*')(?:\s*,\s*\d+)?\)/g,
-        '$1',
-      );
-
-      const valuesArray = splitValuesOnComma(unwrapped);
-
-      results.push({
-        key: keyStr,
-        values: valuesArray,
-        isExclude,
-      });
-    }
-  }
-
-  return results;
-}
-
-export const parseQuery = (
-  q: Filter[],
-): {
-  filters: FilterState;
-} => {
-  const state = new Map<
-    string,
-    {
-      included: Set<string | boolean>;
-      excluded: Set<string | boolean>;
-      range?: { min: number; max: number };
-    }
-  >();
-  for (const filter of q) {
-    if (filter.type !== 'sql') continue;
-
-    // Check for BETWEEN condition (only when BETWEEN appears outside quotes)
-    if (containsOutsideQuotes(filter.condition, [' BETWEEN '])) {
-      const betweenMatch = filter.condition.match(
-        /^(.+?)\s+BETWEEN\s+(.+?)\s+AND\s+(.+?)$/i,
-      );
-      if (betweenMatch) {
-        const [, key, minVal, maxVal] = betweenMatch;
-        const keyStr = key.trim();
-        const min = parseFloat(minVal.trim());
-        const max = parseFloat(maxVal.trim());
-
-        if (!state.has(keyStr)) {
-          state.set(keyStr, {
-            included: new Set(),
-            excluded: new Set(),
-            range: { min, max },
-          });
-        } else {
-          const existing = state.get(keyStr)!;
-          existing.range = { min, max };
-        }
-        continue;
-      }
-    }
-
-    // Extract all simple IN/NOT IN clauses from the condition
-    // This handles both simple conditions and compound conditions with AND/OR
-    const inClauses = extractInClauses(filter.condition);
-
-    for (const clause of inClauses) {
-      if (!state.has(clause.key)) {
-        state.set(clause.key, { included: new Set(), excluded: new Set() });
-      }
-      const sets = state.get(clause.key)!;
-      clause.values.forEach(v => {
-        if (clause.isExclude) {
-          sets.excluded.add(v);
-        } else {
-          sets.included.add(v);
-        }
-      });
-    }
-  }
-  return { filters: Object.fromEntries(state) };
-};
+// parseQuery (and its helpers) now live in common-utils as the inverse of
+// filtersToQuery; re-export so existing `@/searchFilters` importers keep working.
+export { parseQuery };
 
 export const useSearchPageFilterState = ({
   searchQuery = [],
@@ -508,6 +186,32 @@ export const useSearchPageFilterState = ({
     [updateFilterQuery],
   );
 
+  // Apply several "only" filters atomically: each listed property is set to
+  // exactly its given value in a single state update, emitting onFilterChange
+  // (and therefore a re-query) once rather than once per property. Use this
+  // instead of looping setFilterValue(..., 'only') when scoping to multiple
+  // columns at once (e.g. focusing a multi-group chart series).
+  const setOnlyFilters = useCallback(
+    (entries: { property: string; value: string | boolean }[]) => {
+      if (entries.length === 0) {
+        return;
+      }
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          for (const { property, value } of entries) {
+            draft[property] = {
+              included: new Set([value]),
+              excluded: new Set(),
+            };
+          }
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
   const setFilterRange = useCallback(
     (property: string, range: { min: number; max: number }) => {
       setFilters(prevFilters => {
@@ -603,6 +307,7 @@ export const useSearchPageFilterState = ({
     filters,
     setFilters,
     setFilterValue,
+    setOnlyFilters,
     replaceFilterValue,
     setFilterRange,
     clearFilter,

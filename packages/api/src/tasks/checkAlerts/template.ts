@@ -36,6 +36,7 @@ import {
   computeAliasWithClauses,
   doesExceedThreshold,
 } from '@/tasks/checkAlerts';
+import { WebhookRedirectError } from '@/tasks/checkAlerts/errors';
 import {
   AlertProvider,
   PopulatedAlertChannel,
@@ -46,6 +47,7 @@ import { getCounter, getHistogram } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import { withRetry } from '@/utils/retry';
 import * as slack from '@/utils/slack';
+import { IPV6_BRACKET_RE, isPrivateIp } from '@/utils/validators';
 
 // Webhook delivery is the last (and most failure-prone) hop of an alert. It
 // happens in the background task, so failures only show up in logs today.
@@ -256,7 +258,7 @@ function validateWebhookUrl(
       throw new Error(`SSRF AllowedDomainError: ${message}`);
     }
   } else {
-    // check webhookurl host is not blacklisted
+    // check webhookurl host is not blacklisted and not a private IP
     const url = new URL(webhook.url);
     if (blacklistedWebhookHosts.has(url.host)) {
       const message = `Webhook attempting to query blacklisted route ${blacklistedWebhookHosts.get(
@@ -269,6 +271,22 @@ function validateWebhookUrl(
             name: webhook.name,
             url: webhook.url,
             body: webhook.body,
+          },
+        },
+        message,
+      );
+      throw new Error(`SSRF AllowedDomainError: ${message}`);
+    }
+    // Block direct private/reserved IP literals to prevent SSRF
+    const hostname = url.hostname.replace(IPV6_BRACKET_RE, ''); // strip IPv6 brackets
+    if (isPrivateIp(hostname)) {
+      const message = `Webhook URL resolves to a private or reserved address: ${hostname}`;
+      logger.warn(
+        {
+          webhook: {
+            id: webhook._id.toString(),
+            name: webhook.name,
+            url: webhook.url,
           },
         },
         message,
@@ -394,12 +412,22 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
   }
 
   try {
-    const response = await withRetry(async () => {
+    await withRetry(async () => {
       const res = await fetch(url, {
         method: 'POST',
+        redirect: 'manual',
         headers: headers as Record<string, string>,
         body,
       });
+
+      // Disallow redirects to avoid redirect-based SSRF.
+      if (res.status >= 300 && res.status < 400) {
+        logger.error(
+          { webhookId: webhook._id.toString(), teamId: webhook.team },
+          'Webhook request was redirected, which is not allowed',
+        );
+        throw new WebhookRedirectError(res.status);
+      }
 
       if (!res.ok) {
         const errorText = await res.text();

@@ -27,6 +27,7 @@ jest.mock('@/hooks/useFetchMetricMetadata', () => ({
 }));
 
 jest.mock('@/hooks/useMetadata', () => ({
+  useMetadataWithSettings: jest.fn().mockReturnValue({}),
   useGetKeyValues: jest.fn().mockReturnValue({
     data: [
       {

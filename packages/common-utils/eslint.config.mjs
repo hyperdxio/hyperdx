@@ -17,6 +17,7 @@ export default [
       'coverage/**',
       '**/*.config.js',
       '**/*.config.mjs',
+      '**/*.config.ts',
       'jest.config.js',
       'jest.setup.ts',
     ],

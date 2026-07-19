@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/cli",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -33,14 +33,15 @@
     "compile:linux": "bun build src/cli.tsx --compile --target=bun-linux-x64 --outfile dist/hdx-linux-x64",
     "compile:macos": "bun build src/cli.tsx --compile --target=bun-darwin-arm64 --outfile dist/hdx-darwin-arm64",
     "compile:macos-x64": "bun build src/cli.tsx --compile --target=bun-darwin-x64 --outfile dist/hdx-darwin-x64",
-    "lint": "npx eslint --quiet . --ext .ts,.tsx",
+    "lint": "npx eslint . --ext .ts,.tsx --max-warnings 9",
+    "ci:build": "tsup",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
     "ci:unit": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand --ci --passWithNoTests",
     "dev:unit": "NODE_OPTIONS=--experimental-vm-modules jest --watchAll --runInBand"
   },
   "devDependencies": {
     "@clickhouse/client": "1.23.0-head.fae5998.1",
-    "@hyperdx/common-utils": "^0.21.0",
+    "@hyperdx/common-utils": "^0.23.0",
     "@jest/globals": "^30.2.0",
     "@types/crypto-js": "^4.2.2",
     "@types/jest": "^29.5.14",
@@ -54,12 +55,13 @@
     "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",
     "jest": "^30.2.0",
+    "numbro": "^2.5.0",
     "react": "^19.0.0",
     "react-devtools-core": "^7.0.1",
     "sqlstring": "^2.3.3",
-    "ts-jest": "^29.4.5",
+    "ts-jest": "^29.4.11",
     "tsup": "^8.4.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   }
 }
