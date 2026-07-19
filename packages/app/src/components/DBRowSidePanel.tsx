@@ -35,6 +35,7 @@ import {
 } from '@mantine/core';
 import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
 
+import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useSidePanelStack, {
@@ -201,6 +202,10 @@ type DBRowSidePanelProps = {
   rowId: string | undefined;
   aliasWith?: WithClause[];
   onClose: () => void;
+  // When enabled, clicking outside the drawer (and outside `keepOpenSelector`)
+  // closes it. Off by default so other consumers keep their existing behavior.
+  closeOnClickOutside?: boolean;
+  keepOpenSelector?: string;
 };
 
 type DBRowSidePanelInnerProps = DBRowSidePanelProps & {
@@ -1067,6 +1072,8 @@ export default function DBRowSidePanelErrorBoundary({
   rowId,
   aliasWith,
   source,
+  closeOnClickOutside = false,
+  keepOpenSelector,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
@@ -1092,6 +1099,12 @@ export default function DBRowSidePanelErrorBoundary({
     clearTraceWaterfallSearchState();
     onClose();
   }, [sidePanelStack, onClose, clearTraceWaterfallSearchState]);
+
+  useCloseOnClickOutside({
+    enabled: closeOnClickOutside && rowId != null,
+    keepOpenSelector,
+    onClose: _onClose,
+  });
 
   return (
     <Drawer

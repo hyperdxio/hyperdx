@@ -37,6 +37,7 @@ import {
 import SidePanelBreadcrumbs, {
   BreadcrumbItem,
 } from '@/components/SidePanelBreadcrumbs';
+import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import {
@@ -79,6 +80,8 @@ export default function SessionSidePanel({
   onLanguageChange,
   onClose,
   zIndex = 100,
+  closeOnClickOutside = false,
+  keepOpenSelector,
 }: {
   traceSource: TTraceSource;
   sessionSource: TSessionSource;
@@ -90,6 +93,8 @@ export default function SessionSidePanel({
   onLanguageChange?: (lang: 'sql' | 'lucene') => void;
   onClose: () => void;
   zIndex?: number;
+  closeOnClickOutside?: boolean;
+  keepOpenSelector?: string;
 }) {
   // A single in-place event view (session → event), persisted to the URL so it
   // survives reload and shared links. Deeper navigation (View Trace,
@@ -145,6 +150,14 @@ export default function SessionSidePanel({
   }, [setSelectedEvent, sidePanelStack, onClose]);
 
   useHotkeys(['esc'], handleClose, { enabled: !selectedEvent });
+
+  // Match the Esc behavior: dismiss on outside click only at the session root,
+  // so deep in-panel navigation (event → trace → context) isn't skipped.
+  useCloseOnClickOutside({
+    enabled: closeOnClickOutside && sessionId != null && !selectedEvent,
+    keepOpenSelector,
+    onClose: handleClose,
+  });
 
   const shareSession = useCallback(async () => {
     const ok = await copyTextToClipboard(window.location.href);

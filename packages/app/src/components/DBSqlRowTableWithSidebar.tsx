@@ -46,6 +46,10 @@ interface Props {
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
   onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
+  // When enabled, clicking outside the row side panel (and outside
+  // `keepOpenSelector`) closes it.
+  closeOnClickOutside?: boolean;
+  keepOpenSelector?: string;
 }
 
 export default function DBSqlRowTableWithSideBar({
@@ -67,6 +71,8 @@ export default function DBSqlRowTableWithSideBar({
   tableId,
   errorVariant,
   onResolvedColumnsChange,
+  closeOnClickOutside = false,
+  keepOpenSelector,
 }: Props) {
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
@@ -111,6 +117,8 @@ export default function DBSqlRowTableWithSideBar({
           rowId={rowId ?? undefined}
           aliasWith={aliasWith}
           onClose={onCloseSidebar}
+          closeOnClickOutside={closeOnClickOutside}
+          keepOpenSelector={keepOpenSelector}
         />
       )}
       <DBSqlRowTable
