@@ -121,6 +121,19 @@ describe('convertFormStateToSavedChartConfig', () => {
     expect(result.alternateRowBackground).toBe(true);
   });
 
+  it('persists alternateRowBackground for a promql+table config', () => {
+    const form: ChartEditorFormState = {
+      configType: 'promql',
+      displayType: DisplayType.Table,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      alternateRowBackground: true,
+      series: [],
+    };
+    const result = convertFormStateToSavedChartConfig(form, undefined);
+    expect(result).toMatchObject({ alternateRowBackground: true });
+  });
+
   it('returns a raw SQL config for Line displayType', () => {
     const form: ChartEditorFormState = {
       configType: 'sql',
@@ -376,6 +389,19 @@ describe('convertFormStateToChartConfig', () => {
       configType: 'sql',
       displayType: DisplayType.Table,
       sqlTemplate: 'SELECT now()',
+      connection: 'conn-1',
+      alternateRowBackground: true,
+      series: [],
+    };
+    const result = convertFormStateToChartConfig(form, dateRange, undefined);
+    expect(result).toMatchObject({ alternateRowBackground: true });
+  });
+
+  it('threads alternateRowBackground into the rendered promql+table config', () => {
+    const form: ChartEditorFormState = {
+      configType: 'promql',
+      displayType: DisplayType.Table,
+      promqlExpression: 'up',
       connection: 'conn-1',
       alternateRowBackground: true,
       series: [],
