@@ -131,10 +131,26 @@ import {
 } from '@/utils';
 
 import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
+import { DBBarChart } from './components/DBBarChart';
+import DBNumberChart from './components/DBNumberChart';
+import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
+import DBTableChart from './components/DBTableChart';
+import { DBTreemapChart } from './components/DBTreemapChart';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
+import {
+  SearchAggControls,
+  useSearchAggConfig,
+} from './components/Search/SearchAggControls';
+import {
+  isAggregatedSearchView,
+  SearchViewSwitcher,
+  searchViewToDisplayType,
+  useSearchView,
+  viewShowsHistogram,
+} from './components/Search/searchViews';
 import SourceSchemaPreview, {
   isSourceSchemaPreviewEnabled,
 } from './components/SourceSchemaPreview';
@@ -992,14 +1008,14 @@ export function DBSearchPage() {
       ? ''
       : (searchedConfig.source ?? '');
 
-  const [analysisMode, setAnalysisMode] = useQueryState(
-    'mode',
-    parseAsStringEnum<'results' | 'delta' | 'pattern'>([
-      'results',
-      'delta',
-      'pattern',
-    ]).withDefault('results'),
-  );
+  const [view, setView] = useSearchView();
+  const [aggConfig, setAggConfig] = useSearchAggConfig();
+
+  // Legacy 3-mode value still consumed by the filters sidebar (denoise gating)
+  // and a few source-capability checks below. New view types collapse onto
+  // 'results' for those purposes.
+  const analysisMode: 'results' | 'delta' | 'pattern' =
+    view === 'patterns' ? 'pattern' : view === 'heatmap' ? 'delta' : 'results';
 
   const [patternColumn, setPatternColumn] = useQueryState(
     'patternColumn',
@@ -1018,10 +1034,11 @@ export function DBSearchPage() {
   );
 
   useEffect(() => {
-    if (analysisMode === 'delta' || analysisMode === 'pattern') {
+    // Only the raw List view supports live tail.
+    if (view !== 'list') {
       setIsLive(false);
     }
-  }, [analysisMode, setIsLive]);
+  }, [view, setIsLive]);
 
   const [isFilterSidebarCollapsed, setIsFilterSidebarCollapsed] =
     useLocalStorage<boolean>('isFilterSidebarCollapsed', false);
@@ -1763,6 +1780,63 @@ export function DBSearchPage() {
     searchedConfig.select,
   ]);
 
+  // Default group-by for aggregated views, mirroring the histogram's grouping.
+  const defaultAggGroupBy = useMemo(() => {
+    switch (searchedSource?.kind) {
+      case SourceKind.Log:
+        return searchedSource?.severityTextExpression;
+      case SourceKind.Trace:
+        return (
+          searchedSource?.statusCodeExpression ??
+          searchedSource?.serviceNameExpression
+        );
+      default:
+        return undefined;
+    }
+  }, [searchedSource]);
+
+  // Builds the chart config for an aggregated view (time series / number /
+  // table / bar / pie / treemap) from the current search config plus the
+  // inline aggregation controls. The renderers apply their own display-type
+  // conversion (convertToCategoricalChartConfig, etc.).
+  const aggViewChartConfig = useMemo(() => {
+    if (chartConfig == null || !isAggregatedSearchView(view)) {
+      return undefined;
+    }
+    const valueExpression =
+      aggConfig.aggFn === 'count' ? '' : aggConfig.aggExpr.trim();
+    const groupBy =
+      view === 'number'
+        ? undefined
+        : aggConfig.groupBy.trim() || defaultAggGroupBy || undefined;
+    return {
+      ...chartConfig,
+      select: [
+        {
+          aggFn: aggConfig.aggFn,
+          aggCondition: '',
+          valueExpression,
+        },
+      ],
+      groupBy,
+      orderBy: undefined,
+      granularity: view === 'timeseries' ? 'auto' : undefined,
+      dateRange: searchedTimeRange,
+      displayType: searchViewToDisplayType(view),
+      with: aliasWith,
+      seriesLimit: view === 'timeseries' ? undefined : aggConfig.limit,
+      alignDateRangeToGranularity: false,
+      dateRangeEndInclusive: true,
+    } as BuilderChartConfigWithDateRange;
+  }, [
+    chartConfig,
+    view,
+    aggConfig,
+    defaultAggGroupBy,
+    searchedTimeRange,
+    aliasWith,
+  ]);
+
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
     e => {
       e.preventDefault();
@@ -2241,7 +2315,7 @@ export function DBSearchPage() {
               setInputValue={setDisplayedTimeInputValue}
               onSearch={onTimePickerSearch}
               onRelativeSearch={onTimePickerRelativeSearch}
-              showLive={analysisMode === 'results'}
+              showLive={view === 'list'}
               isLiveMode={isLive}
               // Default to relative time mode if the user has made changes to interval and reloaded.
               defaultRelativeTimeMode={
@@ -2326,7 +2400,6 @@ export function DBSearchPage() {
                     setDenoiseResults={setDenoiseResults}
                     isLive={isLive}
                     analysisMode={analysisMode}
-                    setAnalysisMode={setAnalysisMode}
                     chartConfig={filtersChartConfig}
                     sourceId={inputSourceObj?.id}
                     showDelta={
@@ -2341,22 +2414,37 @@ export function DBSearchPage() {
                   />
                 </ErrorBoundary>
               )}
-              {analysisMode === 'pattern' &&
-                histogramTimeChartConfig != null && (
-                  <Flex direction="column" w="100%" gap="0px" mih="0" miw={0}>
-                    <Box className={searchPageStyles.searchStatsContainer}>
-                      <Group
-                        justify="space-between"
-                        align="center"
-                        style={{ width: '100%' }}
-                      >
+              {chartConfig && histogramTimeChartConfig && (
+                <Flex direction="column" w="100%" gap="0px" mih="0" miw={0}>
+                  <Box className={searchPageStyles.searchStatsContainer}>
+                    <Group
+                      justify="space-between"
+                      align="center"
+                      style={{ width: '100%' }}
+                    >
+                      <Group gap="md" align="center" wrap="nowrap">
                         <SearchResultsCountGroup
                           isFilterSidebarCollapsed={isFilterSidebarCollapsed}
                           onExpandFilters={() =>
                             setIsFilterSidebarCollapsed(false)
                           }
                           histogramTimeChartConfig={histogramTimeChartConfig}
+                          enableParallelQueries
                         />
+                        <SearchViewSwitcher
+                          value={view}
+                          onChange={setView}
+                          sourceKind={searchedSource?.kind}
+                        />
+                      </Group>
+                      <Group gap="sm" align="center">
+                        {view === 'list' &&
+                          shouldShowLiveModeHint &&
+                          denoiseResults != true && (
+                            <ResumeLiveTailButton
+                              handleResumeLiveTail={handleResumeLiveTail}
+                            />
+                          )}
                         <SearchNumRows
                           config={{
                             ...chartConfig,
@@ -2369,128 +2457,36 @@ export function DBSearchPage() {
                           isLiveTail={isLive ?? false}
                         />
                       </Group>
-                    </Box>
-                    {!hasQueryError && (
-                      <Box
-                        className={searchPageStyles.timeChartContainer}
-                        mih="0"
-                      >
-                        <DBTimeChart
-                          sourceId={searchedConfig.source ?? undefined}
-                          showLegend={false}
-                          config={histogramTimeChartConfig}
-                          enabled={isReady}
-                          showDisplaySwitcher={false}
-                          showMVOptimizationIndicator={false}
-                          showDateRangeIndicator={false}
-                          queryKeyPrefix={QUERY_KEY_PREFIX}
-                          onTimeRangeSelect={handleTimeRangeSelect}
-                          onFocusSeries={handleFocusSeries}
-                        />
-                      </Box>
-                    )}
-                    <Box flex="1" mih="0" px="sm">
-                      <PatternTable
-                        source={searchedSource}
-                        config={{
-                          ...chartConfig,
-                          dateRange: searchedTimeRange,
-                          // Carry the source's select-alias definitions so the
-                          // rebuilt pattern query can filter on aliased columns
-                          // (e.g. `ServiceName as service`) without hitting
-                          // "Unknown identifier". Mirrors the results,
-                          // histogram, and heatmap configs.
-                          with: aliasWith,
-                        }}
-                        bodyValueExpression={
-                          searchedSource
-                            ? (getEventBody(searchedSource) ?? '')
-                            : (chartConfig.implicitColumnExpression ?? '')
-                        }
-                        patternColumn={patternColumn}
-                        draftPatternColumn={draftPatternColumn}
-                        onDraftPatternColumnChange={setDraftPatternColumn}
-                        onSubmit={onSubmit}
-                        totalCountConfig={histogramTimeChartConfig}
-                        totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
+                    </Group>
+                  </Box>
+                  {isAggregatedSearchView(view) && (
+                    <SearchAggControls
+                      view={view}
+                      config={aggConfig}
+                      onChange={setAggConfig}
+                      defaultGroupBy={defaultAggGroupBy}
+                      onSubmit={onSubmit}
+                    />
+                  )}
+                  {viewShowsHistogram(view) && !hasQueryError && (
+                    <Box
+                      className={searchPageStyles.timeChartContainer}
+                      mih="0"
+                    >
+                      <DBTimeChart
+                        sourceId={searchedConfig.source ?? undefined}
+                        showLegend={false}
+                        config={histogramTimeChartConfig}
+                        enabled={isReady}
+                        showDisplaySwitcher={false}
+                        showMVOptimizationIndicator={false}
+                        showDateRangeIndicator={false}
+                        queryKeyPrefix={QUERY_KEY_PREFIX}
+                        onTimeRangeSelect={handleTimeRangeSelect}
+                        onFocusSeries={handleFocusSeries}
+                        enableParallelQueries
                       />
                     </Box>
-                  </Flex>
-                )}
-              {analysisMode === 'delta' &&
-                searchedSource != null &&
-                isTraceSource(searchedSource) && (
-                  <DBSearchHeatmapChart
-                    chartConfig={{
-                      ...chartConfig,
-                      dateRange: searchedTimeRange,
-                      with: aliasWith,
-                    }}
-                    isReady={isReady}
-                    source={searchedSource}
-                    onAddFilter={searchFilters.setFilterValue}
-                  />
-                )}
-              {analysisMode === 'results' && (
-                <Flex direction="column" mih="0" miw={0}>
-                  {chartConfig && histogramTimeChartConfig && (
-                    <>
-                      <Box className={searchPageStyles.searchStatsContainer}>
-                        <Group
-                          justify="space-between"
-                          align="center"
-                          style={{ width: '100%' }}
-                        >
-                          <SearchResultsCountGroup
-                            isFilterSidebarCollapsed={isFilterSidebarCollapsed}
-                            onExpandFilters={() =>
-                              setIsFilterSidebarCollapsed(false)
-                            }
-                            histogramTimeChartConfig={histogramTimeChartConfig}
-                            enableParallelQueries
-                          />
-                          <Group gap="sm" align="center">
-                            {shouldShowLiveModeHint &&
-                              denoiseResults != true && (
-                                <ResumeLiveTailButton
-                                  handleResumeLiveTail={handleResumeLiveTail}
-                                />
-                              )}
-                            <SearchNumRows
-                              config={{
-                                ...chartConfig,
-                                dateRange: searchedTimeRange,
-                              }}
-                              sqlConfig={histogramTimeChartConfig ?? undefined}
-                              enabled={isReady}
-                              searchElapsedMs={searchElapsedMs}
-                              isSearching={isAnyQueryFetching}
-                              isLiveTail={isLive ?? false}
-                            />
-                          </Group>
-                        </Group>
-                      </Box>
-                      {!hasQueryError && (
-                        <Box
-                          className={searchPageStyles.timeChartContainer}
-                          mih="0"
-                        >
-                          <DBTimeChart
-                            sourceId={searchedConfig.source ?? undefined}
-                            showLegend={false}
-                            config={histogramTimeChartConfig}
-                            enabled={isReady}
-                            showDisplaySwitcher={false}
-                            showMVOptimizationIndicator={false}
-                            showDateRangeIndicator={false}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
-                            onTimeRangeSelect={handleTimeRangeSelect}
-                            onFocusSeries={handleFocusSeries}
-                            enableParallelQueries
-                          />
-                        </Box>
-                      )}
-                    </>
                   )}
                   {hasQueryError && queryError ? (
                     <>
@@ -2612,6 +2608,112 @@ export function DBSearchPage() {
                         )}
                       </div>
                     </>
+                  ) : view === 'patterns' ? (
+                    <Box flex="1" mih="0" px="sm">
+                      <PatternTable
+                        source={searchedSource}
+                        config={{
+                          ...chartConfig,
+                          dateRange: searchedTimeRange,
+                          // Carry the source's select-alias definitions so the
+                          // rebuilt pattern query can filter on aliased columns
+                          // (e.g. `ServiceName as service`) without hitting
+                          // "Unknown identifier". Mirrors the results,
+                          // histogram, and heatmap configs.
+                          with: aliasWith,
+                        }}
+                        bodyValueExpression={
+                          searchedSource
+                            ? (getEventBody(searchedSource) ?? '')
+                            : (chartConfig.implicitColumnExpression ?? '')
+                        }
+                        patternColumn={patternColumn}
+                        draftPatternColumn={draftPatternColumn}
+                        onDraftPatternColumnChange={setDraftPatternColumn}
+                        onSubmit={onSubmit}
+                        totalCountConfig={histogramTimeChartConfig}
+                        totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
+                      />
+                    </Box>
+                  ) : view === 'heatmap' ? (
+                    searchedSource != null && isTraceSource(searchedSource) ? (
+                      <Box flex="1" mih="0">
+                        <DBSearchHeatmapChart
+                          chartConfig={{
+                            ...chartConfig,
+                            dateRange: searchedTimeRange,
+                            with: aliasWith,
+                          }}
+                          isReady={isReady}
+                          source={searchedSource}
+                          onAddFilter={searchFilters.setFilterValue}
+                        />
+                      </Box>
+                    ) : (
+                      <Box flex="1" px="sm" pt="md">
+                        <Text size="sm" c="dimmed">
+                          Event deltas are only available for trace sources.
+                        </Text>
+                      </Box>
+                    )
+                  ) : isAggregatedSearchView(view) ? (
+                    <Box flex="1" mih="0" px="sm" py="xs">
+                      {view === 'timeseries' && aggViewChartConfig && (
+                        <DBTimeChart
+                          sourceId={searchedConfig.source ?? undefined}
+                          config={aggViewChartConfig}
+                          enabled={isReady}
+                          showDisplaySwitcher={false}
+                          showMVOptimizationIndicator={false}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                        />
+                      )}
+                      {view === 'number' && aggViewChartConfig && (
+                        <DBNumberChart
+                          config={aggViewChartConfig}
+                          enabled={isReady}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          showMVOptimizationIndicator={false}
+                          errorVariant="inline"
+                        />
+                      )}
+                      {view === 'table' && aggViewChartConfig && (
+                        <DBTableChart
+                          config={aggViewChartConfig}
+                          enabled={isReady}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          showMVOptimizationIndicator={false}
+                          errorVariant="inline"
+                        />
+                      )}
+                      {view === 'bar' && aggViewChartConfig && (
+                        <DBBarChart
+                          config={aggViewChartConfig}
+                          enabled={isReady}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          showMVOptimizationIndicator={false}
+                          errorVariant="inline"
+                        />
+                      )}
+                      {view === 'pie' && aggViewChartConfig && (
+                        <DBPieChart
+                          config={aggViewChartConfig}
+                          enabled={isReady}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          showMVOptimizationIndicator={false}
+                          errorVariant="inline"
+                        />
+                      )}
+                      {view === 'treemap' && aggViewChartConfig && (
+                        <DBTreemapChart
+                          config={aggViewChartConfig}
+                          enabled={isReady}
+                          queryKeyPrefix={QUERY_KEY_PREFIX}
+                          showMVOptimizationIndicator={false}
+                          errorVariant="inline"
+                        />
+                      )}
+                    </Box>
                   ) : (
                     <Box flex="1" mih="0" px="sm">
                       {chartConfig &&

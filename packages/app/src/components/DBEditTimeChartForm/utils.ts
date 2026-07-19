@@ -104,6 +104,8 @@ export function displayTypeToActiveTab(displayType: DisplayType): string {
       return 'pie';
     case DisplayType.Bar:
       return 'bar';
+    case DisplayType.Treemap:
+      return 'treemap';
     case DisplayType.Number:
       return 'number';
     case DisplayType.Heatmap:

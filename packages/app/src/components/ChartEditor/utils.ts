@@ -64,12 +64,14 @@ export const isRawSqlDisplayType = (
   | DisplayType.StackedBar
   | DisplayType.Pie
   | DisplayType.Bar
+  | DisplayType.Treemap
   | DisplayType.Number =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Bar ||
+  displayType === DisplayType.Treemap ||
   displayType === DisplayType.Number;
 
 /**

@@ -30,6 +30,7 @@ import { DBPieChart } from '@/components/DBPieChart';
 import DBSqlRowTableWithSideBar from '@/components/DBSqlRowTableWithSidebar';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
+import { DBTreemapChart } from '@/components/DBTreemapChart';
 import EmptyState from '@/components/EmptyState';
 import PatternTable from '@/components/PatternTable';
 import {
@@ -243,6 +244,15 @@ export function ChartPreviewPanel({
       {queryReady && queriedConfig != null && activeTab === 'bar' && (
         <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
           <DBBarChart
+            config={queriedConfig}
+            showMVOptimizationIndicator={false}
+            errorVariant="inline"
+          />
+        </div>
+      )}
+      {queryReady && queriedConfig != null && activeTab === 'treemap' && (
+        <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
+          <DBTreemapChart
             config={queriedConfig}
             showMVOptimizationIndicator={false}
             errorVariant="inline"

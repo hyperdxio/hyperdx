@@ -36,6 +36,7 @@ import {
   IconChartBar,
   IconChartLine,
   IconChartPie,
+  IconChartTreemap,
   IconGrid3x3,
   IconList,
   IconMarkdown,
@@ -746,6 +747,12 @@ export default function EditTimeChartForm({
                   leftSection={<IconChartPie size={16} />}
                 >
                   Pie
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value={DisplayType.Treemap}
+                  leftSection={<IconChartTreemap size={16} />}
+                >
+                  Treemap
                 </Tabs.Tab>
                 <Tabs.Tab
                   value={DisplayType.Search}
