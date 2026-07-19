@@ -141,9 +141,12 @@ import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
 import {
+  type AggSortField,
   SearchAggControls,
   useSearchAggConfig,
 } from './components/Search/SearchAggControls';
+import { SearchColumnPicker } from './components/Search/SearchColumnPicker';
+import { SearchSortMenu } from './components/Search/SearchSortMenu';
 import {
   isAggregatedSearchView,
   SearchViewSwitcher,
@@ -1610,6 +1613,45 @@ export function DBSearchPage() {
     [displayedColumns, setValue, onSubmit],
   );
 
+  // Available columns for the structured Columns picker (List view).
+  const availableColumns = useMemo(
+    () => (inputSourceColumns ?? []).map(c => c.name),
+    [inputSourceColumns],
+  );
+
+  const applyColumns = useCallback(
+    (columns: string[]) => {
+      setValue('select', columns.join(', '));
+      onSubmit();
+    },
+    [setValue, onSubmit],
+  );
+
+  // Current List-view sort parsed from the orderBy string.
+  const listSort = useMemo(() => {
+    const parsed = parseAsSortingStateString.parse(
+      searchedConfig.orderBy ?? '',
+    );
+    return {
+      field: parsed?.id as string | undefined,
+      direction: (parsed?.desc ? 'desc' : 'asc') as 'asc' | 'desc',
+    };
+  }, [searchedConfig.orderBy]);
+
+  const applyListSort = useCallback(
+    (field: string, direction: 'asc' | 'desc') => {
+      setIsLive(false);
+      setSearchedConfig({
+        orderBy: `${field} ${direction === 'desc' ? 'DESC' : 'ASC'}`,
+      });
+    },
+    [setIsLive, setSearchedConfig],
+  );
+
+  const revertListSort = useCallback(() => {
+    setSearchedConfig({ orderBy: defaultSearchConfig.orderBy });
+  }, [setSearchedConfig, defaultSearchConfig.orderBy]);
+
   const generateSearchUrl = useCallback(
     ({
       where,
@@ -1809,6 +1851,22 @@ export function DBSearchPage() {
       view === 'number'
         ? undefined
         : aggConfig.groupBy.trim() || defaultAggGroupBy || undefined;
+    // Categorical + summary-table views support the structured Sort menu
+    // (Value = the metric, Name = the group key). Alias the aggregate as
+    // "Value" so ordering by it is stable regardless of the expression.
+    const isCategoricalLike =
+      view === 'table' ||
+      view === 'bar' ||
+      view === 'pie' ||
+      view === 'treemap';
+    let orderBy: string | undefined;
+    if (isCategoricalLike) {
+      const dir = aggConfig.sortDir.toUpperCase();
+      orderBy =
+        aggConfig.sort === 'name' && groupBy
+          ? `${groupBy} ${dir}`
+          : `"Value" ${dir}`;
+    }
     return {
       ...chartConfig,
       select: [
@@ -1816,10 +1874,11 @@ export function DBSearchPage() {
           aggFn: aggConfig.aggFn,
           aggCondition: '',
           valueExpression,
+          ...(isCategoricalLike ? { alias: 'Value' } : {}),
         },
       ],
       groupBy,
-      orderBy: undefined,
+      orderBy,
       granularity: view === 'timeseries' ? 'auto' : undefined,
       dateRange: searchedTimeRange,
       displayType: searchViewToDisplayType(view),
@@ -2445,6 +2504,56 @@ export function DBSearchPage() {
                               handleResumeLiveTail={handleResumeLiveTail}
                             />
                           )}
+                        {view === 'list' && (
+                          <SearchSortMenu
+                            groupLabel="Sort by"
+                            options={displayedColumns.map(column => ({
+                              value: column,
+                              label: column,
+                            }))}
+                            activeField={listSort.field}
+                            direction={listSort.direction}
+                            onChange={applyListSort}
+                            onRevert={revertListSort}
+                            canRevert={!!searchedConfig.orderBy}
+                          />
+                        )}
+                        {(view === 'table' ||
+                          view === 'bar' ||
+                          view === 'pie' ||
+                          view === 'treemap') && (
+                          <SearchSortMenu
+                            groupLabel="Sort groups by"
+                            options={[
+                              { value: 'value', label: 'Value' },
+                              { value: 'name', label: 'Name' },
+                            ]}
+                            activeField={aggConfig.sort}
+                            direction={aggConfig.sortDir}
+                            onChange={(field, dir) => {
+                              setAggConfig({
+                                sort: field as AggSortField,
+                                sortDir: dir,
+                              });
+                              onSubmit();
+                            }}
+                            onRevert={() => {
+                              setAggConfig({ sort: 'value', sortDir: 'desc' });
+                              onSubmit();
+                            }}
+                            canRevert={
+                              aggConfig.sort !== 'value' ||
+                              aggConfig.sortDir !== 'desc'
+                            }
+                          />
+                        )}
+                        {view === 'list' && (
+                          <SearchColumnPicker
+                            availableColumns={availableColumns}
+                            selectedColumns={displayedColumns}
+                            onApply={applyColumns}
+                          />
+                        )}
                         <SearchNumRows
                           config={{
                             ...chartConfig,

@@ -31,11 +31,16 @@ const AGG_FN_OPTIONS: { value: AggFn; label: string }[] = [
 
 const DEFAULT_AGG_LIMIT = 20;
 
+export type AggSortField = 'value' | 'name';
+type AggSortDirection = 'asc' | 'desc';
+
 export interface SearchAggConfig {
   aggFn: AggFn;
   aggExpr: string;
   groupBy: string;
   limit: number;
+  sort: AggSortField;
+  sortDir: AggSortDirection;
 }
 
 /** URL-backed aggregation config for the search view switcher. */
@@ -48,6 +53,8 @@ export function useSearchAggConfig(): [
     aggExpr: parseAsString.withDefault(''),
     groupBy: parseAsString.withDefault(''),
     limit: parseAsInteger.withDefault(DEFAULT_AGG_LIMIT),
+    sort: parseAsString.withDefault('value'),
+    sortDir: parseAsString.withDefault('desc'),
   });
 
   const config = useMemo<SearchAggConfig>(
@@ -56,8 +63,17 @@ export function useSearchAggConfig(): [
       aggExpr: state.aggExpr,
       groupBy: state.groupBy,
       limit: state.limit,
+      sort: state.sort as AggSortField,
+      sortDir: state.sortDir as AggSortDirection,
     }),
-    [state.agg, state.aggExpr, state.groupBy, state.limit],
+    [
+      state.agg,
+      state.aggExpr,
+      state.groupBy,
+      state.limit,
+      state.sort,
+      state.sortDir,
+    ],
   );
 
   const setConfig = useCallback(
@@ -67,6 +83,8 @@ export function useSearchAggConfig(): [
         ...(patch.aggExpr != null ? { aggExpr: patch.aggExpr } : {}),
         ...(patch.groupBy != null ? { groupBy: patch.groupBy } : {}),
         ...(patch.limit != null ? { limit: patch.limit } : {}),
+        ...(patch.sort != null ? { sort: patch.sort } : {}),
+        ...(patch.sortDir != null ? { sortDir: patch.sortDir } : {}),
       });
     },
     [setState],
