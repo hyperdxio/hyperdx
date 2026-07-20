@@ -9,12 +9,13 @@ import {
   chSql,
   ClickhouseClientOptions,
   ColumnMeta,
+  DefaultLogger,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
-import { IS_LOCAL_MODE } from '@/config';
+import { IS_DEV, IS_LOCAL_MODE } from '@/config';
 import { getLocalConnections } from '@/connection';
 
 import api from './api';
@@ -22,9 +23,15 @@ import { DEFAULT_QUERY_TIMEOUT } from './defaults';
 
 const PROXY_CLICKHOUSE_HOST = '/api/clickhouse-proxy';
 
+const queryLogger = IS_DEV || IS_LOCAL_MODE ? new DefaultLogger() : undefined;
+
 export const getClickhouseClient = (
   options: ClickhouseClientOptions = {},
 ): ClickhouseClient => {
+  options = {
+    customLogger: queryLogger,
+    ...options,
+  };
   if (IS_LOCAL_MODE) {
     const localConnections = getLocalConnections();
     if (localConnections.length === 0) {
