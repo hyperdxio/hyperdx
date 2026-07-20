@@ -107,8 +107,6 @@ const TimePickerComponent = ({
   defaultRelativeTimeMode = false,
   width = 350,
   size = 'sm',
-  rightSection,
-  rightSectionWidth,
 }: {
   inputValue: string;
   setInputValue: (str: string) => any;
@@ -120,13 +118,6 @@ const TimePickerComponent = ({
   defaultRelativeTimeMode?: boolean;
   width?: number | string;
   size?: 'xs' | 'sm';
-  /**
-   * Custom content for the input's right section (e.g. a live-tail control).
-   * When set, it replaces the default keyboard-hint affordance and the live
-   * indicator moves off the left icon to avoid a duplicate.
-   */
-  rightSection?: React.ReactNode;
-  rightSectionWidth?: number | string;
 }) => {
   const {
     userPreferences: { timeFormat },
@@ -282,7 +273,7 @@ const TimePickerComponent = ({
         <TextInput
           data-testid="time-picker-input"
           leftSection={
-            isLiveMode && !rightSection ? (
+            isLiveMode ? (
               <IconBolt size={16} className="text-brand" />
             ) : (
               <IconCalendarFilled size={16} />
@@ -296,15 +287,12 @@ const TimePickerComponent = ({
             },
           }}
           rightSection={
-            rightSection ??
-            (opened ? (
+            opened && (
               <Text size="xxs" bg="var(--color-bg-neutral)" px={4} c="white">
                 d
               </Text>
-            ) : null)
+            )
           }
-          rightSectionWidth={rightSectionWidth}
-          rightSectionPointerEvents="auto"
           value={value}
           onChange={event => onChange(event.currentTarget.value)}
           onClick={toggle}
