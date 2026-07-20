@@ -1,6 +1,322 @@
+import { WebhookService } from '@hyperdx/common-utils/dist/types';
+
 import * as validators from '@/utils/validators';
 
 describe('validators', () => {
+  describe('isPrivateIp', () => {
+    it.each([
+      ['unspecified IPv4 address', '0.0.0.0'],
+      ['first address in the IPv4 "this network" range', '0.0.0.1'],
+      ['last address in the IPv4 "this network" range', '0.255.255.255'],
+      ['first address in 10.0.0.0/8', '10.0.0.0'],
+      ['last address in 10.0.0.0/8', '10.255.255.255'],
+      ['first address in the shared address space', '100.64.0.0'],
+      ['last address in the shared address space', '100.127.255.255'],
+      ['first IPv4 loopback address', '127.0.0.0'],
+      ['last IPv4 loopback address', '127.255.255.255'],
+      ['first IPv4 link-local address', '169.254.0.0'],
+      ['last IPv4 link-local address', '169.254.255.255'],
+      ['first address in 172.16.0.0/12', '172.16.0.0'],
+      ['last address in 172.16.0.0/12', '172.31.255.255'],
+      ['first address in 192.168.0.0/16', '192.168.0.0'],
+      ['last address in 192.168.0.0/16', '192.168.255.255'],
+      ['first IPv4 multicast address', '224.0.0.0'],
+      ['last IPv4 multicast address', '239.255.255.255'],
+      ['first reserved high IPv4 address', '240.0.0.0'],
+      ['limited broadcast address', '255.255.255.255'],
+    ])('blocks the %s (%s)', (_description, ip) => {
+      expect(validators.isPrivateIp(ip)).toBe(true);
+    });
+
+    it.each([
+      ['IETF protocol assignments', '192.0.0.0'],
+      ['documentation range TEST-NET-1', '192.0.2.1'],
+      ['benchmarking range', '198.18.0.1'],
+      ['documentation range TEST-NET-2', '198.51.100.1'],
+      ['documentation range TEST-NET-3', '203.0.113.1'],
+    ])('blocks the reserved IPv4 %s address (%s)', (_description, ip) => {
+      expect(validators.isPrivateIp(ip)).toBe(true);
+    });
+
+    it.each([
+      '1.0.0.0',
+      '9.255.255.255',
+      '11.0.0.0',
+      '100.63.255.255',
+      '100.128.0.0',
+      '126.255.255.255',
+      '128.0.0.0',
+      '169.253.255.255',
+      '169.255.0.0',
+      '172.15.255.255',
+      '172.32.0.0',
+      '192.167.255.255',
+      '192.169.0.0',
+      '223.255.255.255',
+    ])('allows the public IPv4 boundary address %s', ip => {
+      expect(validators.isPrivateIp(ip)).toBe(false);
+    });
+
+    it.each([
+      ['unspecified IPv6 address', '::'],
+      ['IPv6 loopback address', '::1'],
+      ['first IPv6 link-local address', 'fe80::'],
+      [
+        'last IPv6 link-local address',
+        'febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff',
+      ],
+      ['first unique-local address', 'fc00::'],
+      ['last unique-local address', 'fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff'],
+      ['first IPv6 multicast address', 'ff00::'],
+      [
+        'last IPv6 multicast address',
+        'ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff',
+      ],
+      ['fully expanded IPv6 loopback address', '0:0:0:0:0:0:0:0001'],
+      ['uppercase unique-local address', 'FC00::ABCD'],
+    ])('blocks the %s (%s)', (_description, ip) => {
+      expect(validators.isPrivateIp(ip)).toBe(true);
+    });
+
+    it.each([
+      ['IPv4-compatible loopback address', '::127.0.0.1'],
+      ['discard-only address', '100::1'],
+      ['documentation address', '2001:db8::1'],
+    ])('blocks the reserved IPv6 %s (%s)', (_description, ip) => {
+      expect(validators.isPrivateIp(ip)).toBe(true);
+    });
+
+    it.each([
+      ['mapped private address', '::ffff:10.0.0.1', true],
+      ['mapped loopback address', '::ffff:127.0.0.1', true],
+      ['mapped link-local address', '::ffff:169.254.1.1', true],
+      ['mapped public address', '::ffff:8.8.8.8', false],
+      ['mapped private address in hexadecimal form', '::ffff:ac10:1', true],
+      ['mapped public address in hexadecimal form', '::ffff:808:808', false],
+      ['private IPv4 address with a CIDR suffix', '127.0.0.1/8', true],
+      ['scoped IPv6 link-local address', 'fe80::1%lo0', true],
+    ])('%s (%s)', (_description, ip, expected) => {
+      expect(validators.isPrivateIp(ip)).toBe(expected);
+    });
+
+    it.each(['2001:4860:4860::8888', '2606:4700:4700::1111'])(
+      'allows the public IPv6 address %s',
+      ip => {
+        expect(validators.isPrivateIp(ip)).toBe(false);
+      },
+    );
+
+    it.each([
+      '',
+      'localhost',
+      ' 127.0.0.1',
+      '127.0.0.1 ',
+      '127.1',
+      '0177.0.0.1',
+      '2130706433',
+      '0x7f000001',
+      '256.0.0.1',
+      '[::1]',
+      '2001:db8:::1',
+    ])('rejects the non-canonical or invalid IP input %j', ip => {
+      expect(validators.isPrivateIp(ip)).toBe(false);
+    });
+  });
+
+  describe('validateWebhookUrl', () => {
+    const loadValidatorsWithConfig = (config: {
+      clickhouseHost?: string;
+      hostnameAllowlist?: string;
+    }): typeof validators => {
+      let isolatedValidators: typeof validators | undefined;
+
+      jest.isolateModules(() => {
+        jest.doMock('@/config', () => ({
+          CLICKHOUSE_HOST: config.clickhouseHost,
+          MONGO_URI: undefined,
+          WEBHOOK_HOSTNAME_ALLOWLIST: config.hostnameAllowlist ?? '',
+        }));
+
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, n/no-missing-require
+        isolatedValidators = require('@/utils/validators');
+      });
+      jest.dontMock('@/config');
+
+      return isolatedValidators!;
+    };
+
+    it.each([
+      [
+        'generic webhook',
+        {
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+        },
+      ],
+      [
+        'Slack webhook',
+        {
+          service: WebhookService.Slack,
+          url: 'https://hooks.slack.com/services/T00/B00/token',
+        },
+      ],
+    ])('allows a public %s URL', (_description, webhook) => {
+      expect(() => validators.validateWebhookUrl(webhook)).not.toThrow();
+    });
+
+    it.each([
+      ['missing URL', { service: WebhookService.Generic }],
+      [
+        'invalid URL',
+        { service: WebhookService.Generic, url: 'not-a-valid-url' },
+      ],
+      [
+        'unsupported protocol',
+        { service: WebhookService.Generic, url: 'ftp://example.com/webhook' },
+      ],
+      [
+        'private IPv4 address',
+        { service: WebhookService.Generic, url: 'http://10.0.0.1/webhook' },
+      ],
+      [
+        'private IPv6 address',
+        {
+          service: WebhookService.Generic,
+          url: 'http://[fd00::1]/webhook',
+        },
+      ],
+      [
+        'localhost hostname',
+        { service: WebhookService.Generic, url: 'http://localhost/webhook' },
+      ],
+      [
+        'localhost subdomain',
+        {
+          service: WebhookService.Generic,
+          url: 'http://api.localhost/webhook',
+        },
+      ],
+      [
+        'localhost hostname with a trailing root dot',
+        {
+          service: WebhookService.Generic,
+          url: 'http://localhost./webhook',
+        },
+      ],
+      [
+        'localhost subdomain with a trailing root dot',
+        {
+          service: WebhookService.Generic,
+          url: 'http://api.localhost./webhook',
+        },
+      ],
+      [
+        'non-Slack URL for a Slack webhook',
+        { service: WebhookService.Slack, url: 'https://example.com/webhook' },
+      ],
+    ])('blocks a %s', (_description, webhook) => {
+      expect(() => validators.validateWebhookUrl(webhook)).toThrow(
+        validators.WebhookUrlValidationError,
+      );
+    });
+
+    it('blocks an exact configured host, including its port', () => {
+      const isolatedValidators = loadValidatorsWithConfig({
+        clickhouseHost: 'http://localhost:8123',
+        hostnameAllowlist: 'localhost',
+      });
+
+      expect(() =>
+        isolatedValidators.validateWebhookUrl({
+          service: WebhookService.Generic,
+          url: 'http://localhost:8123/webhook',
+        }),
+      ).toThrow('Webhook attempting to query disallowed route.');
+
+      expect(() =>
+        isolatedValidators.validateWebhookUrl({
+          service: WebhookService.Generic,
+          url: 'http://localhost:9000/webhook',
+        }),
+      ).not.toThrow();
+    });
+
+    it('allows a configured hostname and its subdomains regardless of URL port or path', () => {
+      const isolatedValidators = loadValidatorsWithConfig({
+        hostnameAllowlist: 'HOOKS.LOCALHOST.',
+      });
+
+      for (const url of [
+        'http://hooks.localhost/webhook',
+        'http://tenant.hooks.localhost:9000/a/deep/path?next=other.localhost',
+        'http://hooks.localhost./webhook#other.localhost',
+      ]) {
+        expect(() =>
+          isolatedValidators.validateWebhookUrl({
+            service: WebhookService.Generic,
+            url,
+          }),
+        ).not.toThrow();
+      }
+    });
+
+    it('allows exact private IP literals regardless of URL port or path', () => {
+      const isolatedValidators = loadValidatorsWithConfig({
+        hostnameAllowlist: '10.0.0.1, fd00::1',
+      });
+
+      for (const url of [
+        'http://10.0.0.1:9000/a/deep/path?next=10.0.0.2',
+        'http://[fd00::1]:9000/a/deep/path?next=fd00::2',
+      ]) {
+        expect(() =>
+          isolatedValidators.validateWebhookUrl({
+            service: WebhookService.Generic,
+            url,
+          }),
+        ).not.toThrow();
+      }
+    });
+
+    it('does not confuse hostname prefixes or URL paths with an allowlisted domain', () => {
+      const isolatedValidators = loadValidatorsWithConfig({
+        hostnameAllowlist: 'hooks.localhost',
+      });
+
+      for (const url of [
+        'http://prefixhooks.localhost/webhook',
+        'http://other.localhost/hooks.localhost/webhook',
+        'http://hooks.localhost.evil.localhost/webhook',
+      ]) {
+        expect(() =>
+          isolatedValidators.validateWebhookUrl({
+            service: WebhookService.Generic,
+            url,
+          }),
+        ).toThrow(isolatedValidators.WebhookUrlValidationError);
+      }
+    });
+
+    it('does not confuse IP prefixes or URL paths with an allowlisted IP', () => {
+      const isolatedValidators = loadValidatorsWithConfig({
+        hostnameAllowlist: '10.0.0.1, fd00::1',
+      });
+
+      for (const url of [
+        'http://10.0.0.10/10.0.0.1/webhook',
+        'http://[fd00::10]/fd00::1/webhook',
+        'http://127.0.0.1/webhook?next=10.0.0.1',
+      ]) {
+        expect(() =>
+          isolatedValidators.validateWebhookUrl({
+            service: WebhookService.Generic,
+            url,
+          }),
+        ).toThrow(isolatedValidators.WebhookUrlValidationError);
+      }
+    });
+  });
+
   describe('validatePassword', () => {
     it('should return true if password is valid', () => {
       expect(validators.validatePassword('aB3!efghijkl')).toBe(true);

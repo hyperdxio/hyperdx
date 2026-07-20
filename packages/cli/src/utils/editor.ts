@@ -50,8 +50,11 @@ function buildFileContent(range: TimeRange): string {
  *  - ISO 8601: "2026-03-18T05:00:00Z"
  *  - Relative: "now-1h", "now-30m", "now-24h", "now-7d", "now"
  *  - Date only: "2026-03-18"
+ *
+ * Shared by the $EDITOR time-range editor and the `hdx chart`
+ * command's --from/--to flags.
  */
-function parseTimeValue(value: string): Date | null {
+export function parseTimeValue(value: string): Date | null {
   const trimmed = value.trim();
 
   // Relative time: now, now-1h, now-30m, etc.

@@ -7,15 +7,9 @@ import {
 } from '@hyperdx/common-utils/dist/filters';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
-import api from '@/api';
-import {
-  DEFAULT_FILTER_KEYS_FETCH_LIMIT,
-  DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS,
-} from '@/defaults';
 import {
   Facet,
   useAllFields,
-  useAllFieldsAndValues,
   useColumns,
   useDateTimeColumns,
   useGetKeyValues,
@@ -34,7 +28,7 @@ const INITIAL_LOAD_LIMIT = 20;
 /* The maximum number of values per filter to load when "Load More" is clicked */
 const LOAD_MORE_LOAD_LIMIT = 10000;
 
-function useFacetsFromRawTables({
+function useFacets({
   chartConfig,
   sourceId,
   mode,
@@ -42,6 +36,7 @@ function useFacetsFromRawTables({
   filterState,
   showMoreFields,
   enabled,
+  disableValues,
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
@@ -50,11 +45,12 @@ function useFacetsFromRawTables({
   filterState?: FilterState;
   showMoreFields?: boolean;
   enabled?: boolean;
+  disableValues?: boolean;
 }) {
   const { data: source } = useSource({
     id: sourceId,
   });
-  const tableConnection = tcFromSource(source);
+  const tableConnection = useMemo(() => tcFromSource(source), [source]);
   const { data: columns, isLoading: isColumnsLoading } =
     useColumns(tableConnection);
   const dateTimeColumns = useDateTimeColumns(columns);
@@ -151,24 +147,24 @@ function useFacetsFromRawTables({
     [chartConfig, dateRange, mode],
   );
 
-  // Exact pipeline step 2: fetch values for discovered keys
-  const { data: rawExactFacets, ...rest } = useGetKeyValues(
+  const { data: rawFacets, ...rest } = useGetKeyValues(
     {
       chartConfig: facetsChartConfig,
       limit: INITIAL_LOAD_LIMIT,
       keys: escapedKeysToFetch,
+      mode,
     },
-    { enabled },
+    { enabled: enabled && !disableValues },
   );
 
   // Map the (escaped) result keys back to the original UI keys.
-  const exactFacets = useMemo<Facet[] | undefined>(
+  const facets = useMemo<Facet[] | undefined>(
     () =>
-      rawExactFacets?.map(f => ({
+      rawFacets?.map(f => ({
         ...f,
         key: sqlKeyToUiKey.get(f.key) ?? f.key,
       })),
-    [rawExactFacets, sqlKeyToUiKey],
+    [rawFacets, sqlKeyToUiKey],
   );
 
   const metadata = useMetadataWithSettings();
@@ -176,26 +172,49 @@ function useFacetsFromRawTables({
     async (key: string): Promise<Facet | undefined> => {
       try {
         const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
-        const strippedFilterState: FilterState = { ...filterState };
-        delete strippedFilterState[key];
-        if (sqlKey !== key) delete strippedFilterState[sqlKey];
-        const newKeyVals = await metadata.getKeyValuesWithMVs({
-          chartConfig: {
-            ...chartConfig,
-            dateRange,
-            filters: filtersToQuery(
-              escapeFilterStateKeys(strippedFilterState, knownColumns),
-              { dateTimeColumns },
-            ),
-          },
-          keys: [sqlKey],
-          limit: LOAD_MORE_LOAD_LIMIT,
-          disableRowLimit: true,
-          source,
+        if (mode === 'exact') {
+          const strippedFilterState: FilterState = { ...filterState };
+          delete strippedFilterState[key];
+          if (sqlKey !== key) delete strippedFilterState[sqlKey];
+          const newKeyVals = await metadata.getKeyValuesWithMVs({
+            chartConfig: {
+              ...chartConfig,
+              dateRange,
+              filters: filtersToQuery(
+                escapeFilterStateKeys(strippedFilterState, knownColumns),
+                { dateTimeColumns },
+              ),
+            },
+            keys: [sqlKey],
+            limit: LOAD_MORE_LOAD_LIMIT,
+            disableRowLimit: true,
+            source,
+          });
+          return {
+            key,
+            value: newKeyVals[0].value?.map(val => val.toString()) ?? [],
+          };
+        }
+
+        if (!source) {
+          throw new Error('loadMoreFacetsForKey: source must be defined');
+        }
+        const newKeyVals = await metadata.getAllKeyValues({
+          databaseName: source.from.databaseName,
+          tableName: source.from.tableName,
+          connectionId: source.connection,
+          metadataMVs: tableConnection.metadataMVs,
+          keyExpressions: [sqlKey],
+          maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
+          dateRange,
+          timestampValueExpression: source.timestampValueExpression,
         });
         return {
           key,
-          value: newKeyVals[0].value?.map(val => val.toString()) ?? [],
+          value:
+            newKeyVals.length > 0
+              ? (newKeyVals[0].value?.map(val => val.toString()) ?? [])
+              : [],
         };
       } catch (error) {
         console.error('failed to fetch more keys', error);
@@ -203,6 +222,8 @@ function useFacetsFromRawTables({
       return undefined;
     },
     [
+      mode,
+      tableConnection,
       metadata,
       chartConfig,
       dateRange,
@@ -216,70 +237,10 @@ function useFacetsFromRawTables({
   return {
     ...rest,
     error: allFieldsError ?? rest.error,
-    data: exactFacets,
+    data: { keys: allFields, keyValues: facets },
     isLoading: isAllFieldsLoading || rest.isLoading,
     loadMoreFacetsForKey,
   };
-}
-
-function useAllFacetsFromMVs({
-  sourceId,
-  dateRange,
-  enabled,
-}: {
-  sourceId: string | null;
-  dateRange: [Date, Date];
-  enabled?: boolean;
-}) {
-  const { data: source } = useSource({
-    id: sourceId,
-  });
-  const tableConnection = tcFromSource(source);
-  const hasMVs = tableConnection && !!tableConnection.metadataMVs;
-  const { data: me } = api.useMe();
-  const defaultLimit = hasMVs
-    ? DEFAULT_FILTER_KEYS_FETCH_LIMIT_WITH_MVS
-    : DEFAULT_FILTER_KEYS_FETCH_LIMIT;
-  const maxKeys = me?.team?.filterKeysFetchLimit ?? defaultLimit;
-  const { data: columns } = useColumns(tableConnection);
-  const knownColumns = useMemo(
-    () => (columns ? new Set(columns.map(c => c.name)) : new Set<string>()),
-    [columns],
-  );
-
-  const metadata = useMetadataWithSettings();
-  const loadMoreFacetsForKey = useCallback(
-    async (key: string) => {
-      try {
-        const sqlKey = toQuotedClickHouseKeyExpression(key, knownColumns);
-        const results = await metadata.getAllKeyValues({
-          databaseName: tableConnection.databaseName,
-          tableName: tableConnection.tableName,
-          connectionId: tableConnection.connectionId,
-          keyExpressions: [sqlKey],
-          maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
-          metadataMVs: tableConnection.metadataMVs,
-          dateRange,
-          timestampValueExpression: source?.timestampValueExpression,
-        });
-        const newValues = results[0] ? results[0].value : [];
-        return { key, value: newValues };
-      } catch (error) {
-        console.error('failed to fetch more keys via MV facets', error);
-      }
-    },
-    [knownColumns, dateRange, metadata, tableConnection, source],
-  );
-
-  const queryRes = useAllFieldsAndValues(
-    {
-      ...tableConnection,
-      dateRange,
-      maxKeys,
-    },
-    { enabled },
-  );
-  return { ...queryRes, loadMoreFacetsForKey };
 }
 
 export function useFetchFacets({
@@ -289,6 +250,7 @@ export function useFetchFacets({
   mode,
   filterState,
   showMoreFields,
+  disableValues,
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
@@ -296,41 +258,33 @@ export function useFetchFacets({
   mode: 'all' | 'exact';
   filterState?: FilterState;
   showMoreFields?: boolean;
+  disableValues?: boolean;
 }) {
-  const { data: source } = useSource({
-    id: sourceId,
-  });
-  const tableConnection = tcFromSource(source);
-  const hasMVs = !!tableConnection.metadataMVs;
-  const useRawTablePipeline = !hasMVs || mode === 'exact';
-
-  const fromMVs = useAllFacetsFromMVs({
-    sourceId,
-    dateRange,
-    enabled: !useRawTablePipeline,
-  });
-
-  // Exact pipeline: fetch values for discovered keys
-  const fromRawTables = useFacetsFromRawTables({
+  const facetsQuery = useFacets({
     chartConfig,
     sourceId,
     mode,
     dateRange,
     filterState,
     showMoreFields,
-    enabled: useRawTablePipeline,
+    enabled: true,
+    disableValues,
   });
 
   const [extraFacets, setExtraFacets] = useState<Facet[] | null>(null);
-  const facets = useMemo(() => {
-    const facets = useRawTablePipeline ? fromRawTables.data : fromMVs.data;
-    if (!facets) return undefined;
-    if (!extraFacets || extraFacets.length === 0) return facets;
-    const seenFacets = new Set();
+  const facets = useMemo<Facet[] | undefined>(() => {
+    const base = facetsQuery.data.keyValues;
+    const hasExtras = !!extraFacets && extraFacets.length > 0;
+
+    if (base === undefined && !hasExtras) return undefined;
+    if (!hasExtras) return base;
+    if (base === undefined) return extraFacets ?? undefined;
+
+    const seenFacets = new Set<string>();
     const output: Facet[] = [];
-    for (const facet of facets) {
+    for (const facet of base) {
       seenFacets.add(facet.key);
-      const extraFacet = extraFacets.find(ef => ef.key === facet.key);
+      const extraFacet = extraFacets!.find(ef => ef.key === facet.key);
       if (extraFacet) {
         // Union values: primary is query-scoped and must not be overridden;
         // extras from "Load More" only append (see PR #2329, commit 8938b05ef).
@@ -353,18 +307,18 @@ export function useFetchFacets({
       }
     }
     return output;
-  }, [fromMVs.data, fromRawTables.data, useRawTablePipeline, extraFacets]);
+  }, [facetsQuery.data, extraFacets]);
 
-  const [extraFacetKeys, setExtraFacetKeys] = useState<Set<string>>(new Set());
-  const [loadMoreLoadingKeys, setLoadMoreLoadingKeys] = useState<Set<string>>(
-    new Set(),
+  const [extraFacetKeys, setExtraFacetKeys] = useState<Set<string>>(
+    () => new Set(),
   );
-  const extraFacetsLoading = loadMoreLoadingKeys.size > 0;
+  const [loadMoreLoadingKeys, setLoadMoreLoadingKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const areExtraFacetsLoading = loadMoreLoadingKeys.size > 0;
   const loadMoreFacetsForKey = useCallback(
     async (key: string) => {
-      const strategy = useRawTablePipeline
-        ? fromRawTables.loadMoreFacetsForKey
-        : fromMVs.loadMoreFacetsForKey;
+      const strategy = facetsQuery.loadMoreFacetsForKey;
       setLoadMoreLoadingKeys(prev =>
         produce(prev, draft => {
           draft.add(key);
@@ -385,11 +339,7 @@ export function useFetchFacets({
         }),
       );
     },
-    [
-      fromRawTables.loadMoreFacetsForKey,
-      fromMVs.loadMoreFacetsForKey,
-      useRawTablePipeline,
-    ],
+    [facetsQuery.loadMoreFacetsForKey],
   );
 
   // Clear extras when the query scope that produced them changes; otherwise
@@ -397,7 +347,6 @@ export function useFetchFacets({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setExtraFacets(null);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setExtraFacetKeys(new Set());
   }, [
     sourceId,
@@ -408,25 +357,12 @@ export function useFetchFacets({
     chartConfig.whereLanguage,
   ]);
 
-  const output = useMemo(() => {
-    return {
-      ...(useRawTablePipeline ? fromRawTables : fromMVs),
-      data: facets,
-      loadMoreFacetsForKey: loadMoreFacetsForKey,
-      areExtraFacetsLoading: extraFacetsLoading,
-      loadMoreLoadingKeys,
-      extraFacetKeys,
-    };
-  }, [
-    useRawTablePipeline,
-    fromMVs,
-    fromRawTables,
-    facets,
+  return {
+    ...facetsQuery,
+    data: { keys: facetsQuery.data.keys, keyValues: facets },
     loadMoreFacetsForKey,
-    extraFacetsLoading,
+    areExtraFacetsLoading,
     loadMoreLoadingKeys,
     extraFacetKeys,
-  ]);
-
-  return output;
+  };
 }

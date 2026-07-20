@@ -45,10 +45,12 @@ export type ChartConfigDisplaySettings = Pick<
   | 'backgroundChart'
 > & {
   groupByColumnsOnLeft?: boolean;
-  // Per-tile cap on the number of series fetched for a group-by time chart.
-  // null/undefined = disabled (no __hdx_series_limit CTE; every series is
-  // fetched). The editor clears to `null` (not `undefined`) so the cleared
-  // state survives JSON round-tripping through the URL query state.
+  // Per-tile cap on the number of series fetched. On group-by time charts it
+  // drives the __hdx_series_limit CTE; on pie/bar builder charts it becomes a
+  // plain SQL LIMIT.
+  // null/undefined = disabled (every series is fetched). The editor clears to
+  // `null` (not `undefined`) so the cleared state survives JSON
+  // round-tripping through the URL query state.
   seriesLimit?: number | null;
 };
 
@@ -70,7 +72,7 @@ interface ChartDisplaySettingsDrawerProps {
   /** 'sql' for raw SQL chart configs; anything else is treated as a builder config. */
   configType?: 'sql' | 'builder' | 'promql';
   previousDateRange?: [Date, Date];
-  onChange: (settings: ChartConfigDisplaySettings) => void;
+  onChange: (settings: ChartConfigDisplaySettings, isDirty: boolean) => void;
   onClose: () => void;
   isPerSeriesNumberFormatAllowed?: boolean;
 }
@@ -150,13 +152,17 @@ export default function ChartDisplaySettingsDrawer({
       // instead of freezing the drawer's inferred fallback into the config.
       const numberFormatExplicit =
         settings.numberFormat != null || dirtyFields.numberFormat != null;
-      onChange({
-        ...rest,
-        numberFormat: numberFormatExplicit
-          ? formValues.numberFormat
-          : undefined,
-        colorRules: colorRules ? stripLocalIds(colorRules) : undefined,
-      });
+      const hasDirtyFields = Object.keys(dirtyFields).length > 0;
+      onChange(
+        {
+          ...rest,
+          numberFormat: numberFormatExplicit
+            ? formValues.numberFormat
+            : undefined,
+          colorRules: colorRules ? stripLocalIds(colorRules) : undefined,
+        },
+        hasDirtyFields,
+      );
     })();
     onClose();
   }, [onChange, handleSubmit, onClose, settings.numberFormat, dirtyFields]);
@@ -177,6 +183,13 @@ export default function ChartDisplaySettingsDrawer({
   // raw SQL configs author their own LIMIT logic directly.
   const showSeriesLimit =
     isTimeChart && configType !== 'sql' && configType !== 'promql';
+
+  // On pie/bar builder charts, seriesLimit becomes a plain SQL LIMIT on the
+  // number of slices/bars; raw SQL configs author their own LIMIT directly.
+  const isCategoricalChart =
+    displayType === DisplayType.Pie || displayType === DisplayType.Bar;
+  const showCategoricalLimit =
+    isCategoricalChart && configType !== 'sql' && configType !== 'promql';
 
   // Group By column ordering only applies to builder table charts; raw SQL
   // configs let the user author whatever column order they want directly.
@@ -271,6 +284,32 @@ export default function ChartDisplaySettingsDrawer({
           </>
         )}
 
+        {showCategoricalLimit && (
+          <>
+            <Box>
+              <Controller
+                control={control}
+                name="seriesLimit"
+                render={({ field: { onChange, value } }) => (
+                  <NumberInput
+                    size="xs"
+                    label="Series Limit"
+                    description="Maximum number of values displayed, keeping those with the largest values. Leave empty to fetch all."
+                    placeholder="Disabled (e.g. 10)"
+                    min={1}
+                    allowDecimal={false}
+                    value={value ?? ''}
+                    onChange={v =>
+                      onChange(v === '' || v == null ? null : Number(v))
+                    }
+                  />
+                )}
+              />
+            </Box>
+            <Divider />
+          </>
+        )}
+
         {showGroupByColumnsOnLeft && (
           <>
             <CheckBoxControlled
@@ -349,7 +388,12 @@ export default function ChartDisplaySettingsDrawer({
           <Button type="submit" variant="secondary" onClick={resetToDefaults}>
             Reset to Defaults
           </Button>
-          <Button type="submit" variant="primary" onClick={applyChanges}>
+          <Button
+            type="submit"
+            variant="primary"
+            onClick={applyChanges}
+            data-testid="display-settings-apply-button"
+          >
             Apply
           </Button>
         </Group>

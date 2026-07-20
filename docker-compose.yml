@@ -69,6 +69,8 @@ services:
       # OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: 'http://otel-collector:4318/v1/logs'
       OTEL_SERVICE_NAME: 'hdx-oss-app'
       USAGE_STATS_ENABLED: ${USAGE_STATS_ENABLED:-true}
+      # Comma-separated hostnames or exact IP literals that may receive webhooks.
+      WEBHOOK_HOSTNAME_ALLOWLIST: ${WEBHOOK_HOSTNAME_ALLOWLIST:-}
       # Uncomment the next two lines to enable PromQL (Prometheus-compatible metrics)
       # ENABLE_PROMQL: 'true'
       # NEXT_PUBLIC_ENABLE_PROMQL: 'true'

@@ -60,12 +60,13 @@ Use BUILDER tiles (with sourceId) for most cases:
   number       Single KPI metric (total requests, current error rate, p99 latency).
   table        Ranked lists (top endpoints by latency, error counts by service). Tables can wire row-click navigation via config.onClick to the /search page or another dashboard. See "TABLE TILE LINKING" below.
   pie          Proportional breakdowns (traffic share by service, errors by type). Keep slice count under 8.
+  bar          Categorical comparisons (request counts by service, errors by endpoint). One bar per group value; not a time series (use stacked_bar for that).
   heatmap      Distribution of a numeric value over time (latency buckets, payload size). Trace sources only. Requires non-empty valueExpression.
   search       Browse raw log/event rows (error logs, recent traces).
   markdown     Use sparingly. The dashboard already shows its name in the title bar at the top; do NOT add a "About this dashboard" tile that repeats it. Markdown bodies render h1/h2/h3 headings at title-bar scale, so a single \`## Service Catalog\` line eats most of the tile and pushes real KPIs below the fold. Skip markdown tiles for starter dashboards. If you must add one, size it to fit the text (h: 2-3 for a line or two; h: 1 clips it), use plain prose, no \`#\`/\`##\`/\`###\` headings. Use containers/tabs for section grouping instead.
 
 Use RAW SQL tiles (with connectionId) only for queries the builder cannot express:
-  Requires configType: "sql" plus a displayType (line, stacked_bar, table, number, pie).
+  Requires configType: "sql" plus a displayType (line, stacked_bar, table, number, pie, bar).
   Use when you need JOINs, sub-queries, CTEs, or expressions the builder does not generate.
   ALWAYS set sourceId on a raw SQL tile (in addition to connectionId) UNLESS the query reads
   from multiple tables (e.g. JOINs across sources). sourceId enables the $__filters and 
@@ -128,7 +129,7 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
 
 13. NO TITLE-RECAP MARKDOWN TILE. The dashboard's name shows in the title bar. Adding a markdown tile with the dashboard name (or a "About this dashboard" header) doubles the title and eats a row of vertical space because markdown heading styles render at title-bar scale. Skip the markdown tile entirely on starter dashboards.
 
-14. SIZE TILES TO FIT THEIR CONTENT. The layout w/h are not one-size-fits-all; a tile that is too short clips its content (a table loses rows below the fold, a number tile crops its label) and one that is too wide wastes the row. Match the size to the displayType: number tiles stay small (w 6-8, h 3-4) so three or four KPIs share a row; line / stacked_bar / pie want w 8-12 and h 4-6; tables and search lists want the full row (w 24) and h 6-10 so rows are not cut off; heatmaps want w 12 and h 5-6; a markdown note wants h 2-3 (never h 1, which clips the text). The per-field w/h descriptions on the tile schema carry the same per-displayType ranges; reach for them instead of leaving every tile at the 12x4 default.
+14. SIZE TILES TO FIT THEIR CONTENT. The layout w/h are not one-size-fits-all; a tile that is too short clips its content (a table loses rows below the fold, a number tile crops its label) and one that is too wide wastes the row. Match the size to the displayType: number tiles stay small (w 6-8, h 3-4) so three or four KPIs share a row; line / stacked_bar / pie / bar want w 8-12 and h 4-6; tables and search lists want the full row (w 24) and h 6-10 so rows are not cut off; heatmaps want w 12 and h 5-6; a markdown note wants h 2-3 (never h 1, which clips the text). The per-field w/h descriptions on the tile schema carry the same per-displayType ranges; reach for them instead of leaving every tile at the 12x4 default.
 
 == ADAPT, DO NOT COPY ==
 
@@ -151,7 +152,7 @@ Dashboards open with a 15-minute default window. There is no dashboard-level fie
 - Skipping clickstack_list_sources + clickstack_describe_source (you need real source IDs, column names, and values).
 - Skipping clickstack_query_tile after save (tiles can silently fail on syntax or attribute mismatches).
 - Setting chart-level numberFormat on a table that mixes counts and durations (counts render as 0:00:00).
-- Multiple select items on number / pie / heatmap tiles (each takes exactly one).
+- Multiple select items on number / pie / bar / heatmap tiles (each takes exactly one).
 - Missing level on aggFn "quantile" (must specify 0.5, 0.9, 0.95, or 0.99).
 - Assuming StatusCode or SeverityText values (always inspect lowCardinalityValues from clickstack_describe_source).
 - Heatmap on a non-Trace source (heatmap is Trace-only today).
@@ -746,7 +747,7 @@ SQL TEMPLATE REFERENCE:
 
   Available parameters by displayType:
     line / stacked_bar        startDate, endDate, interval (all available)
-    table / number / pie      startDate, endDate only (no interval)`;
+    table / number / pie / bar   startDate, endDate only (no interval)`;
 
   const preface =
     'Concrete dashboard examples for common observability patterns. ' +
@@ -947,12 +948,13 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
     ORDER BY request_count DESC
     LIMIT 50
 
-  IMPORTANT: Always include a LIMIT clause in table / number / pie SQL queries.
+  IMPORTANT: Always include a LIMIT clause in table / number / pie / bar SQL queries.
 
 == PER-TILE TYPE CONSTRAINTS ==
 
   number       Exactly 1 select item. No groupBy.
-  pie          Exactly 1 select item. groupBy defines the slices. Keep slice count under 8.
+  pie          Exactly 1 select item. groupBy defines the slices. Keep slice count under 8. Set the optional limit field (SQL LIMIT keeping the top-N groups by value) when the groupBy is high-cardinality.
+  bar          Exactly 1 select item. groupBy defines the bars. Not a time series (use stacked_bar for that). Optional limit field keeps the top-N groups by value.
   line         1 to 20 select items. Optional groupBy splits into series. Each select item may carry its own numberFormat.
   stacked_bar  1 to 20 select items. Optional groupBy splits into stacks.
   table        1 to 20 select items. Optional groupBy defines row groups. Per-series numberFormat lets one column render as a duration while a sibling count column stays a plain number.
@@ -1027,6 +1029,23 @@ Colors are palette tokens, not hex. Order rules from least to most severe so the
   }
 
 colorRules is for number builder tiles only. Raw SQL number tiles (configType: "sql") support color but not colorRules.
+
+== NUMBER TILE BACKGROUND CHART ==
+
+number tiles can show a faint background trend sparkline behind the value, derived from a time-bucketed version of the same query. Use it for SLO / error-budget tiles where the trend over the window matters as much as the current value. One field on the tile config:
+
+  backgroundChart  { type, color? }. type is "line" or "area". color is an optional palette token override; when unset the sparkline inherits the tile color.
+
+Example: an availability tile that shows the current value over a faint area trend:
+  config: {
+    displayType: "number",
+    sourceId: "...",
+    select: [{ aggFn: "avg", valueExpression: "Success", numberFormat: { output: "percent" } }],
+    color: "chart-green",
+    backgroundChart: { type: "area" }
+  }
+
+backgroundChart is for number builder tiles only. Raw SQL number tiles (configType: "sql") return a single value with no time dimension to bucket, so they do not support it.
 
 == asRatio ==
 
@@ -1283,7 +1302,7 @@ Example: find top patterns for production services over the last 4 hours:
    Correct: groupBy: "SpanAttributes['http.method']"
    NOTE: JSON-type columns DO use dot notation. Check jsType from clickstack_describe_source.
 
-4. Multiple select items on number / pie / heatmap tiles
+4. Multiple select items on number / pie / bar / heatmap tiles
    Wrong:   displayType: "number", select: [{ aggFn: "count" }, { aggFn: "avg", ... }]
    Correct: displayType: "number", select: [{ aggFn: "count" }]
    Note: clickstack_table (the query tool) auto-upgrades shape:"number" to "table" when select has >1 item; dashboard tiles do not.
@@ -1355,7 +1374,7 @@ Example: find top patterns for production services over the last 4 hours:
 17. onClick on a non-table tile
     Only table tiles (builder displayType: "table" and raw-SQL configType: "sql"
     with displayType: "table") support config.onClick. Other displayTypes
-    ignore the field. Putting onClick on a line/number/pie/heatmap/search/markdown
+    ignore the field. Putting onClick on a line/number/pie/bar/heatmap/search/markdown
     tile won't error but won't do anything either.
 
 18. onClick targeting a non-log/trace source for type="search"

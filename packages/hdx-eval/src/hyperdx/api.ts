@@ -1,3 +1,6 @@
+/** Error with an HTTP status code attached for callers to distinguish 404 from other failures. */
+export type ApiError = Error & { status?: number };
+
 type CookieJar = Map<string, string>;
 
 type HyperdxConnection = {
@@ -93,9 +96,11 @@ export class HyperdxApiClient {
         typeof parsed === 'string'
           ? parsed.slice(0, 500)
           : JSON.stringify(parsed).slice(0, 500);
-      throw new Error(
+      const err = new Error(
         `HyperDX API ${method} ${path} → ${res.status}: ${snippet}`,
       );
+      (err as ApiError).status = res.status;
+      throw err;
     }
     return { status: res.status, body: parsed as T };
   }
@@ -200,4 +205,249 @@ export class HyperdxApiClient {
   async deleteSource(id: string): Promise<void> {
     await this.request<unknown>('DELETE', `/sources/${id}`);
   }
+
+  /**
+   * Fetch a dashboard via the External API v2 which returns a cleaner shape:
+   * - tile `name` is promoted to a top-level field (not buried in config)
+   * - config uses `sourceId` (not `source` ObjectId)
+   * - select items are restructured with clear field names
+   * Uses Bearer auth (accessKey), not cookie auth.
+   */
+  async getDashboardV2(
+    id: string,
+    accessKey: string,
+  ): Promise<HyperdxDashboard> {
+    const res = await fetch(this.url(`/api/v2/dashboards/${id}`), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessKey}`,
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(30_000),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      const err = new Error(
+        `GET /api/v2/dashboards/${id} → ${res.status}: ${text.slice(0, 300)}`,
+      );
+      (err as ApiError).status = res.status;
+      throw err;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const err = new Error(
+        `GET /api/v2/dashboards/${id} → ${res.status}: non-JSON response: ${text.slice(0, 200)}`,
+      );
+      (err as ApiError).status = res.status;
+      throw err;
+    }
+    const dashboard = (parsed as Record<string, unknown>)?.data ?? parsed;
+    if (
+      !dashboard ||
+      typeof dashboard !== 'object' ||
+      !Array.isArray((dashboard as Record<string, unknown>).tiles)
+    ) {
+      throw new Error(
+        `GET /api/v2/dashboards/${id}: unexpected response shape (missing tiles array)`,
+      );
+    }
+    return dashboard as HyperdxDashboard;
+  }
+
+  async deleteDashboard(id: string): Promise<void> {
+    await this.request<unknown>('DELETE', `/dashboards/${id}`);
+  }
+
+  /**
+   * Query a tile and return enriched evidence including sample rows.
+   * Used by dashboard inspection to collect data for the LLM judge.
+   */
+  async queryTileWithEvidence(args: {
+    accessKey: string;
+    dashboardId: string;
+    tileId: string;
+    startTime: string;
+    endTime: string;
+  }): Promise<TileQueryEvidence> {
+    const mcpUrl = `${this.apiUrl.replace(/\/$/, '')}/mcp`;
+
+    const rpcBody = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: {
+        name: 'clickstack_query_tile',
+        arguments: {
+          dashboardId: args.dashboardId,
+          tileId: args.tileId,
+          startTime: args.startTime,
+          endTime: args.endTime,
+        },
+      },
+    };
+
+    const res = await fetch(mcpUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${args.accessKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify(rpcBody),
+      signal: AbortSignal.timeout(60_000),
+    });
+
+    const text = await res.text();
+    if (!res.ok) {
+      return {
+        success: false,
+        error: `HTTP ${res.status}: ${text.slice(0, 200)}`,
+        hasData: false,
+      };
+    }
+
+    // Parse the MCP response — try JSON-RPC first, then SSE
+    const content = extractMcpContent(text);
+    if (!content) {
+      return {
+        success: false,
+        error: 'Could not parse MCP response',
+        hasData: false,
+      };
+    }
+    if (content.isError) {
+      return {
+        success: false,
+        error: content.text.slice(0, 300),
+        hasData: false,
+      };
+    }
+
+    try {
+      const inner = JSON.parse(content.text);
+      const result = inner.result;
+      if (!result) {
+        return { success: true, hasData: false };
+      }
+
+      let rows: unknown[] = [];
+      if (Array.isArray(result)) {
+        rows = result;
+      } else if (result.data && Array.isArray(result.data)) {
+        rows = result.data;
+      } else if (typeof result === 'object') {
+        for (const v of Object.values(result)) {
+          if (Array.isArray(v) && v.length > 0) {
+            rows = v as unknown[];
+            break;
+          }
+        }
+      }
+
+      const hasData = rows.length > 0;
+      let groupCount: number | undefined;
+      if (rows.length > 0 && typeof rows[0] === 'object' && rows[0] !== null) {
+        const firstRow = rows[0] as Record<string, unknown>;
+        for (const key of ['ServiceName', 'SpanName', 'group', 'series']) {
+          if (key in firstRow) {
+            const groups = new Set(
+              rows.map(r => String((r as Record<string, unknown>)[key])),
+            );
+            groupCount = groups.size;
+            break;
+          }
+        }
+      }
+
+      return {
+        success: true,
+        hasData,
+        rowCount: rows.length,
+        groupCount,
+        sampleRows: rows.slice(0, 5),
+      };
+    } catch {
+      return { success: true, hasData: content.text.length > 0 };
+    }
+  }
 }
+
+/** Extract the content text and isError flag from an MCP JSON-RPC or SSE response. */
+function extractMcpContent(
+  text: string,
+): { text: string; isError: boolean } | null {
+  // Try JSON-RPC
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed?.error) {
+      return {
+        text: parsed.error.message ?? JSON.stringify(parsed.error),
+        isError: true,
+      };
+    }
+    const result = parsed?.result;
+    if (result) {
+      return {
+        text: result.content?.[0]?.text ?? '',
+        isError: result.isError === true,
+      };
+    }
+  } catch {
+    // Not JSON — try SSE
+  }
+
+  const lines = text.split('\n').filter(l => l.startsWith('data: '));
+  for (const line of lines) {
+    try {
+      const data = JSON.parse(line.slice(6));
+      if (data?.error) {
+        return {
+          text: data.error.message ?? JSON.stringify(data.error),
+          isError: true,
+        };
+      }
+      const result = data?.result;
+      if (result) {
+        return {
+          text: result.content?.[0]?.text ?? '',
+          isError: result.isError === true,
+        };
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+type HyperdxDashboard = {
+  /** v2 API returns `id`; internal API returns `_id`. */
+  id: string;
+  _id?: string;
+  name: string;
+  tags?: string[];
+  tiles: Array<{
+    /** v2 API always returns `id`. */
+    id: string;
+    _id?: string;
+    name: string;
+    config: Record<string, unknown>;
+    containerId?: string;
+    x?: number;
+    y?: number;
+    w?: number;
+    h?: number;
+  }>;
+};
+
+/** Query result with sample rows for LLM judge evaluation. */
+type TileQueryEvidence = {
+  success: boolean;
+  hasData: boolean;
+  error?: string;
+  rowCount?: number;
+  groupCount?: number;
+  sampleRows?: unknown[];
+};

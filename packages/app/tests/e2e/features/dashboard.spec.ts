@@ -159,20 +159,23 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       const dashboardTiles = dashboardPage.getTiles();
       await expect(dashboardTiles).toHaveCount(2, { timeout: 10000 });
 
-      // Hover over first tile to reveal action buttons
+      // The alert affordance lives directly in the always-visible tile header.
       await dashboardPage.hoverOverTile(0);
+      await expect(dashboardPage.getTileButton('alerts')).toBeVisible();
 
-      // Verify all action buttons are visible
-      const buttons: Array<'edit' | 'duplicate' | 'delete' | 'alerts'> = [
+      // Edit / duplicate / delete now live inside the tile actions (kebab) menu.
+      await dashboardPage.openTileActionsMenu(0);
+      const menuButtons: Array<'edit' | 'duplicate' | 'delete'> = [
         'edit',
         'duplicate',
         'delete',
-        'alerts',
       ];
-      for (const button of buttons) {
-        const buttonLocator = dashboardPage.getTileButton(button);
-        await expect(buttonLocator).toBeVisible();
+      for (const button of menuButtons) {
+        await expect(dashboardPage.getTileButton(button)).toBeVisible();
       }
+
+      // Close the menu so it doesn't intercept subsequent interactions.
+      await dashboardPage.page.keyboard.press('Escape');
     });
 
     await test.step('Test duplicate tile', async () => {
@@ -289,6 +292,32 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
   });
 
+  test('should warn when closing tile editor with unsaved display settings changes', async () => {
+    await dashboardPage.openNewTileEditor();
+
+    // Open the Display Settings drawer
+    await dashboardPage.page.getByTestId('display-settings-button').click();
+    const applyButton = dashboardPage.page.getByTestId(
+      'display-settings-apply-button',
+    );
+    await expect(applyButton).toBeVisible({ timeout: 5000 });
+
+    // Toggle a checkbox via its label
+    await dashboardPage.page
+      .locator('label', { hasText: 'Compare to Previous Period' })
+      .click();
+
+    // Apply and wait for the drawer to close
+    await applyButton.click();
+    await expect(applyButton).toBeHidden({ timeout: 5000 });
+
+    // Try to close — should show unsaved changes confirm
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
+      timeout: 5000,
+    });
+  });
+
   test('should add and remove alert on Number type chart', async () => {
     test.setTimeout(60000);
     const ts = Date.now();
@@ -338,20 +367,23 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       const dashboardTiles = dashboardPage.getTiles();
       await expect(dashboardTiles).toHaveCount(1, { timeout: 10000 });
 
-      // Hover over first tile to reveal action buttons
+      // The alert affordance lives directly in the always-visible tile header.
       await dashboardPage.hoverOverTile(0);
+      await expect(dashboardPage.getTileButton('alerts')).toBeVisible();
 
-      // Verify all action buttons are visible
-      const buttons: Array<'edit' | 'duplicate' | 'delete' | 'alerts'> = [
+      // Edit / duplicate / delete now live inside the tile actions (kebab) menu.
+      await dashboardPage.openTileActionsMenu(0);
+      const menuButtons: Array<'edit' | 'duplicate' | 'delete'> = [
         'edit',
         'duplicate',
         'delete',
-        'alerts',
       ];
-      for (const button of buttons) {
-        const buttonLocator = dashboardPage.getTileButton(button);
-        await expect(buttonLocator).toBeVisible();
+      for (const button of menuButtons) {
+        await expect(dashboardPage.getTileButton(button)).toBeVisible();
       }
+
+      // Close the menu so it doesn't intercept subsequent interactions.
+      await dashboardPage.page.keyboard.press('Escape');
     });
 
     let dashboardUrl: string;
@@ -499,6 +531,91 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await expect(dashboardPage.getFilterItemByName('Metric')).toHaveCount(0);
     });
   });
+
+  test(
+    'should allow typing a freeform filter value not present in the dropdown',
+    {},
+    async () => {
+      test.setTimeout(30000);
+      const freeformValue = 'nonexistent-service-e2e';
+
+      await test.step('Create new dashboard', async () => {
+        await expect(dashboardPage.createButton).toBeVisible();
+        await dashboardPage.createNewDashboard();
+      });
+
+      await test.step('Create a table tile to filter', async () => {
+        await dashboardPage.addTile();
+
+        await dashboardPage.chartEditor.createTable({
+          chartName: 'Test Table',
+          sourceName: DEFAULT_LOGS_SOURCE_NAME,
+          groupBy: 'ServiceName',
+        });
+
+        const accountingCell = dashboardPage.page.getByTitle('accounting', {
+          exact: true,
+        });
+        await expect(accountingCell).toBeVisible();
+      });
+
+      await test.step('Add Service filter to dashboard', async () => {
+        await dashboardPage.openEditFiltersModal();
+        await expect(dashboardPage.emptyFiltersList).toBeVisible();
+
+        await dashboardPage.addFilterToDashboard(
+          'Service',
+          DEFAULT_LOGS_SOURCE_NAME,
+          'ServiceName',
+        );
+
+        await expect(
+          dashboardPage.getFilterItemByName('Service'),
+        ).toBeVisible();
+
+        await dashboardPage.closeFiltersModal();
+      });
+
+      await test.step("Type a value not present in the filter's dropdown", async () => {
+        await dashboardPage.typeFilterSearchValue('Service', freeformValue);
+        await expect(dashboardPage.getFilterEmptyDropdownState()).toBeVisible();
+      });
+
+      await test.step('Press Enter to add the typed value as a pill', async () => {
+        await dashboardPage.submitFilterSearchValue('Service');
+
+        await expect(
+          dashboardPage.getFilterPill('Service', freeformValue),
+        ).toBeVisible();
+        await expect(dashboardPage.getFilterSearchInput('Service')).toHaveValue(
+          '',
+        );
+
+        // Close the dropdown before asserting table contents below.
+        await dashboardPage.page.keyboard.press('Escape');
+      });
+
+      await test.step('Verify the freeform value filters the table', async () => {
+        const accountingCell = dashboardPage.page.getByTitle('accounting', {
+          exact: true,
+        });
+        await expect(accountingCell).toHaveCount(0);
+      });
+
+      await test.step('Remove the freeform value and verify the table is unfiltered again', async () => {
+        await dashboardPage.removeLastFilterPillViaBackspace('Service');
+
+        await expect(
+          dashboardPage.getFilterPill('Service', freeformValue),
+        ).toHaveCount(0);
+
+        const accountingCell = dashboardPage.page.getByTitle('accounting', {
+          exact: true,
+        });
+        await expect(accountingCell).toBeVisible();
+      });
+    },
+  );
 
   test(
     'should scope a filter to a specific source via "Applies to sources"',
@@ -721,8 +838,12 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
         await dashboardPage.saveQueryAndFiltersAsDefault();
 
-        // Wait for save confirmation
-        await dashboardPage.page.waitForTimeout(1000);
+        // Wait for the save success notification rather than a blind sleep, so
+        // we only read the URL once the save has actually landed.
+        const notification = dashboardPage.page.locator(
+          'text=/Filter query and dropdown values/i',
+        );
+        await expect(notification).toBeVisible({ timeout: 5000 });
 
         // Extract dashboard ID
         const url = dashboardPage.page.url();
@@ -889,6 +1010,40 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         ).toBeVisible({ timeout: 15000 });
       });
     });
+
+    test('Bar chart renders with Raw SQL query', async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const chartName = `E2E Raw SQL Bar ${ts}`;
+
+      await test.step('Open the tile editor', async () => {
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+      });
+
+      await test.step('Configure Raw SQL Bar chart', async () => {
+        await dashboardPage.chartEditor.setChartType(DisplayType.Bar);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.switchToSqlMode();
+        // Bar charts share the pie chart's categorical query shape.
+        await dashboardPage.chartEditor.typeSqlQuery(PIE_SQL);
+      });
+
+      await test.step('Run query and save', async () => {
+        await dashboardPage.chartEditor.runQuery();
+        await dashboardPage.saveTile();
+      });
+
+      await test.step('Verify the bar chart renders on the dashboard', async () => {
+        const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+        await expect(
+          tile.locator(
+            '[data-testid="bar-chart-container"] .recharts-responsive-container',
+          ),
+        ).toBeVisible({ timeout: 15000 });
+      });
+    });
   });
 
   test(
@@ -991,7 +1146,8 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
 
     await test.step('Verify tile can be edited when source is missing', async () => {
-      await dashboardPage.hoverOverTile(0);
+      // Edit now lives inside the tile actions (kebab) menu.
+      await dashboardPage.openTileActionsMenu(0);
 
       const editButton = dashboardPage.getTileButton('edit');
       await expect(editButton).toBeVisible();

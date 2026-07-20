@@ -9,7 +9,7 @@ import {
   convertToTableChartConfig,
   convertToTimeChartConfig,
   findNearestSeriesKey,
-  formatResponseForPieChart,
+  formatResponseForCategoricalChart,
   formatResponseForTimeChart,
 } from '@/ChartUtils';
 import { COLORS } from '@/utils';
@@ -902,12 +902,12 @@ describe('ChartUtils', () => {
     });
   });
 
-  describe('formatResponseForPieChart', () => {
+  describe('formatResponseForCategoricalChart', () => {
     const getColor = (index: number, label: string) =>
       `color-${index}-${label}`;
 
     it('returns empty array when data.data is empty', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [],
           meta: [{ name: 'count()', type: 'UInt64' }],
@@ -919,7 +919,7 @@ describe('ChartUtils', () => {
 
     it('throws when meta is missing', () => {
       expect(() =>
-        formatResponseForPieChart(
+        formatResponseForCategoricalChart(
           { data: [{ 'count()': 10 }] } as any,
           getColor,
         ),
@@ -928,7 +928,7 @@ describe('ChartUtils', () => {
 
     it('throws when there are no numeric value columns', () => {
       expect(() =>
-        formatResponseForPieChart(
+        formatResponseForCategoricalChart(
           {
             data: [{ ServiceName: 'checkout' }],
             meta: [{ name: 'ServiceName', type: 'LowCardinality(String)' }],
@@ -941,7 +941,7 @@ describe('ChartUtils', () => {
     });
 
     it('uses the value column name as label when there are no group-by columns', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [{ 'count()': 10 }],
           meta: [{ name: 'count()', type: 'UInt64' }],
@@ -954,7 +954,7 @@ describe('ChartUtils', () => {
     });
 
     it('joins group-by column values with " - " as the label', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [
             { 'count()': 10, ServiceName: 'checkout', env: 'prod' },
@@ -983,7 +983,7 @@ describe('ChartUtils', () => {
     });
 
     it('parses string numeric values', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [{ 'count()': '42' }],
           meta: [{ name: 'count()', type: 'UInt64' }],
@@ -996,7 +996,7 @@ describe('ChartUtils', () => {
     });
 
     it('filters out NaN values', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [{ 'count()': 'not-a-number' }, { 'count()': 5 }],
           meta: [{ name: 'count()', type: 'UInt64' }],
@@ -1009,7 +1009,7 @@ describe('ChartUtils', () => {
     });
 
     it('sorts entries in descending order by value', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [
             { 'count()': 3, ServiceName: 'c' },
@@ -1027,7 +1027,7 @@ describe('ChartUtils', () => {
     });
 
     it('assigns colors by sorted index', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [
             { 'count()': 1, ServiceName: 'b' },
@@ -1045,8 +1045,61 @@ describe('ChartUtils', () => {
       expect(result[1]).toMatchObject({ label: 'b', color: 'color-1-b' });
     });
 
+    it('preserves the input row order and index-based colors when applyDefaultOrder is false', () => {
+      // Rows are intentionally NOT in descending-by-value order. With
+      // applyDefaultOrder=false (the custom ORDER BY render path), the server
+      // has already ordered the rows, so the function must not re-sort them and
+      // must assign palette colors by the incoming row index.
+      const result = formatResponseForCategoricalChart(
+        {
+          data: [
+            { 'count()': 3, ServiceName: 'c' },
+            { 'count()': 10, ServiceName: 'a' },
+            { 'count()': 1, ServiceName: 'b' },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+          ],
+        },
+        getColor,
+        false,
+      );
+
+      // Row order is preserved exactly as provided (no descending re-sort).
+      expect(result).toEqual([
+        { label: 'c', value: 3, color: 'color-0-c' },
+        { label: 'a', value: 10, color: 'color-1-a' },
+        { label: 'b', value: 1, color: 'color-2-b' },
+      ]);
+    });
+
+    it('still sorts descending when applyDefaultOrder is explicitly true', () => {
+      const result = formatResponseForCategoricalChart(
+        {
+          data: [
+            { 'count()': 3, ServiceName: 'c' },
+            { 'count()': 10, ServiceName: 'a' },
+            { 'count()': 1, ServiceName: 'b' },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'ServiceName', type: 'LowCardinality(String)' },
+          ],
+        },
+        getColor,
+        true,
+      );
+
+      expect(result).toEqual([
+        { label: 'a', value: 10, color: 'color-0-a' },
+        { label: 'c', value: 3, color: 'color-1-c' },
+        { label: 'b', value: 1, color: 'color-2-b' },
+      ]);
+    });
+
     it('uses only the first numeric column as the value column', () => {
-      const result = formatResponseForPieChart(
+      const result = formatResponseForCategoricalChart(
         {
           data: [{ count: 5, duration: 999, ServiceName: 'svc' }],
           meta: [

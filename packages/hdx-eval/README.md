@@ -11,7 +11,9 @@ selected at run time.
 
 ## Prerequisites
 
-- **`yarn dev` running** on at least one worktree (ClickHouse, MongoDB, API)
+- **`yarn dev` running** on at least one worktree — this handles
+  `yarn install`, `yarn build:common-utils`, Docker containers (ClickHouse,
+  MongoDB), and the API server. See `agent_docs/development.md` for setup.
 - **`claude` CLI installed** (the harness spawns it in streaming JSON mode)
 - **`ANTHROPIC_API_KEY`** or **`AI_API_KEY`** in `.env.local` at the monorepo
   root (for `run` and `grade` commands)
@@ -28,7 +30,7 @@ stack is using — you can find this in the banner printed by `yarn dev`.
 
 ```bash
 # Set the slot for your session (must match the running dev stack)
-export HDX_DEV_SLOT=80
+export HDX_DEV_SLOT=98
 
 # 1. One-time setup: register eval account + create Sources + write config
 yarn workspace @hyperdx/hdx-eval dev setup-hyperdx
@@ -161,10 +163,57 @@ anonymize the MCP identity for fair LLM judging.
 | Section | Required | Purpose |
 |---|---|---|
 | `mcps` | yes | MCP registry (see above) |
+| `plugins` | no | Claude Code plugin registry (see [Plugins](#plugins)) |
 | `scenarios` | no | Per-scenario HyperDX Source IDs (populated by `setup-hyperdx`) |
 | `hyperdxApi` | no | HyperDX API URL + access key (used only by `setup-hyperdx`) |
 | `clickhouse` | no | ClickHouse connection for `seed`, `drop`, `runs-instrument` commands |
 | `anchorTime` | no | Fixed "now" anchor (ISO 8601). Auto-generated and saved on first `run`. See [Anchor Time](#anchor-time). |
+
+### Plugins
+
+You can test a [Claude Code plugin](https://code.claude.com/docs/en/plugins) as
+a comparison variable — for example a plugin that installs a hook. Define
+plugins under the top-level `plugins` key, then select them with `--plugin`:
+
+```json
+{
+  "plugins": {
+    "myplugin": {
+      "label": "My Plugin",
+      "url": "https://example.com/my-plugin.zip"
+    },
+    "dev-plugin": {
+      "label": "Dev Plugin",
+      "dir": "/absolute/path/to/my-plugin"
+    }
+  }
+}
+```
+
+| Field   | Required           | Notes                                              |
+| ------- | ------------------ | -------------------------------------------------- |
+| `label` | yes                | Human-readable label for reports/CLI output        |
+| `url`   | one of `url`/`dir` | URL to a plugin `.zip` (loaded via `--plugin-url`) |
+| `dir`   | one of `url`/`dir` | Local plugin directory (loaded via `--plugin-dir`) |
+
+Each entry must set **exactly one** of `url` or `dir`.
+
+`--plugin` works like `--mcp` and `--model`: the variants are the names you pass
+(comma-separated), and the literal `none` is the no-plugin variant. When
+`--plugin` is omitted the default is the single `none` variant, so behavior is
+unchanged.
+
+- `--plugin myplugin` — run **only** the plugin variant. The plugin doesn't
+  vary, so the column key is just `<mcp>`.
+- `--plugin none,myplugin` — run **both** the no-plugin baseline and the plugin
+  variant (column keys `<mcp>/none` and `<mcp>/myplugin`), so the report shows
+  the plugin variant as a challenger with per-metric deltas vs. the no-plugin
+  baseline. The baseline defaults to the first variant (`none` here); override
+  with `--baseline`.
+- `--plugin none,a,b` — compare several plugins against no-plugin at once.
+
+Each named plugin is loaded into the isolated agent session via `--plugin-url`
+(for `url`) or `--plugin-dir` (for `dir`).
 
 ### Example: HTTP MCP (HyperDX)
 
@@ -212,9 +261,11 @@ mirrors HyperDX's `otel_traces` / `otel_logs` exactly.
 |---|---|---|
 | `error-root-cause` | "Checkout requests are failing..." | `payment-service` DB timeout cascading into `checkout-api` 5xx. 6M+ spans, 12M logs, 5 distractors. |
 | `latency-spike` | "p99 latency on api-server has jumped..." | `/api/orders/search` p99 spike for enterprise tenants. 12M+ spans, 5 regions, 5 distractors. |
+| `metric-saturation` | "recommendation-service is intermittently slow / 503s..." | JVM heap leak → GC-pause tail → latency shift → pod-restart cadence. Root cause is **metrics-only** (traces/logs show just mild latency + generic 503s). Exercises all five metric types (gauge/sum/histogram/exp-histogram/summary). Distractors: coincidental deploy, flat CPU, stable neighbor Summary. |
 | `noisy-signals` | "We want to cut log ingest cost..." | ~16M logs across composite cells. Each noisy cell has a load-bearing pattern mixed in. |
 | `segmented-regression` | "API error rate has gone up..." | Enterprise x cache-miss errors at ~12%. Single-axis aggregates dilute the signal. |
 | `service-health-check` | "Generate a service health report..." | Peace-time report — no incident, but 4 novel signals to call out. |
+| `dashboard-build` | "We need dashboards to monitor our microservices..." | 3 user-facing + 4 distractor services. Dashboard creation via MCP tools, cross-dashboard drill-down, messy severity, latency red herring, impossible metric requests. |
 
 Use `--volume-factor` to scale background row counts for faster iteration.
 Planted anomaly counts stay fixed.
@@ -260,6 +311,7 @@ dev run <scenario> --mcp hyperdx            # single MCP
 dev run <scenario> --mcp hyperdx-main,hyperdx-feature  # compare two
 dev run <scenario> --mcp all                # all enabled MCPs (default)
 dev run <scenario> --baseline hyperdx-main  # set baseline for delta reports
+dev run <scenario> --plugin none,myplugin   # compare no-plugin baseline vs plugin variant
 dev run <scenario> --runs 5                 # 5 runs per cell
 dev run <scenario> --model claude-opus-4-6
 dev run <scenario> --max-turns 20           # default: 15
@@ -322,9 +374,9 @@ Combined score = `0.4 * programmatic + 0.6 * judge - toolErrorPenalty`
 
 ### Baseline + Challengers
 
-Reports use a **baseline + challengers** model. One MCP is designated as the
-baseline (default: first MCP alphabetically, or set explicitly with
-`--baseline`). All other MCPs show deltas relative to it:
+Reports use a **baseline + challengers** model. One column is designated as the
+baseline (default: the first mcp/model/plugin set, or set explicitly with
+`--baseline <column-key>`). All other columns show deltas relative to it:
 
 ```
 | Metric         | hyperdx-main | hyperdx-feature | Δ (hyperdx-feature) |
@@ -358,6 +410,21 @@ the agent's system prompt. It is persisted in `eval.config.json` under
   `--reseed` since the data must match the current time.
 - **`--reseed`**: force re-seed even when data already exists (e.g. after
   changing the seed value or anchor time).
+
+The anchor is intentionally allowed to age. It is **not** auto-refreshed when
+wall-clock time advances, and stale data does **not** trigger an automatic
+reseed. This keeps seeded data stable across runs (important for CI, where a
+fresh reseed is much slower than reusing cached seed data).
+
+> **Note on `clickstack_describe_source`:** that tool samples its value-related
+> fields (`lowCardinalityValues`, `mapAttributeValues`, `mapAttributeKeys`)
+> over a fixed **last-24h-of-wall-clock** window, independent of the anchor.
+> Once seeded data ages past that window those fields come back empty/partial.
+> Rather than refreshing the anchor and reseeding to keep them populated, the
+> system prompt instructs the agent to treat those samples as unreliable and to
+> discover real values via anchored queries instead (see
+> `SAMPLING_CAVEAT_BLOCK` in `src/harness/systemPrompt.ts`). The `columns`
+> schema from `describe_source` is unaffected and remains reliable.
 
 ## Tests
 

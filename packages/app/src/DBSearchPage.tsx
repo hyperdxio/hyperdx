@@ -88,7 +88,8 @@ import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
-import { DBTimeChart } from '@/components/DBTimeChart';
+import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/utils';
+import { DBTimeChart, type SeriesGroupFilter } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
@@ -1800,6 +1801,25 @@ export function DBSearchPage() {
     [onTimeRangeSelect, setIsLive],
   );
 
+  // Focus a chart series into the actual search. The histogram is grouped by
+  // severity/status, so a focused series maps to a real column value; applying
+  // it as an "only" filter re-queries both the chart and the results table so
+  // they stay in sync (the chart-only visual focus wouldn't touch the table).
+  const handleFocusSeries = useCallback(
+    (groupFilters: SeriesGroupFilter[]) => {
+      // Apply all group filters in one update so a multi-group series focus
+      // re-queries once, not once per column. setOnlyFilters keys on the clean
+      // (unquoted) column expression; the chart hands us the raw groupBy one.
+      searchFilters.setOnlyFilters(
+        groupFilters.map(({ column, value }) => ({
+          property: cleanClickHouseExpression(column),
+          value,
+        })),
+      );
+    },
+    [searchFilters],
+  );
+
   const filtersChartConfig = useMemo<BuilderChartConfigWithDateRange>(() => {
     const overrides = {
       orderBy: undefined,
@@ -1945,7 +1965,7 @@ export function DBSearchPage() {
       return;
     }
     if (inputSource) {
-      window.location.assign(`${router.basePath}/team?source=${inputSource}`);
+      window.location.assign(`${router.basePath}/team#source-${inputSource}`);
     } else {
       window.location.assign(`${router.basePath}/team`);
     }
@@ -2365,6 +2385,7 @@ export function DBSearchPage() {
                           showDateRangeIndicator={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                           onTimeRangeSelect={handleTimeRangeSelect}
+                          onFocusSeries={handleFocusSeries}
                         />
                       </Box>
                     )}
@@ -2464,6 +2485,7 @@ export function DBSearchPage() {
                             showDateRangeIndicator={false}
                             queryKeyPrefix={QUERY_KEY_PREFIX}
                             onTimeRangeSelect={handleTimeRangeSelect}
+                            onFocusSeries={handleFocusSeries}
                             enableParallelQueries
                           />
                         </Box>

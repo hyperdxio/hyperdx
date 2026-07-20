@@ -27,6 +27,10 @@ jest.mock('@/components/DBPieChart', () => ({
   DBPieChart: () => <div data-testid="db-pie-chart">Pie Chart</div>,
 }));
 
+jest.mock('@/components/DBBarChart', () => ({
+  DBBarChart: () => <div data-testid="db-bar-chart">Bar Chart</div>,
+}));
+
 jest.mock('@/components/DBSqlRowTableWithSidebar', () => ({
   __esModule: true,
   default: () => <div data-testid="db-sql-row-table">SQL Row Table</div>,
@@ -150,6 +154,15 @@ describe('ChartPreviewPanel', () => {
       });
 
       expect(screen.getByTestId('db-pie-chart')).toBeInTheDocument();
+    });
+
+    it('should render bar chart for bar tab', () => {
+      renderPanel({
+        queriedConfig: baseBuilderConfig,
+        activeTab: 'bar',
+      });
+
+      expect(screen.getByTestId('db-bar-chart')).toBeInTheDocument();
     });
 
     it('should not render time chart when dbTimeChartConfig is missing', () => {

@@ -1,25 +1,26 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
+import { z } from 'zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   isLogSource,
   isTraceSource,
   SourceKind,
   TSource,
+  WithClauseSchema,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Box,
   Button,
-  Divider,
   Flex,
   Group,
   Stack,
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconPencil, IconX } from '@tabler/icons-react';
+import { IconX } from '@tabler/icons-react';
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
@@ -43,9 +44,23 @@ type EventRowWhere = {
   id: string;
   type: string;
   aliasWith: WithClause[];
+  // The trace this span selection was made in. Used to gate a selection left in
+  // the URL from a previous trace so it can't render against a different one.
+  traceId?: string;
 };
 
-const eventRowWhereParser = parseAsJsonEncoded<EventRowWhere>();
+// Validate the persisted span selection so a stale / hand-edited `eventRowWhere`
+// (valid JSON but wrong shape) resolves to null instead of feeding a malformed
+// row id into the span detail query.
+const eventRowWhereSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  aliasWith: z.array(WithClauseSchema),
+  traceId: z.string().optional(),
+});
+const eventRowWhereParser = parseAsJsonEncoded<EventRowWhere>(
+  eventRowWhereSchema.parse,
+);
 
 enum SpanDetailTab {
   Overview = 'overview',
@@ -208,6 +223,25 @@ export default function DBTracePanel({
     eventRowWhereParser,
   );
 
+  // A persisted span selection belongs to the trace it was made in. Gate it by
+  // the current `traceId` at *read* time so a selection left in the URL from a
+  // previous trace (e.g. after "View Trace" opened a different trace, or an old
+  // shared link) can never render against this trace's waterfall — no matter how
+  // the panel was (re)mounted.
+  const selectedSpan =
+    eventRowWhere != null && eventRowWhere.traceId === traceId
+      ? eventRowWhere
+      : null;
+
+  // Stamp the current trace onto every selection so the gate above can tell it
+  // apart from a stale one.
+  const selectSpan = useCallback(
+    (where: { id: string; type: string; aliasWith: WithClause[] }) => {
+      setEventRowWhere({ ...where, traceId });
+    },
+    [setEventRowWhere, traceId],
+  );
+
   const {
     control: traceIdControl,
     handleSubmit: traceIdHandleSubmit,
@@ -231,15 +265,13 @@ export default function DBTracePanel({
     }
   }, [parentSourceData, traceIdSetValue]);
 
-  const [showTraceIdInput, setShowTraceIdInput] = useState(false);
-
   // Reset highlighted row when trace ID changes
   // otherwise we'll show stale span details
   useEffect(() => {
-    return () => {
+    if (eventRowWhere != null && eventRowWhere.traceId !== traceId) {
       setEventRowWhere(null);
-    };
-  }, [traceId, setEventRowWhere]);
+    }
+  }, [eventRowWhere, traceId, setEventRowWhere]);
 
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
@@ -254,12 +286,12 @@ export default function DBTracePanel({
   }, [setEventRowWhere]);
 
   const selectedSpanSource = useMemo(() => {
-    if (!eventRowWhere) return null;
-    if (eventRowWhere.type === SourceKind.Log && logSourceData) {
+    if (!selectedSpan) return null;
+    if (selectedSpan.type === SourceKind.Log && logSourceData) {
       return logSourceData;
     }
     return traceSourceData;
-  }, [eventRowWhere, logSourceData, traceSourceData]);
+  }, [selectedSpan, logSourceData, traceSourceData]);
 
   return (
     <div
@@ -271,50 +303,11 @@ export default function DBTracePanel({
         minHeight: 0,
       }}
     >
-      <Flex align="center" justify="space-between" mb="sm">
-        <Flex align="center">
-          <Text size="xs" me="xs">
-            {parentSourceData &&
-            (isLogSource(parentSourceData) || isTraceSource(parentSourceData))
-              ? parentSourceData.traceIdExpression
-              : ''}
-            : {traceId || 'No trace id found for event'}
-          </Text>
-          {traceId != null && (
-            <Button
-              variant="subtle"
-              size="xs"
-              onClick={() => setShowTraceIdInput(v => !v)}
-            >
-              <IconPencil size={14} />
-            </Button>
-          )}
-        </Flex>
-        <Group gap="sm">
-          <Text size="sm">
-            {parentSourceData?.kind === SourceKind.Log
-              ? 'Trace Source'
-              : 'Correlated Log Source'}
-          </Text>
-          <SourceSelectControlled
-            control={control}
-            name="source"
-            size="xs"
-            onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
-            isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(
-              childSourceData,
-            )}
-          />
-          <SourceSchemaPreview
-            source={childSourceData}
-            controlled
-            open={isSourceSchemaPreviewOpen}
-            onClose={() => setIsSourceSchemaPreviewOpen(false)}
-          />
-        </Group>
-      </Flex>
-      {(showTraceIdInput || !traceId) && parentSourceId != null && (
-        <Stack gap="xs">
+      {/* Fallback Trace ID Expression editor: only surfaced when no trace id
+          resolved for the event. The trace id itself now lives in the side
+          panel header (Copy Trace ID), so it's not duplicated here. */}
+      {!traceId && parentSourceId != null && (
+        <Stack gap="xs" mb="sm">
           <Text size="xs">Trace ID Expression</Text>
           <Flex align="center">
             <SQLInlineEditorControlled
@@ -348,18 +341,9 @@ export default function DBTracePanel({
             >
               Save
             </Button>
-            <Button
-              ms="sm"
-              variant="secondary"
-              onClick={() => setShowTraceIdInput(false)}
-              size="xs"
-            >
-              Cancel
-            </Button>
           </Flex>
         </Stack>
       )}
-      <Divider my="sm" />
       {/* Inline resizable split view: waterfall (left) + span detail (right) */}
       <div
         style={{
@@ -371,7 +355,7 @@ export default function DBTracePanel({
       >
         <div
           style={{
-            flex: eventRowWhere ? `${100 - rightPanelSize} 1 0` : '1 1 100%',
+            flex: selectedSpan ? `${100 - rightPanelSize} 1 0` : '1 1 100%',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
@@ -385,15 +369,38 @@ export default function DBTracePanel({
               traceId={traceId}
               dateRange={dateRange}
               focusDate={focusDate}
-              highlightedRowWhere={eventRowWhere?.id}
-              onClick={setEventRowWhere}
+              highlightedRowWhere={selectedSpan?.id}
+              onClick={selectSpan}
               initialRowHighlightHint={initialRowHighlightHint}
               emptyState={emptyState}
+              controlsExtra={
+                <Group gap={4} align="center" wrap="nowrap">
+                  <Text size="xxs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                    Correlated logs
+                  </Text>
+                  <SourceSelectControlled
+                    control={control}
+                    name="source"
+                    size="xs"
+                    w={150}
+                    onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
+                    isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(
+                      childSourceData,
+                    )}
+                  />
+                  <SourceSchemaPreview
+                    source={childSourceData}
+                    controlled
+                    open={isSourceSchemaPreviewOpen}
+                    onClose={() => setIsSourceSchemaPreviewOpen(false)}
+                  />
+                </Group>
+              }
             />
           )}
         </div>
 
-        {eventRowWhere != null && (
+        {selectedSpan != null && (
           <Box
             className={resizeStyles.resizeHandleInline}
             onMouseDown={startHorizontalResize}
@@ -401,7 +408,7 @@ export default function DBTracePanel({
         )}
 
         {traceSourceData != null &&
-          eventRowWhere != null &&
+          selectedSpan != null &&
           selectedSpanSource != null && (
             <div
               style={{
@@ -414,8 +421,8 @@ export default function DBTracePanel({
             >
               <SpanDetailPanel
                 source={selectedSpanSource}
-                rowId={eventRowWhere.id}
-                aliasWith={eventRowWhere.aliasWith}
+                rowId={selectedSpan.id}
+                aliasWith={selectedSpan.aliasWith}
                 onClose={handleCloseSpanDetails}
               />
             </div>

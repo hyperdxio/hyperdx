@@ -8,7 +8,8 @@
       "ignoreDependencies": [
         "eslint-config-next",
         "@chromatic-com/storybook",
-        "@storybook/addon-themes"
+        "@storybook/addon-themes",
+        "react-is"
       ]
     },
     "packages/api": {
@@ -36,7 +37,9 @@
   "ignore": [
     "scripts/dev-portal/**",
     ".github/scripts/**",
-    "docker/hyperdx/**"
+    ".github/actions/**",
+    "docker/hyperdx/**",
+    ".claude/**"
   ],
   "ignoreBinaries": ["make", "migrate"],
   "ignoreDependencies": [
