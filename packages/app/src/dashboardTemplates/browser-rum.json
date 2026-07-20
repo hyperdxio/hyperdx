@@ -161,7 +161,8 @@
             "color": "chart-error",
             "label": "Poor"
           }
-        ]
+        ],
+        "backgroundChart": { "type": "area" }
       }
     },
     {
@@ -211,7 +212,8 @@
             "color": "chart-error",
             "label": "Poor"
           }
-        ]
+        ],
+        "backgroundChart": { "type": "area" }
       }
     },
     {
@@ -261,7 +263,8 @@
             "color": "chart-error",
             "label": "Poor"
           }
-        ]
+        ],
+        "backgroundChart": { "type": "area" }
       }
     },
     {
@@ -307,7 +310,8 @@
             "color": "chart-error",
             "label": "Poor (> 4 s)"
           }
-        ]
+        ],
+        "backgroundChart": { "type": "area" }
       }
     },
     {
@@ -353,7 +357,8 @@
             "color": "chart-error",
             "label": "Poor (> 6 s)"
           }
-        ]
+        ],
+        "backgroundChart": { "type": "area" }
       }
     },
     {
@@ -506,7 +511,8 @@
           "output": "number",
           "mantissa": 0,
           "thousandSeparated": true
-        }
+        },
+        "backgroundChart": { "type": "area" }
       }
     },
     {
@@ -536,7 +542,8 @@
           "output": "number",
           "mantissa": 0,
           "thousandSeparated": true
-        }
+        },
+        "backgroundChart": { "type": "area" }
       }
     },
     {
@@ -798,7 +805,8 @@
             "color": "chart-warning",
             "label": "Errors present"
           }
-        ]
+        ],
+        "backgroundChart": { "type": "area" }
       }
     },
     {
@@ -837,7 +845,8 @@
             "color": "chart-warning",
             "label": "Errors present"
           }
-        ]
+        ],
+        "backgroundChart": { "type": "area" }
       }
     },
     {
@@ -876,7 +885,8 @@
             "color": "chart-warning",
             "label": "Errors present"
           }
-        ]
+        ],
+        "backgroundChart": { "type": "area" }
       }
     },
     {

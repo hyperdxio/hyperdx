@@ -11,6 +11,7 @@ import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { validateRequestHeaders } from '@/middleware/validation';
 import { recordOperationOutcome } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+import { IPV6_BRACKET_RE, isPrivateIp } from '@/utils/validators';
 import { objectIdSchema } from '@/utils/zod';
 
 // SLO operations for the ClickHouse proxy. Both paths swallow their errors
@@ -92,6 +93,19 @@ router.post(
   }),
   async (req, res) => {
     const { host, username, password } = req.body;
+
+    // Restrict to http/https to prevent file://, gopher://, etc.
+    const parsedHost = new URL(host);
+    if (parsedHost.protocol !== 'http:' && parsedHost.protocol !== 'https:') {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Invalid protocol' });
+    }
+    const hostname = parsedHost.hostname.replace(IPV6_BRACKET_RE, '');
+    if (isPrivateIp(hostname)) {
+      return res.status(400).json({ success: false, error: 'Invalid host' });
+    }
+
     const startedAt = performance.now();
     try {
       const result = await fetch(`${host}/?query=SELECT 1`, {
@@ -108,10 +122,11 @@ router.post(
           outcome: 'error',
           durationMs: performance.now() - startedAt,
         });
-        const errorText = await result.text();
+        // Do not reflect the raw response body to avoid leaking internal
+        // service responses in case of a misconfigured or SSRF host.
         return res.status(result.status).json({
           success: false,
-          error: errorText || 'Error connecting to ClickHouse server',
+          error: 'Error connecting to ClickHouse server',
         });
       }
       const data = await result.json();

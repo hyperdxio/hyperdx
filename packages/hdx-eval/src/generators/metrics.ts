@@ -1,5 +1,3 @@
-import type { SeededRng } from '@/rng/seeded';
-
 import type {
   AggregationTemporality,
   ExponentialHistogramMetricRow,
@@ -236,6 +234,81 @@ export function bucketize(
   }
   return {
     bucketCounts,
+    count: samples.length,
+    sum,
+    min: samples.length ? min : 0,
+    max: samples.length ? max : 0,
+  };
+}
+
+/**
+ * Bucketize raw samples into an OTel *exponential* histogram at a fixed
+ * `scale`. Returns the fields consumed by `makeExponentialHistogram`
+ * (`scale`, `zeroCount`, `positiveOffset`, `positiveBucketCounts`, `count`,
+ * `sum`, `min`, `max`), so a caller can spread the result straight into it.
+ *
+ * Bucket mapping follows the OTel spec: base = 2^(2^-scale), and a positive
+ * value `v` maps to index `ceil(log_base(v)) - 1`, so bucket `i` covers the
+ * half-open range `(base^i, base^(i+1)]`. `positiveBucketCounts[j]` holds the
+ * count for index `positiveOffset + j`. Zero-valued samples go to
+ * `zeroCount`; only non-negative samples are expected (GC pause / latency),
+ * so negative buckets are left to the `makeExponentialHistogram` default.
+ * Deterministic — a pure function of its inputs.
+ */
+export function expBucketize(
+  samples: readonly number[],
+  scale: number,
+): {
+  scale: number;
+  zeroCount: number;
+  positiveOffset: number;
+  positiveBucketCounts: number[];
+  count: number;
+  sum: number;
+  min: number;
+  max: number;
+} {
+  const scaleFactor = Math.pow(2, scale) / Math.LN2;
+  const indexOf = (v: number): number =>
+    Math.ceil(Math.log(v) * scaleFactor) - 1;
+
+  let sum = 0;
+  let zeroCount = 0;
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  let minIdx = Number.POSITIVE_INFINITY;
+  let maxIdx = Number.NEGATIVE_INFINITY;
+  const counts = new Map<number, number>();
+
+  for (const s of samples) {
+    sum += s;
+    if (s < min) min = s;
+    if (s > max) max = s;
+    if (s <= 0) {
+      zeroCount++;
+      continue;
+    }
+    const idx = indexOf(s);
+    counts.set(idx, (counts.get(idx) ?? 0) + 1);
+    if (idx < minIdx) minIdx = idx;
+    if (idx > maxIdx) maxIdx = idx;
+  }
+
+  let positiveOffset = 0;
+  let positiveBucketCounts: number[] = [];
+  if (counts.size > 0) {
+    positiveOffset = minIdx;
+    positiveBucketCounts = new Array<number>(maxIdx - minIdx + 1).fill(0);
+    for (const [idx, c] of counts) {
+      positiveBucketCounts[idx - minIdx] = c;
+    }
+  }
+
+  return {
+    scale,
+    zeroCount,
+    positiveOffset,
+    positiveBucketCounts,
     count: samples.length,
     sum,
     min: samples.length ? min : 0,

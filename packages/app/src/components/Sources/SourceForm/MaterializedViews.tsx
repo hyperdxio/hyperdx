@@ -133,7 +133,7 @@ export function MetadataMaterializedViewsFormSection({
             <Grid>
               <Grid.Col span={6}>
                 <Text size="xs" mb={4}>
-                  Key Rollup Table
+                  Key Rollup Table (optional, deprecated)
                 </Text>
                 <DBTableSelectControlled
                   name={'metadataMaterializedViews.keyRollupTable'}
