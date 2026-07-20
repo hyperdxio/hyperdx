@@ -33,6 +33,7 @@ const DEFAULT_AGG_LIMIT = 20;
 
 export type AggSortField = 'value' | 'name';
 type AggSortDirection = 'asc' | 'desc';
+type TimeseriesChartType = 'line' | 'bar';
 
 export interface SearchAggConfig {
   aggFn: AggFn;
@@ -41,6 +42,8 @@ export interface SearchAggConfig {
   limit: number;
   sort: AggSortField;
   sortDir: AggSortDirection;
+  /** Line vs. bar for the Time series view. */
+  chartType: TimeseriesChartType;
 }
 
 /** URL-backed aggregation config for the search view switcher. */
@@ -55,6 +58,7 @@ export function useSearchAggConfig(): [
     limit: parseAsInteger.withDefault(DEFAULT_AGG_LIMIT),
     sort: parseAsString.withDefault('value'),
     sortDir: parseAsString.withDefault('desc'),
+    ts: parseAsString.withDefault('bar'),
   });
 
   const config = useMemo<SearchAggConfig>(
@@ -65,6 +69,7 @@ export function useSearchAggConfig(): [
       limit: state.limit,
       sort: state.sort as AggSortField,
       sortDir: state.sortDir as AggSortDirection,
+      chartType: state.ts as TimeseriesChartType,
     }),
     [
       state.agg,
@@ -73,6 +78,7 @@ export function useSearchAggConfig(): [
       state.limit,
       state.sort,
       state.sortDir,
+      state.ts,
     ],
   );
 
@@ -85,6 +91,7 @@ export function useSearchAggConfig(): [
         ...(patch.limit != null ? { limit: patch.limit } : {}),
         ...(patch.sort != null ? { sort: patch.sort } : {}),
         ...(patch.sortDir != null ? { sortDir: patch.sortDir } : {}),
+        ...(patch.chartType != null ? { ts: patch.chartType } : {}),
       });
     },
     [setState],

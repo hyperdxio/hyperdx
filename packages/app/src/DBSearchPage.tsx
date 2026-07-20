@@ -1881,7 +1881,12 @@ export function DBSearchPage() {
       orderBy,
       granularity: view === 'timeseries' ? 'auto' : undefined,
       dateRange: searchedTimeRange,
-      displayType: searchViewToDisplayType(view),
+      displayType:
+        view === 'timeseries'
+          ? aggConfig.chartType === 'line'
+            ? DisplayType.Line
+            : DisplayType.StackedBar
+          : searchViewToDisplayType(view),
       with: aliasWith,
       seriesLimit: view === 'timeseries' ? undefined : aggConfig.limit,
       alignDateRangeToGranularity: false,
@@ -2775,7 +2780,13 @@ export function DBSearchPage() {
                           sourceId={searchedConfig.source ?? undefined}
                           config={aggViewChartConfig}
                           enabled={isReady}
-                          showDisplaySwitcher={false}
+                          setDisplayType={type => {
+                            setAggConfig({
+                              chartType:
+                                type === DisplayType.Line ? 'line' : 'bar',
+                            });
+                            onSubmit();
+                          }}
                           showMVOptimizationIndicator={false}
                           queryKeyPrefix={QUERY_KEY_PREFIX}
                         />
