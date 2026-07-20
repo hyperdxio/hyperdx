@@ -145,6 +145,8 @@ services:
       - CLICKHOUSE_PASSWORD=
       - HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE=default
       - HYPERDX_LOG_LEVEL=info
+      # See the note on the otel-collector service above for rationale.
+      - HYPERDX_OTEL_BATCH_TIMEOUT=100ms
       # OPAMP_SERVER_URL is intentionally not set to run in standalone mode
     ports:
       - 24318:4318 # OTLP http receiver

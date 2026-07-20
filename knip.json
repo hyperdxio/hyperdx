@@ -8,7 +8,8 @@
       "ignoreDependencies": [
         "eslint-config-next",
         "@chromatic-com/storybook",
-        "@storybook/addon-themes"
+        "@storybook/addon-themes",
+        "react-is"
       ]
     },
     "packages/api": {

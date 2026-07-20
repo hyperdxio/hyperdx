@@ -3038,12 +3038,140 @@ describe('checkAlerts', () => {
         );
       });
 
-      it('sets state to ALERT and records a WEBHOOK_ERROR when the query succeeds but the generic webhook fails', async () => {
-        global.fetch = jest.fn().mockResolvedValue({
-          ok: false,
+      it.each([
+        {
+          responseDescription: 'an error response',
           status: 500,
-          text: jest.fn().mockResolvedValue('webhook exploded'),
-        }) as any;
+          responseBody: 'webhook exploded',
+          expectedRequestCount: 3,
+          expectedErrorMessage:
+            'Failed to send webhook notification. Check the webhook configuration and destination.',
+        },
+        {
+          responseDescription: 'a redirect response',
+          status: 302,
+          responseBody: 'redirecting',
+          expectedRequestCount: 1,
+          expectedErrorMessage:
+            'Webhook destination responded with a redirect. Redirects are not supported.',
+        },
+      ])(
+        'sets state to ALERT and records a WEBHOOK_ERROR when the generic webhook returns $responseDescription',
+        async ({
+          status,
+          responseBody,
+          expectedRequestCount,
+          expectedErrorMessage,
+        }) => {
+          const redirectTarget = 'http://169.254.169.254/latest/meta-data/';
+          const fetchMock = jest.fn().mockImplementation(async () => {
+            return new Response(responseBody, {
+              status,
+              headers: status === 302 ? { Location: redirectTarget } : {},
+            });
+          });
+          global.fetch = fetchMock as any;
+
+          const {
+            team,
+            webhook,
+            connection,
+            source,
+            teamWebhooksById,
+            clickhouseClient,
+            dashboard,
+          } = await setupTileAlertForErrors({
+            webhookSettings: {
+              service: WebhookService.Generic,
+              url: 'https://webhook.site/fail',
+              name: 'Generic Webhook',
+              description: 'generic webhook',
+              body: JSON.stringify({ text: '{{title}}' }),
+            },
+          });
+
+          const now = new Date('2023-11-16T22:12:00.000Z');
+          const eventMs = now.getTime() - ms('5m');
+          await bulkInsertLogs([
+            {
+              ServiceName: 'api',
+              Timestamp: new Date(eventMs),
+              SeverityText: 'error',
+              Body: 'oh no',
+            },
+            {
+              ServiceName: 'api',
+              Timestamp: new Date(eventMs),
+              SeverityText: 'error',
+              Body: 'oh no',
+            },
+          ]);
+
+          const tile = dashboard.tiles?.find((t: any) => t.id === 'tile-err');
+          const details = await createAlertDetails(
+            team,
+            source,
+            {
+              source: AlertSource.TILE,
+              channel: {
+                type: 'webhook',
+                webhookId: webhook._id.toString(),
+              },
+              interval: '5m',
+              thresholdType: AlertThresholdType.ABOVE,
+              threshold: 1,
+              dashboardId: dashboard.id,
+              tileId: 'tile-err',
+            },
+            {
+              taskType: AlertTaskType.TILE,
+              tile: tile!,
+              dashboard,
+            },
+          );
+
+          await processAlertAtTime(
+            now,
+            details,
+            clickhouseClient,
+            connection.id,
+            alertProvider,
+            teamWebhooksById,
+          );
+
+          const updated = await Alert.findById(details.alert.id);
+          expect(updated!.state).toBe(AlertState.ALERT);
+          // Query succeeded, so AlertHistory should have been written
+          expect(
+            await AlertHistory.countDocuments({ alert: details.alert.id }),
+          ).toBe(1);
+          expect(updated!.executionErrors).toBeDefined();
+          expect(updated!.executionErrors!.length).toBe(1);
+          expect(updated!.executionErrors![0].type).toBe(
+            AlertErrorType.WEBHOOK_ERROR,
+          );
+          expect(updated!.executionErrors![0].message).toBe(
+            expectedErrorMessage,
+          );
+          expect(fetchMock).toHaveBeenCalledWith(
+            'https://webhook.site/fail',
+            expect.objectContaining({ redirect: 'manual' }),
+          );
+          expect(fetchMock).toHaveBeenCalledTimes(expectedRequestCount);
+          expect(
+            fetchMock.mock.calls.every(
+              ([requestUrl]) => requestUrl === 'https://webhook.site/fail',
+            ),
+          ).toBe(true);
+          expect(
+            fetchMock.mock.calls.map(([requestUrl]) => requestUrl),
+          ).not.toContain(redirectTarget);
+        },
+      );
+
+      it('records a WEBHOOK_ERROR without calling a generic webhook at a private IP', async () => {
+        const fetchMock = jest.fn();
+        global.fetch = jest.mocked(fetchMock);
 
         const {
           team,
@@ -3056,9 +3184,9 @@ describe('checkAlerts', () => {
         } = await setupTileAlertForErrors({
           webhookSettings: {
             service: WebhookService.Generic,
-            url: 'https://webhook.site/fail',
-            name: 'Generic Webhook',
-            description: 'generic webhook',
+            url: 'http://10.0.0.1/webhook',
+            name: 'Private Webhook',
+            description: 'generic webhook at a private IP',
             body: JSON.stringify({ text: '{{title}}' }),
           },
         });
@@ -3113,19 +3241,11 @@ describe('checkAlerts', () => {
         );
 
         const updated = await Alert.findById(details.alert.id);
-        expect(updated!.state).toBe(AlertState.ALERT);
-        // Query succeeded, so AlertHistory should have been written
-        expect(
-          await AlertHistory.countDocuments({ alert: details.alert.id }),
-        ).toBe(1);
-        expect(updated!.executionErrors).toBeDefined();
-        expect(updated!.executionErrors!.length).toBe(1);
+        expect(updated!.executionErrors).toHaveLength(1);
         expect(updated!.executionErrors![0].type).toBe(
           AlertErrorType.WEBHOOK_ERROR,
         );
-        expect(updated!.executionErrors![0].message).toBe(
-          'Failed to send webhook notification. Check the webhook configuration and destination.',
-        );
+        expect(fetchMock).not.toHaveBeenCalled();
       });
 
       it('sets state to OK and records a WEBHOOK_ERROR when a resolving webhook send fails', async () => {
@@ -3746,6 +3866,7 @@ describe('checkAlerts', () => {
       // check if generic webhook was triggered, injected, and parsed, and sent correctly with custom headers
       expect(fetchMock).toHaveBeenCalledWith('https://webhook.site/123', {
         method: 'POST',
+        redirect: 'manual',
         body: JSON.stringify({
           text: `http://app:8080/dashboards/${dashboard.id}?from=1700170200000&granularity=5+minute&to=1700174700000&highlightedTileId=17quud | 🚨 Alert for "Logs Count" in "My Dashboard" - 3 meets or exceeds 1`,
         }),

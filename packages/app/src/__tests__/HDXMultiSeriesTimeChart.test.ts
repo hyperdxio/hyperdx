@@ -131,7 +131,15 @@ describe('buildActiveClickSeries', () => {
     // `b` is missing/non-numeric at this bucket, so it is excluded.
     const row = { ts_bucket: 1000, a: 42, b: null };
     expect(buildActiveClickSeries(visible, row)).toEqual([
-      { dataKey: 'a', name: 'Alpha', value: 42, color: '#a' },
+      {
+        dataKey: 'a',
+        name: 'Alpha',
+        value: 42,
+        color: '#a',
+        valueColumnName: 'a',
+        isPreviousPeriod: false,
+        previousValue: undefined,
+      },
     ]);
   });
 
@@ -141,5 +149,49 @@ describe('buildActiveClickSeries', () => {
     const result = buildActiveClickSeries(visible, row);
     expect(result.map(r => r.dataKey)).toEqual(['a']);
     expect(result[0].value).toBe(0);
+  });
+
+  it('pairs a current-period series with its previous-period value', () => {
+    // makeLine sets previousPeriodKey to `${dataKey}.prev`; when the bucket row
+    // carries a numeric value under that key, it is surfaced as previousValue
+    // so the pinned tooltip can render the percent-change chip.
+    const visible = [makeLine('a', 'Alpha')];
+    const row = { a: 100, 'a.prev': 80 };
+    const result = buildActiveClickSeries(visible, row);
+    expect(result[0]).toMatchObject({
+      dataKey: 'a',
+      value: 100,
+      previousValue: 80,
+      isPreviousPeriod: false,
+    });
+  });
+
+  it('leaves previousValue undefined when the previous bucket is non-numeric', () => {
+    const visible = [makeLine('a')];
+    const row = { a: 100, 'a.prev': null };
+    const result = buildActiveClickSeries(visible, row);
+    expect(result[0].previousValue).toBeUndefined();
+  });
+
+  it('marks a previous-period line (previousPeriodKey === dataKey) and gives it no comparison', () => {
+    // A dashed previous-period line's dataKey equals its previousPeriodKey.
+    // It must be flagged isPreviousPeriod (so the tooltip can fold it away)
+    // and never pair itself as its own comparison.
+    const prevLine: LineData = {
+      dataKey: 'a.prev',
+      currentPeriodKey: 'a',
+      previousPeriodKey: 'a.prev',
+      displayName: 'Alpha (previous)',
+      valueColumnName: 'a',
+      color: '#a',
+      isDashed: true,
+    };
+    const row = { 'a.prev': 80 };
+    const result = buildActiveClickSeries([prevLine], row);
+    expect(result[0]).toMatchObject({
+      dataKey: 'a.prev',
+      isPreviousPeriod: true,
+      previousValue: undefined,
+    });
   });
 });
