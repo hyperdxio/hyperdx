@@ -13,7 +13,10 @@ const FLOATING_LAYER_SELECTOR = [
   '[role="tooltip"]',
   '[role="listbox"]',
   '[role="menu"]',
-  '[role="grid"]',
+  // role="grid" is used by both Mantine date-picker calendars and ordinary
+  // data tables; scope to Mantine calendars so we don't swallow clicks on
+  // unrelated tables elsewhere on the page.
+  '[class*="mantine-"][class*="calendar"] [role="grid"]',
   // Catch every Mantine dropdown variant (Popover, Combobox, Select, Menu, …)
   '[class*="mantine-"][class*="dropdown"]',
   // Overlays belong to modals layered on top of the (overlay-less) drawer.
