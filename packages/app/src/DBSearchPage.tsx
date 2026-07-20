@@ -57,12 +57,13 @@ import {
   Flex,
   Grid,
   Group,
+  Menu,
   Modal,
   Paper,
-  Select,
   Stack,
   Text,
   Tooltip,
+  UnstyledButton,
 } from '@mantine/core';
 import {
   useDebouncedCallback,
@@ -72,6 +73,9 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowBarToRight,
+  IconBolt,
+  IconCheck,
+  IconChevronDown,
   IconCode,
   IconPlayerPlay,
   IconPlus,
@@ -274,6 +278,87 @@ function NewSourceModal({
     >
       <TableSourceForm isNew defaultName="My New Source" onCreate={onCreate} />
     </Modal>
+  );
+}
+
+/**
+ * Grafana-style live-tail control rendered inside the datetime input. The bolt
+ * starts/stops streaming; when live, an attached caret opens a menu to pick the
+ * auto-refresh cadence (which also resumes live if it was paused).
+ */
+function SearchLiveControl({
+  isLive,
+  refreshFrequency,
+  onToggle,
+  onSelectCadence,
+}: {
+  isLive: boolean;
+  refreshFrequency: number;
+  onToggle: () => void;
+  onSelectCadence: (ms: number) => void;
+}) {
+  const cadenceLabel =
+    LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS.find(
+      o => o.value === String(refreshFrequency),
+    )?.label ?? `${Math.round(refreshFrequency / 1000)}s`;
+
+  return (
+    <Group
+      gap={2}
+      wrap="nowrap"
+      // Clicks here must not bubble to the input, which would open the time popover.
+      onClick={e => e.stopPropagation()}
+      onMouseDown={e => e.stopPropagation()}
+    >
+      <Tooltip
+        label={isLive ? 'Pause live tail' : 'Resume live tail'}
+        refProp="rootRef"
+      >
+        <ActionIcon
+          data-testid="live-tail-toggle"
+          variant={isLive ? 'primary' : 'subtle'}
+          color={isLive ? undefined : 'gray'}
+          size="sm"
+          aria-label={isLive ? 'Pause live tail' : 'Resume live tail'}
+          aria-pressed={isLive}
+          onClick={onToggle}
+        >
+          <IconBolt size={16} />
+        </ActionIcon>
+      </Tooltip>
+      {isLive && (
+        <Menu position="bottom-end" withinPortal shadow="md" width={140}>
+          <Menu.Target>
+            <UnstyledButton
+              data-testid="live-tail-cadence"
+              aria-label="Live tail refresh interval"
+              style={{ display: 'flex', alignItems: 'center', gap: 1 }}
+            >
+              <Text size="xs" c="dimmed" fw={500}>
+                {cadenceLabel}
+              </Text>
+              <IconChevronDown size={12} color="var(--mantine-color-dimmed)" />
+            </UnstyledButton>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Label>Refresh every</Menu.Label>
+            {LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS.map(o => (
+              <Menu.Item
+                key={o.value}
+                onClick={() => onSelectCadence(parseInt(o.value, 10))}
+                rightSection={
+                  String(refreshFrequency) === o.value ? (
+                    <IconCheck size={14} />
+                  ) : null
+                }
+              >
+                {o.label}
+              </Menu.Item>
+            ))}
+          </Menu.Dropdown>
+        </Menu>
+      )}
+    </Group>
   );
 }
 
@@ -2322,10 +2407,25 @@ export function DBSearchPage() {
               onRelativeSearch={onTimePickerRelativeSearch}
               showLive={view === 'list'}
               isLiveMode={isLive}
-              onToggleLive={
-                view === 'list' && denoiseResults != true
-                  ? () => (isLive ? setIsLive(false) : handleResumeLiveTail())
-                  : undefined
+              rightSection={
+                view === 'list' && denoiseResults != true ? (
+                  <SearchLiveControl
+                    isLive={isLive}
+                    refreshFrequency={refreshFrequency}
+                    onToggle={() =>
+                      isLive ? setIsLive(false) : handleResumeLiveTail()
+                    }
+                    onSelectCadence={ms => {
+                      setRefreshFrequency(ms);
+                      if (!isLive) {
+                        handleResumeLiveTail();
+                      }
+                    }}
+                  />
+                ) : undefined
+              }
+              rightSectionWidth={
+                view === 'list' && denoiseResults != true && isLive ? 76 : 34
               }
               // Default to relative time mode if the user has made changes to interval and reloaded.
               defaultRelativeTimeMode={
@@ -2334,26 +2434,6 @@ export function DBSearchPage() {
               width="100%"
               size="xs"
             />
-            {isLive && (
-              <Tooltip label="Live tail refresh interval">
-                <Box style={{ width: 80, minWidth: 80, flexShrink: 0 }}>
-                  <Select
-                    size="xs"
-                    w="100%"
-                    data={LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS}
-                    value={String(refreshFrequency)}
-                    onChange={value =>
-                      setRefreshFrequency(value ? parseInt(value, 10) : null)
-                    }
-                    allowDeselect={false}
-                    comboboxProps={{
-                      withinPortal: true,
-                      zIndex: 1000,
-                    }}
-                  />
-                </Box>
-              </Tooltip>
-            )}
             <SearchRunControl isFormStateDirty={formState.isDirty} />
           </Flex>
         </Flex>

@@ -4,7 +4,6 @@ import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
-  ActionIcon,
   Button,
   Card,
   CloseButton,
@@ -108,7 +107,8 @@ const TimePickerComponent = ({
   defaultRelativeTimeMode = false,
   width = 350,
   size = 'sm',
-  onToggleLive,
+  rightSection,
+  rightSectionWidth,
 }: {
   inputValue: string;
   setInputValue: (str: string) => any;
@@ -121,11 +121,12 @@ const TimePickerComponent = ({
   width?: number | string;
   size?: 'xs' | 'sm';
   /**
-   * When provided, renders a live-tail toggle inside the input's right section.
-   * Called to start (when paused) or stop (when live) streaming. `isLiveMode`
-   * drives the toggle's on/off appearance.
+   * Custom content for the input's right section (e.g. a live-tail control).
+   * When set, it replaces the default keyboard-hint affordance and the live
+   * indicator moves off the left icon to avoid a duplicate.
    */
-  onToggleLive?: () => void;
+  rightSection?: React.ReactNode;
+  rightSectionWidth?: number | string;
 }) => {
   const {
     userPreferences: { timeFormat },
@@ -281,7 +282,7 @@ const TimePickerComponent = ({
         <TextInput
           data-testid="time-picker-input"
           leftSection={
-            isLiveMode && !onToggleLive ? (
+            isLiveMode && !rightSection ? (
               <IconBolt size={16} className="text-brand" />
             ) : (
               <IconCalendarFilled size={16} />
@@ -295,34 +296,14 @@ const TimePickerComponent = ({
             },
           }}
           rightSection={
-            onToggleLive ? (
-              <Tooltip
-                label={isLiveMode ? 'Pause live tail' : 'Resume live tail'}
-                refProp="rootRef"
-              >
-                <ActionIcon
-                  data-testid="time-picker-live-toggle"
-                  variant={isLiveMode ? 'primary' : 'subtle'}
-                  color={isLiveMode ? undefined : 'gray'}
-                  size="sm"
-                  aria-label={
-                    isLiveMode ? 'Pause live tail' : 'Resume live tail'
-                  }
-                  aria-pressed={isLiveMode}
-                  onClick={e => {
-                    e.stopPropagation();
-                    onToggleLive();
-                  }}
-                >
-                  <IconBolt size={16} />
-                </ActionIcon>
-              </Tooltip>
-            ) : opened ? (
+            rightSection ??
+            (opened ? (
               <Text size="xxs" bg="var(--color-bg-neutral)" px={4} c="white">
                 d
               </Text>
-            ) : null
+            ) : null)
           }
+          rightSectionWidth={rightSectionWidth}
           rightSectionPointerEvents="auto"
           value={value}
           onChange={event => onChange(event.currentTarget.value)}
