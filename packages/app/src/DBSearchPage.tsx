@@ -76,6 +76,7 @@ import {
   IconBolt,
   IconCheck,
   IconChevronDown,
+  IconClock,
   IconCode,
   IconPlayerPlay,
   IconPlus,
@@ -304,41 +305,48 @@ function SearchLiveControl({
 
   return (
     <Group
-      gap={2}
+      gap={4}
       wrap="nowrap"
       // Clicks here must not bubble to the input, which would open the time popover.
       onClick={e => e.stopPropagation()}
       onMouseDown={e => e.stopPropagation()}
     >
       <Tooltip
-        label={isLive ? 'Pause live tail' : 'Resume live tail'}
+        label={isLive ? 'Pause live tail' : 'Start live tail'}
         refProp="rootRef"
       >
-        <ActionIcon
+        <Button
           data-testid="live-tail-toggle"
-          variant={isLive ? 'primary' : 'subtle'}
-          color={isLive ? undefined : 'gray'}
-          size="sm"
-          aria-label={isLive ? 'Pause live tail' : 'Resume live tail'}
+          size="compact-xs"
+          variant={isLive ? 'primary' : 'secondary'}
+          leftSection={<IconBolt size={13} />}
           aria-pressed={isLive}
           onClick={onToggle}
         >
-          <IconBolt size={16} />
-        </ActionIcon>
+          Live
+        </Button>
       </Tooltip>
       {isLive && (
-        <Menu position="bottom-end" withinPortal shadow="md" width={140}>
+        <Menu position="bottom-end" withinPortal shadow="md" width={150}>
           <Menu.Target>
-            <UnstyledButton
-              data-testid="live-tail-cadence"
-              aria-label="Live tail refresh interval"
-              style={{ display: 'flex', alignItems: 'center', gap: 1 }}
-            >
-              <Text size="xs" c="dimmed" fw={500}>
-                {cadenceLabel}
-              </Text>
-              <IconChevronDown size={12} color="var(--mantine-color-dimmed)" />
-            </UnstyledButton>
+            <Tooltip label="Refresh interval" refProp="rootRef">
+              <UnstyledButton
+                data-testid="live-tail-cadence"
+                aria-label="Live tail refresh interval"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 2,
+                  color: 'var(--mantine-color-dimmed)',
+                }}
+              >
+                <IconClock size={13} />
+                <Text size="xs" c="dimmed" fw={500}>
+                  {cadenceLabel}
+                </Text>
+                <IconChevronDown size={12} />
+              </UnstyledButton>
+            </Tooltip>
           </Menu.Target>
           <Menu.Dropdown>
             <Menu.Label>Refresh every</Menu.Label>
@@ -2425,7 +2433,11 @@ export function DBSearchPage() {
                 ) : undefined
               }
               rightSectionWidth={
-                view === 'list' && denoiseResults != true && isLive ? 76 : 34
+                view === 'list' && denoiseResults != true
+                  ? isLive
+                    ? 138
+                    : 72
+                  : undefined
               }
               // Default to relative time mode if the user has made changes to interval and reloaded.
               defaultRelativeTimeMode={
