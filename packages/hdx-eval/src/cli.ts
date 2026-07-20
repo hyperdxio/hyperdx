@@ -134,6 +134,11 @@ function defaultApiUrl(): string {
 const DEFAULT_EVAL_EMAIL = 'eval@local.test';
 const DEFAULT_EVAL_PASSWORD = 'EvalPass123!#';
 
+// Global fallback turn budget when neither --max-turns nor a per-scenario
+// `maxTurns` override is set. Kept low so exploratory over-querying is
+// penalized; scenarios that need more headroom set `maxTurns` on themselves.
+const DEFAULT_MAX_TURNS = 15;
+
 const program = new Command();
 
 program
@@ -381,10 +386,13 @@ program
       'models are given, every (mcp, model) pair is compared in reports.',
     'claude-opus-4-6',
   )
-  // Lower than the previous 25 — tightens the budget so sloppy agents that
-  // make 20+ exploratory calls can't paper over correctness with volume.
-  // Override with --max-turns if a specific scenario needs more.
-  .option('--max-turns <n>', 'Max tool-use turns', '15')
+  // No commander default: an omitted flag stays `undefined` so we can tell
+  // "user explicitly passed a value" apart from "not passed" and apply the
+  // precedence CLI > scenario.maxTurns > DEFAULT_MAX_TURNS.
+  .option(
+    '--max-turns <n>',
+    `Max tool-use turns. Overrides the per-scenario budget (fallback: ${DEFAULT_MAX_TURNS})`,
+  )
   .option('--seed <n>', 'PRNG seed for re-seeding', '42')
   .option(
     '--timeout <ms>',
@@ -452,7 +460,7 @@ program
         baseline?: string;
         runs: string;
         model: string;
-        maxTurns: string;
+        maxTurns?: string;
         seed: string;
         timeout: string;
         reseed?: true;
@@ -523,7 +531,11 @@ program
         cmdOpts.promptVariant,
       );
       const runs = Number(cmdOpts.runs);
-      const maxTurns = Number(cmdOpts.maxTurns);
+      // Precedence: explicit --max-turns > scenario.maxTurns > DEFAULT_MAX_TURNS.
+      const maxTurns =
+        cmdOpts.maxTurns !== undefined
+          ? Number(cmdOpts.maxTurns)
+          : (scenario.maxTurns ?? DEFAULT_MAX_TURNS);
       const timeoutMs = Number(cmdOpts.timeout);
       const seedNum = Number(cmdOpts.seed);
       const concurrency = Number(cmdOpts.concurrency);

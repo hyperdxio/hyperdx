@@ -72,6 +72,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import api from '@/api';
+import { useChartSyncId } from '@/chartSync';
 import { searchChartConfigDefaults } from '@/defaults';
 import {
   useAliasMapFromChartConfig,
@@ -217,6 +218,7 @@ const PatternTrendChart = ({
   dateRange: [Date, Date];
   color?: string;
 }) => {
+  const syncId = useChartSyncId();
   return (
     <div
       // Hack, recharts will release real fix soon https://github.com/recharts/recharts/issues/172
@@ -240,7 +242,7 @@ const PatternTrendChart = ({
             width={500}
             height={300}
             data={data}
-            syncId="hdx"
+            syncId={syncId}
             syncMethod="value"
             margin={{ top: 4, left: 0, right: 4, bottom: 0 }}
           >
