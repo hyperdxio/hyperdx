@@ -137,6 +137,7 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       const setupItem = page.locator(
         '[data-testid="setup-instructions-menu-item"]',
       );
+      const changelogItem = page.locator('[data-testid="changelog-menu-item"]');
       const shortcutsItem = page.locator(
         '[data-testid="keyboard-shortcuts-menu-item"]',
       );
@@ -144,11 +145,35 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
 
       await expect(documentationItem).toBeVisible();
       await expect(setupItem).toBeVisible();
+      await expect(changelogItem).toBeVisible();
       await expect(shortcutsItem).toBeVisible();
       await expect(discordItem).toBeVisible();
     });
 
+    await test.step('Open changelog from help menu with rendered markdown', async () => {
+      const changelogItem = page.getByTestId('changelog-menu-item');
+      await changelogItem.scrollIntoViewIfNeeded();
+      await changelogItem.click();
+
+      const dialog = page.getByRole('dialog', { name: "What's New" });
+      await expect(dialog).toBeVisible({ timeout: 10_000 });
+
+      // The changelog markdown renders as real HTML (version headings become
+      // <h2>), so a visible heading proves it was parsed, not shown raw.
+      await expect(
+        dialog.getByTestId('changelog-modal').locator('h2').first(),
+      ).toBeVisible({ timeout: 10_000 });
+
+      // Close so the help menu can be reopened for the next step.
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+    });
+
     await test.step('Open keyboard shortcuts from help menu', async () => {
+      // The changelog step closed the menu, so reopen it first.
+      const helpMenuTrigger = page.getByTestId('help-menu-trigger');
+      await helpMenuTrigger.click({ timeout: 10000 });
+
       const shortcutsItem = page.getByTestId('keyboard-shortcuts-menu-item');
       await shortcutsItem.scrollIntoViewIfNeeded();
       await shortcutsItem.click();
