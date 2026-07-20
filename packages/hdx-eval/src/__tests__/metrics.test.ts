@@ -2,6 +2,7 @@ import { __metricMappers } from '@/clickhouse/insert';
 import { scenarioTables } from '@/clickhouse/schema';
 import {
   bucketize,
+  expBucketize,
   makeExponentialHistogram,
   makeGauge,
   makeHistogram,
@@ -162,6 +163,66 @@ describe('bucketize', () => {
     expect(sum).toBe(0);
     expect(min).toBe(0);
     expect(max).toBe(0);
+  });
+});
+
+describe('expBucketize', () => {
+  it('maps positive samples into base-2 buckets at scale 0', () => {
+    // scale 0 → base 2, bucket i covers (2^i, 2^(i+1)].
+    // 1→idx -1, 2→idx 0, 3→idx 1, 4→idx 1, 5→idx 2.
+    const r = expBucketize([1, 2, 3, 4, 5], 0);
+    expect(r.scale).toBe(0);
+    expect(r.positiveOffset).toBe(-1);
+    expect(r.positiveBucketCounts).toEqual([1, 1, 2, 1]);
+    expect(r.zeroCount).toBe(0);
+    expect(r.count).toBe(5);
+    expect(r.sum).toBe(15);
+    expect(r.min).toBe(1);
+    expect(r.max).toBe(5);
+  });
+
+  it('routes zero/non-positive samples to zeroCount, not positive buckets', () => {
+    const r = expBucketize([0, 0, 2, 4], 0);
+    expect(r.zeroCount).toBe(2);
+    expect(r.count).toBe(4);
+    // Only 2 (idx 0) and 4 (idx 1) land in positive buckets.
+    expect(r.positiveOffset).toBe(0);
+    expect(r.positiveBucketCounts).toEqual([1, 1]);
+    expect(r.min).toBe(0);
+    expect(r.max).toBe(4);
+  });
+
+  it('feeds straight into makeExponentialHistogram', () => {
+    const e = makeExponentialHistogram({
+      timeUnixMs: NOW_MS,
+      serviceName: 'recommendation-service',
+      metricName: 'jvm.gc.pause',
+      ...expBucketize([12, 15, 800, 1900], 2),
+      aggregationTemporality: 1,
+    });
+    expect(e.count).toBe(4);
+    expect(e.scale).toBe(2);
+    expect(e.aggregationTemporality).toBe(1);
+    // A heavy tail: max bucket index is well above the min (12ms) index.
+    expect(e.positiveBucketCounts.length).toBeGreaterThan(1);
+    expect(e.max).toBe(1900);
+  });
+
+  it('returns zeroed stats for an empty sample set', () => {
+    const r = expBucketize([], 3);
+    expect(r.positiveBucketCounts).toEqual([]);
+    expect(r.positiveOffset).toBe(0);
+    expect(r.zeroCount).toBe(0);
+    expect(r.count).toBe(0);
+    expect(r.sum).toBe(0);
+    expect(r.min).toBe(0);
+    expect(r.max).toBe(0);
+  });
+
+  it('is a pure function of its inputs', () => {
+    const a = expBucketize([5, 50, 500, 5000], 2);
+    const b = expBucketize([5, 50, 500, 5000], 2);
+    expect(a).toEqual(b);
   });
 });
 
