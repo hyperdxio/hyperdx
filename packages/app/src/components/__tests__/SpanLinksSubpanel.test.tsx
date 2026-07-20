@@ -73,6 +73,30 @@ describe('SpanLinksSubpanel', () => {
     expect(screen.getByText('link.kind: child_of')).toBeInTheDocument();
   });
 
+  it('renders two links to the same destination span as distinct rows', () => {
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+
+    // A span can link to the same destination span twice, differing only in
+    // attributes. Both rows must render and the row key must stay unique.
+    const duplicate = {
+      ...LINK_A,
+      Attributes: { 'link.kind': 'follows_from' },
+    };
+    renderWithMantine(<SpanLinksSubpanel spanLinks={[LINK_A, duplicate]} />);
+
+    expect(screen.getAllByTestId('span-link-row')).toHaveLength(2);
+
+    const sameKeyWarning = consoleError.mock.calls.find(
+      ([message]) =>
+        typeof message === 'string' && message.includes('same key'),
+    );
+    expect(sameKeyWarning).toBeUndefined();
+
+    consoleError.mockRestore();
+  });
+
   it('renders trace state as a labeled chip', () => {
     renderWithMantine(<SpanLinksSubpanel spanLinks={[LINK_B]} />);
 

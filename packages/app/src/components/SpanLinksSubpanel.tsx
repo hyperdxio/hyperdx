@@ -152,7 +152,12 @@ export const SpanLinksSubpanel = ({
           <Stack gap="sm" px="xs" py="xs">
             {visibleRows.map((link, index) => (
               <div
-                key={`${link.TraceId}-${link.SpanId}`}
+                // A span can link to the same destination span twice (same
+                // TraceId + SpanId, different attributes), so the row index
+                // keeps the key unique. The list is append-only and never
+                // reordered, so the index stays stable across renders.
+                // eslint-disable-next-line @eslint-react/no-array-index-key
+                key={`${link.TraceId}-${link.SpanId}-${index}`}
                 data-testid="span-link-row"
                 className={
                   index > 0 ? 'pt-2 border-top border-dark' : undefined
