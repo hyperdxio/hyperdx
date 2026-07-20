@@ -72,7 +72,6 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconArrowBarToRight,
-  IconBolt,
   IconCode,
   IconPlayerPlay,
   IconPlus,
@@ -278,50 +277,18 @@ function NewSourceModal({
   );
 }
 
-function SearchRunControl({
-  isFormStateDirty,
-  showLive,
-  isLive,
-  onResumeLive,
-  onPauseLive,
-}: {
-  isFormStateDirty: boolean;
-  showLive: boolean;
-  isLive: boolean;
-  onResumeLive: () => void;
-  onPauseLive: () => void;
-}) {
+function SearchRunControl({ isFormStateDirty }: { isFormStateDirty: boolean }) {
   return (
-    <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-      <Button
-        data-testid="search-submit-button"
-        variant={isFormStateDirty ? 'primary' : 'secondary'}
-        type="submit"
-        leftSection={<IconPlayerPlay size={16} />}
-        size="xs"
-      >
-        Run
-      </Button>
-      {showLive && (
-        <Tooltip
-          label={isLive ? 'Live tail on — click to pause' : 'Resume live tail'}
-          position="bottom"
-        >
-          <ActionIcon
-            data-testid="live-tail-toggle"
-            type="button"
-            variant={isLive ? 'primary' : 'subtle'}
-            color={isLive ? undefined : 'gray'}
-            onClick={isLive ? onPauseLive : onResumeLive}
-            size="input-xs"
-            aria-label={isLive ? 'Pause live tail' : 'Resume live tail'}
-            aria-pressed={isLive}
-          >
-            <IconBolt size={16} />
-          </ActionIcon>
-        </Tooltip>
-      )}
-    </Group>
+    <Button
+      data-testid="search-submit-button"
+      variant={isFormStateDirty ? 'primary' : 'secondary'}
+      type="submit"
+      leftSection={<IconPlayerPlay size={16} />}
+      style={{ flexShrink: 0 }}
+      size="xs"
+    >
+      Run
+    </Button>
   );
 }
 
@@ -2355,6 +2322,11 @@ export function DBSearchPage() {
               onRelativeSearch={onTimePickerRelativeSearch}
               showLive={view === 'list'}
               isLiveMode={isLive}
+              onToggleLive={
+                view === 'list' && denoiseResults != true
+                  ? () => (isLive ? setIsLive(false) : handleResumeLiveTail())
+                  : undefined
+              }
               // Default to relative time mode if the user has made changes to interval and reloaded.
               defaultRelativeTimeMode={
                 isLive && interval !== LIVE_TAIL_DURATION_MS
@@ -2382,13 +2354,7 @@ export function DBSearchPage() {
                 </Box>
               </Tooltip>
             )}
-            <SearchRunControl
-              isFormStateDirty={formState.isDirty}
-              showLive={view === 'list' && denoiseResults != true}
-              isLive={isLive}
-              onResumeLive={handleResumeLiveTail}
-              onPauseLive={() => setIsLive(false)}
-            />
+            <SearchRunControl isFormStateDirty={formState.isDirty} />
           </Flex>
         </Flex>
         <ActiveFilterPills
