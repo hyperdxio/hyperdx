@@ -1101,7 +1101,15 @@ export default function DBRowSidePanelErrorBoundary({
   }, [sidePanelStack, onClose, clearTraceWaterfallSearchState]);
 
   useCloseOnClickOutside({
-    enabled: closeOnClickOutside && rowId != null,
+    // Only close on outside click at the root level. When the user has
+    // navigated deeper (e.g. log row -> trace), Esc pops one level at a time
+    // via handlePanelBack; an outside click should not skip those levels and
+    // close the drawer entirely.
+    enabled:
+      closeOnClickOutside &&
+      rowId != null &&
+      sidePanelStack.sourceStack.length === 0 &&
+      sidePanelStack.navStack.length === 0,
     keepOpenSelector,
     onClose: _onClose,
   });
