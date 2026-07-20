@@ -89,7 +89,7 @@ function useFacetsFromRawTables({
         // First show low cardinality fields
         const isLowCardinality = (type: string) =>
           type.includes('LowCardinality');
-        return isLowCardinality(a.type) && !isLowCardinality(b.type) ? -1 : 1;
+        return (isLowCardinality(b.type) ? 1 : 0) - (isLowCardinality(a.type) ? 1 : 0);
       })
       .filter(
         field => field.jsType && ['string'].includes(field.jsType),
