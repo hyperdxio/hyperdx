@@ -227,4 +227,23 @@ describe('metric-saturation system prompt', () => {
     // Still the default SRE investigation framing.
     expect(prompt).toMatch(/You are an SRE/i);
   });
+
+  it('omits the metric hint when the arm has no metric support', () => {
+    const prompt = buildSystemPrompt(
+      metricSaturationScenario,
+      '2026-05-10T20:00:00.000Z',
+      'baseline',
+      undefined,
+      false,
+    );
+    expect(prompt).not.toMatch(/metric source is available/i);
+    // Traces and logs tables are still listed.
+    expect(prompt).toContain(
+      '- Traces: default.eval_metric_saturation_otel_traces',
+    );
+    expect(prompt).toContain(
+      '- Logs:   default.eval_metric_saturation_otel_logs',
+    );
+    expect(prompt).toMatch(/You are an SRE/i);
+  });
 });

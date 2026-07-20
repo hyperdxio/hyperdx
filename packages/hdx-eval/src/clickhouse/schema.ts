@@ -29,6 +29,10 @@ const METRIC_TABLES = [
 
 type MetricTableField = (typeof METRIC_TABLES)[number]['field'];
 
+export const METRIC_SOURCE_TABLES: readonly string[] = METRIC_TABLES.map(
+  t => t.source,
+);
+
 export type ScenarioTables = {
   traces: string;
   logs: string;

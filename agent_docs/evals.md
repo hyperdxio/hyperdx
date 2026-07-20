@@ -255,6 +255,22 @@ yarn workspace @hyperdx/hdx-eval dev setup-hyperdx
 yarn workspace @hyperdx/hdx-eval dev run error-root-cause --mcp hyperdx --runs 1 --no-judge
 ```
 
+### Metric support A/B (single slot)
+
+`setup-hyperdx` provisions a metrics-blind `hdx-nometrics` arm alongside the
+regular `hyperdx` entry — same team, same data. The harness routes the arm
+through a per-run scoping proxy that hides metric sources from
+`clickstack_list_sources`, rejects tool calls naming a metric `sourceId`, and
+pins `clickstack_sql` to a Connection backed by a restricted ClickHouse user
+that cannot `SELECT` any metric table (closes the raw-SQL loophole); the metric
+tools are also denied and the metric hint is dropped from the system prompt. The
+metrics arm is the regular `hyperdx` entry.
+
+```bash
+yarn workspace @hyperdx/hdx-eval dev run metric-saturation \
+  --mcp hdx-nometrics,hyperdx --baseline hdx-nometrics --runs 3
+```
+
 ### Model comparison (same MCP, different models)
 
 Compare how different models perform on the same MCP and data. Useful for

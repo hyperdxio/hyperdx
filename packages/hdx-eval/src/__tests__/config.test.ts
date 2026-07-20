@@ -97,6 +97,91 @@ describe('readConfig plugin validation', () => {
   });
 });
 
+describe('readConfig mcps.metricsAvailable validation', () => {
+  const tmpRoot = join('/tmp', `hdx-eval-config-metrics-test-${Date.now()}`);
+
+  beforeAll(() => {
+    mkdirSync(tmpRoot, { recursive: true });
+  });
+
+  afterAll(() => {
+    rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  function writeTmpConfig(name: string, config: unknown): string {
+    const p = join(tmpRoot, `${name}.json`);
+    writeFileSync(p, JSON.stringify(config, null, 2));
+    return p;
+  }
+
+  it('accepts an MCP with metricsAvailable: false', () => {
+    const p = writeTmpConfig('metrics-false', {
+      mcps: { hyperdx: { ...VALID_MCP, metricsAvailable: false } },
+    });
+    expect(readConfig(p).mcps.hyperdx.metricsAvailable).toBe(false);
+  });
+
+  it('accepts an MCP without metricsAvailable', () => {
+    const p = writeTmpConfig('metrics-absent', { mcps: baseConfig.mcps });
+    expect(readConfig(p).mcps.hyperdx.metricsAvailable).toBeUndefined();
+  });
+
+  it('rejects a non-boolean metricsAvailable', () => {
+    const p = writeTmpConfig('metrics-string', {
+      mcps: { hyperdx: { ...VALID_MCP, metricsAvailable: 'yes' } },
+    });
+    expect(() => readConfig(p)).toThrow(
+      `Eval config 'mcps.hyperdx.metricsAvailable' must be a boolean`,
+    );
+  });
+
+  it('accepts an MCP with a valid scoping policy', () => {
+    const p = writeTmpConfig('scoping-valid', {
+      mcps: {
+        hyperdx: {
+          ...VALID_MCP,
+          scoping: {
+            hideSourceKinds: ['metric'],
+            pinSqlConnectionId: 'abc123',
+          },
+        },
+      },
+    });
+    expect(readConfig(p).mcps.hyperdx.scoping).toEqual({
+      hideSourceKinds: ['metric'],
+      pinSqlConnectionId: 'abc123',
+    });
+  });
+
+  it('rejects scoping with a non-array hideSourceKinds', () => {
+    const p = writeTmpConfig('scoping-bad-kinds', {
+      mcps: {
+        hyperdx: { ...VALID_MCP, scoping: { hideSourceKinds: 'metric' } },
+      },
+    });
+    expect(() => readConfig(p)).toThrow(
+      `Eval config 'mcps.hyperdx.scoping.hideSourceKinds' must be an array of strings`,
+    );
+  });
+
+  it('rejects scoping on a stdio MCP', () => {
+    const p = writeTmpConfig('scoping-stdio', {
+      mcps: {
+        ch: {
+          type: 'stdio',
+          command: 'uv',
+          toolPattern: 'mcp__ch__*',
+          label: 'CH',
+          scoping: { hideSourceKinds: ['metric'] },
+        },
+      },
+    });
+    expect(() => readConfig(p)).toThrow(
+      `Eval config 'mcps.ch.scoping' is only supported for http MCPs`,
+    );
+  });
+});
+
 describe('getPluginDefinition', () => {
   it('returns the definition for a known plugin', () => {
     expect(getPluginDefinition(baseConfig, 'urlplugin')).toEqual({

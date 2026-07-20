@@ -6,6 +6,7 @@ import { join } from 'path';
 import type { EvalConfig } from '@/hyperdx/config';
 
 import { allowedToolsPattern, buildMcpConfig } from './mcpConfig';
+import { type ScopingProxyHandle, startScopingProxy } from './scoping';
 import { buildSettings, deniedToolsFor } from './settingsFile';
 import {
   chunkToLines,
@@ -71,7 +72,18 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
   const mcpConfigPath = join(tempdir, 'mcp-config.json');
   const settingsPath = join(tempdir, 'settings.json');
 
-  const mcpDef = opts.mcpDef;
+  // Scoped arms (e.g. hdx-nometrics) talk to the MCP through a local
+  // policy-enforcing proxy — one per run, torn down in the finally below.
+  let proxy: ScopingProxyHandle | undefined;
+  let mcpDef = opts.mcpDef;
+  if (mcpDef.type === 'http' && mcpDef.scoping) {
+    proxy = await startScopingProxy({
+      upstreamUrl: mcpDef.url,
+      headers: mcpDef.headers,
+      scoping: mcpDef.scoping,
+    });
+    mcpDef = { ...mcpDef, url: proxy.url };
+  }
   writeFileSync(
     mcpConfigPath,
     JSON.stringify(buildMcpConfig(mcpDef, opts.mcp), null, 2),
@@ -207,6 +219,7 @@ export async function runClaude(opts: SpawnOptions): Promise<SpawnResult> {
       tempdir,
     };
   } finally {
+    await proxy?.close();
     // Clean up the temp directory to avoid leaking MCP configs with API keys.
     // This runs even if spawn() rejects (e.g. ENOENT when claude is not on PATH).
     try {

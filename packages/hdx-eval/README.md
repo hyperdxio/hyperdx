@@ -111,6 +111,45 @@ yarn workspace @hyperdx/hdx-eval dev run error-root-cause \
   --runs 5
 ```
 
+## Metrics A/B (hyperdx vs hdx-nometrics)
+
+`setup-hyperdx` also provisions a metrics-blind arm for measuring whether metric
+support improves investigation outcomes on a **single** slot. Both arms use the
+same team, account, and data; the `hdx-nometrics` arm is scoped by the harness:
+
+- A **scoping proxy** (`src/harness/scoping.ts`, spawned in-process per run)
+  sits between Claude Code and the MCP. It structurally filters metric-kind
+  sources out of `clickstack_list_sources` responses, rejects any tool call
+  whose `sourceId` references a hidden source, and rewrites every
+  `clickstack_sql` call's `connectionId` to a restricted Connection. Driven by
+  the `scoping` field on the MCP config entry.
+- A restricted ClickHouse user `hdx_eval_nometrics` with a wildcard `SELECT`
+  grant on `default` and `SELECT` explicitly revoked on every
+  `eval_<scenario>_otel_metrics_*` table and the base `otel_metrics_*` tables. A
+  second Connection on the same team stores these credentials — raw SQL from the
+  scoped arm always executes under this user's grants.
+- An `hdx-nometrics` entry in `eval.config.json` with `metricsAvailable: false`
+  (the metric hint is dropped from the system prompt), the metric tools
+  (`clickstack_list_metrics`, `clickstack_describe_metric`) denied, and
+  `enabled: false` so the default `--mcp all` matrix is unchanged — the arm runs
+  only when named explicitly.
+
+Why the proxy rewrites SQL instead of parsing it: `clickstack_sql` runs raw SQL
+with the named Connection's stored ClickHouse credentials and has no table
+restriction, so tool denial alone could not stop the arm from reading the metric
+tables. The proxy never interprets SQL — it only decides _as whom_ SQL runs, and
+the restricted user's grants (the tables also vanish from `SHOW TABLES` for that
+user) remain the enforcement boundary. Metric-typed
+`clickstack_timeseries`/`clickstack_table` params hard-fail server-side for
+non-metric sources, and metric `sourceId`s never reach the agent.
+
+Run the comparison:
+
+```bash
+yarn workspace @hyperdx/hdx-eval dev run metric-saturation \
+  --mcp hdx-nometrics,hyperdx --baseline hdx-nometrics --runs 3
+```
+
 ## MCP Configuration
 
 MCPs are defined in `eval.config.json` under the `mcps` key. Each entry

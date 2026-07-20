@@ -213,6 +213,41 @@ function validateConfig(raw: unknown, path: string): EvalConfig {
         `Eval config 'mcps.${name}.label' must be a non-empty string`,
       );
     }
+    if (
+      d.metricsAvailable !== undefined &&
+      typeof d.metricsAvailable !== 'boolean'
+    ) {
+      throw new Error(
+        `Eval config 'mcps.${name}.metricsAvailable' must be a boolean`,
+      );
+    }
+    if (d.scoping !== undefined) {
+      const s = d.scoping as Record<string, unknown>;
+      if (!s || typeof s !== 'object') {
+        throw new Error(`Eval config 'mcps.${name}.scoping' must be an object`);
+      }
+      if (
+        !Array.isArray(s.hideSourceKinds) ||
+        s.hideSourceKinds.some(k => typeof k !== 'string')
+      ) {
+        throw new Error(
+          `Eval config 'mcps.${name}.scoping.hideSourceKinds' must be an array of strings`,
+        );
+      }
+      if (
+        s.pinSqlConnectionId !== undefined &&
+        (typeof s.pinSqlConnectionId !== 'string' || !s.pinSqlConnectionId)
+      ) {
+        throw new Error(
+          `Eval config 'mcps.${name}.scoping.pinSqlConnectionId' must be a non-empty string`,
+        );
+      }
+      if (d.type !== 'http') {
+        throw new Error(
+          `Eval config 'mcps.${name}.scoping' is only supported for http MCPs`,
+        );
+      }
+    }
   }
 
   // Validate the optional `plugins` section.

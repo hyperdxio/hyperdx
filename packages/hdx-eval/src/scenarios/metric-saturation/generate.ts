@@ -389,12 +389,14 @@ export const metricSaturationScenario: Scenario = {
       ctx.anchorTimeIso,
       ctx.variant,
       ctx.maxTurns,
-      {
-        signalsNote:
-          '- Metrics: a HyperDX metric source is available (gauge, sum, ' +
-          'histogram, exponential histogram, and summary). Use the metric ' +
-          'tools to explore it alongside traces and logs.',
-      },
+      ctx.metricsAvailable === false
+        ? undefined
+        : {
+            signalsNote:
+              '- Metrics: a HyperDX metric source is available (gauge, sum, ' +
+              'histogram, exponential histogram, and summary). Use the metric ' +
+              'tools to explore it alongside traces and logs.',
+          },
     ),
   *generate(ctx): Iterable<ScenarioBatch> {
     const { rng, nowMs } = ctx;

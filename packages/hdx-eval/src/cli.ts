@@ -354,6 +354,13 @@ program
       } else {
         console.log('  sources:    created', result.created.sources.join(', '));
       }
+      if (result.nometrics.ready) {
+        console.log('  nometrics arm: ready');
+      } else {
+        console.log(
+          '  nometrics arm: SKIPPED — see warning above; re-run setup-hyperdx after fixing',
+        );
+      }
     },
   );
 

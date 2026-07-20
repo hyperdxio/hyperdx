@@ -62,6 +62,9 @@ export type SystemPromptContext = {
   maxTurns?: number;
   /** Prompt variant — 'hypothesis' enables multi-hypothesis guidance. */
   variant?: PromptVariant;
+  /** False when the selected MCP arm has no metric support (no metric
+   *  Sources / metric tools); scenarios should omit metric hints. */
+  metricsAvailable?: boolean;
 };
 
 /**

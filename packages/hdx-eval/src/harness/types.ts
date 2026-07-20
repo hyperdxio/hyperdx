@@ -25,6 +25,20 @@ type StdioMcpTransport = {
 };
 
 /**
+ * Harness-side scoping policy for an HTTP MCP. When set, the harness routes
+ * the MCP through a local proxy (`src/harness/scoping.ts`) that hides the
+ * listed source kinds from `clickstack_list_sources`, rejects tool calls
+ * whose `sourceId` references a hidden source, and pins `clickstack_sql`'s
+ * `connectionId` to the given Connection.
+ */
+export type McpScoping = {
+  /** Source kinds (e.g. 'metric') to hide and reject. */
+  hideSourceKinds: string[];
+  /** Connection ID that clickstack_sql is forced to use. */
+  pinSqlConnectionId?: string;
+};
+
+/**
  * A single MCP definition in the eval config. Fully specifies how to
  * connect to the MCP, which tools it exposes, and how to blind its
  * identity for fair judging.
@@ -41,6 +55,12 @@ export type McpDefinition = (HttpMcpTransport | StdioMcpTransport) & {
   /** Whether this MCP is included when `--mcp all` is used. Default: true.
    *  Explicitly naming a disabled MCP via `--mcp name` still works. */
   enabled?: boolean;
+  /** Whether this MCP arm has metric support (metric Sources + metric
+   *  tools). When false, scenarios omit metric hints from the system
+   *  prompt. Default: true. */
+  metricsAvailable?: boolean;
+  /** Scoping proxy policy — HTTP MCPs only. */
+  scoping?: McpScoping;
 };
 
 /**

@@ -40,6 +40,7 @@ export function buildSystemPrompt(
   anchorTimeIso?: string,
   variant: PromptVariant = 'baseline',
   maxTurns?: number,
+  metricsAvailable: boolean = true,
 ): string {
   // Scenario-provided custom system prompt — used by dashboard-build, etc.
   if (scenario.buildSystemPrompt) {
@@ -49,6 +50,7 @@ export function buildSystemPrompt(
       anchorTimeIso,
       maxTurns,
       variant,
+      metricsAvailable,
     });
   }
 
