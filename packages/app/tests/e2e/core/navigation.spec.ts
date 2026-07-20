@@ -158,11 +158,20 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       const dialog = page.getByRole('dialog', { name: "What's New" });
       await expect(dialog).toBeVisible({ timeout: 10_000 });
 
+      const modal = dialog.getByTestId('changelog-modal');
+      const heading = modal.locator('h2').first();
+      const errorText = modal.getByText('Unable to load the changelog.');
+
+      // Wait for the async fetch to settle into either outcome, then assert it
+      // settled on success. The changelog asset is copied into public/ by
+      // next.config, so a broken copy fails here fast and legibly instead of
+      // timing out on the heading check.
+      await expect(heading.or(errorText)).toBeVisible({ timeout: 10_000 });
+      await expect(errorText).toHaveCount(0);
+
       // The changelog markdown renders as real HTML (version headings become
       // <h2>), so a visible heading proves it was parsed, not shown raw.
-      await expect(
-        dialog.getByTestId('changelog-modal').locator('h2').first(),
-      ).toBeVisible({ timeout: 10_000 });
+      await expect(heading).toBeVisible();
 
       // Close so the help menu can be reopened for the next step.
       await page.keyboard.press('Escape');
@@ -182,5 +191,29 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
         page.getByRole('dialog', { name: 'Keyboard Shortcuts' }),
       ).toBeVisible({ timeout: 10_000 });
     });
+  });
+
+  test('should show a fallback when the changelog fails to load', async ({
+    page,
+  }) => {
+    // Force the changelog asset to 404 so the modal's error branch renders.
+    await page.route('**/CHANGELOG.md', route =>
+      route.fulfill({ status: 404, body: 'not found' }),
+    );
+
+    await expect(page.locator('[data-testid="nav-link-search"]')).toBeVisible();
+
+    const helpMenuTrigger = page.getByTestId('help-menu-trigger');
+    await helpMenuTrigger.click({ timeout: 10000 });
+
+    const changelogItem = page.getByTestId('changelog-menu-item');
+    await changelogItem.scrollIntoViewIfNeeded();
+    await changelogItem.click();
+
+    const dialog = page.getByRole('dialog', { name: "What's New" });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByText('Unable to load the changelog.')).toBeVisible(
+      { timeout: 10_000 },
+    );
   });
 });

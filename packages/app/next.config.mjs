@@ -17,14 +17,24 @@ const { version } = packageJson;
 // Yarn 4 does not run arbitrary pre/post lifecycle scripts; next.config is
 // evaluated by both `next dev` (Turbopack) and `next build` (Webpack), so this
 // runs in every build mode. The ClickStack static export additionally needs
-// `.md` allow-listed in scripts/prepare-clickhouse-build-export.js.
+// `.md` allow-listed in scripts/prepare-clickhouse-build-export.js, and the
+// Docker builder stages must COPY the file in (see the Dockerfiles).
 try {
   copyFileSync(
     join(__dirname, 'CHANGELOG.md'),
     join(__dirname, 'public', 'CHANGELOG.md'),
   );
 } catch (err) {
-  // Non-fatal: the viewer degrades to an error state if the file is absent.
+  // Fail loudly during a production build: a missing CHANGELOG.md there means
+  // the shipped image would silently render "Unable to load" for every user.
+  // Stay non-fatal otherwise — `next start` re-evaluates this config at runtime
+  // where the source file is absent but public/CHANGELOG.md already exists from
+  // the build stage, and dev tolerates its absence.
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    throw new Error(
+      `Failed to copy CHANGELOG.md into public/ during build: ${err.message}`,
+    );
+  }
   console.warn('Could not copy CHANGELOG.md into public/:', err.message);
 }
 
