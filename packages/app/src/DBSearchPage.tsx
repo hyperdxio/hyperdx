@@ -292,7 +292,7 @@ function SearchRunControl({
   onPauseLive: () => void;
 }) {
   return (
-    <Button.Group style={{ flexShrink: 0 }}>
+    <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
       <Button
         data-testid="search-submit-button"
         variant={isFormStateDirty ? 'primary' : 'secondary'}
@@ -304,23 +304,24 @@ function SearchRunControl({
       </Button>
       {showLive && (
         <Tooltip
-          label={isLive ? 'Pause live tail' : 'Resume live tail'}
+          label={isLive ? 'Live tail on — click to pause' : 'Resume live tail'}
           position="bottom"
         >
-          <Button
+          <ActionIcon
             data-testid="live-tail-toggle"
             type="button"
-            variant={isLive ? 'primary' : 'secondary'}
+            variant={isLive ? 'primary' : 'subtle'}
+            color={isLive ? undefined : 'gray'}
             onClick={isLive ? onPauseLive : onResumeLive}
-            leftSection={<IconBolt size={14} />}
-            size="xs"
+            size="input-xs"
+            aria-label={isLive ? 'Pause live tail' : 'Resume live tail'}
             aria-pressed={isLive}
           >
-            Live
-          </Button>
+            <IconBolt size={16} />
+          </ActionIcon>
         </Tooltip>
       )}
-    </Button.Group>
+    </Group>
   );
 }
 
