@@ -14,6 +14,10 @@ import {
   paginationQuerySchema,
 } from '@/utils/pagination';
 import {
+  validateWebhookUrl,
+  WebhookUrlValidationError,
+} from '@/utils/validators';
+import {
   ExternalWebhook,
   externalWebhookCreateSchema,
   externalWebhookSchema,
@@ -22,6 +26,15 @@ import {
 
 const DUPLICATE_WEBHOOK_MESSAGE =
   'A webhook with this service and name already exists';
+
+const handleWebhookUrlValidationError = (
+  err: unknown,
+  res: express.Response,
+): boolean => {
+  if (!(err instanceof WebhookUrlValidationError)) return false;
+  res.status(400).json({ message: err.message });
+  return true;
+};
 
 // Countable log event (see agent_docs/observability.md): a webhook that was
 // written but can't be serialized back to the client. `service` is a
@@ -471,6 +484,7 @@ router.post(
 
       const { name, service, url, description, queryParams, headers, body } =
         req.body;
+      validateWebhookUrl({ service, url });
 
       const webhook = await Webhook.create({
         team: teamId,
@@ -490,6 +504,7 @@ router.post(
 
       res.json({ data });
     } catch (e) {
+      if (handleWebhookUrlValidationError(e, res)) return;
       if (isDuplicateKeyError(e)) {
         return res.status(400).json({ message: DUPLICATE_WEBHOOK_MESSAGE });
       }
@@ -589,6 +604,7 @@ router.put(
       if (existing == null) {
         return res.status(404).json({ message: 'Webhook not found' });
       }
+      validateWebhookUrl({ service, url });
 
       // Readable fields are a full replace: present => $set, omitted =>
       // $unset. Write-only fields (headers/queryParams) are never returned
@@ -671,6 +687,7 @@ router.put(
 
       res.json({ data });
     } catch (e) {
+      if (handleWebhookUrlValidationError(e, res)) return;
       if (isDuplicateKeyError(e)) {
         return res.status(400).json({ message: DUPLICATE_WEBHOOK_MESSAGE });
       }
