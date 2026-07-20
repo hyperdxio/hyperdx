@@ -117,7 +117,7 @@ import {
 } from '@/savedSearch';
 import { useSearchPageFilterState } from '@/searchFilters';
 import { getEventBody, useSource, useSources } from '@/source';
-import { useAppTheme, useBrandDisplayName } from '@/theme/ThemeProvider';
+import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   parseRelativeTimeQuery,
   parseTimeQuery,
@@ -278,42 +278,49 @@ function NewSourceModal({
   );
 }
 
-function ResumeLiveTailButton({
-  handleResumeLiveTail,
-}: {
-  handleResumeLiveTail: () => void;
-}) {
-  const { themeName } = useAppTheme();
-  const variant = themeName === 'clickstack' ? 'secondary' : 'primary';
-
-  return (
-    <Button
-      size="compact-xs"
-      variant={variant}
-      onClick={handleResumeLiveTail}
-      leftSection={<IconBolt size={14} />}
-    >
-      Resume Live Tail
-    </Button>
-  );
-}
-
-function SearchSubmitButton({
+function SearchRunControl({
   isFormStateDirty,
+  showLive,
+  isLive,
+  onResumeLive,
+  onPauseLive,
 }: {
   isFormStateDirty: boolean;
+  showLive: boolean;
+  isLive: boolean;
+  onResumeLive: () => void;
+  onPauseLive: () => void;
 }) {
   return (
-    <Button
-      data-testid="search-submit-button"
-      variant={isFormStateDirty ? 'primary' : 'secondary'}
-      type="submit"
-      leftSection={<IconPlayerPlay size={16} />}
-      style={{ flexShrink: 0 }}
-      size="xs"
-    >
-      Run
-    </Button>
+    <Button.Group style={{ flexShrink: 0 }}>
+      <Button
+        data-testid="search-submit-button"
+        variant={isFormStateDirty ? 'primary' : 'secondary'}
+        type="submit"
+        leftSection={<IconPlayerPlay size={16} />}
+        size="xs"
+      >
+        Run
+      </Button>
+      {showLive && (
+        <Tooltip
+          label={isLive ? 'Pause live tail' : 'Resume live tail'}
+          position="bottom"
+        >
+          <Button
+            data-testid="live-tail-toggle"
+            type="button"
+            variant={isLive ? 'primary' : 'secondary'}
+            onClick={isLive ? onPauseLive : onResumeLive}
+            leftSection={<IconBolt size={14} />}
+            size="xs"
+            aria-pressed={isLive}
+          >
+            Live
+          </Button>
+        </Tooltip>
+      )}
+    </Button.Group>
   );
 }
 
@@ -1547,13 +1554,6 @@ export function DBSearchPage() {
     pause: isAnyQueryFetching || !queryReady || !isTabVisible,
   });
 
-  // This ensures we only render this conditionally on the client
-  // otherwise we get SSR hydration issues
-  const [shouldShowLiveModeHint, setShouldShowLiveModeHint] = useState(false);
-  useEffect(() => {
-    setShouldShowLiveModeHint(isLive === false);
-  }, [isLive]);
-
   // Callback to handle when rows are expanded - kick user out of live tail
   const onExpandedRowsChange = useCallback(
     (hasExpandedRows: boolean) => {
@@ -2381,7 +2381,13 @@ export function DBSearchPage() {
                 </Box>
               </Tooltip>
             )}
-            <SearchSubmitButton isFormStateDirty={formState.isDirty} />
+            <SearchRunControl
+              isFormStateDirty={formState.isDirty}
+              showLive={view === 'list' && denoiseResults != true}
+              isLive={isLive}
+              onResumeLive={handleResumeLiveTail}
+              onPauseLive={() => setIsLive(false)}
+            />
           </Flex>
         </Flex>
         <ActiveFilterPills
@@ -2475,13 +2481,6 @@ export function DBSearchPage() {
                         />
                       </Group>
                       <Group gap="sm" align="center">
-                        {view === 'list' &&
-                          shouldShowLiveModeHint &&
-                          denoiseResults != true && (
-                            <ResumeLiveTailButton
-                              handleResumeLiveTail={handleResumeLiveTail}
-                            />
-                          )}
                         {view === 'list' && (
                           <SearchSortMenu
                             groupLabel="Sort by"
