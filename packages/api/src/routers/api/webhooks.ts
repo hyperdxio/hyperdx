@@ -11,7 +11,8 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
-import Alert, { AlertState } from '@/models/alert';
+import { createWebhook, deleteWebhook } from '@/controllers/webhook';
+import { AlertState } from '@/models/alert';
 import Webhook, { WebhookService } from '@/models/webhook';
 import {
   handleSendGenericWebhook,
@@ -181,7 +182,6 @@ router.post(
       }
       const { name, service, url, description, queryParams, headers, body } =
         req.body;
-      validateWebhookUrl({ service, url });
       // The unique index is on (team, service, name), so the pre-flight check
       // must query the same fields — otherwise a name+service collision slips
       // past this guard and surfaces as an uncaught duplicate-key 500 below.
@@ -190,17 +190,15 @@ router.post(
           message: 'Webhook already exists',
         });
       }
-      const webhook = new Webhook({
-        team: teamId,
+      const webhook = await createWebhook(teamId, {
+        name,
         service,
         url,
-        name,
         description,
         queryParams,
         headers,
         body,
       });
-      await webhook.save();
       res.json({
         data: sanitizeWebhook(serializeWebhook(webhook)),
       });
@@ -386,18 +384,14 @@ router.delete(
 
       // Block deletion when alerts still reference this webhook.
       // The user must reassign or delete those alerts first.
-      const referencingAlertCount = await Alert.countDocuments({
-        'channel.type': 'webhook',
-        'channel.webhookId': req.params.id,
-        team: teamId,
-      });
-      if (referencingAlertCount > 0) {
+      const result = await deleteWebhook(teamId, req.params.id);
+      if (result.status === 'referenced') {
         return res.status(409).json({
-          message: `Cannot delete webhook: ${referencingAlertCount} alert(s) still reference it. Please update or remove those alerts first.`,
+          message: `Cannot delete webhook: ${result.alertCount} alert(s) still reference it. Please update or remove those alerts first.`,
         });
       }
-
-      await Webhook.findOneAndDelete({ _id: req.params.id, team: teamId });
+      // Preserve the pre-existing behavior of responding 200 even when the id
+      // did not match (findOneAndDelete was previously fire-and-forget here).
       res.json({});
     } catch (err) {
       next(err);

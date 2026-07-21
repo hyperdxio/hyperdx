@@ -133,6 +133,13 @@ const MAX_MESSAGE_LENGTH = 500;
 const NOTIFY_FN_NAME = '__hdx_notify_channel__';
 const IS_MATCH_FN_NAME = 'is_match';
 
+// Fallback body for a generic/incidentio webhook persisted without one. Mirrors
+// the default template the UI form applies (WebhookForm.tsx) so a webhook
+// created via the API/MCP (where body is optional) still fires with a sensible
+// payload instead of crashing Handlebars.compile on an undefined template.
+const DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE =
+  '{"text": "{{title}} | {{body}} | {{link}} | {{state}} | {{startTime}} | {{endTime}} | {{eventId}}"}';
+
 /**
  * Creates a Handlebars instance with common helpers registered.
  * Use this to ensure consistent helper availability across all template rendering.
@@ -329,7 +336,16 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
   try {
     const handlebars = createHandlebarsWithHelpers();
 
-    body = handlebars.compile(webhook.body, {
+    // A webhook can be persisted without a body (the body default is applied
+    // in the UI form, but the API / MCP create paths accept an empty body).
+    // Handlebars.compile throws on undefined, so fall back to a minimal default
+    // template rather than failing the whole alert-fire.
+    const bodyTemplate =
+      webhook.body && webhook.body.length > 0
+        ? webhook.body
+        : DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE;
+
+    body = handlebars.compile(bodyTemplate, {
       noEscape: true,
     })({
       body: escapeJsonString(message.body),

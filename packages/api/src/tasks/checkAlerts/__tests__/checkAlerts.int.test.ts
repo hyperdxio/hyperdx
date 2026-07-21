@@ -3881,6 +3881,83 @@ describe('checkAlerts', () => {
       });
     });
 
+    it('SAVED_SEARCH alert - generic webhook with no body falls back to the default template', async () => {
+      // Regression: a generic webhook can be persisted without a body via the
+      // API / MCP create paths (body is optional there; only the UI form
+      // applies a default). sendGenericWebhook must not crash on
+      // Handlebars.compile(undefined) — it falls back to the default template.
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        text: jest.fn().mockResolvedValue(''),
+      });
+      global.fetch = fetchMock;
+
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest({
+        webhookSettings: {
+          service: WebhookService.Generic,
+          url: 'https://webhook.site/no-body',
+          name: 'Bodyless Generic Webhook',
+          // Intentionally no `body`.
+        } as IWebhook,
+      });
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = now.getTime() - ms('5m');
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: 'boom',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 0,
+          savedSearchId: savedSearch.id,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      const updated = await Alert.findById(details.alert.id);
+      // The alert fires successfully — no WEBHOOK_ERROR from a compile crash.
+      expect(updated!.state).toBe(AlertState.ALERT);
+      expect(updated!.executionErrors ?? []).toHaveLength(0);
+      // The webhook was actually sent, using the default-template payload.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [, requestInit] = fetchMock.mock.calls[0];
+      const sentBody = JSON.parse(requestInit.body);
+      expect(typeof sentBody.text).toBe('string');
+      expect(sentBody.text).toContain('Alert');
+    });
+
     it('TILE alert (raw SQL line chart) - should trigger and resolve', async () => {
       const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
         await setupSavedSearchAlertTest();
