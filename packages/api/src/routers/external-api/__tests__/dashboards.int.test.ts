@@ -2356,6 +2356,7 @@ describe('External API v2 Dashboards - new format', () => {
             average: true,
           },
           groupByColumnsOnLeft: true,
+          alternateRowBackground: true,
           onClick: {
             type: 'search',
             target: {
@@ -3049,6 +3050,7 @@ describe('External API v2 Dashboards - new format', () => {
           sqlTemplate,
           sourceId,
           numberFormat: { output: 'percent', mantissa: 1 },
+          alternateRowBackground: true,
           onClick: {
             type: 'search',
             target: {
@@ -4515,6 +4517,7 @@ describe('External API v2 Dashboards - new format', () => {
             average: true,
           },
           groupByColumnsOnLeft: true,
+          alternateRowBackground: true,
           onClick: {
             type: 'search',
             target: {
@@ -4743,6 +4746,7 @@ describe('External API v2 Dashboards - new format', () => {
           sqlTemplate,
           sourceId,
           numberFormat: { output: 'percent', mantissa: 1 },
+          alternateRowBackground: true,
           onClick: {
             type: 'dashboard',
             target: {

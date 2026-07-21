@@ -342,6 +342,7 @@ const externalDashboardTableChartConfigSchema = z.object({
   asRatio: z.boolean().optional(),
   numberFormat: NumberFormatSchema.optional(),
   groupByColumnsOnLeft: z.boolean().optional(),
+  alternateRowBackground: z.boolean().optional(),
   onClick: externalOnClickSchema.optional(),
   formulas: externalFormulasSchema,
   showOperandSeries: externalShowOperandSeriesSchema,
@@ -350,6 +351,7 @@ const externalDashboardTableChartConfigSchema = z.object({
 const externalDashboardTableRawSqlChartConfigSchema =
   externalDashboardRawSqlChartConfigBaseSchema.extend({
     displayType: z.literal('table'),
+    alternateRowBackground: z.boolean().optional(),
     onClick: externalOnClickSchema.optional(),
   });
 
