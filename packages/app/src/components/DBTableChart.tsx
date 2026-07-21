@@ -297,6 +297,7 @@ export default function DBTableChart({
           enableClientSideSorting={isRawSqlChartConfig(config)}
           onSortingChange={handleSortingChange}
           variant={variant}
+          alternateRowBackground={!!queriedConfig.alternateRowBackground}
           tableBottom={
             hasNextPage && (
               <Text ref={fetchMoreRef} ta="center">

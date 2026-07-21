@@ -59,6 +59,7 @@ export const Table = ({
   sorting,
   onSortingChange,
   variant = 'default',
+  alternateRowBackground = false,
 }: {
   data: any[];
   columns: {
@@ -95,6 +96,11 @@ export const Table = ({
   sorting: SortingState;
   onSortingChange: (sorting: SortingState) => void;
   variant?: TableVariant;
+  // Zebra striping for dashboard table tiles. When true, odd-indexed rows
+  // get a subtle `--color-bg-table-stripe` background. Off by default. A
+  // dedicated `.stripedRow` hover rule keeps row hover visible over a stripe
+  // (see the CSS module).
+  alternateRowBackground?: boolean;
 }) => {
   const brandName = useBrandDisplayName();
   const MIN_COLUMN_WIDTH_PX = 100;
@@ -407,6 +413,7 @@ export const Table = ({
         }}
       >
         <thead
+          className={styles.tableHeader}
           style={{
             position: 'sticky',
             top: 0,
@@ -490,6 +497,11 @@ export const Table = ({
                   // to the global `bg-muted-hover` utility.
                   [styles.actionableRow]: isActionable,
                   'bg-muted-hover': !isActionable,
+                  // Zebra striping (opt-in): tint odd rows. The CSS module
+                  // gives `.stripedRow` its own hover rule so the hover stays
+                  // visible over a stripe.
+                  [styles.stripedRow]:
+                    alternateRowBackground && virtualRow.index % 2 === 1,
                 })}
                 data-index={virtualRow.index}
                 ref={rowVirtualizer.measureElement}
