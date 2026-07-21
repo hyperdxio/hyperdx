@@ -3494,6 +3494,76 @@ describe('renderChartConfig', () => {
       expect(res).toMatchSnapshot();
     });
 
+    it('should merge exponential histogram buckets across metricNameSql aliases after calculating per-name deltas', async () => {
+      const attributes = { service: 'shared-service' };
+      await Promise.all([
+        seedExponentialHistogramMetric({
+          metricName: 'container.cpu.utilization',
+          points: [
+            {
+              TimeUnix: new Date(now),
+              Attributes: attributes,
+              ...bucketExponentialHistogramObservations([]),
+            },
+            {
+              TimeUnix: nowPlus('1m'),
+              Attributes: attributes,
+              ...bucketExponentialHistogramObservations([2, 2, 2, 8]),
+            },
+          ],
+        }),
+        seedExponentialHistogramMetric({
+          metricName: 'container.cpu.usage',
+          points: [
+            {
+              TimeUnix: nowPlus('10s'),
+              Attributes: attributes,
+              ...bucketExponentialHistogramObservations([]),
+            },
+            {
+              TimeUnix: nowPlus('70s'),
+              Attributes: attributes,
+              ...bucketExponentialHistogramObservations([
+                2, 2, 2, 2, 2, 2, 2, 8, 8, 8,
+              ]),
+            },
+          ],
+        }),
+      ]);
+
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.75,
+              metricName: 'container.cpu.utilization',
+              metricNameSql:
+                "MetricName IN ('container.cpu.utilization', 'container.cpu.usage')",
+              metricType: MetricsDataType.ExponentialHistogram,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), nowPlus('2m')],
+          granularity: '1 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+        querySettings,
+      );
+
+      const res = await queryData(query);
+      expect(res).toHaveLength(1);
+      expect(res[0]).toEqual({
+        __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+        Value: expect.closeTo(2 ** (17 / 8)),
+      });
+    });
+
     it('should handle metrics without metricNameSql (backward compatibility)', async () => {
       // Test querying the old metric name directly without migration SQL
       const query = await renderChartConfig(

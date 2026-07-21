@@ -198,7 +198,6 @@ const translateHistogramQuantile = ({
   },
 ];
 
-// Assumption: `from` filters for a single MetricName.
 export const translateExponentialHistogram = ({
   select,
   ...rest
@@ -241,6 +240,7 @@ const translateExponentialHistogramQuantile = ({
     name: 'filtered_series',
     sql: chSql`
       SELECT
+        MetricName,
         TimeUnix,
         StartTimeUnix,
         AggregationTemporality,
@@ -263,6 +263,7 @@ const translateExponentialHistogramQuantile = ({
     name: 'series_with_normalized_scale',
     sql: chSql`
       SELECT
+        MetricName,
         TimeUnix,
         StartTimeUnix,
         AggregationTemporality,
@@ -319,6 +320,7 @@ const translateExponentialHistogramQuantile = ({
     name: 'normalized_deltas',
     sql: chSql`
       SELECT
+        MetricName,
         TimeUnix,
         Scale,
         ${groupBy ? 'group,' : ''}
@@ -373,6 +375,7 @@ const translateExponentialHistogramQuantile = ({
         ) AS negative_bucket_counts
       FROM (
         SELECT
+          MetricName,
           TimeUnix,
           StartTimeUnix,
           Scale,
@@ -436,10 +439,10 @@ const translateExponentialHistogramQuantile = ({
           FROM series_with_normalized_scale
           WHERE AggregationTemporality = 2
           ${'' /** Keep the input ordering aligned with the prev_row window sort/partition keys. */}
-          ORDER BY ${groupBy ? 'group, ' : ''}attr_hash, TimeUnix
+          ORDER BY ${groupBy ? 'group, ' : ''}MetricName, attr_hash, TimeUnix
         ) AS series
         WINDOW prev_row AS (
-          PARTITION BY ${groupBy ? 'group, ' : ''}attr_hash
+          PARTITION BY ${groupBy ? 'group, ' : ''}MetricName, attr_hash
           ORDER BY TimeUnix
           ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
         )
@@ -449,6 +452,7 @@ const translateExponentialHistogramQuantile = ({
 
       ${'' /** Delta-temporality branch: interval counts pass through directly. */}
       SELECT
+        MetricName,
         TimeUnix,
         Scale,
         ${groupBy ? 'group,' : ''}
