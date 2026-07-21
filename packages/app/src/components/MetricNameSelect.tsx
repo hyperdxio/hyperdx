@@ -7,6 +7,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
+import { IS_EXPONENTIAL_HISTOGRAMS_ENABLED } from '@/config';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import { capitalizeFirstLetter } from '@/utils';
 
@@ -60,7 +61,12 @@ function useMetricNames(
   metricSource: TMetricSource,
   dateRange?: DateRange['dateRange'],
 ) {
-  const { gaugeConfig, histogramConfig, sumConfig } = useMemo(() => {
+  const {
+    gaugeConfig,
+    histogramConfig,
+    sumConfig,
+    exponentialHistogramConfig,
+  } = useMemo(() => {
     return {
       gaugeConfig: chartConfigByMetricType({
         dateRange,
@@ -76,6 +82,11 @@ function useMetricNames(
         dateRange,
         metricSource,
         metricType: MetricsDataType.Sum,
+      }),
+      exponentialHistogramConfig: chartConfigByMetricType({
+        dateRange,
+        metricSource,
+        metricType: MetricsDataType.ExponentialHistogram,
       }),
     };
   }, [metricSource, dateRange]);
@@ -98,11 +109,27 @@ function useMetricNames(
     limit: MAX_METRIC_NAME_OPTIONS,
     disableRowLimit: true,
   });
+  const { data: exponentialHistogramMetrics } = useGetKeyValues(
+    {
+      chartConfig: exponentialHistogramConfig,
+      keys: ['MetricName'],
+      limit: MAX_METRIC_NAME_OPTIONS,
+      disableRowLimit: true,
+    },
+    {
+      enabled:
+        IS_EXPONENTIAL_HISTOGRAMS_ENABLED &&
+        !!metricSource.metricTables?.[MetricsDataType.ExponentialHistogram],
+    },
+  );
 
   return {
     gaugeMetrics: gaugeMetrics?.[0].value,
     histogramMetrics: histogramMetrics?.[0].value,
     sumMetrics: sumMetrics?.[0].value,
+    exponentialHistogramMetrics: IS_EXPONENTIAL_HISTOGRAMS_ENABLED
+      ? exponentialHistogramMetrics?.[0].value
+      : undefined,
   };
 }
 
@@ -110,21 +137,26 @@ export function getMetricOptions(
   gaugeMetrics: string[] | undefined,
   histogramMetrics: string[] | undefined,
   sumMetrics: string[] | undefined,
+  exponentialHistogramMetrics: string[] | undefined,
   metricName: string | null | undefined,
   metricType: MetricsDataType,
 ) {
   const metricsFromQuery = [
     ...(gaugeMetrics?.map(metric => ({
-      value: `${metric}${SEPARATOR}gauge`,
+      value: `${metric}${SEPARATOR}${MetricsDataType.Gauge}`,
       label: `${metric} (Gauge)`,
     })) ?? []),
     ...(histogramMetrics?.map(metric => ({
-      value: `${metric}${SEPARATOR}histogram`,
+      value: `${metric}${SEPARATOR}${MetricsDataType.Histogram}`,
       label: `${metric} (Histogram)`,
     })) ?? []),
     ...(sumMetrics?.map(metric => ({
-      value: `${metric}${SEPARATOR}sum`,
+      value: `${metric}${SEPARATOR}${MetricsDataType.Sum}`,
       label: `${metric} (Sum)`,
+    })) ?? []),
+    ...(exponentialHistogramMetrics?.map(metric => ({
+      value: `${metric}${SEPARATOR}${MetricsDataType.ExponentialHistogram}`,
+      label: `${metric} (Exponential Histogram)`,
     })) ?? []),
   ];
   // if saved metric does not exist in the available options, assume it exists
@@ -166,18 +198,30 @@ export function MetricNameSelect({
   onFocus?: () => void;
   'data-testid'?: string;
 }) {
-  const { gaugeMetrics, histogramMetrics, sumMetrics } =
-    useMetricNames(metricSource);
+  const {
+    gaugeMetrics,
+    histogramMetrics,
+    sumMetrics,
+    exponentialHistogramMetrics,
+  } = useMetricNames(metricSource);
 
   const options = useMemo(() => {
     return getMetricOptions(
       gaugeMetrics,
       histogramMetrics,
       sumMetrics,
+      exponentialHistogramMetrics,
       metricName,
       metricType,
     );
-  }, [gaugeMetrics, histogramMetrics, sumMetrics, metricName, metricType]);
+  }, [
+    gaugeMetrics,
+    histogramMetrics,
+    sumMetrics,
+    exponentialHistogramMetrics,
+    metricName,
+    metricType,
+  ]);
 
   const currentValue =
     metricName && metricType ? `${metricName}${SEPARATOR}${metricType}` : null;

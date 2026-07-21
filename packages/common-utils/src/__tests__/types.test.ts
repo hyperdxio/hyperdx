@@ -4,6 +4,7 @@ import {
   BackgroundChartSchema,
   ColorConditionSchema,
   DerivedColumnSchema,
+  SavedChartConfigSchema,
 } from '@/types';
 
 describe('ColorConditionSchema', () => {
@@ -421,5 +422,38 @@ describe('DerivedColumnSchema color fields', () => {
     expect(
       DerivedColumnSchema.safeParse({ ...baseColumn, colorRules }).success,
     ).toBe(false);
+  });
+});
+
+describe('alternateRowBackground on saved chart configs', () => {
+  // The field lives on SharedChartSettingsSchema, so both builder and raw SQL
+  // saved configs carry it (the zebra striping is purely presentational and
+  // renders the same way regardless of how the rows were produced). A schema
+  // that only declared it on the builder config would silently strip it from a
+  // raw SQL tile on save.
+
+  it('retains alternateRowBackground on a raw SQL table saved config', () => {
+    const parsed = SavedChartConfigSchema.parse({
+      configType: 'sql',
+      sqlTemplate: 'SELECT count() AS Count FROM t',
+      connection: 'test-connection',
+      displayType: 'table',
+      alternateRowBackground: true,
+    });
+
+    expect(parsed).toMatchObject({ alternateRowBackground: true });
+  });
+
+  it('retains alternateRowBackground on a builder table saved config', () => {
+    const parsed = SavedChartConfigSchema.parse({
+      source: 'test-source',
+      timestampValueExpression: 'Timestamp',
+      displayType: 'table',
+      select: [{ aggFn: 'count', valueExpression: '', alias: 'Count' }],
+      where: '',
+      alternateRowBackground: true,
+    });
+
+    expect(parsed).toMatchObject({ alternateRowBackground: true });
   });
 });

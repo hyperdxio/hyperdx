@@ -1229,6 +1229,14 @@ const SharedChartSettingsSchema = z.object({
   // number tiles have no time dimension to bucket). Other display types
   // ignore the field. Kept at shared level mirroring `color` / `colorRules`.
   backgroundChart: BackgroundChartSchema.optional(),
+  // Zebra striping for table tiles: when true, the renderer tints alternating
+  // rows so wide tables are easier to scan across. Applies to any table tile
+  // (builder or raw SQL); the striping is purely presentational and keys off
+  // the rendered row index, so it does not depend on the config kind. The UI
+  // gates the control on `displayType === DisplayType.Table`. Other display
+  // types ignore the field. Off by default, so existing tiles are unchanged.
+  // Kept at shared level mirroring `color` / `colorRules` / `backgroundChart`.
+  alternateRowBackground: z.boolean().optional(),
 });
 
 // How a grouped ratio divides once split into numerator/denominator series:
@@ -1264,6 +1272,9 @@ export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   // Used to preserve original table select string when chart overrides it (e.g., histograms)
   eventTableSelect: z.string().optional(),
   source: z.string().optional(),
+  // Builder-only: render group-by columns to the left of series columns.
+  // Needs the builder `select` structure to know which columns are group-by
+  // keys, so unlike `alternateRowBackground` this stays on the builder config.
   groupByColumnsOnLeft: z.boolean().optional(),
 });
 
@@ -1772,7 +1783,7 @@ export type MaterializedViewConfiguration = z.infer<
 >;
 
 export const MetadataMaterializedViewsSchema = z.object({
-  keyRollupTable: z.string().min(1, 'Key rollup table name is required'),
+  keyRollupTable: z.string().nullish(),
   kvRollupTable: z.string().min(1, 'KV rollup table name is required'),
   granularity: SQLIntervalSchema,
 });

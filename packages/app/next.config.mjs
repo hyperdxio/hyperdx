@@ -86,6 +86,9 @@ const nextConfig = {
             key: 'X-Frame-Options',
             value: 'DENY',
           },
+          ...(process.env.NEXT_PUBLIC_NOINDEX === 'true'
+            ? [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }]
+            : []),
         ],
       },
     ];
