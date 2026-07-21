@@ -45,6 +45,18 @@ claude mcp add --transport http clickstack <your-hyperdx-url>/api/mcp \
   --header "Authorization: Bearer <your-personal-access-key>"
 ```
 
+### Codex CLI
+
+The Codex CLI reads the bearer token from an environment variable rather than a
+`--header` flag. Export your personal access key, then register the server with
+`--bearer-token-env-var`:
+
+```bash
+export CLICKSTACK_ACCESS_KEY="<your-personal-access-key>"
+codex mcp add clickstack --url <your-hyperdx-url>/api/mcp \
+  --bearer-token-env-var CLICKSTACK_ACCESS_KEY
+```
+
 ### OpenCode
 
 Add the following to your [OpenCode config](https://opencode.ai/docs/config):
