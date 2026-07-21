@@ -66,3 +66,5 @@ export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;
 export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
+export const IS_EXPONENTIAL_HISTOGRAMS_ENABLED =
+  env('NEXT_PUBLIC_ENABLE_EXPONENTIAL_HISTOGRAMS') === 'true';

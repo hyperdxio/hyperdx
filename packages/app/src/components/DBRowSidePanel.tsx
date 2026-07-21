@@ -35,6 +35,7 @@ import {
 } from '@mantine/core';
 import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
 
+import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useSidePanelStack, {
@@ -201,6 +202,10 @@ type DBRowSidePanelProps = {
   rowId: string | undefined;
   aliasWith?: WithClause[];
   onClose: () => void;
+  // Clicking outside the drawer (and outside `keepOpenSelector`) closes it.
+  // Enabled by default; pass `false` to opt out.
+  closeOnClickOutside?: boolean;
+  keepOpenSelector?: string;
 };
 
 type DBRowSidePanelInnerProps = DBRowSidePanelProps & {
@@ -1067,6 +1072,8 @@ export default function DBRowSidePanelErrorBoundary({
   rowId,
   aliasWith,
   source,
+  closeOnClickOutside = true,
+  keepOpenSelector,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
@@ -1092,6 +1099,20 @@ export default function DBRowSidePanelErrorBoundary({
     clearTraceWaterfallSearchState();
     onClose();
   }, [sidePanelStack, onClose, clearTraceWaterfallSearchState]);
+
+  useCloseOnClickOutside({
+    // Only close on outside click at the root level. When the user has
+    // navigated deeper (e.g. log row -> trace), Esc pops one level at a time
+    // via handlePanelBack; an outside click should not skip those levels and
+    // close the drawer entirely.
+    enabled:
+      closeOnClickOutside &&
+      rowId != null &&
+      sidePanelStack.sourceStack.length === 0 &&
+      sidePanelStack.navStack.length === 0,
+    keepOpenSelector,
+    onClose: _onClose,
+  });
 
   return (
     <Drawer
