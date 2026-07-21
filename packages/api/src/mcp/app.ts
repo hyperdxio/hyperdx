@@ -27,16 +27,14 @@ const mcpRateLimiter = rateLimiter({
 // whereas any other status (e.g. the SDK's default doomed SSE stream on GET, or
 // a 400) aborts the connection. See issue #2686.
 //
-// OPTIONS is handled explicitly for the same reason: Express's automatic OPTIONS
-// response would build its Allow header from every registered route (GET, POST,
-// DELETE) and advertise GET/DELETE as usable. Routing it through the same 405
-// keeps the advertised contract honest — POST is the only supported method.
+// OPTIONS is intentionally not handled here: the global CORS middleware in
+// api-app.ts short-circuits preflight before this router runs, and it must —
+// answering OPTIONS with a 405 would break browser CORS preflight.
 const methodNotAllowed = (_req: express.Request, res: express.Response) => {
   res.set('Allow', 'POST').sendStatus(405);
 };
 app.get('/', mcpRateLimiter, methodNotAllowed);
 app.delete('/', mcpRateLimiter, methodNotAllowed);
-app.options('/', mcpRateLimiter, methodNotAllowed);
 
 app.post('/', mcpRateLimiter, validateUserAccessKey, async (req, res) => {
   const transport = new StreamableHTTPServerTransport({
