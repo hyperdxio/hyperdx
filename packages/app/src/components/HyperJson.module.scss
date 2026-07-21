@@ -158,6 +158,11 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+
+  // Cap the key column so long keys (e.g. `longtask.attribution.entry_type`)
+  // can't stretch the row and squeeze the value column to nothing
+  max-width: 50%;
+  min-width: 0;
 }
 
 .key {
@@ -167,6 +172,9 @@
   cursor: pointer;
   display: flex;
   gap: 6px;
+
+  // Wrap unbroken keys (dots don't break) within the keyContainer cap
+  overflow-wrap: anywhere;
 
   // @extend .hoverable;
   // @extend .clickable;

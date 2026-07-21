@@ -189,11 +189,23 @@ function SpanDetailPanel({
           </Tooltip>
         </Group>
       </div>
+      {/* `flush` drops the panels' inline padding so content aligns with the
+          tab bar; the wrapping container already provides the outer inset. */}
       {effectiveTab === SpanDetailTab.Overview && (
-        <RowOverviewPanel source={source} rowId={rowId} aliasWith={aliasWith} />
+        <RowOverviewPanel
+          source={source}
+          rowId={rowId}
+          aliasWith={aliasWith}
+          flush
+        />
       )}
       {effectiveTab === SpanDetailTab.Parsed && (
-        <RowDataPanel source={source} rowId={rowId} aliasWith={aliasWith} />
+        <RowDataPanel
+          source={source}
+          rowId={rowId}
+          aliasWith={aliasWith}
+          flush
+        />
       )}
       {effectiveTab === SpanDetailTab.Infrastructure && hasK8sContext && (
         <Box style={{ overflowY: 'auto' }}>

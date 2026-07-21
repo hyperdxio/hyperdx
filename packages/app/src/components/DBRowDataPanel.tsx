@@ -288,11 +288,15 @@ export function RowDataPanel({
   source,
   rowId,
   aliasWith,
+  flush = false,
   'data-testid': dataTestId,
 }: {
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
+  // When true, drop the horizontal margin so content aligns flush with
+  // surrounding chrome (e.g. the tab bar in the trace span detail panel).
+  flush?: boolean;
   'data-testid'?: string;
 }) {
   const { data } = useRowData({ source, rowId, aliasWith });
@@ -310,7 +314,7 @@ export function RowDataPanel({
 
   return (
     <div className="flex-grow-1 overflow-auto" data-testid={dataTestId}>
-      <Box mx="md" my="sm">
+      <Box mx={flush ? 0 : 'md'} my="sm">
         <DBRowJsonViewer
           data={firstRow}
           jsonColumns={jsonColumns}
