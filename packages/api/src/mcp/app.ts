@@ -1,6 +1,7 @@
 import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import express from 'express';
 
 import { validateUserAccessKey } from '@/middleware/auth';
 import logger from '@/utils/logger';
@@ -19,7 +20,19 @@ const mcpRateLimiter = rateLimiter({
   keyGenerator: rateLimiterKeyGenerator,
 });
 
-app.all('/', mcpRateLimiter, validateUserAccessKey, async (req, res) => {
+// This transport is stateless: a fresh server/transport is created per POST, so
+// we neither offer a server-initiated SSE stream (GET) nor client-terminable
+// sessions (DELETE). Per the Streamable HTTP spec a server that doesn't offer
+// these MUST respond 405; SDK clients treat 405 as "not offered, continue"
+// whereas any other status (e.g. the SDK's default doomed SSE stream on GET, or
+// a 400) aborts the connection. See issue #2686.
+const methodNotAllowed = (_req: express.Request, res: express.Response) => {
+  res.set('Allow', 'POST').sendStatus(405);
+};
+app.get('/', mcpRateLimiter, methodNotAllowed);
+app.delete('/', mcpRateLimiter, methodNotAllowed);
+
+app.post('/', mcpRateLimiter, validateUserAccessKey, async (req, res) => {
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined, // stateless
   });
