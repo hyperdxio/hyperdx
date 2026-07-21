@@ -1,5 +1,22 @@
-import { runProgrammaticChecks } from '@/grading/programmatic';
+import {
+  runProgrammaticChecks,
+  runTranscriptChecks,
+  serializeTranscript,
+} from '@/grading/programmatic';
 import { loadScenarioRubric } from '@/grading/rubric';
+import type { ToolCallRecord } from '@/harness/types';
+
+function toolCall(name: string, input: unknown = null): ToolCallRecord {
+  return {
+    name,
+    input,
+    output: null,
+    isError: false,
+    startedAt: '',
+    endedAt: null,
+    durationMs: null,
+  };
+}
 
 describe('runProgrammaticChecks', () => {
   it('hits all checks when answer mentions every required fact', () => {
@@ -136,5 +153,131 @@ describe('runProgrammaticChecks', () => {
     expect(goodResult.score).toBeGreaterThan(0.95);
     // Wrong blame should drop score below 1 even though all positive checks still hit.
     expect(wrongResult.score).toBeLessThan(goodResult.score);
+  });
+});
+
+describe('serializeTranscript', () => {
+  it('serializes each call as `<name> <compact-json-args>`, one per line', () => {
+    const s = serializeTranscript([
+      toolCall('clickstack_list_metrics', { sourceId: 's1' }),
+      toolCall('clickstack_describe_metric', {
+        name: 'process.runtime.jvm.memory.used',
+      }),
+    ]);
+    expect(s).toBe(
+      'clickstack_list_metrics {"sourceId":"s1"}\n' +
+        'clickstack_describe_metric {"name":"process.runtime.jvm.memory.used"}',
+    );
+  });
+
+  it('emits the bare tool name when there are no args', () => {
+    expect(serializeTranscript([toolCall('clickstack_list_sources')])).toBe(
+      'clickstack_list_sources',
+    );
+  });
+
+  it('passes through string input verbatim (no double-encoding)', () => {
+    expect(serializeTranscript([toolCall('raw', 'already a string')])).toBe(
+      'raw already a string',
+    );
+  });
+
+  it('returns an empty string for no tool calls', () => {
+    expect(serializeTranscript([])).toBe('');
+  });
+
+  it('does not throw on circular / unserializable input', () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const s = serializeTranscript([toolCall('weird', circular)]);
+    expect(s).toBe('weird [unserializable]');
+  });
+
+  it('truncates oversized args so one huge call cannot bloat the transcript', () => {
+    const big = 'x'.repeat(5000);
+    const s = serializeTranscript([toolCall('huge', { blob: big })]);
+    expect(s.length).toBeLessThan(2100);
+    expect(s.endsWith('…')).toBe(true);
+  });
+});
+
+describe('runTranscriptChecks', () => {
+  it('matches tool names in the serialized transcript', () => {
+    const result = runTranscriptChecks(
+      [
+        toolCall('clickstack_list_metrics', { sourceId: 's1' }),
+        toolCall('clickstack_sql', { sql: 'SELECT 1' }),
+      ],
+      [
+        {
+          id: 'used_metric_tool',
+          weight: 1,
+          pattern: 'clickstack_list_metrics',
+        },
+      ],
+    );
+    expect(result.score).toBeCloseTo(1, 5);
+    expect(result.hits[0].satisfied).toBe(true);
+  });
+
+  it('matches on tool args, enabling "used the right metric" checks', () => {
+    const checks = [
+      {
+        id: 'named_jvm_memory',
+        weight: 1,
+        pattern: 'process\\.runtime\\.jvm\\.memory',
+      },
+    ];
+    const usedRight = runTranscriptChecks(
+      [
+        toolCall('clickstack_describe_metric', {
+          name: 'process.runtime.jvm.memory.used',
+        }),
+      ],
+      checks,
+    );
+    const usedWrong = runTranscriptChecks(
+      [
+        toolCall('clickstack_describe_metric', {
+          name: 'http.server.duration',
+        }),
+      ],
+      checks,
+    );
+    expect(usedRight.score).toBeCloseTo(1, 5);
+    expect(usedWrong.score).toBe(0);
+  });
+
+  it('scores zero when the transcript is empty', () => {
+    const result = runTranscriptChecks(
+      [],
+      [{ id: 'used_metric_tool', weight: 1, pattern: 'clickstack' }],
+    );
+    expect(result.score).toBe(0);
+    expect(result.hits[0].satisfied).toBe(false);
+  });
+});
+
+describe('rubric.transcript parsing', () => {
+  it('hydrates the metric-saturation transcript block', () => {
+    const rubric = loadScenarioRubric('metric-saturation');
+    expect(rubric.transcript).toBeDefined();
+    expect(rubric.transcript!.length).toBeGreaterThanOrEqual(1);
+    // Tuples hydrate into full ProgrammaticCheck objects with default flags.
+    const used = rubric.transcript!.find(c => c.id === 'used_metric_tool');
+    expect(used).toMatchObject({ weight: 1, flags: 'i' });
+    expect(typeof used!.pattern).toBe('string');
+  });
+
+  it('leaves transcript undefined for scenarios without the block', () => {
+    const rubric = loadScenarioRubric('error-root-cause');
+    expect(rubric.transcript).toBeUndefined();
+  });
+
+  it('the metric-saturation transcript checks all compile as valid regexes', () => {
+    const rubric = loadScenarioRubric('metric-saturation');
+    for (const c of rubric.transcript!) {
+      expect(() => new RegExp(c.pattern, c.flags ?? 'i')).not.toThrow();
+    }
   });
 });
