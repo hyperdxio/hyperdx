@@ -21,4 +21,12 @@ describe('mcp app transport methods', () => {
     expect(res.status).toBe(405);
     expect(res.headers.allow).toBe('POST');
   });
+
+  // Explicit OPTIONS handling stops Express's automatic response from
+  // advertising the rejected GET/DELETE routes in its Allow header.
+  it('returns 405 with Allow: POST for OPTIONS', async () => {
+    const res = await request(app).options('/mcp');
+    expect(res.status).toBe(405);
+    expect(res.headers.allow).toBe('POST');
+  });
 });
