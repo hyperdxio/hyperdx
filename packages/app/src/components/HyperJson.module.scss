@@ -183,6 +183,7 @@
   align-items: flex-start;
   gap: 3px;
   max-width: 100%;
+  min-width: 0;
 }
 
 .value {
@@ -199,7 +200,10 @@
 .string {
   color: var(--color-json-string);
   white-space: pre;
-  overflow-wrap: break-word;
+
+  // `anywhere` (vs `break-word`) so when wrapping is enabled long
+  // unbroken tokens like URLs/paths break instead of overflowing
+  overflow-wrap: anywhere;
 
   &::before,
   &::after {
