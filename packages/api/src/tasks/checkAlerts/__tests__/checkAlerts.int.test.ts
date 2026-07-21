@@ -36,7 +36,9 @@ import Webhook, { IWebhook } from '@/models/webhook';
 import * as checkAlert from '@/tasks/checkAlerts';
 import {
   alertHasGroupBy,
+  buildAlertGroupContext,
   doesExceedThreshold,
+  getConfiguredGroupByLabels,
   getConsecutiveWindowHistories,
   getPreviousAlertHistories,
   getScheduledWindowStart,
@@ -1180,6 +1182,70 @@ describe('checkAlerts', () => {
           }),
         ),
       ).toBe(true);
+    });
+  });
+
+  describe('alert group key labels', () => {
+    it('uses configured groupBy labels instead of rendered ClickHouse expression names', () => {
+      const groupByLabels = getConfiguredGroupByLabels({
+        displayType: 'line',
+        groupBy: "ResourceAttributes['process.command_args']",
+      } as any);
+
+      const { groupKey, attributes } = buildAlertGroupContext(
+        [
+          [
+            "arrayElement(ResourceAttributes, 'process.command_args')",
+            'node index.js',
+          ],
+        ],
+        groupByLabels,
+      );
+
+      expect(groupKey).toBe(
+        "ResourceAttributes['process.command_args']:node index.js",
+      );
+      expect(attributes).toEqual({
+        "ResourceAttributes['process.command_args']": 'node index.js',
+      });
+    });
+
+    it('preserves saved-search group labels', () => {
+      const groupByLabels = getConfiguredGroupByLabels({
+        displayType: 'line',
+        groupBy: 'ServiceName',
+      } as any);
+
+      const { groupKey, attributes } = buildAlertGroupContext(
+        [['ServiceName', 'hdx-oss-dev-api']],
+        groupByLabels,
+      );
+
+      expect(groupKey).toBe('ServiceName:hdx-oss-dev-api');
+      expect(attributes).toEqual({ ServiceName: 'hdx-oss-dev-api' });
+    });
+
+    it('preserves multi-column groupBy order', () => {
+      const groupByLabels = getConfiguredGroupByLabels({
+        displayType: 'line',
+        groupBy: "ServiceName, ResourceAttributes['host.name']",
+      } as any);
+
+      const { groupKey, attributes } = buildAlertGroupContext(
+        [
+          ['ServiceName', 'api'],
+          ["arrayElement(ResourceAttributes, 'host.name')", 'host-1'],
+        ],
+        groupByLabels,
+      );
+
+      expect(groupKey).toBe(
+        "ServiceName:api, ResourceAttributes['host.name']:host-1",
+      );
+      expect(attributes).toEqual({
+        ServiceName: 'api',
+        "ResourceAttributes['host.name']": 'host-1',
+      });
     });
   });
 
@@ -7458,6 +7524,458 @@ describe('checkAlerts', () => {
 
       // Verify webhook WAS called
       expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+    });
+
+    it('should suppress notifications only for silenced groups', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong in api!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong in api!',
+        },
+        {
+          ServiceName: 'app',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong in app!',
+        },
+        {
+          ServiceName: 'app',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong in app!',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const alertDoc = await Alert.findById(details.alert.id);
+      alertDoc!.silencedGroups = [
+        {
+          group: 'ServiceName:api',
+          at: new Date(),
+          until: new Date(Date.now() + 3600000),
+        },
+      ];
+      await alertDoc!.save();
+
+      details.alert.silencedGroups = alertDoc!.silencedGroups;
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+
+      const webhookCall = (slack.postMessageToWebhook as jest.Mock).mock
+        .calls[0];
+      expect(webhookCall[0]).toBe('https://hooks.slack.com/services/123');
+
+      const webhookPayload = webhookCall[1];
+      expect(webhookPayload).toMatchObject({
+        blocks: expect.arrayContaining([
+          expect.objectContaining({
+            type: 'section',
+            text: expect.objectContaining({
+              type: 'mrkdwn',
+              text: expect.stringContaining('Group: "ServiceName:app"'),
+            }),
+          }),
+        ]),
+      });
+
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1, group: 1 });
+      expect(alertHistories).toHaveLength(2);
+
+      const apiHistory = alertHistories.find(
+        ({ group }) => group === 'ServiceName:api',
+      );
+      expect(apiHistory?.state).toBe('ALERT');
+      expect(apiHistory?.counts).toBe(1);
+
+      const appHistory = alertHistories.find(
+        ({ group }) => group === 'ServiceName:app',
+      );
+      expect(appHistory?.state).toBe('ALERT');
+      expect(appHistory?.counts).toBe(1);
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+    });
+
+    it('should fire grouped notifications when group silence has expired', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong in api!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong in api!',
+        },
+        {
+          ServiceName: 'app',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong in app!',
+        },
+        {
+          ServiceName: 'app',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong in app!',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const alertDoc = await Alert.findById(details.alert.id);
+      alertDoc!.silencedGroups = [
+        {
+          group: 'ServiceName:api',
+          at: new Date(Date.now() - 7200000),
+          until: new Date(Date.now() - 3600000),
+        },
+      ];
+      await alertDoc!.save();
+
+      details.alert.silencedGroups = alertDoc!.silencedGroups;
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+
+      const webhookCalls = (slack.postMessageToWebhook as jest.Mock).mock.calls;
+
+      expect(webhookCalls).toEqual(
+        expect.arrayContaining([
+          [
+            'https://hooks.slack.com/services/123',
+            expect.objectContaining({
+              blocks: expect.arrayContaining([
+                expect.objectContaining({
+                  type: 'section',
+                  text: expect.objectContaining({
+                    type: 'mrkdwn',
+                    text: expect.stringContaining('Group: "ServiceName:api"'),
+                  }),
+                }),
+              ]),
+            }),
+          ],
+          [
+            'https://hooks.slack.com/services/123',
+            expect.objectContaining({
+              blocks: expect.arrayContaining([
+                expect.objectContaining({
+                  type: 'section',
+                  text: expect.objectContaining({
+                    type: 'mrkdwn',
+                    text: expect.stringContaining('Group: "ServiceName:app"'),
+                  }),
+                }),
+              ]),
+            }),
+          ],
+        ]),
+      );
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+    });
+
+    it('should not fire grouped notifications when alert is silenced', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong in api!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong in api!',
+        },
+        {
+          ServiceName: 'app',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from app',
+        },
+        {
+          ServiceName: 'app',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from app',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const alertDoc = await Alert.findById(details.alert.id);
+      alertDoc!.silenced = {
+        at: new Date(),
+        until: new Date(Date.now() + 3600000),
+      };
+      await alertDoc!.save();
+
+      details.alert.silenced = alertDoc!.silenced;
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect(slack.postMessageToWebhook).not.toHaveBeenCalled();
+
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1, group: 1 });
+      expect(alertHistories).toHaveLength(2);
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[1].state).toBe('ALERT');
+
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+    });
+
+    it('should fire notifications for resumed groups when alert is silenced', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const now = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = new Date('2023-11-16T22:05:00.000Z');
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong in api!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong in api!',
+        },
+        {
+          ServiceName: 'app',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from app',
+        },
+        {
+          ServiceName: 'app',
+          Timestamp: eventMs,
+          SeverityText: 'error',
+          Body: 'Error from app',
+        },
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      const parentSilencedAt = new Date();
+      const alertDoc = await Alert.findById(details.alert.id);
+      alertDoc!.silenced = {
+        at: parentSilencedAt,
+        until: new Date(Date.now() + 3600000),
+      };
+      alertDoc!.unsilencedGroups = [
+        {
+          group: 'ServiceName:app',
+          at: new Date(),
+          parentSilencedAt,
+        },
+      ];
+      await alertDoc!.save();
+
+      details.alert.silenced = alertDoc!.silenced;
+      details.alert.unsilencedGroups = alertDoc!.unsilencedGroups;
+
+      await processAlertAtTime(
+        now,
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(1);
+      expect(slack.postMessageToWebhook).toHaveBeenCalledWith(
+        'https://hooks.slack.com/services/123',
+        expect.objectContaining({
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              type: 'section',
+              text: expect.objectContaining({
+                type: 'mrkdwn',
+                text: expect.stringContaining('Group: "ServiceName:app"'),
+              }),
+            }),
+          ]),
+        }),
+      );
+
+      const alertHistories = await AlertHistory.find({
+        alert: details.alert.id,
+      }).sort({ createdAt: 1, group: 1 });
+      expect(alertHistories).toHaveLength(2);
+      expect(alertHistories[0].state).toBe('ALERT');
+      expect(alertHistories[1].state).toBe('ALERT');
+
       expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
     });
 

@@ -22,6 +22,7 @@ import {
   aliasMapToWithClauses,
   displayTypeSupportsRawSqlAlerts,
   isTimeSeriesDisplayType,
+  splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { timeBucketByGranularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -50,7 +51,13 @@ import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
-import { AlertState, IAlert, IAlertError } from '@/models/alert';
+import {
+  AlertState,
+  IAlert,
+  IAlertError,
+  IAlertSilencedGroup,
+  IAlertUnsilencedGroup,
+} from '@/models/alert';
 import AlertHistory, { IAlertHistory } from '@/models/alertHistory';
 import { IDashboard } from '@/models/dashboard';
 import { ISavedSearch } from '@/models/savedSearch';
@@ -135,6 +142,74 @@ export const alertHasGroupBy = (details: AlertDetails): boolean => {
     return details.tile.config.displayType !== DisplayType.Number;
   }
   return false;
+};
+
+const getActiveSilencedGroup = (
+  silencedGroups: IAlert['silencedGroups'],
+  group: string,
+  now: number,
+): IAlertSilencedGroup | undefined => {
+  if (!group) {
+    return undefined;
+  }
+
+  return silencedGroups?.find(
+    silencedGroup =>
+      silencedGroup.group === group && silencedGroup.until.getTime() > now,
+  );
+};
+
+const getActiveUnsilencedGroup = (
+  unsilencedGroups: IAlert['unsilencedGroups'],
+  group: string,
+  parentSilenced: IAlert['silenced'],
+  now: number,
+): IAlertUnsilencedGroup | undefined => {
+  if (
+    !group ||
+    parentSilenced == null ||
+    parentSilenced.until.getTime() <= now
+  ) {
+    return undefined;
+  }
+
+  return unsilencedGroups?.find(
+    unsilencedGroup =>
+      unsilencedGroup.group === group &&
+      unsilencedGroup.parentSilencedAt.getTime() ===
+        parentSilenced.at.getTime(),
+  );
+};
+
+export type AlertNotificationSuppression =
+  | { type: 'alert'; silenced: NonNullable<IAlert['silenced']> }
+  | { type: 'group'; silenced: IAlertSilencedGroup };
+
+export const getAlertNotificationSuppression = (
+  alert: Pick<IAlert, 'silenced' | 'silencedGroups' | 'unsilencedGroups'>,
+  group: string,
+  now = Date.now(),
+): AlertNotificationSuppression | undefined => {
+  const unsilencedGroup = getActiveUnsilencedGroup(
+    alert.unsilencedGroups,
+    group,
+    alert.silenced,
+    now,
+  );
+  if (unsilencedGroup) {
+    return undefined;
+  }
+
+  if (alert.silenced && alert.silenced.until.getTime() > now) {
+    return { type: 'alert', silenced: alert.silenced };
+  }
+
+  const silencedGroup = getActiveSilencedGroup(
+    alert.silencedGroups,
+    group,
+    now,
+  );
+  return silencedGroup ? { type: 'group', silenced: silencedGroup } : undefined;
 };
 
 /**
@@ -773,6 +848,39 @@ export const parseAlertData = (
   return { value, extraFields };
 };
 
+const getGroupByLabel = (groupBy: { valueExpression: string } | string) => {
+  return typeof groupBy === 'string' ? groupBy : groupBy.valueExpression;
+};
+
+export const getConfiguredGroupByLabels = (
+  chartConfig: ChartConfigWithOptDateRange,
+): string[] => {
+  if (!isBuilderChartConfig(chartConfig) || chartConfig.groupBy == null) {
+    return [];
+  }
+
+  if (typeof chartConfig.groupBy === 'string') {
+    return splitAndTrimWithBracket(chartConfig.groupBy);
+  }
+
+  return chartConfig.groupBy.map(getGroupByLabel);
+};
+
+export const buildAlertGroupContext = (
+  extraFields: Array<[string, string]>,
+  groupByLabels: string[],
+) => {
+  const fields = extraFields.map(
+    ([key, value], index) =>
+      [groupByLabels[index] ?? key, value] as [string, string],
+  );
+
+  return {
+    attributes: Object.fromEntries(fields),
+    groupKey: fields.map(([key, value]) => `${key}:${value}`).join(', '),
+  };
+};
+
 export const processAlert = async (
   now: Date,
   details: AlertDetails,
@@ -1048,14 +1156,32 @@ export const processAlert = async (
       // execution may still send a notification. Subsequent alert checks will
       // respect the silenced state. This trade-off maintains architectural
       // separation from direct database access.
-      if ((alert.silenced?.until?.getTime() ?? 0) > Date.now()) {
+      const notificationSuppression = getAlertNotificationSuppression(
+        alert,
+        group,
+      );
+
+      if (notificationSuppression?.type === 'alert') {
         alertEvaluationsCounter.add(1, { outcome: 'skipped_silenced' });
         logger.info(
           {
             alertId: alert.id,
-            silenced: alert.silenced,
+            silenced: notificationSuppression.silenced,
           },
           'Skipped firing alert due to silence',
+        );
+        return;
+      }
+
+      if (notificationSuppression?.type === 'group') {
+        alertEvaluationsCounter.add(1, { outcome: 'skipped_silenced' });
+        logger.info(
+          {
+            alertId: alert.id,
+            group,
+            silencedGroup: notificationSuppression.silenced,
+          },
+          'Skipped firing alert due to group silence',
         );
         return;
       }
@@ -1153,6 +1279,7 @@ export const processAlert = async (
       logger.error({ alertId: alert.id }, 'Failed to get response metadata');
       return;
     }
+    const groupByLabels = getConfiguredGroupByLabels(chartConfig);
 
     // single_value type (Raw SQL Number charts) returns a single value with no
     // timestamp column, and are assumed to not have groups.
@@ -1290,10 +1417,9 @@ export const processAlert = async (
           continue;
         }
 
-        const groupKey = hasGroupBy
-          ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
-          : '';
-        const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
+        const { groupKey, attributes } = hasGroupBy
+          ? buildAlertGroupContext(extraFields, groupByLabels)
+          : { groupKey: '', attributes: {} };
 
         const exceeds = doesExceedThreshold(alert, value);
 

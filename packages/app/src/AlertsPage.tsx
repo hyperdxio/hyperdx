@@ -38,7 +38,12 @@ import {
 } from '@tabler/icons-react';
 
 import { AckAlert } from '@/components/alerts/AckAlert';
+import {
+  AlertGroupRows,
+  getVisibleAlertGroups,
+} from '@/components/alerts/AlertGroupRows';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
+import { AlertStateBadge } from '@/components/alerts/AlertStateBadge';
 import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
 
@@ -122,7 +127,19 @@ function AlertNote({ note }: { note: string }) {
   );
 }
 
-function AlertDetails({ alert }: { alert: AlertsPageItem }) {
+function AlertDetails({
+  alert,
+  groupState,
+}: {
+  alert: AlertsPageItem;
+  groupState?: AlertsPageItem['state'];
+}) {
+  const [areGroupsExpanded, setAreGroupsExpanded] = React.useState(true);
+  const hasGroups = getVisibleAlertGroups(alert, groupState).length > 0;
+  const displayState = groupState ?? alert.state;
+  const showParentActions = groupState == null || groupState === alert.state;
+  const testIdSuffix = groupState ? `${alert._id}-${groupState}` : alert._id;
+
   const alertName = React.useMemo(() => {
     if (alert.source === AlertSource.TILE && alert.dashboard) {
       const tile = alert.dashboard?.tiles.find(
@@ -207,78 +224,117 @@ function AlertDetails({ alert }: { alert: AlertsPageItem }) {
   }, [alert]);
 
   return (
-    <div data-testid={`alert-card-${alert._id}`} className={styles.alertRow}>
-      <Group>
-        {alert.state === AlertState.ALERT && (
-          <Badge variant="light" color="red">
-            Alert
-          </Badge>
-        )}
-        {alert.state === AlertState.PENDING && (
-          <Badge variant="light" color="orange">
-            Pending
-          </Badge>
-        )}
-        {alert.state === AlertState.OK && <Badge variant="light">Ok</Badge>}
-        {alert.state === AlertState.DISABLED && (
-          <Badge variant="light" color="gray">
-            Disabled
-          </Badge>
-        )}
-
-        <Stack gap={2}>
-          <div>
-            <Link
-              data-testid={`alert-link-${alert._id}`}
-              href={alertUrl}
-              className={styles.alertLink}
-              title={linkTitle}
+    <div
+      data-testid={`alert-card-${testIdSuffix}`}
+      className={styles.alertBlock}
+    >
+      <div className={styles.alertRow}>
+        <Group>
+          {hasGroups ? (
+            <UnstyledButton
+              aria-label={
+                areGroupsExpanded
+                  ? 'Collapse alert groups'
+                  : 'Expand alert groups'
+              }
+              className={styles.alertGroupToggle}
+              data-testid={`alert-group-toggle-${testIdSuffix}`}
+              onClick={() => setAreGroupsExpanded(expanded => !expanded)}
             >
-              <Group gap={2}>
-                {alertIcon}
-                {alertName}
-              </Group>
-            </Link>
-          </div>
-          <div className="fs-8 d-flex gap-2">
-            {alertType}
-            {notificationMethod}
-            {alert.createdBy && (
-              <>
-                <span>&middot;</span>
-                <span>
-                  Created by {alert.createdBy.name || alert.createdBy.email}
-                </span>
-              </>
-            )}
-          </div>
-          {getAlertTags(alert).length > 0 && (
-            <Group gap={4}>
-              {getAlertTags(alert).map(tag => (
-                <Badge key={tag} variant="light" color="gray" size="xs">
-                  {tag}
-                </Badge>
-              ))}
-            </Group>
-          )}
-          {alert.note && <AlertNote note={alert.note} />}
-        </Stack>
-      </Group>
+              <IconChevronDown
+                size={14}
+                style={{
+                  transform: areGroupsExpanded
+                    ? 'rotate(0deg)'
+                    : 'rotate(-90deg)',
+                  transition: 'transform 200ms',
+                }}
+              />
+            </UnstyledButton>
+          ) : null}
+          <AlertStateBadge state={displayState} />
 
-      <Group>
-        <AlertHistoryCardList alert={alert} alertUrl={alertUrl} />
-        <AckAlert alert={alert} />
-      </Group>
+          <Stack gap={2}>
+            <div>
+              <Link
+                data-testid={`alert-link-${alert._id}`}
+                href={alertUrl}
+                className={styles.alertLink}
+                title={linkTitle}
+              >
+                <Group gap={2}>
+                  {alertIcon}
+                  {alertName}
+                </Group>
+              </Link>
+            </div>
+            <div className="fs-8 d-flex gap-2">
+              {alertType}
+              {notificationMethod}
+              {alert.createdBy && (
+                <>
+                  <span>&middot;</span>
+                  <span>
+                    Created by {alert.createdBy.name || alert.createdBy.email}
+                  </span>
+                </>
+              )}
+            </div>
+            {getAlertTags(alert).length > 0 && (
+              <Group gap={4}>
+                {getAlertTags(alert).map(tag => (
+                  <Badge key={tag} variant="light" color="gray" size="xs">
+                    {tag}
+                  </Badge>
+                ))}
+              </Group>
+            )}
+            {alert.note && <AlertNote note={alert.note} />}
+          </Stack>
+        </Group>
+
+        {showParentActions ? (
+          <Group>
+            <AlertHistoryCardList alert={alert} alertUrl={alertUrl} />
+            <AckAlert alert={alert} />
+          </Group>
+        ) : null}
+      </div>
+      {hasGroups ? (
+        <Collapse expanded={areGroupsExpanded}>
+          <AlertGroupRows alert={alert} state={groupState} />
+        </Collapse>
+      ) : null}
     </div>
   );
 }
-
 function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
-  const alarmAlerts = alerts.filter(alert => alert.state === AlertState.ALERT);
-  const pendingAlerts = alerts.filter(
-    alert => alert.state === AlertState.PENDING,
+  const getAlertsForSection = React.useCallback(
+    (state: AlertsPageItem['state']) =>
+      alerts.filter(alert => {
+        if (alert.groups?.length) {
+          return getVisibleAlertGroups(alert, state).length > 0;
+        }
+        return alert.state === state;
+      }),
+    [alerts],
   );
-  const okData = alerts.filter(alert => alert.state === AlertState.OK);
+
+  const alarmAlerts = getAlertsForSection(AlertState.ALERT);
+  const pendingAlerts = getAlertsForSection(AlertState.PENDING);
+  const okData = getAlertsForSection(AlertState.OK);
+
+  const getAlertCardKey = React.useCallback(
+    (alert: AlertsPageItem, state: AlertsPageItem['state']) =>
+      alert.groups?.length ? `${alert._id}-${state}` : alert._id,
+    [],
+  );
+
+  const getAlertGroupState = React.useCallback(
+    (alert: AlertsPageItem, state: AlertsPageItem['state']) =>
+      alert.groups?.length ? state : undefined,
+    [],
+  );
 
   return (
     <div className="d-flex flex-column gap-4">
@@ -288,7 +344,11 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
             <IconAlertTriangle size={14} /> Triggered
           </Group>
           {alarmAlerts.map(alert => (
-            <AlertDetails key={alert._id} alert={alert} />
+            <AlertDetails
+              key={getAlertCardKey(alert, AlertState.ALERT)}
+              alert={alert}
+              groupState={getAlertGroupState(alert, AlertState.ALERT)}
+            />
           ))}
         </div>
       )}
@@ -298,7 +358,11 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
             <IconHourglass size={14} /> Pending
           </Group>
           {pendingAlerts.map(alert => (
-            <AlertDetails key={alert._id} alert={alert} />
+            <AlertDetails
+              key={getAlertCardKey(alert, AlertState.PENDING)}
+              alert={alert}
+              groupState={getAlertGroupState(alert, AlertState.PENDING)}
+            />
           ))}
         </div>
       )}
@@ -315,7 +379,11 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
           />
         )}
         {okData.map(alert => (
-          <AlertDetails key={alert._id} alert={alert} />
+          <AlertDetails
+            key={getAlertCardKey(alert, AlertState.OK)}
+            alert={alert}
+            groupState={getAlertGroupState(alert, AlertState.OK)}
+          />
         ))}
       </div>
     </div>

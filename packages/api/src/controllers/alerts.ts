@@ -298,7 +298,24 @@ export const getAlertsEnhanced = async (teamId: ObjectId) => {
     silenced?: IAlert['silenced'] & {
       by: IUser;
     };
-  }>(['savedSearch', 'dashboard', 'createdBy', 'silenced.by']);
+    silencedGroups?: Array<
+      Omit<NonNullable<IAlert['silencedGroups']>[number], 'by'> & {
+        by?: IUser;
+      }
+    >;
+    unsilencedGroups?: Array<
+      Omit<NonNullable<IAlert['unsilencedGroups']>[number], 'by'> & {
+        by?: IUser;
+      }
+    >;
+  }>([
+    'savedSearch',
+    'dashboard',
+    'createdBy',
+    'silenced.by',
+    'silencedGroups.by',
+    'unsilencedGroups.by',
+  ]);
 };
 
 export const getAlertEnhanced = async (
@@ -312,7 +329,24 @@ export const getAlertEnhanced = async (
     silenced?: IAlert['silenced'] & {
       by: IUser;
     };
-  }>(['savedSearch', 'dashboard', 'createdBy', 'silenced.by']);
+    silencedGroups?: Array<
+      Omit<NonNullable<IAlert['silencedGroups']>[number], 'by'> & {
+        by?: IUser;
+      }
+    >;
+    unsilencedGroups?: Array<
+      Omit<NonNullable<IAlert['unsilencedGroups']>[number], 'by'> & {
+        by?: IUser;
+      }
+    >;
+  }>([
+    'savedSearch',
+    'dashboard',
+    'createdBy',
+    'silenced.by',
+    'silencedGroups.by',
+    'unsilencedGroups.by',
+  ]);
 };
 
 export const deleteAlert = async (id: string, teamId: ObjectId) => {

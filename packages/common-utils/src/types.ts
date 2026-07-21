@@ -582,6 +582,23 @@ export const scheduleStartAtSchema = z
 
 export const alertNoteSchema = z.string().min(1).max(4096).nullish();
 
+export const AlertSilenceSchema = z.object({
+  by: z.string().optional(),
+  at: z.string(),
+  until: z.string(),
+});
+
+export const AlertSilencedGroupSchema = AlertSilenceSchema.extend({
+  group: z.string(),
+});
+
+export const AlertUnsilencedGroupSchema = z.object({
+  group: z.string(),
+  by: z.string().optional(),
+  at: z.string(),
+  parentSilencedAt: z.string(),
+});
+
 export const AlertBaseObjectSchema = z.object({
   id: z.string().optional(),
   interval: AlertIntervalSchema,
@@ -600,13 +617,8 @@ export const AlertBaseObjectSchema = z.object({
   name: z.string().min(1).max(512).nullish(),
   message: z.string().min(1).max(4096).nullish(),
   note: alertNoteSchema,
-  silenced: z
-    .object({
-      by: z.string(),
-      at: z.string(),
-      until: z.string(),
-    })
-    .optional(),
+  silenced: AlertSilenceSchema.optional(),
+  silencedGroups: z.array(AlertSilencedGroupSchema).optional(),
   numConsecutiveWindows: z.number().int().min(1).nullish(),
 });
 
@@ -641,6 +653,16 @@ export const AlertHistorySchema = z.object({
 });
 
 export type AlertHistory = z.infer<typeof AlertHistorySchema>;
+
+export const AlertGroupSummarySchema = z.object({
+  group: z.string(),
+  state: z.nativeEnum(AlertState),
+  history: z.array(AlertHistorySchema),
+  silenced: AlertSilenceSchema.optional(),
+  unsilenced: AlertUnsilencedGroupSchema.omit({ group: true }).optional(),
+});
+
+export type AlertGroupSummary = z.infer<typeof AlertGroupSummarySchema>;
 
 // A single alert state transition within a time range, used to draw
 // firing/recovery annotations on dashboard charts. Only boundary crossings are
@@ -2092,6 +2114,7 @@ export const AlertsPageItemSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   history: z.array(AlertHistorySchema),
+  groups: z.array(AlertGroupSummarySchema).optional(),
   dashboard: z
     .object({
       _id: z.string(),
@@ -2121,13 +2144,8 @@ export const AlertsPageItemSchema = z.object({
       name: z.string().optional(),
     })
     .optional(),
-  silenced: z
-    .object({
-      by: z.string(),
-      at: z.string(),
-      until: z.string(),
-    })
-    .optional(),
+  silenced: AlertSilenceSchema.optional(),
+  silencedGroups: z.array(AlertSilencedGroupSchema).optional(),
   executionErrors: z.array(AlertErrorSchema).optional(),
   numConsecutiveWindows: z.number().int().min(1).nullish(),
 });

@@ -57,6 +57,61 @@
   border-bottom: 1px solid var(--color-border);
 }
 
+.alertBlock {
+  border-bottom: 1px solid var(--color-border);
+
+  .alertRow {
+    border-bottom: 0;
+  }
+}
+
+.alertGroupRows {
+  padding: 0 0 8px 34px;
+}
+
+.alertGroupToggle {
+  align-items: center;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  display: inline-flex;
+  height: 22px;
+  justify-content: center;
+  width: 22px;
+
+  &:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text);
+  }
+}
+
+.alertGroupRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  min-width: 0;
+}
+
+.alertGroupRowInheritedMuted {
+  .alertGroupMeta {
+    opacity: 0.58;
+  }
+}
+
+.alertGroupMeta {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.alertGroupLabel {
+  color: var(--color-text-secondary);
+  font-family: var(--mantine-font-family-monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .alertLink {
   font-weight: 500;
   color: var(--color-text-secondary);
