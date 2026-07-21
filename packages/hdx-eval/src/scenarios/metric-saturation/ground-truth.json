@@ -89,13 +89,21 @@
       ]
     ],
     "transcript": [
-      ["used_metric_tool", 1, "clickstack_(list|describe)_metric|metricType"],
+      [
+        "used_metric_tool",
+        1,
+        "clickstack_(list_metrics|describe_metric)|clickstack_(timeseries|table)[^\\n]*metricType"
+      ],
       [
         "described_jvm_memory_metric",
         1,
-        "process[\\s._]runtime[\\s._]jvm[\\s._]memory"
+        "(clickstack_describe_metric|clickstack_(timeseries|table)(?=[^\\n]*metricType))[^\\n]*process[\\s._]runtime[\\s._]jvm[\\s._]memory"
       ],
-      ["described_gc_pause_metric", 1, "(gc[\\s._]?pause|jvm[\\s._]gc)"]
+      [
+        "described_gc_pause_metric",
+        1,
+        "(clickstack_describe_metric|clickstack_(timeseries|table)(?=[^\\n]*metricType))[^\\n]*(gc[\\s._]?pause|jvm[\\s._]gc)"
+      ]
     ],
     "judge": {
       "criteria": [

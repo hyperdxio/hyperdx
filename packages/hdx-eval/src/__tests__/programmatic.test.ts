@@ -281,3 +281,59 @@ describe('rubric.transcript parsing', () => {
     }
   });
 });
+
+describe('metric-saturation adoption checks (SQL text must not count)', () => {
+  const rubric = () => loadScenarioRubric('metric-saturation').transcript!;
+  const satisfiedIds = (calls: ToolCallRecord[]) =>
+    runTranscriptChecks(calls, rubric())
+      .hits.filter(h => h.satisfied)
+      .map(h => h.id)
+      .sort();
+
+  it('raw SQL mentioning metric names satisfies no adoption check', () => {
+    // A clickhouse-arm run that only reads metric names via SQL must not get
+    // adoption credit — adoption measures hyperdx MCP metric-tool usage.
+    const ids = satisfiedIds([
+      toolCall('mcp__clickhouse__run_query', {
+        query:
+          "SELECT MetricName, Value FROM otel_metrics_gauge WHERE MetricName IN ('process.runtime.jvm.memory.used', 'jvm.gc.pause')",
+      }),
+      toolCall('mcp__hyperdx__clickstack_sql', {
+        sql: "SELECT * FROM otel_metrics_histogram WHERE MetricName = 'jvm.gc.pause'",
+      }),
+    ]);
+    expect(ids).toEqual([]);
+  });
+
+  it('metric-tool calls naming the metrics satisfy all adoption checks', () => {
+    const ids = satisfiedIds([
+      toolCall('mcp__hyperdx__clickstack_describe_metric', {
+        sourceId: 's1',
+        metricType: 'gauge',
+        name: 'process.runtime.jvm.memory.used',
+      }),
+      toolCall('mcp__hyperdx__clickstack_timeseries', {
+        sourceId: 's1',
+        metricType: 'histogram',
+        metricName: 'jvm.gc.pause',
+      }),
+    ]);
+    expect(ids).toEqual([
+      'described_gc_pause_metric',
+      'described_jvm_memory_metric',
+      'used_metric_tool',
+    ]);
+  });
+
+  it('a log/trace timeseries mentioning gc pause in a filter does not count', () => {
+    // clickstack_timeseries only counts as a metric read when the call
+    // carries metricType — charting logs that mention "gc pause" must not.
+    const ids = satisfiedIds([
+      toolCall('mcp__hyperdx__clickstack_timeseries', {
+        sourceId: 'logs-source',
+        where: "Body LIKE '%gc pause%'",
+      }),
+    ]);
+    expect(ids).toEqual([]);
+  });
+});
