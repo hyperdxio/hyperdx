@@ -54,6 +54,7 @@ export const IS_LOCAL_MODE = //true;
   (process.env.NEXT_PUBLIC_IS_LOCAL_MODE ?? 'false') === 'true';
 export const IS_CLICKHOUSE_BUILD =
   process.env.NEXT_PUBLIC_CLICKHOUSE_BUILD === 'true';
+export const IS_NOINDEX = process.env.NEXT_PUBLIC_NOINDEX === 'true';
 
 /** Time captured at module load, use this a stable fallback/default time value instead of Date.now() defined in each React component file */
 // eslint-disable-next-line no-restricted-syntax
@@ -65,3 +66,5 @@ export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;
 export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
+export const IS_EXPONENTIAL_HISTOGRAMS_ENABLED =
+  env('NEXT_PUBLIC_ENABLE_EXPONENTIAL_HISTOGRAMS') === 'true';
