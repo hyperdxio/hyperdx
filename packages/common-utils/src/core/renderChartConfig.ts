@@ -23,10 +23,10 @@ import {
 } from '@/guards';
 import { replaceMacros } from '@/macros';
 import {
-  buildKvItemsLookup,
+  buildTextIndexInfoLookup,
   CustomSchemaSQLSerializerV2,
-  KvItemsLookup,
   SearchQueryBuilder,
+  TextIndexInfoLookup,
 } from '@/queryParser';
 import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@/rawSqlParams';
 import {
@@ -359,9 +359,9 @@ function generateHasSqlForKvItemsColumn(
 
 export const rewriteSqlFilterWithKvItems = (
   condition: string,
-  kvItemsLookup: KvItemsLookup,
+  textIndexInfoLookup: TextIndexInfoLookup,
 ): string => {
-  if (kvItemsLookup.size === 0) return condition;
+  if (textIndexInfoLookup.size === 0) return condition;
   try {
     const parser = new SQLParser.Parser();
     const prefix = 'SELECT 1 FROM `t` WHERE ';
@@ -400,7 +400,7 @@ export const rewriteSqlFilterWithKvItems = (
         return;
       }
       const mapKey: string = idxNode.value;
-      const info = kvItemsLookup.get(mapColumn);
+      const info = textIndexInfoLookup.get(mapColumn)?.kv;
       if (!info) return;
 
       let values: string[];
@@ -436,7 +436,7 @@ export const rewriteSqlFilterWithKvItems = (
       let replacement: string;
       if (values.length === 1) {
         replacement = generateHasSqlForKvItemsColumn(
-          info.kvItemsColumn,
+          info.columnName,
           mapKey,
           info.separator,
           values[0],
@@ -445,7 +445,7 @@ export const rewriteSqlFilterWithKvItems = (
         // ClickHouse >= 26.5 supports `hasAny` over the direct_read map items
         // column in a single call.
         replacement = `hasAny(${SqlString.format('??', [
-          info.kvItemsColumn,
+          info.columnName,
         ])}, array(${values
           .map(v =>
             SqlString.format('concat(?, ?, ?)', [mapKey, info.separator, v]),
@@ -457,7 +457,7 @@ export const rewriteSqlFilterWithKvItems = (
         replacement = `(${values
           .map(v =>
             generateHasSqlForKvItemsColumn(
-              info.kvItemsColumn,
+              info.columnName,
               mapKey,
               info.separator,
               v,
@@ -1171,12 +1171,12 @@ async function renderWhere(
 
   const hasSqlFilter =
     chartConfig.filters?.some(f => f.type === 'sql') ?? false;
-  const kvItemsLookup: KvItemsLookup =
+  const textIndexInfoLookup: TextIndexInfoLookup =
     hasSqlFilter &&
     chartConfig.from.databaseName &&
     chartConfig.from.tableName &&
     !hasSubqueryCte(chartConfig.with)
-      ? await buildKvItemsLookup({
+      ? await buildTextIndexInfoLookup({
           metadata,
           databaseName: chartConfig.from.databaseName,
           tableName: chartConfig.from.tableName,
@@ -1195,7 +1195,7 @@ async function renderWhere(
       } else if (filter.type === 'lucene' || filter.type === 'sql') {
         const condition =
           filter.type === 'sql'
-            ? rewriteSqlFilterWithKvItems(filter.condition, kvItemsLookup)
+            ? rewriteSqlFilterWithKvItems(filter.condition, textIndexInfoLookup)
             : filter.condition;
         return wrapChSqlIfNotEmpty(
           await renderWhereExpression({

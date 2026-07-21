@@ -1769,7 +1769,7 @@ export type MaterializedViewConfiguration = z.infer<
 >;
 
 export const MetadataMaterializedViewsSchema = z.object({
-  keyRollupTable: z.string().min(1, 'Key rollup table name is required'),
+  keyRollupTable: z.string().nullish(),
   kvRollupTable: z.string().min(1, 'KV rollup table name is required'),
   granularity: SQLIntervalSchema,
 });

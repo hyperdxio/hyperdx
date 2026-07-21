@@ -386,21 +386,18 @@ export async function inferTableSourceConfig({
               connectionId,
             }),
           ]);
-          return keyMeta != null && kvMeta != null
-            ? { keyMeta, kvMeta }
-            : undefined;
+          return kvMeta != null ? { keyMeta, kvMeta } : undefined;
         })()
       : undefined;
 
   const metadataMVsConfig = rollupMeta
     ? {
         metadataMaterializedViews: {
-          keyRollupTable: `${tableName}_key_rollup_15m`,
           kvRollupTable: `${tableName}_kv_rollup_15m`,
           // Fall back to '15 minute' to preserve the prior default when the
           // MV's `as_select` doesn't contain a recognized bucketing function.
           granularity:
-            inferGranularityFromMVSelect(rollupMeta.keyMeta.as_select) ??
+            inferGranularityFromMVSelect(rollupMeta.kvMeta.as_select) ??
             '15 minute',
         },
       }
