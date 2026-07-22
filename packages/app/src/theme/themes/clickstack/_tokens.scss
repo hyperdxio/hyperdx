@@ -165,7 +165,10 @@
   --color-text-success: #22c55e;
   --color-text-success-hover: #4ade80;
   --color-text-danger: var(--click-global-color-text-danger);
-  --color-text-warning: var(--mantine-color-yellow-3);
+
+  /* Amber warning — decoupled from the brand-remapped yellow palette (whose
+     yellow-9 is a dark olive) so it reads as a true warning. */
+  --color-text-warning: #fdb022;
   --color-text-sidenav-link: var(--click-global-color-text-default);
   --color-text-sidenav-link-active: var(--click-global-color-text-default);
 
@@ -374,7 +377,10 @@
   --color-text-success: #16a34a;
   --color-text-success-hover: #15803d;
   --color-text-danger: var(--click-global-color-text-danger);
-  --color-text-warning: var(--mantine-color-yellow-9);
+
+  /* Amber warning — decoupled from the brand-remapped yellow palette (whose
+     yellow-9 is a dark olive) so it reads as a true warning. */
+  --color-text-warning: #a16207;
   --color-text-sidenav-link: var(--click-global-color-text-default);
   --color-text-sidenav-link-active: var(--click-global-color-accent-default);
 
