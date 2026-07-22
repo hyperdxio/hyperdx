@@ -1575,6 +1575,12 @@ describe('renderChartConfig', () => {
   });
 
   describe('Query Metrics - Exponential Histogram', () => {
+    type CountResult = {
+      __hdx_time_bucket: string;
+      Value: string;
+      group?: string[];
+    };
+
     type QuantileResult = {
       __hdx_time_bucket: string;
       Value: number;
@@ -1591,6 +1597,65 @@ describe('renderChartConfig', () => {
       (!('group' in result) ||
         (Array.isArray(result.group) &&
           result.group.every(value => typeof value === 'string')));
+
+    const isCountResult = (result: unknown): result is CountResult =>
+      typeof result === 'object' &&
+      result !== null &&
+      '__hdx_time_bucket' in result &&
+      typeof result.__hdx_time_bucket === 'string' &&
+      'Value' in result &&
+      typeof result.Value === 'string' &&
+      (!('group' in result) ||
+        (Array.isArray(result.group) &&
+          result.group.every(value => typeof value === 'string')));
+
+    const queryCount = async (
+      metricName: string,
+      {
+        dateRange = [new Date(now), nowPlus('3m')],
+        granularity = '1 minute',
+        groupBy,
+      }: {
+        dateRange?: [Date, Date];
+        granularity?: '1 minute' | '2 minute' | null;
+        groupBy?: string;
+      } = {},
+    ) => {
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'count',
+              metricName,
+              metricType: MetricsDataType.ExponentialHistogram,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange,
+          groupBy,
+          granularity: granularity ?? undefined,
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+        querySettings,
+      );
+
+      const results = await queryData(query);
+      if (!results.every(isCountResult)) {
+        throw new Error('unexpected exponential histogram count query result');
+      }
+      return results.sort(
+        (left, right) =>
+          left.__hdx_time_bucket.localeCompare(right.__hdx_time_bucket) ||
+          JSON.stringify(left.group ?? []).localeCompare(
+            JSON.stringify(right.group ?? []),
+          ),
+      );
+    };
 
     const queryQuantile = async (
       level: number,
@@ -1662,6 +1727,266 @@ describe('renderChartConfig', () => {
           },
         ],
       });
+
+    it('counts delta-temporality observations directly', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.count.delta',
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            ...bucketExponentialHistogramObservations([-4, 0, 2]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([2, 4]),
+          },
+        ],
+      });
+
+      expect(await queryCount('test.count.delta')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          Value: '3',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: '2',
+        },
+      ]);
+    });
+
+    it('subtracts cumulative counts using a warm-up point outside the requested range', async () => {
+      const startTime = nowPlus('-2m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.count.cumulative.warmup',
+        points: [
+          {
+            TimeUnix: nowPlus('-1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 4]),
+          },
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 4, 8]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 4, 8, 16, 32]),
+          },
+        ],
+      });
+
+      expect(await queryCount('test.count.cumulative.warmup')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          Value: '1',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: '2',
+        },
+      ]);
+    });
+
+    it('does not attribute a predecessor-less cumulative count to its first visible bucket', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.count.cumulative.missing.predecessor',
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: nowPlus('-10m'),
+            ...bucketExponentialHistogramObservations([2, 4, 8]),
+          },
+        ],
+      });
+
+      expect(
+        await queryCount('test.count.cumulative.missing.predecessor'),
+      ).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: '0',
+        },
+      ]);
+    });
+
+    it('suppresses an unknown-start reset and uses it as the next baseline', async () => {
+      const resetTime = nowPlus('1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.count.cumulative.unknown.reset',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: nowPlus('-1m'),
+            ...bucketExponentialHistogramObservations([2, 4]),
+          },
+          {
+            TimeUnix: resetTime,
+            StartTimeUnix: resetTime,
+            ...bucketExponentialHistogramObservations([-4, 0, 2]),
+          },
+          {
+            TimeUnix: nowPlus('2m'),
+            StartTimeUnix: resetTime,
+            ...bucketExponentialHistogramObservations([-4, -2, 0, 2, 4]),
+          },
+        ],
+      });
+
+      expect(await queryCount('test.count.cumulative.unknown.reset')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          Value: '0',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(resetTime),
+          Value: '0',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('2m')),
+          Value: '2',
+        },
+      ]);
+    });
+
+    it('uses the current count after a known cumulative reset', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.count.cumulative.known.reset',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: nowPlus('-1m'),
+            ...bucketExponentialHistogramObservations([2, 4, 8]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: nowPlus('30s'),
+            ...bucketExponentialHistogramObservations([-4, 0]),
+          },
+        ],
+      });
+
+      expect(await queryCount('test.count.cumulative.known.reset')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          Value: '0',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: '2',
+        },
+      ]);
+    });
+
+    it('uses the current count after a decrease-inferred cumulative reset', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.count.cumulative.decrease',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 4, 8]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([16]),
+          },
+        ],
+      });
+
+      expect(await queryCount('test.count.cumulative.decrease')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          Value: '0',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: '1',
+        },
+      ]);
+    });
+
+    it('keeps count continuity across scale and bucket-layout changes', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.count.scale.change',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2], 1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([-16, 0, 2, 4], -1),
+          },
+        ],
+      });
+
+      expect(await queryCount('test.count.scale.change')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          Value: '0',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: '3',
+        },
+      ]);
+    });
+
+    it('sums series by the requested group and time bucket', async () => {
+      await Promise.all([
+        seedGroupedCumulativeSeries({
+          attributes: { host: 'host-a', service: 'api' },
+          metricName: 'test.count.grouped',
+          observations: [2, 4],
+        }),
+        seedGroupedCumulativeSeries({
+          attributes: { host: 'host-a', service: 'worker' },
+          metricName: 'test.count.grouped',
+          observations: [8],
+        }),
+        seedGroupedCumulativeSeries({
+          attributes: { host: 'host-b', service: 'api' },
+          metricName: 'test.count.grouped',
+          observations: [16, 32, 64],
+        }),
+      ]);
+
+      expect(
+        await queryCount('test.count.grouped', {
+          groupBy: `Attributes['host']`,
+        }),
+      ).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          group: ['host-a'],
+          Value: '0',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          group: ['host-b'],
+          Value: '0',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          group: ['host-a'],
+          Value: '3',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          group: ['host-b'],
+          Value: '3',
+        },
+      ]);
+    });
 
     it('calculates a quantile for a single series', async () => {
       await seedExponentialHistogramMetric({

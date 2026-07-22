@@ -5,6 +5,13 @@ import { FIXED_TIME_BUCKET_EXPR_ALIAS } from './renderChartConfig';
 
 type WithClauses = BuilderChartConfig['with'];
 type TemplatedInput = ChSql | string;
+type HistogramCountInput = {
+  timeBucketSelect: TemplatedInput;
+  groupBy?: TemplatedInput;
+  from: TemplatedInput;
+  where: TemplatedInput;
+  valueAlias: TemplatedInput;
+};
 
 // SQL expression for hashing metric attributes into a per-series key.
 // Variadic cityHash64 over the three attribute scopes — works for both
@@ -45,13 +52,7 @@ const translateHistogramCount = ({
   from,
   where,
   valueAlias,
-}: {
-  timeBucketSelect: TemplatedInput;
-  groupBy?: TemplatedInput;
-  from: TemplatedInput;
-  where: TemplatedInput;
-  valueAlias: TemplatedInput;
-}): WithClauses => [
+}: HistogramCountInput): WithClauses => [
   {
     name: 'source',
     sql: chSql`
@@ -217,8 +218,67 @@ export const translateExponentialHistogram = ({
       level: select.level,
     });
   }
-  throw new Error(`${select.aggFn} is not supported for histograms currently`);
+  if (select.aggFn === 'count') {
+    return translateExponentialHistogramCount(rest);
+  }
+  throw new Error(
+    `${select.aggFn} is not currently supported for exponential histogram metrics`,
+  );
 };
+
+const translateExponentialHistogramCount = ({
+  timeBucketSelect,
+  groupBy,
+  from,
+  where,
+  valueAlias,
+}: HistogramCountInput): WithClauses => [
+  {
+    name: 'source',
+    sql: chSql`
+      SELECT
+        MetricName,
+        TimeUnix,
+        StartTimeUnix,
+        AggregationTemporality,
+        ${timeBucketSelect},
+        ${groupBy ? chSql`[${groupBy}] AS group,` : ''}
+        ${ATTR_HASH_EXPR} AS attr_hash,
+        toInt64(Count) AS current_count,
+        count() OVER prev_row = 0 AS is_first_series_point,
+        toInt64(any(Count) OVER prev_row) AS previous_count,
+        any(StartTimeUnix) OVER prev_row AS previous_start_time,
+        CASE
+          WHEN AggregationTemporality = 1 THEN current_count
+          WHEN AggregationTemporality = 2 THEN
+            multiIf(
+              is_first_series_point OR StartTimeUnix = TimeUnix, 0,
+              StartTimeUnix != previous_start_time OR current_count < previous_count, current_count,
+              current_count - previous_count
+            )
+          ELSE 0
+        END AS delta
+      FROM ${from}
+      WHERE ${where}
+      WINDOW prev_row AS (
+        PARTITION BY ${groupBy ? 'group, ' : ''}MetricName, attr_hash, AggregationTemporality
+        ORDER BY TimeUnix
+        ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
+      )
+    `,
+  },
+  {
+    name: 'metrics',
+    sql: chSql`
+      SELECT
+        ${FIXED_TIME_BUCKET_EXPR_ALIAS},
+        ${groupBy ? 'group,' : ''}
+        sum(delta) AS "${valueAlias}"
+      FROM source
+      GROUP BY ${FIXED_TIME_BUCKET_EXPR_ALIAS}${groupBy ? ', group' : ''}
+    `,
+  },
+];
 
 const translateExponentialHistogramQuantile = ({
   timeBucketSelect,
@@ -473,7 +533,8 @@ const translateExponentialHistogramQuantile = ({
       WHERE AggregationTemporality = 1
     `,
   },
-  // Sum bucket deltas across series for each (time bucket, group) tuple.
+  // Sum bucket deltas across series and metric-name aliases for each
+  // (time bucket, group) tuple.
   {
     name: 'summed_buckets',
     sql: chSql`
