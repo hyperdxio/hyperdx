@@ -20,6 +20,7 @@ import EventTag from './EventTag';
 import { ExceptionSubpanel } from './ExceptionSubpanel';
 import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 import { SpanEventsSubpanel } from './SpanEventsSubpanel';
+import { getValidSpanLinks, SpanLinksSubpanel } from './SpanLinksSubpanel';
 
 const EMPTY_OBJ = {};
 export function RowOverviewPanel({
@@ -36,7 +37,7 @@ export function RowOverviewPanel({
   'data-testid'?: string;
 }) {
   const { data } = useRowData({ source, rowId, aliasWith });
-  const { onPropertyAddClick, generateSearchUrl } =
+  const { onPropertyAddClick, generateSearchUrl, onOpenLinkedTrace } =
     useContext(RowSidePanelContext);
 
   const highlightedAttributeValues = useMemo(() => {
@@ -183,6 +184,10 @@ export function RowOverviewPanel({
     );
   }, [firstRow?.__hdx_span_events]);
 
+  const hasSpanLinks = useMemo(() => {
+    return getValidSpanLinks(firstRow?.__hdx_span_links).length > 0;
+  }, [firstRow?.__hdx_span_links]);
+
   const mainContentColumn = getEventBody(source);
   const mainContent = isString(firstRow?.['__hdx_body'])
     ? firstRow['__hdx_body']
@@ -213,6 +218,7 @@ export function RowOverviewPanel({
         defaultValue={[
           'exception',
           'spanEvents',
+          'spanLinks',
           'network',
           'resourceAttributes',
           'eventAttributes',
@@ -259,21 +265,6 @@ export function RowOverviewPanel({
           </Accordion.Item>
         )}
 
-        {hasSpanEvents && (
-          <Accordion.Item value="spanEvents">
-            <Accordion.Control>
-              <Text size="sm" ps="md">
-                Span Events
-              </Text>
-            </Accordion.Control>
-            <Accordion.Panel>
-              <Box px="md">
-                <SpanEventsSubpanel spanEvents={firstRow?.__hdx_span_events} />
-              </Box>
-            </Accordion.Panel>
-          </Accordion.Item>
-        )}
-
         {Object.keys(topLevelAttributes).length > 0 && (
           <Accordion.Item value="topLevelAttributes">
             <Accordion.Control>
@@ -306,6 +297,39 @@ export function RowOverviewPanel({
                   data={filteredEventAttributes}
                   jsonColumns={jsonColumns}
                   mapColumns={mapColumns}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {hasSpanEvents && (
+          <Accordion.Item value="spanEvents">
+            <Accordion.Control>
+              <Text size="sm" ps="md">
+                Span Events
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px="md">
+                <SpanEventsSubpanel spanEvents={firstRow?.__hdx_span_events} />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {hasSpanLinks && (
+          <Accordion.Item value="spanLinks">
+            <Accordion.Control>
+              <Text size="sm" ps="md">
+                Span Links
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px="md">
+                <SpanLinksSubpanel
+                  spanLinks={firstRow?.__hdx_span_links}
+                  onOpenTrace={onOpenLinkedTrace}
                 />
               </Box>
             </Accordion.Panel>
