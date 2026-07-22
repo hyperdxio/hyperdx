@@ -878,6 +878,79 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     },
   );
 
+  test(
+    'should enter and exit read-only live kiosk mode',
+    { tag: ['@full-stack', '@dashboard'] },
+    async () => {
+      test.setTimeout(60000);
+      const ts = Date.now();
+      const kioskDashboardName = `Kiosk Dashboard ${ts}`;
+
+      await test.step('Create and name a new dashboard', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.editDashboardName(kioskDashboardName);
+      });
+
+      await test.step('Add a basic chart tile', async () => {
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createBasicChart('Kiosk Chart');
+        await expect(dashboardPage.getTiles()).toHaveCount(1, {
+          timeout: 10000,
+        });
+      });
+
+      await test.step('Enter kiosk mode via the dashboard overflow menu', async () => {
+        await dashboardPage.enterKioskMode();
+      });
+
+      await test.step('Assert URL contains kiosk=true', async () => {
+        await expect(dashboardPage.page).toHaveURL(/kiosk=true/);
+      });
+
+      await test.step('Assert app nav, query controls, Add button, dashboard menu, and tile action buttons are hidden', async () => {
+        await expect(dashboardPage.appNav).toBeHidden();
+        await expect(dashboardPage.searchInput).toBeHidden();
+        await expect(dashboardPage.addButton).toBeHidden();
+        await expect(dashboardPage.menuButton).toBeHidden();
+        await expect(dashboardPage.firstTileActionsButton).toBeHidden();
+      });
+
+      await test.step('Assert kiosk header with dashboard name and Live status are visible', async () => {
+        await expect(dashboardPage.kioskHeader).toBeVisible();
+        await expect(
+          dashboardPage.getKioskHeading(kioskDashboardName),
+        ).toBeVisible();
+        await expect(dashboardPage.kioskLiveStatus).toBeVisible();
+      });
+
+      await test.step('Assert tile and chart remain visible', async () => {
+        await expect(dashboardPage.getTiles().first()).toBeVisible();
+        await expect(dashboardPage.getChartContainers().first()).toBeVisible();
+      });
+
+      await test.step('Reload in kiosk mode and assert URL mode, live status, and read-only chrome persist', async () => {
+        await dashboardPage.page.reload();
+        await expect(dashboardPage.page).toHaveURL(/kiosk=true/);
+        await expect(dashboardPage.kioskLiveStatus).toBeVisible();
+        await expect(dashboardPage.appNav).toBeHidden();
+        await expect(dashboardPage.addButton).toBeHidden();
+        await expect(dashboardPage.menuButton).toBeHidden();
+      });
+
+      await test.step('Exit kiosk mode via the Exit kiosk mode button', async () => {
+        await dashboardPage.exitKioskMode();
+      });
+
+      await test.step('Assert kiosk param is removed from URL and dashboard chrome is restored', async () => {
+        await expect(dashboardPage.page).not.toHaveURL(/kiosk=true/);
+        await expect(dashboardPage.appNav).toBeVisible();
+        await expect(dashboardPage.searchInput).toBeVisible();
+        await expect(dashboardPage.addButton).toBeVisible();
+        await expect(dashboardPage.menuButton).toBeVisible();
+      });
+    },
+  );
+
   test.describe('Raw SQL Dashboard Tiles', () => {
     const LINE_SQL = `SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ts ORDER BY ts ASC`;
 
