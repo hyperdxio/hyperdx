@@ -18,8 +18,11 @@ const story = {
 };
 export default story;
 
-// Variants supported by Button / ActionIcon / Text.
-const CONTROL_VARIANTS = ['danger', 'warning', 'success'] as const;
+// Variants exposed as Button / ActionIcon (only danger).
+const CONTROL_VARIANTS = ['danger'] as const;
+
+// Variants supported by Text.
+const TEXT_VARIANTS = ['danger', 'warning', 'success'] as const;
 
 // Alert additionally supports an informational variant.
 const ALERT_VARIANTS = ['info', 'success', 'warning', 'danger'] as const;
@@ -117,7 +120,7 @@ export const Buttons = () => (
 
 export const TextColors = () => (
   <Stack gap="xs" p="lg">
-    {CONTROL_VARIANTS.map(variant => (
+    {TEXT_VARIANTS.map(variant => (
       <Text key={variant} variant={variant}>
         {capitalize(variant)} text — the quick brown fox jumps over the lazy
         dog.
@@ -165,7 +168,7 @@ export const AllSemanticVariants = () => (
     </Section>
     <Section title="Text">
       <Stack gap="xs">
-        {CONTROL_VARIANTS.map(variant => (
+        {TEXT_VARIANTS.map(variant => (
           <Text key={variant} variant={variant}>
             {capitalize(variant)} text sample
           </Text>

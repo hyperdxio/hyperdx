@@ -142,6 +142,19 @@
   --color-bg-brand: var(--click-global-color-accent-default);
   --color-bg-brand-hover: var(--click-global-color-accent-hover);
 
+  /* Subtle tinted backgrounds (+ hover) for semantic callouts (Alert, soft
+     Button/ActionIcon). Deep dark tints inlined as hex — the numbered scale's
+     darkest shades (`-9`) are mid-tone for green/yellow and can't meet AA with
+     colored text; these deeper values give ~7-11:1. Hover is one step lighter. */
+  --color-bg-danger-subtle: #3d0d0d;
+  --color-bg-danger-subtle-hover: #651515;
+  --color-bg-warning-subtle: #4a2400;
+  --color-bg-warning-subtle-hover: #7a3d00;
+  --color-bg-success-subtle: #0d2913;
+  --color-bg-success-subtle-hover: #16451f;
+  --color-bg-info-subtle: #071e34;
+  --color-bg-info-subtle-hover: #0c3256;
+
   /* Primary Button */
   --color-primary-button-bg: var(--palette-brand-300);
   --color-primary-button-bg-hover: var(--palette-brand-200);
@@ -162,14 +175,14 @@
   --color-text-muted-hover: var(--click-global-color-title-muted);
   --color-text-brand: var(--click-global-color-accent-default);
   --color-text-brand-hover: var(--click-global-color-text-link-hover);
-  --color-text-success: #22c55e;
-  --color-text-success-hover: #4ade80;
+  --color-text-success: var(--mantine-color-green-2);
+  --color-text-success-hover: var(--mantine-color-green-1);
   --color-text-danger: var(--click-global-color-text-danger);
 
-  /* Mantine yellow-3 (pinned as hex): the ClickStack `yellow` palette is
-     remapped to the brand gold, so we use Mantine's default yellow here to
-     match HyperDX's warning color. */
-  --color-text-warning: #ffe066;
+  /* Orange-based warning: ClickStack remaps `yellow` to the brand gold, so we
+     use Mantine's `orange` (unremapped) for a true orange warning. */
+  --color-text-warning: var(--mantine-color-orange-2);
+  --color-text-info: var(--mantine-color-blue-2);
   --color-text-sidenav-link: var(--click-global-color-text-default);
   --color-text-sidenav-link-active: var(--click-global-color-text-default);
 
@@ -352,6 +365,19 @@
   --color-bg-success: #16a34a;
   --color-bg-danger: #dc2626;
   --color-bg-warning: #d97706;
+
+  /* Subtle tinted backgrounds (+ hover) for semantic callouts (Alert, soft
+     Button/ActionIcon). Light mode uses Mantine's `-0` (bg) / `-1` (hover)
+     shades. Note: `warning` uses Mantine `orange` because ClickStack remaps
+     `yellow` to the brand gold. */
+  --color-bg-danger-subtle: var(--mantine-color-red-0);
+  --color-bg-danger-subtle-hover: var(--mantine-color-red-1);
+  --color-bg-warning-subtle: var(--mantine-color-orange-0);
+  --color-bg-warning-subtle-hover: var(--mantine-color-orange-1);
+  --color-bg-success-subtle: var(--mantine-color-green-0);
+  --color-bg-success-subtle-hover: var(--mantine-color-green-1);
+  --color-bg-info-subtle: var(--mantine-color-blue-0);
+  --color-bg-info-subtle-hover: var(--mantine-color-blue-1);
   --color-bg-brand: var(--click-global-color-accent-default);
   --color-bg-brand-hover: var(--click-global-color-accent-hover);
 
@@ -375,14 +401,26 @@
   --color-text-muted-hover: var(--click-global-color-title-default);
   --color-text-brand: var(--click-global-color-accent-default);
   --color-text-brand-hover: var(--click-global-color-text-link-hover);
-  --color-text-success: #16a34a;
+
+  /* Darkened past green-9 so semantic success text meets WCAG AA (4.5:1) on the
+     light `-subtle` tint; plain green-9 is only ~4:1 (mid-tone). */
+  --color-text-success: color-mix(
+    in srgb,
+    var(--mantine-color-green-9),
+    #000 15%
+  );
   --color-text-success-hover: #15803d;
   --color-text-danger: var(--click-global-color-text-danger);
 
-  /* Mantine yellow-9 (pinned as hex; the ClickStack `yellow` palette is
-     remapped to the brand gold) darkened via color-mix to meet WCAG AA
-     (~4.7:1) on the light background; plain yellow-9 is only ~3:1. */
-  --color-text-warning: color-mix(in srgb, #e67700, #000 30%);
+  /* Orange-based warning (ClickStack remaps `yellow` to the brand gold), using
+     Mantine `orange-9` darkened via color-mix to meet WCAG AA (~5.2:1) on the
+     light `-subtle` tint; plain orange-9 is only ~4:1. */
+  --color-text-warning: color-mix(
+    in srgb,
+    var(--mantine-color-orange-9),
+    #000 15%
+  );
+  --color-text-info: var(--mantine-color-blue-9);
   --color-text-sidenav-link: var(--click-global-color-text-default);
   --color-text-sidenav-link-active: var(--click-global-color-accent-default);
 
