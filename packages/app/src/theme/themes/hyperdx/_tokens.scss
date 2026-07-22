@@ -195,7 +195,14 @@
   --color-text-success: var(--mantine-color-green-8);
   --color-text-success-hover: var(--mantine-color-green-9);
   --color-text-danger: var(--mantine-color-red-8);
-  --color-text-warning: var(--mantine-color-yellow-9);
+
+  /* Mantine yellow-9 darkened via color-mix to meet WCAG AA (~4.7:1) on the
+     light background; plain yellow-9 is only ~3:1. */
+  --color-text-warning: color-mix(
+    in srgb,
+    var(--mantine-color-yellow-9),
+    #000 30%
+  );
   --color-text-sidenav-link: var(--mantine-color-dark-6);
   --color-text-sidenav-link-active: var(--mantine-color-green-9);
 

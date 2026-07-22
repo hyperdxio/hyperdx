@@ -379,10 +379,10 @@
   --color-text-success-hover: #15803d;
   --color-text-danger: var(--click-global-color-text-danger);
 
-  /* Mantine yellow-9 (pinned as hex): the ClickStack `yellow` palette is
-     remapped to the brand gold, so we use Mantine's default yellow here to
-     match HyperDX's warning color. */
-  --color-text-warning: #e67700;
+  /* Mantine yellow-9 (pinned as hex; the ClickStack `yellow` palette is
+     remapped to the brand gold) darkened via color-mix to meet WCAG AA
+     (~4.7:1) on the light background; plain yellow-9 is only ~3:1. */
+  --color-text-warning: color-mix(in srgb, #e67700, #000 30%);
   --color-text-sidenav-link: var(--click-global-color-text-default);
   --color-text-sidenav-link-active: var(--click-global-color-accent-default);
 
