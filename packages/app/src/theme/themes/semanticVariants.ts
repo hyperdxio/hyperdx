@@ -41,26 +41,24 @@ export const SEMANTIC_CONTROL_COLORS: Record<
 };
 
 /**
- * `<Alert variant="...">` → tinted background + accent color (title/icon).
- * The Alert body text keeps Mantine's high-contrast default color; only the
- * title and icon take the semantic accent, which keeps the callout readable
- * even for low-contrast hues like warning yellow.
+ * `<Alert variant="...">` → tinted background + semantic text color.
+ *
+ * The background is derived with `color-mix` against `--color-bg-body`, which
+ * is scheme-aware: mixing a small amount of the accent into white (light mode)
+ * yields a very light tint, while mixing into the dark body (dark mode) yields
+ * a correspondingly darker tint. `--alert-color` drives the title, icon and —
+ * via the component `styles` override — the body text, so the whole callout
+ * reads in the semantic color.
  */
+const alertVars = (accent: string): Record<string, string> => ({
+  '--alert-bg': `color-mix(in srgb, ${accent} 12%, var(--color-bg-body))`,
+  '--alert-color': accent,
+  '--alert-bd': '1px solid transparent',
+});
+
 export const SEMANTIC_ALERT_VARS: Record<string, Record<string, string>> = {
-  danger: {
-    '--alert-bg': 'var(--mantine-color-red-light)',
-    '--alert-color': 'var(--color-text-danger)',
-  },
-  warning: {
-    '--alert-bg': 'var(--mantine-color-yellow-light)',
-    '--alert-color': 'var(--color-text-warning)',
-  },
-  success: {
-    '--alert-bg': 'var(--mantine-color-green-light)',
-    '--alert-color': 'var(--color-text-success)',
-  },
-  info: {
-    '--alert-bg': 'var(--mantine-color-blue-light)',
-    '--alert-color': 'var(--mantine-color-blue-light-color)',
-  },
+  danger: alertVars('var(--color-text-danger)'),
+  warning: alertVars('var(--color-text-warning)'),
+  success: alertVars('var(--color-text-success)'),
+  info: alertVars('var(--mantine-color-blue-light-color)'),
 };

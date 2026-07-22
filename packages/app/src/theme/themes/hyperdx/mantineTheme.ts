@@ -238,14 +238,18 @@ const makeTheme = ({
     Alert: Alert.extend({
       vars: (_theme, props) => {
         if (props.variant && props.variant in SEMANTIC_ALERT_VARS) {
-          return {
-            root: {
-              ...SEMANTIC_ALERT_VARS[props.variant],
-              '--alert-bd': '1px solid transparent',
-            },
-          };
+          return { root: SEMANTIC_ALERT_VARS[props.variant] };
         }
         return { root: {} };
+      },
+      styles: (_theme, props) => {
+        // Body text follows the semantic accent color (title/icon already do
+        // via --alert-color); Mantine otherwise forces the message to
+        // black/white.
+        if (props.variant && props.variant in SEMANTIC_ALERT_VARS) {
+          return { message: { color: 'var(--alert-color)' } };
+        }
+        return {};
       },
     }),
     Text: Text.extend({
