@@ -3,7 +3,10 @@ import * as SQLParser from 'node-sql-parser';
 import SqlString from 'sqlstring';
 
 import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
-import { translateHistogram } from '@/core/histogram';
+import {
+  translateExponentialHistogram,
+  translateHistogram,
+} from '@/core/histogram';
 import { Metadata } from '@/core/metadata';
 import {
   convertDateRangeToGranularityString,
@@ -48,7 +51,6 @@ import {
   SearchCondition,
   SearchConditionLanguage,
   SelectList,
-  SelectSQLStatement,
   SortSpecificationList,
   SqlAstFilter,
   SQLInterval,
@@ -75,14 +77,6 @@ type ColumnRef = SQLParser.ColumnRef & {
     index: { type: string; value: string };
   }[];
 };
-
-function determineTableName(select: SelectSQLStatement): string {
-  if ('metricTables' in select.from) {
-    return select.from.tableName;
-  }
-
-  return '';
-}
 
 const DEFAULT_METRIC_TABLE_TIME_COLUMN = 'TimeUnix';
 export const FIXED_TIME_BUCKET_EXPR_ALIAS = '__hdx_time_bucket';
@@ -338,7 +332,7 @@ const fastifySQL = ({
     traverse(ast.where);
 
     return parser.sqlify(ast);
-  } catch (e) {
+  } catch {
     return rawSQL;
   }
 };
@@ -1653,7 +1647,7 @@ async function translateMetricChartConfig(
   }
 
   // assumes all the selects are from a single metric type, for now
-  const { select, from, filters, where, ...restChartConfig } = chartConfig;
+  const { select, from, filters, ...restChartConfig } = chartConfig;
   if (!select || !Array.isArray(select)) {
     throw new Error('multi select or string select on metrics not supported');
   }
@@ -1666,6 +1660,17 @@ async function translateMetricChartConfig(
       `aggFn 'increase' is only supported for Sum (counter) metrics (got metricType=${metricType})`,
     );
   }
+
+  const isExponentialHistogram =
+    metricType === MetricsDataType.ExponentialHistogram &&
+    metricName &&
+    MetricsDataType.ExponentialHistogram in metricTables &&
+    metricTables[MetricsDataType.ExponentialHistogram];
+  const isHistogram =
+    metricType === MetricsDataType.Histogram &&
+    metricName &&
+    MetricsDataType.Histogram in metricTables &&
+    metricTables[MetricsDataType.Histogram];
 
   // AttributesHash is computed inline with a variadic cityHash64 call
   // (HDX-4466). This works for both Map(LowCardinality(String), String) and
@@ -2021,12 +2026,7 @@ async function translateMetricChartConfig(
         : restChartConfig.whereLanguage,
       timestampValueExpression: `\`${timeBucketCol}\``,
     };
-  } else if (
-    metricType === MetricsDataType.Histogram &&
-    metricName &&
-    MetricsDataType.Histogram in metricTables &&
-    metricTables[MetricsDataType.Histogram]
-  ) {
+  } else if (isHistogram || isExponentialHistogram) {
     const { alias } = _select;
     // Use the alias from the select, defaulting to 'Value' for backwards compatibility
     const valueAlias = alias || 'Value';
@@ -2039,7 +2039,8 @@ async function translateMetricChartConfig(
       ...chartConfig,
       from: {
         ...from,
-        tableName: metricTables[MetricsDataType.Histogram],
+        // eslint-disable-next-line security/detect-object-injection
+        tableName: metricTables[metricType],
       },
       filters: [
         ...(filters ?? []),
@@ -2075,25 +2076,30 @@ async function translateMetricChartConfig(
       );
     }
 
+    const translationInput = {
+      select: _select,
+      timeBucketSelect: timeBucketSelect.sql
+        ? chSql`${timeBucketSelect}`
+        : 'TimeUnix AS `__hdx_time_bucket`',
+      groupBy,
+      from: renderFrom({
+        from: {
+          ...from,
+          // eslint-disable-next-line security/detect-object-injection
+          tableName: metricTables[metricType],
+        },
+        isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+        metricType,
+      }),
+      where,
+      valueAlias,
+    };
+
     return {
       ...restChartConfig,
-      with: translateHistogram({
-        select: _select,
-        timeBucketSelect: timeBucketSelect.sql
-          ? chSql`${timeBucketSelect}`
-          : 'TimeUnix AS `__hdx_time_bucket`',
-        groupBy,
-        from: renderFrom({
-          from: {
-            ...from,
-            tableName: metricTables[MetricsDataType.Histogram],
-          },
-          isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
-          metricType: MetricsDataType.Histogram,
-        }),
-        where,
-        valueAlias,
-      }),
+      with: isExponentialHistogram
+        ? translateExponentialHistogram(translationInput)
+        : translateHistogram(translationInput),
       select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, "${valueAlias}"`,
       from: {
         databaseName: '',
