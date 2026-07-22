@@ -1,4 +1,6 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { useAtom } from 'jotai';
+import { atomWithStorage } from 'jotai/utils';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
@@ -20,7 +22,11 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconX } from '@tabler/icons-react';
+import {
+  IconLayoutBottombar,
+  IconLayoutSidebarRight,
+  IconX,
+} from '@tabler/icons-react';
 
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
@@ -68,6 +74,15 @@ enum SpanDetailTab {
   Infrastructure = 'infrastructure',
 }
 
+type TraceDetailLayout = 'side' | 'bottom';
+
+const TRACE_DETAIL_LAYOUT_KEY = 'hdx_trace_detail_layout';
+
+const traceDetailLayoutAtom = atomWithStorage<TraceDetailLayout>(
+  TRACE_DETAIL_LAYOUT_KEY,
+  'side',
+);
+
 // Renders the inline detail for the currently-selected span. Mounted only while
 // a span is selected, so it can call useRowData with a real source rather than
 // the parent passing a placeholder when nothing is selected. Owns the active
@@ -77,11 +92,15 @@ function SpanDetailPanel({
   rowId,
   aliasWith,
   onClose,
+  isSideLayout,
+  onToggleLayout,
 }: {
   source: TSource;
   rowId: string;
   aliasWith?: WithClause[];
   onClose: () => void;
+  isSideLayout: boolean;
+  onToggleLayout: () => void;
 }) {
   const [displayedTab, setDisplayedTab] = useState<SpanDetailTab>(
     SpanDetailTab.Overview,
@@ -129,24 +148,64 @@ function SpanDetailPanel({
           activeItem={effectiveTab}
           onClick={(v: any) => setDisplayedTab(v)}
         />
-        <Tooltip label="Close" position="bottom">
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            size="sm"
-            onClick={onClose}
-            aria-label="Close span details"
-            style={{ position: 'absolute', right: 0, top: 0 }}
+        <Group
+          gap={4}
+          wrap="nowrap"
+          style={{ position: 'absolute', right: 0, top: 0 }}
+        >
+          <Tooltip
+            label={
+              isSideLayout
+                ? 'Show details at the bottom'
+                : 'Show details on the side'
+            }
+            position="bottom"
           >
-            <IconX size={16} />
-          </ActionIcon>
-        </Tooltip>
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="sm"
+              onClick={onToggleLayout}
+              aria-label="Toggle span detail layout"
+              data-testid="trace-detail-layout-toggle"
+            >
+              {isSideLayout ? (
+                <IconLayoutBottombar size={16} />
+              ) : (
+                <IconLayoutSidebarRight size={16} />
+              )}
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label="Close" position="bottom">
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="sm"
+              onClick={onClose}
+              aria-label="Close span details"
+            >
+              <IconX size={16} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
       </div>
+      {/* `flush` drops the panels' inline padding so content aligns with the
+          tab bar; the wrapping container already provides the outer inset. */}
       {effectiveTab === SpanDetailTab.Overview && (
-        <RowOverviewPanel source={source} rowId={rowId} aliasWith={aliasWith} />
+        <RowOverviewPanel
+          source={source}
+          rowId={rowId}
+          aliasWith={aliasWith}
+          flush
+        />
       )}
       {effectiveTab === SpanDetailTab.Parsed && (
-        <RowDataPanel source={source} rowId={rowId} aliasWith={aliasWith} />
+        <RowDataPanel
+          source={source}
+          rowId={rowId}
+          aliasWith={aliasWith}
+          flush
+        />
       )}
       {effectiveTab === SpanDetailTab.Infrastructure && hasK8sContext && (
         <Box style={{ overflowY: 'auto' }}>
@@ -278,10 +337,16 @@ export default function DBTracePanel({
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
-  // Parent owns the horizontal split sizing; the waterfall lives on the left
-  // and the selected span's detail renders inline on the right.
+  const [detailLayout, setDetailLayout] = useAtom(traceDetailLayoutAtom);
+  const isSideLayout = detailLayout === 'side';
+
   const { size: rightPanelSize, startResize: startHorizontalResize } =
     useResizable(35, 'right');
+
+  const { size: bottomPanelSize, startResize: startVerticalResize } =
+    useResizable(40, 'top');
+
+  const detailPanelSize = isSideLayout ? rightPanelSize : bottomPanelSize;
 
   const handleCloseSpanDetails = useCallback(() => {
     setEventRowWhere(null);
@@ -346,10 +411,10 @@ export default function DBTracePanel({
           </Flex>
         </Stack>
       )}
-      {/* Inline resizable split view: waterfall (left) + span detail (right) */}
       <div
         style={{
           display: 'flex',
+          flexDirection: isSideLayout ? 'row' : 'column',
           flex: 1,
           minHeight: 0,
           minWidth: 0,
@@ -357,11 +422,12 @@ export default function DBTracePanel({
       >
         <div
           style={{
-            flex: selectedSpan ? `${100 - rightPanelSize} 1 0` : '1 1 100%',
+            flex: selectedSpan ? `${100 - detailPanelSize} 1 0` : '1 1 100%',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
             minWidth: 0,
+            minHeight: 0,
           }}
         >
           {traceSourceData?.kind === SourceKind.Trace && traceId && (
@@ -404,8 +470,14 @@ export default function DBTracePanel({
 
         {selectedSpan != null && (
           <Box
-            className={resizeStyles.resizeHandleInline}
-            onMouseDown={startHorizontalResize}
+            className={
+              isSideLayout
+                ? resizeStyles.resizeHandleInline
+                : resizeStyles.resizeHandleInlineY
+            }
+            onMouseDown={
+              isSideLayout ? startHorizontalResize : startVerticalResize
+            }
           />
         )}
 
@@ -414,11 +486,19 @@ export default function DBTracePanel({
           selectedSpanSource != null && (
             <div
               style={{
-                flex: `${rightPanelSize} 1 0`,
+                flex: `${detailPanelSize} 1 0`,
                 overflow: 'auto',
-                minWidth: 300,
-                borderLeft: '1px solid var(--color-border)',
-                paddingLeft: 'var(--mantine-spacing-sm)',
+                ...(isSideLayout
+                  ? {
+                      minWidth: 300,
+                      borderLeft: '1px solid var(--color-border)',
+                      paddingLeft: 'var(--mantine-spacing-sm)',
+                    }
+                  : {
+                      minHeight: 200,
+                      borderTop: '1px solid var(--color-border)',
+                      paddingTop: 'var(--mantine-spacing-sm)',
+                    }),
               }}
             >
               <SpanDetailPanel
@@ -426,6 +506,10 @@ export default function DBTracePanel({
                 rowId={selectedSpan.id}
                 aliasWith={selectedSpan.aliasWith}
                 onClose={handleCloseSpanDetails}
+                isSideLayout={isSideLayout}
+                onToggleLayout={() =>
+                  setDetailLayout(isSideLayout ? 'bottom' : 'side')
+                }
               />
             </div>
           )}
