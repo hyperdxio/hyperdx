@@ -177,6 +177,10 @@ export function SearchViewSwitcher({
           (!sourceKind || !v.sourceKinds.includes(sourceKind))
         )
           return false;
+        // Metric sources have no raw rows, so only aggregated chart views
+        // (time series / number / table / bar / pie / treemap) make sense —
+        // the List, Event deltas, and Event patterns views are hidden.
+        if (sourceKind === SourceKind.Metric && !v.aggregated) return false;
         return true;
       }),
     [sourceKind],

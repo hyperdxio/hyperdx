@@ -1,6 +1,12 @@
 import { useCallback, useMemo } from 'react';
 import { parseAsInteger, parseAsString, useQueryStates } from 'nuqs';
+import {
+  MetricsDataType,
+  TMetricSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Group, NumberInput, Select, Text, TextInput } from '@mantine/core';
+
+import { MetricNameSelect } from '@/components/MetricNameSelect';
 
 import type { SearchView } from './searchViews';
 
@@ -29,6 +35,29 @@ const AGG_FN_OPTIONS: { value: AggFn; label: string }[] = [
   { value: 'p99', label: 'p99' },
 ];
 
+// Metric sources aggregate a numeric value column, so the count-style
+// aggregations don't apply — offer the value aggregations only.
+const METRIC_AGG_FN_OPTIONS = AGG_FN_OPTIONS.filter(
+  o => o.value !== 'count' && o.value !== 'count_distinct',
+);
+
+/**
+ * Translate a UI agg-fn (which includes percentile shorthands like `p95`)
+ * into the `select[]` shape understood by the chart config renderer. The
+ * percentile options map onto `{ aggFn: 'quantile', level }`.
+ */
+export function aggFnToSelectFields(
+  aggFn: AggFn,
+): { aggFn: string } | { aggFn: 'quantile'; level: number } {
+  if (['p50', 'p90', 'p95', 'p99'].includes(aggFn)) {
+    return {
+      aggFn: 'quantile',
+      level: Number.parseFloat(aggFn.replace('p', '0.')),
+    };
+  }
+  return { aggFn };
+}
+
 const DEFAULT_AGG_LIMIT = 20;
 
 export type AggSortField = 'value' | 'name';
@@ -44,6 +73,10 @@ export interface SearchAggConfig {
   sortDir: AggSortDirection;
   /** Line vs. bar for the Time series view. */
   chartType: TimeseriesChartType;
+  /** Metric name (metric sources only). */
+  metricName: string;
+  /** Metric type: gauge / sum / histogram (metric sources only). */
+  metricType: string;
 }
 
 /** URL-backed aggregation config for the search view switcher. */
@@ -59,6 +92,8 @@ export function useSearchAggConfig(): [
     sort: parseAsString.withDefault('value'),
     sortDir: parseAsString.withDefault('desc'),
     ts: parseAsString.withDefault('bar'),
+    metric: parseAsString.withDefault(''),
+    metricType: parseAsString.withDefault(''),
   });
 
   const config = useMemo<SearchAggConfig>(
@@ -70,6 +105,8 @@ export function useSearchAggConfig(): [
       sort: state.sort as AggSortField,
       sortDir: state.sortDir as AggSortDirection,
       chartType: state.ts as TimeseriesChartType,
+      metricName: state.metric,
+      metricType: state.metricType,
     }),
     [
       state.agg,
@@ -79,6 +116,8 @@ export function useSearchAggConfig(): [
       state.sort,
       state.sortDir,
       state.ts,
+      state.metric,
+      state.metricType,
     ],
   );
 
@@ -92,6 +131,8 @@ export function useSearchAggConfig(): [
         ...(patch.sort != null ? { sort: patch.sort } : {}),
         ...(patch.sortDir != null ? { sortDir: patch.sortDir } : {}),
         ...(patch.chartType != null ? { ts: patch.chartType } : {}),
+        ...(patch.metricName != null ? { metric: patch.metricName } : {}),
+        ...(patch.metricType != null ? { metricType: patch.metricType } : {}),
       });
     },
     [setState],
@@ -106,14 +147,21 @@ export function SearchAggControls({
   onChange,
   defaultGroupBy,
   onSubmit,
+  metricSource,
 }: {
   view: SearchView;
   config: SearchAggConfig;
   onChange: (patch: Partial<SearchAggConfig>) => void;
   defaultGroupBy?: string;
   onSubmit: () => void;
+  /** When set, the source is a metric source and the value expression input is
+   * replaced by a metric name/type picker. */
+  metricSource?: TMetricSource;
 }) {
-  const needsExpr = config.aggFn !== 'count';
+  const isMetric = metricSource != null;
+  // For logs/traces, count needs no value expression; metrics always pick a
+  // metric name instead of a free-text expression.
+  const needsExpr = !isMetric && config.aggFn !== 'count';
   // Number collapses to a single value: no group-by / limit.
   const showGroupBy = view !== 'number';
   const showLimit =
@@ -134,7 +182,7 @@ export function SearchAggControls({
       <Select
         size="xs"
         w={140}
-        data={AGG_FN_OPTIONS}
+        data={isMetric ? METRIC_AGG_FN_OPTIONS : AGG_FN_OPTIONS}
         value={config.aggFn}
         allowDeselect={false}
         onChange={value => {
@@ -145,6 +193,26 @@ export function SearchAggControls({
         }}
         comboboxProps={{ withinPortal: true }}
       />
+      {isMetric && (
+        <div style={{ minWidth: 220 }}>
+          <MetricNameSelect
+            metricSource={metricSource}
+            metricName={config.metricName || null}
+            metricType={
+              (config.metricType as MetricsDataType) || MetricsDataType.Gauge
+            }
+            setMetricName={value => {
+              onChange({ metricName: value });
+              onSubmit();
+            }}
+            setMetricType={value => {
+              onChange({ metricType: value });
+              onSubmit();
+            }}
+            data-testid="search-metric-name-select"
+          />
+        </div>
+      )}
       {needsExpr && (
         <TextInput
           size="xs"

@@ -43,7 +43,9 @@ import {
   DisplayType,
   Filter,
   isTraceSource,
+  MetricsDataType,
   SourceKind,
+  TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -144,6 +146,7 @@ import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
 import {
+  aggFnToSelectFields,
   type AggSortField,
   SearchAggControls,
   useSearchAggConfig,
@@ -197,7 +200,11 @@ const LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS = [
 ];
 const DEFAULT_REFRESH_FREQUENCY = 10000;
 
-const ALLOWED_SOURCE_KINDS = [SourceKind.Log, SourceKind.Trace];
+const ALLOWED_SOURCE_KINDS = [
+  SourceKind.Log,
+  SourceKind.Trace,
+  SourceKind.Metric,
+];
 const SearchConfigSchema = z.object({
   select: z.string(),
   source: z.string(),
@@ -401,22 +408,27 @@ function SearchResultsCountGroup({
   onExpandFilters,
   histogramTimeChartConfig,
   enableParallelQueries,
+  hideCount,
 }: {
   isFilterSidebarCollapsed: boolean;
   onExpandFilters: () => void;
   histogramTimeChartConfig: BuilderChartConfigWithDateRange;
   enableParallelQueries?: boolean;
+  /** Metric sources have no row count — skip the total-count query. */
+  hideCount?: boolean;
 }) {
   return (
     <Group gap={4} align="center">
       {isFilterSidebarCollapsed && (
         <ExpandFiltersButton onExpand={onExpandFilters} />
       )}
-      <SearchTotalCountChart
-        config={histogramTimeChartConfig}
-        queryKeyPrefix={QUERY_KEY_PREFIX}
-        enableParallelQueries={enableParallelQueries}
-      />
+      {!hideCount && (
+        <SearchTotalCountChart
+          config={histogramTimeChartConfig}
+          queryKeyPrefix={QUERY_KEY_PREFIX}
+          enableParallelQueries={enableParallelQueries}
+        />
+      )}
     </Group>
   );
 }
@@ -854,7 +866,7 @@ function useSearchedConfigToChartConfig(
 ) {
   const { data: sourceObj, isLoading } = useSource({
     id: source,
-    kinds: [SourceKind.Log, SourceKind.Trace],
+    kinds: [SourceKind.Log, SourceKind.Trace, SourceKind.Metric],
   });
   const defaultOrderBy = useDefaultOrderBy(source);
 
@@ -1064,12 +1076,19 @@ export function DBSearchPage() {
   );
   const { data: searchedSource } = useSource({
     id: searchedConfig.source,
-    kinds: [SourceKind.Log, SourceKind.Trace],
+    kinds: [SourceKind.Log, SourceKind.Trace, SourceKind.Metric],
   });
   const directTraceSource =
     directTraceId != null && searchedSource?.kind === SourceKind.Trace
       ? searchedSource
       : undefined;
+  // Metric sources have no raw rows to list — only aggregated chart views are
+  // available, and the value expression is chosen via a metric name picker.
+  const searchedMetricSource =
+    searchedSource?.kind === SourceKind.Metric
+      ? (searchedSource as TMetricSource)
+      : undefined;
+  const isMetricSource = searchedMetricSource != null;
   const chartSourceId =
     directTraceId != null && !directTraceSource
       ? ''
@@ -1106,6 +1125,14 @@ export function DBSearchPage() {
       setIsLive(false);
     }
   }, [view, setIsLive]);
+
+  useEffect(() => {
+    // Metric sources can't render the raw List / heatmap / patterns views, so
+    // fall back to the Time series view when one of those is active.
+    if (isMetricSource && !isAggregatedSearchView(view)) {
+      setView('timeseries');
+    }
+  }, [isMetricSource, view, setView]);
 
   const [isFilterSidebarCollapsed, setIsFilterSidebarCollapsed] =
     useLocalStorage<boolean>('isFilterSidebarCollapsed', false);
@@ -1494,7 +1521,9 @@ export function DBSearchPage() {
 
   const queryReady =
     chartConfig?.from?.databaseName &&
-    chartConfig?.from?.tableName &&
+    // Metric sources have an empty `from.tableName`; the real table is resolved
+    // per metric type from `metricTables` at query time.
+    (chartConfig?.from?.tableName || isMetricSource) &&
     chartConfig?.timestampValueExpression;
 
   const updateSavedSearch = useUpdateSavedSearch();
@@ -1902,6 +1931,11 @@ export function DBSearchPage() {
     if (chartConfig == null || !isAggregatedSearchView(view)) {
       return undefined;
     }
+    // Metric queries require a chosen metric name — the renderer has no query
+    // path for an empty metric. Hold off until the user picks one.
+    if (searchedMetricSource && !aggConfig.metricName) {
+      return undefined;
+    }
     const valueExpression =
       aggConfig.aggFn === 'count' ? '' : aggConfig.aggExpr.trim();
     const groupBy =
@@ -1924,16 +1958,33 @@ export function DBSearchPage() {
           ? `${groupBy} ${dir}`
           : `"Value" ${dir}`;
     }
-    return {
-      ...chartConfig,
-      select: [
-        {
-          aggFn: aggConfig.aggFn,
+
+    // Metric sources aggregate the `Value` column of the metric-type table and
+    // carry `metricTables` + `metricName`/`metricType` so the renderer can pick
+    // the right table and filter by metric name.
+    const selectItem = searchedMetricSource
+      ? {
+          ...aggFnToSelectFields(aggConfig.aggFn),
+          aggCondition: '',
+          valueExpression: 'Value',
+          metricName: aggConfig.metricName,
+          metricType:
+            (aggConfig.metricType as MetricsDataType) || MetricsDataType.Gauge,
+          ...(isCategoricalLike ? { alias: 'Value' } : {}),
+        }
+      : {
+          ...aggFnToSelectFields(aggConfig.aggFn),
           aggCondition: '',
           valueExpression,
           ...(isCategoricalLike ? { alias: 'Value' } : {}),
-        },
-      ],
+        };
+
+    return {
+      ...chartConfig,
+      ...(searchedMetricSource
+        ? { metricTables: searchedMetricSource.metricTables }
+        : {}),
+      select: [selectItem],
       groupBy,
       orderBy,
       granularity: view === 'timeseries' ? 'auto' : undefined,
@@ -1956,6 +2007,7 @@ export function DBSearchPage() {
     defaultAggGroupBy,
     searchedTimeRange,
     aliasWith,
+    searchedMetricSource,
   ]);
 
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
@@ -2054,7 +2106,9 @@ export function DBSearchPage() {
       dbSqlRowTableConfig,
       isChildModalOpen: isDrawerChildModalOpen,
       setChildModalOpen: setDrawerChildModalOpen,
-      source: searchedSource,
+      // The row side panel is only used by the List view (log/trace sources).
+      source:
+        searchedSource?.kind === SourceKind.Metric ? undefined : searchedSource,
     }),
     [
       searchFilters.setFilterValue,
@@ -2519,6 +2573,7 @@ export function DBSearchPage() {
                           }
                           histogramTimeChartConfig={histogramTimeChartConfig}
                           enableParallelQueries
+                          hideCount={isMetricSource}
                         />
                         <SearchViewSwitcher
                           value={view}
@@ -2607,17 +2662,19 @@ export function DBSearchPage() {
                             }
                           />
                         )}
-                        <SearchNumRows
-                          config={{
-                            ...chartConfig,
-                            dateRange: searchedTimeRange,
-                          }}
-                          sqlConfig={histogramTimeChartConfig ?? undefined}
-                          enabled={isReady}
-                          searchElapsedMs={searchElapsedMs}
-                          isSearching={isAnyQueryFetching}
-                          isLiveTail={isLive ?? false}
-                        />
+                        {!isMetricSource && (
+                          <SearchNumRows
+                            config={{
+                              ...chartConfig,
+                              dateRange: searchedTimeRange,
+                            }}
+                            sqlConfig={histogramTimeChartConfig ?? undefined}
+                            enabled={isReady}
+                            searchElapsedMs={searchElapsedMs}
+                            isSearching={isAnyQueryFetching}
+                            isLiveTail={isLive ?? false}
+                          />
+                        )}
                       </Group>
                     </Group>
                   </Box>
@@ -2628,6 +2685,7 @@ export function DBSearchPage() {
                       onChange={setAggConfig}
                       defaultGroupBy={defaultAggGroupBy}
                       onSubmit={onSubmit}
+                      metricSource={searchedMetricSource}
                     />
                   )}
                   {viewShowsHistogram(view) && !hasQueryError && (
@@ -2820,6 +2878,22 @@ export function DBSearchPage() {
                     )
                   ) : isAggregatedSearchView(view) ? (
                     <Box flex="1" mih="0" px="sm" py="xs">
+                      {isMetricSource && !aggConfig.metricName && (
+                        <Flex
+                          h="100%"
+                          align="center"
+                          justify="center"
+                          direction="column"
+                          gap="xs"
+                        >
+                          <Text size="sm" c="dimmed">
+                            Select a metric to visualize
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            Choose a metric name from the aggregation bar above.
+                          </Text>
+                        </Flex>
+                      )}
                       {view === 'timeseries' && aggViewChartConfig && (
                         <DBTimeChart
                           sourceId={searchedConfig.source ?? undefined}
