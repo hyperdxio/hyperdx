@@ -184,10 +184,6 @@ export function RowOverviewPanel({
     );
   }, [firstRow?.__hdx_span_events]);
 
-  // Gate on the presence of at least one *valid* link, matching what
-  // SpanLinksSubpanel actually renders. A non-empty array of malformed
-  // entries resolves to zero valid links, so the section stays hidden
-  // instead of showing an empty-state message inside an open accordion.
   const hasSpanLinks = useMemo(() => {
     return getValidSpanLinks(firstRow?.__hdx_span_links).length > 0;
   }, [firstRow?.__hdx_span_links]);

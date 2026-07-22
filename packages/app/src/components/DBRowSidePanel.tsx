@@ -106,11 +106,6 @@ export type RowSidePanelContextProps = {
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
   source?: TLogSource | TTraceSource;
-  // Jump to the trace a span link points at, in place, via the same
-  // cross-source stack "View Trace" uses. Provided by DBRowSidePanelInner
-  // for its own subtree; absent for callers outside a trace-aware side
-  // panel (for example the standalone direct-trace drawer), where "Open
-  // trace" on a span link has no in-place destination to push to.
   onOpenLinkedTrace?: (link: SpanLinkData) => void;
 };
 
@@ -406,14 +401,7 @@ export const DBRowSidePanelInner = ({
     }
   }, [mainContent, initialMainContent, hasActiveStacks]);
 
-  // A span-link hop is pushed onto the source stack before its destination
-  // span name is known (the link carries only a Trace/Span id), so its
-  // breadcrumb starts as a `Trace <id>` fallback. Once the hop's row loads we
-  // learn the landed span name and use it as the crumb label. Only span-link
-  // frames are tracked here, so the "View Trace" hop (which already labels
-  // itself from its originating row) is left untouched. In-memory only: after a
-  // hard reload a hop shows its `Trace <id>` label until revisited, which is
-  // acceptable for a display-only convenience.
+  // Once the hop's row loads we learn the landed span name and use it as the crumb label.
   const spanLinkFrameRowIdsRef = useRef<Set<string>>(new Set());
   const [resolvedFrameLabels, setResolvedFrameLabels] = useState<
     Record<string, string>
@@ -545,10 +533,7 @@ export const DBRowSidePanelInner = ({
   );
 
   // "Open trace" on a span link: the link carries only the linked span's
-  // TraceId + SpanId, so resolve it against the current trace source, the
-  // same assumption the Span Links display already makes. This is the same
-  // cross-source push "View Trace" uses above, just keyed off the link's
-  // ids instead of the current row's.
+  // TraceId + SpanId, so resolve it against the current trace source.
   const handleOpenLinkedTrace = useCallback(
     (link: SpanLinkData) => {
       if (!traceSourceData || !traceIdExpression || !spanIdExpression) {
@@ -580,10 +565,6 @@ export const DBRowSidePanelInner = ({
     ],
   );
 
-  // Re-provide RowSidePanelContext for this subtree so RowOverviewPanel (in
-  // both the Overview tab here and the trace tab's span detail inside
-  // DBTracePanel) can reach onOpenLinkedTrace, while still inheriting
-  // whatever the enclosing table/session view already put on the context.
   const rowSidePanelContextValue = useMemo(
     () => ({ ...parentContext, onOpenLinkedTrace: handleOpenLinkedTrace }),
     [parentContext, handleOpenLinkedTrace],

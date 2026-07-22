@@ -269,7 +269,9 @@ export default function DBTracePanel({
   // otherwise we'll show stale span details
   useEffect(() => {
     if (eventRowWhere != null && eventRowWhere.traceId !== traceId) {
-      setEventRowWhere(null);
+      setEventRowWhere(prev =>
+        prev != null && prev.traceId !== traceId ? null : prev,
+      );
     }
   }, [eventRowWhere, traceId, setEventRowWhere]);
 

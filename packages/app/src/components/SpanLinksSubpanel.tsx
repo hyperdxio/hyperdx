@@ -20,11 +20,6 @@ export interface SpanLinkData extends Record<string, unknown> {
 
 // A raw `Links` element is a usable span link only when it has the string
 // TraceId + SpanId the "Open trace" action needs and an Attributes object.
-// Exported so the parent can gate the "Span Links" section on the same notion
-// of "valid" this component renders by, rather than on the raw array length
-// (a non-empty array of malformed entries would otherwise show an empty
-// section). Span links carry no timestamp, so they keep the order ClickHouse
-// returns them in (the order they appear in the span's Links column).
 export function getValidSpanLinks(
   spanLinks?: Record<string, unknown>[] | null,
 ): SpanLinkData[] {
@@ -40,12 +35,6 @@ export function getValidSpanLinks(
   });
 }
 
-// A single span link rendered as a compact row. The linked trace id is the
-// widest, least-scannable part of a link, so it is not printed inline: the
-// row leads with a labelled "Open trace" action (themed link color, visible
-// at rest) and the full Trace ID / Span ID live in the hover tooltip. Trace
-// state and attributes render below the action as uniform chips, so a link
-// with no trace state and no attributes collapses to a single short line.
 function SpanLinkRow({
   link,
   onOpenTrace,
@@ -152,10 +141,6 @@ export const SpanLinksSubpanel = ({
           <Stack gap="sm" px="xs" py="xs">
             {visibleRows.map((link, index) => (
               <div
-                // A span can link to the same destination span twice (same
-                // TraceId + SpanId, different attributes), so the row index
-                // keeps the key unique. The list is append-only and never
-                // reordered, so the index stays stable across renders.
                 // eslint-disable-next-line @eslint-react/no-array-index-key
                 key={`${link.TraceId}-${link.SpanId}-${index}`}
                 data-testid="span-link-row"
