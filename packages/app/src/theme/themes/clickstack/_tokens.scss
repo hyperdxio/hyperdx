@@ -166,9 +166,10 @@
   --color-text-success-hover: #4ade80;
   --color-text-danger: var(--click-global-color-text-danger);
 
-  /* Amber warning — decoupled from the brand-remapped yellow palette (whose
-     yellow-9 is a dark olive) so it reads as a true warning. */
-  --color-text-warning: #fdb022;
+  /* Mantine yellow-3 (pinned as hex): the ClickStack `yellow` palette is
+     remapped to the brand gold, so we use Mantine's default yellow here to
+     match HyperDX's warning color. */
+  --color-text-warning: #ffe066;
   --color-text-sidenav-link: var(--click-global-color-text-default);
   --color-text-sidenav-link-active: var(--click-global-color-text-default);
 
@@ -378,9 +379,10 @@
   --color-text-success-hover: #15803d;
   --color-text-danger: var(--click-global-color-text-danger);
 
-  /* Amber warning — decoupled from the brand-remapped yellow palette (whose
-     yellow-9 is a dark olive) so it reads as a true warning. */
-  --color-text-warning: #a16207;
+  /* Mantine yellow-9 (pinned as hex): the ClickStack `yellow` palette is
+     remapped to the brand gold, so we use Mantine's default yellow here to
+     match HyperDX's warning color. */
+  --color-text-warning: #e67700;
   --color-text-sidenav-link: var(--click-global-color-text-default);
   --color-text-sidenav-link-active: var(--click-global-color-accent-default);
 
