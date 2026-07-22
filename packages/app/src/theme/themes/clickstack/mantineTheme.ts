@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Alert,
   Button,
   Checkbox,
   MantineTheme,
@@ -14,6 +15,12 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
+
+import {
+  SEMANTIC_ALERT_VARS,
+  SEMANTIC_CONTROL_COLORS,
+  SEMANTIC_TEXT_COLORS,
+} from '@/theme/themes/semanticVariants';
 
 import componentClasses from '@/theme/themes/components.module.scss';
 import variantClasses from '@styles/variants.module.scss';
@@ -215,12 +222,25 @@ const makeTheme = ({
         };
       },
     },
-    Text: Text.extend({
-      styles: (theme, props) => {
-        if (props.variant === 'danger') {
+    Alert: Alert.extend({
+      vars: (_theme, props) => {
+        if (props.variant && props.variant in SEMANTIC_ALERT_VARS) {
           return {
             root: {
-              color: 'var(--color-text-danger)',
+              ...SEMANTIC_ALERT_VARS[props.variant],
+              '--alert-bd': '1px solid transparent',
+            },
+          };
+        }
+        return { root: {} };
+      },
+    }),
+    Text: Text.extend({
+      styles: (_theme, props) => {
+        if (props.variant && props.variant in SEMANTIC_TEXT_COLORS) {
+          return {
+            root: {
+              color: SEMANTIC_TEXT_COLORS[props.variant],
             },
           };
         }
@@ -261,10 +281,11 @@ const makeTheme = ({
           baseVars['--button-bd'] = '1px solid var(--color-border)';
         }
 
-        if (props.variant === 'danger') {
-          baseVars['--button-bg'] = 'var(--mantine-color-red-light)';
-          baseVars['--button-hover'] = 'var(--mantine-color-red-light-hover)';
-          baseVars['--button-color'] = 'var(--mantine-color-red-light-color)';
+        if (props.variant && props.variant in SEMANTIC_CONTROL_COLORS) {
+          const c = SEMANTIC_CONTROL_COLORS[props.variant];
+          baseVars['--button-bg'] = c.bg;
+          baseVars['--button-hover'] = c.hover;
+          baseVars['--button-color'] = c.color;
         }
 
         if (props.variant === 'subtle') {
@@ -374,10 +395,11 @@ const makeTheme = ({
           baseVars['--ai-bd'] = '1px solid var(--color-border)';
         }
 
-        if (props.variant === 'danger') {
-          baseVars['--ai-bg'] = 'var(--mantine-color-red-light)';
-          baseVars['--ai-hover'] = 'var(--mantine-color-red-light-hover)';
-          baseVars['--ai-color'] = 'var(--mantine-color-red-light-color)';
+        if (props.variant && props.variant in SEMANTIC_CONTROL_COLORS) {
+          const c = SEMANTIC_CONTROL_COLORS[props.variant];
+          baseVars['--ai-bg'] = c.bg;
+          baseVars['--ai-hover'] = c.hover;
+          baseVars['--ai-color'] = c.color;
         }
 
         if (props.variant === 'link') {
