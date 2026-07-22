@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 
@@ -11,6 +10,11 @@ import type { PostRunInspectionResult } from '@/scenarios/types';
 
 import type { BlindingEntry } from './blind';
 import { judgeTrajectory } from './judge';
+import {
+  DEFAULT_JUDGE_SPEC,
+  judgeCredentialsAvailable,
+  parseJudgeSpec,
+} from './judgeModel';
 import { runProgrammaticChecks } from './programmatic';
 import { loadScenarioRubric } from './rubric';
 import {
@@ -72,10 +76,14 @@ function computeToolErrorStats(record: RunRecord): ToolErrorStats {
 }
 
 export type GradeBatchOptions = {
+  /**
+   * Judge model spec in `provider:model` form (e.g. `openai:gpt-4o`). A bare
+   * model name defaults to the anthropic provider. Defaults to the built-in
+   * {@link DEFAULT_JUDGE_SPEC}.
+   */
   judgeModel?: string;
   rerunJudge?: boolean;
   skipJudge?: boolean;
-  apiKey?: string;
   /** Blinding entries for anonymizing MCP identity during judging. */
   blindingEntries?: BlindingEntry[];
   /**
@@ -127,6 +135,10 @@ export async function gradeBatch(
     multiPlugin: plugins.size > 1,
   };
 
+  // Resolve the judge spec once so the credential check and the per-run judge
+  // calls agree on which provider/model will be used.
+  const judgeSpec = parseJudgeSpec(opts.judgeModel ?? DEFAULT_JUDGE_SPEC).spec;
+
   // Decide whether we'll actually need the judge: skipJudge wins, otherwise
   // we need it if any run is missing a cached judge OR rerun was requested.
   const needsJudge =
@@ -134,21 +146,26 @@ export async function gradeBatch(
     runFiles.some(p => {
       if (opts.rerunJudge) return true;
       const existing = readExistingGrade(gradeFilePath(p));
-      return !existing?.judge;
+      // Re-judge if there's no cached judge, OR the cache came from a
+      // DIFFERENT judge model. Keying on judge identity (not mere presence)
+      // is what lets a judge-swap — e.g. re-grading an Opus-graded batch with
+      // `openai:gpt-5.6-sol` — actually re-run instead of silently returning
+      // the previous judge's stale scores.
+      return !existing?.judge || existing.judgeModel !== judgeSpec;
     });
 
-  if (needsJudge && !opts.apiKey && !process.env.ANTHROPIC_API_KEY) {
+  if (needsJudge && !judgeCredentialsAvailable(judgeSpec)) {
+    const { provider } = parseJudgeSpec(judgeSpec);
+    const keyHint =
+      provider === 'openai'
+        ? 'AI_API_KEY or OPENAI_API_KEY'
+        : 'AI_API_KEY or ANTHROPIC_API_KEY';
     throw new Error(
-      'ANTHROPIC_API_KEY is not set; pass --no-judge to skip the LLM judge ' +
-        'or supply a key via env.',
+      `No API key set for the "${provider}" judge (${judgeSpec}); set ` +
+        `${keyHint}, or pass --no-judge to skip the LLM judge.`,
     );
   }
 
-  const client = needsJudge
-    ? new Anthropic({
-        apiKey: opts.apiKey ?? process.env.ANTHROPIC_API_KEY,
-      })
-    : undefined;
   const graded: GradeRecord[] = [];
   const errors: { runPath: string; error: string }[] = [];
 
@@ -160,7 +177,8 @@ export async function gradeBatch(
 
       const grade = await gradeOne({
         record,
-        client,
+        judgeSpec,
+        needsJudge,
         existing,
         opts,
       });
@@ -221,11 +239,14 @@ function formatInspectionLogBit(summary: Record<string, unknown>): string {
 
 async function gradeOne(args: {
   record: RunRecord;
-  client?: Anthropic;
+  /** Fully-qualified `provider:model` judge spec. */
+  judgeSpec: string;
+  /** Whether the batch resolved a usable judge (credentials present). */
+  needsJudge: boolean;
   existing: GradeRecord | null;
   opts: GradeBatchOptions;
 }): Promise<GradeRecord> {
-  const { record, client, existing, opts } = args;
+  const { record, judgeSpec, needsJudge, existing, opts } = args;
   const scenario = getScenario(record.scenario);
   const rubric = loadScenarioRubric(record.scenario);
 
@@ -270,16 +291,26 @@ async function gradeOne(args: {
   }
 
   // ── LLM Judge ────────────────────────────────────────────────────
-  let judge: JudgeResult | null = existing?.judge ?? null;
-  if (!opts.skipJudge && client && (!judge || opts.rerunJudge)) {
+  // Only reuse the cached judge when it came from the SAME judge model as the
+  // one requested this pass. A grade from a different judge (e.g. a prior Opus
+  // pass when we're now grading with `openai:gpt-5.6-sol`) is treated as stale
+  // so the requested judge actually runs — mirrors the batch-level needsJudge
+  // check above. Inspection evidence is still reused from `existing` regardless
+  // of judge (handled above), since re-inspecting after artifact cleanup would
+  // fail.
+  const cachedJudge =
+    existing?.judge && existing.judgeModel === judgeSpec
+      ? existing.judge
+      : null;
+  let judge: JudgeResult | null = cachedJudge;
+  if (!opts.skipJudge && needsJudge && (!judge || opts.rerunJudge)) {
     judge = await judgeTrajectory({
       scenarioName: scenario.name,
       scenarioPrompt: scenario.agentPrompt,
       groundTruth: scenario.groundTruth,
       rubric,
       finalAnswer: record.finalAnswer,
-      judgeModel: opts.judgeModel,
-      client,
+      judgeModel: judgeSpec,
       blindingEntries: opts.blindingEntries,
       judgeSystemPreamble: scenario.judgeSystemPreamble,
       inspectionEvidence: inspectionResult?.evidence,
@@ -313,7 +344,7 @@ async function gradeOne(args: {
     inspectionEvidence: inspectionResult?.evidence || undefined,
     combinedScore,
     gradedAt: new Date().toISOString(),
-    judgeModel: judge?.model ?? opts.judgeModel ?? 'skipped',
+    judgeModel: judge?.model ?? (opts.skipJudge ? 'skipped' : judgeSpec),
   };
 }
 
