@@ -43,9 +43,9 @@ const MAX_METRIC_NAMES_PER_KIND = 20;
 /**
  * Pick the representative metric table to use as the starting point for
  * schema/attribute discovery on a metric source. Prefers gauge → sum →
- * histogram from the source's populated metricTables map. Returns the
- * ClickHouse table name, or undefined when no queryable metric table is
- * populated.
+ * histogram → exponential histogram from the source's populated metricTables
+ * map. Returns the ClickHouse table name, or undefined when no queryable metric
+ * table is populated.
  */
 function pickRepresentativeMetricTable(
   metricTables: MetricTable,
@@ -309,7 +309,7 @@ async function describeSourceSchema(
   // Resolve the table name we'll use for column / map-key / value
   // discovery. For non-metric sources this is just source.from.tableName.
   // For metric sources we use the representative metric table picked
-  // above (gauge → sum → histogram).
+  // above (gauge → sum → histogram → exponential histogram).
   const discoveryTableName =
     source.from.tableName || representativeMetric?.tableName || '';
 
@@ -594,7 +594,7 @@ async function describeSourceSchema(
       lowCardinalityValues: lcValuesHint,
       ...(isMetricSource && {
         metricNames:
-          'Each entry maps a metric kind (gauge/sum/histogram) to a sample of metric names ' +
+          'Each entry maps a metric kind (gauge/sum/histogram/exponential histogram) to a sample of metric names ' +
           'available on that table. Pass metricType + metricName on each select item.',
       }),
     },
