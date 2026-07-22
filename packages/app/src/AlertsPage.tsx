@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useQueryState } from 'nuqs';
 import ReactMarkdown from 'react-markdown';
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AlertSource,
   AlertState,
@@ -41,6 +42,7 @@ import { AckAlert } from '@/components/alerts/AckAlert';
 import {
   AlertGroupRows,
   getVisibleAlertGroups,
+  isAlertGrouped,
 } from '@/components/alerts/AlertGroupRows';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import { AlertStateBadge } from '@/components/alerts/AlertStateBadge';
@@ -75,6 +77,20 @@ function getAlertTags(alert: AlertsPageItem): string[] {
 function getAlertCreatorLabel(alert: AlertsPageItem): string | undefined {
   if (!alert.createdBy) return undefined;
   return alert.createdBy.name || alert.createdBy.email;
+}
+
+function getAlertGroupByLabel(alert: AlertsPageItem): string | undefined {
+  if (Array.isArray(alert.groupBy)) {
+    const labels = alert.groupBy.filter(groupBy => groupBy.trim().length > 0);
+    return labels.length > 0 ? labels.join(', ') : undefined;
+  }
+
+  if (alert.groupBy == null) {
+    return undefined;
+  }
+
+  const labels = splitAndTrimWithBracket(alert.groupBy);
+  return labels.length > 0 ? labels.join(', ') : undefined;
 }
 
 function AlertNote({ note }: { note: string }) {
@@ -135,7 +151,9 @@ function AlertDetails({
   groupState?: AlertsPageItem['state'];
 }) {
   const [areGroupsExpanded, setAreGroupsExpanded] = React.useState(true);
-  const hasGroups = getVisibleAlertGroups(alert, groupState).length > 0;
+  const isGrouped = isAlertGrouped(alert);
+  const hasVisibleGroups =
+    isGrouped && getVisibleAlertGroups(alert, groupState).length > 0;
   const displayState = groupState ?? alert.state;
   const showParentActions = groupState == null || groupState === alert.state;
   const testIdSuffix = groupState ? `${alert._id}-${groupState}` : alert._id;
@@ -212,6 +230,11 @@ function AlertDetails({
     );
   }, [alert]);
 
+  const groupByLabel = React.useMemo(
+    () => getAlertGroupByLabel(alert),
+    [alert],
+  );
+
   const linkTitle = React.useMemo(() => {
     switch (alert.source) {
       case AlertSource.TILE:
@@ -230,7 +253,7 @@ function AlertDetails({
     >
       <div className={styles.alertRow}>
         <Group>
-          {hasGroups ? (
+          {hasVisibleGroups ? (
             <UnstyledButton
               aria-label={
                 areGroupsExpanded
@@ -271,6 +294,12 @@ function AlertDetails({
             <div className="fs-8 d-flex gap-2">
               {alertType}
               {notificationMethod}
+              {isGrouped && groupByLabel && (
+                <>
+                  <span>&middot;</span>
+                  <span>Grouped by {groupByLabel}</span>
+                </>
+              )}
               {alert.createdBy && (
                 <>
                   <span>&middot;</span>
@@ -300,7 +329,7 @@ function AlertDetails({
           </Group>
         ) : null}
       </div>
-      {hasGroups ? (
+      {hasVisibleGroups ? (
         <Collapse expanded={areGroupsExpanded}>
           <AlertGroupRows alert={alert} state={groupState} />
         </Collapse>
@@ -312,8 +341,11 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
   const getAlertsForSection = React.useCallback(
     (state: AlertsPageItem['state']) =>
       alerts.filter(alert => {
-        if (alert.groups?.length) {
-          return getVisibleAlertGroups(alert, state).length > 0;
+        if (isAlertGrouped(alert)) {
+          return (
+            alert.state === state ||
+            getVisibleAlertGroups(alert, state).length > 0
+          );
         }
         return alert.state === state;
       }),
@@ -326,13 +358,13 @@ function AlertCardList({ alerts }: { alerts: AlertsPageItem[] }) {
 
   const getAlertCardKey = React.useCallback(
     (alert: AlertsPageItem, state: AlertsPageItem['state']) =>
-      alert.groups?.length ? `${alert._id}-${state}` : alert._id,
+      isAlertGrouped(alert) ? `${alert._id}-${state}` : alert._id,
     [],
   );
 
   const getAlertGroupState = React.useCallback(
     (alert: AlertsPageItem, state: AlertsPageItem['state']) =>
-      alert.groups?.length ? state : undefined,
+      isAlertGrouped(alert) ? state : undefined,
     [],
   );
 

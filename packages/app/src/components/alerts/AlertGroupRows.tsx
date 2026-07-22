@@ -24,6 +24,13 @@ export function getVisibleAlertGroups(
   return alert.groups?.filter(group => group.state === state) ?? [];
 }
 
+export function isAlertGrouped(alert: AlertsPageItem) {
+  if (Array.isArray(alert.groupBy)) {
+    return alert.groupBy.length > 0;
+  }
+  return alert.groupBy != null && alert.groupBy.trim().length > 0;
+}
+
 export function AlertGroupRows({
   alert,
   state,

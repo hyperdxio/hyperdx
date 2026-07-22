@@ -62,7 +62,7 @@ export function AlertAckMenu({
     [silenced],
   );
 
-  if (silenced?.at) {
+  if (silenced?.at && !isNoLongerMuted) {
     return (
       <Menu>
         <Menu.Target>

@@ -36,6 +36,7 @@ type EnhancedAlert = NonNullable<Awaited<ReturnType<typeof getAlertEnhanced>>>;
 type AlertGroupSummary = Awaited<
   ReturnType<typeof getRecentAlertGroupSummaries>
 >[number];
+type AlertResponseGroupBy = string | string[];
 
 const futureMutedUntilSchema = z
   .string()
@@ -47,6 +48,54 @@ const futureMutedUntilSchema = z
 const groupSchema = z.string().refine(value => value.trim().length > 0, {
   message: 'group must not be empty',
 });
+
+const getGroupByValueExpression = (
+  groupBy: unknown,
+): AlertResponseGroupBy | undefined => {
+  if (typeof groupBy === 'string') {
+    const trimmedGroupBy = groupBy.trim();
+    return trimmedGroupBy.length > 0 ? trimmedGroupBy : undefined;
+  }
+
+  if (Array.isArray(groupBy)) {
+    const groupByValues = groupBy
+      .map(value => {
+        if (typeof value === 'string') {
+          return value;
+        }
+        if (
+          value != null &&
+          typeof value === 'object' &&
+          'valueExpression' in value &&
+          typeof value.valueExpression === 'string'
+        ) {
+          return value.valueExpression;
+        }
+        return undefined;
+      })
+      .filter((value): value is string => value != null && value.length > 0);
+
+    return groupByValues.length > 0 ? groupByValues : undefined;
+  }
+
+  return undefined;
+};
+
+const getConfiguredAlertGroupBy = (
+  alert: EnhancedAlert,
+): AlertResponseGroupBy | undefined => {
+  const alertGroupBy = getGroupByValueExpression(alert.groupBy);
+  if (alertGroupBy != null) {
+    return alertGroupBy;
+  }
+
+  const tile = alert.dashboard?.tiles.find(tile => tile.id === alert.tileId);
+  if (tile?.config != null && 'groupBy' in tile.config) {
+    return getGroupByValueExpression(tile.config.groupBy);
+  }
+
+  return undefined;
+};
 
 const formatAlertResponse = (
   alert: EnhancedAlert,
@@ -84,6 +133,7 @@ const formatAlertResponse = (
 
   return {
     history,
+    groupBy: getConfiguredAlertGroupBy(alert),
     groups: formattedGroups,
     silenced: alert.silenced
       ? {

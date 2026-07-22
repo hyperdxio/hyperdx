@@ -834,6 +834,42 @@ describe('alerts router', () => {
     expect(silencedAlert.silencedGroups[0].at).toBeDefined();
   });
 
+  it('returns configured groupBy in GET /alerts', async () => {
+    const tile = makeTile();
+    const groupedTile = {
+      ...tile,
+      config: {
+        ...tile.config,
+        groupBy: 'ServiceName',
+      },
+    };
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        ...MOCK_DASHBOARD,
+        tiles: [groupedTile],
+      })
+      .expect(200);
+
+    await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+
+    const alerts = await agent.get('/alerts').expect(200);
+    expect(alerts.body.data).toEqual([
+      expect.objectContaining({
+        groupBy: 'ServiceName',
+      }),
+    ]);
+  });
+
   it('returns group summaries in GET /alerts', async () => {
     const dashboard = await agent
       .post('/dashboards')

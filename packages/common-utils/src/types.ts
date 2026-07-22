@@ -2114,6 +2114,7 @@ export const AlertsPageItemSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   history: z.array(AlertHistorySchema),
+  groupBy: z.union([z.string(), z.array(z.string())]).optional(),
   groups: z.array(AlertGroupSummarySchema).optional(),
   dashboard: z
     .object({

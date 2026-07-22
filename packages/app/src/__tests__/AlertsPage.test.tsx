@@ -103,6 +103,7 @@ function makeAlert(overrides: Partial<AlertsPageItem> = {}): AlertsPageItem {
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:00.000Z',
     history: [alertHistory],
+    groupBy: 'ServiceName',
     savedSearch: {
       _id: 'saved-search-1',
       createdAt: '2024-01-01T00:00:00.000Z',
@@ -204,6 +205,98 @@ describe('AlertsPage grouped alerts', () => {
 
     await user.click(toggle);
     expect(groupRow).toBeVisible();
+  });
+
+  it('shows grouped configuration without child rows before group history exists', () => {
+    jest.mocked(api.useAlerts).mockReturnValue({
+      data: {
+        data: [
+          makeAlert({
+            groups: [],
+          }),
+        ],
+      },
+      isError: false,
+      isLoading: false,
+    } as ReturnType<typeof api.useAlerts>);
+
+    renderAlertsPage();
+
+    expect(
+      screen.queryByTestId('alert-group-toggle-alert-1-ALERT'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('Grouped by ServiceName')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Waiting for group data'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/alert-group-row-/)).not.toBeInTheDocument();
+  });
+
+  it('does not show an empty collapse when a grouped alert has no groups in that status section', () => {
+    jest.mocked(api.useAlerts).mockReturnValue({
+      data: {
+        data: [
+          makeAlert({
+            state: AlertState.ALERT,
+            groups: [
+              {
+                group: 'ServiceName:api',
+                state: AlertState.OK,
+                history: [{ ...alertHistory, state: AlertState.OK }],
+              },
+            ],
+          }),
+        ],
+      },
+      isError: false,
+      isLoading: false,
+    } as ReturnType<typeof api.useAlerts>);
+
+    renderAlertsPage();
+
+    expect(
+      screen.queryByTestId('alert-group-toggle-alert-1-ALERT'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId('alert-group-toggle-alert-1-OK'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId('alert-group-row-alert-1-OK-0'),
+    ).toHaveTextContent('ServiceName:api');
+  });
+
+  it('renders ungrouped alerts without group rows even when stale group summaries exist', () => {
+    jest.mocked(api.useAlerts).mockReturnValue({
+      data: {
+        data: [
+          makeAlert({
+            groupBy: undefined,
+            groups: [
+              {
+                group: 'ServiceName:api',
+                state: AlertState.ALERT,
+                history: [alertHistory],
+              },
+            ],
+          }),
+        ],
+      },
+      isError: false,
+      isLoading: false,
+    } as ReturnType<typeof api.useAlerts>);
+
+    renderAlertsPage();
+
+    expect(
+      screen.queryByTestId('alert-group-toggle-alert-1-ALERT'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('ServiceName:api')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Waiting for group data'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Grouped by ServiceName'),
+    ).not.toBeInTheDocument();
   });
 
   it('acking a group calls the group-specific mutation payload', async () => {
