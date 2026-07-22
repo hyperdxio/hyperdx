@@ -793,6 +793,11 @@ export function DBTraceWaterfallChartContainer({
   // ourselves, so it never fires twice for the same hint; it re-fires only when
   // the hint genuinely changes (different originating span / trace).
   const appliedHighlightHintRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    appliedHighlightHintRef.current = null;
+  }, [traceId]);
+
   useEffect(() => {
     if (!initialRowHighlightHint || !onClick) {
       return;
