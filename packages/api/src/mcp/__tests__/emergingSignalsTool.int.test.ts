@@ -15,6 +15,14 @@ import { Source } from '@/models/source';
 
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
+type EmergingPattern = {
+  pattern: string;
+  sample: string;
+  status: string;
+  currentShare: number;
+  baselineShare: number;
+};
+
 describe('MCP Emerging Signals Tool', () => {
   const server = getServer();
   let team: any;
@@ -191,15 +199,8 @@ describe('MCP Emerging Signals Tool', () => {
 
       // The shadow-eval template must appear in the emerging list as "new".
       expect(output.emerging.length).toBeGreaterThan(0);
-      const shadow = (
-        output.emerging as Array<{
-          pattern: string;
-          sample: string;
-          status: string;
-          currentShare: number;
-          baselineShare: number;
-        }>
-      ).find(
+      const emerging: EmergingPattern[] = output.emerging;
+      const shadow = emerging.find(
         p => /shadow-eval/.test(p.pattern) || /shadow-eval/.test(p.sample),
       );
       expect(shadow).toBeDefined();
@@ -209,9 +210,7 @@ describe('MCP Emerging Signals Tool', () => {
 
       // The steady-state checkout template is present in both windows, so it
       // must NOT be reported as emerging.
-      const checkoutEmerging = (
-        output.emerging as Array<{ pattern: string; sample: string }>
-      ).find(
+      const checkoutEmerging = emerging.find(
         p =>
           /checkout completed/.test(p.pattern) ||
           /checkout completed/.test(p.sample),
@@ -238,9 +237,8 @@ describe('MCP Emerging Signals Tool', () => {
       expect(output.summary.currentWindow.sampled).toBeGreaterThan(0);
       expect(output.summary.baselineWindow.sampled).toBeGreaterThan(0);
       // Neither window contains the shadow-eval template, so it must not show up.
-      const shadow = (
-        output.emerging as Array<{ pattern: string; sample: string }>
-      ).find(
+      const emerging: EmergingPattern[] = output.emerging;
+      const shadow = emerging.find(
         p => /shadow-eval/.test(p.pattern) || /shadow-eval/.test(p.sample),
       );
       expect(shadow).toBeUndefined();
