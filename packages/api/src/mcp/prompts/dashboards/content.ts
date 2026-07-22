@@ -964,12 +964,13 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
 
 == METRIC SOURCES ==
 
-Builder tiles work on metric sources. Each select item on a metric tile MUST set metricType ("gauge" | "sum" | "histogram") and metricName (the OTel metric name, e.g. "system.cpu.utilization"). valueExpression defaults to "Value" when omitted, so a typical metric series is { aggFn: "<fn>", metricType: "<kind>", metricName: "<name>" }. summary and "exponential histogram" kinds are not yet supported by the renderer.
+Builder tiles work on metric sources. Each select item on a metric tile MUST set metricType ("gauge" | "sum" | "histogram" | "exponential histogram") and metricName (the OTel metric name, e.g. "system.cpu.utilization"). valueExpression defaults to "Value" when omitted, so a typical metric series is { aggFn: "<fn>", metricType: "<kind>", metricName: "<name>" }. summary metrics are not supported by the renderer.
 
 Per-kind aggregation guidance:
   gauge      Use aggFn:"last_value" | "avg" | "min" | "max". Set isDelta:true for Prometheus-style delta over each bucket.
   sum        Use aggFn:"increase" for the per-bucket counter increase (reset-aware), or aggFn:"sum" | "avg" on the computed rate. increase + groupBy is capped at the top 20 groups by the renderer; pre-filter via where or pick a coarser groupBy when you need broader coverage.
   histogram  Use aggFn:"quantile" with level ∈ {0.5, 0.9, 0.95, 0.99} for percentiles, or aggFn:"count" for the total bucket count. quantile without level is rejected.
+  exponential histogram  Use aggFn:"quantile" with level ∈ {0.5, 0.9, 0.95, 0.99} for percentiles, or aggFn:"count" for the total bucket count. quantile without level is rejected.
 
 Discovery workflow for metrics:
   1. clickstack_list_sources: find the metric source ID and its metricTables map (which kinds are populated).
@@ -985,6 +986,8 @@ Examples:
     { aggFn: "increase", metricType: "sum", metricName: "http.server.request.count", alias: "Requests" }, groupBy: "ServiceName"
   Histogram p95 latency:
     { aggFn: "quantile", level: 0.95, metricType: "histogram", metricName: "http.server.request.duration", alias: "P95 Latency" }, groupBy: "ServiceName"
+  Exponential histogram p95 latency:
+    { aggFn: "quantile", level: 0.95, metricType: "exponential histogram", metricName: "http.server.request.duration", alias: "P95 Latency" }, groupBy: "ServiceName"
 
 == NUMBER FORMAT ==
 

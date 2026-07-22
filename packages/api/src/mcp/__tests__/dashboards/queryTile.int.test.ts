@@ -1,9 +1,12 @@
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 
 import {
+  bucketExponentialHistogramObservations,
   bulkInsertLogs,
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
+  DEFAULT_METRICS_TABLE,
+  seedExponentialHistogramMetric,
 } from '@/fixtures';
 import { callTool, getFirstText } from '@/mcp/__tests__/mcpTestUtils';
 import { Source } from '@/models/source';
@@ -115,6 +118,71 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
     // Should succeed (may have empty results since no data inserted)
     expect(result.isError).toBeFalsy();
     expect(result.content).toHaveLength(1);
+  });
+
+  it('should save and query an exponential histogram tile', async () => {
+    const metricSource = await Source.create({
+      kind: SourceKind.Metric,
+      team: ctx.team._id,
+      from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+      metricTables: {
+        [MetricsDataType.ExponentialHistogram.toLowerCase()]:
+          DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM,
+      },
+      timestampValueExpression: 'TimeUnix',
+      connection: ctx.connection._id,
+      name: 'Exponential Metrics',
+    });
+    const now = new Date();
+    await seedExponentialHistogramMetric({
+      metricName: 'http.server.request.duration.exponential',
+      aggregationTemporality: 1,
+      points: [
+        {
+          TimeUnix: now,
+          ...bucketExponentialHistogramObservations([2, 4, 8]),
+        },
+      ],
+    });
+
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Exponential Histogram Dashboard',
+        tiles: [
+          {
+            name: 'P95 Duration',
+            config: {
+              displayType: 'line',
+              sourceId: metricSource._id.toString(),
+              select: [
+                {
+                  aggFn: 'quantile',
+                  level: 0.95,
+                  metricType: 'exponential histogram',
+                  metricName: 'http.server.request.duration.exponential',
+                  alias: 'P95 Duration',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    );
+    if (createResult.isError) {
+      throw new Error(getFirstText(createResult));
+    }
+    const dashboard = JSON.parse(getFirstText(createResult));
+
+    const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+      dashboardId: dashboard.id,
+      tileId: dashboard.tiles[0].id,
+      startTime: new Date(now.getTime() - 60_000).toISOString(),
+      endTime: new Date(now.getTime() + 60_000).toISOString(),
+    });
+
+    expect(result.isError).toBeFalsy();
   });
 
   describe('raw SQL macro warnings', () => {
