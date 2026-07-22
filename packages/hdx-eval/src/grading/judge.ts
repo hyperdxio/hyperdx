@@ -83,7 +83,13 @@ const JudgeCriterionSchema = z.object({
  * enumerating them costs nothing and keeps the judge provider-portable.
  */
 function buildResponseSchema(rubric: Rubric) {
-  const shape: Record<string, typeof JudgeCriterionSchema> = {};
+  // Object.create(null) (no prototype) so a criterion ID that collides with an
+  // Object.prototype key (e.g. "__proto__", "constructor") is stored as an own
+  // property instead of mutating the prototype and vanishing from the schema.
+  const shape = Object.create(null) as Record<
+    string,
+    typeof JudgeCriterionSchema
+  >;
   for (const criterion of rubric.judge.criteria) {
     shape[criterion.id] = JudgeCriterionSchema;
   }
