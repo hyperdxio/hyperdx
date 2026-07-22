@@ -253,11 +253,8 @@ async function describeSourceSchema(
     kind: source.kind,
     connectionId: source.connection.toString(),
     timestampColumn: source.timestampValueExpression,
-    // Round-trippable config: the exact flat shape clickstack_save_source
-    // accepts, including fields the curated summary below omits (correlation
-    // IDs, defaultTableSelectExpression, parent/span-kind expressions, etc.).
-    // Pass this straight into save_source to clone or read-modify-write a
-    // source faithfully.
+    // Round-trippable config for clickstack_save_source (clone / read-modify-
+    // write); includes fields the curated summary below omits.
     config: extractSourceConfig(source.toObject()),
   };
 

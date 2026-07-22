@@ -25,11 +25,8 @@ export function registerDeleteSource({
       }),
     },
     async ({ id: sourceId }) => {
-      // deleteSource is team-scoped and returns the deleted document (or null
-      // if no matching source exists for this team), so its return value is the
-      // authoritative success signal — keying off a separate getSource
-      // pre-check would report deleted:true even when a concurrent delete
-      // removed the row first.
+      // Team-scoped; returns null when no such source exists for this team, so
+      // its return value (not a separate pre-check) is the success signal.
       const deleted = await deleteSource(teamId, sourceId);
       if (!deleted) {
         return mcpUserError('Source not found');

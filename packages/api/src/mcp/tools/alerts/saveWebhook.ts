@@ -13,21 +13,12 @@ import { isDuplicateKeyError } from '@/utils/errors';
 import { WebhookUrlValidationError } from '@/utils/validators';
 import { externalWebhookCreateSchema } from '@/utils/zod';
 
-// ---------------------------------------------------------------------------
-// MCP-compatible flat Zod schema for clickstack_save_webhook.
+// Flat z.object re-validated at runtime against externalWebhookCreateSchema: the
+// MCP SDK can't serialize that schema's .superRefine(), so the per-service and
+// length/charset rules stay there and are enforced in the handler.
 //
-// The canonical externalWebhookCreateSchema uses .superRefine() (a ZodEffects),
-// which the MCP SDK's normalizeObjectSchema() cannot serialize.  We expose a
-// plain z.object() here and re-validate the assembled input at runtime against
-// externalWebhookCreateSchema so the per-service field rules and length/charset
-// caps stay in exactly one place.
-// ---------------------------------------------------------------------------
-// Declared as plain string literals (not WebhookService enum members) so
-// z.enum(...) narrows correctly at the MCP SDK callback boundary — referencing
-// the enum directly pessimises Zod's inference to `unknown` across the
-// surrounding optional fields (see mcp/tools/sources/metricKinds.ts for the
-// same pattern). The compile-time assertion keeps the literals in sync with
-// WebhookService so a new service cannot be added in only one place.
+// String literals (not WebhookService members) so z.enum narrows at the MCP SDK
+// boundary; the assertion keeps them in sync with the enum.
 const WEBHOOK_SERVICES = ['slack', 'generic', 'incidentio'] as const;
 const _assertWebhookServicesMatchEnum: readonly (typeof WEBHOOK_SERVICES)[number][] =
   [WebhookService.Slack, WebhookService.Generic, WebhookService.IncidentIO];
@@ -107,14 +98,12 @@ export function registerSaveWebhook({
       inputSchema: mcpSaveWebhookSchema,
     },
     async input => {
-      // ── Validate ID for updates ──
       const webhookId = input.id;
       if (webhookId != null) {
         const idError = validateObjectId(webhookId, 'webhook ID');
         if (idError) return idError;
       }
 
-      // ── Re-validate against the canonical schema (superRefine + caps) ──
       const { id: _id, ...webhookFields } = input;
       const parsed = externalWebhookCreateSchema.safeParse(webhookFields);
       if (!parsed.success) {
@@ -128,7 +117,6 @@ export function registerSaveWebhook({
       const mongoTeamId = new mongoose.Types.ObjectId(teamId);
 
       try {
-        // ── Update existing webhook ──
         if (webhookId != null) {
           const result = await updateWebhook(
             mongoTeamId,
@@ -146,7 +134,6 @@ export function registerSaveWebhook({
           return webhookResult(result.webhook);
         }
 
-        // ── Create new webhook ──
         const webhook = await createWebhook(mongoTeamId, parsed.data);
         return webhookResult(webhook);
       } catch (e) {
@@ -164,8 +151,8 @@ export function registerSaveWebhook({
   );
 }
 
-// Mirror clickstack_get_webhook's write-only posture: never echo the
-// url/headers/queryParams (they may embed secrets).
+// Never echo url/headers/queryParams — they may embed secrets (matches
+// clickstack_get_webhook).
 function webhookResult(webhook: {
   _id: { toString(): string };
   name: string;

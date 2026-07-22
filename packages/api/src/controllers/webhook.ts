@@ -17,23 +17,13 @@ export interface WebhookInput {
 }
 
 /**
- * Create a webhook for a team.
- *
- * Shared by the internal API router, the External API v2 router, and the MCP
- * server so webhook-creation invariants live in one place:
- *   - the destination URL passes SSRF/service validation (validateWebhookUrl)
- *   - persistence is scoped to the team
- *
- * Callers are responsible for their own duplicate-key handling and response
- * formatting/redaction, since the internal and external surfaces mask secrets
- * differently. The unique index on (team, service, name) guarantees duplicates
- * are rejected at write time regardless of any pre-flight check.
+ * Create a team-scoped webhook. Shared by the internal API, External API v2, and
+ * MCP; callers handle their own duplicate-key errors and secret redaction.
  */
 export async function createWebhook(
   team: ObjectId | string,
   { name, service, url, description, queryParams, headers, body }: WebhookInput,
 ) {
-  // Throws WebhookUrlValidationError on an invalid/blocked/mismatched URL.
   validateWebhookUrl({ service, url });
 
   return Webhook.create({
@@ -54,26 +44,11 @@ export type UpdateWebhookResult =
   | { status: 'conflict' };
 
 /**
- * Update (full replace) a webhook for a team.
- *
- * Shared by the External API v2 router and the MCP server. Encapsulates the
- * security-sensitive semantics so they live in exactly one place:
- *
- *   - Readable fields (description, body) are a full replace: present => set,
- *     omitted => cleared.
- *   - Write-only fields (headers, queryParams) are never returned on read, so
- *     a read-modify-write caller cannot re-send them. Omitting them PRESERVES
- *     the stored values; sending an explicit empty object ({}) clears them.
- *   - SECURITY: if the destination (url or service) changes, omitted write-only
- *     secrets are CLEARED rather than preserved, so stored auth headers are
- *     never silently forwarded to a newly-pointed destination.
- *   - The preserve/clear decision is computed from a non-atomic snapshot, so
- *     the write is pinned to the snapshotted url/service; a concurrent PUT that
- *     changed the destination in between yields a `conflict` result.
- *
- * Throws WebhookUrlValidationError on an invalid URL and surfaces duplicate-key
- * errors to the caller (the unique index on (team, service, name) enforces
- * uniqueness); callers map those to their own error responses.
+ * Update (full replace) a team-scoped webhook. Readable fields (description,
+ * body) are set/cleared by presence; write-only fields (headers, queryParams)
+ * are preserved when omitted and cleared on empty {} — or cleared outright when
+ * the destination (url/service) changes, so stored secrets are never forwarded
+ * to a new destination. Shared by External API v2 and MCP.
  */
 export async function updateWebhook(
   team: ObjectId | string,
@@ -85,16 +60,11 @@ export async function updateWebhook(
     return { status: 'not_found' };
   }
 
-  // Throws WebhookUrlValidationError on an invalid/blocked/mismatched URL.
   validateWebhookUrl({ service, url });
 
   const destinationChanged =
     url !== existing.url || service !== existing.service;
 
-  // Readable fields are a full replace: present => keep, omitted => clear.
-  // Write-only fields: omitted => preserve (unless the destination changed, in
-  // which case clear so secrets are never forwarded to a new destination),
-  // empty object => clear, present => set.
   const setFields: Record<string, unknown> = { name, service, url };
   const unsetFields: Record<string, 1> = {};
 
@@ -125,9 +95,8 @@ export async function updateWebhook(
       ? { $set: setFields, $unset: unsetFields }
       : { $set: setFields };
 
-  // Pin the update to the snapshotted url/service so a concurrent PUT that
-  // changed the destination in between cannot leave a secret configured for
-  // one destination attached to a different url.
+  // Pin to the snapshotted url/service so a concurrent destination change
+  // yields a conflict rather than attaching a secret to the wrong destination.
   const webhook = await Webhook.findOneAndUpdate(
     { _id: webhookId, team, url: existing.url, service: existing.service },
     updateOp,
@@ -150,18 +119,16 @@ export type DeleteWebhookResult =
   | { status: 'referenced'; alertCount: number };
 
 /**
- * Delete a webhook for a team.
- *
- * Shared by the External API v2 router and the MCP server. Blocks deletion
- * while alerts still reference the webhook so we never orphan an alert onto a
- * missing destination (which would silently drop notifications).
+ * Delete a webhook for a team, blocking deletion while alerts still reference it
+ * so we never orphan an alert onto a missing destination.
  */
 export async function deleteWebhook(
   team: ObjectId | string,
   webhookId: string,
 ): Promise<DeleteWebhookResult> {
+  // Match on webhookId alone (not channel.type) so a legacy/skewed alert that
+  // still references this webhook also blocks deletion.
   const alertCount = await Alert.countDocuments({
-    'channel.type': 'webhook',
     'channel.webhookId': webhookId,
     team,
   });

@@ -382,16 +382,13 @@ router.delete(
         return res.sendStatus(403);
       }
 
-      // Block deletion when alerts still reference this webhook.
-      // The user must reassign or delete those alerts first.
       const result = await deleteWebhook(teamId, req.params.id);
       if (result.status === 'referenced') {
         return res.status(409).json({
           message: `Cannot delete webhook: ${result.alertCount} alert(s) still reference it. Please update or remove those alerts first.`,
         });
       }
-      // Preserve the pre-existing behavior of responding 200 even when the id
-      // did not match (findOneAndDelete was previously fire-and-forget here).
+      // Respond 200 even on a missing id, preserving the prior behavior here.
       res.json({});
     } catch (err) {
       next(err);

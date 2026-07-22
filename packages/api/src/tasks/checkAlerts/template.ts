@@ -336,14 +336,12 @@ const sendGenericWebhook = async (webhook: IWebhook, message: Message) => {
   try {
     const handlebars = createHandlebarsWithHelpers();
 
-    // A webhook can be persisted without a body (the body default is applied
-    // in the UI form, but the API / MCP create paths accept an empty body).
-    // Handlebars.compile throws on undefined, so fall back to a minimal default
-    // template rather than failing the whole alert-fire.
+    // Handlebars.compile throws on undefined; the API/MCP create paths allow an
+    // absent body (the UI form applies the default). An explicit "" is honored.
     const bodyTemplate =
-      webhook.body && webhook.body.length > 0
-        ? webhook.body
-        : DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE;
+      webhook.body == null
+        ? DEFAULT_GENERIC_WEBHOOK_BODY_TEMPLATE
+        : webhook.body;
 
     body = handlebars.compile(bodyTemplate, {
       noEscape: true,
