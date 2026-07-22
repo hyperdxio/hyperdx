@@ -24,20 +24,33 @@ describe('classifyShift', () => {
   });
 
   describe('emerging via ratio', () => {
-    it('reports a pattern at/above ratio× via cross-multiplication', () => {
-      // Cross-multiplied threshold (curShare >= ratio * baseShare). Using a
-      // sample size where the boundary is representable, a 1→3 row shift
-      // qualifies — the case the epsilon bug used to suppress.
-      const baseShare = 1 / 500;
-      const curShare = 3 / 500;
+    it('reports an EXACTLY 3× shift at a 10k sample (float-boundary case)', () => {
+      // At N=10000, 3 * (1/10000) rounds just above 3/10000, so a naive
+      // cross-product drops this genuine 1→3 shift. The relative tolerance
+      // admits it. This is the exact case Greptile flagged.
+      const baseShare = 1 / 10_000;
+      const curShare = 3 / 10_000;
       expect(classifyShift({ curShare, baseShare }, RATIO, FLOOR)).toBe(
         'emerging',
       );
     });
 
+    it('reports an exact 3× shift at a small sample too', () => {
+      expect(
+        classifyShift({ curShare: 3 / 500, baseShare: 1 / 500 }, RATIO, FLOOR),
+      ).toBe('emerging');
+    });
+
     it('does NOT report a pattern clearly under ratio×', () => {
       const baseShare = 1 / 500;
       const curShare = 2 / 500; // 2× < 3×
+      expect(classifyShift({ curShare, baseShare }, RATIO, FLOOR)).toBeNull();
+    });
+
+    it('does NOT over-admit just-below-threshold shifts (tolerance is tiny)', () => {
+      // 2.9× must stay out — the relative tolerance is 1e-9, not a fudge factor.
+      const baseShare = 1 / 10_000;
+      const curShare = 2.9 / 10_000;
       expect(classifyShift({ curShare, baseShare }, RATIO, FLOOR)).toBeNull();
     });
 
@@ -76,6 +89,14 @@ describe('classifyShift', () => {
       // 3 baseline rows vs 1 current row → 3× rarer now.
       const baseShare = 3 / 500;
       const curShare = 1 / 500;
+      expect(classifyShift({ curShare, baseShare }, RATIO, FLOOR)).toBe(
+        'disappeared',
+      );
+    });
+
+    it('reports an EXACTLY 3× drop at a 10k sample (float-boundary case)', () => {
+      const baseShare = 3 / 10_000;
+      const curShare = 1 / 10_000;
       expect(classifyShift({ curShare, baseShare }, RATIO, FLOOR)).toBe(
         'disappeared',
       );

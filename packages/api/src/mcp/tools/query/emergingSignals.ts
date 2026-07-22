@@ -21,13 +21,19 @@ import { sourceIdSchema, whereLanguageSchema, whereSchema } from './schemas';
  *   `baseShare / curShare >= ratio`.
  *
  * Comparisons are inclusive (`>=`) and cross-multiplied rather than divided:
- * `curShare >= ratio * baseShare` instead of `curShare / baseShare >= ratio`.
- * Cross-multiplication drops the previous epsilon hack (which always nudged the
- * ratio the wrong way and could suppress a genuine shift) and avoids a
- * divide-by-zero without a guard. Note that shares are floating-point, so a
- * shift that is "exactly" ratio× in the abstract may round a hair either way;
- * the threshold is therefore best treated as approximate at the very boundary.
+ * `curShare >= ratio * baseShare` instead of `curShare / baseShare >= ratio`
+ * (drops the old divide-by-`(x + EPS)` hack that always nudged the ratio the
+ * wrong way and could suppress a genuine shift, and needs no divide-by-zero
+ * guard).
+ *
+ * Shares are floating-point, so a shift that is mathematically exactly `ratio`×
+ * can land a hair above the cross-product for some sample sizes (e.g. at a 10k
+ * sample, `3 * (1/10000)` rounds just above `3/10000`) and be dropped. A tiny
+ * RELATIVE tolerance biased toward qualifying admits the exact boundary while
+ * still rejecting anything meaningfully below it (2.9× stays out).
  */
+const RATIO_REL_TOLERANCE = 1e-9;
+
 export function classifyShift(
   shares: { curShare: number; baseShare: number },
   ratio: number,
@@ -37,8 +43,11 @@ export function classifyShift(
   if (baseShare === 0) {
     return curShare >= newPatternShareFloor ? 'emerging' : null;
   }
-  if (curShare >= ratio * baseShare) return 'emerging';
-  if (curShare === 0 || baseShare >= ratio * curShare) return 'disappeared';
+  const tol = 1 - RATIO_REL_TOLERANCE;
+  if (curShare >= ratio * baseShare * tol) return 'emerging';
+  if (curShare === 0 || baseShare >= ratio * curShare * tol) {
+    return 'disappeared';
+  }
   return null;
 }
 
