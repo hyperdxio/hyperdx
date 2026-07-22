@@ -907,13 +907,18 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         await expect(dashboardPage.page).toHaveURL(/kiosk=true/);
       });
 
-      await test.step('Assert app nav, query controls, Add button, dashboard menu, and tile action buttons are hidden', async () => {
-        await expect(dashboardPage.appNav).toBeHidden();
-        await expect(dashboardPage.searchInput).toBeHidden();
-        await expect(dashboardPage.addButton).toBeHidden();
-        await expect(dashboardPage.menuButton).toBeHidden();
-        await expect(dashboardPage.firstTileActionsButton).toBeHidden();
-      });
+      await test.step(
+        'Assert app nav, query controls, Add button, dashboard menu, tile action buttons, and resize handles are hidden',
+        async () => {
+          await expect(dashboardPage.appNav).toBeHidden();
+          await expect(dashboardPage.searchInput).toBeHidden();
+          await expect(dashboardPage.addButton).toBeHidden();
+          await expect(dashboardPage.menuButton).toBeHidden();
+          await expect(dashboardPage.firstTileActionsButton).toBeHidden();
+          // Resize handles absent means the grid is locked (no drag/resize in kiosk mode)
+          await expect(dashboardPage.tileResizeHandles).toHaveCount(0);
+        },
+      );
 
       await test.step('Assert kiosk header with dashboard name and Live status are visible', async () => {
         await expect(dashboardPage.kioskHeader).toBeVisible();
@@ -929,7 +934,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       });
 
       await test.step('Reload in kiosk mode and assert URL mode, live status, and read-only chrome persist', async () => {
-        await dashboardPage.page.reload();
+        await dashboardPage.reload();
         await expect(dashboardPage.page).toHaveURL(/kiosk=true/);
         await expect(dashboardPage.kioskLiveStatus).toBeVisible();
         await expect(dashboardPage.appNav).toBeHidden();

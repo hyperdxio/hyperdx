@@ -1342,6 +1342,23 @@ export class DashboardPage {
   }
 
   /**
+   * All react-grid-layout resize handles on the dashboard grid. In kiosk mode
+   * the grid is static so every handle must be absent or hidden.
+   */
+  get tileResizeHandles(): Locator {
+    return this.page.locator('.react-resizable-handle');
+  }
+
+  /**
+   * Reload the current page and wait for the network to settle.
+   * Prefer this over `page.reload()` in spec files so all navigation
+   * stays inside the page object.
+   */
+  async reload() {
+    await this.page.reload({ waitUntil: 'networkidle' });
+  }
+
+  /**
    * The dashboard overflow ("...") menu button. Exposed so specs can assert
    * it is hidden in kiosk mode without needing to open it.
    */
