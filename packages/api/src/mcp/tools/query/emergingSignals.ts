@@ -8,6 +8,40 @@ import { parseTimeRange } from './helpers';
 import { mineWindowPatterns, normalizeTemplate } from './runEventPatterns';
 import { sourceIdSchema, whereLanguageSchema, whereSchema } from './schemas';
 
+// ─── Classification ────────────────────────────────────────────────────────
+
+/**
+ * Decide whether a pattern's share swing between the baseline and current
+ * windows makes it emerging, disappeared, or neither. Pure so the exact
+ * threshold behavior is unit-testable.
+ *
+ * - emerging: absent from baseline and clears `newPatternShareFloor`, OR
+ *   `curShare / baseShare >= ratio`.
+ * - disappeared: absent from the current window, OR
+ *   `baseShare / curShare >= ratio`.
+ *
+ * Comparisons are inclusive (`>=`) and cross-multiplied rather than divided:
+ * `curShare >= ratio * baseShare` instead of `curShare / baseShare >= ratio`.
+ * Cross-multiplication drops the previous epsilon hack (which always nudged the
+ * ratio the wrong way and could suppress a genuine shift) and avoids a
+ * divide-by-zero without a guard. Note that shares are floating-point, so a
+ * shift that is "exactly" ratio× in the abstract may round a hair either way;
+ * the threshold is therefore best treated as approximate at the very boundary.
+ */
+export function classifyShift(
+  shares: { curShare: number; baseShare: number },
+  ratio: number,
+  newPatternShareFloor: number,
+): 'emerging' | 'disappeared' | null {
+  const { curShare, baseShare } = shares;
+  if (baseShare === 0) {
+    return curShare >= newPatternShareFloor ? 'emerging' : null;
+  }
+  if (curShare >= ratio * baseShare) return 'emerging';
+  if (curShare === 0 || baseShare >= ratio * curShare) return 'disappeared';
+  return null;
+}
+
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
 const emergingSignalsSchema = z.object({
@@ -216,7 +250,6 @@ export function registerEmergingSignals({
       ingest(baseRes, 'base');
 
       const ratio = input.minShareRatio;
-      const EPS = 1e-9;
       // Minimum share for a BRAND-NEW pattern (absent from baseline) to count
       // as emerging. A single sampled row that Drain happened to cluster on its
       // own is not a signal — require roughly two sampled rows' worth of share
@@ -228,23 +261,9 @@ export function registerEmergingSignals({
       const emerging: Agg[] = [];
       const disappeared: Agg[] = [];
       for (const a of byKey.values()) {
-        // Emerging: present now, and either absent from baseline or >=ratio× up.
-        // Brand-new patterns (baseShare === 0) must also clear the share floor
-        // so a lone sampled row isn't surfaced as an emerging signal. Below the
-        // baseShare === 0 branch, baseShare is always > 0, and since ratio >= 1
-        // (schema-enforced) an `up >= ratio` / `down >= ratio` hit implies the
-        // numerator share is > 0 — so no extra curShare/baseShare > 0 guards are
-        // needed.
-        if (a.baseShare === 0) {
-          if (a.curShare >= newPatternShareFloor) emerging.push(a);
-        } else if (a.curShare / (a.baseShare + EPS) >= ratio) {
-          emerging.push(a);
-        } else if (
-          a.curShare === 0 ||
-          a.baseShare / (a.curShare + EPS) >= ratio
-        ) {
-          disappeared.push(a);
-        }
+        const verdict = classifyShift(a, ratio, newPatternShareFloor);
+        if (verdict === 'emerging') emerging.push(a);
+        else if (verdict === 'disappeared') disappeared.push(a);
       }
       // Rank by absolute share swing.
       emerging.sort(
