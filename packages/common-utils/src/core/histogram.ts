@@ -112,19 +112,18 @@ const translateHistogramQuantile = ({
             MetricName,
             ExplicitBounds,
             ${timeBucketSelect},
-            ${groupBy ? chSql`[${groupBy}] as group,` : ''}
+            ${groupBy ? 'group,' : ''}
             sumForEach(deltas) as rates
           FROM (
             SELECT
               TimeUnix,
               MetricName,
-              ResourceAttributes,
-              Attributes,
               ExplicitBounds,
+              ${groupBy ? chSql` group,` : ''}
               attr_hash,
-              any(attr_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_attr_hash,
-              any(bounds_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_bounds_hash,
-              any(counts) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_counts,
+              any(attr_hash) OVER prev_row AS prev_attr_hash,
+              any(bounds_hash) OVER prev_row AS prev_bounds_hash,
+              any(counts) OVER prev_row AS prev_counts,
               counts,
               IF(
                   AggregationTemporality = 1 ${'' /* denotes a metric that is not monotonic e.g. already a delta */}
@@ -141,13 +140,18 @@ const translateHistogramQuantile = ({
                   AggregationTemporality,
                   ExplicitBounds,
                   ResourceAttributes,
-                  Attributes,
+                  Attributes,${groupBy ? chSql`[${groupBy}] as group,` : ''}
                   ${ATTR_HASH_EXPR} AS attr_hash,
                   cityHash64(ExplicitBounds) AS bounds_hash,
                   CAST(BucketCounts AS Array(Int64)) counts
               FROM ${from}
               WHERE ${where}
-              ORDER BY attr_hash, TimeUnix ASC
+              ORDER BY ${groupBy ? 'group, ' : ''}attr_hash, TimeUnix ASC
+            )
+            WINDOW prev_row AS (
+            ${groupBy ? chSql` PARTITION BY group` : ''}
+              ORDER BY attr_hash, TimeUnix
+              ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
             )
           )
           GROUP BY \`__hdx_time_bucket\`, MetricName, ${groupBy ? 'group, ' : ''}ExplicitBounds
