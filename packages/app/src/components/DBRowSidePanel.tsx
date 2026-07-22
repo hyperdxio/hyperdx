@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { add } from 'date-fns';
@@ -35,6 +36,7 @@ import {
 } from '@mantine/core';
 import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
 
+import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useSidePanelStack, {
@@ -73,6 +75,7 @@ import {
 } from './DrawerUtils';
 import LogLevel from './LogLevel';
 import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
+import { SpanLinkData } from './SpanLinksSubpanel';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -103,6 +106,7 @@ export type RowSidePanelContextProps = {
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
   source?: TLogSource | TTraceSource;
+  onOpenLinkedTrace?: (link: SpanLinkData) => void;
 };
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});
@@ -201,6 +205,10 @@ type DBRowSidePanelProps = {
   rowId: string | undefined;
   aliasWith?: WithClause[];
   onClose: () => void;
+  // Clicking outside the drawer (and outside `keepOpenSelector`) closes it.
+  // Enabled by default; pass `false` to opt out.
+  closeOnClickOutside?: boolean;
+  keepOpenSelector?: string;
 };
 
 type DBRowSidePanelInnerProps = DBRowSidePanelProps & {
@@ -393,6 +401,24 @@ export const DBRowSidePanelInner = ({
     }
   }, [mainContent, initialMainContent, hasActiveStacks]);
 
+  // Once the hop's row loads we learn the landed span name and use it as the crumb label.
+  const spanLinkFrameRowIdsRef = useRef<Set<string>>(new Set());
+  const [resolvedFrameLabels, setResolvedFrameLabels] = useState<
+    Record<string, string>
+  >({});
+
+  useEffect(() => {
+    if (
+      activeRowId != null &&
+      mainContent != null &&
+      spanLinkFrameRowIdsRef.current.has(activeRowId) &&
+      resolvedFrameLabels[activeRowId] !== mainContent
+    ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setResolvedFrameLabels(prev => ({ ...prev, [activeRowId]: mainContent }));
+    }
+  }, [activeRowId, mainContent, resolvedFrameLabels]);
+
   const highlightedAttributeValues = useMemo(() => {
     const attributeExpressions: NonNullable<
       (TLogSource | TTraceSource)['highlightedRowAttributeExpressions']
@@ -506,6 +532,44 @@ export const DBRowSidePanelInner = ({
     [traceSourceData, handleSourceStackPush, mainContent],
   );
 
+  // "Open trace" on a span link: the link carries only the linked span's
+  // TraceId + SpanId, so resolve it against the current trace source.
+  const handleOpenLinkedTrace = useCallback(
+    (link: SpanLinkData) => {
+      if (!traceSourceData || !traceIdExpression || !spanIdExpression) {
+        return;
+      }
+      const rowId = [
+        SqlString.format('?=?', [
+          SqlString.raw(traceIdExpression),
+          link.TraceId,
+        ]),
+        SqlString.format('?=?', [SqlString.raw(spanIdExpression), link.SpanId]),
+      ].join(' AND ');
+      // Mark this frame so its breadcrumb switches from the `Trace <id>`
+      // fallback below to the landed span name once the row loads.
+      spanLinkFrameRowIdsRef.current.add(rowId);
+      handleSourceStackPush({
+        sourceId: traceSourceData.id,
+        rowId,
+        label: `Trace ${link.TraceId.slice(0, 8)}`,
+        sourceKind: traceSourceData.kind as SourceKind,
+        aliasWith: [],
+      });
+    },
+    [
+      traceSourceData,
+      traceIdExpression,
+      spanIdExpression,
+      handleSourceStackPush,
+    ],
+  );
+
+  const rowSidePanelContextValue = useMemo(
+    () => ({ ...parentContext, onOpenLinkedTrace: handleOpenLinkedTrace }),
+    [parentContext, handleOpenLinkedTrace],
+  );
+
   const { rumSessionId, rumServiceName } = useSessionId({
     sourceId: traceSourceId,
     traceId,
@@ -569,7 +633,9 @@ export const DBRowSidePanelInner = ({
       const isLeafSource = i === crumbSourceStack.length - 1;
       const isCurrent = isLeafSource && crumbNavStack.length === 0;
       items.push({
-        label: entry.label,
+        // Span-link hops resolve to the landed span name once loaded; every
+        // other frame keeps the label it was pushed with.
+        label: resolvedFrameLabels[entry.rowId] ?? entry.label,
         sourceKind: entry.sourceKind,
         onClick: isCurrent
           ? undefined
@@ -603,6 +669,7 @@ export const DBRowSidePanelInner = ({
     sourceIsTrace,
     mainContent,
     initialMainContent,
+    resolvedFrameLabels,
     source.kind,
     handleBreadcrumbNavigation,
     parentBreadcrumbs,
@@ -693,7 +760,7 @@ export const DBRowSidePanelInner = ({
   const showLogTraceActions = !sourceIsTrace && traceId && traceSourceId;
 
   return (
-    <>
+    <RowSidePanelContext value={rowSidePanelContextValue}>
       <Box px="sm" pt="sm" pb="xs">
         {controls}
         <Group gap="xs" wrap="wrap">
@@ -1031,7 +1098,7 @@ export const DBRowSidePanelInner = ({
           </Box>
         </ErrorBoundary>
       )}
-    </>
+    </RowSidePanelContext>
   );
 };
 
@@ -1067,6 +1134,8 @@ export default function DBRowSidePanelErrorBoundary({
   rowId,
   aliasWith,
   source,
+  closeOnClickOutside = true,
+  keepOpenSelector,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
@@ -1092,6 +1161,20 @@ export default function DBRowSidePanelErrorBoundary({
     clearTraceWaterfallSearchState();
     onClose();
   }, [sidePanelStack, onClose, clearTraceWaterfallSearchState]);
+
+  useCloseOnClickOutside({
+    // Only close on outside click at the root level. When the user has
+    // navigated deeper (e.g. log row -> trace), Esc pops one level at a time
+    // via handlePanelBack; an outside click should not skip those levels and
+    // close the drawer entirely.
+    enabled:
+      closeOnClickOutside &&
+      rowId != null &&
+      sidePanelStack.sourceStack.length === 0 &&
+      sidePanelStack.navStack.length === 0,
+    keepOpenSelector,
+    onClose: _onClose,
+  });
 
   return (
     <Drawer
