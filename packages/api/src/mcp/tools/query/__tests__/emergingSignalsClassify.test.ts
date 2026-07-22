@@ -115,5 +115,20 @@ describe('classifyShift', () => {
         classifyShift({ curShare: 0.01, baseShare: 0.01 }, RATIO, FLOOR),
       ).toBeNull();
     });
+
+    it('does not report an equal-share pattern as emerging at minShareRatio=1', () => {
+      // ratio=1 is schema-allowed. Without the directional guard, the relative
+      // tolerance would make curShare >= 1 * baseShare * (1 - eps) true for a
+      // stable pattern and flood the report with steady-state templates.
+      expect(
+        classifyShift({ curShare: 0.01, baseShare: 0.01 }, 1, FLOOR),
+      ).toBeNull();
+    });
+
+    it('still reports a genuine increase at minShareRatio=1', () => {
+      expect(classifyShift({ curShare: 0.02, baseShare: 0.01 }, 1, FLOOR)).toBe(
+        'emerging',
+      );
+    });
   });
 });

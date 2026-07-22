@@ -44,8 +44,17 @@ export function classifyShift(
     return curShare >= newPatternShareFloor ? 'emerging' : null;
   }
   const tol = 1 - RATIO_REL_TOLERANCE;
-  if (curShare >= ratio * baseShare * tol) return 'emerging';
-  if (curShare === 0 || baseShare >= ratio * curShare * tol) {
+  // Require a real directional change in addition to meeting the ratio. Without
+  // the `curShare > baseShare` / `baseShare > curShare` guards, a caller-allowed
+  // `minShareRatio: 1` would classify every stable (equal-share) pattern as
+  // emerging, flooding the novelty report with steady-state templates.
+  if (curShare > baseShare && curShare >= ratio * baseShare * tol) {
+    return 'emerging';
+  }
+  if (
+    curShare === 0 ||
+    (baseShare > curShare && baseShare >= ratio * curShare * tol)
+  ) {
     return 'disappeared';
   }
   return null;
