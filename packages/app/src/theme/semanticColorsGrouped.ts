@@ -38,6 +38,7 @@ export const semanticColorsGrouped = {
     'color-text-brand',
     'color-text-brand-hover',
     'color-text-danger',
+    'color-text-warning',
   ],
   icons: ['color-icon-primary', 'color-icon-muted'],
   overlay: ['color-overlay', 'color-backdrop'],
