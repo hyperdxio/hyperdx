@@ -1572,6 +1572,139 @@ describe('renderChartConfig', () => {
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
     });
+
+    describe.each([
+      {
+        description: 'without group by',
+        groupBy: undefined,
+        metricSuffix: 'ungrouped',
+      },
+      {
+        description: 'grouped by ServiceName',
+        groupBy: 'ServiceName',
+        metricSuffix: 'service-name',
+      },
+      {
+        description: 'grouped by an attribute',
+        groupBy: "Attributes['service']",
+        metricSuffix: 'attribute',
+      },
+    ])('$description', ({ groupBy, metricSuffix }) => {
+      const metricName = `test.histogram.${metricSuffix}`;
+
+      beforeEach(async () => {
+        await bulkInsertMetricsHistogram([
+          {
+            MetricName: metricName,
+            ServiceName: 'api',
+            ResourceAttributes: {},
+            Attributes: { service: 'api' },
+            AggregationTemporality: 1,
+            ExplicitBounds: [10],
+            BucketCounts: [2, 0],
+            Count: 2,
+            TimeUnix: new Date(now),
+          },
+          {
+            MetricName: metricName,
+            ServiceName: 'worker',
+            ResourceAttributes: {},
+            Attributes: { service: 'worker' },
+            AggregationTemporality: 1,
+            ExplicitBounds: [10],
+            BucketCounts: [0, 1],
+            Count: 1,
+            TimeUnix: new Date(now),
+          },
+        ]);
+      });
+
+      const queryHistogram = async (
+        select: { aggFn: 'count' } | { aggFn: 'quantile'; level: number },
+      ) => {
+        const query = await renderChartConfig(
+          {
+            select: [
+              {
+                ...select,
+                metricName,
+                metricType: MetricsDataType.Histogram,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: '',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), nowPlus('1m')],
+            groupBy,
+            granularity: '1 minute',
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+
+        return queryData(query);
+      };
+
+      it('counts observations', async () => {
+        const results = await queryHistogram({ aggFn: 'count' });
+
+        expect(results).toHaveLength(groupBy ? 2 : 1);
+        expect(results).toEqual(
+          groupBy
+            ? expect.arrayContaining([
+                {
+                  __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+                  group: ['api'],
+                  Value: '2',
+                },
+                {
+                  __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+                  group: ['worker'],
+                  Value: '1',
+                },
+              ])
+            : [
+                {
+                  __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+                  Value: '3',
+                },
+              ],
+        );
+      });
+
+      it('calculates quantiles', async () => {
+        const results = await queryHistogram({
+          aggFn: 'quantile',
+          level: 0.95,
+        });
+
+        expect(results).toHaveLength(groupBy ? 2 : 1);
+        expect(results).toEqual(
+          groupBy
+            ? expect.arrayContaining([
+                {
+                  __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+                  group: ['api'],
+                  Value: 9.5,
+                },
+                {
+                  __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+                  group: ['worker'],
+                  Value: 10,
+                },
+              ])
+            : [
+                {
+                  __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+                  Value: 10,
+                },
+              ],
+        );
+      });
+    });
   });
 
   describe('Query Metrics - Exponential Histogram', () => {

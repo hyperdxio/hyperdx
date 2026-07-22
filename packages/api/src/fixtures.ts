@@ -387,7 +387,9 @@ export const bulkInsertMetricsHistogram = async (
     ResourceAttributes: Record<string, string>;
     ScopeAttributes?: Record<string, string>;
     Attributes?: Record<string, string>;
+    ServiceName?: string;
     TimeUnix: Date;
+    Count?: number;
     BucketCounts: number[];
     ExplicitBounds: number[];
     AggregationTemporality: number;

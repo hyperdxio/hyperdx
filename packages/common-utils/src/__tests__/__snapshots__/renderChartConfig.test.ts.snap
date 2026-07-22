@@ -131,19 +131,18 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
             MetricName,
             ExplicitBounds,
             toStartOfInterval(toDateTime(TimeUnix), INTERVAL 2 minute) AS \`__hdx_time_bucket\`,
-            [ResourceAttributes['host']] as group,
+            group,
             sumForEach(deltas) as rates
           FROM (
             SELECT
               TimeUnix,
               MetricName,
-              ResourceAttributes,
-              Attributes,
               ExplicitBounds,
+               group,
               attr_hash,
-              any(attr_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_attr_hash,
-              any(bounds_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_bounds_hash,
-              any(counts) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_counts,
+              any(attr_hash) OVER prev_row AS prev_attr_hash,
+              any(bounds_hash) OVER prev_row AS prev_bounds_hash,
+              any(counts) OVER prev_row AS prev_counts,
               counts,
               IF(
                   AggregationTemporality = 1 
@@ -160,13 +159,18 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
                   AggregationTemporality,
                   ExplicitBounds,
                   ResourceAttributes,
-                  Attributes,
+                  Attributes,[ServiceName] as group,
                   cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS attr_hash,
                   cityHash64(ExplicitBounds) AS bounds_hash,
                   CAST(BucketCounts AS Array(Int64)) counts
               FROM default.otel_metrics_histogram
               WHERE (TimeUnix >= toStartOfInterval(fromUnixTimestamp64Milli(1739318400000), INTERVAL 2 minute) - INTERVAL 2 minute AND TimeUnix <= toStartOfInterval(fromUnixTimestamp64Milli(1765670400000), INTERVAL 2 minute) + INTERVAL 2 minute) AND ((MetricName = 'http.server.duration'))
-              ORDER BY attr_hash, TimeUnix ASC
+              ORDER BY group, attr_hash, TimeUnix ASC
+            )
+            WINDOW prev_row AS (
+             PARTITION BY group
+              ORDER BY attr_hash, TimeUnix
+              ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
             )
           )
           GROUP BY \`__hdx_time_bucket\`, MetricName, group, ExplicitBounds
@@ -221,13 +225,12 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
             SELECT
               TimeUnix,
               MetricName,
-              ResourceAttributes,
-              Attributes,
               ExplicitBounds,
+              
               attr_hash,
-              any(attr_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_attr_hash,
-              any(bounds_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_bounds_hash,
-              any(counts) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_counts,
+              any(attr_hash) OVER prev_row AS prev_attr_hash,
+              any(bounds_hash) OVER prev_row AS prev_bounds_hash,
+              any(counts) OVER prev_row AS prev_counts,
               counts,
               IF(
                   AggregationTemporality = 1 
@@ -251,6 +254,11 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
               FROM default.otel_metrics_histogram
               WHERE (TimeUnix >= toStartOfInterval(fromUnixTimestamp64Milli(1739318400000), INTERVAL 2 minute) - INTERVAL 2 minute AND TimeUnix <= toStartOfInterval(fromUnixTimestamp64Milli(1765670400000), INTERVAL 2 minute) + INTERVAL 2 minute) AND ((MetricName = 'http.server.duration'))
               ORDER BY attr_hash, TimeUnix ASC
+            )
+            WINDOW prev_row AS (
+            
+              ORDER BY attr_hash, TimeUnix
+              ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
             )
           )
           GROUP BY \`__hdx_time_bucket\`, MetricName, ExplicitBounds
@@ -305,13 +313,12 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
             SELECT
               TimeUnix,
               MetricName,
-              ResourceAttributes,
-              Attributes,
               ExplicitBounds,
+              
               attr_hash,
-              any(attr_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_attr_hash,
-              any(bounds_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_bounds_hash,
-              any(counts) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_counts,
+              any(attr_hash) OVER prev_row AS prev_attr_hash,
+              any(bounds_hash) OVER prev_row AS prev_bounds_hash,
+              any(counts) OVER prev_row AS prev_counts,
               counts,
               IF(
                   AggregationTemporality = 1 
@@ -335,6 +342,11 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
               FROM default.otel_metrics_histogram
               WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) AND ((MetricName = 'http.server.duration'))
               ORDER BY attr_hash, TimeUnix ASC
+            )
+            WINDOW prev_row AS (
+            
+              ORDER BY attr_hash, TimeUnix
+              ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
             )
           )
           GROUP BY \`__hdx_time_bucket\`, MetricName, ExplicitBounds
@@ -389,13 +401,12 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
             SELECT
               TimeUnix,
               MetricName,
-              ResourceAttributes,
-              Attributes,
               ExplicitBounds,
+              
               attr_hash,
-              any(attr_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_attr_hash,
-              any(bounds_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_bounds_hash,
-              any(counts) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_counts,
+              any(attr_hash) OVER prev_row AS prev_attr_hash,
+              any(bounds_hash) OVER prev_row AS prev_bounds_hash,
+              any(counts) OVER prev_row AS prev_counts,
               counts,
               IF(
                   AggregationTemporality = 1 
@@ -419,6 +430,11 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
               FROM default.otel_metrics_histogram
               WHERE (TimeUnix >= toStartOfInterval(fromUnixTimestamp64Milli(1739318400000), INTERVAL 2 minute) - INTERVAL 2 minute AND TimeUnix <= toStartOfInterval(fromUnixTimestamp64Milli(1765670400000), INTERVAL 2 minute) + INTERVAL 2 minute) AND ((MetricName IN ('container.cpu.utilization', 'container.cpu.usage')))
               ORDER BY attr_hash, TimeUnix ASC
+            )
+            WINDOW prev_row AS (
+            
+              ORDER BY attr_hash, TimeUnix
+              ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
             )
           )
           GROUP BY \`__hdx_time_bucket\`, MetricName, ExplicitBounds
@@ -467,19 +483,18 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
             MetricName,
             ExplicitBounds,
             toStartOfInterval(toDateTime(TimeUnix), INTERVAL 1 minute) AS \`__hdx_time_bucket\`,
-            [ResourceAttributes['k8s.pod.name']] as group,
+            group,
             sumForEach(deltas) as rates
           FROM (
             SELECT
               TimeUnix,
               MetricName,
-              ResourceAttributes,
-              Attributes,
               ExplicitBounds,
+               group,
               attr_hash,
-              any(attr_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_attr_hash,
-              any(bounds_hash) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_bounds_hash,
-              any(counts) OVER (ROWS BETWEEN 1 preceding AND 1 preceding) AS prev_counts,
+              any(attr_hash) OVER prev_row AS prev_attr_hash,
+              any(bounds_hash) OVER prev_row AS prev_bounds_hash,
+              any(counts) OVER prev_row AS prev_counts,
               counts,
               IF(
                   AggregationTemporality = 1 
@@ -496,13 +511,18 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
                   AggregationTemporality,
                   ExplicitBounds,
                   ResourceAttributes,
-                  Attributes,
+                  Attributes,[ResourceAttributes['k8s.pod.name']] as group,
                   cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS attr_hash,
                   cityHash64(ExplicitBounds) AS bounds_hash,
                   CAST(BucketCounts AS Array(Int64)) counts
               FROM default.otel_metrics_histogram
               WHERE (TimeUnix >= toStartOfInterval(fromUnixTimestamp64Milli(1739318400000), INTERVAL 1 minute) - INTERVAL 1 minute AND TimeUnix <= toStartOfInterval(fromUnixTimestamp64Milli(1765670400000), INTERVAL 1 minute) + INTERVAL 1 minute) AND ((MetricName IN ('k8s.pod.cpu.utilization', 'k8s.pod.cpu.usage')))
-              ORDER BY attr_hash, TimeUnix ASC
+              ORDER BY group, attr_hash, TimeUnix ASC
+            )
+            WINDOW prev_row AS (
+             PARTITION BY group
+              ORDER BY attr_hash, TimeUnix
+              ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
             )
           )
           GROUP BY \`__hdx_time_bucket\`, MetricName, group, ExplicitBounds
