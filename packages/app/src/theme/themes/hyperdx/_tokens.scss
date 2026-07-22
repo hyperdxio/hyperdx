@@ -57,6 +57,19 @@
   --color-bg-danger: var(--mantine-color-red-4);
   --color-bg-warning: var(--mantine-color-orange-5);
 
+  /* Subtle tinted backgrounds (+ hover) for semantic callouts (Alert, soft
+     Button/ActionIcon). Deep dark tints inlined as hex — the numbered scale's
+     darkest shades (`-9`) are mid-tone for green/yellow and can't meet AA with
+     colored text; these deeper values give ~9-11:1. Hover is one step lighter. */
+  --color-bg-danger-subtle: #3d0d0d;
+  --color-bg-danger-subtle-hover: #651515;
+  --color-bg-warning-subtle: #3c3310;
+  --color-bg-warning-subtle-hover: #352d0e;
+  --color-bg-success-subtle: #0d2913;
+  --color-bg-success-subtle-hover: #16451f;
+  --color-bg-info-subtle: #071e34;
+  --color-bg-info-subtle-hover: #0c3256;
+
   /* Primary Button - uses brand green colors */
   --color-primary-button-bg: var(--mantine-color-green-light);
   --color-primary-button-bg-hover: var(--mantine-color-green-light-hover);
@@ -80,6 +93,8 @@
   --color-text-success: var(--mantine-color-green-4);
   --color-text-success-hover: var(--mantine-color-green-3);
   --color-text-danger: var(--mantine-color-red-3);
+  --color-text-warning: var(--mantine-color-yellow-3);
+  --color-text-info: var(--mantine-color-blue-3);
   --color-text-sidenav-link: var(--mantine-color-dark-0);
   --color-text-sidenav-link-active: var(--color-text-primary);
 
@@ -169,7 +184,19 @@
   --color-bg-brand-hover: var(--mantine-color-green-9);
   --color-bg-success: var(--mantine-color-green-8);
   --color-bg-danger: var(--mantine-color-red-8);
-  --color-bg-warning: var(--mantine-color-orange-8);
+  --color-bg-warning: var(--mantine-color-yellow-8);
+
+  /* Subtle tinted backgrounds (+ hover) for semantic callouts (Alert, soft
+     Button/ActionIcon). Light mode uses Mantine's `-0` (bg) / `-1` (hover)
+     shades. */
+  --color-bg-danger-subtle: var(--mantine-color-red-0);
+  --color-bg-danger-subtle-hover: var(--mantine-color-red-1);
+  --color-bg-warning-subtle: var(--mantine-color-yellow-0);
+  --color-bg-warning-subtle-hover: var(--mantine-color-yellow-1);
+  --color-bg-success-subtle: var(--mantine-color-green-0);
+  --color-bg-success-subtle-hover: var(--mantine-color-green-1);
+  --color-bg-info-subtle: var(--mantine-color-blue-0);
+  --color-bg-info-subtle-hover: var(--mantine-color-blue-1);
 
   /* Primary Button - uses brand green colors */
   --color-primary-button-bg: var(--mantine-color-green-light);
@@ -191,9 +218,23 @@
   --color-text-muted-hover: var(--mantine-color-dark-9);
   --color-text-brand: var(--mantine-color-green-8);
   --color-text-brand-hover: var(--mantine-color-green-9);
-  --color-text-success: var(--mantine-color-green-8);
+
+  /* danger/success/warning are darkened past their base shade so semantic text
+     meets WCAG AA (4.5:1) on the light `-subtle` tints: red-9, green-9 -15%,
+     yellow-9 -30% (green-9/yellow-9 alone are mid-tone and fall short). */
+  --color-text-success: color-mix(
+    in srgb,
+    var(--mantine-color-green-9),
+    #000 15%
+  );
   --color-text-success-hover: var(--mantine-color-green-9);
-  --color-text-danger: var(--mantine-color-red-8);
+  --color-text-danger: var(--mantine-color-red-9);
+  --color-text-warning: color-mix(
+    in srgb,
+    var(--mantine-color-yellow-9),
+    #000 30%
+  );
+  --color-text-info: var(--mantine-color-blue-9);
   --color-text-sidenav-link: var(--mantine-color-dark-6);
   --color-text-sidenav-link-active: var(--mantine-color-green-9);
 
