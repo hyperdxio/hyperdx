@@ -220,15 +220,15 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
         'it is transparently upgraded to "table".\n\n' +
         '── METRIC SOURCES ──\n' +
         'When sourceId is a metric source, each select item MUST set ' +
-        'metricType ("gauge"|"sum"|"histogram") and metricName (the OTel metric name). ' +
+        'metricType ("gauge"|"sum"|"histogram"|"exponential histogram") and metricName (the OTel metric name). ' +
         'valueExpression defaults to "Value" — set it explicitly only to transform the value.\n' +
         'Discovery: clickstack_describe_source returns a per-kind metric-name sample; ' +
         'clickstack_list_metrics paginates the full catalog; clickstack_describe_metric ' +
         'returns attribute keys + sampled values for a single metric.\n' +
         'Per kind: gauge uses last_value/avg/min/max; sum uses aggFn:"increase" for counter increase ' +
         '(top-N capped at 20 groups when combined with groupBy), or sum/avg on the rate; ' +
-        'histogram uses aggFn:"quantile" + level for percentiles, or aggFn:"count" for total bucket count.\n' +
-        'summary and exponential histogram kinds are not supported by the query renderer yet.',
+        'histogram and exponential histogram use aggFn:"quantile" + level for percentiles, or aggFn:"count" for total bucket count.\n' +
+        'summary metrics are not supported by the query renderer.',
       inputSchema: tableSchema,
     },
     async input => {
