@@ -768,9 +768,9 @@ describe('renderChartConfig', () => {
 
   describe('histogram metric queries', () => {
     describe('quantile', () => {
-      it('should generate a query without grouping or time bucketing', async () => {
+      it('should generate a whole-range query without a time dimension', async () => {
         const config: ChartConfigWithOptDateRange = {
-          displayType: DisplayType.Line,
+          displayType: DisplayType.Number,
           connection: 'test-connection',
           metricTables: {
             gauge: 'otel_metrics_gauge',
@@ -805,6 +805,14 @@ describe('renderChartConfig', () => {
           querySettings,
         );
         const actual = parameterizedQueryToSql(generatedSql);
+        expect(actual).not.toContain('TimeUnix AS `__hdx_time_bucket`');
+        expect(actual).not.toMatch(
+          /SELECT `__hdx_time_bucket`, "Value" FROM metrics/,
+        );
+        expect(actual).toContain(
+          'WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000))',
+        );
+        expect(actual).not.toContain('toStartOfInterval');
         expect(actual).toMatchSnapshot();
       });
 
@@ -893,9 +901,9 @@ describe('renderChartConfig', () => {
     });
 
     describe('count', () => {
-      it('should generate a count query without grouping or time bucketing', async () => {
+      it('should generate a whole-range count query without a time dimension', async () => {
         const config: ChartConfigWithOptDateRange = {
-          displayType: DisplayType.Line,
+          displayType: DisplayType.Number,
           connection: 'test-connection',
           metricTables: {
             gauge: 'otel_metrics_gauge',
@@ -929,6 +937,14 @@ describe('renderChartConfig', () => {
           querySettings,
         );
         const actual = parameterizedQueryToSql(generatedSql);
+        expect(actual).not.toContain('TimeUnix AS `__hdx_time_bucket`');
+        expect(actual).not.toMatch(
+          /SELECT `__hdx_time_bucket`, "Value" FROM metrics/,
+        );
+        expect(actual).toContain(
+          'WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000))',
+        );
+        expect(actual).not.toContain('toStartOfInterval');
         expect(actual).toMatchSnapshot();
       });
 
