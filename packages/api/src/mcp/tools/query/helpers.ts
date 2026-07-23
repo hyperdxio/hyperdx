@@ -356,7 +356,7 @@ export function assertSourceKindMatchesSelect(
   if (isMetricSource && metricItemCount === 0) {
     return mcpUserError(
       'Source kind is "metric", but no select item specifies metricType + metricName. ' +
-        'Each select item on a metric source must set metricType ("gauge" | "sum" | "histogram") ' +
+        'Each select item on a metric source must set metricType ("gauge" | "sum" | "histogram" | "exponential histogram") ' +
         'and metricName (e.g. metricName:"system.cpu.utilization"). Call ' +
         'clickstack_describe_source or clickstack_list_metrics to discover available metric names.',
     );

@@ -326,22 +326,11 @@ exports[`renderBuilderConfigAsSqlTemplate metric charts (single-series only) gen
         SELECT
           TimeUnix,
           MetricName,
-          ResourceAttributes,
-          Attributes,
           ExplicitBounds,
           attr_hash,
-          any(attr_hash) OVER (
-            ROWS BETWEEN 1 preceding
-            AND 1 preceding
-          ) AS prev_attr_hash,
-          any(bounds_hash) OVER (
-            ROWS BETWEEN 1 preceding
-            AND 1 preceding
-          ) AS prev_bounds_hash,
-          any(counts) OVER (
-            ROWS BETWEEN 1 preceding
-            AND 1 preceding
-          ) AS prev_counts,
+          any(attr_hash) OVER prev_row AS prev_attr_hash,
+          any(bounds_hash) OVER prev_row AS prev_bounds_hash,
+          any(counts) OVER prev_row AS prev_counts,
           counts,
           IF(
             AggregationTemporality = 1
@@ -375,6 +364,13 @@ exports[`renderBuilderConfigAsSqlTemplate metric charts (single-series only) gen
             ORDER BY
               attr_hash,
               TimeUnix ASC
+          )
+        WINDOW
+          prev_row AS (
+            ORDER BY
+              attr_hash,
+              TimeUnix ROWS BETWEEN 1 PRECEDING
+              AND 1 PRECEDING
           )
       )
     GROUP BY

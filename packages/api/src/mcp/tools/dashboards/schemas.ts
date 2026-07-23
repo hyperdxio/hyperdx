@@ -28,8 +28,8 @@ import {
 
 /**
  * Metric type values exposed on dashboard tile select items. Restricted to
- * the three kinds the query renderer can translate today; summary and
- * exponential histogram are intentionally excluded. Imports the shared
+ * the kinds the query renderer can translate today; summary is intentionally
+ * excluded. Imports the shared
  * `QUERYABLE_METRIC_KINDS` source-of-truth tuple from `../sources/metricKinds`.
  */
 const mcpTileMetricTypeSchema = z.enum(QUERYABLE_METRIC_KINDS);
@@ -137,8 +137,8 @@ const mcpTileSelectItemSchema = z
     aggFn: AggregateFunctionSchema.describe(
       'Aggregation function. "count" requires no valueExpression; all others do. ' +
         'METRIC SOURCES: "increase" computes the per-bucket counter increase for Sum metrics ' +
-        '(reset-aware). For Gauges use last_value/avg/min/max. For Histograms use "quantile" ' +
-        'with level or "count".',
+        '(reset-aware). For Gauges use last_value/avg/min/max. For Histograms and ' +
+        'Exponential Histograms use "quantile" with level or "count".',
     ),
     valueExpression: z
       .string()
@@ -170,7 +170,7 @@ const mcpTileSelectItemSchema = z
     level: externalQuantileLevelSchema
       .optional()
       .describe(
-        'Percentile level for aggFn="quantile". REQUIRED for histogram metrics with aggFn:"quantile".',
+        'Percentile level for aggFn="quantile". REQUIRED for histogram and exponential histogram metrics with aggFn:"quantile".',
       ),
     numberFormat: mcpNumberFormatSchema
       .optional()
@@ -178,9 +178,9 @@ const mcpTileSelectItemSchema = z
     metricType: mcpTileMetricTypeSchema
       .optional()
       .describe(
-        'METRIC SOURCES ONLY. OTel metric kind: gauge, sum, or histogram. ' +
+        'METRIC SOURCES ONLY. OTel metric kind: gauge, sum, histogram, or exponential histogram. ' +
           'Required (with metricName) when the tile sourceId is a metric source. ' +
-          'summary and exponential histogram are not supported by the renderer yet.',
+          'summary is not supported by the renderer.',
       ),
     metricName: z
       .string()
@@ -218,7 +218,12 @@ const mcpTileSelectItemSchema = z
         message: issue.message,
       });
     }
-  });
+  })
+  .transform(data =>
+    data.metricType && data.aggFn !== 'count' && !data.valueExpression
+      ? { ...data, valueExpression: 'Value' }
+      : data,
+  );
 
 // ─── OnClick (link-out) schemas for table tiles ──────────────────────────────
 const mcpOnClickFilterTemplateSchema = z
