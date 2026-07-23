@@ -11,7 +11,7 @@ import type { PostRunInspectionResult } from '@/scenarios/types';
 
 import type { BlindingEntry } from './blind';
 import { judgeTrajectory } from './judge';
-import { runProgrammaticChecks } from './programmatic';
+import { runProgrammaticChecks, runTranscriptChecks } from './programmatic';
 import { loadScenarioRubric } from './rubric';
 import {
   COMBINED_SCORE_JUDGE_WEIGHT,
@@ -175,6 +175,9 @@ export async function gradeBatch(
             ? ` (-${(grade.toolErrors.penalty * 100).toFixed(0)}pp)`
             : '')
         : '';
+      const adoptBit = grade.adoption
+        ? `  adopt=${(grade.adoption.score * 100).toFixed(0)}%`
+        : '';
       // Show inspection summary if present.
       const inspBit = grade.inspectionSummary
         ? formatInspectionLogBit(grade.inspectionSummary)
@@ -190,7 +193,7 @@ export async function gradeBatch(
           grade.programmatic.score * 100
         ).toFixed(
           0,
-        )}%  ${judgeBit}  combined=${(grade.combinedScore * 100).toFixed(0)}%${errBit}${inspBit}`,
+        )}%  ${judgeBit}  combined=${(grade.combinedScore * 100).toFixed(0)}%${adoptBit}${errBit}${inspBit}`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -233,6 +236,13 @@ async function gradeOne(args: {
     record.finalAnswer,
     rubric.programmatic,
   );
+
+  // Transcript-aware (adoption) checks. Reported alongside the outcome score
+  // but intentionally EXCLUDED from combinedScore below — measuring tool
+  // usage must not inflate outcome quality.
+  const adoption = rubric.transcript
+    ? runTranscriptChecks(record.toolCalls, rubric.transcript)
+    : undefined;
 
   const toolErrors = computeToolErrorStats(record);
 
@@ -307,6 +317,7 @@ async function gradeOne(args: {
     scenario: record.scenario,
     mcp: record.mcp,
     programmatic,
+    ...(adoption ? { adoption } : {}),
     judge,
     toolErrors,
     inspectionSummary: inspectionResult?.summary,
