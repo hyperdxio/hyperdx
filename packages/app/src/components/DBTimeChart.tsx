@@ -56,6 +56,8 @@ import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator
 /** A single group column / value pair decoded from a chart series key. */
 export type SeriesGroupFilter = { column: string; value: string };
 
+const SINGLE_SERIES_TOOLTIP_THRESHOLD = 10;
+
 // Only one pinned tooltip at a time across all charts. Module-level (not
 // context) because charts can be scattered with no common provider, and their
 // onClick stopPropagation hides cross-chart clicks from Mantine's click-outside.
@@ -771,6 +773,13 @@ function DBTimeChartComponent({
     queriedConfig,
   ]);
 
+  // Past this many series the hover tooltip collapses to just the series under
+  // the cursor: a list of dozens of rows is unreadable and never what the user
+  // is pointing at. Below it, the full sorted list (nearest emphasized) stays
+  // useful.
+  const tooltipMode =
+    lineData.length > SINGLE_SERIES_TOOLTIP_THRESHOLD ? 'single' : 'all';
+
   return (
     <ChartContainer title={title} toolbarItems={toolbarItemsMemo}>
       {isLoading && !data ? (
@@ -829,6 +838,7 @@ function DBTimeChartComponent({
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
+            tooltipMode={tooltipMode}
           />
         </>
       )}

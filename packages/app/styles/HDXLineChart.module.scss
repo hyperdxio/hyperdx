@@ -1,3 +1,4 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- :global() targets recharts' global classes */
 .legend {
   display: flex;
   flex-wrap: wrap;
@@ -62,4 +63,18 @@
 .chartTooltipFooter {
   padding: 6px 12px;
   border-top: 1px solid var(--color-border);
+}
+
+// While a series is emphasized (hovering a line or its legend-table row) fade
+// the other lines so it stands out. Toggling this one class on the container
+// avoids re-rendering every line on the chart. The emphasized line is redrawn
+// by a separate overlay (.hdx-emphasis-overlay) that stays at full opacity.
+.dimOthers {
+  :global(.recharts-area-curve) {
+    opacity: 0.35;
+  }
+
+  :global(.hdx-emphasis-overlay .recharts-area-curve) {
+    opacity: 1;
+  }
 }

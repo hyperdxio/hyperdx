@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import cx from 'classnames';
 import { add, isSameSecond, sub } from 'date-fns';
@@ -63,6 +64,38 @@ const MAX_LEGEND_ITEMS = 4;
 // tooltip is not misleading when the pointer is in empty space.
 const NEAREST_SERIES_MAX_DISTANCE_PX = 30;
 
+type TooltipMode = 'single' | 'all' | 'hidden';
+
+// Shared "series the user is hovering" across synced charts. recharts' syncId
+// only shares the active time bucket, not a series, so a follower chart has no
+// way to know which series to surface, and picking by its own (irrelevant)
+// cursor Y is arbitrary. The hovered chart publishes the display name of the
+// series under its cursor; followers read it to highlight the same series by
+// name, and show no row when they don't have it.
+let sharedHoveredSeriesName: string | undefined;
+const hoveredSeriesSubscribers = new Set<() => void>();
+function setSharedHoveredSeries(name: string | undefined) {
+  if (name === sharedHoveredSeriesName) return;
+  sharedHoveredSeriesName = name;
+  hoveredSeriesSubscribers.forEach(fn => fn());
+}
+function subscribeHoveredSeries(cb: () => void) {
+  hoveredSeriesSubscribers.add(cb);
+  return () => {
+    hoveredSeriesSubscribers.delete(cb);
+  };
+}
+function getHoveredSeriesSnapshot() {
+  return sharedHoveredSeriesName;
+}
+function useSharedHoveredSeries(): string | undefined {
+  return useSyncExternalStore(
+    subscribeHoveredSeries,
+    getHoveredSeriesSnapshot,
+    getHoveredSeriesSnapshot,
+  );
+}
+
 // Gap below the data point for the hover tooltip. Kept equal to the pinned
 // tooltip's Popover `offset` so both land in the same spot.
 const TOOLTIP_POINT_OFFSET_PX = 12;
@@ -117,6 +150,55 @@ export const TooltipItem = memo(
   },
 );
 
+/**
+ * Which rows the hover tooltip renders, given its mode and hover state. Returns
+ * `null` to render nothing (a synced follower with no matching series, where
+ * only the shared time cursor should show).
+ *
+ * - all-series mode (`nearestOnly` false): every series at the hovered time,
+ *   sorted high to low.
+ * - single-series mode on the hovered chart: just the series nearest the cursor
+ *   (`nearestKey`), falling back to the top series by value before an
+ *   active-point Y has been captured.
+ * - single-series mode on a synced follower: the series matching the one the
+ *   user is hovering elsewhere (`crossChartHoveredName`), or nothing if this
+ *   chart has no series by that name.
+ *
+ * Callers pass an already-deduped payload; this sorts a copy because Recharts 3
+ * freezes the payload and an in-place sort throws "this object has been frozen".
+ */
+export function selectTooltipRows({
+  payload,
+  nearestOnly,
+  isChartHovered,
+  nearestKey,
+  crossChartHoveredName,
+}: {
+  payload: TooltipPayload[];
+  nearestOnly: boolean;
+  isChartHovered: boolean;
+  nearestKey?: string;
+  crossChartHoveredName?: string;
+}): TooltipPayload[] | null {
+  const sorted = [...payload].sort((a, b) => b.value - a.value);
+
+  if (!nearestOnly) return sorted;
+
+  if (isChartHovered) {
+    const chosen =
+      (nearestKey != null
+        ? sorted.find(p => p.dataKey === nearestKey)
+        : undefined) ?? sorted[0];
+    return chosen ? [chosen] : [];
+  }
+
+  const matched =
+    crossChartHoveredName != null
+      ? sorted.find(p => p.name === crossChartHoveredName)
+      : undefined;
+  return matched ? [matched] : null;
+}
+
 type HDXLineChartTooltipProps = {
   lineDataMap: { [keyName: string]: LineData };
   previousPeriodOffsetSeconds?: number;
@@ -126,6 +208,21 @@ type HDXLineChartTooltipProps = {
   activePointYByKeyRef: React.MutableRefObject<Map<string, number>>;
   /** The chart's outer container; its viewport rect anchors this tooltip. */
   containerRef: React.MutableRefObject<HTMLDivElement | null>;
+  /** Collapse the tooltip to only the single series nearest the cursor. */
+  nearestOnly?: boolean;
+  /**
+   * Whether the cursor is actually over THIS chart. On synced follower charts
+   * it is false: recharts shows their tooltip for the same time bucket, but the
+   * cursor Y is not meaningful there. Followers instead surface the same series
+   * the user is hovering elsewhere (by name, via `crossChartHoveredName`).
+   */
+  isChartHovered?: boolean;
+  /**
+   * Display name of the series the user is hovering on whichever chart they are
+   * actually over. On synced followers, the matching series (if any) is shown;
+   * if this chart has no series by that name, no row is shown.
+   */
+  crossChartHoveredName?: string;
 } & Record<string, any>;
 
 /**
@@ -149,8 +246,21 @@ const HDXLineChartTooltip = withErrorBoundary(
       previousPeriodOffsetSeconds,
       activePointYByKeyRef,
       containerRef,
+      nearestOnly,
+      isChartHovered,
+      crossChartHoveredName,
     } = props;
-    const typedPayload = payload as TooltipPayload[];
+    // Dedupe by dataKey: the chart adds a stroke-only overlay Area for the
+    // emphasized series (drawn on top), which would otherwise appear twice.
+    const typedPayload = useMemo<TooltipPayload[]>(() => {
+      const raw: TooltipPayload[] = payload ?? [];
+      const seen = new Set<string>();
+      return raw.filter(p => {
+        if (seen.has(p.dataKey)) return false;
+        seen.add(p.dataKey);
+        return true;
+      });
+    }, [payload]);
 
     const tooltipZIndex = useChartTooltipZIndex();
 
@@ -184,6 +294,32 @@ const HDXLineChartTooltip = withErrorBoundary(
             )
           : undefined;
 
+      // When the caller wants a single-series tooltip (dense charts), collapse
+      // to just the row nearest the cursor. Uncapped so there is always exactly
+      // one row even when the pointer sits between lines. Only meaningful when
+      // the cursor is actually over this chart: on synced followers, and before
+      // any active-point Y is captured, fall back to the top-by-value row.
+      const singleSeriesKey =
+        nearestOnly && isChartHovered
+          ? findNearestSeriesKey(
+              activePointYByKey,
+              typedPayload.map(p => p.dataKey),
+              pointerY,
+              Infinity,
+            )
+          : undefined;
+
+      const rows = selectTooltipRows({
+        payload: typedPayload,
+        nearestOnly: !!nearestOnly,
+        isChartHovered: !!isChartHovered,
+        nearestKey: singleSeriesKey,
+        crossChartHoveredName,
+      });
+      // Synced follower with no matching series: render only the shared time
+      // cursor, no box.
+      if (rows == null) return null;
+
       // Anchor at the active point (see the component docblock for why fixed).
       const pointX = props.coordinate?.x;
       const pointY = props.coordinate?.y;
@@ -212,35 +348,33 @@ const HDXLineChartTooltip = withErrorBoundary(
       return (
         <div style={anchorStyle}>
           <ChartTooltipContainer header={header}>
-            {/* Copy before sorting: Recharts 3 freezes the payload, so an
-                in-place sort throws "this object has been frozen". */}
-            {[...payload]
-              .sort((a: TooltipPayload, b: TooltipPayload) => b.value - a.value)
-              .map((p: TooltipPayload) => {
-                const previousKey = lineDataMap[p.dataKey]?.previousPeriodKey;
-                const isPreviousPeriod = previousKey === p.dataKey;
-                const previousPayload =
-                  !isPreviousPeriod && previousKey
-                    ? payloadByKey.get(previousKey)
-                    : undefined;
-                const valueColumnName =
-                  lineDataMap[p.dataKey]?.valueColumnName ?? p.dataKey;
-                const numberFormatForKey =
-                  numberFormatByKey.get(valueColumnName) ?? numberFormat;
+            {rows.map((p: TooltipPayload) => {
+              const previousKey = lineDataMap[p.dataKey]?.previousPeriodKey;
+              const isPreviousPeriod = previousKey === p.dataKey;
+              const previousPayload =
+                !isPreviousPeriod && previousKey
+                  ? payloadByKey.get(previousKey)
+                  : undefined;
+              const valueColumnName =
+                lineDataMap[p.dataKey]?.valueColumnName ?? p.dataKey;
+              const numberFormatForKey =
+                numberFormatByKey.get(valueColumnName) ?? numberFormat;
 
-                return (
-                  <TooltipItem
-                    key={p.dataKey}
-                    p={p}
-                    numberFormat={numberFormatForKey}
-                    previous={previousPayload}
-                    highlighted={p.dataKey === nearestSeriesKey}
-                    dimmed={
-                      nearestSeriesKey != null && p.dataKey !== nearestSeriesKey
-                    }
-                  />
-                );
-              })}
+              return (
+                <TooltipItem
+                  key={p.dataKey}
+                  p={p}
+                  numberFormat={numberFormatForKey}
+                  previous={previousPayload}
+                  highlighted={!nearestOnly && p.dataKey === nearestSeriesKey}
+                  dimmed={
+                    !nearestOnly &&
+                    nearestSeriesKey != null &&
+                    p.dataKey !== nearestSeriesKey
+                  }
+                />
+              );
+            })}
           </ChartTooltipContainer>
         </div>
       );
@@ -642,6 +776,7 @@ export const MemoChart = memo(function MemoChart({
   granularity,
   dateRangeEndInclusive = true,
   fitYAxisToData = false,
+  tooltipMode = 'all',
 }: {
   graphResults: any[];
   setIsClickActive: (v: ActiveClickPayload | undefined) => void;
@@ -675,6 +810,13 @@ export const MemoChart = memo(function MemoChart({
    * (with padding) instead of zero.
    **/
   fitYAxisToData?: boolean;
+  /**
+   * Hover tooltip behavior: `single` shows only the series nearest the cursor
+   * (dense charts), `all` lists every series at the hovered time, `hidden`
+   * suppresses the hover tooltip. The nearest line is still emphasized either
+   * way.
+   */
+  tooltipMode?: TooltipMode;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -707,6 +849,24 @@ export const MemoChart = memo(function MemoChart({
     string | undefined
   >();
 
+  // The name of the series the user is hovering on whichever chart is under the
+  // cursor, shared across synced charts so followers can match it by name.
+  const crossChartHoveredName = useSharedHoveredSeries();
+
+  // Only the hovered chart publishes; on leave it clears the value it set.
+  useEffect(() => {
+    if (!isHovered) return;
+    const ld =
+      nearestSeriesKey != null
+        ? lineData.find(l => l.dataKey === nearestSeriesKey)
+        : undefined;
+    setSharedHoveredSeries(ld ? getSeriesDisplayName(ld) : undefined);
+  }, [isHovered, nearestSeriesKey, lineData]);
+  useEffect(() => {
+    if (!isHovered) return;
+    return () => setSharedHoveredSeries(undefined);
+  }, [isHovered]);
+
   const ChartComponent = useMemo(
     () => (displayType === DisplayType.StackedBar ? BarChart : AreaChart), // LineChart;
     [displayType],
@@ -717,16 +877,26 @@ export const MemoChart = memo(function MemoChart({
     [lineData, selectedSeriesNames],
   );
 
-  const lines = useMemo(() => {
-    // When a series is nearest the cursor (only meaningful with more than one
-    // line shown), thicken its line and fade the others so the eye lands on
-    // the same series the tooltip bolds. Mirrors the legend's selected style
-    // (thicker stroke) with a gentle fade that keeps the rest readable.
-    const hasNearest =
+  // The series to emphasize: the line nearest the cursor. Cheap to recompute;
+  // drives the overlay + the dim-others CSS class only, never the base lines.
+  const emphasizedKey = useMemo(() => {
+    if (
       visibleLineData.length > 1 &&
       nearestSeriesKey != null &&
-      visibleLineData.some(ld => ld.dataKey === nearestSeriesKey);
+      visibleLineData.some(ld => ld.dataKey === nearestSeriesKey)
+    ) {
+      return nearestSeriesKey;
+    }
+    return undefined;
+  }, [visibleLineData, nearestSeriesKey]);
+  const dimOthers = emphasizedKey != null && displayType !== 'stacked_bar';
 
+  // Base lines are deliberately independent of the hovered/emphasized series.
+  // Rebuilding ~150 Area elements on every cursor move (as the nearest series
+  // changes) is the heaviest thing this chart can do, so emphasis lives in a
+  // one-element overlay (below) plus a CSS class that dims the rest. Moving the
+  // cursor then rebuilds one element and toggles one class, not the whole set.
+  const baseLines = useMemo(() => {
     return visibleLineData.map(ld => {
       const key = ld.dataKey;
       const color = ld.color;
@@ -752,10 +922,6 @@ export const MemoChart = memo(function MemoChart({
           type="monotone"
           stroke={color}
           fillOpacity={1}
-          strokeWidth={hasNearest && key === nearestSeriesKey ? 2.5 : undefined}
-          strokeOpacity={
-            hasNearest && key !== nearestSeriesKey ? 0.5 : undefined
-          }
           activeDot={<CaptureActiveDot onCapture={captureActivePointY} />}
           {...(isHovered
             ? { fill: 'none', strokeDasharray }
@@ -769,14 +935,37 @@ export const MemoChart = memo(function MemoChart({
         />
       );
     });
-  }, [
-    visibleLineData,
-    displayType,
-    id,
-    isHovered,
-    nearestSeriesKey,
-    captureActivePointY,
-  ]);
+  }, [visibleLineData, displayType, id, isHovered, captureActivePointY]);
+
+  // The emphasized series redrawn thick and on top. recharts paints graphical
+  // items in mount order and ignores a reorder of existing children, so an
+  // emphasized base line stays hidden behind a line drawn after it; a freshly
+  // mounted overlay registers last and paints in front. The class exempts it
+  // from the dim-others CSS; it carries no fill/dot and is deduped out of the
+  // tooltip. Skipped for stacked bars (they occlude by design).
+  const emphasisOverlay = useMemo(() => {
+    if (emphasizedKey == null || displayType === 'stacked_bar') return null;
+    const ld = visibleLineData.find(l => l.dataKey === emphasizedKey);
+    if (!ld) return null;
+    return (
+      <Area
+        key="__hdx_emphasis_overlay__"
+        className="hdx-emphasis-overlay"
+        dataKey={emphasizedKey}
+        type="monotone"
+        stroke={ld.color}
+        strokeWidth={2.5}
+        strokeOpacity={1}
+        fill="none"
+        dot={false}
+        activeDot={false}
+        isAnimationActive={false}
+        connectNulls
+        legendType="none"
+        name={getSeriesDisplayName(ld)}
+      />
+    );
+  }, [emphasizedKey, visibleLineData, displayType]);
 
   const yAxisDomain: AxisDomain = useMemo(() => {
     const hasSelection = selectedSeriesNames && selectedSeriesNames.size > 0;
@@ -1029,6 +1218,7 @@ export const MemoChart = memo(function MemoChart({
   return (
     <div
       ref={containerRef}
+      className={cx({ [styles.dimOthers]: dimOthers })}
       style={{ position: 'relative', width: '100%', height: '100%' }}
     >
       {onTimeRangeSelect != null && zoomOrigin != null ? (
@@ -1113,7 +1303,14 @@ export const MemoChart = memo(function MemoChart({
                     activePointYByKey,
                     Array.from(activePointYByKey.keys()),
                     chartY,
-                    NEAREST_SERIES_MAX_DISTANCE_PX,
+                    // Single-series tooltip always names one series, so bold that
+                    // same line (uncapped) instead of only within 30px, which
+                    // left the named series un-bolded when the cursor sat between
+                    // lines. All-series mode keeps the 30px cap so empty space
+                    // emphasizes nothing.
+                    tooltipMode === 'single'
+                      ? Infinity
+                      : NEAREST_SERIES_MAX_DISTANCE_PX,
                   )
                 : undefined;
             setNearestSeriesKey(prev =>
@@ -1266,12 +1463,13 @@ export const MemoChart = memo(function MemoChart({
             tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
             domain={yAxisDomain}
           />
-          {lines}
+          {baseLines}
+          {emphasisOverlay}
           {/* HOVER tooltip (also drives cross-chart shadow tooltips via syncId).
               Hidden once a point is clicked, where the pinned tooltip takes over.
               Portaled to body so HDXLineChartTooltip can self-position (see its
               docblock) and escape the chart's bounds near an edge. */}
-          {isClickActive == null && (
+          {isClickActive == null && tooltipMode !== 'hidden' && (
             <Tooltip
               content={
                 <HDXLineChartTooltip
@@ -1281,6 +1479,9 @@ export const MemoChart = memo(function MemoChart({
                   previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
                   activePointYByKeyRef={activePointYByKeyRef}
                   containerRef={containerRef}
+                  nearestOnly={tooltipMode === 'single'}
+                  isChartHovered={isHovered}
+                  crossChartHoveredName={crossChartHoveredName}
                 />
               }
               portal={typeof document !== 'undefined' ? document.body : null}
