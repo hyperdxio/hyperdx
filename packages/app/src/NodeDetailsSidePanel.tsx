@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { TLogSource, TMetricSource } from '@hyperdx/common-utils/dist/types';
 import {
   Badge,
@@ -16,6 +15,7 @@ import {
 import { IsolatedChartSyncProvider } from '@/chartSync';
 import {
   convertV1ChartConfigToV2,
+  inferMetricChartGranularity,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from '@/ChartUtils';
@@ -372,8 +372,10 @@ export default function NodeDetailsSidePanel({
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity:
-                              convertDateRangeToGranularityString(dateRange),
+                            granularity: inferMetricChartGranularity(
+                              metricSource,
+                              dateRange,
+                            ),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -406,8 +408,10 @@ export default function NodeDetailsSidePanel({
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity:
-                              convertDateRangeToGranularityString(dateRange),
+                            granularity: inferMetricChartGranularity(
+                              metricSource,
+                              dateRange,
+                            ),
                             seriesReturnType: 'column',
                             series: [
                               {

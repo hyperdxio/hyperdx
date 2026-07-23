@@ -8,6 +8,15 @@ import NumberTileBackgroundChart, {
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useSource } from '@/source';
 
+jest.mock('@/hooks/useFetchMetricMetadata', () => ({
+  // Scrape-interval estimate for metrics granularity snapping — plain
+  // useQuery inside, so it needs a mock without a QueryClientProvider.
+  useMetricScrapeIntervalSnap: jest.fn(() => ({
+    data: undefined,
+    isLoading: false,
+  })),
+}));
+
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
 }));

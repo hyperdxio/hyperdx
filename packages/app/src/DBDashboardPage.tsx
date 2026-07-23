@@ -25,6 +25,7 @@ import RGL, { WidthProvider } from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  convertDateRangeToGranularityString,
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsPromQLAlerts,
@@ -525,7 +526,14 @@ const Tile = forwardRef(
             from: source.from,
             connection: source.connection,
             dateRange,
-            granularity,
+            // PromQL steps have no auto resolution downstream (a missing
+            // granularity falls back to a hardcoded 60s step) — resolve
+            // Auto to the ladder here. The metrics-v2 snap doesn't apply
+            // to PromQL configs.
+            granularity:
+              granularity != null && granularity !== 'auto'
+                ? granularity
+                : convertDateRangeToGranularityString(dateRange),
           });
         }
         return;
@@ -2131,7 +2139,17 @@ function DBDashboardPage({ presetConfig }: { presetConfig?: Dashboard }) {
           dateRange={searchedTimeRange}
           onEditClick={() => setEditedTile(chart)}
           granularity={
-            isRefreshEnabled ? granularityOverride : (granularity ?? undefined)
+            // Live mode used to substitute the 60-bucket ladder value for
+            // Auto — an EXPLICIT granularity that bypassed the metrics-v2
+            // scrape-interval snap (and the translator snap), so every
+            // refresh tick re-issued sub-scrape-interval buckets. Auto now
+            // flows through so each tile resolves + snaps itself (static
+            // mode always did); granularityOverride still paces the
+            // refresh timer, and an explicit user pick keeps the old
+            // override behavior.
+            isRefreshEnabled && granularity != null && granularity !== 'auto'
+              ? granularityOverride
+              : (granularity ?? undefined)
           }
           filters={[
             {

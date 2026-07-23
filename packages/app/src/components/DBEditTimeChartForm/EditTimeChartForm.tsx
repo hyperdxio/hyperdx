@@ -12,6 +12,7 @@ import {
   convertGranularityToSeconds,
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
+  SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -258,7 +259,12 @@ export default function EditTimeChartForm({
         ? tableSource.metricTables
         : undefined,
     metrics: Array.isArray(series) ? series : [],
-    enabled: isV2MetricSource && isForcedGranularity,
+    dateRange,
+    // warning rides the estimate-driven snap flag — off with it
+    enabled:
+      SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED &&
+      isV2MetricSource &&
+      isForcedGranularity,
   });
   const granularityWarning = useMemo(() => {
     if (

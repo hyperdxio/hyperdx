@@ -3011,10 +3011,10 @@ describe('utils', () => {
       new Date('2025-02-01T00:00:00Z'),
       new Date(Date.parse('2025-02-01T00:00:00Z') + hours * 3600_000),
     ];
-    it('floors at 30s, skips 10m/30m, and walks the coarse rungs', () => {
-      expect(convertDateRangeToGranularityString(range(0.05))).toBe(
-        '30 second',
-      );
+    it('floors at 1 minute, skips 10m/30m, and walks the coarse rungs', () => {
+      // sub-minute buckets sample rotating series subsets on 10-60s-scraped
+      // metrics — auto never goes below 1 minute (finer stays selectable)
+      expect(convertDateRangeToGranularityString(range(0.05))).toBe('1 minute');
       expect(convertDateRangeToGranularityString(range(1))).toBe('1 minute');
       expect(convertDateRangeToGranularityString(range(5))).toBe('5 minute');
       expect(convertDateRangeToGranularityString(range(15))).toBe('15 minute');

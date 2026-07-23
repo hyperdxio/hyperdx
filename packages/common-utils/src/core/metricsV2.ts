@@ -949,14 +949,19 @@ const cumulativeExpCtes = ({
         any(tpl) OVER w AS prev_tpl,
         any(toNullable(zero_count)) OVER w AS prev_zero,
         any(toNullable(total_count)) OVER w AS prev_total,
+        ${'' /* first sample emits 0 (canonical rule: a newly-born series' cumulative history is NOT an increase); ONLY a genuine reset (count decrease) credits the full current value. Empty-map arm must match expTupleToMap's Map(Int64, Int64) exactly or the IF arms collapse into a Variant. */}
         IF(
-          prev_total IS NULL OR total_count < prev_total, ${'' /* first point in window, or reset */}
-          ${expTupleToMap('tpl')},
-          mapSubtract(${expTupleToMap('tpl')}, ${expTupleToMap('prev_tpl')})
+          prev_total IS NULL,
+          CAST(map(), 'Map(Int64, Int64)'),
+          IF(
+            total_count < prev_total,
+            ${expTupleToMap('tpl')},
+            mapSubtract(${expTupleToMap('tpl')}, ${expTupleToMap('prev_tpl')})
+          )
         ) AS pos_if_cum,
-        IF(
-          prev_total IS NULL OR total_count < prev_total,
-          zero_count,
+        multiIf(
+          prev_total IS NULL, toInt64(0),
+          total_count < prev_total, zero_count,
           zero_count - prev_zero
         ) AS zero_if_cum
       FROM (
@@ -1017,14 +1022,19 @@ const dualExpCtes = ({
         any(posMap) OVER w AS prev_posMap,
         any(toNullable(zero_count)) OVER w AS prev_zero,
         any(toNullable(total_count)) OVER w AS prev_total,
+        ${'' /* first sample emits 0; only a genuine reset credits the full current map (see cumulativeExpCtes) */}
         IF(
-          prev_total IS NULL OR total_count < prev_total, ${'' /* first point in window, or reset */}
-          posMap,
-          mapSubtract(posMap, prev_posMap)
+          prev_total IS NULL,
+          CAST(map(), 'Map(Int64, Int64)'),
+          IF(
+            total_count < prev_total,
+            posMap,
+            mapSubtract(posMap, prev_posMap)
+          )
         ) AS pos_if_cum,
-        IF(
-          prev_total IS NULL OR total_count < prev_total,
-          zero_count,
+        multiIf(
+          prev_total IS NULL, toInt64(0),
+          total_count < prev_total, zero_count,
           zero_count - prev_zero
         ) AS zero_if_cum
       FROM (
@@ -1824,11 +1834,15 @@ const histogramQuantileCtesV2 = ({
           ORDER BY TimeUnix
           ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
         ) AS prev_counts,
+        ${'' /* first sample emits zeros (a newly-born series' cumulative history is NOT an increase); only a genuine reset (a per-le count went down) credits the full current counts. Same-length zeros array keeps all arms Array(Int64) with no CAST. */}
         IF(
-          length(prev_counts) = 0 ${'' /* first point of the series in the scan window */}
-            OR arrayExists((x) -> x.2 < x.1, arrayZip(prev_counts, counts)), ${'' /* a bucket count went down: counter reset */}
-          counts,
-          counts - prev_counts
+          length(prev_counts) = 0,
+          arrayMap(x -> toInt64(0), counts),
+          IF(
+            arrayExists((x) -> x.2 < x.1, arrayZip(prev_counts, counts)),
+            counts,
+            counts - prev_counts
+          )
         ) AS cum_deltas`
             : ''
         }

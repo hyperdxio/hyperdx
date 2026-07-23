@@ -390,12 +390,14 @@ export function convertDateRangeToGranularityString(
   const diffSeconds = Math.floor((end - start) / 1000);
   const granularitySizeSeconds = Math.ceil(diffSeconds / maxNumBuckets);
 
-  if (granularitySizeSeconds <= 30) {
-    // Auto never goes below 30s buckets (sub-30s stays selectable per
-    // chart): most scrape intervals are 10-60s, so finer auto buckets just
-    // render gap-toothed charts and pin metrics queries to raw points.
-    return Granularity.ThirtySecond;
-  } else if (granularitySizeSeconds <= 60) {
+  if (granularitySizeSeconds <= 60) {
+    // Auto never goes below 1-minute buckets (finer stays selectable per
+    // chart): most scrape intervals are 10-60s, so sub-minute auto buckets
+    // sample rotating series subsets (square-wave charts) and pin metrics
+    // queries to raw points. This static floor replaced the estimator-
+    // driven per-metric snap as the default — see
+    // SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED to restore the snap for
+    // metrics scraped at intervals ABOVE 60s.
     return Granularity.OneMinute;
   } else if (granularitySizeSeconds <= 5 * 60) {
     return Granularity.FiveMinute;
@@ -440,6 +442,20 @@ export interface MetricScrapeIntervalEstimate {
   maxIntervalSeconds: number;
   uncertain: boolean;
 }
+
+/**
+ * Estimate-driven display-granularity snapping (scrape-interval probe →
+ * snap auto buckets to a clean multiple of the metric's interval).
+ * DISABLED: the static 60s auto-ladder floor covers every metric scraped
+ * at ≤60s intervals — the overwhelming majority — without any estimator
+ * query or query gating; metrics scraped at >60s intervals (e.g. 5m
+ * CloudWatch exports) can alias until this is re-enabled. Flipping this
+ * back on restores the per-metric snap in the translator, DBTimeChart,
+ * the number-tile sparkline, and the forced-granularity editor warning.
+ * The scrape-interval estimator itself STAYS in use for rate-chain
+ * lookback padding (first-bucket correctness) regardless of this flag.
+ */
+export const SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED = false;
 
 // Clean display-bucket steps a snapped granularity may land on. Snapping
 // stops at 10 minutes: real scrape intervals top out around 5m, so a larger
@@ -502,11 +518,13 @@ export function metricMinDisplayBucketSeconds(
   );
 }
 
-/** Seconds → SQLInterval string for the snap steps ('30 second', '2 minute'). */
+/** Seconds → SQLInterval string ('30 second', '2 minute', '1 hour'). */
 export function granularitySecondsToSQLInterval(seconds: number): SQLInterval {
-  return seconds % 60 === 0
-    ? (`${seconds / 60} minute` as SQLInterval)
-    : (`${seconds} second` as SQLInterval);
+  return seconds % 3600 === 0
+    ? (`${seconds / 3600} hour` as SQLInterval)
+    : seconds % 60 === 0
+      ? (`${seconds / 60} minute` as SQLInterval)
+      : (`${seconds} second` as SQLInterval);
 }
 
 /**

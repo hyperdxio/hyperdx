@@ -27,6 +27,7 @@ import {
   optimizeTimestampValueExpression,
   parseToStartOfFunction,
   pickBucketTimestampColumn,
+  SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED,
   snapDisplayGranularity,
   splitAndTrimWithBracket,
 } from '@/core/utils';
@@ -2663,11 +2664,16 @@ async function translateMetricChartConfigV2(
     Array.isArray(chartConfig.dateRange);
   // Auto-granularity snapping consumes the same day-cached estimate the
   // lookback padding does (one fetch, shared cache key). Template mode
-  // never snaps: the bucket late-binds to $__timeInterval.
-  const wantsAutoSnap =
+  // never resolves auto: the bucket late-binds to $__timeInterval.
+  // Estimate-driven snapping is currently DISABLED (the 60s auto-ladder
+  // floor covers ≤60s scrape intervals statically) — see
+  // SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED in core/utils.
+  const autoResolvable =
     effectiveGranularity === 'auto' &&
     Array.isArray(chartConfig.dateRange) &&
     !chartConfig.isRenderingRawSqlTemplate;
+  const wantsAutoSnap =
+    autoResolvable && SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED;
   const scrapeIntervalEstimate =
     needsLookback || wantsAutoSnap
       ? await metadata.getMetricScrapeIntervalEstimate({
@@ -2678,6 +2684,14 @@ async function translateMetricChartConfigV2(
             metricNameSql,
           ),
           connectionId: chartConfig.connection,
+          // template renders carry a SENTINEL dateRange (epoch) — anchoring
+          // the sample there returns an always-empty probe and degrades the
+          // baked lookback to the 300s fallback
+          dateRange:
+            Array.isArray(chartConfig.dateRange) &&
+            !chartConfig.isRenderingRawSqlTemplate
+              ? chartConfig.dateRange
+              : undefined,
         })
       : undefined;
 
@@ -2688,7 +2702,7 @@ async function translateMetricChartConfigV2(
   // and path; the snapped value drives bucketing, tier routing, the rate
   // divisor, and scan widening below. Explicit granularities are never
   // rewritten (the UI warns instead).
-  const resolvedInterval =
+  const snappedAutoInterval =
     effectiveGranularity === 'auto' && Array.isArray(chartConfig.dateRange)
       ? wantsAutoSnap
         ? snapDisplayGranularity(
@@ -2696,7 +2710,8 @@ async function translateMetricChartConfigV2(
             scrapeIntervalEstimate,
           )
         : convertDateRangeToGranularityString(chartConfig.dateRange)
-      : chartConfig.granularity;
+      : undefined;
+  const resolvedInterval = snappedAutoInterval ?? chartConfig.granularity;
   const intervalSeconds = resolvedInterval
     ? convertGranularityToSeconds(resolvedInterval)
     : 0;
@@ -2779,12 +2794,22 @@ async function translateMetricChartConfigV2(
   }
 
   const MAX_SCAN_LOOKBACK_SECONDS = 6 * 60 * 60;
+  // A bare 2× pad has ZERO margin at the two-interval boundary when the
+  // estimate lands on a round number (exactly 120s for a 60s scrape): a
+  // baseline sample at start−120.3s (one missed scrape + timestamp jitter)
+  // is excluded and the first bucket's increase drops. V1_QUERY_PARITY §2:
+  // pad by interval + jitter margin — 121s-class for a 60s scrape. The
+  // margin lives HERE (not in the shared emission ceil, which also serves
+  // the rollup branch): ceil(2×59.6)+1 must yield 121, not 2×60+1.
+  const SCAN_LOOKBACK_JITTER_MARGIN_SECONDS = 1;
   const scanLookbackSeconds = !needsLookback
     ? undefined
     : Math.min(
         MAX_SCAN_LOOKBACK_SECONDS,
         rollupTable
-          ? Math.max(
+          ? // rollup scans bound the toStartOfInterval-quantized TimeBucket —
+            // grid points carry no jitter, so no margin needed here
+            Math.max(
               tierSeconds ?? 300,
               scrapeIntervalEstimate?.intervalSeconds
                 ? 2 * scrapeIntervalEstimate.intervalSeconds
@@ -2792,7 +2817,8 @@ async function translateMetricChartConfigV2(
             )
           : Math.max(
               scrapeIntervalEstimate?.intervalSeconds
-                ? 2 * scrapeIntervalEstimate.intervalSeconds
+                ? Math.ceil(2 * scrapeIntervalEstimate.intervalSeconds) +
+                    SCAN_LOOKBACK_JITTER_MARGIN_SECONDS
                 : 300,
               intervalSeconds || 0,
             ),
@@ -2947,6 +2973,11 @@ async function translateMetricChartConfigV2(
             metricNameSql,
           ),
           connectionId: chartConfig.connection,
+          dateRange:
+            Array.isArray(chartConfig.dateRange) &&
+            !chartConfig.isRenderingRawSqlTemplate
+              ? chartConfig.dateRange
+              : undefined,
         }));
       const intervalS = summaryScrapeInterval?.intervalSeconds || 30;
       const estRows = (seriesCount * (windowMs / 1000)) / intervalS;

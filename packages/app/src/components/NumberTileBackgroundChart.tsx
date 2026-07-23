@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
+import { SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   BackgroundChart,
@@ -7,16 +8,19 @@ import {
   ChartPaletteToken,
   DisplayType,
   isMetricsV2Tables,
+  MetricsDataType,
   resolveChartPaletteToken,
 } from '@hyperdx/common-utils/dist/types';
 
 import {
+  applyMetricGranularitySnap,
   convertToTimeChartConfig,
   formatResponseForTimeChart,
   shouldFillNullsWithZero,
   useTimeChartSettings,
 } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useMetricScrapeIntervalSnap } from '@/hooks/useFetchMetricMetadata';
 import { useSource } from '@/source';
 import { getColorFromCSSToken } from '@/utils';
 
@@ -98,7 +102,58 @@ function NumberTileBackgroundChartInner({
   config: ChartConfigWithDateRange;
   backgroundChart: BackgroundChart;
 }) {
-  const timeConfig = useMemo(() => buildSparklineTimeConfig(config), [config]);
+  const baseTimeConfig = useMemo(
+    () => buildSparklineTimeConfig(config),
+    [config],
+  );
+
+  // Metrics v2: mirror DBTimeChart's scrape-interval snap — the sparkline
+  // resolves Auto to an explicit ladder value below, which would otherwise
+  // bypass both snap layers (population square-wave). Explicit tile
+  // granularities are respected: no fetch, no gating.
+  const sparkMetricTables =
+    'metricTables' in baseTimeConfig ? baseTimeConfig.metricTables : undefined;
+  const isV2MetricConfig = isMetricsV2Tables(sparkMetricTables);
+  const sparkSelect = useMemo(
+    () =>
+      isBuilderChartConfig(baseTimeConfig) &&
+      Array.isArray(baseTimeConfig.select)
+        ? (baseTimeConfig.select as {
+            metricType?: MetricsDataType;
+            metricName?: string;
+            aggFn?: string;
+          }[])
+        : [],
+    [baseTimeConfig],
+  );
+  // Estimate-driven snapping is DISABLED (1m auto-ladder floor covers ≤60s
+  // scrapes) — see SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED.
+  const wantsSnap =
+    SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED &&
+    isV2MetricConfig &&
+    (baseTimeConfig.granularity == null ||
+      baseTimeConfig.granularity === 'auto');
+  const { data: scrapeSnap, isLoading: isSnapLoading } =
+    useMetricScrapeIntervalSnap({
+      databaseName: baseTimeConfig.from?.databaseName,
+      connection: baseTimeConfig.connection,
+      metricTables: sparkMetricTables,
+      metrics: sparkSelect,
+      dateRange: Array.isArray(baseTimeConfig.dateRange)
+        ? baseTimeConfig.dateRange
+        : undefined,
+      enabled: wantsSnap,
+    });
+  const timeConfig = useMemo(
+    () =>
+      wantsSnap
+        ? applyMetricGranularitySnap(
+            baseTimeConfig,
+            scrapeSnap?.minBucketSeconds,
+          )
+        : baseTimeConfig,
+    [wantsSnap, baseTimeConfig, scrapeSnap?.minBucketSeconds],
+  );
 
   const { dateRange, granularity, fillNulls } =
     useTimeChartSettings(timeConfig);
@@ -110,6 +165,7 @@ function NumberTileBackgroundChartInner({
   const { data } = useQueriedChartConfig(queriedConfig, {
     placeholderData: prev => prev,
     queryKey: ['number-tile-background', queriedConfig],
+    enabled: !(wantsSnap && isSnapLoading),
   });
 
   const { data: source } = useSource({ id: config.source });

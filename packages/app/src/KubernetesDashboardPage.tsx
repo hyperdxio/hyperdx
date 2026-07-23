@@ -7,7 +7,6 @@ import cx from 'classnames';
 import sub from 'date-fns/sub';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isLogSource,
   isMetricSource,
@@ -60,6 +59,7 @@ import { useJsonColumns } from './hooks/useMetadata';
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import {
   convertV1ChartConfigToV2,
+  inferMetricChartGranularity,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
@@ -1399,8 +1399,10 @@ function KubernetesDashboardPage() {
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity:
-                              convertDateRangeToGranularityString(dateRange),
+                            granularity: inferMetricChartGranularity(
+                              metricSource,
+                              dateRange,
+                            ),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1434,8 +1436,10 @@ function KubernetesDashboardPage() {
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity:
-                              convertDateRangeToGranularityString(dateRange),
+                            granularity: inferMetricChartGranularity(
+                              metricSource,
+                              dateRange,
+                            ),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1543,8 +1547,10 @@ function KubernetesDashboardPage() {
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity:
-                              convertDateRangeToGranularityString(dateRange),
+                            granularity: inferMetricChartGranularity(
+                              metricSource,
+                              dateRange,
+                            ),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1578,8 +1584,10 @@ function KubernetesDashboardPage() {
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity:
-                              convertDateRangeToGranularityString(dateRange),
+                            granularity: inferMetricChartGranularity(
+                              metricSource,
+                              dateRange,
+                            ),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1626,8 +1634,10 @@ function KubernetesDashboardPage() {
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity:
-                              convertDateRangeToGranularityString(dateRange),
+                            granularity: inferMetricChartGranularity(
+                              metricSource,
+                              dateRange,
+                            ),
                             seriesReturnType: 'column',
                             series: [
                               {
@@ -1661,8 +1671,10 @@ function KubernetesDashboardPage() {
                         config={convertV1ChartConfigToV2(
                           {
                             dateRange,
-                            granularity:
-                              convertDateRangeToGranularityString(dateRange),
+                            granularity: inferMetricChartGranularity(
+                              metricSource,
+                              dateRange,
+                            ),
                             seriesReturnType: 'column',
                             series: [
                               {

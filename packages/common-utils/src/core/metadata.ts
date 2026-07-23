@@ -94,20 +94,94 @@ const renderJsonStringSubcolumn = (
   return `${columnIdentifier}.${path}${JSON_STRING_TYPE_SUFFIX}`;
 };
 
+/**
+ * Optional synchronous key-value store backing select MetadataCache entries
+ * across page loads (browser: localStorage). Day-keyed metadata like the
+ * scrape-interval estimate is stable for a day by definition, but the
+ * in-memory cache dies with every page reload / tab / dev rebuild — each
+ * fresh realm re-ran the estimator (observed: 7 runs in 13 minutes for one
+ * metric). Node processes (API server, alert tasks, MCP) pass nothing and
+ * keep pure in-memory behavior.
+ */
+export interface PersistentKV {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+  keys(): string[];
+}
+
+const PERSIST_PREFIX = 'hdx.mdcache.v1.';
+
 export class MetadataCache {
   private cache = new Map<string, any>();
   private pendingQueries = new Map<string, Promise<any>>();
+  private persistentSwept = false;
+
+  constructor(private persistent?: PersistentKV) {}
 
   // this should be getOrUpdate... or just query to follow react query
   get<T>(key: string): T | undefined {
     return this.cache.get(key);
   }
 
-  async getOrFetch<T>(key: string, query: () => Promise<T>): Promise<T> {
+  /** Drop stale persisted entries once per realm (entries are ~100B JSON;
+   * keep-today bounds growth to one day of metrics). Never throws. */
+  private sweepPersistent(today: string) {
+    if (this.persistentSwept || !this.persistent) return;
+    this.persistentSwept = true;
+    try {
+      for (const key of this.persistent.keys()) {
+        if (!key.startsWith(PERSIST_PREFIX)) continue;
+        try {
+          const envelope = JSON.parse(this.persistent.getItem(key) ?? '');
+          if (envelope?.d !== today) {
+            this.persistent.removeItem(key);
+          }
+        } catch {
+          this.persistent.removeItem(key);
+        }
+      }
+    } catch {
+      // storage unavailable — in-memory behavior only
+    }
+  }
+
+  async getOrFetch<T>(
+    key: string,
+    query: () => Promise<T>,
+    opts?: {
+      /** Persist the (non-null) result across realms until this day (an
+       * ISO yyyy-mm-dd) rolls over. Only for values that are stable for a
+       * day by construction — undefined results are never persisted, so
+       * failed lookups stay retryable. */
+      persistDay?: string;
+      /** Additional predicate on the fetched result — sentinel values
+       * (e.g. a 0-estimate from a transient ingest gap) should stay
+       * in-memory-only so a reload can recover. */
+      persistIf?: (result: NonNullable<T>) => boolean;
+    },
+  ): Promise<T> {
     // Check if value exists in cache
     const cachedValue: T | undefined = this.cache.get(key);
     if (cachedValue != null) {
       return cachedValue;
+    }
+
+    // Persistent read-through for day-stable entries
+    if (opts?.persistDay && this.persistent) {
+      this.sweepPersistent(opts.persistDay);
+      try {
+        const raw = this.persistent.getItem(`${PERSIST_PREFIX}${key}`);
+        if (raw != null) {
+          const envelope: { d?: string; v?: T } = JSON.parse(raw);
+          if (envelope?.d === opts.persistDay && envelope.v != null) {
+            this.cache.set(key, envelope.v);
+            return envelope.v;
+          }
+        }
+      } catch {
+        // corrupted / unavailable storage — fall through to the query
+      }
     }
 
     // Check if there is a pending query
@@ -124,6 +198,21 @@ export class MetadataCache {
     try {
       const result = await queryPromise;
       this.cache.set(key, result);
+      if (
+        opts?.persistDay &&
+        this.persistent &&
+        result != null &&
+        (opts.persistIf?.(result) ?? true)
+      ) {
+        try {
+          this.persistent.setItem(
+            `${PERSIST_PREFIX}${key}`,
+            JSON.stringify({ d: opts.persistDay, v: result }),
+          );
+        } catch {
+          // quota / private mode — in-memory result still returned
+        }
+      }
       return result;
     } finally {
       // Clean up the pending query map
@@ -1250,13 +1339,32 @@ export class Metadata {
     tableName,
     metricNameCondition,
     connectionId,
+    dateRange,
   }: {
     metricNameCondition: string;
+    /** Panel window; historical windows anchor the sample at the window
+     * end. Without it, a session analyzing old data (or a metric that
+     * stopped emitting) 0-sentinels — no raw points in the LAST 6h — and
+     * disables snapping + lookback sizing for the whole day. */
+    dateRange?: [Date, Date];
   } & TableConnection): Promise<MetricScrapeIntervalEstimate | undefined> {
     const day = new Date().toISOString().slice(0, 10);
-    const cacheKey = `${connectionId}.${databaseName}.${tableName}.${metricNameCondition}.${day}.scrapeInterval`;
-    return this.cache.getOrFetch(cacheKey, async () => {
-      const sql = chSql`
+    // Live panels (window end within 6h of now) share one 'live' entry so
+    // sliding refresh windows don't fragment the cache; historical windows
+    // key by their end day.
+    const endMs = dateRange ? dateRange[1].getTime() : Date.now();
+    const isLive = Date.now() - endMs < 6 * 3600_000;
+    const anchorKey = isLive
+      ? 'live'
+      : new Date(endMs).toISOString().slice(0, 10);
+    const cacheKey = `${connectionId}.${databaseName}.${tableName}.${metricNameCondition}.${day}.${anchorKey}.scrapeInterval`;
+    return this.cache.getOrFetch(
+      cacheKey,
+      async () => {
+        const sampleBound = isLive
+          ? chSql`TimeUnix >= now() - INTERVAL 6 HOUR`
+          : chSql`TimeUnix <= fromUnixTimestamp64Milli(${{ Int64: endMs }}) AND TimeUnix >= fromUnixTimestamp64Milli(${{ Int64: endMs }}) - INTERVAL 6 HOUR`;
+        const sql = chSql`
         SELECT quantile(0.5)(iv) AS interval_s, max(iv) AS max_interval_s
         FROM (
           SELECT
@@ -1266,49 +1374,64 @@ export class Metadata {
             SELECT SeriesHash, toUnixTimestamp64Milli(TimeUnix) AS t
             FROM ${tableExpr({ database: databaseName, table: tableName })}
             WHERE (${{ UNSAFE_RAW_SQL: metricNameCondition }})
-              AND TimeUnix >= now() - INTERVAL 6 HOUR
+              AND ${sampleBound}
             LIMIT 3000
           )
           GROUP BY SeriesHash
           HAVING count() >= 3
         )
       `;
-      try {
-        const json = await this.clickhouseClient
-          .query<'JSON'>({
-            connectionId,
-            query: sql.sql,
-            query_params: sql.params,
-            clickhouse_settings: {
-              ...this.getClickHouseSettings(),
-              max_threads: 1,
-            },
-          })
-          .then(res =>
-            res.json<{
-              interval_s: string | number | null;
-              max_interval_s: string | number | null;
-            }>(),
-          );
-        const interval = Number(json.data[0]?.interval_s);
-        const maxInterval = Number(json.data[0]?.max_interval_s);
-        if (!Number.isFinite(interval) || interval <= 0) {
-          return { intervalSeconds: 0, maxIntervalSeconds: 0, uncertain: true };
+        try {
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query: sql.sql,
+              query_params: sql.params,
+              clickhouse_settings: {
+                ...this.getClickHouseSettings(),
+                max_threads: 1,
+              },
+            })
+            .then(res =>
+              res.json<{
+                interval_s: string | number | null;
+                max_interval_s: string | number | null;
+              }>(),
+            );
+          const interval = Number(json.data[0]?.interval_s);
+          const maxInterval = Number(json.data[0]?.max_interval_s);
+          if (!Number.isFinite(interval) || interval <= 0) {
+            return {
+              intervalSeconds: 0,
+              maxIntervalSeconds: 0,
+              uncertain: true,
+            };
+          }
+          const maxIntervalSeconds =
+            Number.isFinite(maxInterval) && maxInterval > 0
+              ? maxInterval
+              : interval;
+          return {
+            intervalSeconds: interval,
+            maxIntervalSeconds,
+            uncertain: maxIntervalSeconds > interval * 1.25,
+          };
+        } catch (e) {
+          console.warn('Failed to estimate metric scrape interval', e);
+          return undefined;
         }
-        const maxIntervalSeconds =
-          Number.isFinite(maxInterval) && maxInterval > 0
-            ? maxInterval
-            : interval;
-        return {
-          intervalSeconds: interval,
-          maxIntervalSeconds,
-          uncertain: maxIntervalSeconds > interval * 1.25,
-        };
-      } catch (e) {
-        console.warn('Failed to estimate metric scrape interval', e);
-        return undefined;
-      }
-    });
+      },
+      // day-stable by construction — survive page reloads (browser realms
+      // re-ran this estimator on every reload/tab/dev rebuild). The
+      // 0-sentinel (transient ingest gap / tier-only metric) stays
+      // in-memory only so a reload can recover; local-mode entries are
+      // never persisted (connectionId 'local' spans different servers
+      // across tabs/sessions).
+      {
+        persistDay: connectionId === 'local' ? undefined : day,
+        persistIf: result => result.intervalSeconds > 0,
+      },
+    );
   }
 
   /**
@@ -2351,7 +2474,30 @@ export function tcFromSource(source?: TSource): TableConnection {
   };
 }
 
-const __LOCAL_CACHE__ = new MetadataCache();
+/** localStorage-backed PersistentKV for the browser; undefined in Node (API
+ * server, alert tasks, MCP) and when storage is unusable (Safari private
+ * mode throws on setItem) — those realms keep pure in-memory caching.
+ * Exported for tests. */
+export const makeLocalStorageKV = (): PersistentKV | undefined => {
+  try {
+    if (typeof window === 'undefined' || window.localStorage == null) {
+      return undefined;
+    }
+    const probeKey = 'hdx.mdcache.v1.__probe__';
+    window.localStorage.setItem(probeKey, '1');
+    window.localStorage.removeItem(probeKey);
+    return {
+      getItem: k => window.localStorage.getItem(k),
+      setItem: (k, v) => window.localStorage.setItem(k, v),
+      removeItem: k => window.localStorage.removeItem(k),
+      keys: () => Object.keys(window.localStorage),
+    };
+  } catch {
+    return undefined;
+  }
+};
+
+const __LOCAL_CACHE__ = new MetadataCache(makeLocalStorageKV());
 
 // TODO: better to init the Metadata object on the client side
 // also the client should be able to choose the cache strategy

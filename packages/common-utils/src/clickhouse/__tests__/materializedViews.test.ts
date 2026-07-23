@@ -806,6 +806,8 @@ describe('materializedViews', () => {
     });
 
     it('should return errors if no granularity is specified but the date range is too short for the MV granularity', async () => {
+      // The auto ladder floors at 1 minute, so a 1m MV is always reachable
+      // from auto — a coarser MV exercises the too-short error instead.
       const chartConfig: ChartConfigWithOptDateRange = {
         from: {
           databaseName: 'default',
@@ -827,7 +829,7 @@ describe('materializedViews', () => {
 
       const result = await tryConvertConfigToMaterializedViewSelect(
         chartConfig,
-        MV_CONFIG_METRIC_ROLLUP_1M,
+        { ...MV_CONFIG_METRIC_ROLLUP_1M, minGranularity: '1 hour' },
         metadata,
       );
 

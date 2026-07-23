@@ -1,5 +1,10 @@
 import { ClickhouseClient } from '@/clickhouse/node';
-import { Metadata, MetadataCache, parseKeyPath } from '@/core/metadata';
+import {
+  makeLocalStorageKV,
+  Metadata,
+  MetadataCache,
+  parseKeyPath,
+} from '@/core/metadata';
 import * as renderChartConfigModule from '@/core/renderChartConfig';
 import { timeFilterExpr } from '@/core/renderChartConfig';
 import { isBuilderChartConfig } from '@/guards';
@@ -427,6 +432,132 @@ describe('Metadata', () => {
       expect(
         await metadata.getMetricScrapeIntervalEstimate(args),
       ).toBeUndefined();
+    });
+
+    it('anchors the sample window at a HISTORICAL dateRange end; live windows keep the now()-relative bound', async () => {
+      mockRow({ interval_s: 60, max_interval_s: 60 });
+      // live: window ends within 6h of now
+      await metadata.getMetricScrapeIntervalEstimate({
+        ...args,
+        dateRange: [new Date(Date.now() - 3600_000), new Date()],
+      });
+      let sql = (mockClickhouseClient.query as jest.Mock).mock.calls.at(-1)[0]
+        .query;
+      expect(sql).toContain('now() - INTERVAL 6 HOUR');
+
+      // historical: a metric with no raw points in the LAST 6h would
+      // 0-sentinel and disable snapping/lookback sizing for old-data panels
+      const end = new Date('2026-07-21T22:00:00Z');
+      await metadata.getMetricScrapeIntervalEstimate({
+        ...args,
+        dateRange: [new Date(end.getTime() - 3600_000), end],
+      });
+      sql = (mockClickhouseClient.query as jest.Mock).mock.calls.at(-1)[0]
+        .query;
+      expect(sql).toContain('fromUnixTimestamp64Milli');
+      expect(sql).not.toContain('now() - INTERVAL 6 HOUR');
+    });
+  });
+
+  describe('MetadataCache persistence (day-keyed entries)', () => {
+    const makeFakeKV = (store: Map<string, string>) => ({
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      keys: () => [...store.keys()],
+    });
+    const today = '2026-07-23';
+
+    it('hydrates a same-day persisted entry without running the query', async () => {
+      const store = new Map<string, string>();
+      store.set(
+        'hdx.mdcache.v1.k1',
+        JSON.stringify({ d: today, v: { intervalSeconds: 60 } }),
+      );
+      const cache = new MetadataCache(makeFakeKV(store));
+      const query = jest.fn();
+      expect(
+        await cache.getOrFetch('k1', query, { persistDay: today }),
+      ).toEqual({ intervalSeconds: 60 });
+      expect(query).not.toHaveBeenCalled();
+    });
+
+    it('persists non-null results, never undefined (failed lookups stay retryable)', async () => {
+      const store = new Map<string, string>();
+      const cache = new MetadataCache(makeFakeKV(store));
+      await cache.getOrFetch('ok', async () => ({ a: 1 }), {
+        persistDay: today,
+      });
+      expect(store.has('hdx.mdcache.v1.ok')).toBe(true);
+      await cache.getOrFetch('fail', async () => undefined, {
+        persistDay: today,
+      });
+      expect(store.has('hdx.mdcache.v1.fail')).toBe(false);
+    });
+
+    it('sweeps stale-day and corrupted entries on first persistent access', async () => {
+      const store = new Map<string, string>();
+      store.set(
+        'hdx.mdcache.v1.old',
+        JSON.stringify({ d: '2026-07-20', v: 1 }),
+      );
+      store.set('hdx.mdcache.v1.corrupt', 'not json');
+      store.set('unrelated.key', 'kept');
+      const cache = new MetadataCache(makeFakeKV(store));
+      await cache.getOrFetch('fresh', async () => 42, { persistDay: today });
+      expect(store.has('hdx.mdcache.v1.old')).toBe(false);
+      expect(store.has('hdx.mdcache.v1.corrupt')).toBe(false);
+      expect(store.has('unrelated.key')).toBe(true);
+    });
+
+    it('localStorage adapter round-trips via window.localStorage; absent window → undefined', () => {
+      expect(makeLocalStorageKV()).toBeUndefined(); // node realm
+      // Storage semantics: items are own enumerable props, methods live on
+      // the prototype (so Object.keys sees only stored keys)
+      class FakeStorage {
+        getItem(k: string) {
+          return (this as Record<string, any>)[k] ?? null;
+        }
+        setItem(k: string, v: string) {
+          (this as Record<string, any>)[k] = v;
+        }
+        removeItem(k: string) {
+          delete (this as Record<string, any>)[k];
+        }
+      }
+      (globalThis as any).window = { localStorage: new FakeStorage() };
+      try {
+        const kv = makeLocalStorageKV();
+        expect(kv).toBeDefined();
+        kv!.setItem('a', '1');
+        expect(kv!.getItem('a')).toBe('1');
+        expect(kv!.keys()).toEqual(['a']);
+        kv!.removeItem('a');
+        expect(kv!.getItem('a')).toBeNull();
+      } finally {
+        delete (globalThis as any).window;
+      }
+    });
+
+    it('throwing storage degrades to in-memory behavior', async () => {
+      const throwingKV = {
+        getItem: () => {
+          throw new Error('quota');
+        },
+        setItem: () => {
+          throw new Error('quota');
+        },
+        removeItem: () => {
+          throw new Error('quota');
+        },
+        keys: () => {
+          throw new Error('quota');
+        },
+      };
+      const cache = new MetadataCache(throwingKV);
+      expect(
+        await cache.getOrFetch('k', async () => 'value', { persistDay: today }),
+      ).toBe('value');
     });
   });
 

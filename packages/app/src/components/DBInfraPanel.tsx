@@ -2,10 +2,6 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { add, min, sub } from 'date-fns';
 import {
-  convertDateRangeToGranularityString,
-  Granularity,
-} from '@hyperdx/common-utils/dist/core/utils';
-import {
   isLogSource,
   isTraceSource,
   SourceKind,
@@ -27,7 +23,10 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
-import { convertV1ChartConfigToV2 } from '@/ChartUtils';
+import {
+  convertV1ChartConfigToV2,
+  inferMetricChartGranularity,
+} from '@/ChartUtils';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { IS_LOCAL_MODE } from '@/config';
 import { useSource } from '@/source';
@@ -81,10 +80,6 @@ const InfraSubpanelGroup = ({
     }
   }, [size]);
 
-  const granularity = useMemo<Granularity>(() => {
-    return convertDateRangeToGranularityString(dateRange);
-  }, [dateRange]);
-
   return (
     <div data-testid={`infra-subpanel-${fieldPrefix}`}>
       <Group justify="space-between" align="center">
@@ -122,8 +117,13 @@ const InfraSubpanelGroup = ({
                 title={chart.title}
                 config={convertV1ChartConfigToV2(
                   {
+                    // v2 sources resolve Auto in DBTimeChart (scrape-interval
+                    // snap); v1 keeps the explicit ladder (no snap there)
                     dateRange,
-                    granularity,
+                    granularity: inferMetricChartGranularity(
+                      metricSource,
+                      dateRange,
+                    ),
                     seriesReturnType: 'column',
                     series: [
                       {

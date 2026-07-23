@@ -11,6 +11,7 @@ import { add, differenceInSeconds } from 'date-fns';
 import {
   convertGranularityToSeconds,
   getAlignedDateRange,
+  SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
@@ -358,7 +359,11 @@ function DBTimeChartComponent({
   const configMetricTables =
     'metricTables' in config ? config.metricTables : undefined;
   const isV2MetricConfig = isMetricsV2Tables(configMetricTables);
+  // Estimate-driven snapping is DISABLED (the 1m auto-ladder floor covers
+  // ≤60s scrape intervals statically, with no estimator query or query
+  // gating) — see SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED.
   const wantsGranularitySnap =
+    SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED &&
     isV2MetricConfig &&
     (config.granularity == null || config.granularity === 'auto');
   const metricSelectEntries = useMemo(() => {
@@ -367,6 +372,7 @@ function DBTimeChartComponent({
       ? (select as {
           metricType?: MetricsDataType;
           metricName?: string;
+          aggFn?: string;
         }[])
       : [];
   }, [isV2MetricConfig, config]);
@@ -376,6 +382,7 @@ function DBTimeChartComponent({
       connection: config.connection,
       metricTables: configMetricTables,
       metrics: metricSelectEntries,
+      dateRange: Array.isArray(config.dateRange) ? config.dateRange : undefined,
       enabled: wantsGranularitySnap,
     });
   const effectiveConfig = useMemo(
@@ -462,7 +469,14 @@ function DBTimeChartComponent({
     useQueriedChartConfig(previousPeriodChartConfig, {
       placeholderData: (prev: any) => prev,
       queryKey: [queryKeyPrefix, previousPeriodChartConfig, 'chunked'],
-      enabled: !!(enabled && config.compareToPreviousPeriod),
+      // same snap gate as the current-period query — otherwise this one
+      // fires with the unsnapped config and refetches once the estimate
+      // resolves
+      enabled: !!(
+        enabled &&
+        config.compareToPreviousPeriod &&
+        !(wantsGranularitySnap && isSnapLoading)
+      ),
       enableQueryChunking: true,
     });
 

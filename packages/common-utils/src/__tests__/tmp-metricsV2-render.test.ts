@@ -290,6 +290,13 @@ describe('tmp metrics v2 render', () => {
     );
     expect(cum).not.toContain('posMap_delta'); // no dead delta path
     expect(cum).toContain('bitAnd(Flags, 1) = 0');
+    // canonical first-sample rule: a series' first scanned sample emits an
+    // EMPTY map/0 (its cumulative history is not an increase); only a
+    // genuine reset (count decrease) credits the full current value. The
+    // old merged branch injected a newly-born series' entire history into
+    // one bucket.
+    expect(cum).toContain("CAST(map(), 'Map(Int64, Int64)')");
+    expect(cum).not.toContain('prev_total IS NULL OR');
   });
 
   it('whale guard: sub-5m buckets + long window + >100k series refuses; scoped or coarse-bucket runs', async () => {
@@ -632,9 +639,13 @@ describe('tmp metrics v2 render', () => {
     let rendered = parameterizedQueryToSql(
       await renderChartConfig(sumCfg(), mockMetadata, undefined),
     );
-    expect(rendered).toContain('- INTERVAL 120 second');
+    // ceil(2×60)+1: the +1 jitter margin keeps a baseline sample at
+    // start−120.3s (missed scrape + timestamp jitter) inside the scan —
+    // a bare 120 has zero margin at the two-interval boundary (V1 parity
+    // §2's "121s-class")
+    expect(rendered).toContain('- INTERVAL 121 second');
     // the series Date bound derives from the padded scan start
-    expect(rendered).toMatch(/Date >= toDate\(.*- INTERVAL 120 second/);
+    expect(rendered).toMatch(/Date >= toDate\(.*- INTERVAL 121 second/);
 
     // unknown interval → flat 5-minute Prometheus default
     (
@@ -685,7 +696,7 @@ describe('tmp metrics v2 render', () => {
   });
 
   describe('display-granularity snapping', () => {
-    // 15m window → 60-bucket auto ladder picks 30 second
+    // 15m window → auto ladder floors at 1 minute
     const fifteenMin: { dateRange: [Date, Date] } = {
       dateRange: [
         new Date('2025-02-12T00:00:00Z'),
@@ -697,7 +708,7 @@ describe('tmp metrics v2 render', () => {
         mockMetadata.getMetricScrapeIntervalEstimate as jest.Mock
       ).mockResolvedValue(e);
 
-    it('auto granularity snaps up to the scrape interval (buckets, divisor, lookback all follow)', async () => {
+    it('auto never goes below 1-minute buckets (static floor; divisor and lookback follow)', async () => {
       setEstimate({
         intervalSeconds: 60,
         maxIntervalSeconds: 60,
@@ -712,34 +723,17 @@ describe('tmp metrics v2 render', () => {
       );
       expect(rendered).toContain('INTERVAL 1 minute');
       expect(rendered).not.toContain('INTERVAL 30 second');
-      // per-second rate divisor tracks the SNAPPED display bucket
+      // per-second rate divisor tracks the display bucket
       expect(rendered).toContain('Increase / 60 AS Rate');
     });
 
-    it('fast metrics are not over-widened; explicit granularity is never rewritten', async () => {
-      // 10s-interval metric: the 30s ladder choice already clears the
-      // interval — unchanged
-      setEstimate({
-        intervalSeconds: 10,
-        maxIntervalSeconds: 10,
-        uncertain: false,
-      });
-      let rendered = parameterizedQueryToSql(
-        await renderChartConfig(
-          sumCfg({ ...fifteenMin, granularity: undefined }),
-          mockMetadata,
-          undefined,
-        ),
-      );
-      expect(rendered).toContain('INTERVAL 30 second');
-
-      // forced 30s on a 60s metric renders as asked (the UI warns instead)
+    it('explicit granularity is never rewritten (forced sub-minute renders as asked)', async () => {
       setEstimate({
         intervalSeconds: 60,
         maxIntervalSeconds: 60,
         uncertain: false,
       });
-      rendered = parameterizedQueryToSql(
+      const rendered = parameterizedQueryToSql(
         await renderChartConfig(
           sumCfg({ ...fifteenMin, granularity: '30 second' }),
           mockMetadata,
@@ -750,9 +744,10 @@ describe('tmp metrics v2 render', () => {
       expect(rendered).not.toContain('INTERVAL 1 minute');
     });
 
-    it('snapping can promote the scan onto a rollup tier', async () => {
-      // 1h window → ladder picks 1 minute; a 5m-scraped metric snaps to
-      // 5 minute buckets, which newly qualify for the 5m tier
+    it('estimate-driven snap is DISABLED: a >60s-scraped metric keeps the plain ladder (no tier promotion)', async () => {
+      // 1h window → ladder picks 1 minute; with the snap flag ON a
+      // 5m-scraped metric would snap to 5-minute buckets and the 5m tier
+      // (see SCRAPE_INTERVAL_GRANULARITY_SNAP_ENABLED)
       setEstimate({
         intervalSeconds: 300,
         maxIntervalSeconds: 300,
@@ -772,9 +767,9 @@ describe('tmp metrics v2 render', () => {
           undefined,
         ),
       );
-      expect(rendered).toContain('points_5m');
-      expect(rendered).toContain('INTERVAL 5 minute');
-      expect(rendered).toContain('Increase / 300 AS Rate');
+      expect(rendered).not.toContain('points_5m');
+      expect(rendered).toContain('INTERVAL 1 minute');
+      expect(rendered).toContain('Increase / 60 AS Rate');
     });
 
     it('metricMinDisplayBucketSeconds: clean-multiple round-up, 2× when uncertain, max spacing wins, 10m clamp', () => {
@@ -802,6 +797,37 @@ describe('tmp metrics v2 render', () => {
       // outlier spacing clamps at 10 minutes — snapping chases scrape rates,
       // not gaps
       expect(metricMinDisplayBucketSeconds(est(30, 7200, true))).toBe(600);
+    });
+
+    it('explicit-hist raw cumulative quantile: first sample emits zeros, reset keeps full counts', async () => {
+      (mockMetadata.getMetricSeriesProfile as jest.Mock).mockResolvedValue({
+        temporality: 'cumulative',
+        otherMetricTypes: [],
+      });
+      const rendered = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...base,
+            ...quantileWindow,
+            select: [
+              {
+                aggFn: 'quantile',
+                level: 0.95,
+                aggCondition: '',
+                valueExpression: 'Value',
+                metricName: 'test.duration',
+                metricType: MetricsDataType.Histogram,
+              },
+            ],
+          } as ChartConfigWithOptDateRange,
+          mockMetadata,
+          undefined,
+        ),
+      );
+      expect(rendered).toContain('arrayMap(x -> toInt64(0), counts)');
+      // the split branch: first-sample is its own arm, no longer OR-merged
+      // with the reset condition
+      expect(rendered).toMatch(/length\(prev_counts\) = 0,/);
     });
 
     it('unsupported aggregates throw typed errors (the editor gates these lists — a stale selection must never reach the translator)', async () => {

@@ -29,6 +29,7 @@ import {
   ChartConfigWithOptDateRange,
   DisplayType,
   Filter,
+  isMetricsV2Tables,
   MetricsDataType as MetricsDataTypeV2,
   SourceKind,
   SQLInterval,
@@ -104,6 +105,22 @@ function getTimeChartDateRange(
   return alignDateRangeToGranularity === false
     ? dateRange
     : getAlignedDateRange(dateRange, granularity);
+}
+
+/**
+ * Granularity for the K8s/infra panels' metric charts: v2 sources resolve
+ * Auto inside DBTimeChart so the scrape-interval snap engages; v1 sources
+ * keep the explicit 60-bucket ladder — they have no snap, and letting them
+ * fall through to DBTimeChart's finer 80-bucket auto ladder would alias
+ * 60s-scraped metrics (sub-scrape 30s buckets) on 30-40m windows.
+ */
+export function inferMetricChartGranularity(
+  metricSource: TMetricSource | undefined,
+  dateRange: [Date, Date],
+): Granularity | undefined {
+  return isMetricsV2Tables(metricSource?.metricTables)
+    ? undefined
+    : convertDateRangeToGranularityString(dateRange);
 }
 
 /**

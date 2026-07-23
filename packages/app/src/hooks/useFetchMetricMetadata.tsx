@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   chSql,
   ResponseJSON,
@@ -194,6 +195,9 @@ interface MetricScrapeIntervalSnapProps {
   /** Every metric plotted on the panel — the snap takes the MAX honest
    * bucket across them (over-widening is safe; under-widening aliases). */
   metrics: { metricType?: MetricsDataType; metricName?: string }[];
+  /** Panel window: historical windows anchor the estimator's sample at the
+   * window end (a live-only sample 0-sentinels on old data). */
+  dateRange?: [Date, Date];
   enabled?: boolean;
 }
 
@@ -210,6 +214,7 @@ export const useMetricScrapeIntervalSnap = ({
   connection,
   metricTables,
   metrics,
+  dateRange,
   enabled = true,
 }: MetricScrapeIntervalSnapProps) => {
   const metadata = getMetadata();
@@ -236,11 +241,23 @@ export const useMetricScrapeIntervalSnap = ({
       }),
     ).values(),
   ];
+  // Live windows share one key; historical windows key by their end day —
+  // mirrors the metadata-cache anchor so react-query and MetadataCache
+  // agree on identity.
+  const anchorDay = useMemo(
+    () =>
+      // eslint-disable-next-line no-restricted-syntax, react-hooks/purity -- boundary check between live and historical windows; a stale "now" only shifts WHICH cache key is used near the 6h edge
+      dateRange && Date.now() - dateRange[1].getTime() >= 6 * 3600_000
+        ? dateRange[1].toISOString().slice(0, 10)
+        : 'live',
+    [dateRange],
+  );
   return useQuery({
     queryKey: [
       'metric-scrape-interval-snap',
       connection,
       databaseName,
+      anchorDay,
       targets.map(t => `${t.table}:${t.metricName}`),
     ],
     queryFn: async () => {
@@ -251,6 +268,7 @@ export const useMetricScrapeIntervalSnap = ({
             tableName: t.table,
             metricNameCondition: createMetricNameFilter(t.metricName),
             connectionId: connection!,
+            dateRange,
           }),
         ),
       );
