@@ -587,6 +587,13 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
         'Render Group By columns on the left side of the table, before the series columns. ' +
           'Default false (Group By columns on the right).',
       ),
+    alternateRowBackground: z
+      .boolean()
+      .optional()
+      .describe(
+        'Zebra-stripe the table by tinting alternating rows, which aids scanning on wide tables. ' +
+          'Default false.',
+      ),
     numberFormat: mcpNumberFormatSchema
       .optional()
       .describe(tileLevelNumberFormatDescription),
