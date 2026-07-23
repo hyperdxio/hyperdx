@@ -2,11 +2,13 @@ import { useMemo } from 'react';
 import { addDays, differenceInDays, subDays } from 'date-fns';
 import {
   DateRange,
+  isMetricsV2Tables,
   MetricsDataType,
   TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
+import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import { capitalizeFirstLetter } from '@/utils';
 
@@ -60,6 +62,11 @@ function useMetricNames(
   metricSource: TMetricSource,
   dateRange?: DateRange['dateRange'],
 ) {
+  // Metrics v2 (series/points split): metric names + types come from the
+  // families table (falling back to the series table, which carries the same
+  // MetricName/MetricType columns) in a single query.
+  const isV2 = isMetricsV2Tables(metricSource.metricTables);
+
   const { gaugeConfig, histogramConfig, sumConfig } = useMemo(() => {
     return {
       gaugeConfig: chartConfigByMetricType({
@@ -80,29 +87,83 @@ function useMetricNames(
     };
   }, [metricSource, dateRange]);
 
-  const { data: gaugeMetrics } = useGetKeyValues({
-    chartConfig: gaugeConfig,
-    keys: ['MetricName'],
-    limit: MAX_METRIC_NAME_OPTIONS,
-    disableRowLimit: true,
+  const { data: gaugeMetrics } = useGetKeyValues(
+    {
+      chartConfig: gaugeConfig,
+      keys: ['MetricName'],
+      limit: MAX_METRIC_NAME_OPTIONS,
+      disableRowLimit: true,
+    },
+    { enabled: !isV2 },
+  );
+  const { data: histogramMetrics } = useGetKeyValues(
+    {
+      chartConfig: histogramConfig,
+      keys: ['MetricName'],
+      limit: MAX_METRIC_NAME_OPTIONS,
+      disableRowLimit: true,
+    },
+    { enabled: !isV2 },
+  );
+  const { data: sumMetrics } = useGetKeyValues(
+    {
+      chartConfig: sumConfig,
+      keys: ['MetricName'],
+      limit: MAX_METRIC_NAME_OPTIONS,
+      disableRowLimit: true,
+    },
+    { enabled: !isV2 },
+  );
+
+  const familiesConfig = useMemo(
+    () => ({
+      connection: metricSource.connection,
+      from: {
+        databaseName: metricSource.from.databaseName,
+        tableName:
+          metricSource.metricTables?.families ??
+          metricSource.metricTables?.series ??
+          '',
+      },
+      select: 'DISTINCT MetricName, MetricType',
+      where: '',
+      whereLanguage: 'sql' as const,
+      timestampValueExpression: '',
+      limit: { limit: MAX_METRIC_NAME_OPTIONS },
+    }),
+    [metricSource],
+  );
+  const { data: familiesData } = useQueriedChartConfig(familiesConfig, {
+    queryKey: ['metric-names-v2', familiesConfig],
+    enabled: isV2,
   });
-  const { data: histogramMetrics } = useGetKeyValues({
-    chartConfig: histogramConfig,
-    keys: ['MetricName'],
-    limit: MAX_METRIC_NAME_OPTIONS,
-    disableRowLimit: true,
-  });
-  const { data: sumMetrics } = useGetKeyValues({
-    chartConfig: sumConfig,
-    keys: ['MetricName'],
-    limit: MAX_METRIC_NAME_OPTIONS,
-    disableRowLimit: true,
-  });
+
+  const v2Metrics = useMemo(() => {
+    if (!isV2 || !familiesData?.data) return undefined;
+    const byType: Record<string, string[]> = {};
+    for (const row of familiesData.data) {
+      const type = row.MetricType as string;
+      (byType[type] ??= []).push(row.MetricName as string);
+    }
+    return byType;
+  }, [isV2, familiesData]);
+
+  if (isV2) {
+    return {
+      gaugeMetrics: v2Metrics?.['gauge'],
+      histogramMetrics: v2Metrics?.['histogram'],
+      sumMetrics: v2Metrics?.['sum'],
+      expHistogramMetrics: v2Metrics?.['exponential_histogram'],
+      summaryMetrics: v2Metrics?.['summary'],
+    };
+  }
 
   return {
     gaugeMetrics: gaugeMetrics?.[0].value,
     histogramMetrics: histogramMetrics?.[0].value,
     sumMetrics: sumMetrics?.[0].value,
+    expHistogramMetrics: undefined,
+    summaryMetrics: undefined,
   };
 }
 
@@ -112,6 +173,8 @@ export function getMetricOptions(
   sumMetrics: string[] | undefined,
   metricName: string | null | undefined,
   metricType: MetricsDataType,
+  expHistogramMetrics?: string[],
+  summaryMetrics?: string[],
 ) {
   const metricsFromQuery = [
     ...(gaugeMetrics?.map(metric => ({
@@ -125,6 +188,14 @@ export function getMetricOptions(
     ...(sumMetrics?.map(metric => ({
       value: `${metric}${SEPARATOR}sum`,
       label: `${metric} (Sum)`,
+    })) ?? []),
+    ...(expHistogramMetrics?.map(metric => ({
+      value: `${metric}${SEPARATOR}${MetricsDataType.ExponentialHistogram}`,
+      label: `${metric} (Exponential Histogram)`,
+    })) ?? []),
+    ...(summaryMetrics?.map(metric => ({
+      value: `${metric}${SEPARATOR}${MetricsDataType.Summary}`,
+      label: `${metric} (Summary)`,
     })) ?? []),
   ];
   // if saved metric does not exist in the available options, assume it exists
@@ -166,8 +237,13 @@ export function MetricNameSelect({
   onFocus?: () => void;
   'data-testid'?: string;
 }) {
-  const { gaugeMetrics, histogramMetrics, sumMetrics } =
-    useMetricNames(metricSource);
+  const {
+    gaugeMetrics,
+    histogramMetrics,
+    sumMetrics,
+    expHistogramMetrics,
+    summaryMetrics,
+  } = useMetricNames(metricSource);
 
   const options = useMemo(() => {
     return getMetricOptions(
@@ -176,8 +252,18 @@ export function MetricNameSelect({
       sumMetrics,
       metricName,
       metricType,
+      expHistogramMetrics,
+      summaryMetrics,
     );
-  }, [gaugeMetrics, histogramMetrics, sumMetrics, metricName, metricType]);
+  }, [
+    gaugeMetrics,
+    histogramMetrics,
+    sumMetrics,
+    expHistogramMetrics,
+    summaryMetrics,
+    metricName,
+    metricType,
+  ]);
 
   const currentValue =
     metricName && metricType ? `${metricName}${SEPARATOR}${metricType}` : null;

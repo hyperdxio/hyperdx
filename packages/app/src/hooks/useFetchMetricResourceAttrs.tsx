@@ -3,13 +3,42 @@ import {
   ResponseJSON,
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { SourceKind, TMetricSource } from '@hyperdx/common-utils/dist/types';
+import {
+  isMetricsV2Tables,
+  SourceKind,
+  TMetricSource,
+} from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
 
 import { getClickhouseClient } from '@/clickhouse';
 import { formatAttributeClause, getMetricTableName } from '@/utils';
 
 const METRIC_FETCH_LIMIT = 10000;
+
+const toDay = (d: Date) => d.toISOString().slice(0, 10);
+
+/**
+ * Date bound for attribute-browse scans on the v2 series table (keyed by
+ * Date, MetricName, SeriesHash) — without it these DISTINCT reads scan every
+ * retained series row per UI interaction. Falls back to a bounded default
+ * window (yesterday + today) when no chart range is available. v1 wide
+ * tables have no Date column, so non-v2 sources get no bound.
+ */
+export function metricSeriesDateBound(
+  tableSource: TMetricSource | undefined,
+  dateRange?: [Date, Date],
+) {
+  if (
+    !tableSource?.metricTables ||
+    !isMetricsV2Tables(tableSource.metricTables)
+  ) {
+    return chSql``;
+  }
+  if (!dateRange) {
+    return chSql` AND Date >= today() - 1`;
+  }
+  return chSql` AND Date >= toDate(${{ String: toDay(dateRange[0]) }}) AND Date <= toDate(${{ String: toDay(dateRange[1]) }})`;
+}
 
 export type AttributeCategory =
   | 'ResourceAttributes'
@@ -131,6 +160,7 @@ interface MetricResourceAttrsProps {
   metricName?: string;
   tableSource: TMetricSource | undefined;
   isSql: boolean;
+  dateRange?: [Date, Date];
 }
 
 interface MetricAttributesResponse {
@@ -145,6 +175,7 @@ export const useFetchMetricResourceAttrs = ({
   metricName,
   tableSource,
   isSql,
+  dateRange,
 }: MetricResourceAttrsProps) => {
   const tableName = tableSource
     ? (getMetricTableName(tableSource, metricType) ?? '')
@@ -160,7 +191,14 @@ export const useFetchMetricResourceAttrs = ({
   );
 
   return useQuery({
-    queryKey: ['metric-attributes', metricType, metricName, isSql, tableSource],
+    queryKey: [
+      'metric-attributes',
+      metricType,
+      metricName,
+      isSql,
+      tableSource,
+      dateRange?.map(toDay),
+    ],
     queryFn: async ({ signal }) => {
       if (!shouldFetch || !metricName) {
         return [];
@@ -173,7 +211,7 @@ export const useFetchMetricResourceAttrs = ({
           ResourceAttributes,
           Attributes
         FROM ${tableExpr({ database: databaseName, table: tableName })}
-        WHERE MetricName=${{ String: metricName }}
+        WHERE MetricName=${{ String: metricName }}${metricSeriesDateBound(tableSource, dateRange)}
         LIMIT ${{ Int32: METRIC_FETCH_LIMIT }}
       `;
 

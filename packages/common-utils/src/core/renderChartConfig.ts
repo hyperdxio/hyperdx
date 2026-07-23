@@ -6,6 +6,19 @@ import { ChSql, chSql, concatChSql, wrapChSqlIfNotEmpty } from '@/clickhouse';
 import { translateHistogram } from '@/core/histogram';
 import { Metadata } from '@/core/metadata';
 import {
+  gaugeCtesV2,
+  gaugeRollupCtesV2,
+  parseSeriesNeeds,
+  seriesCteV2,
+  sumCtesV2,
+  sumRollupCtesV2,
+  translateExpHistogramRollupV2,
+  translateExpHistogramV2,
+  translateHistogramRollupV2,
+  translateHistogramV2,
+  translateSummaryV2,
+} from '@/core/metricsV2';
+import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
   extractSettingsClauseFromEnd,
@@ -25,6 +38,7 @@ import { replaceMacros } from '@/macros';
 import {
   buildKvItemsLookup,
   CustomSchemaSQLSerializerV2,
+  KvItemsInfo,
   KvItemsLookup,
   SearchQueryBuilder,
 } from '@/queryParser';
@@ -41,6 +55,8 @@ import {
   CteChartConfig,
   DateRange,
   DisplayType,
+  isMetricsV2Tables,
+  METRICS_V2_METRIC_TYPE,
   MetricsDataType,
   PromqlChartConfig,
   QuerySettings,
@@ -59,7 +75,7 @@ import {
  * Uses metricNameSql if available (which handles both old and new metric names via OR),
  * otherwise falls back to a simple equality check.
  */
-function createMetricNameFilter(
+export function createMetricNameFilter(
   metricName: string,
   metricNameSql?: string,
 ): string {
@@ -89,6 +105,57 @@ export const FIXED_TIME_BUCKET_EXPR_ALIAS = '__hdx_time_bucket';
 
 // Maximum number of distinct groups shown in a time chart when using 'increase' with a groupBy.
 const INCREASE_MAX_NUM_GROUPS = 20;
+
+/**
+ * Max raw-scan window for quantile queries on metric types with no usable
+ * rollup tier (exponential histograms until their tier ships, summaries
+ * always). Raw quantile shapes do per-point work; beyond a few hours they
+ * cannot finish inside typical execution timeouts and each retry burns
+ * hundreds of CPU-seconds. ~3h holds with the branched/tuple-state exp
+ * shapes; count/avg (scalar) panels are not capped.
+ */
+const RAW_QUANTILE_MAX_WINDOW_MS = 3 * 60 * 60 * 1000;
+
+/**
+ * Whale-metric guard for raw fine-bucket scans: display buckets finer than
+ * 5m force the raw tier (rollups cannot produce sub-5m buckets), and a
+ * fine-bucket panel over a very-high-cardinality metric reads tens of
+ * millions of raw rows regardless of how narrow series resolution is
+ * (measured: ~19.6M rows on an 848k-series metric — points-scan-bound).
+ * Beyond this window, sub-5m buckets require the matched-series estimate to
+ * stay under the threshold (i.e. a label filter). `auto` granularity never
+ * produces sub-5m buckets for windows over 1h, so this only fires on
+ * user-forced fine granularities.
+ */
+const FINE_BUCKET_RAW_MAX_WINDOW_MS = 2 * 60 * 60 * 1000;
+const WHALE_SERIES_THRESHOLD = 100_000;
+
+/**
+ * Cost gate for summary quantile panels (summaries have no rollup tier, so
+ * every window reads raw points). Raw-scan cost is
+ * series × window ÷ scrape interval; a flat window cap wrongly blocks cheap
+ * queries (a 10k-series summary at 6h is ~3.6M rows). Windows within
+ * RAW_QUANTILE_MAX_WINDOW_MS skip the estimate entirely (always allowed —
+ * preserves the previous behavior with zero extra metadata queries).
+ */
+const SUMMARY_RAW_SCAN_MAX_ROWS = 300_000_000;
+
+/**
+ * enable_parallel_replicas helps scan/aggregate-heavy panels and HURTS
+ * small ones (coordination overhead; window stages don't distribute well) —
+ * measured: global-on regressed small panels. Enabled per query when the
+ * estimated scan (matched series × rows per series over the window)
+ * crosses this many rows.
+ *
+ * DISABLED for now: treated as a server-level setting. Measured upside was
+ * marginal anyway on the whale shapes (a 13.5M-series 24h tier panel
+ * engaged 3 replicas for ~2% — the shapes are per-series-GROUP-BY-bound,
+ * not scan-bound). Flip the flag to restore per-query gating; while off, no
+ * cost-estimate query is issued for the gate and no SETTINGS override is
+ * emitted.
+ */
+const PARALLEL_REPLICAS_GATE_ENABLED = false;
+const PARALLEL_REPLICAS_MIN_SCAN_ROWS = 50_000_000;
 
 export function isUsingGroupBy(
   chartConfig: BuilderChartConfigWithOptDateRange,
@@ -343,19 +410,57 @@ const fastifySQL = ({
   }
 };
 
-function generateHasSqlForKvItemsColumn(
+/**
+ * The `*AttributeItems` columns index the whole `k=v` pair as ONE token
+ * (text index, tokenizer = 'array'), so predicates use the token-matching
+ * functions with exact-token ARRAY needles — `hasAllTokens(col,
+ * array('k=v'))` — which is the shape the text index evaluates directly.
+ * (String needles get re-tokenized by the default tokenizer and split on
+ * '='; never emit those.)
+ */
+/** One collapsed all-pairs predicate: AND-connected equality matchers on
+ * the same map fold into a single index lookup. */
+function generateHasAllSqlForKvItemsColumn(
   column: string,
-  key: string,
-  separator: string,
-  value: string,
+  tokens: string[],
 ): string {
-  return SqlString.format('has(??, concat(?, ?, ?))', [
-    column,
-    key,
-    separator,
-    value,
-  ]);
+  return `hasAllTokens(${SqlString.format('??', [column])}, array(${tokens
+    .map(t => SqlString.format('?', [t]))
+    .join(', ')}))`;
 }
+
+/** The index's disjunction primitive: any-of over pair tokens. */
+function generateHasAnySqlForKvItemsColumn(
+  column: string,
+  tokens: string[],
+): string {
+  return `hasAnyTokens(${SqlString.format('??', [column])}, array(${tokens
+    .map(t => SqlString.format('?', [t]))
+    .join(', ')}))`;
+}
+
+/**
+ * A fully-anchored alternation of literals — `^(a|b|c)$`, `^(?:a|b|c)$`, or
+ * `^a$|^b$|^c$` — is exactly `IN ('a','b','c')`. Anything less anchored is
+ * NOT: ClickHouse `match()` is an unanchored substring search, so a bare
+ * `a|b|c` also matches 'ab-suffix', and `^a|b$` parses as `(^a)|(b$)`.
+ * Returns the literal alternatives, or null when the pattern is a true regex.
+ */
+const parseAnchoredAlternation = (pattern: string): string[] | null => {
+  const isLiteral = (s: string) => s !== '' && !/[\\^$.|?*+()[\]{}]/.test(s);
+  const grouped = /^\^\((?:\?:)?([^()]*)\)\$$/.exec(pattern);
+  if (grouped) {
+    const alts = grouped[1].split('|');
+    return alts.every(isLiteral) ? alts : null;
+  }
+  const alts: string[] = [];
+  for (const piece of pattern.split('|')) {
+    const anchored = /^\^(.*)\$$/.exec(piece);
+    if (!anchored || !isLiteral(anchored[1])) return null;
+    alts.push(anchored[1]);
+  }
+  return alts.length > 0 ? alts : null;
+};
 
 export const rewriteSqlFilterWithKvItems = (
   condition: string,
@@ -370,38 +475,99 @@ export const rewriteSqlFilterWithKvItems = (
       database: 'Postgresql',
     }) as SQLParser.Select;
 
-    const tryOptimize = (
-      node: SQLParser.ExpressionValue | SQLParser.ExprList,
-    ): void => {
-      if (!('operator' in node)) return;
-      const op = String(node.operator ?? '').toUpperCase();
-      if (op !== '=' && op !== 'IN') return;
-      const left = node.left;
+    // `Map['key']` against a map that has a kv-items column → the items
+    // info + the subscripted key. Shared by the equality/IN matcher and the
+    // match()-alternation matcher below.
+    const extractItemsMapSubscript = (
+      node: SQLParser.ExpressionValue | SQLParser.ExprList | null | undefined,
+    ): { info: KvItemsInfo; mapKey: string } | null => {
       if (
-        left?.type !== 'column_ref' ||
-        ('column' in left && typeof left.column === 'string')
+        node?.type !== 'column_ref' ||
+        ('column' in node && typeof node.column === 'string')
       ) {
-        return;
+        return null;
       }
-      const mapColumn = left['column']?.expr?.value;
-      const arrIdx = left['array_index'];
+      const mapColumn = node['column']?.expr?.value;
+      const arrIdx = node['array_index'];
       if (
         typeof mapColumn !== 'string' ||
         !Array.isArray(arrIdx) ||
         arrIdx.length !== 1
       ) {
-        return;
+        return null;
       }
       const idxNode = arrIdx[0]?.index;
       if (
         idxNode?.type !== 'single_quote_string' ||
         typeof idxNode.value !== 'string'
       ) {
-        return;
+        return null;
       }
-      const mapKey: string = idxNode.value;
       const info = kvItemsLookup.get(mapColumn);
-      if (!info) return;
+      if (!info) return null;
+      return { info, mapKey: idxNode.value };
+    };
+
+    // Recognizes `Map['key'] = 'v'` / `Map['key'] IN ('v1', ...)` — and
+    // `match(Map['key'], '^(v1|v2)$')`, whose fully-anchored alternation is
+    // exactly the same IN — against a map that has a kv-items column. Bails
+    // on empty values: `Map['k'] = ''` also matches absent keys because
+    // Map(String, String)'s subscript default is '', which the pair-token
+    // predicate alone does not preserve.
+    const matchKvEquality = (
+      node: SQLParser.ExpressionValue | SQLParser.ExprList,
+    ): { info: KvItemsInfo; op: '=' | 'IN'; tokens: string[] } | null => {
+      if (node.type === 'function') {
+        // node-sql-parser's Function typing: name is a { name: [{ value }] }
+        // wrapper, args an ExprList. The parser output for function nodes is
+        // not fully typed, so read defensively through Records with runtime
+        // checks on every step.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- parser output, runtime-checked below
+        const fn = node as unknown as Record<string, unknown>;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- parser output, runtime-checked below
+        const fnNameWrapper = fn.name as
+          | { name?: Array<{ value?: unknown }> }
+          | undefined;
+        const fnName = fnNameWrapper?.name?.[0]?.value;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- parser output, runtime-checked below
+        const args = fn.args as
+          | { type?: unknown; value?: unknown[] }
+          | undefined;
+        if (
+          typeof fnName !== 'string' ||
+          fnName.toLowerCase() !== 'match' ||
+          args?.type !== 'expr_list' ||
+          !Array.isArray(args.value) ||
+          args.value.length !== 2
+        ) {
+          return null;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- expr_list members; both consumers re-check .type at runtime
+        const [colArg, patArg] = args.value as Array<
+          SQLParser.ExpressionValue | SQLParser.ExprList | null | undefined
+        >;
+        const sub = extractItemsMapSubscript(colArg);
+        if (
+          !sub ||
+          patArg?.type !== 'single_quote_string' ||
+          typeof patArg.value !== 'string'
+        ) {
+          return null;
+        }
+        const alts = parseAnchoredAlternation(patArg.value);
+        if (!alts) return null;
+        return {
+          info: sub.info,
+          op: alts.length === 1 ? '=' : 'IN',
+          tokens: alts.map(v => `${sub.mapKey}${sub.info.separator}${v}`),
+        };
+      }
+      if (!('operator' in node)) return null;
+      const op = String(node.operator ?? '').toUpperCase();
+      if (op !== '=' && op !== 'IN') return null;
+      const sub = extractItemsMapSubscript(node.left);
+      if (!sub) return null;
+      const { info, mapKey } = sub;
 
       let values: string[];
       if (op === '=') {
@@ -410,62 +576,37 @@ export const rewriteSqlFilterWithKvItems = (
           right?.type !== 'single_quote_string' ||
           typeof right.value !== 'string'
         ) {
-          return;
+          return null;
         }
         values = [right.value];
       } else {
         const right = node.right;
-        if (right?.type !== 'expr_list' || !Array.isArray(right.value)) return;
+        if (right?.type !== 'expr_list' || !Array.isArray(right.value))
+          return null;
         const collected: string[] = [];
         for (const item of right.value) {
           if (
             item?.type !== 'single_quote_string' ||
             typeof item.value !== 'string'
           ) {
-            return;
+            return null;
           }
           collected.push(item.value);
         }
         values = collected;
       }
-      // Bail on empty values: `Map['k']='' ` also matches absent keys because
-      // Map(String, String)'s subscript default is '', which `has(items, 'k=')`
-      // alone does not preserve. Same rationale for empty entries in IN lists.
-      if (values.length === 0 || values.some(v => v === '')) return;
+      if (values.length === 0 || values.some(v => v === '')) return null;
+      return {
+        info,
+        op: op as '=' | 'IN',
+        tokens: values.map(v => `${mapKey}${info.separator}${v}`),
+      };
+    };
 
-      let replacement: string;
-      if (values.length === 1) {
-        replacement = generateHasSqlForKvItemsColumn(
-          info.kvItemsColumn,
-          mapKey,
-          info.separator,
-          values[0],
-        );
-      } else if (info.useHasAny) {
-        // ClickHouse >= 26.5 supports `hasAny` over the direct_read map items
-        // column in a single call.
-        replacement = `hasAny(${SqlString.format('??', [
-          info.kvItemsColumn,
-        ])}, array(${values
-          .map(v =>
-            SqlString.format('concat(?, ?, ?)', [mapKey, info.separator, v]),
-          )
-          .join(', ')}))`;
-      } else {
-        // Backport branches (26.2/26.3/26.4) support `has` but not `hasAny` over
-        // the items column, so we fall back to a chain of `has(...) OR ...`.
-        replacement = `(${values
-          .map(v =>
-            generateHasSqlForKvItemsColumn(
-              info.kvItemsColumn,
-              mapKey,
-              info.separator,
-              v,
-            ),
-          )
-          .join(' OR ')})`;
-      }
-
+    const replaceNode = (
+      node: SQLParser.ExpressionValue | SQLParser.ExprList,
+      replacement: string,
+    ): void => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns union type, we expect Select
       const replAst = parser.astify(`${prefix}${replacement}`, {
         database: 'Postgresql',
@@ -475,6 +616,181 @@ export const rewriteSqlFilterWithKvItems = (
       for (const k of Object.keys(node)) delete node[k];
       Object.assign(node, newWhere);
     };
+
+    const rewriteSingle = (
+      node: SQLParser.ExpressionValue | SQLParser.ExprList,
+    ): void => {
+      const match = matchKvEquality(node);
+      if (!match) return;
+      const { info, tokens } = match;
+      let replacement: string;
+      if (tokens.length === 1) {
+        // AND semantics — the default — collapse to hasAllTokens.
+        replacement = generateHasAllSqlForKvItemsColumn(
+          info.kvItemsColumn,
+          tokens,
+        );
+      } else if (info.useHasAny) {
+        // IN = disjunction of pair tokens.
+        replacement = generateHasAnySqlForKvItemsColumn(
+          info.kvItemsColumn,
+          tokens,
+        );
+      } else {
+        // Conservative fallback for branches without hasAnyTokens-over-items
+        // support: a chain of single-token lookups.
+        replacement = `(${tokens
+          .map(t => generateHasAllSqlForKvItemsColumn(info.kvItemsColumn, [t]))
+          .join(' OR ')})`;
+      }
+      replaceNode(node, replacement);
+    };
+
+    // Collapse pass: equality matchers joined by the top-level AND spine
+    // fold into ONE hasAllTokens per items column (a single index lookup
+    // instead of N). Only spine conjuncts are safe to merge — anything under
+    // OR/NOT keeps its per-node rewrite below.
+    const spine: Array<SQLParser.ExpressionValue | SQLParser.ExprList> = [];
+    const walkSpine = (
+      node: SQLParser.ExpressionValue | SQLParser.ExprList | null,
+    ): void => {
+      if (node == null) return;
+      if (
+        node.type === 'binary_expr' &&
+        'operator' in node &&
+        String(node.operator).toUpperCase() === 'AND'
+      ) {
+        walkSpine(node.left);
+        walkSpine(node.right);
+      } else {
+        spine.push(node);
+      }
+    };
+    walkSpine(ast.where);
+    const byColumn = new Map<
+      string,
+      {
+        info: KvItemsInfo;
+        tokens: string[];
+        nodes: Array<SQLParser.ExpressionValue | SQLParser.ExprList>;
+      }
+    >();
+    for (const conjunct of spine) {
+      const match = matchKvEquality(conjunct);
+      if (!match || match.op !== '=') continue;
+      const group = byColumn.get(match.info.kvItemsColumn) ?? {
+        info: match.info,
+        tokens: [],
+        nodes: [],
+      };
+      group.tokens.push(...match.tokens);
+      group.nodes.push(conjunct);
+      byColumn.set(match.info.kvItemsColumn, group);
+    }
+    for (const group of byColumn.values()) {
+      if (group.nodes.length < 2) continue; // singles handled per-node below
+      replaceNode(
+        group.nodes[0],
+        generateHasAllSqlForKvItemsColumn(group.info.kvItemsColumn, [
+          ...new Set(group.tokens),
+        ]),
+      );
+      for (const node of group.nodes.slice(1)) {
+        replaceNode(node, '1 = 1');
+      }
+    }
+
+    // OR-group pass: hasAnyTokens is the index's disjunction primitive. A
+    // maximal OR subtree whose EVERY disjunct is a token-exact matcher
+    // (equality, IN, or anchored-alternation match()) collapses to one
+    // hasAnyTokens per items column — one index probe instead of N. A single
+    // non-tokenizable disjunct disqualifies the whole group (the collapsed
+    // predicate could no longer imply the original); its tokenizable
+    // siblings still get their per-node rewrite below.
+    const orNodes: Array<SQLParser.ExpressionValue | SQLParser.ExprList> = [];
+    const findMaximalOrs = (
+      node: SQLParser.ExpressionValue | SQLParser.ExprList | null,
+      underOr: boolean,
+    ): void => {
+      if (node == null) return;
+      const isOr =
+        node.type === 'binary_expr' &&
+        'operator' in node &&
+        String(node.operator).toUpperCase() === 'OR';
+      if (isOr && !underOr) orNodes.push(node);
+      if (node.type === 'binary_expr') {
+        if ('left' in node) findMaximalOrs(node.left, isOr);
+        if ('right' in node) findMaximalOrs(node.right, isOr);
+      } else if (node.type === 'expr_list' && Array.isArray(node.value)) {
+        node.value.forEach(n => findMaximalOrs(n, false));
+      }
+    };
+    findMaximalOrs(ast.where, false);
+    for (const orNode of orNodes) {
+      const disjuncts: Array<SQLParser.ExpressionValue | SQLParser.ExprList> =
+        [];
+      const flattenOr = (
+        node: SQLParser.ExpressionValue | SQLParser.ExprList,
+      ): void => {
+        if (
+          node.type === 'binary_expr' &&
+          'operator' in node &&
+          String(node.operator).toUpperCase() === 'OR'
+        ) {
+          flattenOr(node.left);
+          flattenOr(node.right);
+        } else {
+          disjuncts.push(node);
+        }
+      };
+      flattenOr(orNode);
+      const groups = new Map<string, { info: KvItemsInfo; tokens: string[] }>();
+      let allTokenizable = true;
+      for (const d of disjuncts) {
+        const match = matchKvEquality(d);
+        if (!match) {
+          allTokenizable = false;
+          break;
+        }
+        const group = groups.get(match.info.kvItemsColumn) ?? {
+          info: match.info,
+          tokens: [],
+        };
+        group.tokens.push(...match.tokens);
+        groups.set(match.info.kvItemsColumn, group);
+      }
+      if (!allTokenizable) continue;
+      // Different items columns (e.g. a resource attr OR'd with a point
+      // attr) OR their per-column probes — skip-index analysis unions the
+      // candidate granules across an OR.
+      const parts = [...groups.values()].map(group => {
+        const tokens = [...new Set(group.tokens)];
+        if (tokens.length === 1) {
+          return generateHasAllSqlForKvItemsColumn(
+            group.info.kvItemsColumn,
+            tokens,
+          );
+        }
+        if (group.info.useHasAny) {
+          return generateHasAnySqlForKvItemsColumn(
+            group.info.kvItemsColumn,
+            tokens,
+          );
+        }
+        // Legacy chain MUST carry its own parens: replaceNode drops the
+        // original node's parentheses flag, and a bare `a OR b` grafted next
+        // to an AND rebinds precedence (rows outside the AND leak through).
+        return `(${tokens
+          .map(t =>
+            generateHasAllSqlForKvItemsColumn(group.info.kvItemsColumn, [t]),
+          )
+          .join(' OR ')})`;
+      });
+      replaceNode(
+        orNode,
+        parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`,
+      );
+    }
 
     const traverse = (
       node: SQLParser.ExpressionValue | SQLParser.ExprList | null,
@@ -487,9 +803,12 @@ export const rewriteSqlFilterWithKvItems = (
         if ('right' in node) {
           traverse(node.right);
         }
-        tryOptimize(node);
+        rewriteSingle(node);
       } else if (node.type === 'expr_list' && Array.isArray(node.value)) {
         node.value.forEach(traverse);
+      } else if (node.type === 'function') {
+        // Standalone match() conjunct (anchored alternations only).
+        rewriteSingle(node);
       }
     };
     traverse(ast.where);
@@ -506,12 +825,15 @@ const aggFnExpr = ({
   level,
   where,
   sampleWeightExpression,
+  isNumericExpr,
 }: {
   fn: AggregateFunction | AggregateFunctionWithCombinators;
   expr?: string;
   level?: number;
   where?: string;
   sampleWeightExpression?: string;
+  /** Skip the defensive float cast: expr is a known-numeric column. */
+  isNumericExpr?: boolean;
 }) => {
   const isAny = fn === 'any';
   const isNone = fn === 'none';
@@ -520,7 +842,9 @@ const aggFnExpr = ({
   // Cast to float64 because the expr might not be a number
   const unsafeExpr = {
     UNSAFE_RAW_SQL:
-      isAny || isNone ? `${expr}` : `toFloat64OrDefault(toString(${expr}))`,
+      isAny || isNone || isNumericExpr
+        ? `${expr}`
+        : `toFloat64OrDefault(toString(${expr}))`,
   };
   const whereWithExtraNullCheck = `${where} AND ${unsafeExpr.UNSAFE_RAW_SQL} IS NOT NULL`;
 
@@ -754,6 +1078,7 @@ async function renderSelectList(
           level: select.level,
           where: whereClause.sql,
           sampleWeightExpression: chartConfig.sampleWeightExpression,
+          isNumericExpr: select.isNumericValueExpression,
         });
       } else {
         expr = aggFnExpr({
@@ -761,6 +1086,7 @@ async function renderSelectList(
           expr: select.valueExpression,
           where: whereClause.sql,
           sampleWeightExpression: chartConfig.sampleWeightExpression,
+          isNumericExpr: select.isNumericValueExpression,
         });
       }
 
@@ -805,6 +1131,7 @@ function timeBucketExpr({
   dateRange,
   alias = FIXED_TIME_BUCKET_EXPR_ALIAS,
   isRenderingRawSqlTemplate,
+  prebucketed,
 }: {
   interval: SQLInterval | 'auto';
   timestampValueExpression: string;
@@ -818,12 +1145,22 @@ function timeBucketExpr({
   dateRange?: [Date, Date];
   alias?: string;
   isRenderingRawSqlTemplate?: boolean;
+  /** The timestamp expression is ALREADY bucketed to this interval (e.g. a
+   * metrics CTE's inner bucket column) — emit it bare instead of re-wrapping
+   * in an identical toStartOfInterval. */
+  prebucketed?: boolean;
 }) {
   const unsafeTimestampValueExpression = {
     UNSAFE_RAW_SQL:
       bucketTimestampValueExpression ??
       getFirstTimestampValueExpression(timestampValueExpression),
   };
+
+  if (prebucketed) {
+    return chSql`${unsafeTimestampValueExpression} AS \`${{
+      UNSAFE_RAW_SQL: alias,
+    }}\``;
+  }
 
   if (isRenderingRawSqlTemplate) {
     return chSql`$__timeInterval(${unsafeTimestampValueExpression}) AS \`${{
@@ -851,6 +1188,7 @@ export async function timeFilterExpr({
   dateRangeStartInclusive,
   isRenderingRawSqlTemplate,
   includedDataInterval,
+  scanLookbackSeconds,
   metadata,
   tableName,
   timestampValueExpression,
@@ -863,6 +1201,7 @@ export async function timeFilterExpr({
   dateRangeStartInclusive: boolean;
   isRenderingRawSqlTemplate?: boolean;
   includedDataInterval?: string;
+  scanLookbackSeconds?: number;
   metadata: Metadata;
   tableName: string;
   timestampValueExpression: string;
@@ -934,12 +1273,22 @@ export async function timeFilterExpr({
         );
       }
 
+      // The lower bound aligns to the display-bucket start (so the first
+      // bucket aggregates its full pre-window slice), then steps back by the
+      // sample lookback when one is set — the previous-sample distance for
+      // rate/lag chains — or by one bucket otherwise (v1 parity).
+      const lookbackSql =
+        scanLookbackSeconds != null
+          ? `${Math.ceil(scanLookbackSeconds)} second`
+          : undefined;
       const rawStartBound = isRenderingRawSqlTemplate
         ? includedDataInterval
-          ? chSql`toStartOfInterval($__fromTime_ms, INTERVAL $__interval_s second) - INTERVAL $__interval_s second`
+          ? lookbackSql
+            ? chSql`toStartOfInterval($__fromTime_ms, INTERVAL $__interval_s second) - INTERVAL ${lookbackSql}`
+            : chSql`toStartOfInterval($__fromTime_ms, INTERVAL $__interval_s second) - INTERVAL $__interval_s second`
           : chSql`$__fromTime_ms`
         : includedDataInterval
-          ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: startTime }}), INTERVAL ${includedDataInterval}) - INTERVAL ${includedDataInterval}`
+          ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: startTime }}), INTERVAL ${includedDataInterval}) - INTERVAL ${lookbackSql ?? includedDataInterval}`
           : chSql`fromUnixTimestamp64Milli(${{ Int64: startTime }})`;
 
       const rawEndBound = isRenderingRawSqlTemplate
@@ -1005,6 +1354,7 @@ async function renderSelect(
             chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
           isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+          prebucketed: chartConfig.timestampPrebucketed,
         })
       : [],
   );
@@ -1119,11 +1469,45 @@ async function renderWhere(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql> {
+  // kv-items index companions: SQL equality matchers on attribute maps are
+  // rewritten to has(<Items column>, 'k=v') wherever the FROM table exposes
+  // the *AttributeItems ALIAS columns + text indexes (detection is
+  // per-table via buildKvItemsLookup). Applies to the where string, sql
+  // filters, and sql aggConditions alike — the map-value skip index cannot
+  // prune common values, the pair token can. Lucene conditions get the same
+  // treatment inside SearchQueryBuilder.
+  const hasSqlFilter =
+    chartConfig.filters?.some(f => f.type === 'sql') ?? false;
+  const hasSqlWhere =
+    isNonEmptyWhereExpr(chartConfig.where) &&
+    (chartConfig.whereLanguage ?? 'sql') === 'sql';
+  const hasSqlAggCondition =
+    typeof chartConfig.select !== 'string' &&
+    chartConfig.select.some(
+      s =>
+        isNonEmptyWhereExpr(s.aggCondition) &&
+        (s.aggConditionLanguage ?? 'sql') === 'sql',
+    );
+  const kvItemsLookup: KvItemsLookup =
+    (hasSqlFilter || hasSqlWhere || hasSqlAggCondition) &&
+    chartConfig.from.databaseName &&
+    chartConfig.from.tableName &&
+    !hasSubqueryCte(chartConfig.with)
+      ? await buildKvItemsLookup({
+          metadata,
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+        })
+      : new Map();
+
   let whereSearchCondition: ChSql | [] = [];
   if (isNonEmptyWhereExpr(chartConfig.where)) {
     whereSearchCondition = wrapChSqlIfNotEmpty(
       await renderWhereExpression({
-        condition: chartConfig.where,
+        condition: hasSqlWhere
+          ? rewriteSqlFilterWithKvItems(chartConfig.where, kvItemsLookup)
+          : chartConfig.where,
         from: chartConfig.from,
         language: chartConfig.whereLanguage ?? 'sql',
         implicitColumnExpression: chartConfig.implicitColumnExpression,
@@ -1151,7 +1535,13 @@ async function renderWhere(
         chartConfig.select.map(async select => {
           if (isNonEmptyWhereExpr(select.aggCondition)) {
             return await renderWhereExpression({
-              condition: select.aggCondition,
+              condition:
+                (select.aggConditionLanguage ?? 'sql') === 'sql'
+                  ? rewriteSqlFilterWithKvItems(
+                      select.aggCondition,
+                      kvItemsLookup,
+                    )
+                  : select.aggCondition,
               from: chartConfig.from,
               language: select.aggConditionLanguage ?? 'sql',
               implicitColumnExpression: chartConfig.implicitColumnExpression,
@@ -1168,21 +1558,6 @@ async function renderWhere(
       )
     ).filter(v => v !== null) as ChSql[];
   }
-
-  const hasSqlFilter =
-    chartConfig.filters?.some(f => f.type === 'sql') ?? false;
-  const kvItemsLookup: KvItemsLookup =
-    hasSqlFilter &&
-    chartConfig.from.databaseName &&
-    chartConfig.from.tableName &&
-    !hasSubqueryCte(chartConfig.with)
-      ? await buildKvItemsLookup({
-          metadata,
-          databaseName: chartConfig.from.databaseName,
-          tableName: chartConfig.from.tableName,
-          connectionId: chartConfig.connection,
-        })
-      : new Map();
 
   const filterConditions = await Promise.all(
     (chartConfig.filters ?? []).map(async filter => {
@@ -1235,6 +1610,7 @@ async function renderWhere(
           tableName: chartConfig.from.tableName,
           with: chartConfig.with,
           includedDataInterval: chartConfig.includedDataInterval,
+          scanLookbackSeconds: chartConfig.scanLookbackSeconds,
         })
       : [],
     whereSearchCondition,
@@ -1250,9 +1626,13 @@ async function renderWhere(
     ),
     // $__filters expands (at query time) to the dashboard filters, which
     // reference columns of the real source table. Only emit it when this WHERE
-    // targets that source table (indicated by a non-empty databaseName).
+    // targets that source table (indicated by a non-empty databaseName) and
+    // the caller hasn't marked the scan as label-free (v2 points/rollup
+    // tables carry no label columns — a substituted label filter there is an
+    // unknown-identifier error; the series-table WHERE is the legal site).
     chartConfig.isRenderingRawSqlTemplate &&
-      chartConfig.from.databaseName !== ''
+      chartConfig.from.databaseName !== '' &&
+      !chartConfig.omitFiltersMacro
       ? chSql`$__filters`
       : [],
   );
@@ -1275,6 +1655,7 @@ async function renderGroupBy(
             chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
           isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+          prebucketed: chartConfig.timestampPrebucketed,
         })
       : [],
   );
@@ -1290,14 +1671,22 @@ async function renderSeriesLimitCte(
   }: { from: ChSql; where: ChSql; groupBy: ChSql | undefined },
 ): Promise<{ cte: ChSql; predicate: ChSql } | undefined> {
   const { seriesLimit } = chartConfig;
+  // CTE-backed sources (translated metric configs select FROM a WITH clause,
+  // e.g. `Metrics`/`Bucketed`) are re-scannable: the ranking CTE is appended
+  // AFTER the translated CTEs in the same WITH list. Only skip when the FROM
+  // is neither a real table nor a known CTE.
+  const fromIsKnownCte =
+    !chartConfig.from?.databaseName &&
+    !!chartConfig.from?.tableName &&
+    (chartConfig.with ?? []).some(w => w.name === chartConfig.from.tableName);
   if (
     seriesLimit == null ||
     !isUsingGroupBy(chartConfig) ||
     !isUsingGranularity(chartConfig) ||
     chartConfig.selectGroupBy === false ||
-    // Skip CTE/metric sources (no real table to re-scan) and string selects.
-    !chartConfig.from?.databaseName ||
-    !chartConfig.from?.tableName ||
+    // Skip sourceless/string-select configs (no scannable FROM).
+    ((!chartConfig.from?.databaseName || !chartConfig.from?.tableName) &&
+      !fromIsKnownCte) ||
     !Array.isArray(chartConfig.select) ||
     chartConfig.select.length === 0 ||
     groupBy == null
@@ -1430,6 +1819,7 @@ function renderOrderBy(
             chartConfig.bucketTimestampValueExpression,
           dateRange: chartConfig.dateRange,
           isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+          prebucketed: chartConfig.timestampPrebucketed,
         })
       : [],
     chartConfig.orderBy != null
@@ -1469,7 +1859,28 @@ function renderSettings(
 // for metric SQL generation.
 type InternalChartFields = {
   includedDataInterval?: string;
+  /**
+   * Overrides the LOWER-bound widening only (the upper bound keeps the
+   * `includedDataInterval` +1-bucket ceiling that feeds the final display
+   * bucket): cumulative rate/lag chains need each series' PREVIOUS SAMPLE,
+   * which lives up to a scrape interval before the window — one display
+   * bucket is not enough (15s buckets on a 60s-interval metric render an
+   * empty left edge). Raw scans look back max(2× estimated scrape interval,
+   * 1 bucket); rollup chains exactly one TIER bucket.
+   */
+  scanLookbackSeconds?: number;
   settings?: ChSql;
+  /**
+   * The (translated) config's `timestampValueExpression` is already bucketed
+   * to `granularity` (metrics CTEs bucket internally); the outer select/
+   * group-by/order-by emit it bare instead of double-bucketing.
+   */
+  timestampPrebucketed?: boolean;
+  /**
+   * Suppress the $__filters macro in raw-SQL-template mode for WHEREs that
+   * target label-free tables (v2 points/rollup scans).
+   */
+  omitFiltersMacro?: boolean;
   /**
    * Pre-resolved single column from the (possibly multi-column)
    * `timestampValueExpression`, used for the time-bucket and time-math
@@ -1650,6 +2061,11 @@ async function translateMetricChartConfig(
   const metricTables = chartConfig.metricTables;
   if (!metricTables) {
     return chartConfig;
+  }
+
+  // OTel metrics v2 (series/points split schema) uses a different query shape
+  if (isMetricsV2Tables(metricTables)) {
+    return translateMetricChartConfigV2(chartConfig, metadata);
   }
 
   // assumes all the selects are from a single metric type, for now
@@ -2108,6 +2524,908 @@ async function translateMetricChartConfig(
   }
 
   throw new Error(`no query support for metric type=${metricType}`);
+}
+
+/**
+ * Metrics v2 (series/points split schema) translation. Produces the two-phase
+ * query shape:
+ *   Series CTE (label matchers on the text-indexed series table, Date-bounded)
+ *   → points scan (TimeUnix-bounded, SeriesHash IN Series) aggregated per
+ *   (series, time bucket) → label join → generic outer query.
+ *
+ * User where/filters/aggConditions are applied to the SERIES table (label
+ * matchers); they cannot reference point columns like Value. The points scan
+ * gets only the MetricName + time bounds.
+ */
+async function translateMetricChartConfigV2(
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
+  metadata: Metadata,
+): Promise<BuilderChartConfigWithOptDateRangeEx> {
+  const metricTables = chartConfig.metricTables;
+  if (!metricTables || !isMetricsV2Tables(metricTables)) {
+    return chartConfig;
+  }
+
+  const { select, from, filters, where, ...restChartConfig } = chartConfig;
+  if (!select || !Array.isArray(select)) {
+    throw new Error('multi select or string select on metrics not supported');
+  }
+
+  const { metricType, metricName, metricNameSql, ..._select } = select[0]; // Initial impl only supports one metric select per chart config
+
+  if (!metricType || !metricName) {
+    throw new Error('metricType and metricName are required for v2 metrics');
+  }
+
+  // 'increase' is only valid for Sum metrics.
+  if (_select.aggFn === 'increase' && metricType !== MetricsDataType.Sum) {
+    throw new Error(
+      `aggFn 'increase' is only supported for Sum (counter) metrics (got metricType=${metricType})`,
+    );
+  }
+
+  const seriesTable = metricTables.series;
+  const pointsTable =
+    metricType === MetricsDataType.Histogram
+      ? metricTables.histogramPoints
+      : metricType === MetricsDataType.ExponentialHistogram
+        ? metricTables.expHistogramPoints
+        : metricType === MetricsDataType.Summary
+          ? metricTables.summaryPoints
+          : metricTables.points;
+
+  if (!pointsTable) {
+    throw new Error(`no v2 points table configured for type=${metricType}`);
+  }
+
+  // Number/table tiles carry NO granularity — the CTE time expressions fall
+  // back to 'auto' (timeBucketExpr), so interval resolution here must do the
+  // same or the rate divisor, scan widening, and rollup routing all compute
+  // against a phantom zero-width bucket (a 24h Number tile rendered
+  // per-HOUR increases labeled per-second, and never routed to a tier).
+  const effectiveGranularity = chartConfig.granularity || 'auto';
+
+  // Sum/histogram-family types widen the scan by ±1 bucket so rates can be
+  // computed at the range edges (v1 parity). Gauges scan the range as-is.
+  const includedDataInterval =
+    metricType === MetricsDataType.Gauge
+      ? undefined
+      : effectiveGranularity === 'auto' && Array.isArray(chartConfig.dateRange)
+        ? convertDateRangeToGranularityString(chartConfig.dateRange)
+        : chartConfig.granularity;
+
+  // Rollup tier routing: raw points for sub-5m buckets, the 5m tier for
+  // 5m..1h buckets, the 1h tier beyond — the cookbook's "route by range×step"
+  // (grain <= step always holds; HyperDX windows are ~60 buckets so the
+  // >=3-rollup-buckets rule holds too). Gauge/sum use the float tiers;
+  // explicit histograms use the histogram tiers; exponential histograms use
+  // their own tiers (Scale in the aggregation key, Map-keyed buckets).
+  // Summaries have NO rollup tiers (pre-computed quantiles are not
+  // time-mergeable). Gauge isDelta stays on raw (needs per-point
+  // timestamps). Exp avg is not supported on either tier, so it never
+  // routes.
+  const resolvedInterval =
+    effectiveGranularity === 'auto' && Array.isArray(chartConfig.dateRange)
+      ? convertDateRangeToGranularityString(chartConfig.dateRange)
+      : chartConfig.granularity;
+  const intervalSeconds = resolvedInterval
+    ? convertGranularityToSeconds(resolvedInterval)
+    : 0;
+  const tier5m =
+    metricType === MetricsDataType.Histogram
+      ? metricTables.histogramPoints5m
+      : metricType === MetricsDataType.ExponentialHistogram
+        ? metricTables.expHistogramPoints5m
+        : metricTables.points5m;
+  const tier1h =
+    metricType === MetricsDataType.Histogram
+      ? metricTables.histogramPoints1h
+      : metricType === MetricsDataType.ExponentialHistogram
+        ? metricTables.expHistogramPoints1h
+        : metricTables.points1h;
+  const canUseRollup =
+    (metricType === MetricsDataType.Gauge && !_select.isDelta) ||
+    metricType === MetricsDataType.Sum ||
+    metricType === MetricsDataType.Histogram ||
+    metricType === MetricsDataType.ExponentialHistogram;
+  const rollupTable = !canUseRollup
+    ? undefined
+    : intervalSeconds >= 3600 && tier1h
+      ? tier1h
+      : intervalSeconds >= 300 && tier5m
+        ? tier5m
+        : undefined;
+  const tierSeconds =
+    rollupTable == null ? undefined : rollupTable === tier1h ? 3600 : 300;
+  const scanTable = rollupTable ?? pointsTable;
+
+  // Routing guard — checked before any metadata/render queries so an
+  // over-cap request issues ZERO ClickHouse queries. Raw-tier quantile
+  // scans are per-point work that grows linearly with the window (a 24h
+  // exp-hist quantile is structurally unable to finish inside the execution
+  // timeout — measured retry storms burning ~533 CPU-s per attempt).
+  // Applies to histogram-family quantiles that resolved to a raw scan
+  // (rollup tables not configured, or a forced-fine granularity pins them
+  // to raw). Summary quantiles — which can never route to a tier — use the
+  // cost-based gate further down instead: their per-point work is a plain
+  // array pick, so a flat window cap wrongly blocks small metrics at 6h+.
+  // Count/avg panels on these types are scalar math and stay uncapped.
+  if (
+    _select.aggFn === 'quantile' &&
+    !rollupTable &&
+    (metricType === MetricsDataType.Histogram ||
+      metricType === MetricsDataType.ExponentialHistogram) &&
+    Array.isArray(chartConfig.dateRange)
+  ) {
+    const windowMs =
+      chartConfig.dateRange[1].getTime() - chartConfig.dateRange[0].getTime();
+    if (windowMs > RAW_QUANTILE_MAX_WINDOW_MS) {
+      throw new Error(
+        `window too large for this metric type — reduce the window (${
+          !tier5m && !tier1h
+            ? 'no rollup tables are configured for this metric type, so the query reads raw points; configure the 5m/1h rollup tables on the source or reduce the window'
+            : 'this granularity is too fine to use the 5m/1h rollup tiers, so the query reads raw points; use a coarser granularity or a smaller window'
+        })`,
+      );
+    }
+  }
+
+  // Whole-metric fast path: the panel aggregates the ENTIRE metric — no
+  // label filters, no group-by — so `MetricName = '...'` alone is a PK scan
+  // and series resolution adds nothing (the joinless shapes are emitted by
+  // the CTE builders; hist/summary quantiles are excluded since they need
+  // ExplicitBounds/Quantiles from the series table).
+  // Raw-SQL templates are excluded: they are reusable with late-bound
+  // $__filters, whose only legal landing site is the series-table WHERE —
+  // templates must always keep the Series CTE.
+  const isWholeMetric =
+    !isNonEmptyWhereExpr(where) &&
+    (filters ?? []).length === 0 &&
+    !isNonEmptyWhereExpr(_select.aggCondition) &&
+    !isUsingGroupBy(chartConfig) &&
+    !chartConfig.isRenderingRawSqlTemplate;
+  // Temporality/monotonicity + cross-type collision info from the series
+  // profile (one cached narrow read) — the families table lacks Temporality
+  // in this build. Fast-path candidates need it for the joinless shapes;
+  // every other non-gauge panel uses it to emit a single temporality branch
+  // instead of computing both variants per point (the dead variant is a
+  // full window pass on sums). Unresolvable profiles fall back to the dual
+  // shapes.
+  const seriesProfile =
+    isWholeMetric || metricType !== MetricsDataType.Gauge
+      ? await metadata.getMetricSeriesProfile({
+          databaseName: from.databaseName,
+          tableName: seriesTable,
+          metricNameCondition: createMetricNameFilter(
+            metricName,
+            metricNameSql,
+          ),
+          metricTypeValue: METRICS_V2_METRIC_TYPE[metricType],
+          dateRange: Array.isArray(chartConfig.dateRange)
+            ? chartConfig.dateRange
+            : undefined,
+          connectionId: chartConfig.connection,
+        })
+      : undefined;
+  // Gauge and Sum share otel_metrics_points(+_5m/_1h); without the Series
+  // CTE the MetricType guard is gone, so a same-name metric of the other
+  // float type would co-mingle. Unknown profile (undefined otherMetricTypes:
+  // failed or empty lookup) fails closed.
+  const floatTableCollisionSafe =
+    seriesProfile?.otherMetricTypes != null &&
+    !seriesProfile.otherMetricTypes.includes(
+      metricType === MetricsDataType.Gauge
+        ? METRICS_V2_METRIC_TYPE[MetricsDataType.Sum]
+        : METRICS_V2_METRIC_TYPE[MetricsDataType.Gauge],
+    );
+  // Resolved-but-not-fast profile info for the CTE builders: static
+  // temporality branch with the label join kept.
+  const resolvedProfile =
+    seriesProfile?.temporality != null
+      ? {
+          temporality: seriesProfile.temporality,
+          isMonotonic: seriesProfile.isMonotonic,
+        }
+      : undefined;
+
+  // Rate/lag chains (cumulative or unresolved temporality) need each
+  // series' PREVIOUS SAMPLE, which lives up to a scrape interval before the
+  // window — one display bucket is not enough (a 15s-bucket panel on a
+  // 60s-interval metric rendered an empty left edge for the first
+  // scrape-interval of every chart). Raw scans look back
+  // max(2× estimated scrape interval, 1 display bucket) (flat 5-minute
+  // Prometheus default when the interval is unknown); rollup chains need
+  // the previous TIER bucket (not a full display bucket — a 1d-bucket panel
+  // on the 5m tier was scanning 1d of pre-window tier rows). The upper
+  // bound keeps the +1-bucket ceiling: it feeds the final display bucket.
+  // Delta-resolved shapes read no previous sample and keep ±1-bucket
+  // parity; summary quantiles take the last point per bucket (no chain).
+  const needsLookback =
+    metricType !== MetricsDataType.Gauge &&
+    seriesProfile?.temporality !== 'delta' &&
+    !(metricType === MetricsDataType.Summary && _select.aggFn === 'quantile') &&
+    Array.isArray(chartConfig.dateRange);
+  const scrapeIntervalEstimate = needsLookback
+    ? await metadata.getMetricScrapeIntervalEstimate({
+        databaseName: from.databaseName,
+        tableName: pointsTable,
+        metricNameCondition: createMetricNameFilter(metricName, metricNameSql),
+        connectionId: chartConfig.connection,
+      })
+    : undefined;
+  const MAX_SCAN_LOOKBACK_SECONDS = 6 * 60 * 60;
+  const scanLookbackSeconds = !needsLookback
+    ? undefined
+    : Math.min(
+        MAX_SCAN_LOOKBACK_SECONDS,
+        rollupTable
+          ? Math.max(
+              tierSeconds ?? 300,
+              scrapeIntervalEstimate ? 2 * scrapeIntervalEstimate : 0,
+            )
+          : Math.max(
+              scrapeIntervalEstimate ? 2 * scrapeIntervalEstimate : 300,
+              intervalSeconds || 0,
+            ),
+      );
+
+  // Phase 1 WHERE: user where/filters/aggConditions (label matchers) +
+  // MetricName + MetricType, bounded on the bare Date sort key (column
+  // metadata identifies it as Date-typed so timeFilterExpr emits inclusive
+  // toDate-wrapped bounds; wrapping the key column itself can weaken
+  // pruning). The Date lower bound derives from the padded scan start
+  // (scanLookbackSeconds) so the lookback rows resolve too.
+  const seriesWhere = await renderWhere(
+    {
+      ...chartConfig,
+      from: { databaseName: from.databaseName, tableName: seriesTable },
+      filters: [
+        ...(filters ?? []),
+        {
+          type: 'sql',
+          condition: createMetricNameFilter(metricName, metricNameSql),
+        },
+        {
+          type: 'sql',
+          condition: SqlString.format('MetricType = ?', [
+            METRICS_V2_METRIC_TYPE[metricType],
+          ]),
+        },
+      ],
+      timestampValueExpression: 'Date',
+      bucketTimestampValueExpression: undefined,
+      includedDataInterval,
+      scanLookbackSeconds,
+    },
+    metadata,
+  );
+
+  // Day-rounded variant of the series WHERE for cost estimates: the
+  // ms-precision bounds in `seriesWhere` change every refresh and would
+  // defeat the estimate cache (and leak one MetadataCache entry per
+  // refresh); day-rounding keys one uniq(SeriesHash) per (metric, filters,
+  // day) and only ever over-counts (fails toward gating more /
+  // parallelizing more). Raw-SQL-template renders bail: their sentinel
+  // dateRange and late-bound $__ macros cannot be executed.
+  const getSeriesCountForCost = async (): Promise<number | undefined> => {
+    if (
+      !Array.isArray(chartConfig.dateRange) ||
+      chartConfig.isRenderingRawSqlTemplate
+    ) {
+      return undefined;
+    }
+    const estimateWhere = await renderWhere(
+      {
+        ...chartConfig,
+        from: { databaseName: from.databaseName, tableName: seriesTable },
+        filters: [
+          ...(filters ?? []),
+          {
+            type: 'sql',
+            condition: createMetricNameFilter(metricName, metricNameSql),
+          },
+          {
+            type: 'sql',
+            condition: SqlString.format('MetricType = ?', [
+              METRICS_V2_METRIC_TYPE[metricType],
+            ]),
+          },
+        ],
+        timestampValueExpression: 'Date',
+        bucketTimestampValueExpression: undefined,
+        dateRange: [
+          new Date(
+            Math.floor(chartConfig.dateRange[0].getTime() / 86_400_000) *
+              86_400_000,
+          ),
+          new Date(
+            Math.ceil(chartConfig.dateRange[1].getTime() / 86_400_000) *
+              86_400_000,
+          ),
+        ],
+      },
+      metadata,
+    );
+    return metadata.getMetricSeriesCountEstimate({
+      databaseName: from.databaseName,
+      tableName: seriesTable,
+      where: estimateWhere,
+      connectionId: chartConfig.connection,
+    });
+  };
+
+  // Whale guard: raw scan forced by sub-5m display buckets + a long window.
+  // Only now (after the cheap structural checks) is the series-count
+  // estimate queried — one day-cached uniq(SeriesHash) over the day-rounded
+  // resolution predicate, so a label filter that narrows the scope also
+  // clears the guard (day-rounding only over-counts, which fails toward
+  // gating). Fails open when the estimate is unavailable.
+  if (
+    !rollupTable &&
+    intervalSeconds > 0 &&
+    intervalSeconds < 300 &&
+    Array.isArray(chartConfig.dateRange) &&
+    chartConfig.dateRange[1].getTime() - chartConfig.dateRange[0].getTime() >
+      FINE_BUCKET_RAW_MAX_WINDOW_MS
+  ) {
+    const seriesCount = await getSeriesCountForCost();
+    if (seriesCount !== undefined && seriesCount > WHALE_SERIES_THRESHOLD) {
+      throw new Error(
+        `too many series for this granularity — narrow the scope or coarsen the buckets ` +
+          `(~${Math.round(seriesCount / 1000)}k series match; sub-5-minute buckets read raw points, ` +
+          `which stays interactive only with a label filter (<${WHALE_SERIES_THRESHOLD / 1000}k series) ` +
+          `or a window under ${FINE_BUCKET_RAW_MAX_WINDOW_MS / 3600000}h` +
+          `${
+            metricType !== MetricsDataType.Summary
+              ? '; buckets of 5 minutes or coarser route to the rollup tiers at any cardinality'
+              : ''
+          })`,
+      );
+    }
+  }
+
+  // Summary quantile cost gate: summaries have no rollup tier, so every
+  // window reads raw points — but the cost is series × window ÷ interval,
+  // and a flat window cap wrongly blocks trivially cheap 6h+ panels on
+  // small metrics (the quantile columns render as per-bucket trends of the
+  // client-computed quantiles — correct semantics; true re-aggregation of
+  // pre-computed quantiles is impossible). Windows over the flat-cap
+  // threshold consult the estimates; an unavailable series count falls back
+  // to the previous flat cap (fail closed — an unbounded whale summary scan
+  // is a guaranteed timeout storm). Count/sum panels are exact at any range
+  // and are never gated.
+  if (
+    _select.aggFn === 'quantile' &&
+    metricType === MetricsDataType.Summary &&
+    Array.isArray(chartConfig.dateRange)
+  ) {
+    const windowMs =
+      chartConfig.dateRange[1].getTime() - chartConfig.dateRange[0].getTime();
+    if (windowMs > RAW_QUANTILE_MAX_WINDOW_MS) {
+      const seriesCount = await getSeriesCountForCost();
+      if (seriesCount === undefined) {
+        throw new Error(
+          `window too large for this metric type — reduce the window (summary quantiles are not time-mergeable and always read raw points; the series-count estimate is unavailable, so windows over ${RAW_QUANTILE_MAX_WINDOW_MS / 3_600_000}h are blocked)`,
+        );
+      }
+      const summaryScrapeInterval =
+        scrapeIntervalEstimate ??
+        (await metadata.getMetricScrapeIntervalEstimate({
+          databaseName: from.databaseName,
+          tableName: pointsTable,
+          metricNameCondition: createMetricNameFilter(
+            metricName,
+            metricNameSql,
+          ),
+          connectionId: chartConfig.connection,
+        }));
+      const intervalS = summaryScrapeInterval || 30;
+      const estRows = (seriesCount * (windowMs / 1000)) / intervalS;
+      if (estRows > SUMMARY_RAW_SCAN_MAX_ROWS) {
+        throw new Error(
+          `summary quantile scan too large — narrow the scope with a label filter or reduce the window ` +
+            `(~${Math.round(seriesCount / 1000)}k matched series over ${Math.round(windowMs / 3_600_000)}h ` +
+            `≈ ${Math.round(estRows / 1_000_000)}M raw points at a ~${Math.round(intervalS)}s scrape interval; ` +
+            `the interactive limit is ${SUMMARY_RAW_SCAN_MAX_ROWS / 1_000_000}M. ` +
+            `Count/sum panels on summaries are exact at any range)`,
+        );
+      }
+    }
+  }
+
+  // Resolve narrow: project only the series columns this query's math and
+  // group-by reference (the attribute maps are the fattest columns and
+  // resolution is linear in matched series). Profile-resolved temporality
+  // drops the Temporality/IsMonotonic projections too — the static branch
+  // never reads them.
+  const groupByText =
+    typeof chartConfig.groupBy === 'string'
+      ? chartConfig.groupBy
+      : (chartConfig.groupBy ?? [])
+          .map(g => `${g.valueExpression} ${g.alias ?? ''}`)
+          .join(', ');
+  const seriesNeeds = parseSeriesNeeds(
+    [groupByText],
+    metricType === MetricsDataType.Sum
+      ? {
+          temporality: resolvedProfile == null,
+          monotonicity:
+            resolvedProfile == null ||
+            (resolvedProfile.temporality === 'cumulative' &&
+              resolvedProfile.isMonotonic === undefined),
+        }
+      : metricType === MetricsDataType.Histogram
+        ? {
+            temporality: resolvedProfile == null,
+            explicitBounds: _select.aggFn === 'quantile',
+            metricName: _select.aggFn === 'quantile',
+          }
+        : metricType === MetricsDataType.ExponentialHistogram
+          ? // LowCardinality scalar — cheap; used by the dual-path fallback
+            // and the count path (the branched quantile shapes ignore it).
+            { temporality: resolvedProfile == null }
+          : metricType === MetricsDataType.Summary
+            ? {
+                quantiles: _select.aggFn === 'quantile',
+                temporality:
+                  _select.aggFn === 'count' && resolvedProfile == null,
+              }
+            : {},
+  );
+
+  // Phase 2 WHERE: MetricName + time bounds only (labels live on the series
+  // table). SeriesHash IN (Series) is appended by the CTE builders. Rollup
+  // tiers are scanned on their TimeBucket column instead of TimeUnix.
+  const pointsTimestampExpr = rollupTable
+    ? 'TimeBucket'
+    : chartConfig.timestampValueExpression || DEFAULT_METRIC_TABLE_TIME_COLUMN;
+  const pointsWhere = await renderWhere(
+    {
+      ...chartConfig,
+      select: [],
+      where: '',
+      whereLanguage: 'sql',
+      from: { databaseName: from.databaseName, tableName: scanTable },
+      filters: [
+        {
+          type: 'sql',
+          condition: createMetricNameFilter(metricName, metricNameSql),
+        },
+      ],
+      timestampValueExpression: pointsTimestampExpr,
+      includedDataInterval,
+      scanLookbackSeconds,
+      // v2 points/rollup tables carry no label columns — dashboard filters
+      // must land on the series-table WHERE, never the scan.
+      omitFiltersMacro: true,
+    },
+    metadata,
+  );
+
+  const seriesCte = seriesCteV2({
+    seriesFrom: renderFrom({
+      from: { databaseName: from.databaseName, tableName: seriesTable },
+    }),
+    seriesWhere,
+    needs: seriesNeeds,
+  });
+
+  // Parallel-replicas gate: on only when the estimated scan (matched series
+  // × rows per series over the window) is large enough that distribution
+  // beats coordination overhead; 0 everywhere else (global-on measurably
+  // regressed small panels). Capability-checked for WRITABILITY (a
+  // settings-profile CONST constraint lists the setting but hard-fails any
+  // override) so constrained users never see it. The estimate is day-cached
+  // (see getSeriesCountForCost) and fails toward OFF.
+  let parallelReplicas = false;
+  if (PARALLEL_REPLICAS_GATE_ENABLED && Array.isArray(chartConfig.dateRange)) {
+    const windowSec =
+      (chartConfig.dateRange[1].getTime() -
+        chartConfig.dateRange[0].getTime()) /
+      1000;
+    const rowsPerSeries = rollupTable
+      ? windowSec / (tierSeconds ?? 300)
+      : windowSec / (scrapeIntervalEstimate || 30);
+    const seriesCountForCost = await getSeriesCountForCost();
+    if (
+      seriesCountForCost != null &&
+      seriesCountForCost * rowsPerSeries > PARALLEL_REPLICAS_MIN_SCAN_ROWS
+    ) {
+      parallelReplicas =
+        (await metadata
+          .isSettingChangeable({
+            settingName: 'enable_parallel_replicas',
+            connectionId: chartConfig.connection,
+          })
+          .catch(() => undefined)) === true;
+    }
+  }
+  const v2Settings = parallelReplicas
+    ? chSql`short_circuit_function_evaluation = 'force_enable', enable_parallel_replicas = 1`
+    : chSql`short_circuit_function_evaluation = 'force_enable'`;
+
+  const pointsFrom = renderFrom({
+    from: { databaseName: from.databaseName, tableName: scanTable },
+  });
+
+  if (metricType === MetricsDataType.Gauge) {
+    const timeBucketCol = '__hdx_time_bucket2';
+    const timeExpr = timeBucketExpr({
+      interval: chartConfig.granularity || 'auto',
+      timestampValueExpression: pointsTimestampExpr,
+      bucketTimestampValueExpression:
+        chartConfig.bucketTimestampValueExpression,
+      dateRange: chartConfig.dateRange,
+      alias: timeBucketCol,
+      // template mode must late-bind the bucket to $__timeInterval — baking
+      // the sentinel-range 'auto' resolution pins every dashboard window to
+      // a conversion-time constant
+      isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+    });
+
+    // Only consumed by the raw gaugeCtesV2 path (the rollup builder hardcodes
+    // argMaxMerge(Last)). ValueMax is the per-(series, ts) duplicate collapse
+    // done in the raw Bucketed CTE's inner subquery.
+    const bucketValueExpr = _select.isDelta
+      ? renderDeltaExpression(
+          { ...chartConfig, timestampValueExpression: pointsTimestampExpr },
+          'ValueMax',
+        )
+      : // argMax is deterministic w.r.t. TimeUnix ordering, unlike v1's
+        // last_value which in a GROUP BY context is read-order anyLast.
+        // Also matches the rollup tier's argMaxMerge(Last) semantics.
+        `argMax(ValueMax, TimeUnix)`;
+
+    // Gauges need no temporality, but the fast path still requires the
+    // cross-type collision check (shared float points table).
+    const gaugeFast = isWholeMetric && floatTableCollisionSafe;
+    return {
+      ...restChartConfig,
+      with: [
+        ...(gaugeFast ? [] : [seriesCte]),
+        ...(rollupTable
+          ? gaugeRollupCtesV2({
+              fast: gaugeFast,
+              needs: seriesNeeds,
+              rollupFrom: pointsFrom,
+              rollupWhere: pointsWhere,
+              timeExpr,
+              timeBucketCol,
+            })
+          : gaugeCtesV2({
+              fast: gaugeFast,
+              needs: seriesNeeds,
+              pointsFrom,
+              pointsWhere,
+              timeExpr,
+              timeBucketCol,
+              bucketValueExpr,
+              // Prometheus staleness for the last-value pick: a series whose
+              // newest point in a bucket is a marker is gone, not holding its
+              // last value. The isDelta expression consumes every deduped row,
+              // so it relies on the plain Rule-6 marker filter instead.
+              dropStaleBuckets: !_select.isDelta,
+            })),
+      ],
+      select: [
+        {
+          ..._select,
+          valueExpression: 'LastValue',
+          aggCondition: '', // applied at the Series CTE
+          isNumericValueExpression: true, // LastValue is Float64
+        },
+      ],
+      from: {
+        databaseName: '',
+        tableName: 'Metrics',
+      },
+      where: '', // applied at the Series CTE
+      timestampValueExpression: `\`${timeBucketCol}\``,
+      timestampPrebucketed: true, // Bucketed already applied the granularity
+      settings: v2Settings,
+    };
+  } else if (metricType === MetricsDataType.Sum) {
+    const timeBucketCol = '__hdx_time_bucket2';
+    const timeExpr = timeBucketExpr({
+      interval: chartConfig.granularity || 'auto',
+      timestampValueExpression: pointsTimestampExpr,
+      bucketTimestampValueExpression:
+        chartConfig.bucketTimestampValueExpression,
+      dateRange: chartConfig.dateRange,
+      alias: timeBucketCol,
+      // template mode must late-bind the bucket to $__timeInterval — baking
+      // the sentinel-range 'auto' resolution pins every dashboard window to
+      // a conversion-time constant
+      isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+    });
+
+    // Sums branch on Temporality (and IsMonotonic when cumulative), so the
+    // fast path needs both resolved from the profile; otherwise fall back.
+    const sumFast =
+      isWholeMetric &&
+      floatTableCollisionSafe &&
+      seriesProfile?.temporality != null &&
+      (seriesProfile.temporality === 'delta' ||
+        seriesProfile.isMonotonic !== undefined)
+        ? {
+            temporality: seriesProfile.temporality,
+            isMonotonic: seriesProfile.isMonotonic,
+          }
+        : undefined;
+    // Rate is normalized to per-SECOND by the DISPLAY bucket width — a
+    // window-scoped "increase per bucket" reads 2GB at 15m and 4GB at 1h for
+    // the same traffic, and tier routing would step-change it. The divisor
+    // is late-bound in template mode ($__interval_s tracks the dashboard
+    // interval).
+    const rateDivisor = chartConfig.isRenderingRawSqlTemplate
+      ? '$__interval_s'
+      : String(Math.max(1, intervalSeconds));
+    const sumWith: NonNullable<BuilderChartConfigWithOptDateRangeEx['with']> = [
+      ...(sumFast ? [] : [seriesCte]),
+      ...(rollupTable
+        ? sumRollupCtesV2({
+            fast: sumFast,
+            resolved: resolvedProfile,
+            needs: seriesNeeds,
+            rollupFrom: pointsFrom,
+            rollupWhere: pointsWhere,
+            timeExpr,
+            timeBucketCol,
+            rateDivisor,
+          })
+        : sumCtesV2({
+            fast: sumFast,
+            resolved: resolvedProfile,
+            needs: seriesNeeds,
+            pointsFrom,
+            pointsWhere,
+            timeExpr,
+            timeBucketCol,
+            rateDivisor,
+          })),
+    ];
+
+    // For aggFn='increase' + groupBy, restrict the outer query to the top N
+    // groups (v1 parity — see translateMetricChartConfig).
+    const shouldApplyIncreaseGroupLimit =
+      _select.aggFn === 'increase' && isUsingGroupBy(chartConfig);
+
+    let outerWhere: string = '';
+
+    if (shouldApplyIncreaseGroupLimit) {
+      const groupByForRank = await renderSelectList(
+        chartConfig.groupBy!,
+        {
+          ...chartConfig,
+          from: { databaseName: '', tableName: 'Bucketed' },
+          with: sumWith,
+        } as BuilderChartConfigWithOptDateRangeEx,
+        metadata,
+      );
+      const groupBySql = concatChSql(',', groupByForRank);
+
+      const groupByEmptyFilter = concatChSql(
+        ' AND ',
+        (Array.isArray(groupByForRank) ? groupByForRank : [groupByForRank]).map(
+          g => chSql`(${g} IS NOT NULL AND toString(${g}) != '')`,
+        ),
+      );
+
+      sumWith.push({
+        name: 'TopGroups',
+        sql: chSql`
+            SELECT \`group\`
+            FROM (
+              SELECT
+                tuple(${groupBySql}) AS \`group\`,
+                ${'' /* increase panels rank groups by per-bucket increase */}
+                sum(Increase) AS \`bucket_value\`
+              FROM Bucketed
+              WHERE ${groupByEmptyFilter}
+              GROUP BY \`group\`, \`${timeBucketCol}\`
+            )
+            GROUP BY \`group\`
+            ORDER BY max(\`bucket_value\`) DESC, \`group\`
+            LIMIT ${{ Int32: INCREASE_MAX_NUM_GROUPS }}
+          `,
+      });
+
+      if (Object.keys(groupBySql.params).length > 0) {
+        throw new Error(
+          'increase + groupBy: unexpected parameterized groupBy expressions',
+        );
+      }
+      outerWhere = `tuple(${groupBySql.sql}) IN (SELECT \`group\` FROM TopGroups)`;
+    }
+
+    return {
+      ...restChartConfig,
+      with: sumWith,
+      select: [
+        _select.aggFn === 'increase'
+          ? {
+              // explicit per-interval intent ("requests this minute") — the
+              // only sum aggregate that stays window-scoped
+              alias: 'Value',
+              ..._select,
+              aggFn: 'sum',
+              valueExpression: 'Increase',
+              aggCondition: '',
+              isNumericValueExpression: true, // Increase is Float64
+            }
+          : _select.aggFn
+            ? {
+                // Monotonic counters: every other aggregate reads the
+                // per-SECOND Rate, so sum = total throughput and
+                // avg/max/min/pXX operate across per-series rates — all
+                // window-invariant. UpDownCounters (IsMonotonic = false) are
+                // LEVELS that arrive typed as Sum (memory usage, open
+                // connections): differencing a level produces
+                // plausible-looking noise, so gauge-style aggregates read
+                // the per-bucket level instead (Bucketed.Sum = the newest
+                // sample per series). Unresolved profiles keep counter
+                // treatment — the picker labels it "(assumes counter)".
+                alias: 'Value',
+                ..._select,
+                valueExpression:
+                  resolvedProfile?.temporality === 'cumulative' &&
+                  resolvedProfile.isMonotonic === false
+                    ? 'Sum'
+                    : 'Rate',
+                aggCondition: '',
+                isNumericValueExpression: true,
+              }
+            : {
+                alias: 'Value',
+                ..._select,
+                valueExpression: 'last_value(Sum)',
+                aggCondition: '',
+              },
+      ],
+      from: {
+        databaseName: '',
+        tableName: 'Bucketed',
+      },
+      where: outerWhere,
+      whereLanguage: shouldApplyIncreaseGroupLimit
+        ? 'sql'
+        : restChartConfig.whereLanguage,
+      timestampValueExpression: `\`${timeBucketCol}\``,
+      timestampPrebucketed: true, // Bucketed already applied the granularity
+      ...(parallelReplicas
+        ? { settings: chSql`enable_parallel_replicas = 1` }
+        : {}),
+    };
+  } else if (
+    metricType === MetricsDataType.Histogram ||
+    metricType === MetricsDataType.ExponentialHistogram ||
+    metricType === MetricsDataType.Summary
+  ) {
+    const { alias } = _select;
+    const valueAlias = alias || 'Value';
+
+    // Exp-hist: temporality resolved from the series profile (fetched above
+    // for every non-gauge panel, type-scoped so another type under the same
+    // NAME can't leak its temporality in) — the generator emits a single
+    // branch instead of computing both variants per point.
+    const expTemporality =
+      metricType === MetricsDataType.ExponentialHistogram
+        ? seriesProfile?.temporality
+        : undefined;
+
+    // Fast path for the histogram family: scalar (count/avg) panels and
+    // BRANCHED exp quantiles go joinless with the resolved temporality;
+    // explicit-histogram and summary quantiles always keep resolution
+    // (ExplicitBounds/Quantiles are series identity).
+    const familyFast =
+      isWholeMetric && seriesProfile?.temporality != null
+        ? { temporality: seriesProfile.temporality }
+        : undefined;
+    const quantileNeedsSeries =
+      _select.aggFn === 'quantile' &&
+      (metricType === MetricsDataType.Histogram ||
+        metricType === MetricsDataType.Summary);
+    const familyFastActive =
+      familyFast != null &&
+      !quantileNeedsSeries &&
+      // exp quantile is joinless only when single-branch
+      !(
+        metricType === MetricsDataType.ExponentialHistogram &&
+        _select.aggFn === 'quantile' &&
+        expTemporality == null
+      );
+
+    const histCteConfig = {
+      ...chartConfig,
+      from: { databaseName: from.databaseName, tableName: pointsTable },
+      timestampValueExpression: pointsTimestampExpr,
+      includedDataInterval,
+    } satisfies BuilderChartConfigWithOptDateRangeEx;
+
+    const timeBucketSelect = isUsingGranularity(histCteConfig)
+      ? timeBucketExpr({
+          interval: histCteConfig.granularity,
+          timestampValueExpression: histCteConfig.timestampValueExpression,
+          dateRange: histCteConfig.dateRange,
+          // template mode must late-bind the bucket to $__timeInterval (see
+          // the gauge/sum sites)
+          isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+        })
+      : chSql``;
+
+    // groupBy is folded into the CTEs (referencing the joined series labels);
+    // the outer query selects the materialized `group` column.
+    let groupBy: ChSql | undefined;
+    if (isUsingGroupBy(chartConfig)) {
+      groupBy = concatChSql(
+        ',',
+        await renderSelectList(chartConfig.groupBy, chartConfig, metadata),
+      );
+    }
+
+    const translateArgs = {
+      select: _select,
+      timeBucketSelect: timeBucketSelect.sql
+        ? chSql`${timeBucketSelect}`
+        : 'TimeUnix AS `__hdx_time_bucket`',
+      groupBy,
+      pointsFrom,
+      pointsWhere,
+      valueAlias,
+    };
+    const familyFastArg = familyFastActive ? familyFast : undefined;
+    const familyResolved =
+      resolvedProfile != null
+        ? { temporality: resolvedProfile.temporality }
+        : undefined;
+    const typeCtes =
+      metricType === MetricsDataType.Histogram
+        ? rollupTable
+          ? translateHistogramRollupV2({
+              ...translateArgs,
+              fast: familyFastArg,
+              resolved: familyResolved,
+            })
+          : translateHistogramV2({
+              ...translateArgs,
+              fast: familyFastArg,
+              resolved: familyResolved,
+            })
+        : metricType === MetricsDataType.ExponentialHistogram
+          ? rollupTable
+            ? translateExpHistogramRollupV2({
+                ...translateArgs,
+                temporality: expTemporality,
+                fast: familyFastArg,
+              })
+            : translateExpHistogramV2({
+                ...translateArgs,
+                temporality: expTemporality,
+                fast: familyFastArg,
+              })
+          : translateSummaryV2({
+              ...translateArgs,
+              fast: familyFastArg,
+              resolved: familyResolved,
+            });
+
+    return {
+      ...restChartConfig,
+      with: [...(familyFastArg ? [] : [seriesCte]), ...typeCtes],
+      select: `\`__hdx_time_bucket\`${groupBy ? ', group' : ''}, "${valueAlias}"`,
+      from: {
+        databaseName: '',
+        tableName: 'metrics',
+      },
+      where: '', // applied at the Series CTE
+      groupBy: undefined,
+      granularity: undefined, // time bucketing applied at the source CTE
+      timestampValueExpression: '`__hdx_time_bucket`',
+      settings: v2Settings,
+    };
+  }
+
+  throw new Error(`no v2 query support for metric type=${metricType}`);
 }
 
 /** Renders the config's filters into a SQL condition string */

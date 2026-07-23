@@ -1058,6 +1058,283 @@ export class Metadata {
   }
 
   /** Reads the value of the setting with the given name from system.settings. */
+  /**
+   * Resolves a v2 metric's temporality from the series table so SQL
+   * generation can emit a single temporality branch instead of computing
+   * both variants per point (see the exp-histogram query fixes doc).
+   * Returns 'delta' only when every matched series is delta; any
+   * cumulative/unspecified mix resolves to 'cumulative' (matching the
+   * generated SQL's `IF(Temporality = 'delta', …)` semantics); a genuine
+   * delta+cumulative mix — not a real case, temporality is per-metric
+   * metadata — returns undefined so callers fall back to the dual-path
+   * shape. Cached per metric (temporality is stable metadata).
+   */
+  async getMetricTemporality(
+    args: {
+      metricNameCondition: string;
+      metricTypeValue?: string;
+      dateRange?: [Date, Date];
+    } & TableConnection,
+  ): Promise<'delta' | 'cumulative' | undefined> {
+    return (await this.getMetricSeriesProfile(args)).temporality;
+  }
+
+  /**
+   * Resolves a v2 metric's temporality and monotonicity from the series
+   * table (one cached DISTINCT over three LowCardinality columns). Enables
+   * single-branch SQL generation and the whole-metric fast path.
+   *
+   * `temporality`/`isMonotonic` are derived ONLY from series rows of
+   * `metricTypeValue` (a metric NAME may exist under multiple types — mixing
+   * e.g. a gauge's 'unspecified' rows into a sum's profile would mis-brand
+   * it). `temporality` follows the generated SQL's `IF(Temporality =
+   * 'delta')` semantics: 'delta' only when every matched series is delta;
+   * any cumulative/unspecified mix resolves to 'cumulative'; a genuine mix
+   * returns undefined (callers fall back to dual-path shapes).
+   * `otherMetricTypes` lists the OTHER MetricType values the name matches —
+   * the whole-metric fast path must not drop the Series CTE's MetricType
+   * guard when the shared float points table hosts both a gauge and a sum
+   * under one name. Undefined (vs []) means the lookup failed or matched
+   * nothing — callers must treat that as "unknown" and keep resolution.
+   *
+   * Unresolved lookups (no rows / query error) are NOT cached, so a probe
+   * against an empty window (e.g. the raw-SQL template's epoch sentinel
+   * range) cannot durably disable the fast path; the cache key carries the
+   * day-granular date bounds for the same reason.
+   */
+  async getMetricSeriesProfile({
+    databaseName,
+    tableName,
+    metricNameCondition,
+    metricTypeValue,
+    dateRange,
+    connectionId,
+  }: {
+    metricNameCondition: string;
+    metricTypeValue?: string;
+    dateRange?: [Date, Date];
+  } & TableConnection): Promise<{
+    temporality?: 'delta' | 'cumulative';
+    isMonotonic?: boolean;
+    otherMetricTypes?: string[];
+  }> {
+    const toDay = (d: Date) => d.toISOString().slice(0, 10);
+    const dayBounds = dateRange
+      ? `${toDay(dateRange[0])}..${toDay(dateRange[1])}`
+      : 'all';
+    const cacheKey = `${connectionId}.${databaseName}.${tableName}.${metricNameCondition}.${metricTypeValue ?? ''}.${dayBounds}.seriesProfile`;
+    const result = await this.cache.getOrFetch<
+      | {
+          temporality?: 'delta' | 'cumulative';
+          isMonotonic?: boolean;
+          otherMetricTypes?: string[];
+        }
+      | undefined
+    >(cacheKey, async () => {
+      const dateBound = dateRange
+        ? chSql` AND Date >= toDate(${{ String: toDay(dateRange[0]) }}) AND Date <= toDate(${{ String: toDay(dateRange[1]) }})`
+        : chSql``;
+      const sql = chSql`
+        SELECT DISTINCT MetricType, Temporality, IsMonotonic
+        FROM ${tableExpr({ database: databaseName, table: tableName })}
+        WHERE (${{ UNSAFE_RAW_SQL: metricNameCondition }})${dateBound}
+        LIMIT 20
+      `;
+      try {
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            connectionId,
+            query: sql.sql,
+            query_params: sql.params,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res =>
+            res.json<{
+              MetricType: string;
+              Temporality: string;
+              IsMonotonic: boolean | number;
+            }>(),
+          );
+        if (json.data.length === 0) {
+          // Returning undefined keeps getOrFetch from treating this as a
+          // cache hit — unresolved lookups are retried on the next render.
+          return undefined;
+        }
+        const otherMetricTypes = [
+          ...new Set(json.data.map(r => r.MetricType)),
+        ].filter(t => t !== metricTypeValue);
+        const sameType =
+          metricTypeValue == null
+            ? json.data
+            : json.data.filter(r => r.MetricType === metricTypeValue);
+        if (sameType.length === 0) {
+          return { otherMetricTypes };
+        }
+        const temporalities = new Set(sameType.map(r => r.Temporality));
+        const temporality = temporalities.has('delta')
+          ? temporalities.size === 1
+            ? ('delta' as const)
+            : undefined
+          : ('cumulative' as const);
+        const monotonics = new Set(sameType.map(r => Boolean(r.IsMonotonic)));
+        const isMonotonic =
+          monotonics.size === 1 ? [...monotonics][0] : undefined;
+        return { temporality, isMonotonic, otherMetricTypes };
+      } catch (e) {
+        console.warn('Failed to resolve metric series profile', e);
+        return undefined;
+      }
+    });
+    return result ?? {};
+  }
+
+  /**
+   * Estimates how many series a v2 metric query matches by running
+   * uniq(SeriesHash) over the narrow series resolution (the rendered
+   * seriesWhere: Date bounds + MetricName + MetricType + the user's label
+   * matchers). Cheap — one PK-pruned column — and only invoked by the
+   * whale-metric guard when a raw fine-bucket scan is being considered.
+   * Returns undefined on failure so callers fail open.
+   */
+  async getMetricSeriesCountEstimate({
+    databaseName,
+    tableName,
+    where,
+    connectionId,
+  }: {
+    where: ChSql;
+  } & TableConnection): Promise<number | undefined> {
+    const cacheKey = `${connectionId}.${databaseName}.${tableName}.${where.sql}.${JSON.stringify(where.params)}.seriesCount`;
+    return this.cache.getOrFetch(cacheKey, async () => {
+      const sql = chSql`
+        SELECT uniq(SeriesHash) AS seriesCount
+        FROM ${tableExpr({ database: databaseName, table: tableName })}
+        WHERE ${where}
+      `;
+      try {
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            connectionId,
+            query: sql.sql,
+            query_params: sql.params,
+            clickhouse_settings: this.getClickHouseSettings(),
+          })
+          .then(res => res.json<{ seriesCount: string | number }>());
+        const count = Number(json.data[0]?.seriesCount);
+        return Number.isFinite(count) ? count : undefined;
+      } catch (e) {
+        console.warn('Failed to estimate metric series count', e);
+        return undefined;
+      }
+    });
+  }
+
+  /**
+   * Estimates a v2 metric's scrape interval (seconds) by sampling recent raw
+   * points: a LIMIT-bounded read off the (MetricName, SeriesHash, TimeUnix)
+   * primary key, grouped per series, median of the per-series average
+   * spacings. `max_threads = 1` keeps the sample read in PK order so the
+   * LIMIT lands on contiguous runs of a few series (parallel reads scatter
+   * the sample into 1-2 points per series, which the count() >= 3 filter
+   * would then discard wholesale). Cached per day — intervals are stable.
+   * Returns 0 (cached — getOrFetch treats null/undefined as a miss and
+   * would re-scan every render) when the metric has no recent raw points
+   * (some whales are tier-only), undefined on query failure (retried);
+   * callers treat both as unknown and fall back to the 5-minute Prometheus
+   * default.
+   */
+  async getMetricScrapeIntervalEstimate({
+    databaseName,
+    tableName,
+    metricNameCondition,
+    connectionId,
+  }: {
+    metricNameCondition: string;
+  } & TableConnection): Promise<number | undefined> {
+    const day = new Date().toISOString().slice(0, 10);
+    const cacheKey = `${connectionId}.${databaseName}.${tableName}.${metricNameCondition}.${day}.scrapeInterval`;
+    return this.cache.getOrFetch(cacheKey, async () => {
+      const sql = chSql`
+        SELECT quantile(0.5)(iv) AS interval_s
+        FROM (
+          SELECT
+            SeriesHash,
+            (max(t) - min(t)) / 1000.0 / (count() - 1) AS iv
+          FROM (
+            SELECT SeriesHash, toUnixTimestamp64Milli(TimeUnix) AS t
+            FROM ${tableExpr({ database: databaseName, table: tableName })}
+            WHERE (${{ UNSAFE_RAW_SQL: metricNameCondition }})
+              AND TimeUnix >= now() - INTERVAL 6 HOUR
+            LIMIT 3000
+          )
+          GROUP BY SeriesHash
+          HAVING count() >= 3
+        )
+      `;
+      try {
+        const json = await this.clickhouseClient
+          .query<'JSON'>({
+            connectionId,
+            query: sql.sql,
+            query_params: sql.params,
+            clickhouse_settings: {
+              ...this.getClickHouseSettings(),
+              max_threads: 1,
+            },
+          })
+          .then(res => res.json<{ interval_s: string | number | null }>());
+        const interval = Number(json.data[0]?.interval_s);
+        return Number.isFinite(interval) && interval > 0 ? interval : 0;
+      } catch (e) {
+        console.warn('Failed to estimate metric scrape interval', e);
+        return undefined;
+      }
+    });
+  }
+
+  /**
+   * Whether the querying user can override a setting
+   * (system.settings.readonly = 0). Presence in system.settings alone is not
+   * enough: a settings-profile CONST/readonly constraint still lists the
+   * setting but rejects any override, so a query carrying it would
+   * hard-fail. Cached per connection; undefined on lookup failure (callers
+   * should fail toward not overriding).
+   */
+  async isSettingChangeable({
+    settingName,
+    connectionId,
+  }: {
+    settingName: string;
+    connectionId: string;
+  }): Promise<boolean | undefined> {
+    return this.cache.getOrFetch(
+      `${connectionId}.${settingName}.changeable`,
+      async () => {
+        const sql = chSql`
+          SELECT readonly
+          FROM system.settings
+          WHERE name = ${{ String: settingName }}
+        `;
+        try {
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query: sql.sql,
+              query_params: sql.params,
+              clickhouse_settings: this.getClickHouseSettings(),
+            })
+            .then(res => res.json<{ readonly: string | number }>());
+          const row = json.data[0];
+          if (!row) return false;
+          return String(row.readonly) === '0';
+        } catch (e) {
+          console.warn('Failed to check setting changeability', e);
+          return undefined;
+        }
+      },
+    );
+  }
+
   async getSetting({
     settingName,
     connectionId,

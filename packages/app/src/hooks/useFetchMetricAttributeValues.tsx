@@ -9,7 +9,10 @@ import { useQuery } from '@tanstack/react-query';
 import { getClickhouseClient } from '@/clickhouse';
 import { getMetricTableName } from '@/utils';
 
-import { AttributeCategory } from './useFetchMetricResourceAttrs';
+import {
+  AttributeCategory,
+  metricSeriesDateBound,
+} from './useFetchMetricResourceAttrs';
 
 const ATTRIBUTE_VALUES_LIMIT = 100;
 
@@ -22,6 +25,7 @@ interface MetricAttributeValuesProps {
   tableSource: TMetricSource | undefined;
   metricType: string;
   enabled?: boolean;
+  dateRange?: [Date, Date];
 }
 
 interface AttributeValueResponse {
@@ -37,6 +41,7 @@ export const useFetchMetricAttributeValues = ({
   searchTerm,
   tableSource,
   enabled = true,
+  dateRange,
 }: MetricAttributeValuesProps) => {
   const tableName = tableSource
     ? (getMetricTableName(tableSource, metricType) ?? '')
@@ -63,6 +68,7 @@ export const useFetchMetricAttributeValues = ({
       attributeCategory,
       searchTerm,
       tableSource,
+      dateRange?.map(d => d.toISOString().slice(0, 10)),
     ],
     queryFn: async ({ signal }) => {
       if (!shouldFetch) {
@@ -79,7 +85,7 @@ export const useFetchMetricAttributeValues = ({
       const sql = chSql`
         SELECT DISTINCT ${attributeCategory}[${{ String: attributeName }}] as value
         FROM ${tableExpr({ database: databaseName, table: tableName })}
-        WHERE MetricName = ${{ String: metricName }}
+        WHERE MetricName = ${{ String: metricName }}${metricSeriesDateBound(tableSource, dateRange)}
           AND ${attributeCategory}[${{ String: attributeName }}] != ''
           ${searchFilter}
         ORDER BY value

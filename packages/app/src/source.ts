@@ -16,8 +16,10 @@ import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   BuilderSavedChartConfig,
   ChartConfigWithOptTimestamp,
+  isMetricsV2Tables,
   MetricsDataType,
   NumberFormat,
+  NumericUnit,
   SourceKind,
   SourceSchema,
   TLogSource,
@@ -38,6 +40,10 @@ import {
 
 import { hdxServer } from '@/api';
 import { IS_LOCAL_MODE } from '@/config';
+import {
+  useFetchMetricMetadata,
+  useMetricSeriesProfile,
+} from '@/hooks/useFetchMetricMetadata';
 import { localSources } from '@/localStore';
 
 // Columns for the sessions table as of OTEL Collector v0.129.1
@@ -524,6 +530,70 @@ export function getTraceDurationNumberFormat(
 }
 
 /**
+ * §2 (rate-normalization prompt): derive a default NumberFormat from the
+ * metric's stored OTel Unit. Counter aggregates other than 'increase' read
+ * the per-second Rate column, so their unit is <unit>/s (`By` → B/s with
+ * binary prefixes); 'increase' and non-counter types keep the base unit.
+ * Unknown units fall back to a plain suffix (rendered in tooltips; the axis
+ * strips free-form units). Explicit user formats always win — this sits
+ * last in every fallback chain.
+ */
+export function getMetricUnitNumberFormat(
+  series: { aggFn?: string; metricType?: MetricsDataType },
+  unit: string | undefined,
+  /** Series profile: cumulative + IsMonotonic=false is an UpDownCounter —
+   * a LEVEL, formatted as the base unit (never <unit>/s). This is the EXACT
+   * condition the translator's level-style select uses; anything else on a
+   * Sum keeps counter (per-second) treatment, matching the emitted SQL. */
+  profile?: { temporality?: 'delta' | 'cumulative'; isMonotonic?: boolean },
+): NumberFormat | undefined {
+  if (!unit || unit === '1') return undefined;
+  // dimensionless aggregates ignore the metric's unit
+  if (series.aggFn === 'count' || series.aggFn === 'count_distinct') {
+    return undefined;
+  }
+  const isLevel =
+    profile?.temporality === 'cumulative' && profile.isMonotonic === false;
+  const isCounterRate =
+    series.metricType === MetricsDataType.Sum &&
+    series.aggFn != null &&
+    series.aggFn !== 'increase' &&
+    !isLevel;
+  switch (unit) {
+    case 'By':
+      return isCounterRate
+        ? { output: 'data_rate', numericUnit: NumericUnit.BytesSecIEC }
+        : { output: 'byte', numericUnit: NumericUnit.BytesIEC };
+    case 's':
+    case 'ms':
+    case 'us':
+    case 'ns': {
+      // a rate of a time-unit counter is dimensionless utilization
+      // (seconds per second) — no meaningful suffix
+      if (isCounterRate) return undefined;
+      const factor = { s: 1, ms: 1e-3, us: 1e-6, ns: 1e-9 }[unit];
+      return { output: 'duration', factor };
+    }
+    case '%':
+      // OTel '%' values are already 0-100; formatNumber's percent output
+      // multiplies by 100 (and ignores factor), so render a plain suffix.
+      return isCounterRate
+        ? undefined
+        : { output: 'number', mantissa: 1, unit: '%' };
+    default: {
+      // '{request}' → 'request'; keep other unit strings as-is
+      const bare = unit.replace(/^\{(.+)\}$/, '$1');
+      return {
+        output: 'number',
+        average: true,
+        mantissa: 2,
+        unit: isCounterRate ? `${bare}/s` : bare,
+      };
+    }
+  }
+}
+
+/**
  * Gets the first series-specific number format from the config's select expressions, if any.
  *
  * The priority is as follows:
@@ -548,11 +618,69 @@ export function getFirstSeriesNumberFormat(
   }
 }
 
+/**
+ * Fetches the stored OTel Unit for the FIRST metric series of a builder
+ * config (covers the common single-metric chart; multi-metric charts apply
+ * it only to series of the same metric). Resolves to undefined for
+ * non-metric sources — useFetchMetricMetadata no-ops when args are missing.
+ */
+function useFirstMetricSeriesUnit(
+  config: ChartConfigWithOptTimestamp,
+  source: TSource | undefined,
+): {
+  metricName?: string;
+  unit?: string;
+  profile?: { temporality?: 'delta' | 'cumulative'; isMonotonic?: boolean };
+} {
+  const firstMetricSeries =
+    isBuilderChartConfig(config) && Array.isArray(config.select)
+      ? config.select.find(s => s.metricName != null)
+      : undefined;
+  // v2 sources ONLY: v1 sum shapes are still per-bucket, so the per-second
+  // (<unit>/s) formats derived here would mislabel them.
+  const metricSource =
+    source?.kind === SourceKind.Metric &&
+    isMetricsV2Tables((source as TMetricSource).metricTables)
+      ? (source as TMetricSource)
+      : undefined;
+  const dateRange = Array.isArray(config.dateRange)
+    ? config.dateRange
+    : undefined;
+  const { data: metricMetadata } = useFetchMetricMetadata({
+    databaseName: metricSource?.from?.databaseName ?? '',
+    metricType: firstMetricSeries?.metricType,
+    metricName: firstMetricSeries?.metricName,
+    tableSource: metricSource,
+  });
+  // Temporality/monotonicity decide <unit>/s vs base-unit formatting for
+  // Sum series — the same cached profile lookup (incl. date bounds) the
+  // translator/picker use.
+  const { data: seriesProfile } = useMetricSeriesProfile({
+    databaseName: metricSource?.from?.databaseName ?? '',
+    metricType: firstMetricSeries?.metricType,
+    metricName:
+      firstMetricSeries?.metricType === MetricsDataType.Sum
+        ? firstMetricSeries?.metricName
+        : undefined,
+    tableSource: metricSource,
+    dateRange,
+  });
+  return {
+    metricName: firstMetricSeries?.metricName,
+    unit: metricMetadata?.unit || undefined,
+    profile: seriesProfile,
+  };
+}
+
 /** Get the number format to use for a single-series chart type. */
 export function useSingleSeriesNumberFormat(
   config: ChartConfigWithOptTimestamp,
 ) {
   const { data: source } = useSource({ id: config.source });
+  const { unit: metricUnit, profile: metricProfile } = useFirstMetricSeriesUnit(
+    config,
+    source,
+  );
 
   return useMemo(() => {
     if (
@@ -568,11 +696,14 @@ export function useSingleSeriesNumberFormat(
         return config.numberFormat;
       }
 
-      return getTraceDurationNumberFormat(source, config.select[0]);
+      return (
+        getTraceDurationNumberFormat(source, config.select[0]) ??
+        getMetricUnitNumberFormat(config.select[0], metricUnit, metricProfile)
+      );
     }
 
     return config.numberFormat;
-  }, [source, config]);
+  }, [source, config, metricUnit, metricProfile]);
 }
 
 interface ResolvedNumberFormats {
@@ -604,8 +735,31 @@ export function useChartNumberFormats(
   meta?: ColumnMetaType[],
 ): ResolvedNumberFormats {
   const { data: source } = useSource({ id: config.source });
+  const {
+    metricName: unitMetricName,
+    unit: metricUnit,
+    profile: metricProfile,
+  } = useFirstMetricSeriesUnit(config, source);
 
   return useMemo(() => {
+    // Unit-derived default for a metric series (last in every chain): only
+    // for series of the metric whose Unit was fetched.
+    // Ratio values are dimensionless — never apply the metric's unit.
+    const isRatio =
+      isBuilderChartConfig(config) &&
+      Array.isArray(config.select) &&
+      isRatioChartConfig(config.select, config);
+    const metricUnitFormat = (series: {
+      aggFn?: string;
+      metricType?: MetricsDataType;
+      metricName?: string;
+    }) =>
+      !isRatio &&
+      series.metricName != null &&
+      series.metricName === unitMetricName
+        ? getMetricUnitNumberFormat(series, metricUnit, metricProfile)
+        : undefined;
+
     // The chart-wide number format does not depend on meta, so that it can be
     // resolved without querying. Further, it prioritizes the config's numberFormat
     // over series-specific formats, so that the user can specify the y-axis format
@@ -613,7 +767,8 @@ export function useChartNumberFormats(
     const chartFormat =
       config.numberFormat ??
       (isBuilderChartConfig(config) && Array.isArray(config.select)
-        ? getFirstSeriesNumberFormat(config.select, source)
+        ? (getFirstSeriesNumberFormat(config.select, source) ??
+          config.select.map(metricUnitFormat).find(f => f != null))
         : undefined);
 
     // meta must be provided to map result column names (from meta) to number formats
@@ -651,14 +806,15 @@ export function useChartNumberFormats(
       const effectiveNumberFormat =
         series.numberFormat ??
         config.numberFormat ??
-        getTraceDurationNumberFormat(source, series);
+        getTraceDurationNumberFormat(source, series) ??
+        metricUnitFormat(series);
       if (effectiveNumberFormat) {
         formatByColumn.set(key, effectiveNumberFormat);
       }
     }
 
     return { formatByColumn, chartFormat };
-  }, [source, meta, config]);
+  }, [source, meta, config, unitMetricName, metricUnit, metricProfile]);
 }
 
 // defined in https://github.com/open-telemetry/opentelemetry-proto/blob/cfbf9357c03bf4ac150a3ab3bcbe4cc4ed087362/opentelemetry/proto/metrics/v1/metrics.proto

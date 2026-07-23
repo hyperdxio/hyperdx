@@ -9,6 +9,7 @@ import {
   CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteToken,
   ColorCondition,
+  isMetricsV2Tables,
   NumericUnit,
   SourceKind,
   TMetricSource,
@@ -1235,6 +1236,12 @@ export function getMetricTableName(
     return source.from.tableName;
   }
   if (source.kind === SourceKind.Metric) {
+    // Metrics v2 (series/points split): all label/metadata browsing —
+    // attribute keys, values, autocomplete — happens on the text-indexed
+    // series table, regardless of metric type.
+    if (isMetricsV2Tables(source.metricTables)) {
+      return source.metricTables.series;
+    }
     return source.metricTables?.[
       metricType.toLowerCase() as keyof typeof source.metricTables
     ];
@@ -1244,6 +1251,17 @@ export function getMetricTableName(
 
 export function getAllMetricTables(source: TSource): TableConnection[] {
   if (source.kind !== SourceKind.Metric || !source.metricTables) return [];
+
+  // Metrics v2: browsing metadata lives on the single series table
+  if (isMetricsV2Tables(source.metricTables)) {
+    return [
+      {
+        tableName: source.metricTables.series,
+        databaseName: source.from.databaseName,
+        connectionId: source.connection,
+      } satisfies TableConnection,
+    ];
+  }
 
   return Object.values(MetricsDataType)
     .filter(
@@ -1258,7 +1276,7 @@ export function getAllMetricTables(source: TSource): TableConnection[] {
           tableName:
             source.metricTables[
               metricType as unknown as keyof TMetricSource['metricTables']
-            ],
+            ] ?? '',
           databaseName: source.from.databaseName,
           connectionId: source.connection,
         }) satisfies TableConnection,

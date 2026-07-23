@@ -708,9 +708,11 @@ describe('renderChartConfig', () => {
       );
     });
 
-    it('does not emit a series-limit CTE for a metric source', async () => {
-      // Metric configs are rewritten to query a Bucketed CTE (no real source
-      // table to re-scan), so the cap is gated off even with seriesLimit set.
+    it('emits a series-limit CTE for a metric source (top-N, not first-N)', async () => {
+      // Metric configs are rewritten to query a CTE; the ranking CTE is
+      // appended after the translated CTEs in the same WITH list and
+      // re-scans it, so the cap works for metric charts too (a whale metric
+      // otherwise displays an arbitrary first-N of its groups).
       const sql = parameterizedQueryToSql(
         await renderChartConfig(
           {
@@ -722,7 +724,10 @@ describe('renderChartConfig', () => {
           querySettings,
         ),
       );
-      expect(sql).not.toContain('__hdx_series_limit');
+      expect(sql).toContain('`__hdx_series_limit` AS (');
+      expect(sql).toMatch(
+        /tuple\(\s*ServiceName\s*\)\s+IN\s*\(\s*SELECT\s+`group`\s+FROM\s+`__hdx_series_limit`\)/,
+      );
     });
   });
 
@@ -1342,7 +1347,7 @@ describe('renderChartConfig', () => {
       granularity: '1 minute',
     });
 
-    it('rewrites `Map[key] = value` to has() when a KV items column exists', async () => {
+    it('rewrites `Map[key] = value` to hasAllTokens() when a KV items column exists', async () => {
       stubKvItemsMetadata();
       const sql = parameterizedQueryToSql(
         await renderChartConfig(
@@ -1352,12 +1357,12 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain(
-        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+        "hasAllTokens(`LogAttributeItems`, array('service.name=api'))",
       );
       expect(sql).not.toContain("LogAttributes['service.name'] = 'api'");
     });
 
-    it('rewrites `Map[key] IN (one)` to has()', async () => {
+    it('rewrites `Map[key] IN (one)` to hasAllTokens()', async () => {
       stubKvItemsMetadata();
       const sql = parameterizedQueryToSql(
         await renderChartConfig(
@@ -1367,11 +1372,11 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain(
-        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+        "hasAllTokens(`LogAttributeItems`, array('service.name=api'))",
       );
     });
 
-    it('rewrites `Map[key] IN (many)` to hasAny(... array(...)) on ClickHouse >= 26.5', async () => {
+    it('rewrites `Map[key] IN (many)` to hasAnyTokens(... array(...)) on ClickHouse >= 26.5', async () => {
       stubKvItemsMetadata();
       const sql = parameterizedQueryToSql(
         await renderChartConfig(
@@ -1381,11 +1386,11 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain(
-        "hasAny(`LogAttributeItems`, array(concat('k', '=', 'a'), concat('k', '=', 'b'), concat('k', '=', 'c')))",
+        "hasAnyTokens(`LogAttributeItems`, array('k=a', 'k=b', 'k=c'))",
       );
     });
 
-    it('rewrites `Map[key] IN (many)` to a chain of has() ORs on older ClickHouse (< 26.5)', async () => {
+    it('rewrites `Map[key] IN (many)` to a chain of hasAllTokens() ORs on older ClickHouse (< 26.5)', async () => {
       stubKvItemsMetadata();
       mockMetadata.getServerVersion = jest
         .fn()
@@ -1397,11 +1402,10 @@ describe('renderChartConfig', () => {
           querySettings,
         ),
       );
-      expect(sql).toContain("has(`LogAttributeItems`, concat('k', '=', 'a'))");
-      expect(sql).toContain("has(`LogAttributeItems`, concat('k', '=', 'b'))");
-      expect(sql).toContain("has(`LogAttributeItems`, concat('k', '=', 'c'))");
-      expect(sql).not.toContain('hasAny(');
-      expect(sql).not.toContain('array(concat(');
+      expect(sql).toContain("hasAllTokens(`LogAttributeItems`, array('k=a'))");
+      expect(sql).toContain("hasAllTokens(`LogAttributeItems`, array('k=b'))");
+      expect(sql).toContain("hasAllTokens(`LogAttributeItems`, array('k=c'))");
+      expect(sql).not.toContain('hasAnyTokens(');
     });
 
     it('leaves the condition unchanged when no KV items column exists', async () => {
@@ -1457,7 +1461,7 @@ describe('renderChartConfig', () => {
         ),
       );
       expect(sql).toContain(
-        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+        "hasAllTokens(`LogAttributeItems`, array('service.name=api'))",
       );
       expect(sql).toContain("SeverityText = 'error'");
     });

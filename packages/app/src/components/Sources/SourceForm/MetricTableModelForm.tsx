@@ -10,7 +10,12 @@ import { SourceSelectControlled } from '@/components/SourceSelect';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { isValidMetricTable } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import { matchMetricTables } from '@/utils/metricTableAutofill';
+import {
+  matchMetricTables,
+  matchMetricTablesV2,
+  METRICS_V2_TABLE_KEYS,
+  MetricsV2TableKey,
+} from '@/utils/metricTableAutofill';
 
 import { DEFAULT_DATABASE, OTEL_CLICKHOUSE_EXPRESSIONS } from './constants';
 import { FormRow } from './FormRow';
@@ -99,9 +104,19 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
       tableNames,
       (metricTables as Partial<Record<MetricsDataType, string>>) ?? {},
     );
+    // Metrics v2 (series/points split schema) tables — no per-type column
+    // validation, the v2 tables have their own fixed schema.
+    const matchedV2 = matchMetricTablesV2(
+      tableNames,
+      (metricTables as Partial<Record<MetricsV2TableKey, string>>) ?? {},
+    );
 
     const entries = Object.entries(matched) as [MetricsDataType, string][];
-    if (entries.length === 0) return;
+    const v2Entries = Object.entries(matchedV2) as [
+      MetricsV2TableKey,
+      string,
+    ][];
+    if (entries.length === 0 && v2Entries.length === 0) return;
 
     // Mark as done before async work so a rapid db switch doesn't double-fire.
     lastAutofillKeyRef.current = key;
@@ -130,10 +145,14 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
         }
       }
 
-      if (cancelled || validated.length === 0) return;
+      if (cancelled || (validated.length === 0 && v2Entries.length === 0))
+        return;
 
       for (const [metricType, tableName] of validated) {
         setValue(`metricTables.${metricType}` as any, tableName);
+      }
+      for (const [v2Key, tableName] of v2Entries) {
+        setValue(`metricTables.${v2Key}` as any, tableName);
       }
 
       notifications.show({
@@ -167,6 +186,20 @@ export function MetricTableModelForm({ control, setValue }: TableModelProps) {
               database={databaseName}
               control={control}
               name={`metricTables.${metricType.toLowerCase()}`}
+            />
+          </FormRow>
+        ))}
+        {METRICS_V2_TABLE_KEYS.map(v2Key => (
+          <FormRow
+            key={v2Key}
+            label={`V2 ${v2Key} Table`}
+            helpText={`Metrics v2 (series/points split schema): ${v2Key} table. When Series and Points are set, queries use the v2 schema.`}
+          >
+            <DBTableSelectControlled
+              connectionId={connectionId}
+              database={databaseName}
+              control={control}
+              name={`metricTables.${v2Key}`}
             />
           </FormRow>
         ))}

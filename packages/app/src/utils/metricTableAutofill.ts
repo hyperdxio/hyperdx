@@ -25,30 +25,89 @@ const EXCLUSIONS: Partial<Record<MetricsDataType, string[]>> = {
   [MetricsDataType.Sum]: ['_summary', '-summary'],
 };
 
-/**
- * Given a list of table names from a ClickHouse database, returns a map from
- * MetricsDataType to the best-matching table name based on suffix conventions.
- *
- * Only populates entries for metric types whose current value is empty/unset.
- * Prefers `otel_metrics_`-prefixed names, then shortest match.
- */
-export function matchMetricTables(
-  tableNames: string[],
-  currentValues: Partial<Record<MetricsDataType, string>>,
-): Partial<Record<MetricsDataType, string>> {
-  const result: Partial<Record<MetricsDataType, string>> = {};
+// Metrics v2 (series/points split schema) table suffixes
+export const METRICS_V2_TABLE_KEYS = [
+  'series',
+  'points',
+  'histogramPoints',
+  'expHistogramPoints',
+  'summaryPoints',
+  'families',
+  'points5m',
+  'points1h',
+  'histogramPoints5m',
+  'histogramPoints1h',
+  'expHistogramPoints5m',
+  'expHistogramPoints1h',
+] as const;
+export type MetricsV2TableKey = (typeof METRICS_V2_TABLE_KEYS)[number];
 
-  for (const metricType of Object.values(MetricsDataType)) {
-    if (currentValues[metricType]) continue; // Don't overwrite user selections
+const V2_SUFFIX_MAP: Record<MetricsV2TableKey, string[]> = {
+  series: ['_series', '-series'],
+  points: ['_points', '-points'],
+  histogramPoints: ['_histogram_points', '-histogram-points'],
+  expHistogramPoints: ['_exp_histogram_points', '-exp-histogram-points'],
+  summaryPoints: ['_summary_points', '-summary-points'],
+  families: ['_families', '-families'],
+  points5m: ['_points_5m', '-points-5m'],
+  points1h: ['_points_1h', '-points-1h'],
+  histogramPoints5m: ['_histogram_points_5m', '-histogram-points-5m'],
+  histogramPoints1h: ['_histogram_points_1h', '-histogram-points-1h'],
+  expHistogramPoints5m: [
+    '_exp_histogram_points_5m',
+    '-exp-histogram-points-5m',
+  ],
+  expHistogramPoints1h: [
+    '_exp_histogram_points_1h',
+    '-exp-histogram-points-1h',
+  ],
+};
+
+const V2_EXCLUSIONS: Partial<Record<MetricsV2TableKey, string[]>> = {
+  points: [
+    '_histogram_points',
+    '-histogram-points',
+    '_exp_histogram_points',
+    '-exp-histogram-points',
+    '_summary_points',
+    '-summary-points',
+  ],
+  histogramPoints: ['_exp_histogram_points', '-exp-histogram-points'],
+  points5m: [
+    '_histogram_points_5m',
+    '-histogram-points-5m',
+    '_exp_histogram_points_5m',
+    '-exp-histogram-points-5m',
+  ],
+  points1h: [
+    '_histogram_points_1h',
+    '-histogram-points-1h',
+    '_exp_histogram_points_1h',
+    '-exp-histogram-points-1h',
+  ],
+  histogramPoints5m: ['_exp_histogram_points_5m', '-exp-histogram-points-5m'],
+  histogramPoints1h: ['_exp_histogram_points_1h', '-exp-histogram-points-1h'],
+};
+
+function matchTablesBySuffix<K extends string>(
+  tableNames: string[],
+  currentValues: Partial<Record<K, string>>,
+  suffixMap: Record<K, string[]>,
+  exclusions: Partial<Record<K, string[]>>,
+): Partial<Record<K, string>> {
+  const result: Partial<Record<K, string>> = {};
+
+  for (const key of Object.keys(suffixMap) as K[]) {
+    if (currentValues[key]) continue; // Don't overwrite user selections
 
     const candidates = tableNames.filter(name => {
       const lower = name.toLowerCase();
-      const matchesSuffix = SUFFIX_MAP[metricType].some(suffix =>
+      const matchesSuffix = suffixMap[key].some(suffix =>
         lower.endsWith(suffix),
       );
       if (!matchesSuffix) return false;
 
-      const excl = EXCLUSIONS[metricType];
+      const excl = exclusions[key];
       if (excl) {
         return !excl.some(ex => lower.endsWith(ex));
       }
@@ -65,8 +124,40 @@ export function matchMetricTables(
       return a.length - b.length;
     });
 
-    result[metricType] = candidates[0];
+    result[key] = candidates[0];
   }
 
   return result;
+}
+
+/**
+ * Given a list of table names from a ClickHouse database, returns a map from
+ * MetricsDataType to the best-matching table name based on suffix conventions.
+ *
+ * Only populates entries for metric types whose current value is empty/unset.
+ * Prefers `otel_metrics_`-prefixed names, then shortest match.
+ */
+export function matchMetricTables(
+  tableNames: string[],
+  currentValues: Partial<Record<MetricsDataType, string>>,
+): Partial<Record<MetricsDataType, string>> {
+  return matchTablesBySuffix(tableNames, currentValues, SUFFIX_MAP, EXCLUSIONS);
+}
+
+/**
+ * Matches metrics v2 (series/points split schema) tables by suffix, e.g.
+ * otel_metrics_series / otel_metrics_points / otel_metrics_histogram_points /
+ * otel_metrics_families. Rollup tables (_5m/_1h) never match since they don't
+ * share the point-table suffixes.
+ */
+export function matchMetricTablesV2(
+  tableNames: string[],
+  currentValues: Partial<Record<MetricsV2TableKey, string>>,
+): Partial<Record<MetricsV2TableKey, string>> {
+  return matchTablesBySuffix(
+    tableNames,
+    currentValues,
+    V2_SUFFIX_MAP,
+    V2_EXCLUSIONS,
+  );
 }

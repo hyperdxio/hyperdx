@@ -46,8 +46,8 @@ export enum DisplayType {
 export type KeyValue<Key = string, Value = string> = { key: Key; value: Value };
 
 export const MetricTableSchema = z
-  .object(
-    Object.values(MetricsDataType).reduce(
+  .object({
+    ...Object.values(MetricsDataType).reduce(
       (acc, key) => ({
         ...acc,
         [key]: z.string().optional(),
@@ -55,13 +55,57 @@ export const MetricTableSchema = z
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- reduce builds complete object at runtime
       {} as Record<MetricsDataType, z.ZodString>,
     ),
-  )
+    // OTel metrics v2 (series/points split schema) tables. When `series` and
+    // `points` are both set, the source is treated as a v2 metrics source and
+    // queries are generated with the two-phase resolve-series-then-scan-points
+    // shape instead of the v1 wide-table shape.
+    series: z.string().optional(),
+    points: z.string().optional(),
+    histogramPoints: z.string().optional(),
+    expHistogramPoints: z.string().optional(),
+    summaryPoints: z.string().optional(),
+    exemplars: z.string().optional(),
+    families: z.string().optional(),
+    // Rollup tiers for the float points table (gauge/sum). When set, long
+    // time-range queries are routed to these instead of raw points.
+    points5m: z.string().optional(),
+    points1h: z.string().optional(),
+    // Rollup tiers for explicit-bounds histograms.
+    histogramPoints5m: z.string().optional(),
+    histogramPoints1h: z.string().optional(),
+    // Rollup tiers for exponential histograms. Scale is part of the
+    // aggregation key (bucket maps only merge within one scale); the query
+    // layer downscale-merges across scales.
+    expHistogramPoints5m: z.string().optional(),
+    expHistogramPoints1h: z.string().optional(),
+  })
   .refine(
     tables => Object.values(tables).some(table => table && table.length > 0),
     { message: 'At least one metric table must be specified' },
   );
 
 export type MetricTable = z.infer<typeof MetricTableSchema>;
+
+/**
+ * True when the metric tables describe the OTel metrics v2 (series/points
+ * split) schema rather than the v1 per-type wide tables.
+ */
+export const isMetricsV2Tables = (
+  metricTables: MetricTable | undefined | null,
+): metricTables is MetricTable & { series: string; points: string } =>
+  Boolean(metricTables?.series && metricTables?.points);
+
+/**
+ * MetricType column values used by the v2 series/families tables, keyed by
+ * the UI-facing MetricsDataType enum.
+ */
+export const METRICS_V2_METRIC_TYPE: Record<MetricsDataType, string> = {
+  [MetricsDataType.Gauge]: 'gauge',
+  [MetricsDataType.Sum]: 'sum',
+  [MetricsDataType.Histogram]: 'histogram',
+  [MetricsDataType.ExponentialHistogram]: 'exponential_histogram',
+  [MetricsDataType.Summary]: 'summary',
+};
 
 export enum NumericUnit {
   // Data
@@ -246,6 +290,11 @@ export const DerivedColumnSchema = z.intersection(
     countExpression: z.string().optional(),
     heatmapScaleType: z.enum(['log', 'linear']).optional(),
     numberFormat: NumberFormatSchema.optional(),
+    // Internal (set by translated configs): valueExpression is a known
+    // Float64 CTE column, so aggregation skips the defensive
+    // toFloat64OrDefault(toString(...)) round-trip (which also masks
+    // errors as 0).
+    isNumericValueExpression: z.boolean().optional(),
   }),
 );
 export const SelectListSchema = z.array(DerivedColumnSchema).or(z.string());

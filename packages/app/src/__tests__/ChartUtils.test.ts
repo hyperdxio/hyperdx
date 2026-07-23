@@ -776,7 +776,7 @@ describe('ChartUtils', () => {
       const granularityFromFunction =
         convertToTimeChartConfig(config).granularity;
 
-      expect(granularityFromFunction).toBe('30 minute');
+      expect(granularityFromFunction).toBe('1 hour');
     });
 
     it('should set granularity when granularity is undefined', () => {
@@ -790,7 +790,7 @@ describe('ChartUtils', () => {
       const granularityFromFunction =
         convertToTimeChartConfig(config).granularity;
 
-      expect(granularityFromFunction).toBe('30 minute');
+      expect(granularityFromFunction).toBe('1 hour');
     });
 
     it('should retain the specified granularity when not auto', () => {

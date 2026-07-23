@@ -2368,14 +2368,14 @@ describe('CustomSchemaSQLSerializerV2 - KV items index optimization', () => {
     implicitColumnExpression: 'Body',
   });
 
-  it('uses has() for exact map equality when KV items index exists', async () => {
+  it('uses hasAllTokens() for exact map equality when KV items index exists', async () => {
     const builder = new SearchQueryBuilder(
       'LogAttributes.error.message:"Failed to fetch"',
       serializer,
     );
     const sql = await builder.build();
     expect(sql).toBe(
-      "((has(`LogAttributeItems`, concat('error.message', '=', 'Failed to fetch'))))",
+      "((hasAllTokens(`LogAttributeItems`, array('error.message=Failed to fetch'))))",
     );
   });
 
@@ -2386,7 +2386,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items index optimization', () => {
     );
     const sql = await builder.build();
     expect(sql).toBe(
-      "((NOT has(`LogAttributeItems`, concat('error.message', '=', 'Failed to fetch'))))",
+      "((NOT hasAllTokens(`LogAttributeItems`, array('error.message=Failed to fetch'))))",
     );
   });
 
@@ -2410,7 +2410,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items index optimization', () => {
     );
     const sql = await builder.build();
     expect(sql).toBe(
-      "((has(`LogAttributeItems`, concat('error.message', '=', '')) OR NOT mapContains(`LogAttributes`, 'error.message')))",
+      "((hasAllTokens(`LogAttributeItems`, array('error.message=')) OR NOT mapContains(`LogAttributes`, 'error.message')))",
     );
   });
 
@@ -2421,7 +2421,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items index optimization', () => {
     );
     const sql = await builder.build();
     expect(sql).toBe(
-      "((NOT has(`LogAttributeItems`, concat('error.message', '=', '')) AND mapContains(`LogAttributes`, 'error.message')))",
+      "((NOT hasAllTokens(`LogAttributeItems`, array('error.message=')) AND mapContains(`LogAttributes`, 'error.message')))",
     );
   });
 });
@@ -2490,7 +2490,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items with MATERIALIZED column', () =
     );
     const sql = await builder.build();
     expect(sql).toBe(
-      "((has(`LogAttributeItems`, concat('error.message', '=', 'Failed to fetch'))))",
+      "((hasAllTokens(`LogAttributeItems`, array('error.message=Failed to fetch'))))",
     );
   });
 });
@@ -2562,7 +2562,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items with ALIAS column (expanded ind
     );
     const sql = await builder.build();
     expect(sql).toBe(
-      "((has(`LogAttributeItems`, concat('error.message', '=', 'Failed to fetch'))))",
+      "((hasAllTokens(`LogAttributeItems`, array('error.message=Failed to fetch'))))",
     );
   });
 });
@@ -2832,7 +2832,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items version gate', () => {
   }
 
   const HAS_FORM =
-    "has(`LogAttributeItems`, concat('service.name', '=', 'my-app'))";
+    "hasAllTokens(`LogAttributeItems`, array('service.name=my-app'))";
 
   describe('ALIAS items column - emits has() on supported versions', () => {
     it.each<readonly [number, number, number, number]>([
@@ -2898,7 +2898,7 @@ describe('CustomSchemaSQLSerializerV2 - KV items version gate', () => {
     });
   });
 
-  it('MATERIALIZED items column emits has() even when server version is unknown', async () => {
+  it('MATERIALIZED items column emits hasAllTokens() even when server version is unknown', async () => {
     const sql = await buildSql(undefined, 'MATERIALIZED');
     expect(sql).toContain(HAS_FORM);
   });

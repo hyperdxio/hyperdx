@@ -24,10 +24,19 @@ jest.mock('@/hooks/useFetchMetricMetadata', () => ({
   useFetchMetricMetadata: jest.fn().mockReturnValue({
     data: null,
   }),
+  // Temporality/monotonicity profile for the aggregate-picker gating and
+  // the metric-type badge.
+  useMetricSeriesProfile: jest.fn().mockReturnValue({
+    data: undefined,
+    isLoading: false,
+  }),
 }));
 
 jest.mock('@/hooks/useMetadata', () => ({
   useMetadataWithSettings: jest.fn().mockReturnValue({}),
+  // ChartSeriesEditor reads the series-table columns to detect the
+  // *AttributeItems token columns (v2 metrics Where-button emission).
+  useColumns: jest.fn().mockReturnValue({ data: [] }),
   useGetKeyValues: jest.fn().mockReturnValue({
     data: [
       {

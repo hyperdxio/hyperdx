@@ -1013,6 +1013,66 @@ export const MemoChart = memo(function MemoChart({
     return [startTime.getTime() / 1000, endTime.getTime() / 1000];
   }, [dateRange, granularity, dateRangeEndInclusive, displayType]);
 
+  // The newest display bucket of a live chart is always partially filled
+  // (points still arriving + ingest latency), so the line ends in a false
+  // dip. While that bucket is still open, shade the final segment (the last
+  // two bucket positions — data points sit at bucket starts, so the "last
+  // bucket" itself has no plot area to its right) as a "still filling"
+  // affordance. Historical ranges never shade. Keyed on graphResults so the
+  // now() check re-anchors exactly when fresh data lands.
+  const partialBucketShade = useMemo(() => {
+    const granularitySeconds = convertGranularityToSeconds(granularity);
+    if (!granularitySeconds || !Number.isFinite(granularitySeconds)) {
+      return null;
+    }
+    let lastBucketStart = toStartOfInterval(dateRange[1], granularity);
+    if (isSameSecond(dateRange[1], lastBucketStart) && !dateRangeEndInclusive) {
+      lastBucketStart = sub(lastBucketStart, { seconds: granularitySeconds });
+    }
+    const lastBucketStartSec = lastBucketStart.getTime() / 1000;
+    // must be current (bucket-open check), and memoized on graphResults below
+    // eslint-disable-next-line no-restricted-syntax
+    const nowSec = Date.now() / 1000;
+    const bucketIsOpen =
+      nowSec >= lastBucketStartSec &&
+      nowSec < lastBucketStartSec + granularitySeconds;
+    if (!bucketIsOpen) {
+      return null;
+    }
+    // Bars are centered on the bucket-start x (domain extended ±g/2), so the
+    // open bucket's bar spans [start-g/2, start+g/2]; lines put the partial
+    // point AT the bucket start, so the still-filling segment is the one
+    // leading into it.
+    const [shadeX1, shadeX2] =
+      displayType === DisplayType.StackedBar
+        ? [
+            lastBucketStartSec - granularitySeconds / 2,
+            lastBucketStartSec + granularitySeconds / 2,
+          ]
+        : [lastBucketStartSec - granularitySeconds, lastBucketStartSec];
+    return (
+      <ReferenceArea
+        x1={shadeX1}
+        x2={shadeX2}
+        ifOverflow="hidden"
+        fill="#ccc"
+        fillOpacity={0.07}
+        stroke="#ccc"
+        strokeOpacity={0.25}
+        strokeDasharray="4 3"
+      />
+    );
+    // graphResults is intentionally a dep: it re-anchors the now() check on
+    // each data refresh without recomputing on every hover render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    graphResults,
+    dateRange,
+    granularity,
+    dateRangeEndInclusive,
+    displayType,
+  ]);
+
   // Alert/event markers as dashed lines, clamped to the chart's x-axis domain so
   // an edge marker (e.g. an alert already firing at window open) stays visible
   // instead of being dropped. Labels float in the reserved top headroom.
@@ -1286,6 +1346,7 @@ export const MemoChart = memo(function MemoChart({
               portal={typeof document !== 'undefined' ? document.body : null}
             />
           )}
+          {partialBucketShade}
           {referenceLines}
           {annotationElements}
           {highlightStart && highlightEnd ? (

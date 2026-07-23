@@ -43,6 +43,8 @@ interface MetricAttributeHelperPanelProps {
   metricMetadata?: MetricMetadata | null;
   onAddToWhere: (clause: string) => void;
   onAddToGroupBy?: (clause: string) => void;
+  dateRange?: [Date, Date];
+  useTokenLookup?: boolean;
 }
 
 const CATEGORY_LABELS: Record<AttributeCategory, string> = {
@@ -138,13 +140,60 @@ function formatUnitDisplay(unit: string): string {
   return unit;
 }
 
+const ATTRIBUTE_ITEMS_COLUMN: Record<AttributeCategory, string> = {
+  ResourceAttributes: 'ResourceAttributeItems',
+  ScopeAttributes: 'ScopeAttributeItems',
+  Attributes: 'AttributeItems',
+};
+
+const escapeSqlString = (s: string) =>
+  s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+/**
+ * If `clause` is a single-token hasAllTokens lookup and `condition` already
+ * contains a hasAllTokens call on the same Items column, splice the token
+ * into that call's array (AND semantics — one index lookup) instead of
+ * appending another call. Returns null when no merge applies (caller falls
+ * back to plain `AND` concatenation); already-present tokens are a no-op.
+ */
+export function mergeTokenLookupIntoCondition(
+  condition: string,
+  clause: string,
+): string | null {
+  const single = clause.match(
+    /^hasAllTokens\((\w+), \['((?:[^'\\]|\\.)*)'\]\)$/,
+  );
+  if (!single) return null;
+  const [, itemsColumn, token] = single;
+  const existing = new RegExp(
+    `hasAllTokens\\(\\s*${itemsColumn}\\s*,\\s*\\[\\s*((?:'(?:[^'\\\\]|\\\\.)*'\\s*,?\\s*)+)\\]\\s*\\)`,
+  );
+  const found = condition.match(existing);
+  if (!found) return null;
+  const tokens = found[1].trim().replace(/,\s*$/, '');
+  const present = [...tokens.matchAll(/'((?:[^'\\]|\\.)*)'/g)].some(
+    m => m[1] === token,
+  );
+  if (present) return condition;
+  return condition.replace(
+    found[0],
+    `hasAllTokens(${itemsColumn}, [${tokens}, '${token}'])`,
+  );
+}
+
 function formatWhereClause(
   category: AttributeCategory,
   name: string,
   value: string,
   language: 'sql' | 'lucene',
+  useTokenLookup = false,
 ): string {
   if (language === 'sql') {
+    // v2 series tables index the whole k=v pair as one text-index token —
+    // filter via the token lookup so the scan matches the index directly.
+    if (useTokenLookup) {
+      return `hasAllTokens(${ATTRIBUTE_ITEMS_COLUMN[category]}, ['${escapeSqlString(`${name}=${value}`)}'])`;
+    }
     return `${category}['${name}'] = '${value}'`;
   }
   return `${category}.${name}:"${value}"`;
@@ -171,6 +220,8 @@ interface AttributeValueListProps {
   onAddToWhere: (clause: string) => void;
   onBack: () => void;
   onAddToGroupBy?: (clause: string) => void;
+  dateRange?: [Date, Date];
+  useTokenLookup?: boolean;
 }
 
 function AttributeValueList({
@@ -183,6 +234,8 @@ function AttributeValueList({
   onAddToWhere,
   onBack,
   onAddToGroupBy,
+  dateRange,
+  useTokenLookup,
 }: AttributeValueListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch] = useDebouncedValue(searchTerm, 300);
@@ -195,6 +248,7 @@ function AttributeValueList({
     attributeCategory: attribute.category,
     searchTerm: debouncedSearch,
     tableSource,
+    dateRange,
   });
 
   const handleAddValueToWhere = useCallback(
@@ -204,10 +258,13 @@ function AttributeValueList({
         attribute.name,
         value,
         language,
+        // filter via the pair-token index lookup when the series table has
+        // the *AttributeItems columns
+        useTokenLookup,
       );
       onAddToWhere(clause);
     },
-    [attribute, language, onAddToWhere],
+    [attribute, language, onAddToWhere, useTokenLookup],
   );
 
   const handleAddToGroupBy = useCallback(() => {
@@ -401,6 +458,8 @@ export function MetricAttributeHelperPanel({
   metricMetadata,
   onAddToWhere,
   onAddToGroupBy,
+  dateRange,
+  useTokenLookup,
 }: MetricAttributeHelperPanelProps) {
   const [opened, { toggle }] = useDisclosure(false);
   const [selectedAttribute, setSelectedAttribute] =
@@ -481,6 +540,8 @@ export function MetricAttributeHelperPanel({
               onAddToWhere={onAddToWhere}
               onBack={handleBack}
               onAddToGroupBy={onAddToGroupBy}
+              dateRange={dateRange}
+              useTokenLookup={useTokenLookup}
             />
           ) : (
             <AttributeList

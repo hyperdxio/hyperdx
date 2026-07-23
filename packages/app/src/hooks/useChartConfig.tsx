@@ -274,6 +274,29 @@ function appendChunk(
  *    `isFetching` will be true until all chunks have been fetched.
  * - `data.isComplete` indicates whether all chunks have been fetched.
  */
+/** Errors that are deterministic for a given query — retrying reproduces
+ * the same failure at full cluster cost (or, for generation-time guard
+ * errors, is pure waste). */
+export function isNonRetryableQueryError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  // @clickhouse/client parses the "Code: 159 ... (TIMEOUT_EXCEEDED)" markers
+  // OUT of the message and into .code/.type; the query-layer re-wrap keeps
+  // only the message, whose remaining text starts "Timeout exceeded: elapsed".
+  // Check all three carriers so a real server timeout is never retried.
+  const props = (error ?? {}) as { code?: unknown; type?: unknown };
+  return (
+    props.code === '159' ||
+    props.code === 159 ||
+    props.type === 'TIMEOUT_EXCEEDED' ||
+    /Code:\s*159\b/.test(message) || // TIMEOUT_EXCEEDED
+    message.includes('TIMEOUT_EXCEEDED') ||
+    message.includes('Timeout exceeded: elapsed') ||
+    message.includes('window too large for this metric type') ||
+    message.includes('too many series for this granularity') ||
+    message.includes('summary quantile scan too large')
+  );
+}
+
 export function useQueriedChartConfig(
   config: ChartConfigWithOptDateRange,
   options?: Partial<UseQueryOptions<TQueryFnData>> &
@@ -443,7 +466,12 @@ export function useQueriedChartConfig(
 
       return queryClient.getQueryData(context.queryKey)!;
     },
-    retry: 1,
+    // Never retry deterministic failures: a query that exceeded
+    // max_execution_time (ClickHouse code 159) will time out again, and each
+    // retry re-burns the full query cost on the cluster; generation-time
+    // guard errors (window too large) never even issue a query.
+    retry: (failureCount, error) =>
+      failureCount < 1 && !isNonRetryableQueryError(error),
     refetchOnWindowFocus: false,
     ...options,
     enabled: enabled && !isLoadingMVOptimization && !isSourceLoading,

@@ -467,16 +467,17 @@ export abstract class SQLSerializer implements Serializer {
       });
     }
 
-    // KV items index optimization: use has(KvItemsColumn, concat('key','<sep>','value'))
+    // KV items index optimization: use hasAllTokens(KvItemsColumn, array('key<sep>value'))
     // instead of Map['key'] = 'value' when a text(tokenizer=array) index exists.
     // For empty-term equality we also match absent keys (Map subscript returns default ''),
     // so we emit: has(arr, 'key<sep>') OR NOT mapContains(Map, 'key')
     if (kvItemsExpression && propertyType === JSDataType.String) {
-      const hasExpr = SqlString.format(`has(??, concat(?, ?, ?))`, [
+      // Exact-token ARRAY needle: the items text index (tokenizer='array')
+      // indexes the whole k=v pair as one token; string needles would be
+      // re-tokenized by the default tokenizer and split on '='.
+      const hasExpr = SqlString.format(`hasAllTokens(??, array(?))`, [
         kvItemsExpression.kvItemsColumn,
-        kvItemsExpression.mapKey,
-        kvItemsExpression.separator,
-        term,
+        `${kvItemsExpression.mapKey}${kvItemsExpression.separator}${term}`,
       ]);
       if (term === '') {
         const notContains = SqlString.format(`NOT mapContains(??, ?)`, [

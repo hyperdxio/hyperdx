@@ -52,13 +52,13 @@ describe('rewriteSqlFilterWithKvItems', () => {
   });
 
   describe('= operator', () => {
-    it("rewrites Map['key'] = 'value' to has(kvItems, concat(key, sep, value))", () => {
+    it("rewrites Map['key'] = 'value' to hasAllTokens(kvItems, array('key=value'))", () => {
       const result = rewriteSqlFilterWithKvItems(
         "LogAttributes['service.name'] = 'api'",
         defaultLookup,
       );
       expect(result).toBe(
-        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+        "hasAllTokens(`LogAttributeItems`, array('service.name=api'))",
       );
     });
 
@@ -119,21 +119,21 @@ describe('rewriteSqlFilterWithKvItems', () => {
   });
 
   describe('IN operator', () => {
-    it("rewrites Map['key'] IN ('a') (single item) to has(...) not hasAny(...)", () => {
+    it("rewrites Map['key'] IN ('a') (single item) to hasAllTokens(...) not hasAnyTokens(...)", () => {
       const result = rewriteSqlFilterWithKvItems(
         "LogAttributes['k'] IN ('a')",
         defaultLookup,
       );
-      expect(result).toBe("has(`LogAttributeItems`, concat('k', '=', 'a'))");
+      expect(result).toBe("hasAllTokens(`LogAttributeItems`, array('k=a'))");
     });
 
-    it("rewrites Map['key'] IN ('a','b','c') to hasAny(... array(...))", () => {
+    it("rewrites Map['key'] IN ('a','b','c') to hasAnyTokens(... array(...))", () => {
       const result = rewriteSqlFilterWithKvItems(
         "LogAttributes['k'] IN ('a', 'b', 'c')",
         defaultLookup,
       );
       expect(result).toBe(
-        "hasAny(`LogAttributeItems`, array(concat('k', '=', 'a'), concat('k', '=', 'b'), concat('k', '=', 'c')))",
+        "hasAnyTokens(`LogAttributeItems`, array('k=a', 'k=b', 'k=c'))",
       );
     });
 
@@ -188,7 +188,7 @@ describe('rewriteSqlFilterWithKvItems', () => {
         defaultLookup,
       );
       expect(result).toContain(
-        "has(`LogAttributeItems`, concat('service.name', '=', 'api'))",
+        "hasAllTokens(`LogAttributeItems`, array('service.name=api'))",
       );
       expect(result).toContain("Severity = 'error'");
       expect(result).not.toContain("LogAttributes['service.name']");
@@ -200,22 +200,20 @@ describe('rewriteSqlFilterWithKvItems', () => {
         defaultLookup,
       );
       expect(result).toContain(
-        "has(`LogAttributeItems`, concat('k', '=', 'v'))",
+        "hasAllTokens(`LogAttributeItems`, array('k=v'))",
       );
       expect(result).toContain("Severity = 'error'");
     });
 
-    it('rewrites every matching subscript when several appear together', () => {
+    it('collapses AND-connected equality matchers into ONE hasAllTokens per items column', () => {
       const result = rewriteSqlFilterWithKvItems(
         "LogAttributes['a'] = 'x' AND LogAttributes['b'] = 'y'",
         defaultLookup,
       );
       expect(result).toContain(
-        "has(`LogAttributeItems`, concat('a', '=', 'x'))",
+        "hasAllTokens(`LogAttributeItems`, array('a=x', 'b=y'))",
       );
-      expect(result).toContain(
-        "has(`LogAttributeItems`, concat('b', '=', 'y'))",
-      );
+      expect((result.match(/hasAllTokens\(/g) ?? []).length).toBe(1);
       expect(result).not.toContain("LogAttributes['");
     });
 
@@ -225,10 +223,10 @@ describe('rewriteSqlFilterWithKvItems', () => {
         defaultLookup,
       );
       expect(result).toContain(
-        "has(`LogAttributeItems`, concat('k', '=', 'v'))",
+        "hasAllTokens(`LogAttributeItems`, array('k=v'))",
       );
       expect(result).toContain(
-        "has(`LogAttributeItems`, concat('k2', '=', 'v2'))",
+        "hasAllTokens(`LogAttributeItems`, array('k2=v2'))",
       );
       expect(result).toContain("Severity = 'x'");
     });
@@ -239,10 +237,10 @@ describe('rewriteSqlFilterWithKvItems', () => {
         defaultLookup,
       );
       expect(result).toContain(
-        "has(`LogAttributeItems`, concat('k', '=', 'v'))",
+        "hasAllTokens(`LogAttributeItems`, array('k=v'))",
       );
       expect(result).toContain(
-        "hasAny(`LogAttributeItems`, array(concat('env', '=', 'prod'), concat('env', '=', 'staging')))",
+        "hasAnyTokens(`LogAttributeItems`, array('env=prod', 'env=staging'))",
       );
     });
   });
@@ -259,7 +257,7 @@ describe('rewriteSqlFilterWithKvItems', () => {
         "LogAttributes['k'] = 'v'",
         colonLookup,
       );
-      expect(result).toBe("has(`LogAttributeItems`, concat('k', ':', 'v'))");
+      expect(result).toBe("hasAllTokens(`LogAttributeItems`, array('k:v'))");
     });
 
     it('uses the configured kv items column name (backtick-quoted)', () => {
@@ -273,7 +271,7 @@ describe('rewriteSqlFilterWithKvItems', () => {
         "LogAttributes['k'] = 'v'",
         lookup,
       );
-      expect(result).toBe("has(`CustomItemsColumn`, concat('k', '=', 'v'))");
+      expect(result).toBe("hasAllTokens(`CustomItemsColumn`, array('k=v'))");
     });
 
     it('applies independent lookup entries to each map column', () => {
@@ -292,10 +290,10 @@ describe('rewriteSqlFilterWithKvItems', () => {
         lookup,
       );
       expect(result).toContain(
-        "has(`LogAttributeItems`, concat('k', '=', 'v'))",
+        "hasAllTokens(`LogAttributeItems`, array('k=v'))",
       );
       expect(result).toContain(
-        "has(`ResourceAttributeItems`, concat('k2', ':', 'v2'))",
+        "hasAllTokens(`ResourceAttributeItems`, array('k2:v2'))",
       );
     });
 
@@ -305,7 +303,7 @@ describe('rewriteSqlFilterWithKvItems', () => {
         defaultLookup,
       );
       expect(result).toContain(
-        "has(`LogAttributeItems`, concat('k', '=', 'v'))",
+        "hasAllTokens(`LogAttributeItems`, array('k=v'))",
       );
       expect(result).toContain("OtherMap['k2'] = 'v2'");
     });
@@ -318,7 +316,7 @@ describe('rewriteSqlFilterWithKvItems', () => {
         defaultLookup,
       );
       expect(result).toBe(
-        "has(`LogAttributeItems`, concat('key with spaces', '=', 'value'))",
+        "hasAllTokens(`LogAttributeItems`, array('key with spaces=value'))",
       );
     });
 
@@ -332,50 +330,49 @@ describe('rewriteSqlFilterWithKvItems', () => {
 
     it('is idempotent on an already-rewritten has() condition', () => {
       const alreadyRewritten =
-        "has(`LogAttributeItems`, concat('k', '=', 'v'))";
+        "hasAllTokens(`LogAttributeItems`, array('k=v'))";
       const result = rewriteSqlFilterWithKvItems(
         alreadyRewritten,
         defaultLookup,
       );
       expect(result).toContain(
-        "has(`LogAttributeItems`, concat('k', '=', 'v'))",
+        "hasAllTokens(`LogAttributeItems`, array('k=v'))",
       );
     });
   });
 
   describe('hasAny fallback (useHasAny: false)', () => {
-    it("still rewrites Map['key'] = 'value' to has(...)", () => {
+    it("still rewrites Map['key'] = 'value' to hasAllTokens(...)", () => {
       const result = rewriteSqlFilterWithKvItems(
         "LogAttributes['k'] = 'v'",
         legacyLookup,
       );
-      expect(result).toBe("has(`LogAttributeItems`, concat('k', '=', 'v'))");
+      expect(result).toBe("hasAllTokens(`LogAttributeItems`, array('k=v'))");
     });
 
-    it("still rewrites Map['key'] IN ('a') (single item) to has(...)", () => {
+    it("still rewrites Map['key'] IN ('a') (single item) to hasAllTokens(...)", () => {
       const result = rewriteSqlFilterWithKvItems(
         "LogAttributes['k'] IN ('a')",
         legacyLookup,
       );
-      expect(result).toBe("has(`LogAttributeItems`, concat('k', '=', 'a'))");
+      expect(result).toBe("hasAllTokens(`LogAttributeItems`, array('k=a'))");
     });
 
-    it("rewrites Map['key'] IN ('a','b','c') to a chain of has(...) OR ...", () => {
+    it("rewrites Map['key'] IN ('a','b','c') to a chain of hasAllTokens(...) OR ...", () => {
       const result = rewriteSqlFilterWithKvItems(
         "LogAttributes['k'] IN ('a', 'b', 'c')",
         legacyLookup,
       );
       expect(result).toContain(
-        "has(`LogAttributeItems`, concat('k', '=', 'a'))",
+        "hasAllTokens(`LogAttributeItems`, array('k=a'))",
       );
       expect(result).toContain(
-        "has(`LogAttributeItems`, concat('k', '=', 'b'))",
+        "hasAllTokens(`LogAttributeItems`, array('k=b'))",
       );
       expect(result).toContain(
-        "has(`LogAttributeItems`, concat('k', '=', 'c'))",
+        "hasAllTokens(`LogAttributeItems`, array('k=c'))",
       );
-      expect(result).not.toContain('hasAny(');
-      expect(result).not.toContain('array(');
+      expect(result).not.toContain('hasAnyTokens(');
       const orCount = (result.match(/ OR /g) ?? []).length;
       expect(orCount).toBeGreaterThanOrEqual(2);
     });
@@ -386,17 +383,17 @@ describe('rewriteSqlFilterWithKvItems', () => {
         legacyLookup,
       );
       expect(result).toContain(
-        "has(`LogAttributeItems`, concat('k', '=', 'a'))",
+        "hasAllTokens(`LogAttributeItems`, array('k=a'))",
       );
       expect(result).toContain(
-        "has(`LogAttributeItems`, concat('k', '=', 'b'))",
+        "hasAllTokens(`LogAttributeItems`, array('k=b'))",
       );
       expect(result).toContain("Severity = 'error'");
       expect(result).not.toContain('hasAny(');
       // The OR chain MUST be parenthesized so AND doesn't bind tighter than OR
       // and cause the right-hand `AND Severity` to attach to only the last has().
       expect(result).toMatch(
-        /\(has\([^)]+\)[^)]*\) OR has\([^)]+\)[^)]*\)\) AND /,
+        /\(hasAllTokens\(.+?\) OR hasAllTokens\(.+?\)\) AND /,
       );
     });
 
@@ -409,7 +406,7 @@ describe('rewriteSqlFilterWithKvItems', () => {
       expect(result).not.toContain('hasAny(');
       // Same rationale as the mirror case above: precedence-sensitive parens.
       expect(result).toMatch(
-        / AND \(has\([^)]+\)[^)]*\) OR has\([^)]+\)[^)]*\)\)/,
+        / AND \(hasAllTokens\(.+?\) OR hasAllTokens\(.+?\)\)/,
       );
     });
 
@@ -420,6 +417,225 @@ describe('rewriteSqlFilterWithKvItems', () => {
       );
       expect(result).not.toContain('has(');
       expect(result).not.toContain('hasAny(');
+    });
+  });
+
+  describe('OR groups (round 2 §3)', () => {
+    const multiLookup: KvItemsLookup = makeLookup([
+      ['LogAttributes', { kvItemsColumn: 'LogAttributeItems', separator: '=' }],
+      [
+        'ResourceAttributes',
+        { kvItemsColumn: 'ResourceAttributeItems', separator: '=' },
+      ],
+    ]);
+
+    it('collapses an OR of two equalities on the same map into ONE hasAnyTokens', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['env'] = 'production' OR LogAttributes['environment'] = 'production'",
+        defaultLookup,
+      );
+      expect(result).toBe(
+        "hasAnyTokens(`LogAttributeItems`, array('env=production', 'environment=production'))",
+      );
+    });
+
+    it('merges IN disjuncts into the group token set', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['k'] IN ('a', 'b') OR LogAttributes['j'] = 'c'",
+        defaultLookup,
+      );
+      expect(result).toBe(
+        "hasAnyTokens(`LogAttributeItems`, array('k=a', 'k=b', 'j=c'))",
+      );
+    });
+
+    it('keeps an OR group intact inside a wider AND spine', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "Severity = 'error' AND (LogAttributes['env'] = 'prod' OR LogAttributes['environment'] = 'prod')",
+        defaultLookup,
+      );
+      expect(result).toContain("Severity = 'error'");
+      expect(result).toContain(
+        "hasAnyTokens(`LogAttributeItems`, array('env=prod', 'environment=prod'))",
+      );
+      expect(result).not.toContain('hasAllTokens');
+    });
+
+    it('splits an OR group spanning two items columns into per-column probes', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['env'] = 'prod' OR ResourceAttributes['env'] = 'prod' OR LogAttributes['stage'] = 'prod'",
+        multiLookup,
+      );
+      expect(result).toContain(
+        "hasAnyTokens(`LogAttributeItems`, array('env=prod', 'stage=prod'))",
+      );
+      expect(result).toContain(
+        "hasAllTokens(`ResourceAttributeItems`, array('env=prod'))",
+      );
+      expect(result).toMatch(/hasAnyTokens\(.+?\) OR hasAllTokens\(.+?\)/);
+    });
+
+    it('leaves the whole OR group un-collapsed when one disjunct is not tokenizable (per-node rewrites still apply)', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['env'] = 'prod' OR Severity = 'error'",
+        defaultLookup,
+      );
+      expect(result).not.toContain('hasAnyTokens');
+      expect(result).toContain(
+        "hasAllTokens(`LogAttributeItems`, array('env=prod'))",
+      );
+      expect(result).toContain("Severity = 'error'");
+    });
+
+    it('dedupes repeated tokens within an OR group', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['env'] = 'prod' OR LogAttributes['env'] = 'prod' OR LogAttributes['env'] = 'dev'",
+        defaultLookup,
+      );
+      expect(result).toBe(
+        "hasAnyTokens(`LogAttributeItems`, array('env=prod', 'env=dev'))",
+      );
+    });
+
+    it('falls back to an OR chain of hasAllTokens without hasAnyTokens support', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['env'] = 'prod' OR LogAttributes['environment'] = 'prod'",
+        legacyLookup,
+      );
+      expect(result).not.toContain('hasAnyTokens');
+      expect(result).toContain(
+        "hasAllTokens(`LogAttributeItems`, array('env=prod'))",
+      );
+      expect(result).toContain(
+        "hasAllTokens(`LogAttributeItems`, array('environment=prod'))",
+      );
+    });
+
+    it('parenthesizes the legacy OR chain inside a wider AND (precedence)', () => {
+      // Without parens, `x = 1 AND a OR b` rebinds to `(x = 1 AND a) OR b`
+      // and rows failing the AND leak through.
+      const result = rewriteSqlFilterWithKvItems(
+        "Severity = 'error' AND (LogAttributes['env'] = 'prod' OR LogAttributes['environment'] = 'prod')",
+        legacyLookup,
+      );
+      expect(result).toMatch(
+        / AND \(hasAllTokens\(.+?\) OR hasAllTokens\(.+?\)\)/,
+      );
+    });
+
+    it('does not merge an OR group into the AND-spine collapse', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "LogAttributes['a'] = '1' AND LogAttributes['b'] = '2' AND (LogAttributes['env'] = 'prod' OR LogAttributes['environment'] = 'prod')",
+        defaultLookup,
+      );
+      expect(result).toContain(
+        "hasAllTokens(`LogAttributeItems`, array('a=1', 'b=2'))",
+      );
+      expect(result).toContain(
+        "hasAnyTokens(`LogAttributeItems`, array('env=prod', 'environment=prod'))",
+      );
+    });
+  });
+
+  describe('match() anchored alternations (round 2 §4)', () => {
+    it('rewrites a fully anchored group alternation to hasAnyTokens', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "match(LogAttributes['endpoint'], '^(a|b|c)$')",
+        defaultLookup,
+      );
+      expect(result).toBe(
+        "hasAnyTokens(`LogAttributeItems`, array('endpoint=a', 'endpoint=b', 'endpoint=c'))",
+      );
+    });
+
+    it('rewrites the non-capturing form ^(?:a|b)$', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "match(LogAttributes['endpoint'], '^(?:a|b)$')",
+        defaultLookup,
+      );
+      expect(result).toBe(
+        "hasAnyTokens(`LogAttributeItems`, array('endpoint=a', 'endpoint=b'))",
+      );
+    });
+
+    it('rewrites the per-piece anchored form ^a$|^b$', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "match(LogAttributes['endpoint'], '^a$|^b$')",
+        defaultLookup,
+      );
+      expect(result).toBe(
+        "hasAnyTokens(`LogAttributeItems`, array('endpoint=a', 'endpoint=b'))",
+      );
+    });
+
+    it('rewrites a single anchored literal to hasAllTokens', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "match(LogAttributes['endpoint'], '^checkout$')",
+        defaultLookup,
+      );
+      expect(result).toBe(
+        "hasAllTokens(`LogAttributeItems`, array('endpoint=checkout'))",
+      );
+    });
+
+    it('keeps an UNANCHORED alternation as match() — ClickHouse match is substring search', () => {
+      const condition = "match(LogAttributes['endpoint'], 'a|b|c')";
+      const result = rewriteSqlFilterWithKvItems(condition, defaultLookup);
+      expect(result).not.toContain('hasAnyTokens');
+      expect(result).not.toContain('hasAllTokens');
+      expect(result).toContain('match(');
+    });
+
+    it('keeps true regexes (classes, wildcards, escapes) as match()', () => {
+      for (const pattern of [
+        '^(a.*|b)$',
+        '^(a|b[0-9])$',
+        '^(a\\\\.b|c)$',
+        '^a$|b',
+        '^(a|)$',
+      ]) {
+        const result = rewriteSqlFilterWithKvItems(
+          `match(LogAttributes['endpoint'], '${pattern}')`,
+          defaultLookup,
+        );
+        expect(result).not.toContain('hasAnyTokens');
+        expect(result).not.toContain('hasAllTokens');
+      }
+    });
+
+    it('keeps match() on maps without an items column', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "match(SpanAttributes['endpoint'], '^(a|b)$')",
+        defaultLookup,
+      );
+      expect(result).not.toContain('hasAnyTokens');
+      expect(result).toContain('match(');
+    });
+
+    it('joins an OR group as a disjunct alongside equalities', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "match(LogAttributes['endpoint'], '^(a|b)$') OR LogAttributes['env'] = 'prod'",
+        defaultLookup,
+      );
+      expect(result).toBe(
+        "hasAnyTokens(`LogAttributeItems`, array('endpoint=a', 'endpoint=b', 'env=prod'))",
+      );
+    });
+
+    it('merges a single-literal anchored match() into the AND-spine collapse', () => {
+      const result = rewriteSqlFilterWithKvItems(
+        "match(LogAttributes['endpoint'], '^checkout$') AND LogAttributes['env'] = 'prod'",
+        defaultLookup,
+      );
+      expect(result).toContain(
+        "hasAllTokens(`LogAttributeItems`, array('endpoint=checkout', 'env=prod'))",
+      );
+    });
+
+    it('does not rewrite NOT match()', () => {
+      const condition = "NOT match(LogAttributes['endpoint'], '^(a|b)$')";
+      const result = rewriteSqlFilterWithKvItems(condition, defaultLookup);
+      expect(result).not.toContain('hasAnyTokens');
     });
   });
 });

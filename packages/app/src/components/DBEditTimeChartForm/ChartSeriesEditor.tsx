@@ -8,12 +8,14 @@ import {
 } from 'react-hook-form';
 import {
   DateRange,
+  isMetricsV2Tables,
   MetricsDataType,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
+  Badge,
   Button,
   Divider,
   Flex,
@@ -30,7 +32,12 @@ import {
 } from '@tabler/icons-react';
 
 import { AGG_FNS } from '@/ChartUtils';
-import { AggFnSelectControlled } from '@/components/AggFnSelect';
+import {
+  AggFnSelectControlled,
+  getMetricV2DefaultAggFn,
+  isMetricV2AggFnAllowed,
+  SumMonotonicity,
+} from '@/components/AggFnSelect';
 import {
   ChartEditorFormState,
   SavedChartConfigWithSelectArray,
@@ -39,17 +46,24 @@ import {
   CheckBoxControlled,
   TextInputControlled,
 } from '@/components/InputControlled';
-import { MetricAttributeHelperPanel } from '@/components/MetricAttributeHelperPanel';
+import {
+  mergeTokenLookupIntoCondition,
+  MetricAttributeHelperPanel,
+} from '@/components/MetricAttributeHelperPanel';
 import { MetricNameSelect } from '@/components/MetricNameSelect';
 import { FORMAT_ICONS } from '@/components/NumberFormat';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import SeriesNumberFormatDrawer from '@/components/SeriesNumberFormatDrawer';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
-import { useFetchMetricMetadata } from '@/hooks/useFetchMetricMetadata';
+import {
+  useFetchMetricMetadata,
+  useMetricSeriesProfile,
+} from '@/hooks/useFetchMetricMetadata';
 import {
   parseAttributeKeysFromSuggestions,
   useFetchMetricResourceAttrs,
 } from '@/hooks/useFetchMetricResourceAttrs';
+import { useColumns } from '@/hooks/useMetadata';
 import { getMetricTableName } from '@/utils';
 
 type SeriesItem = NonNullable<
@@ -82,6 +96,7 @@ type ChartSeriesEditorProps = {
 export function ChartSeriesEditor({
   control,
   databaseName,
+  dateRange,
   connectionId,
   index,
   namePrefix,
@@ -156,6 +171,7 @@ export function ChartSeriesEditor({
       metricName,
       tableSource: metricTableSource,
       isSql: aggConditionLanguage === 'sql',
+      dateRange,
     });
 
   const attributeKeys = useMemo(
@@ -170,11 +186,117 @@ export function ChartSeriesEditor({
     tableSource: metricTableSource,
   });
 
+  // Token-lookup filters need the v2 series table's *AttributeItems ALIAS
+  // columns — detect their presence so older databases keep the plain map
+  // equality clause.
+  const isV2Source = isMetricsV2Tables(metricTableSource?.metricTables);
+
+  // Temporality/monotonicity profile — the same cached lookup the query
+  // translator uses, so this adds no per-query latency. Sum-typed metrics
+  // branch the aggregate list on IsMonotonic (counter vs UpDownCounter).
+  const { data: seriesProfile, isLoading: isProfileLoading } =
+    useMetricSeriesProfile({
+      databaseName,
+      metricType,
+      metricName,
+      tableSource: metricTableSource,
+      dateRange,
+    });
+  // 'updown' (level treatment) requires cumulative + IsMonotonic=false —
+  // the EXACT condition the translator's level-style select uses. A delta
+  // non-monotonic sum (legal in OTLP) is net-change flux, which the
+  // translator renders as per-second Rate → counter treatment here so the
+  // labels match the query.
+  const sumMonotonicity: SumMonotonicity =
+    metricType !== MetricsDataType.Sum
+      ? 'unknown'
+      : seriesProfile?.temporality === 'cumulative' &&
+          seriesProfile.isMonotonic === false
+        ? 'updown'
+        : seriesProfile?.temporality != null &&
+            (seriesProfile.isMonotonic === true ||
+              (seriesProfile.temporality === 'delta' &&
+                seriesProfile.isMonotonic === false))
+          ? 'monotonic'
+          : 'unknown';
+
+  // §4: v2 metric types gate the aggregate list (see AggFnSelect) — reset a
+  // stale selection that is illegal for the (new) metric type/regime to the
+  // type's primary aggregate so the translator never sees it. Waits for the
+  // profile so a still-loading regime can't transiently reset a legitimate
+  // selection.
+  const quantileLevel = useWatch({ control, name: `${namePrefix}level` });
+  useEffect(() => {
+    if (!isV2Source || !metricType || aggFn == null || isProfileLoading) {
+      return;
+    }
+    if (
+      !isMetricV2AggFnAllowed(metricType, aggFn, quantileLevel, sumMonotonicity)
+    ) {
+      const fallback = getMetricV2DefaultAggFn(metricType, sumMonotonicity);
+      if (/^p\d+$/.test(fallback)) {
+        setValue(
+          `${namePrefix}level`,
+          Number.parseFloat(fallback.replace('p', '0.')),
+        );
+        setValue(`${namePrefix}aggFn`, 'quantile');
+      } else {
+        setValue(`${namePrefix}aggFn`, fallback);
+      }
+    }
+  }, [
+    isV2Source,
+    metricType,
+    aggFn,
+    quantileLevel,
+    sumMonotonicity,
+    isProfileLoading,
+    namePrefix,
+    setValue,
+  ]);
+
+  // Type badge: which aggregation regime the user is in, visible before
+  // picking a function.
+  const metricTypeBadge = !metricName
+    ? undefined
+    : metricType === MetricsDataType.Sum
+      ? sumMonotonicity === 'monotonic'
+        ? { label: 'counter', color: 'teal' }
+        : sumMonotonicity === 'updown'
+          ? { label: 'up/down', color: 'grape' }
+          : isProfileLoading
+            ? undefined
+            : { label: 'sum · unresolved', color: 'gray' }
+      : metricType === MetricsDataType.Gauge
+        ? { label: 'gauge', color: 'blue' }
+        : metricType === MetricsDataType.Histogram
+          ? { label: 'histogram', color: 'cyan' }
+          : metricType === MetricsDataType.ExponentialHistogram
+            ? { label: 'exp histogram', color: 'cyan' }
+            : metricType === MetricsDataType.Summary
+              ? { label: 'summary', color: 'indigo' }
+              : undefined;
+  const seriesTableName = isV2Source
+    ? (metricTableSource?.metricTables?.series ?? '')
+    : '';
+  const { data: seriesColumns } = useColumns({
+    databaseName,
+    tableName: seriesTableName,
+    connectionId: connectionId ?? metricTableSource?.connection ?? '',
+  });
+  const useTokenLookup =
+    isV2Source &&
+    (seriesColumns ?? []).some(c => c.name.endsWith('AttributeItems'));
+
   const handleAddToWhere = useCallback(
     (clause: string) => {
       const currentValue = aggCondition || '';
 
-      const newValue = currentValue ? `${currentValue} AND ${clause}` : clause;
+      // Successive token-lookup clauses on the same Items column merge into
+      // one hasAllTokens call (AND semantics, single index lookup).
+      const newValue =
+        mergeTokenLookupIntoCondition(currentValue, clause) ??
+        (currentValue ? `${currentValue} AND ${clause}` : clause);
       setValue(`${namePrefix}aggCondition`, newValue);
       onSubmit();
     },
@@ -308,6 +430,8 @@ export function ChartSeriesEditor({
             metricType={
               tableSource?.kind === SourceKind.Metric ? metricType : undefined
             }
+            metricsV2={isV2Source}
+            sumMonotonicity={sumMonotonicity}
           />
         </div>
         {tableSource?.kind === SourceKind.Metric && metricType && (
@@ -327,8 +451,21 @@ export function ChartSeriesEditor({
               error={errors?.metricName?.message}
               onFocus={() => clearErrors(`${namePrefix}metricName`)}
             />
-            {metricType === 'gauge' && (
-              <Flex justify="end">
+            <Flex justify="space-between" align="center">
+              {isV2Source && metricTypeBadge ? (
+                <Badge
+                  size="xs"
+                  variant="light"
+                  color={metricTypeBadge.color}
+                  className="mt-2"
+                  data-testid="metric-type-badge"
+                >
+                  {metricTypeBadge.label}
+                </Badge>
+              ) : (
+                <div />
+              )}
+              {metricType === 'gauge' && (
                 <CheckBoxControlled
                   control={control}
                   name={`${namePrefix}isDelta`}
@@ -336,8 +473,8 @@ export function ChartSeriesEditor({
                   size="xs"
                   className="mt-2"
                 />
-              </Flex>
-            )}
+              )}
+            </Flex>
           </div>
         )}
         {tableSource?.kind !== SourceKind.Metric && aggFn !== 'count' && (
@@ -441,6 +578,8 @@ export function ChartSeriesEditor({
           metricMetadata={metricMetadata}
           onAddToWhere={handleAddToWhere}
           onAddToGroupBy={showGroupBy ? handleAddToGroupBy : undefined}
+          dateRange={dateRange}
+          useTokenLookup={useTokenLookup}
         />
       )}
       <SeriesNumberFormatDrawer

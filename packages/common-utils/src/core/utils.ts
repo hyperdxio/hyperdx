@@ -390,9 +390,10 @@ export function convertDateRangeToGranularityString(
   const diffSeconds = Math.floor((end - start) / 1000);
   const granularitySizeSeconds = Math.ceil(diffSeconds / maxNumBuckets);
 
-  if (granularitySizeSeconds <= 15) {
-    return Granularity.FifteenSecond;
-  } else if (granularitySizeSeconds <= 30) {
+  if (granularitySizeSeconds <= 30) {
+    // Auto never goes below 30s buckets (sub-30s stays selectable per
+    // chart): most scrape intervals are 10-60s, so finer auto buckets just
+    // render gap-toothed charts and pin metrics queries to raw points.
     return Granularity.ThirtySecond;
   } else if (granularitySizeSeconds <= 60) {
     return Granularity.OneMinute;
@@ -402,9 +403,11 @@ export function convertDateRangeToGranularityString(
     // 10 minute granularity is skipped so that every auto-inferred granularity is a multiple
     // of all smaller granularities, which makes it more likely that a materialized view can be used.
     return Granularity.FifteenMinute;
-  } else if (granularitySizeSeconds <= 30 * 60) {
-    return Granularity.ThirtyMinute;
   } else if (granularitySizeSeconds <= 3600) {
+    // 30 minute granularity is skipped so day-scale windows (a 24h panel's
+    // ideal bucket is ~18-24 min) resolve to 1 hour: hour-aligned buckets
+    // read the 1h metrics rollup tier directly instead of re-aggregating 6×
+    // as many 5m-tier rows. Explicit 30m remains selectable per chart.
     return Granularity.OneHour;
   } else if (granularitySizeSeconds <= 2 * 3600) {
     return Granularity.TwoHour;
