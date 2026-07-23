@@ -1,0 +1,46 @@
+// Snap-grid guides shown while a dashboard tile is dragged or resized.
+// Sits behind the tiles inside the grid's position:relative container.
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  // Fade in so the grid doesn't pop the instant a drag starts.
+  animation: gridSnapFadeIn 120ms ease-out;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.gridCell {
+  fill: none;
+  stroke: var(--color-text);
+  stroke-opacity: 0.06;
+  stroke-width: 1;
+}
+
+// Cells around the tile being dragged: brighter outline + faint accent fill so
+// the drop target stands out against the otherwise-faint grid. No transition:
+// on a fast drag cells flip in and out of the neighbor set every frame, and an
+// animated fill-opacity turns that into a shimmer/flash. Crisp switching tracks
+// the tile cleanly.
+.gridCellNear {
+  fill: var(--color-primary, #50fa7b);
+  fill-opacity: 0.08;
+  stroke: var(--color-primary, #50fa7b);
+  stroke-opacity: 0.45;
+  stroke-width: 1;
+}
+
+@keyframes gridSnapFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
