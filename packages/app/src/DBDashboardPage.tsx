@@ -740,6 +740,20 @@ const Tile = forwardRef(
               </Tooltip>
             ))}
 
+          {/* Fullscreen is a primary action, so it lives directly in the
+              toolbar rather than buried in the "More actions" menu. */}
+          <Tooltip label="View fullscreen (f)" position="top" withArrow>
+            <ActionIcon
+              data-testid={`tile-fullscreen-button-${chart.id}`}
+              variant="subtle"
+              size="sm"
+              onClick={() => openFullscreen()}
+              mr={4}
+            >
+              <IconArrowsMaximize size={16} />
+            </ActionIcon>
+          </Tooltip>
+
           <Menu width={220} position="bottom-end">
             <Menu.Target>
               <Tooltip label="More actions" position="top" withArrow>
@@ -759,13 +773,6 @@ const Tile = forwardRef(
                 onClick={onDuplicateClick}
               >
                 Duplicate
-              </Menu.Item>
-              <Menu.Item
-                data-testid={`tile-fullscreen-button-${chart.id}`}
-                leftSection={<IconArrowsMaximize size={14} />}
-                onClick={() => openFullscreen()}
-              >
-                View fullscreen
               </Menu.Item>
               <Menu.Item
                 data-testid={`tile-edit-button-${chart.id}`}
