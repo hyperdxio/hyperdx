@@ -71,34 +71,49 @@ type TooltipMode = 'single' | 'all' | 'hidden';
 // being pointed at. At or below it, the full sorted list stays useful.
 const SINGLE_SERIES_TOOLTIP_THRESHOLD = 10;
 
-// Shared "series the user is hovering" across synced charts. recharts' syncId
+// Shared "series the user is hovering", keyed by sync group. recharts' syncId
 // only shares the active time bucket, not a series, so a follower chart has no
 // way to know which series to surface, and picking by its own (irrelevant)
 // cursor Y is arbitrary. The hovered chart publishes the display name of the
-// series under its cursor; followers read it to highlight the same series by
-// name, and show no row when they don't have it.
-let sharedHoveredSeriesName: string | undefined;
-const hoveredSeriesSubscribers = new Set<() => void>();
-function setSharedHoveredSeries(name: string | undefined) {
-  if (name === sharedHoveredSeriesName) return;
-  sharedHoveredSeriesName = name;
-  hoveredSeriesSubscribers.forEach(fn => fn());
+// series under its cursor; followers in the same group read it to highlight the
+// same series by name, and show no row when they don't have it.
+//
+// Keyed by group so a hover only re-renders the charts in that group. Synced
+// charts share a group (their syncId); an unsynced chart uses its own id, so it
+// never re-renders, or is re-rendered by, any other chart on the page.
+const hoveredSeriesByGroup = new Map<string, string | undefined>();
+const hoverSubscribersByGroup = new Map<string, Set<() => void>>();
+function setSharedHoveredSeries(group: string, name: string | undefined) {
+  if (hoveredSeriesByGroup.get(group) === name) return;
+  hoveredSeriesByGroup.set(group, name);
+  hoverSubscribersByGroup.get(group)?.forEach(fn => fn());
 }
-function subscribeHoveredSeries(cb: () => void) {
-  hoveredSeriesSubscribers.add(cb);
-  return () => {
-    hoveredSeriesSubscribers.delete(cb);
-  };
-}
-function getHoveredSeriesSnapshot() {
-  return sharedHoveredSeriesName;
-}
-function useSharedHoveredSeries(): string | undefined {
-  return useSyncExternalStore(
-    subscribeHoveredSeries,
-    getHoveredSeriesSnapshot,
-    getHoveredSeriesSnapshot,
+function useSharedHoveredSeries(group: string): string | undefined {
+  const subscribe = useCallback(
+    (cb: () => void) => {
+      let subs = hoverSubscribersByGroup.get(group);
+      if (!subs) {
+        subs = new Set();
+        hoverSubscribersByGroup.set(group, subs);
+      }
+      subs.add(cb);
+      return () => {
+        subs.delete(cb);
+        // Drop the group's maps once nothing is listening so a page churning
+        // through many charts doesn't leak group entries.
+        if (subs.size === 0) {
+          hoverSubscribersByGroup.delete(group);
+          hoveredSeriesByGroup.delete(group);
+        }
+      };
+    },
+    [group],
   );
+  const getSnapshot = useCallback(
+    () => hoveredSeriesByGroup.get(group),
+    [group],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
 // Gap below the data point for the hover tooltip. Kept equal to the pinned
@@ -842,6 +857,10 @@ export const MemoChart = memo(function MemoChart({
 
   // recharts sync group, scoped via context (see chartSync).
   const syncId = useChartSyncId();
+  // Group for the shared hovered-series store. Synced charts share their syncId;
+  // an unsynced chart falls back to its own id so it stays isolated (a hover
+  // never re-renders unrelated charts elsewhere on the page).
+  const hoverGroup = syncId ?? id;
 
   const [isHovered, setIsHovered] = useState(false);
 
@@ -870,7 +889,7 @@ export const MemoChart = memo(function MemoChart({
 
   // The name of the series the user is hovering on whichever chart is under the
   // cursor, shared across synced charts so followers can match it by name.
-  const crossChartHoveredName = useSharedHoveredSeries();
+  const crossChartHoveredName = useSharedHoveredSeries(hoverGroup);
 
   // Only the hovered chart publishes; on leave it clears the value it set.
   useEffect(() => {
@@ -879,12 +898,15 @@ export const MemoChart = memo(function MemoChart({
       nearestSeriesKey != null
         ? lineData.find(l => l.dataKey === nearestSeriesKey)
         : undefined;
-    setSharedHoveredSeries(ld ? getSeriesDisplayName(ld) : undefined);
-  }, [isHovered, nearestSeriesKey, lineData]);
+    setSharedHoveredSeries(
+      hoverGroup,
+      ld ? getSeriesDisplayName(ld) : undefined,
+    );
+  }, [isHovered, nearestSeriesKey, lineData, hoverGroup]);
   useEffect(() => {
     if (!isHovered) return;
-    return () => setSharedHoveredSeries(undefined);
-  }, [isHovered]);
+    return () => setSharedHoveredSeries(hoverGroup, undefined);
+  }, [isHovered, hoverGroup]);
 
   const ChartComponent = useMemo(
     () => (displayType === DisplayType.StackedBar ? BarChart : AreaChart), // LineChart;

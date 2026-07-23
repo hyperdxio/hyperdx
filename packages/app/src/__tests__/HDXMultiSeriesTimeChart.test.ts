@@ -311,6 +311,39 @@ describe('selectTooltipRows', () => {
       expect(rows).toBeNull();
     });
   });
+
+  describe('empty payload', () => {
+    it('returns an empty list in all-series mode', () => {
+      expect(
+        selectTooltipRows({
+          payload: [],
+          nearestOnly: false,
+          isChartHovered: true,
+        }),
+      ).toEqual([]);
+    });
+
+    it('returns an empty list on the hovered chart', () => {
+      expect(
+        selectTooltipRows({
+          payload: [],
+          nearestOnly: true,
+          isChartHovered: true,
+        }),
+      ).toEqual([]);
+    });
+
+    it('returns null on a synced follower', () => {
+      expect(
+        selectTooltipRows({
+          payload: [],
+          nearestOnly: true,
+          isChartHovered: false,
+          crossChartHoveredName: 'Alpha',
+        }),
+      ).toBeNull();
+    });
+  });
 });
 
 // Whether a chart uses the single-series tooltip is decided from the chart type
