@@ -43,12 +43,17 @@ exports[`renderChartConfig histogram metric queries count should generate a coun
             cityHash64(ExplicitBounds) AS bounds_hash,
             toInt64(Count) AS current_count,
             lagInFrame(toNullable(current_count), 1, NULL) OVER (
-                PARTITION BY group,  attr_hash, bounds_hash, AggregationTemporality
+                PARTITION BY group, attr_hash, bounds_hash, AggregationTemporality
                 ORDER BY TimeUnix
             ) AS prev_count,
             CASE
                 WHEN AggregationTemporality = 1 THEN current_count
-                WHEN AggregationTemporality = 2 THEN greatest(0, current_count - coalesce(prev_count, 0))
+                WHEN AggregationTemporality = 2 AND prev_count IS NOT NULL
+                  THEN if( 
+                    current_count < prev_count,
+                    current_count,
+                    current_count - prev_count
+                  )
                 ELSE 0
             END AS delta
         FROM default.otel_metrics_histogram
@@ -56,10 +61,10 @@ exports[`renderChartConfig histogram metric queries count should generate a coun
     ),metrics AS (
         SELECT
             \`__hdx_time_bucket\`,
-            group,
+group,
             sum(delta) AS "Value"
         FROM source
-        GROUP BY group, \`__hdx_time_bucket\`
+        GROUP BY \`__hdx_time_bucket\`, group
     ) SELECT \`__hdx_time_bucket\`, group, "Value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
@@ -74,12 +79,17 @@ exports[`renderChartConfig histogram metric queries count should generate a coun
             cityHash64(ExplicitBounds) AS bounds_hash,
             toInt64(Count) AS current_count,
             lagInFrame(toNullable(current_count), 1, NULL) OVER (
-                PARTITION BY  attr_hash, bounds_hash, AggregationTemporality
+                PARTITION BY attr_hash, bounds_hash, AggregationTemporality
                 ORDER BY TimeUnix
             ) AS prev_count,
             CASE
                 WHEN AggregationTemporality = 1 THEN current_count
-                WHEN AggregationTemporality = 2 THEN greatest(0, current_count - coalesce(prev_count, 0))
+                WHEN AggregationTemporality = 2 AND prev_count IS NOT NULL
+                  THEN if( 
+                    current_count < prev_count,
+                    current_count,
+                    current_count - prev_count
+                  )
                 ELSE 0
             END AS delta
         FROM default.otel_metrics_histogram
@@ -87,42 +97,45 @@ exports[`renderChartConfig histogram metric queries count should generate a coun
     ),metrics AS (
         SELECT
             \`__hdx_time_bucket\`,
-            
             sum(delta) AS "Value"
         FROM source
         GROUP BY \`__hdx_time_bucket\`
     ) SELECT \`__hdx_time_bucket\`, "Value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
-exports[`renderChartConfig histogram metric queries count should generate a count query without grouping or time bucketing 1`] = `
+exports[`renderChartConfig histogram metric queries count should generate a whole-range count query without a time dimension 1`] = `
 "WITH source AS (
         SELECT
             TimeUnix,
             AggregationTemporality,
-            TimeUnix AS \`__hdx_time_bucket\`,
+            
             
             cityHash64(ScopeAttributes, ResourceAttributes, Attributes) AS attr_hash,
             cityHash64(ExplicitBounds) AS bounds_hash,
             toInt64(Count) AS current_count,
             lagInFrame(toNullable(current_count), 1, NULL) OVER (
-                PARTITION BY  attr_hash, bounds_hash, AggregationTemporality
+                PARTITION BY attr_hash, bounds_hash, AggregationTemporality
                 ORDER BY TimeUnix
             ) AS prev_count,
             CASE
                 WHEN AggregationTemporality = 1 THEN current_count
-                WHEN AggregationTemporality = 2 THEN greatest(0, current_count - coalesce(prev_count, 0))
+                WHEN AggregationTemporality = 2 AND prev_count IS NOT NULL
+                  THEN if( 
+                    current_count < prev_count,
+                    current_count,
+                    current_count - prev_count
+                  )
                 ELSE 0
             END AS delta
         FROM default.otel_metrics_histogram
         WHERE (TimeUnix >= fromUnixTimestamp64Milli(1739318400000) AND TimeUnix <= fromUnixTimestamp64Milli(1765670400000)) AND ((MetricName = 'http.server.duration'))
     ),metrics AS (
         SELECT
-            \`__hdx_time_bucket\`,
             
             sum(delta) AS "Value"
         FROM source
-        GROUP BY \`__hdx_time_bucket\`
-    ) SELECT \`__hdx_time_bucket\`, "Value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+        
+    ) SELECT "Value" FROM metrics LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig histogram metric queries quantile should generate a query with grouping and time bucketing 1`] = `
@@ -141,15 +154,19 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
                group,
               attr_hash,
               any(attr_hash) OVER prev_row AS prev_attr_hash,
+              count() OVER prev_row = 0 OR prev_attr_hash != attr_hash AS is_first_series_point,
               any(bounds_hash) OVER prev_row AS prev_bounds_hash,
               any(counts) OVER prev_row AS prev_counts,
               counts,
-              IF(
+              multiIf(
+                  AggregationTemporality = 2 AND is_first_series_point, 
+                  arrayWithConstant(length(counts), toInt64(0)),
+
                   AggregationTemporality = 1 
-                      OR prev_attr_hash != attr_hash 
                       OR bounds_hash != prev_bounds_hash 
                       OR arrayExists((x) -> x.2 < x.1, arrayZip(prev_counts, counts)), 
                   counts,
+
                   counts - prev_counts
               ) AS deltas
             FROM (
@@ -173,21 +190,21 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
               ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
             )
           )
-          GROUP BY \`__hdx_time_bucket\`, MetricName, group, ExplicitBounds
-          ORDER BY \`__hdx_time_bucket\`
+          GROUP BY __hdx_time_bucket, MetricName, group, ExplicitBounds
+          ORDER BY __hdx_time_bucket
           ),points AS (
           SELECT
             \`__hdx_time_bucket\`,
+group,
             MetricName,
-            group,
             arrayZipUnaligned(arrayCumSum(rates), ExplicitBounds) as point,
             length(point) as n
           FROM source
           ),metrics AS (
           SELECT
             \`__hdx_time_bucket\`,
+group,
             MetricName,
-            group,
             point[n].1 AS total,
             0.5 * total AS rank,
             arrayFirstIndex(x -> if(x.1 > rank, 1, 0), point) AS upper_idx,
@@ -229,15 +246,19 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
               
               attr_hash,
               any(attr_hash) OVER prev_row AS prev_attr_hash,
+              count() OVER prev_row = 0 OR prev_attr_hash != attr_hash AS is_first_series_point,
               any(bounds_hash) OVER prev_row AS prev_bounds_hash,
               any(counts) OVER prev_row AS prev_counts,
               counts,
-              IF(
+              multiIf(
+                  AggregationTemporality = 2 AND is_first_series_point, 
+                  arrayWithConstant(length(counts), toInt64(0)),
+
                   AggregationTemporality = 1 
-                      OR prev_attr_hash != attr_hash 
                       OR bounds_hash != prev_bounds_hash 
                       OR arrayExists((x) -> x.2 < x.1, arrayZip(prev_counts, counts)), 
                   counts,
+
                   counts - prev_counts
               ) AS deltas
             FROM (
@@ -261,13 +282,12 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
               ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
             )
           )
-          GROUP BY \`__hdx_time_bucket\`, MetricName, ExplicitBounds
-          ORDER BY \`__hdx_time_bucket\`
+          GROUP BY __hdx_time_bucket, MetricName, ExplicitBounds
+          ORDER BY __hdx_time_bucket
           ),points AS (
           SELECT
             \`__hdx_time_bucket\`,
             MetricName,
-            
             arrayZipUnaligned(arrayCumSum(rates), ExplicitBounds) as point,
             length(point) as n
           FROM source
@@ -275,7 +295,6 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
           SELECT
             \`__hdx_time_bucket\`,
             MetricName,
-            
             point[n].1 AS total,
             0.5 * total AS rank,
             arrayFirstIndex(x -> if(x.1 > rank, 1, 0), point) AS upper_idx,
@@ -301,12 +320,12 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
           ) SELECT \`__hdx_time_bucket\`, "Value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
-exports[`renderChartConfig histogram metric queries quantile should generate a query without grouping or time bucketing 1`] = `
+exports[`renderChartConfig histogram metric queries quantile should generate a whole-range query without a time dimension 1`] = `
 "WITH source AS (
           SELECT
             MetricName,
             ExplicitBounds,
-            TimeUnix AS \`__hdx_time_bucket\`,
+            
             
             sumForEach(deltas) as rates
           FROM (
@@ -317,15 +336,19 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
               
               attr_hash,
               any(attr_hash) OVER prev_row AS prev_attr_hash,
+              count() OVER prev_row = 0 OR prev_attr_hash != attr_hash AS is_first_series_point,
               any(bounds_hash) OVER prev_row AS prev_bounds_hash,
               any(counts) OVER prev_row AS prev_counts,
               counts,
-              IF(
+              multiIf(
+                  AggregationTemporality = 2 AND is_first_series_point, 
+                  arrayWithConstant(length(counts), toInt64(0)),
+
                   AggregationTemporality = 1 
-                      OR prev_attr_hash != attr_hash 
                       OR bounds_hash != prev_bounds_hash 
                       OR arrayExists((x) -> x.2 < x.1, arrayZip(prev_counts, counts)), 
                   counts,
+
                   counts - prev_counts
               ) AS deltas
             FROM (
@@ -349,21 +372,19 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
               ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
             )
           )
-          GROUP BY \`__hdx_time_bucket\`, MetricName, ExplicitBounds
-          ORDER BY \`__hdx_time_bucket\`
+          GROUP BY  MetricName, ExplicitBounds
+          
           ),points AS (
           SELECT
-            \`__hdx_time_bucket\`,
-            MetricName,
             
+            MetricName,
             arrayZipUnaligned(arrayCumSum(rates), ExplicitBounds) as point,
             length(point) as n
           FROM source
           ),metrics AS (
           SELECT
-            \`__hdx_time_bucket\`,
-            MetricName,
             
+            MetricName,
             point[n].1 AS total,
             0.5 * total AS rank,
             arrayFirstIndex(x -> if(x.1 > rank, 1, 0), point) AS upper_idx,
@@ -386,7 +407,7 @@ exports[`renderChartConfig histogram metric queries quantile should generate a q
             END AS "Value"
           FROM points
           WHERE length(point) > 1 AND total > 0
-          ) SELECT \`__hdx_time_bucket\`, "Value" FROM metrics WHERE (\`__hdx_time_bucket\` >= fromUnixTimestamp64Milli(1739318400000) AND \`__hdx_time_bucket\` <= fromUnixTimestamp64Milli(1765670400000)) LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
+          ) SELECT "Value" FROM metrics LIMIT 10 SETTINGS short_circuit_function_evaluation = 'force_enable', optimize_read_in_order = 0, cast_keep_nullable = 1, additional_result_filter = 'x != 2', count_distinct_implementation = 'uniqCombined64', async_insert_busy_timeout_min_ms = 20000"
 `;
 
 exports[`renderChartConfig k8s semantic convention migrations should generate SQL with metricNameSql for container.cpu.utilization histogram metric 1`] = `
@@ -405,15 +426,19 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
               
               attr_hash,
               any(attr_hash) OVER prev_row AS prev_attr_hash,
+              count() OVER prev_row = 0 OR prev_attr_hash != attr_hash AS is_first_series_point,
               any(bounds_hash) OVER prev_row AS prev_bounds_hash,
               any(counts) OVER prev_row AS prev_counts,
               counts,
-              IF(
+              multiIf(
+                  AggregationTemporality = 2 AND is_first_series_point, 
+                  arrayWithConstant(length(counts), toInt64(0)),
+
                   AggregationTemporality = 1 
-                      OR prev_attr_hash != attr_hash 
                       OR bounds_hash != prev_bounds_hash 
                       OR arrayExists((x) -> x.2 < x.1, arrayZip(prev_counts, counts)), 
                   counts,
+
                   counts - prev_counts
               ) AS deltas
             FROM (
@@ -437,13 +462,12 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
               ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
             )
           )
-          GROUP BY \`__hdx_time_bucket\`, MetricName, ExplicitBounds
-          ORDER BY \`__hdx_time_bucket\`
+          GROUP BY __hdx_time_bucket, MetricName, ExplicitBounds
+          ORDER BY __hdx_time_bucket
           ),points AS (
           SELECT
             \`__hdx_time_bucket\`,
             MetricName,
-            
             arrayZipUnaligned(arrayCumSum(rates), ExplicitBounds) as point,
             length(point) as n
           FROM source
@@ -451,7 +475,6 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
           SELECT
             \`__hdx_time_bucket\`,
             MetricName,
-            
             point[n].1 AS total,
             0.95 * total AS rank,
             arrayFirstIndex(x -> if(x.1 > rank, 1, 0), point) AS upper_idx,
@@ -493,15 +516,19 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
                group,
               attr_hash,
               any(attr_hash) OVER prev_row AS prev_attr_hash,
+              count() OVER prev_row = 0 OR prev_attr_hash != attr_hash AS is_first_series_point,
               any(bounds_hash) OVER prev_row AS prev_bounds_hash,
               any(counts) OVER prev_row AS prev_counts,
               counts,
-              IF(
+              multiIf(
+                  AggregationTemporality = 2 AND is_first_series_point, 
+                  arrayWithConstant(length(counts), toInt64(0)),
+
                   AggregationTemporality = 1 
-                      OR prev_attr_hash != attr_hash 
                       OR bounds_hash != prev_bounds_hash 
                       OR arrayExists((x) -> x.2 < x.1, arrayZip(prev_counts, counts)), 
                   counts,
+
                   counts - prev_counts
               ) AS deltas
             FROM (
@@ -525,21 +552,21 @@ exports[`renderChartConfig k8s semantic convention migrations should generate SQ
               ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING
             )
           )
-          GROUP BY \`__hdx_time_bucket\`, MetricName, group, ExplicitBounds
-          ORDER BY \`__hdx_time_bucket\`
+          GROUP BY __hdx_time_bucket, MetricName, group, ExplicitBounds
+          ORDER BY __hdx_time_bucket
           ),points AS (
           SELECT
             \`__hdx_time_bucket\`,
+group,
             MetricName,
-            group,
             arrayZipUnaligned(arrayCumSum(rates), ExplicitBounds) as point,
             length(point) as n
           FROM source
           ),metrics AS (
           SELECT
             \`__hdx_time_bucket\`,
+group,
             MetricName,
-            group,
             point[n].1 AS total,
             0.99 * total AS rank,
             arrayFirstIndex(x -> if(x.1 > rank, 1, 0), point) AS upper_idx,
