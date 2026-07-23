@@ -191,6 +191,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
               select: [{ aggFn: 'count' }],
               groupBy: 'SpanName',
               groupByColumnsOnLeft: true,
+              alternateRowBackground: true,
             },
           },
           {
@@ -251,6 +252,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       );
       expect(tableTile).toBeDefined();
       expect(tableTile.config.groupByColumnsOnLeft).toBe(true);
+      expect(tableTile.config.alternateRowBackground).toBe(true);
     });
 
     it('should create a dashboard with a raw SQL tile', async () => {
