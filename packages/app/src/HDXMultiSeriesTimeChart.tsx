@@ -502,21 +502,26 @@ export function buildActiveClickSeries(
 }
 
 /**
- * The series actually drawn on the chart: the first HARD_LINES_LIMIT of
- * lineData, narrowed to the legend selection when one is active. The rendered
- * lines and the drill-down click payload both derive from this same set so
- * they never diverge. Exported for unit testing.
+ * The series actually drawn on the chart. Without a selection, the first
+ * HARD_LINES_LIMIT of lineData. With a selection (legend isolate, checkbox
+ * filter, or table search), the selection is applied FIRST and then capped, so
+ * an explicitly chosen series always draws even if it ranks beyond the limit.
+ * Applying the cap first would slice out a chosen low-ranked series, leaving an
+ * empty chart while its stats still show in the legend table. The rendered
+ * lines and the drill-down click payload both derive from this same set so they
+ * never diverge. Exported for unit testing.
  */
 export function getVisibleLineData(
   lineData: LineData[],
   selectedSeriesNames: Set<string> | undefined,
 ): LineData[] {
   const hasSelection = !!selectedSeriesNames && selectedSeriesNames.size > 0;
-  return lineData
-    .slice(0, HARD_LINES_LIMIT)
-    .filter(
-      ld => !hasSelection || selectedSeriesNames.has(getSeriesDisplayName(ld)),
-    );
+  if (hasSelection) {
+    return lineData
+      .filter(ld => selectedSeriesNames.has(getSeriesDisplayName(ld)))
+      .slice(0, HARD_LINES_LIMIT);
+  }
+  return lineData.slice(0, HARD_LINES_LIMIT);
 }
 
 const StackedBarWithOverlap = (props: BarProps) => {
