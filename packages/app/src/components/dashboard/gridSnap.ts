@@ -4,6 +4,11 @@ export type FocusRect = { x: number; y: number; w: number; h: number };
 /** A single snap cell in pixel space, plus whether it neighbors the focus. */
 export type SnapCell = { x: number; y: number; near: boolean };
 
+// react-grid-layout's own defaults, shared by the overlay and the wrapper so a
+// change stays in one place. Module-level for a stable identity across renders.
+export const DEFAULT_MARGIN: [number, number] = [10, 10];
+export const DEFAULT_CONTAINER_PADDING: [number, number] = [0, 0];
+
 export type SnapCellsInput = {
   /** Overlay pixel size (matches the grid container). */
   width: number;
@@ -45,8 +50,9 @@ export function computeSnapColWidth(
  * between cells). Column width mirrors RGL: the usable width, minus the
  * inter-column margins and container padding, split across `cols`.
  *
- * Pure and dependency-free so the alignment and neighbor math can be unit
- * tested without rendering.
+ * Returns the cells plus the shared `colWidth` so the renderer does not
+ * recompute it. Pure and dependency-free so the alignment and neighbor math can
+ * be unit tested without rendering.
  */
 export function computeSnapCells({
   width,
@@ -59,13 +65,13 @@ export function computeSnapCells({
   padY,
   focus,
   neighborRadius = 1,
-}: SnapCellsInput): SnapCell[] {
+}: SnapCellsInput): { cells: SnapCell[]; colWidth: number } {
   const colWidth = computeSnapColWidth(width, cols, marginX, padX);
   const colPitch = colWidth + marginX;
   const rowPitch = rowHeight + marginY;
 
   if (colWidth <= 0 || rowPitch <= 0 || width <= 0 || height <= 0) {
-    return [];
+    return { cells: [], colWidth };
   }
 
   const isNeighbor = (col: number, row: number) =>
@@ -85,5 +91,5 @@ export function computeSnapCells({
       });
     }
   }
-  return cells;
+  return { cells, colWidth };
 }

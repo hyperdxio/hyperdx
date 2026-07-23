@@ -2,16 +2,12 @@ import { useLayoutEffect, useRef, useState } from 'react';
 
 import {
   computeSnapCells,
-  computeSnapColWidth,
+  DEFAULT_CONTAINER_PADDING,
+  DEFAULT_MARGIN,
   type FocusRect,
 } from './gridSnap';
 
 import styles from '@styles/GridSnapOverlay.module.scss';
-
-// Module-level so the defaults keep a stable identity across renders (an inline
-// `[10, 10]` default would allocate a new array every render).
-const DEFAULT_MARGIN: [number, number] = [10, 10];
-const DEFAULT_CONTAINER_PADDING: [number, number] = [0, 0];
 
 export type { FocusRect };
 
@@ -67,8 +63,7 @@ export default function GridSnapOverlay({
   const [padX, padY] = containerPadding;
   const { width, height } = size;
 
-  const colWidth = computeSnapColWidth(width, cols, marginX, padX);
-  const cells = computeSnapCells({
+  const { cells, colWidth } = computeSnapCells({
     width,
     height,
     cols,
@@ -84,9 +79,9 @@ export default function GridSnapOverlay({
     <div ref={ref} className={styles.overlay} aria-hidden>
       {cells.length > 0 && (
         <svg className={styles.svg} width={width} height={height}>
-          {cells.map((c, i) => (
+          {cells.map(c => (
             <rect
-              key={i}
+              key={`${c.x}-${c.y}`}
               className={c.near ? styles.gridCellNear : styles.gridCell}
               x={c.x}
               y={c.y}

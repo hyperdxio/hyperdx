@@ -6,8 +6,9 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
+
   // Fade in so the grid doesn't pop the instant a drag starts.
-  animation: gridSnapFadeIn 120ms ease-out;
+  animation: grid-snap-fade-in 120ms ease-out;
 }
 
 .svg {
@@ -36,10 +37,11 @@
   stroke-width: 1;
 }
 
-@keyframes gridSnapFadeIn {
+@keyframes grid-snap-fade-in {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }

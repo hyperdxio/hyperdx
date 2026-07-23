@@ -30,14 +30,34 @@ describe('computeSnapColWidth', () => {
 });
 
 describe('computeSnapCells', () => {
+  it('returns the shared column width alongside the cells', () => {
+    expect(computeSnapCells(BASE).colWidth).toBe(40);
+  });
+
   it('fills one cell per column for every fully visible row', () => {
     // rows: padY + row*40 + 30 <= 200.5  ->  rows 0..4  ->  5 rows
-    const cells = computeSnapCells(BASE);
+    const { cells } = computeSnapCells(BASE);
+    expect(cells).toHaveLength(12 * 5);
+  });
+
+  it('offsets cells and the row bound by container padding', () => {
+    // padX/padY 12; width 614 keeps colWidth 40 ((614 - 110 - 24) / 12).
+    const { cells, colWidth } = computeSnapCells({
+      ...BASE,
+      width: 614,
+      height: 224,
+      padX: 12,
+      padY: 12,
+    });
+    expect(colWidth).toBe(40);
+    // The first cell starts at the padding, not the origin.
+    expect(cells[0]).toMatchObject({ x: 12, y: 12 });
+    // rows: 12 + row*40 + 30 <= 224.5 -> rows 0..4 -> 5 rows
     expect(cells).toHaveLength(12 * 5);
   });
 
   it('aligns a dropped tile: its left and right edges land on cell edges', () => {
-    const cells = computeSnapCells(BASE);
+    const { cells } = computeSnapCells(BASE);
     const colWidth = 40;
     const colPitch = 50;
     const tile = { x: 2, w: 3 };
@@ -56,7 +76,7 @@ describe('computeSnapCells', () => {
 
   it('flags cells within one cell of the focus footprint as neighbors', () => {
     const focus = { x: 2, y: 1, w: 3, h: 2 };
-    const cells = computeSnapCells({ ...BASE, focus });
+    const { cells } = computeSnapCells({ ...BASE, focus });
     const colPitch = 50;
     const rowPitch = 40;
     const near = (col: number, row: number) =>
@@ -72,11 +92,13 @@ describe('computeSnapCells', () => {
   });
 
   it('marks nothing as a neighbor without a focus', () => {
-    const cells = computeSnapCells({ ...BASE, focus: null });
+    const { cells } = computeSnapCells({ ...BASE, focus: null });
     expect(cells.every(c => !c.near)).toBe(true);
   });
 
   it('returns no cells before the container has been measured', () => {
-    expect(computeSnapCells({ ...BASE, width: 0, height: 0 })).toEqual([]);
+    expect(computeSnapCells({ ...BASE, width: 0, height: 0 }).cells).toEqual(
+      [],
+    );
   });
 });
