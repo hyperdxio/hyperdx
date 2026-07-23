@@ -19,6 +19,7 @@ export type CellSummary = {
   columnKey: ColumnKey;
   n: number;
   programmatic: { mean: number; perCheck: Record<string, number> };
+  adoption?: { mean: number; perCheck: Record<string, number> };
   judge: {
     weightedMean: number;
     perCriterion: Record<string, number>;
@@ -44,6 +45,8 @@ export type DeltaSummary = {
   toolCalls: number | null;
   outputTokens: number | null;
   durationMs: number | null;
+  /** Adoption-score delta; present only when both cells have adoption. */
+  adoptionScore?: number | null;
 };
 
 export type ScenarioSummary = {
@@ -250,6 +253,27 @@ function buildCellSummary(
     }
   }
 
+  // Adoption (transcript-aware tool usage). Only pairs whose grade carries an
+  // `adoption` block contribute; the cell omits `adoption` entirely when the
+  // scenario has no transcript rubric.
+  const adopted = pairs.filter(p => p.grade.adoption);
+  let adoption: CellSummary['adoption'];
+  if (adopted.length > 0) {
+    const adoptionMean = mean(adopted.map(p => p.grade.adoption!.score));
+    const adoptionPerCheck: Record<string, number> = {};
+    const adoptionCheckIds = new Set<string>();
+    for (const p of adopted)
+      for (const h of p.grade.adoption!.hits) adoptionCheckIds.add(h.id);
+    for (const id of adoptionCheckIds) {
+      const satisfied = adopted.map(
+        p => p.grade.adoption!.hits.find(h => h.id === id)?.satisfied ?? false,
+      );
+      adoptionPerCheck[id] =
+        satisfied.filter(Boolean).length / satisfied.length;
+    }
+    adoption = { mean: adoptionMean, perCheck: adoptionPerCheck };
+  }
+
   const perCriterion: Record<string, number> = {};
   if (judgeable.length > 0) {
     const critIds = new Set<string>();
@@ -276,6 +300,7 @@ function buildCellSummary(
     columnKey,
     n,
     programmatic: { mean: programmaticScore, perCheck },
+    ...(adoption ? { adoption } : {}),
     judge: {
       weightedMean: judgeMean,
       perCriterion,
@@ -321,6 +346,9 @@ function computeDelta(
     toolCalls: challenger.toolCalls.mean - baseline.toolCalls.mean,
     outputTokens: challenger.tokens.output - baseline.tokens.output,
     durationMs: challenger.durationMs.mean - baseline.durationMs.mean,
+    ...(challenger.adoption && baseline.adoption
+      ? { adoptionScore: challenger.adoption.mean - baseline.adoption.mean }
+      : {}),
   };
 }
 
