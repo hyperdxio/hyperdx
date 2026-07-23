@@ -3,14 +3,17 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 import * as config from '@/config';
 import {
+  bucketExponentialHistogramObservations,
   bulkInsertMetricsGauge,
   bulkInsertMetricsHistogram,
   bulkInsertMetricsSum,
   DEFAULT_DATABASE,
   DEFAULT_LOGS_TABLE,
+  DEFAULT_METRICS_TABLE,
   DEFAULT_TRACES_TABLE,
   getLoggedInAgent,
   getServer,
+  seedExponentialHistogramMetric,
 } from '@/fixtures';
 import { McpContext } from '@/mcp/tools/types';
 import Connection from '@/models/connection';
@@ -342,6 +345,87 @@ describe('MCP Source Tools', () => {
       expect(output.nextSteps.discovery).toContain('clickstack_list_metrics');
       expect(output.nextSteps.discovery).toContain(
         'clickstack_describe_metric',
+      );
+    });
+
+    it('discovers and describes exponential histogram metrics', async () => {
+      const metricSource = await Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        metricTables: {
+          [MetricsDataType.ExponentialHistogram.toLowerCase()]:
+            DEFAULT_METRICS_TABLE.EXPONENTIAL_HISTOGRAM,
+        },
+        timestampValueExpression: 'TimeUnix',
+        connection: connection._id,
+        name: 'Exponential Metrics',
+      });
+      const now = new Date();
+      await seedExponentialHistogramMetric({
+        metricName: 'http.server.request.duration.exponential',
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: now,
+            ResourceAttributes: { 'service.name': 'svc-a' },
+            ...bucketExponentialHistogramObservations([2, 4, 8]),
+          },
+        ],
+      });
+
+      const describeSourceResult = await callTool(
+        client,
+        'clickstack_describe_source',
+        { sourceId: metricSource._id.toString() },
+      );
+      expect(describeSourceResult.isError).toBeFalsy();
+      const describedSource = JSON.parse(getFirstText(describeSourceResult));
+      expect(describedSource.source.discoveryMetricKind).toBe(
+        'exponential histogram',
+      );
+      expect(
+        describedSource.source.metricNames['exponential histogram'],
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'http.server.request.duration.exponential',
+          }),
+        ]),
+      );
+
+      const listResult = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: metricSource._id.toString(),
+        kind: 'exponential histogram',
+      });
+      expect(listResult.isError).toBeFalsy();
+      const listedMetrics = JSON.parse(getFirstText(listResult));
+      expect(listedMetrics.metrics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'http.server.request.duration.exponential',
+            kind: 'exponential histogram',
+          }),
+        ]),
+      );
+
+      const describeMetricResult = await callTool(
+        client,
+        'clickstack_describe_metric',
+        {
+          sourceId: metricSource._id.toString(),
+          metricName: 'http.server.request.duration.exponential',
+          kind: 'exponential histogram',
+        },
+      );
+      expect(describeMetricResult.isError).toBeFalsy();
+      const describedMetric = JSON.parse(getFirstText(describeMetricResult));
+      expect(describedMetric.kinds[0]).toMatchObject({
+        kind: 'exponential histogram',
+      });
+      expect(describedMetric.kinds[0].usage).toContain('Exponential histogram');
+      expect(describedMetric.nextSteps.query).toContain(
+        'metricType: "exponential histogram"',
       );
     });
 

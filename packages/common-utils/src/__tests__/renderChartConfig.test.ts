@@ -878,7 +878,7 @@ describe('renderChartConfig', () => {
           timestampValueExpression: 'TimeUnix',
           dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
           granularity: '2 minute',
-          groupBy: `ResourceAttributes['host']`,
+          groupBy: 'ServiceName',
           limit: { limit: 10 },
         };
 

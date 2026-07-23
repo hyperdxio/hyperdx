@@ -215,6 +215,10 @@ function SessionCardList({
   );
 }
 
+// Clicks inside the session list keep the session side panel open (so users can
+// scroll or pick a different session); clicks anywhere else dismiss it.
+const SESSION_LIST_KEEP_OPEN_SELECTOR = '[data-testid="session-card-list"]';
+
 // TODO: This is a hack to set the default time range
 const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 const selectedSessionQueryStateMap = {
@@ -382,6 +386,7 @@ function SessionsPage() {
             onClose={() => {
               setSelectedSession(undefined);
             }}
+            keepOpenSelector={SESSION_LIST_KEEP_OPEN_SELECTOR}
             whereLanguage={whereLanguage || undefined}
             where={where || undefined}
             onLanguageChange={lang =>
@@ -474,7 +479,10 @@ function SessionsPage() {
                       <SessionSetupInstructions />
                     </Flex>
                   ) : (
-                    <div style={{ minHeight: 0 }}>
+                    <div
+                      style={{ minHeight: 0 }}
+                      data-testid="session-card-list"
+                    >
                       <SessionCardList
                         onClick={session => {
                           setSelectedSession(session);
