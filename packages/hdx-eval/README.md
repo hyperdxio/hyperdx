@@ -337,13 +337,43 @@ dev runs-instrument <batch>                 # enrich with ClickHouse query_log t
 ### Grading & Reporting
 
 ```bash
-dev grade <batch>                           # programmatic + LLM-as-judge
-dev grade <batch> --judge-model claude-sonnet-4-6
-dev grade <batch> --no-judge                # programmatic checks only
-dev grade <batch> --rerun-judge             # re-run judge even if grades exist
-dev report <batch>                          # render _summary.md + _summary.json
-dev report <batch> --baseline hyperdx-main  # override baseline for deltas
+dev grade <batch>                            # programmatic + LLM-as-judge
+dev grade <batch> --judge-model openai:gpt-4o        # grade with a different provider
+dev grade <batch> --no-judge                 # programmatic checks only
+dev grade <batch> --rerun-judge              # force re-grade with the current judge
+dev report <batch>                           # render _summary.md + _summary.json
+dev report <batch> --baseline hyperdx-main   # override baseline for deltas
 ```
+
+#### Independent grader (different provider/model)
+
+The LLM-as-judge can run on a **different provider/model than the run model**
+(Anthropic run graded by OpenAI, and vice-versa), which reduces same-model bias.
+Pass `--judge-model` as a `provider:model` spec — supported providers
+`anthropic` and `openai`; a bare model name defaults to `anthropic`:
+
+```bash
+dev grade <batch> --judge-model openai:gpt-4o
+dev grade <batch> --judge-model claude-opus-4-7   # == anthropic:claude-opus-4-7
+```
+
+Precedence: `--judge-model` flag → `eval.config.json` `grading.judgeModel` →
+built-in default (`anthropic:claude-opus-4-7`):
+
+```json
+{ "grading": { "judgeModel": "openai:gpt-4o" } }
+```
+
+Grades are cached per run; re-grading a batch with a **different** judge
+re-runs that judge automatically (a cached grade from another judge model is
+treated as stale). Use `--rerun-judge` to force a refresh with the same judge.
+
+**Grader credentials** come from the environment, mirroring `packages/api`:
+`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` per provider, `AI_API_KEY` as a fallback,
+`AI_BASE_URL` for a custom endpoint (Azure AI, LiteLLM proxy), and
+`AI_REQUEST_HEADERS` (OpenAI) as a JSON object. The **provider-specific key
+wins** over `AI_API_KEY`, so the runner's Anthropic key can live in `AI_API_KEY`
+while an OpenAI grader uses `OPENAI_API_KEY` without the two colliding.
 
 ### Viewer
 
@@ -366,10 +396,16 @@ Combined score = `0.4 * programmatic + 0.6 * judge - toolErrorPenalty`
   answer, defined per-scenario in `ground-truth.json`. Includes both positive
   checks (must find the right thing) and negative checks (must not blame a
   distractor).
-- **LLM-as-judge (60%)** — multi-criteria rubric scored 0-5 by Claude Opus
-  (configurable). Criteria are scenario-specific. Answers are **blinded** —
-  MCP tool names and brand terms are redacted so the judge can't tell which
-  MCP produced the answer.
+- **LLM-as-judge (60%)** — scenario-specific, multi-criteria rubric scored 0-5
+  by an LLM judge (configurable — see [Independent grader](#independent-grader-different-providermodel)).
+  The judge prompt defines **explicit 0-5 scoring anchors** (0 = wrong/absent …
+  5 = fully correct) to keep scores calibrated across judge models, and answers
+  are **blinded** — MCP tool names and brand terms are redacted so the judge
+  can't tell which MCP produced the answer.
+
+  > Judge scores are only comparable **within the same judge model** (anchors
+  > reduce but don't erase per-model scale differences). Hold the judge constant
+  > across runs you compare directly.
 - **Tool error penalty** — up to 20% deducted for high tool-call error rates.
 
 ### Baseline + Challengers

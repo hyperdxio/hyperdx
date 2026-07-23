@@ -473,6 +473,10 @@ pre.code.error {
   font-size: 10px;
   padding: 0 0.3rem;
 }
+.tag.adopt {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 .small {
   font-size: 11px;
 }

@@ -66,10 +66,12 @@ export function VirtualMultiSelect({
     },
   });
 
-  const handleSelectValue = (val: string) =>
+  const handleSelectValue = (val: string) => {
     onChange(
       values.includes(val) ? values.filter(v => v !== val) : [...values, val],
     );
+    setSearch('');
+  };
 
   const handleRemoveValue = (val: string) =>
     onChange(values.filter(v => v !== val));

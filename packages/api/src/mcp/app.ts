@@ -9,6 +9,7 @@ import rateLimiter, { rateLimiterKeyGenerator } from '@/utils/rateLimiter';
 
 import { createServer } from './mcpServer';
 import { McpContext } from './tools/types';
+import { userAgentClientInfo } from './utils/mcpClient';
 
 const app = createMcpExpressApp();
 
@@ -59,6 +60,7 @@ app.post('/', mcpRateLimiter, validateUserAccessKey, async (req, res) => {
   const context: McpContext = {
     teamId: teamId.toString(),
     userId,
+    mcpClient: userAgentClientInfo(req.get('User-Agent')),
   };
 
   setTraceAttributes({

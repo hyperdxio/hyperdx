@@ -5,6 +5,7 @@ import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
+  DisplayType,
   MetricsDataType,
   QuerySettings,
 } from '@hyperdx/common-utils/dist/types';
@@ -14,6 +15,7 @@ import ms from 'ms';
 import * as config from '@/config';
 import { createTeam } from '@/controllers/team';
 import {
+  bucketExponentialHistogramObservations,
   bulkInsertLogs,
   bulkInsertMetricsGauge,
   bulkInsertMetricsHistogram,
@@ -23,6 +25,7 @@ import {
   DEFAULT_METRICS_TABLE,
   executeSqlCommand,
   getServer,
+  seedExponentialHistogramMetric,
 } from '@/fixtures';
 import Connection from '@/models/connection';
 import { Source } from '@/models/source';
@@ -50,6 +53,8 @@ describe('renderChartConfig', () => {
   let clickhouseClient: ClickhouseClient;
 
   const nowPlus = time_val => new Date(now + ms(time_val));
+  const toClickHouseISOString = (date: Date) =>
+    date.toISOString().replace('.000Z', 'Z');
 
   const queryData = async (chsql: ChSql) => {
     try {
@@ -64,6 +69,22 @@ describe('renderChartConfig', () => {
       console.error('[ClickhouseClient] Error:', err);
       throw err;
     }
+  };
+
+  const expectNonTimeseriesResults = (
+    results: unknown[],
+    expected: object[],
+  ) => {
+    expect(results).toHaveLength(expected.length);
+    expect(results).toEqual(expect.arrayContaining(expected));
+    expect(
+      results.every(
+        result =>
+          typeof result === 'object' &&
+          result !== null &&
+          !('__hdx_time_bucket' in result),
+      ),
+    ).toBe(true);
   };
 
   beforeAll(async () => {
@@ -964,10 +985,12 @@ describe('renderChartConfig', () => {
       const histPointsA = [
         {
           BucketCounts: [0, 0, 0],
+          Count: 0,
           TimeUnix: new Date(now),
         },
         {
           BucketCounts: [10, 10, 10],
+          Count: 30,
           TimeUnix: new Date(now + ms('1m')),
         },
       ].map(point => ({
@@ -1069,6 +1092,15 @@ describe('renderChartConfig', () => {
         ...point,
       }));
       const histPointsF = [
+        ...['host-a', 'host-b'].flatMap(host =>
+          ['service-1', 'service-2', 'service-3'].map(service => ({
+            TimeUnix: nowPlus('-1m'),
+            ResourceAttributes: { host, service },
+            BucketCounts: [0, 0, 0, 0, 0, 0],
+            Count: 0,
+            Sum: 0,
+          })),
+        ),
         {
           TimeUnix: new Date(now),
           ResourceAttributes: { host: 'host-a', service: 'service-1' },
@@ -1568,6 +1600,2770 @@ describe('renderChartConfig', () => {
       const res = await queryData(query);
       expect(res).toMatchSnapshot();
     });
+
+    describe.each([
+      {
+        description: 'without group by',
+        groupBy: undefined,
+        metricSuffix: 'ungrouped',
+      },
+      {
+        description: 'grouped by ServiceName',
+        groupBy: 'ServiceName',
+        metricSuffix: 'service-name',
+      },
+      {
+        description: 'grouped by an attribute',
+        groupBy: "Attributes['service']",
+        metricSuffix: 'attribute',
+      },
+    ])('$description', ({ groupBy, metricSuffix }) => {
+      const metricName = `test.histogram.${metricSuffix}`;
+
+      beforeEach(async () => {
+        await bulkInsertMetricsHistogram([
+          {
+            MetricName: metricName,
+            ServiceName: 'api',
+            ResourceAttributes: {},
+            Attributes: { service: 'api' },
+            AggregationTemporality: 1,
+            ExplicitBounds: [10],
+            BucketCounts: [2, 0],
+            Count: 2,
+            TimeUnix: new Date(now),
+          },
+          {
+            MetricName: metricName,
+            ServiceName: 'worker',
+            ResourceAttributes: {},
+            Attributes: { service: 'worker' },
+            AggregationTemporality: 1,
+            ExplicitBounds: [10],
+            BucketCounts: [0, 1],
+            Count: 1,
+            TimeUnix: new Date(now),
+          },
+        ]);
+      });
+
+      const queryHistogram = async (
+        select: { aggFn: 'count' } | { aggFn: 'quantile'; level: number },
+      ) => {
+        const query = await renderChartConfig(
+          {
+            select: [
+              {
+                ...select,
+                metricName,
+                metricType: MetricsDataType.Histogram,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: '',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), nowPlus('1m')],
+            groupBy,
+            granularity: '1 minute',
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+
+        return queryData(query);
+      };
+
+      it('counts observations', async () => {
+        const results = await queryHistogram({ aggFn: 'count' });
+
+        expect(results).toHaveLength(groupBy ? 2 : 1);
+        expect(results).toEqual(
+          groupBy
+            ? expect.arrayContaining([
+                {
+                  __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+                  group: ['api'],
+                  Value: '2',
+                },
+                {
+                  __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+                  group: ['worker'],
+                  Value: '1',
+                },
+              ])
+            : [
+                {
+                  __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+                  Value: '3',
+                },
+              ],
+        );
+      });
+
+      it('calculates quantiles', async () => {
+        const results = await queryHistogram({
+          aggFn: 'quantile',
+          level: 0.95,
+        });
+
+        expect(results).toHaveLength(groupBy ? 2 : 1);
+        expect(results).toEqual(
+          groupBy
+            ? expect.arrayContaining([
+                {
+                  __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+                  group: ['api'],
+                  Value: 9.5,
+                },
+                {
+                  __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+                  group: ['worker'],
+                  Value: 10,
+                },
+              ])
+            : [
+                {
+                  __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+                  Value: 10,
+                },
+              ],
+        );
+      });
+    });
+
+    const queryNonTimeseriesHistogram = async (
+      metricName: string,
+      select: { aggFn: 'count' } | { aggFn: 'quantile'; level: number },
+    ) => {
+      const query = await renderChartConfig(
+        {
+          displayType: DisplayType.Table,
+          select: [
+            {
+              ...select,
+              metricName,
+              metricType: MetricsDataType.Histogram,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), nowPlus('4m')],
+          groupBy: `Attributes['route']`,
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+        querySettings,
+      );
+
+      return queryData(query);
+    };
+
+    it('aggregates histogram count and quantile across every timestamp in each non-timeseries group', async () => {
+      const metricName = 'test.non.timeseries.histogram.grouped';
+      await bulkInsertMetricsHistogram([
+        {
+          MetricName: metricName,
+          ResourceAttributes: {},
+          Attributes: { route: '/ten' },
+          AggregationTemporality: 1,
+          ExplicitBounds: [10, 30],
+          BucketCounts: [10, 0, 0],
+          Count: 10,
+          TimeUnix: new Date(now),
+        },
+        {
+          MetricName: metricName,
+          ResourceAttributes: {},
+          Attributes: { route: '/ten' },
+          AggregationTemporality: 1,
+          ExplicitBounds: [10, 30],
+          BucketCounts: [0, 10, 0],
+          Count: 10,
+          TimeUnix: nowPlus('1m'),
+        },
+        {
+          MetricName: metricName,
+          ResourceAttributes: {},
+          Attributes: { route: '/hundred' },
+          AggregationTemporality: 1,
+          ExplicitBounds: [100, 300],
+          BucketCounts: [6, 0, 0],
+          Count: 6,
+          TimeUnix: new Date(now),
+        },
+        {
+          MetricName: metricName,
+          ResourceAttributes: {},
+          Attributes: { route: '/hundred' },
+          AggregationTemporality: 1,
+          ExplicitBounds: [100, 300],
+          BucketCounts: [0, 6, 0],
+          Count: 6,
+          TimeUnix: nowPlus('2m'),
+        },
+      ]);
+
+      // /ten sums 10 + 10 = 20 observations; its standalone p50s are 5 and
+      // 20, while the combined [10, 10, 0] distribution has p50 10.
+      // /hundred sums 6 + 6 = 12; its standalone p50s are 50 and 200, while
+      // the combined [6, 6, 0] distribution has p50 100. The combined
+      // quantiles cannot match if only one timestamp is calculated.
+      expectNonTimeseriesResults(
+        await queryNonTimeseriesHistogram(metricName, { aggFn: 'count' }),
+        [
+          { group: ['/ten'], Value: '20' },
+          { group: ['/hundred'], Value: '12' },
+        ],
+      );
+      expectNonTimeseriesResults(
+        await queryNonTimeseriesHistogram(metricName, {
+          aggFn: 'quantile',
+          level: 0.5,
+        }),
+        [
+          { group: ['/ten'], Value: 10 },
+          { group: ['/hundred'], Value: 100 },
+        ],
+      );
+    });
+
+    it('uses the first visible cumulative histogram point as the baseline', async () => {
+      const metricName = 'test.non.timeseries.histogram.boundaries';
+      await bulkInsertMetricsHistogram([
+        {
+          MetricName: metricName,
+          ResourceAttributes: {},
+          AggregationTemporality: 2,
+          ExplicitBounds: [10],
+          BucketCounts: [2, 0],
+          Count: 2,
+          TimeUnix: nowPlus('-1m'),
+        },
+        {
+          MetricName: metricName,
+          ResourceAttributes: {},
+          AggregationTemporality: 2,
+          ExplicitBounds: [10],
+          BucketCounts: [2, 2],
+          Count: 4,
+          TimeUnix: new Date(now),
+        },
+        {
+          MetricName: metricName,
+          ResourceAttributes: {},
+          AggregationTemporality: 2,
+          ExplicitBounds: [10],
+          BucketCounts: [2, 4],
+          Count: 6,
+          TimeUnix: nowPlus('1m'),
+        },
+        {
+          MetricName: metricName,
+          ResourceAttributes: {},
+          AggregationTemporality: 2,
+          ExplicitBounds: [10],
+          BucketCounts: [102, 104],
+          Count: 206,
+          TimeUnix: nowPlus('3m'),
+        },
+      ]);
+
+      const renderQuery = (select: {
+        aggFn: 'count' | 'quantile';
+        level?: number;
+      }) =>
+        renderChartConfig(
+          {
+            displayType: DisplayType.Number,
+            select: [
+              {
+                ...select,
+                metricName,
+                metricType: MetricsDataType.Histogram,
+                valueExpression: 'Value',
+              },
+            ],
+            from: metricSource.from,
+            where: '',
+            metricTables: TEST_METRIC_TABLES,
+            dateRange: [new Date(now), nowPlus('2m')],
+            timestampValueExpression: metricSource.timestampValueExpression,
+            connection: connection.id,
+          },
+          metadata,
+          querySettings,
+        );
+
+      // Only [0m, 2m] is scanned: the 0m cumulative count 4 is the zero-delta
+      // baseline, and the 1m point contributes 6 - 4 = 2. Its bucket delta is
+      // [2, 4] - [2, 2] = [0, 2], whose p50 is the finite lower boundary 10
+      // of the overflow bucket. The -1m and 3m points contribute nothing.
+      expect(await queryData(await renderQuery({ aggFn: 'count' }))).toEqual([
+        { Value: '2' },
+      ]);
+      expect(
+        await queryData(await renderQuery({ aggFn: 'quantile', level: 0.5 })),
+      ).toEqual([{ Value: 10 }]);
+    });
+
+    it('aggregates reset-adjusted histogram count and quantile across each non-timeseries group', async () => {
+      const metricName = 'test.non.timeseries.histogram.reset.grouped';
+      await bulkInsertMetricsHistogram([
+        {
+          MetricName: metricName,
+          ResourceAttributes: {},
+          Attributes: { route: '/reset' },
+          AggregationTemporality: 2,
+          ExplicitBounds: [10, 30],
+          BucketCounts: [2, 0, 0],
+          Count: 2,
+          TimeUnix: new Date(now),
+        },
+        {
+          MetricName: metricName,
+          ResourceAttributes: {},
+          Attributes: { route: '/reset' },
+          AggregationTemporality: 2,
+          ExplicitBounds: [10, 30],
+          BucketCounts: [6, 0, 0],
+          Count: 6,
+          TimeUnix: nowPlus('1m'),
+        },
+        {
+          MetricName: metricName,
+          ResourceAttributes: {},
+          Attributes: { route: '/reset' },
+          AggregationTemporality: 2,
+          ExplicitBounds: [10, 30],
+          BucketCounts: [0, 4, 0],
+          Count: 4,
+          TimeUnix: nowPlus('2m'),
+        },
+        {
+          MetricName: metricName,
+          ResourceAttributes: {},
+          Attributes: { route: '/normal' },
+          AggregationTemporality: 2,
+          ExplicitBounds: [10, 30],
+          BucketCounts: [0, 2, 0],
+          Count: 2,
+          TimeUnix: new Date(now),
+        },
+        {
+          MetricName: metricName,
+          ResourceAttributes: {},
+          Attributes: { route: '/normal' },
+          AggregationTemporality: 2,
+          ExplicitBounds: [10, 30],
+          BucketCounts: [4, 2, 0],
+          Count: 6,
+          TimeUnix: nowPlus('1m'),
+        },
+        {
+          MetricName: metricName,
+          ResourceAttributes: {},
+          Attributes: { route: '/normal' },
+          AggregationTemporality: 2,
+          ExplicitBounds: [10, 30],
+          BucketCounts: [4, 6, 0],
+          Count: 10,
+          TimeUnix: nowPlus('3m'),
+        },
+      ]);
+
+      // /reset uses 0 for its first point, [6, 0, 0] - [2, 0, 0] =
+      // [4, 0, 0] for its second, then detects the decrease and uses the
+      // current [0, 4, 0] after reset. /normal produces those same two
+      // interval distributions by subtraction. Both sum to count 8 and
+      // buckets [4, 4, 0], whose p50 is the shared boundary 10.
+      expectNonTimeseriesResults(
+        await queryNonTimeseriesHistogram(metricName, { aggFn: 'count' }),
+        [
+          { group: ['/reset'], Value: '8' },
+          { group: ['/normal'], Value: '8' },
+        ],
+      );
+      expectNonTimeseriesResults(
+        await queryNonTimeseriesHistogram(metricName, {
+          aggFn: 'quantile',
+          level: 0.5,
+        }),
+        [
+          { group: ['/reset'], Value: 10 },
+          { group: ['/normal'], Value: 10 },
+        ],
+      );
+    });
+  });
+
+  describe('Query Metrics - Exponential Histogram', () => {
+    type CountResult = {
+      __hdx_time_bucket?: string;
+      Value: string;
+      group?: string[];
+    };
+
+    type QuantileResult = {
+      __hdx_time_bucket?: string;
+      Value: number;
+      group?: string[];
+    };
+
+    const isQuantileResult = (result: unknown): result is QuantileResult =>
+      typeof result === 'object' &&
+      result !== null &&
+      (!('__hdx_time_bucket' in result) ||
+        typeof result.__hdx_time_bucket === 'string') &&
+      'Value' in result &&
+      typeof result.Value === 'number' &&
+      (!('group' in result) ||
+        (Array.isArray(result.group) &&
+          result.group.every(value => typeof value === 'string')));
+
+    const isCountResult = (result: unknown): result is CountResult =>
+      typeof result === 'object' &&
+      result !== null &&
+      (!('__hdx_time_bucket' in result) ||
+        typeof result.__hdx_time_bucket === 'string') &&
+      'Value' in result &&
+      typeof result.Value === 'string' &&
+      (!('group' in result) ||
+        (Array.isArray(result.group) &&
+          result.group.every(value => typeof value === 'string')));
+
+    const queryCount = async (
+      metricName: string,
+      {
+        dateRange = [new Date(now), nowPlus('3m')],
+        granularity = '1 minute',
+        groupBy,
+        displayType,
+      }: {
+        dateRange?: [Date, Date];
+        granularity?: '1 minute' | '2 minute' | null;
+        groupBy?: string;
+        displayType?: DisplayType;
+      } = {},
+    ) => {
+      const query = await renderChartConfig(
+        {
+          displayType:
+            displayType ??
+            (granularity === null ? DisplayType.Number : DisplayType.Line),
+          select: [
+            {
+              aggFn: 'count',
+              metricName,
+              metricType: MetricsDataType.ExponentialHistogram,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange,
+          groupBy,
+          granularity: granularity ?? undefined,
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+        querySettings,
+      );
+
+      const results = await queryData(query);
+      if (!results.every(isCountResult)) {
+        throw new Error('unexpected exponential histogram count query result');
+      }
+      return results.sort(
+        (left, right) =>
+          (left.__hdx_time_bucket ?? '').localeCompare(
+            right.__hdx_time_bucket ?? '',
+          ) ||
+          JSON.stringify(left.group ?? []).localeCompare(
+            JSON.stringify(right.group ?? []),
+          ),
+      );
+    };
+
+    const queryQuantile = async (
+      level: number,
+      metricName: string,
+      {
+        dateRange = [new Date(now), nowPlus('2m')],
+        granularity = '1 minute',
+        groupBy,
+        where = '',
+        displayType,
+      }: {
+        dateRange?: [Date, Date];
+        granularity?: '1 minute' | null;
+        groupBy?: string;
+        where?: string;
+        displayType?: DisplayType;
+      } = {},
+    ) => {
+      const query = await renderChartConfig(
+        {
+          displayType:
+            displayType ??
+            (granularity === null ? DisplayType.Number : DisplayType.Line),
+          select: [
+            {
+              aggFn: 'quantile',
+              level,
+              metricName,
+              metricType: MetricsDataType.ExponentialHistogram,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where,
+          metricTables: TEST_METRIC_TABLES,
+          dateRange,
+          groupBy,
+          granularity: granularity ?? undefined,
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+        querySettings,
+      );
+
+      const results = await queryData(query);
+      if (!results.every(isQuantileResult)) {
+        throw new Error('unexpected exponential histogram query result');
+      }
+      return results;
+    };
+
+    const seedGroupedCumulativeSeries = async ({
+      attributes,
+      metricName,
+      observations,
+    }: {
+      attributes: Record<string, string>;
+      metricName: string;
+      observations: number[];
+    }) =>
+      seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: attributes,
+            ...bucketExponentialHistogramObservations([]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: attributes,
+            ...bucketExponentialHistogramObservations(observations),
+          },
+        ],
+      });
+
+    it('aggregates exponential-histogram count and quantile across every timestamp in each non-timeseries group', async () => {
+      const metricName = 'test.non.timeseries.exponential.histogram.grouped';
+      await seedExponentialHistogramMetric({
+        metricName,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { route: '/two' },
+            ...bucketExponentialHistogramObservations([2, 2]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { route: '/two' },
+            ...bucketExponentialHistogramObservations([8, 8]),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { route: '/four' },
+            ...bucketExponentialHistogramObservations([4, 4]),
+          },
+          {
+            TimeUnix: nowPlus('2m'),
+            Attributes: { route: '/four' },
+            ...bucketExponentialHistogramObservations([16, 16]),
+          },
+        ],
+      });
+
+      // Each group sums two observations at each timestamp, so both counts
+      // are 2 + 2 = 4. The standalone p50s are sqrt(2) and sqrt(32) for
+      // /two, and sqrt(8) and sqrt(128) for /four. Their whole-range p50s
+      // (2 and 4) therefore prove that both timestamps were combined.
+      expectNonTimeseriesResults(
+        await queryCount(metricName, {
+          granularity: null,
+          groupBy: `Attributes['route']`,
+          displayType: DisplayType.Table,
+        }),
+        [
+          { group: ['/two'], Value: '4' },
+          { group: ['/four'], Value: '4' },
+        ],
+      );
+      expectNonTimeseriesResults(
+        await queryQuantile(0.5, metricName, {
+          granularity: null,
+          groupBy: `Attributes['route']`,
+          displayType: DisplayType.Table,
+        }),
+        [
+          { group: ['/two'], Value: 2 },
+          { group: ['/four'], Value: 4 },
+        ],
+      );
+    });
+
+    it('uses the first visible cumulative exponential-histogram point as the baseline', async () => {
+      const metricName = 'test.non.timeseries.exponential.histogram.boundaries';
+      const baseline = Array.from({ length: 10 }, () => 1024);
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: nowPlus('-1m'),
+            ...bucketExponentialHistogramObservations(baseline),
+          },
+          {
+            TimeUnix: new Date(now),
+            ...bucketExponentialHistogramObservations([...baseline, 4]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([...baseline, 4, 4]),
+          },
+          {
+            TimeUnix: nowPlus('3m'),
+            ...bucketExponentialHistogramObservations([
+              ...baseline,
+              4,
+              4,
+              ...Array.from({ length: 20 }, () => 2048),
+            ]),
+          },
+        ],
+      });
+
+      // Only [0m, 2m] is scanned. The 0m cumulative count 11 is the
+      // zero-delta baseline; the 1m point contributes 12 - 11 = 1. That one
+      // new observation is 4, whose exponential bucket midpoint is sqrt(8).
+      // The 10-count -1m point and the large 3m point are outside the range.
+      expect(
+        await queryCount(metricName, {
+          dateRange: [new Date(now), nowPlus('2m')],
+          granularity: null,
+        }),
+      ).toEqual([{ Value: '1' }]);
+      expect(
+        await queryQuantile(0.5, metricName, {
+          dateRange: [new Date(now), nowPlus('2m')],
+          granularity: null,
+        }),
+      ).toEqual([{ Value: Math.sqrt(8) }]);
+    });
+
+    it('aggregates every exponential-histogram reset mode across each non-timeseries group', async () => {
+      const metricName = 'test.non.timeseries.exponential.reset.grouped';
+      const originalStartTime = nowPlus('-1m');
+      const unknownResetTime = nowPlus('1m');
+
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: originalStartTime,
+            Attributes: { route: '/known' },
+            ...bucketExponentialHistogramObservations([2, 2]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: originalStartTime,
+            Attributes: { route: '/known' },
+            ...bucketExponentialHistogramObservations([2, 2, 4, 4]),
+          },
+          {
+            TimeUnix: nowPlus('2m'),
+            StartTimeUnix: nowPlus('90s'),
+            Attributes: { route: '/known' },
+            ...bucketExponentialHistogramObservations([8, 8]),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: originalStartTime,
+            Attributes: { route: '/decrease' },
+            ...bucketExponentialHistogramObservations([2, 2, 4, 4]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: originalStartTime,
+            Attributes: { route: '/decrease' },
+            ...bucketExponentialHistogramObservations([2, 2, 4, 4, 8, 8]),
+          },
+          {
+            TimeUnix: nowPlus('2m'),
+            StartTimeUnix: originalStartTime,
+            Attributes: { route: '/decrease' },
+            ...bucketExponentialHistogramObservations([16, 16]),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: originalStartTime,
+            Attributes: { route: '/unknown' },
+            ...bucketExponentialHistogramObservations([2, 2]),
+          },
+          {
+            TimeUnix: unknownResetTime,
+            StartTimeUnix: unknownResetTime,
+            Attributes: { route: '/unknown' },
+            ...bucketExponentialHistogramObservations([4, 4]),
+          },
+          {
+            TimeUnix: nowPlus('2m'),
+            StartTimeUnix: unknownResetTime,
+            Attributes: { route: '/unknown' },
+            ...bucketExponentialHistogramObservations([4, 4, 8, 8]),
+          },
+        ],
+      });
+
+      const queryOptions: {
+        granularity: null;
+        groupBy: string;
+        displayType: DisplayType;
+      } = {
+        granularity: null,
+        groupBy: `Attributes['route']`,
+        displayType: DisplayType.Table,
+      };
+      // /known contributes two 4s before its changed start time makes the two
+      // current 8s a reset delta: count 4, combined p50 4.
+      // /decrease contributes two 8s, then its count decrease makes the two
+      // current 16s a reset delta: count 4, combined p50 8.
+      // /unknown contributes zero at its StartTimeUnix == TimeUnix marker;
+      // the next point subtracts that marker and contributes two 8s:
+      // count 2 and p50 sqrt(32).
+      expectNonTimeseriesResults(await queryCount(metricName, queryOptions), [
+        { group: ['/known'], Value: '4' },
+        { group: ['/decrease'], Value: '4' },
+        { group: ['/unknown'], Value: '2' },
+      ]);
+      expectNonTimeseriesResults(
+        await queryQuantile(0.5, metricName, queryOptions),
+        [
+          { group: ['/known'], Value: 4 },
+          { group: ['/decrease'], Value: 8 },
+          { group: ['/unknown'], Value: Math.sqrt(32) },
+        ],
+      );
+    });
+
+    it('counts delta-temporality observations directly', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.count.delta',
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            ...bucketExponentialHistogramObservations([-4, 0, 2]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([2, 4]),
+          },
+        ],
+      });
+
+      expect(await queryCount('test.count.delta')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          Value: '3',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: '2',
+        },
+      ]);
+    });
+
+    it('subtracts cumulative counts using a warm-up point outside the requested range', async () => {
+      const startTime = nowPlus('-2m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.count.cumulative.warmup',
+        points: [
+          {
+            TimeUnix: nowPlus('-1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 4]),
+          },
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 4, 8]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 4, 8, 16, 32]),
+          },
+        ],
+      });
+
+      expect(await queryCount('test.count.cumulative.warmup')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          Value: '1',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: '2',
+        },
+      ]);
+    });
+
+    it('does not attribute a predecessor-less cumulative count to its first visible bucket', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.count.cumulative.missing.predecessor',
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: nowPlus('-10m'),
+            ...bucketExponentialHistogramObservations([2, 4, 8]),
+          },
+        ],
+      });
+
+      expect(
+        await queryCount('test.count.cumulative.missing.predecessor'),
+      ).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: '0',
+        },
+      ]);
+    });
+
+    it('suppresses an unknown-start reset and uses it as the next baseline', async () => {
+      const resetTime = nowPlus('1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.count.cumulative.unknown.reset',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: nowPlus('-1m'),
+            ...bucketExponentialHistogramObservations([2, 4]),
+          },
+          {
+            TimeUnix: resetTime,
+            StartTimeUnix: resetTime,
+            ...bucketExponentialHistogramObservations([-4, 0, 2]),
+          },
+          {
+            TimeUnix: nowPlus('2m'),
+            StartTimeUnix: resetTime,
+            ...bucketExponentialHistogramObservations([-4, -2, 0, 2, 4]),
+          },
+        ],
+      });
+
+      expect(await queryCount('test.count.cumulative.unknown.reset')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          Value: '0',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(resetTime),
+          Value: '0',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('2m')),
+          Value: '2',
+        },
+      ]);
+    });
+
+    it('uses the current count after a known cumulative reset', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.count.cumulative.known.reset',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: nowPlus('-1m'),
+            ...bucketExponentialHistogramObservations([2, 4, 8]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: nowPlus('30s'),
+            ...bucketExponentialHistogramObservations([-4, 0]),
+          },
+        ],
+      });
+
+      expect(await queryCount('test.count.cumulative.known.reset')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          Value: '0',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: '2',
+        },
+      ]);
+    });
+
+    it('uses the current count after a decrease-inferred cumulative reset', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.count.cumulative.decrease',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 4, 8]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([16]),
+          },
+        ],
+      });
+
+      expect(await queryCount('test.count.cumulative.decrease')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          Value: '0',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: '1',
+        },
+      ]);
+    });
+
+    it('keeps count continuity across scale and bucket-layout changes', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.count.scale.change',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2], 1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([-16, 0, 2, 4], -1),
+          },
+        ],
+      });
+
+      expect(await queryCount('test.count.scale.change')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          Value: '0',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: '3',
+        },
+      ]);
+    });
+
+    it('sums series by the requested group and time bucket', async () => {
+      await Promise.all([
+        seedGroupedCumulativeSeries({
+          attributes: { host: 'host-a', service: 'api' },
+          metricName: 'test.count.grouped',
+          observations: [2, 4],
+        }),
+        seedGroupedCumulativeSeries({
+          attributes: { host: 'host-a', service: 'worker' },
+          metricName: 'test.count.grouped',
+          observations: [8],
+        }),
+        seedGroupedCumulativeSeries({
+          attributes: { host: 'host-b', service: 'api' },
+          metricName: 'test.count.grouped',
+          observations: [16, 32, 64],
+        }),
+      ]);
+
+      expect(
+        await queryCount('test.count.grouped', {
+          groupBy: `Attributes['host']`,
+        }),
+      ).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          group: ['host-a'],
+          Value: '0',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          group: ['host-b'],
+          Value: '0',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          group: ['host-a'],
+          Value: '3',
+        },
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          group: ['host-b'],
+          Value: '3',
+        },
+      ]);
+    });
+
+    it('calculates a quantile for a single series', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.request.duration',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            ...bucketExponentialHistogramObservations([]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([2, 4]),
+          },
+        ],
+      });
+
+      expect(await queryQuantile(0.5, 'test.request.duration')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: 2,
+        },
+      ]);
+    });
+
+    it('returns no rows when no data points match the query', async () => {
+      expect(await queryQuantile(0.5, 'test.metric.never.seeded')).toEqual([]);
+    });
+
+    it('uses logarithmic interpolation within a positive exponential bucket', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.positive.interpolation',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            ...bucketExponentialHistogramObservations([]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([4, 4]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.5, 'test.positive.interpolation');
+
+      // At scale 0, both observations occupy (2, 4]. Halfway through an
+      // exponential bucket is its geometric midpoint: 2 * sqrt(2), not 3.
+      expect(result.__hdx_time_bucket).toBe(
+        toClickHouseISOString(nowPlus('1m')),
+      );
+      expect(result.Value).toBeCloseTo(Math.sqrt(8));
+    });
+
+    it('orders negative buckets before zero and interpolates them toward zero', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.negative.interpolation',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            ...bucketExponentialHistogramObservations([]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([-4, -4, 0, 2]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.25, 'test.negative.interpolation');
+
+      // The first two observations are in [-4, -2). Rank 1 is halfway through
+      // that bucket, whose logarithmic midpoint is -2 * sqrt(2).
+      expect(result.Value).toBeCloseTo(-Math.sqrt(8));
+    });
+
+    it('orders multiple populated negative buckets from the largest magnitude toward zero', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.negative.multiple.bucket.order',
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([-8, -8, -4, -2]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(
+        0.375,
+        'test.negative.multiple.bucket.order',
+      );
+
+      // Negative buckets are traversed as [-8, -4), [-4, -2), [-2, -1).
+      // Rank 1.5 is 75% of the way through the first two-count bucket, so
+      // logarithmic interpolation toward zero gives -2^2.25.
+      expect(result.Value).toBeCloseTo(-(2 ** 2.25));
+    });
+
+    it('returns zero when the requested rank falls in the zero bucket', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.zero.bucket',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            ...bucketExponentialHistogramObservations([]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([-2, 0, 0, 4]),
+          },
+        ],
+      });
+
+      // One negative observation precedes two zero observations, so rank 2
+      // falls in the zero bucket and the median is exactly zero.
+      expect(await queryQuantile(0.5, 'test.zero.bucket')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: 0,
+        },
+      ]);
+    });
+
+    it('returns a negative bucket upper boundary when the rank ends at the zero bucket border', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.negative.zero.border',
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([-4, -4, 0, 0]),
+          },
+        ],
+      });
+
+      // Rank 2 ends exactly at the top of negative bucket [-4, -2), just
+      // before the zero bucket begins. The sign-flip boundary must resolve to
+      // the bucket's upper boundary -2, not to zero.
+      expect(await queryQuantile(0.5, 'test.negative.zero.border')).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: -2,
+        },
+      ]);
+    });
+
+    it('returns the outer bucket boundaries for quantile levels zero and one', async () => {
+      const metricName = 'test.quantile.endpoints';
+      await seedExponentialHistogramMetric({
+        metricName,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([-8, -4, 2, 4]),
+          },
+        ],
+      });
+
+      // Level zero starts at the lower numeric boundary of the first negative
+      // bucket. Level one ends at the upper boundary of the last positive one.
+      expect((await queryQuantile(0, metricName))[0]?.Value).toBe(-8);
+      expect((await queryQuantile(1, metricName))[0]?.Value).toBe(4);
+    });
+
+    it('returns single-sided outer boundaries for quantile levels zero and one', async () => {
+      const negativeOnly = 'test.quantile.endpoints.negative.only';
+      const positiveOnly = 'test.quantile.endpoints.positive.only';
+      await seedExponentialHistogramMetric({
+        metricName: negativeOnly,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([-4, -2]),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName: positiveOnly,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([2, 4]),
+          },
+        ],
+      });
+
+      // With only negative buckets, level one must end at the upper (least
+      // negative) boundary of [-2, -1) and stay negative. With only positive
+      // buckets, level zero starts at the lower boundary of (1, 2].
+      expect((await queryQuantile(1, negativeOnly))[0]?.Value).toBe(-1);
+      expect((await queryQuantile(0, positiveOnly))[0]?.Value).toBe(1);
+    });
+
+    it('returns zero for quantile levels zero and one when only the zero bucket is populated', async () => {
+      const metricName = 'test.quantile.endpoints.zero.only';
+      await seedExponentialHistogramMetric({
+        metricName,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([0, 0]),
+          },
+        ],
+      });
+
+      // With empty negative and positive bucket arrays, both endpoint levels
+      // resolve within the zero bucket, which represents exactly zero.
+      expect((await queryQuantile(0, metricName))[0]?.Value).toBe(0);
+      expect((await queryQuantile(1, metricName))[0]?.Value).toBe(0);
+    });
+
+    it('subtracts cumulative bucket counts instead of quantiling lifetime counts', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.delta',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 2]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 2, 4, 4]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.5, 'test.cumulative.delta');
+
+      // Only the two newly recorded 4s belong to the second interval. Including
+      // the lifetime 2s would place the median at 2 instead of 2 * sqrt(2).
+      expect(result.__hdx_time_bucket).toBe(
+        toClickHouseISOString(nowPlus('1m')),
+      );
+      expect(result.Value).toBeCloseTo(Math.sqrt(8));
+    });
+
+    it('uses a cumulative warm-up point outside the requested range as the subtraction baseline', async () => {
+      const startTime = nowPlus('-2m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.warmup',
+        points: [
+          {
+            TimeUnix: nowPlus('-1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 2]),
+          },
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 2, 4, 4]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.5, 'test.cumulative.warmup');
+
+      // The -1m point is fetched only to establish the baseline. It must not be
+      // returned, and the first visible bucket contains only the two new 4s.
+      expect(result.__hdx_time_bucket).toBe(
+        toClickHouseISOString(new Date(now)),
+      );
+      expect(result.Value).toBeCloseTo(Math.sqrt(8));
+    });
+
+    it('emits no value for a predecessor-less cumulative point whose start predates the requested range', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.missing.predecessor',
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: nowPlus('-10m'),
+            ...bucketExponentialHistogramObservations([2, 2, 4, 4]),
+          },
+        ],
+      });
+
+      // With no predecessor, the portion of the lifetime counts belonging to
+      // this interval is unknowable. Returning no quantile avoids a false spike.
+      expect(
+        await queryQuantile(0.5, 'test.cumulative.missing.predecessor'),
+      ).toEqual([]);
+    });
+
+    it('emits no value for a predecessor-less cumulative point whose start falls inside the requested range', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.midrange.start',
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: nowPlus('30s'),
+            ...bucketExponentialHistogramObservations([2, 2]),
+          },
+        ],
+      });
+
+      // Even though this new series' entire lifetime lies inside the requested
+      // range, a predecessor-less cumulative point is suppressed rather than
+      // attributed to the chart bucket it first appears in.
+      expect(
+        await queryQuantile(0.5, 'test.cumulative.midrange.start'),
+      ).toEqual([]);
+    });
+
+    it('emits no value when the cumulative baseline precedes the one-interval warm-up window', async () => {
+      const startTime = nowPlus('-3m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.stale.baseline',
+        points: [
+          {
+            TimeUnix: nowPlus('-2m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 2]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 2, 4, 4]),
+          },
+        ],
+      });
+
+      // The warm-up fetch reaches back exactly one granularity interval, so a
+      // baseline two minutes before the range is never read. The in-range
+      // point is then predecessor-less and contributes nothing.
+      expect(
+        await queryQuantile(0.5, 'test.cumulative.stale.baseline'),
+      ).toEqual([]);
+    });
+
+    it('treats an unknown-start reset point as zero contribution and uses it as the next baseline', async () => {
+      const originalStartTime = nowPlus('-1m');
+      const resetTime = nowPlus('1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.unknown.reset',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: originalStartTime,
+            ...bucketExponentialHistogramObservations([2, 2]),
+          },
+          {
+            TimeUnix: resetTime,
+            StartTimeUnix: resetTime,
+            ...bucketExponentialHistogramObservations([4, 4]),
+          },
+          {
+            TimeUnix: nowPlus('2m'),
+            StartTimeUnix: resetTime,
+            ...bucketExponentialHistogramObservations([2, 4, 4]),
+          },
+        ],
+      });
+
+      // StartTimeUnix == TimeUnix marks an unknown-start reset and contributes
+      // nothing at 1m. The 2m point subtracts that marker, leaving only one 2.
+      const [result] = await queryQuantile(
+        0.5,
+        'test.cumulative.unknown.reset',
+      );
+      expect(result.__hdx_time_bucket).toBe(
+        toClickHouseISOString(nowPlus('2m')),
+      );
+      expect(result.Value).toBeCloseTo(Math.sqrt(2));
+    });
+
+    it('handles an unknown-start cumulative reset spanning negative, zero, and positive buckets', async () => {
+      const resetTime = nowPlus('1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.unknown.reset.all.buckets',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: nowPlus('-1m'),
+            ...bucketExponentialHistogramObservations([2, 2]),
+          },
+          {
+            TimeUnix: resetTime,
+            StartTimeUnix: resetTime,
+            ...bucketExponentialHistogramObservations([-4, 0, 2]),
+          },
+          {
+            TimeUnix: nowPlus('2m'),
+            StartTimeUnix: resetTime,
+            ...bucketExponentialHistogramObservations([-4, -2, 0, 2]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(
+        0.5,
+        'test.cumulative.unknown.reset.all.buckets',
+      );
+
+      // The reset marker's negative, zero, and positive counts contribute
+      // nothing. The next point subtracts all three sides of that baseline,
+      // leaving only the newly recorded -2 in negative bucket [-2, -1).
+      expect(result.__hdx_time_bucket).toBe(
+        toClickHouseISOString(nowPlus('2m')),
+      );
+      expect(result.Value).toBeCloseTo(-Math.sqrt(2));
+    });
+
+    it('uses all current counts after a known cumulative reset', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.known.reset',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: nowPlus('-1m'),
+            ...bucketExponentialHistogramObservations([2, 2]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: nowPlus('30s'),
+            ...bucketExponentialHistogramObservations([4, 4]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.5, 'test.cumulative.known.reset');
+
+      // The changed start time is earlier than the point time, so this is a
+      // known reset with an implicit zero baseline. Both new-sequence 4s count.
+      expect(result.Value).toBeCloseTo(Math.sqrt(8));
+    });
+
+    it('uses the complete negative, zero, and positive distribution after a known cumulative reset', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.known.reset.all.buckets',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: nowPlus('-1m'),
+            ...bucketExponentialHistogramObservations([-4, -4, 0, 0, 2, 2]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: nowPlus('30s'),
+            ...bucketExponentialHistogramObservations([-2, 0, 4]),
+          },
+        ],
+      });
+
+      // The changed start time begins a true reset sequence, so none of the old
+      // negative, zero, or positive counts are subtracted. In the new three-count
+      // distribution, rank 1.5 falls in the zero bucket.
+      expect(
+        await queryQuantile(0.5, 'test.cumulative.known.reset.all.buckets'),
+      ).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: 0,
+        },
+      ]);
+    });
+
+    it('detects a cumulative reset from a decreased zero count with an unchanged start time', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.reset.zero.decrease',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([0, 0, 2]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([0, 2, 4]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(
+        0.5,
+        'test.cumulative.reset.zero.decrease',
+      );
+
+      // ZeroCount falls from two to one while every existing positive bucket
+      // is nondecreasing. The decrease alone identifies a reset, so the entire
+      // current [0, 2, 4] distribution is used and p50 is sqrt(2).
+      expect(result.Value).toBeCloseTo(Math.sqrt(2));
+    });
+
+    it('detects a cumulative reset from a decreased positive bucket with an unchanged start time', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.reset.positive.decrease',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([0, 2, 2]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([0, 2, 4]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(
+        0.5,
+        'test.cumulative.reset.positive.decrease',
+      );
+
+      // The count in positive bucket (1, 2] falls from two to one while the
+      // zero count is unchanged. Treating the point as a new sequence yields
+      // the current [0, 2, 4] distribution and p50 = sqrt(2).
+      expect(result.Value).toBeCloseTo(Math.sqrt(2));
+    });
+
+    it('detects a cumulative reset from a decreased negative bucket with an unchanged start time', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.reset.negative.decrease',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([0, -2, -2]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([0, -2, -4]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(
+        0.5,
+        'test.cumulative.reset.negative.decrease',
+      );
+
+      // The [-2, -1) bucket falls from two to one while ZeroCount is stable.
+      // The current [-4, -2, 0] distribution is therefore used directly;
+      // rank 1.5 lies halfway through [-2, -1), giving -sqrt(2).
+      expect(result.Value).toBeCloseTo(-Math.sqrt(2));
+    });
+
+    it('detects a cumulative reset when a previous bucket disappears outside the current range', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.reset.disappearing.bucket',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 2]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([4, 4]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(
+        0.5,
+        'test.cumulative.reset.disappearing.bucket',
+      );
+
+      // PositiveOffset moves from bucket index 0 to 1. Looking up the missing
+      // old bucket as zero detects its decrease and treats both current 4s as
+      // the new sequence, whose p50 is the bucket midpoint sqrt(8).
+      expect(result.Value).toBeCloseTo(Math.sqrt(8));
+    });
+
+    it('detects a cumulative reset when the current range shrinks below a previous upper bucket', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.reset.shrinking.range',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 8]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 2]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(
+        0.5,
+        'test.cumulative.reset.shrinking.range',
+      );
+
+      // The current array covers only bucket index 0, while the previous
+      // point held a positive count in bucket index 2 above that range. The
+      // vanished count is a decrease, so both current 2s form a new sequence
+      // whose p50 is the bucket midpoint sqrt(2).
+      expect(result.Value).toBeCloseTo(Math.sqrt(2));
+    });
+
+    it('detects a cumulative reset when the current negative range shrinks below a previous upper bucket', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.cumulative.reset.shrinking.negative.range',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([-2, -8]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([-2, -2]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(
+        0.5,
+        'test.cumulative.reset.shrinking.negative.range',
+      );
+
+      // Mirror of the positive shrinking-range case: the previous -8 count
+      // sits above the current negative bucket range, so its disappearance
+      // marks a reset and both current -2s count, giving p50 -sqrt(2).
+      expect(result.Value).toBeCloseTo(-Math.sqrt(2));
+    });
+
+    it('uses delta-temporality bucket counts directly without subtracting the previous point', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.delta.temporality',
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            ...bucketExponentialHistogramObservations([2]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([2, 4]),
+          },
+        ],
+      });
+
+      const results = await queryQuantile(0.5, 'test.delta.temporality');
+
+      // The second point is already an interval distribution. Its median rank
+      // ends at the top of the (1, 2] bucket, so the result is exactly 2. If it
+      // were treated as cumulative, only the newly appearing 4 bucket remains.
+      expect(results).toHaveLength(2);
+      const firstInterval = results.find(
+        result =>
+          result.__hdx_time_bucket === toClickHouseISOString(new Date(now)),
+      );
+      const secondInterval = results.find(
+        result =>
+          result.__hdx_time_bucket === toClickHouseISOString(nowPlus('1m')),
+      );
+      expect(firstInterval?.Value).toBeCloseTo(Math.sqrt(2));
+      expect(secondInterval?.Value).toBe(2);
+    });
+
+    it('ignores unspecified-temporality exponential histograms', async () => {
+      const metricName = 'test.unspecified.temporality';
+      await seedExponentialHistogramMetric({
+        metricName,
+        aggregationTemporality: 0,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            ...bucketExponentialHistogramObservations([2]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([2, 4]),
+          },
+        ],
+      });
+
+      expect(await queryQuantile(0.5, metricName)).toEqual([]);
+    });
+
+    it('sums multiple cumulative interval deltas from one series within a single chart bucket', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.multiple.points.same.chart.bucket',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([]),
+          },
+          {
+            TimeUnix: nowPlus('20s'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2]),
+          },
+          {
+            TimeUnix: nowPlus('40s'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 4]),
+          },
+        ],
+      });
+
+      // The two sub-minute increases are [2] and [4]. They must be summed into
+      // one minute bucket before selecting a quantile; [2, 4] has p50 = 2.
+      expect(
+        await queryQuantile(0.5, 'test.multiple.points.same.chart.bucket'),
+      ).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          Value: 2,
+        },
+      ]);
+    });
+
+    it('sums multiple delta points from one series within a single chart bucket', async () => {
+      const metricName = 'test.multiple.delta.points.same.chart.bucket';
+      await seedExponentialHistogramMetric({
+        metricName,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('20s'),
+            ...bucketExponentialHistogramObservations([2]),
+          },
+          {
+            TimeUnix: nowPlus('40s'),
+            ...bucketExponentialHistogramObservations([4]),
+          },
+        ],
+      });
+
+      // Both delta points fall inside the first minute bucket, so their
+      // interval counts sum to [2, 4], whose median rank reaches the upper
+      // boundary of the (1, 2] bucket.
+      expect(await queryQuantile(0.5, metricName)).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(new Date(now)),
+          Value: 2,
+        },
+      ]);
+    });
+
+    it('combines cumulative and delta temporality series within the same output group', async () => {
+      const metricName = 'test.mixed.temporality.group';
+      const groupAttributes = { route: '/mixed' };
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: nowPlus('-1m'),
+            ResourceAttributes: { producer: 'cumulative' },
+            Attributes: { ...groupAttributes, instance: 'cumulative-a' },
+            ...bucketExponentialHistogramObservations([]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: nowPlus('-1m'),
+            ResourceAttributes: { producer: 'cumulative' },
+            Attributes: { ...groupAttributes, instance: 'cumulative-a' },
+            ...bucketExponentialHistogramObservations([2]),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            ResourceAttributes: { producer: 'delta' },
+            Attributes: { ...groupAttributes, instance: 'delta-a' },
+            ...bucketExponentialHistogramObservations([4]),
+          },
+        ],
+      });
+
+      // The cumulative series contributes its [2] increase and the delta series
+      // contributes [4] directly. After spatial aggregation, rank 1 reaches the
+      // upper boundary of the first positive bucket, producing p50 = 2.
+      expect(
+        await queryQuantile(0.5, metricName, {
+          groupBy: "Attributes['route']",
+        }),
+      ).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          group: ['/mixed'],
+          Value: 2,
+        },
+      ]);
+    });
+
+    it('combines mixed temporalities and mixed scales within the same output group', async () => {
+      const metricName = 'test.mixed.temporality.and.scale.group';
+      const groupAttributes = { route: '/mixed-scale-temporality' };
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: nowPlus('-1m'),
+            Attributes: { ...groupAttributes, instance: 'cumulative-fine' },
+            ...bucketExponentialHistogramObservations([], 1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: nowPlus('-1m'),
+            Attributes: { ...groupAttributes, instance: 'cumulative-fine' },
+            ...bucketExponentialHistogramObservations([2], 1),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { ...groupAttributes, instance: 'delta-coarse' },
+            ...bucketExponentialHistogramObservations([16], -1),
+          },
+        ],
+      });
+
+      // The cumulative scale-1 observation downscales into scale -1 bucket 0;
+      // the delta observation is already in bucket 1. Their combined p50 ends
+      // at bucket 0's upper boundary, which is 4.
+      expect(
+        await queryQuantile(0.5, metricName, {
+          groupBy: "Attributes['route']",
+        }),
+      ).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          group: ['/mixed-scale-temporality'],
+          Value: 4,
+        },
+      ]);
+    });
+
+    it('normalizes different scales across independent series before combining their buckets', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.scale.across.series',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { instance: 'coarse' },
+            ...bucketExponentialHistogramObservations([], -1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { instance: 'coarse' },
+            ...bucketExponentialHistogramObservations([4], -1),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName: 'test.scale.across.series',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { instance: 'fine' },
+            ...bucketExponentialHistogramObservations([], 1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { instance: 'fine' },
+            ...bucketExponentialHistogramObservations([4], 1),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.5, 'test.scale.across.series');
+
+      // Both observations normalize into scale -1 bucket 0, whose bounds are
+      // (1, 4]. Their median is the bucket's geometric midpoint, 2.
+      expect(result.Value).toBeCloseTo(2);
+    });
+
+    it('normalizes an unaligned multi-bucket range across multiple coarser bucket boundaries', async () => {
+      const metricName = 'test.scale.unaligned.multi.bucket.range';
+      const fineObservations = [
+        { index: 1, count: 1 },
+        { index: 2, count: 2 },
+        { index: 3, count: 3 },
+        { index: 4, count: 4 },
+        { index: 5, count: 5 },
+        { index: 6, count: 6 },
+        { index: 7, count: 7 },
+        { index: 8, count: 8 },
+        { index: 9, count: 9 },
+      ].flatMap(({ index, count }) =>
+        Array.from({ length: count }, () => 2 ** ((index + 0.5) / 2)),
+      );
+
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { instance: 'coarse' },
+            ...bucketExponentialHistogramObservations([], -1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { instance: 'coarse' },
+            ...bucketExponentialHistogramObservations([], -1),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { instance: 'fine' },
+            ...bucketExponentialHistogramObservations([], 1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { instance: 'fine' },
+            ...bucketExponentialHistogramObservations(fineObservations, 1),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.5, metricName);
+
+      // Scale 1 indexes 1..9 have counts 1..9. Normalizing to scale -1 uses
+      // a divisor of 4, and the unaligned offset 1 produces coarse counts
+      // [1+2+3, 4+5+6+7, 8+9] = [6, 22, 17]. Rank 22.5 is therefore 75%
+      // through coarse bucket index 1, whose bounds are (4, 16]. Log-linear
+      // interpolation gives 4 * 4^0.75 = sqrt(128).
+      expect(result.Value).toBeCloseTo(Math.sqrt(128));
+    });
+
+    it('normalizes an unaligned negative multi-bucket range across multiple coarser bucket boundaries', async () => {
+      const metricName = 'test.scale.unaligned.negative.multi.bucket.range';
+      const fineObservations = [
+        { index: 1, count: 1 },
+        { index: 2, count: 2 },
+        { index: 3, count: 3 },
+        { index: 4, count: 4 },
+        { index: 5, count: 5 },
+        { index: 6, count: 6 },
+        { index: 7, count: 7 },
+        { index: 8, count: 8 },
+        { index: 9, count: 9 },
+      ].flatMap(({ index, count }) =>
+        Array.from({ length: count }, () => -(2 ** ((index + 0.5) / 2))),
+      );
+
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { instance: 'coarse' },
+            ...bucketExponentialHistogramObservations([], -1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { instance: 'coarse' },
+            ...bucketExponentialHistogramObservations([], -1),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { instance: 'fine' },
+            ...bucketExponentialHistogramObservations([], 1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { instance: 'fine' },
+            ...bucketExponentialHistogramObservations(fineObservations, 1),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.5, metricName);
+
+      // Magnitude indexes 1..9 normalize to counts [6, 22, 17] at scale -1.
+      // Negative ordering reverses those to [17, 22, 6]. Rank 22.5 is 25%
+      // through magnitude bucket index 1, interpolating from -16 toward -4
+      // to produce -sqrt(128).
+      expect(result.Value).toBeCloseTo(-Math.sqrt(128));
+    });
+
+    it('preserves internal empty buckets while normalizing a sparse fine-scale range', async () => {
+      const metricName = 'test.scale.sparse.internal.empty.buckets';
+      const fineObservations = [1, 9].map(index => 2 ** ((index + 0.5) / 2));
+
+      await seedExponentialHistogramMetric({
+        metricName,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { instance: 'coarse' },
+            ...bucketExponentialHistogramObservations([], -1),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { instance: 'fine' },
+            ...bucketExponentialHistogramObservations(fineObservations, 1),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.75, metricName);
+
+      // Fine indexes 1 and 9 create a dense source array with seven internal
+      // zeroes. At scale -1 they become coarse counts [1, 0, 1]. Rank 1.5
+      // skips the empty middle bucket and lands halfway through (16, 64].
+      expect(result.Value).toBeCloseTo(32);
+    });
+
+    it('normalizes a scale change within one cumulative series before calculating its delta', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.scale.within.series',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2], 1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 4], 0),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.5, 'test.scale.within.series');
+
+      // After the scale-1 baseline is downscaled to scale 0, its 2 is removed
+      // from the cumulative point and only the newly recorded 4 remains.
+      expect(result.Value).toBeCloseTo(Math.sqrt(8));
+    });
+
+    it('normalizes mixed scales and an in-series scale change before aggregating a group', async () => {
+      const metricName = 'test.mixed.scale.group';
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            Attributes: { route: '/mixed-scale', instance: 'changing' },
+            ...bucketExponentialHistogramObservations([2], 1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            Attributes: { route: '/mixed-scale', instance: 'changing' },
+            ...bucketExponentialHistogramObservations([2, 4], 0),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { route: '/mixed-scale', instance: 'coarse' },
+            ...bucketExponentialHistogramObservations([], -1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { route: '/mixed-scale', instance: 'coarse' },
+            ...bucketExponentialHistogramObservations([4], -1),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.5, metricName, {
+        groupBy: "Attributes['route']",
+      });
+
+      // The changing series first normalizes its scale-1 baseline and scale-0
+      // cumulative point to scale -1, leaving one new 4. The coarse series adds
+      // another 4. Both land in scale -1 bucket (1, 4], whose midpoint is 2.
+      expect(result).toMatchObject({
+        __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+        group: ['/mixed-scale'],
+      });
+      expect(result.Value).toBeCloseTo(2);
+    });
+
+    it('floors negative bucket indexes when normalizing to a coarser scale', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.negative.bucket.index',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { instance: 'coarse' },
+            ...bucketExponentialHistogramObservations([], 0),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { instance: 'coarse' },
+            ...bucketExponentialHistogramObservations([0.5], 0),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName: 'test.negative.bucket.index',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { instance: 'fine' },
+            ...bucketExponentialHistogramObservations([], 1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { instance: 'fine' },
+            ...bucketExponentialHistogramObservations([0.5], 1),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.5, 'test.negative.bucket.index');
+
+      // Fine-scale index -3 must floor to coarse-scale index -2, not truncate
+      // to -1. Scale-0 bucket -2 is (0.25, 0.5], with midpoint sqrt(0.125).
+      expect(result.Value).toBeCloseTo(Math.sqrt(0.125));
+    });
+
+    it('floors negative bucket indexes for negative observations when normalizing to a coarser scale', async () => {
+      const metricName = 'test.negative.side.bucket.index';
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { instance: 'coarse' },
+            ...bucketExponentialHistogramObservations([], 0),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { instance: 'coarse' },
+            ...bucketExponentialHistogramObservations([-0.5], 0),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { instance: 'fine' },
+            ...bucketExponentialHistogramObservations([], 1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { instance: 'fine' },
+            ...bucketExponentialHistogramObservations([-0.5], 1),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.5, metricName);
+
+      // The negative buckets downscale separately from the positive ones, so
+      // fine-scale magnitude index -3 must also floor to coarse index -2.
+      // Scale-0 negative bucket -2 spans [-0.5, -0.25), with logarithmic
+      // midpoint -sqrt(0.125).
+      expect(result.Value).toBeCloseTo(-Math.sqrt(0.125));
+    });
+
+    it('interpolates at the finest valid scale without downscaling', async () => {
+      const scale = 20;
+      await seedExponentialHistogramMetric({
+        metricName: 'test.scale.maximum.fine.interpolation',
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([2, 2], scale),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(
+        0.5,
+        'test.scale.maximum.fine.interpolation',
+      );
+
+      // At scale 20, value 2 occupies index 2^20 - 1. Its midpoint is only
+      // half a scale-20 logarithmic step below 2.
+      const expected = 2 ** (1 - 0.5 / 2 ** scale);
+      expect(result.Value).toBeCloseTo(expected);
+    });
+
+    it('normalizes across the full valid scale range without overflowing the divisor', async () => {
+      const metricName = 'test.scale.full.range.normalization';
+      await seedExponentialHistogramMetric({
+        metricName,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { instance: 'coarse' },
+            ...bucketExponentialHistogramObservations([], -10),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { instance: 'fine' },
+            ...bucketExponentialHistogramObservations([2, 2], 20),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.5, metricName);
+
+      // The scale difference is 30, so the divisor is 2^30. Fine index
+      // 2^20 - 1 maps to scale -10 bucket 0, whose logarithmic midpoint is
+      // 2^512. Compare relatively because the expected value is enormous.
+      expect(result.Value / 2 ** 512).toBeCloseTo(1);
+    });
+
+    it('handles a cumulative bucket offset expanding toward smaller values', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.offset.expansion',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([4]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([2, 4]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.5, 'test.offset.expansion');
+
+      // Adding 2 expands PositiveOffset from 1 to 0. Absolute bucket indexes
+      // align the old 4 correctly, leaving the new 2 as the only delta count.
+      expect(result.Value).toBeCloseTo(Math.sqrt(2));
+    });
+
+    it('handles a cumulative negative-bucket offset expanding toward smaller magnitudes', async () => {
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName: 'test.negative.offset.expansion',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([-4]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ...bucketExponentialHistogramObservations([-2, -4]),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(
+        0.5,
+        'test.negative.offset.expansion',
+      );
+
+      // Adding -2 expands NegativeOffset from magnitude index 1 to 0. The old
+      // -4 count remains aligned by absolute index, leaving -2 as the delta.
+      expect(result.Value).toBeCloseTo(-Math.sqrt(2));
+    });
+
+    it('normalizes a scale change before using all counts from a known reset', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.scale.change.with.known.reset',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: nowPlus('-1m'),
+            ...bucketExponentialHistogramObservations([2, 2], 1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: nowPlus('30s'),
+            ...bucketExponentialHistogramObservations([4, 4], 0),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(
+        0.5,
+        'test.scale.change.with.known.reset',
+      );
+
+      // Both points normalize to scale 0 before reset detection. The changed
+      // start time then selects the complete current [4, 4] distribution.
+      expect(result.Value).toBeCloseTo(Math.sqrt(8));
+    });
+
+    it('ignores other metrics, filtered attribute series, and points outside the requested range', async () => {
+      await seedExponentialHistogramMetric({
+        metricName: 'test.isolated.metric',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { route: '/target' },
+            ...bucketExponentialHistogramObservations([]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { route: '/target' },
+            ...bucketExponentialHistogramObservations([2, 4]),
+          },
+          {
+            TimeUnix: nowPlus('3m'),
+            Attributes: { route: '/target' },
+            ...bucketExponentialHistogramObservations([2, 4, 1024, 1024]),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName: 'test.isolated.metric',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { route: '/noise' },
+            ...bucketExponentialHistogramObservations([]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { route: '/noise' },
+            ...bucketExponentialHistogramObservations([1024, 1024]),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName: 'test.unrelated.metric',
+        points: [
+          {
+            TimeUnix: new Date(now),
+            ...bucketExponentialHistogramObservations([]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([2048, 2048]),
+          },
+        ],
+      });
+
+      // Only /target's in-range [2, 4] distribution is selected. The 3m point
+      // may be read by the forward warm-up interval but must be filtered from
+      // the final chart, while the other route and metric must not contribute.
+      expect(
+        await queryQuantile(0.5, 'test.isolated.metric', {
+          where: "Attributes['route'] = '/target'",
+        }),
+      ).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          Value: 2,
+        },
+      ]);
+    });
+
+    it('excludes lower-scale filtered series and unrelated metrics before choosing the normalized scale', async () => {
+      const metricName = 'test.filtered.scale.isolation';
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { route: '/target' },
+            ...bucketExponentialHistogramObservations([], 1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { route: '/target' },
+            ...bucketExponentialHistogramObservations([2, 2], 1),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { route: '/noise' },
+            ...bucketExponentialHistogramObservations([2 ** 512], -10),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName: 'test.filtered.scale.unrelated.metric',
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { route: '/target' },
+            ...bucketExponentialHistogramObservations([2 ** 512], -10),
+          },
+        ],
+      });
+
+      const [result] = await queryQuantile(0.5, metricName, {
+        where: "Attributes['route'] = '/target'",
+      });
+
+      // Filtering leaves only the scale-1 target before min(Scale) is taken.
+      // Its two 2s remain in scale-1 bucket (sqrt(2), 2], with midpoint 2^0.75.
+      expect(result.Value).toBeCloseTo(2 ** 0.75);
+    });
+
+    it('calculates quantiles without time bucketing when granularity is omitted', async () => {
+      const metricName = 'test.no.granularity';
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: nowPlus('-1m'),
+            ...bucketExponentialHistogramObservations([]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: nowPlus('-1m'),
+            ...bucketExponentialHistogramObservations([4, 4]),
+          },
+        ],
+      });
+
+      expect(
+        await queryQuantile(0.5, metricName, { granularity: null }),
+      ).toEqual([
+        {
+          Value: Math.sqrt(8),
+        },
+      ]);
+    });
+
+    it('returns an exponential-histogram quantile under a custom value alias', async () => {
+      const metricName = 'test.custom.quantile.alias';
+      await seedExponentialHistogramMetric({
+        metricName,
+        aggregationTemporality: 1,
+        points: [
+          {
+            TimeUnix: nowPlus('1m'),
+            ...bucketExponentialHistogramObservations([4, 4]),
+          },
+        ],
+      });
+
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'quantile',
+              alias: 'P50',
+              level: 0.5,
+              metricName,
+              metricType: MetricsDataType.ExponentialHistogram,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), nowPlus('2m')],
+          granularity: '1 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+        querySettings,
+      );
+
+      expect(await queryData(query)).toEqual([
+        {
+          __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+          P50: Math.sqrt(8),
+        },
+      ]);
+    });
+
+    it('uses one normalized scale across output groups while calculating each group independently', async () => {
+      const metricName = 'test.scale.across.output.groups';
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { route: '/fine' },
+            ...bucketExponentialHistogramObservations([], 1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { route: '/fine' },
+            ...bucketExponentialHistogramObservations([2, 2], 1),
+          },
+        ],
+      });
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            Attributes: { route: '/coarse' },
+            ...bucketExponentialHistogramObservations([], -1),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            Attributes: { route: '/coarse' },
+            ...bucketExponentialHistogramObservations([16, 16], -1),
+          },
+        ],
+      });
+
+      const results = await queryQuantile(0.5, metricName, {
+        groupBy: "Attributes['route']",
+      });
+      const fine = results.find(result => _.isEqual(result.group, ['/fine']));
+      const coarse = results.find(result =>
+        _.isEqual(result.group, ['/coarse']),
+      );
+
+      // The global minimum scale is -1. The fine group's 2s therefore land in
+      // (1, 4] and produce midpoint 2, while the coarse group's 16s remain in
+      // (4, 16] and produce midpoint 8. Counts never cross group boundaries.
+      expect(results).toHaveLength(2);
+      expect(fine?.Value).toBeCloseTo(2);
+      expect(coarse?.Value).toBeCloseTo(8);
+    });
+
+    it('calculates each single-attribute group quantile across multiple series in that group', async () => {
+      const metricName = 'test.groupby.route';
+      await seedGroupedCumulativeSeries({
+        metricName,
+        attributes: { route: '/checkout', instance: 'checkout-a' },
+        observations: [2],
+      });
+      await seedGroupedCumulativeSeries({
+        metricName,
+        attributes: { route: '/checkout', instance: 'checkout-b' },
+        observations: [4],
+      });
+      await seedGroupedCumulativeSeries({
+        metricName,
+        attributes: { route: '/search', instance: 'search-a' },
+        observations: [4, 4],
+      });
+      await seedGroupedCumulativeSeries({
+        metricName,
+        attributes: { route: '/search', instance: 'search-b' },
+        observations: [4, 4],
+      });
+
+      const results = await queryQuantile(0.5, metricName, {
+        groupBy: "Attributes['route']",
+      });
+      const checkout = results.find(result =>
+        _.isEqual(result.group, ['/checkout']),
+      );
+      const search = results.find(result =>
+        _.isEqual(result.group, ['/search']),
+      );
+
+      expect(results).toHaveLength(2);
+      // /checkout combines one 2 and one 4 from distinct instances. Rank 1
+      // reaches the upper boundary of the first bucket, so its p50 is 2.
+      expect(checkout).toEqual({
+        __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+        group: ['/checkout'],
+        Value: 2,
+      });
+      // /search combines four 4s across its two instances. Rank 2 is halfway
+      // through scale-0 bucket (2, 4], producing its geometric midpoint.
+      expect(search?.Value).toBeCloseTo(Math.sqrt(8));
+      expect(search?.__hdx_time_bucket).toBe(
+        toClickHouseISOString(nowPlus('1m')),
+      );
+    });
+
+    it('keeps cumulative predecessor chains separate for groups outside metric attributes', async () => {
+      const metricName = 'test.groupby.service-name';
+      const startTime = nowPlus('-1m');
+      await seedExponentialHistogramMetric({
+        metricName,
+        points: [
+          {
+            TimeUnix: new Date(now),
+            StartTimeUnix: startTime,
+            ServiceName: 'service-a',
+            ...bucketExponentialHistogramObservations([]),
+          },
+          {
+            TimeUnix: nowPlus('1m'),
+            StartTimeUnix: startTime,
+            ServiceName: 'service-a',
+            ...bucketExponentialHistogramObservations([2]),
+          },
+          {
+            TimeUnix: nowPlus('20s'),
+            StartTimeUnix: startTime,
+            ServiceName: 'service-b',
+            ...bucketExponentialHistogramObservations([]),
+          },
+          {
+            TimeUnix: nowPlus('80s'),
+            StartTimeUnix: startTime,
+            ServiceName: 'service-b',
+            ...bucketExponentialHistogramObservations([2]),
+          },
+        ],
+      });
+
+      const results = await queryQuantile(0.5, metricName, {
+        groupBy: 'ServiceName',
+      });
+
+      expect(results).toHaveLength(2);
+      expect(results).toEqual(
+        expect.arrayContaining([
+          {
+            __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+            group: ['service-a'],
+            Value: Math.sqrt(2),
+          },
+          {
+            __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+            group: ['service-b'],
+            Value: Math.sqrt(2),
+          },
+        ]),
+      );
+    });
+
+    it('calculates each composite group quantile across multiple series in that group', async () => {
+      const metricName = 'test.groupby.route.method';
+      await seedGroupedCumulativeSeries({
+        metricName,
+        attributes: { route: '/orders', method: 'GET', instance: 'get-a' },
+        observations: [0],
+      });
+      await seedGroupedCumulativeSeries({
+        metricName,
+        attributes: { route: '/orders', method: 'GET', instance: 'get-b' },
+        observations: [0, 2, 2],
+      });
+      await seedGroupedCumulativeSeries({
+        metricName,
+        attributes: { route: '/orders', method: 'POST', instance: 'post-a' },
+        observations: [-4, -4],
+      });
+      await seedGroupedCumulativeSeries({
+        metricName,
+        attributes: { route: '/orders', method: 'POST', instance: 'post-b' },
+        observations: [-4, -4],
+      });
+
+      const results = await queryQuantile(0.5, metricName, {
+        groupBy: "Attributes['route'], Attributes['method']",
+      });
+      const get = results.find(result =>
+        _.isEqual(result.group, ['/orders', 'GET']),
+      );
+      const post = results.find(result =>
+        _.isEqual(result.group, ['/orders', 'POST']),
+      );
+
+      expect(results).toHaveLength(2);
+      // GET combines two zero counts and two positive counts across its two
+      // instances. Rank 2 lands at the end of the zero bucket, so p50 is zero.
+      expect(get).toEqual({
+        __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+        group: ['/orders', 'GET'],
+        Value: 0,
+      });
+      // POST combines four -4 observations across two instances. Halfway
+      // through negative bucket [-4, -2) is the logarithmic value -sqrt(8).
+      expect(post?.Value).toBeCloseTo(-Math.sqrt(8));
+      expect(post?.__hdx_time_bucket).toBe(
+        toClickHouseISOString(nowPlus('1m')),
+      );
+    });
   });
 
   describe('K8s Semantic Convention Migrations with metricNameSql', () => {
@@ -1677,6 +4473,76 @@ describe('renderChartConfig', () => {
       const res = await queryData(query);
       expect(res.length).toBeGreaterThan(0);
       expect(res).toMatchSnapshot();
+    });
+
+    it('should merge exponential histogram buckets across metricNameSql aliases after calculating per-name deltas', async () => {
+      const attributes = { service: 'shared-service' };
+      await Promise.all([
+        seedExponentialHistogramMetric({
+          metricName: 'container.cpu.utilization',
+          points: [
+            {
+              TimeUnix: new Date(now),
+              Attributes: attributes,
+              ...bucketExponentialHistogramObservations([]),
+            },
+            {
+              TimeUnix: nowPlus('1m'),
+              Attributes: attributes,
+              ...bucketExponentialHistogramObservations([2, 2, 2, 8]),
+            },
+          ],
+        }),
+        seedExponentialHistogramMetric({
+          metricName: 'container.cpu.usage',
+          points: [
+            {
+              TimeUnix: nowPlus('10s'),
+              Attributes: attributes,
+              ...bucketExponentialHistogramObservations([]),
+            },
+            {
+              TimeUnix: nowPlus('70s'),
+              Attributes: attributes,
+              ...bucketExponentialHistogramObservations([
+                2, 2, 2, 2, 2, 2, 2, 8, 8, 8,
+              ]),
+            },
+          ],
+        }),
+      ]);
+
+      const query = await renderChartConfig(
+        {
+          select: [
+            {
+              aggFn: 'quantile',
+              level: 0.75,
+              metricName: 'container.cpu.utilization',
+              metricNameSql:
+                "MetricName IN ('container.cpu.utilization', 'container.cpu.usage')",
+              metricType: MetricsDataType.ExponentialHistogram,
+              valueExpression: 'Value',
+            },
+          ],
+          from: metricSource.from,
+          where: '',
+          metricTables: TEST_METRIC_TABLES,
+          dateRange: [new Date(now), nowPlus('2m')],
+          granularity: '1 minute',
+          timestampValueExpression: metricSource.timestampValueExpression,
+          connection: connection.id,
+        },
+        metadata,
+        querySettings,
+      );
+
+      const res = await queryData(query);
+      expect(res).toHaveLength(1);
+      expect(res[0]).toEqual({
+        __hdx_time_bucket: toClickHouseISOString(nowPlus('1m')),
+        Value: expect.closeTo(2 ** (17 / 8)),
+      });
     });
 
     it('should handle metrics without metricNameSql (backward compatibility)', async () => {

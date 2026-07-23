@@ -15,7 +15,12 @@ import type { RunRecord } from '@/harness/types';
 
 function buildRun(args: {
   scenario: string;
-  toolCalls: Array<{ name: string; isError: boolean; output?: string }>;
+  toolCalls: Array<{
+    name: string;
+    isError: boolean;
+    output?: string;
+    input?: unknown;
+  }>;
   finalAnswer: string;
 }): RunRecord {
   return {
@@ -37,7 +42,7 @@ function buildRun(args: {
     tools: [],
     toolCalls: args.toolCalls.map(c => ({
       name: c.name,
-      input: null,
+      input: c.input ?? null,
       output: c.output ?? null,
       isError: c.isError,
       startedAt: '',
@@ -231,5 +236,125 @@ describe('gradeBatch tool-error penalty', () => {
     expect(
       lines.some(l => l.includes('error-root-cause/hyperdx/myplugin/0')),
     ).toBe(true);
+  });
+});
+
+describe('gradeBatch transcript-aware adoption checks', () => {
+  const tmpRoot = join('/tmp', `hdx-eval-adoption-test-${Date.now()}`);
+
+  afterAll(() => {
+    rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('populates the adoption block from the tool-call transcript', async () => {
+    const batchDir = join(tmpRoot, 'adopted');
+    writeBatch(
+      batchDir,
+      'metric-saturation',
+      'hyperdx',
+      buildRun({
+        scenario: 'metric-saturation',
+        toolCalls: [
+          {
+            name: 'mcp__hyperdx__clickstack_list_metrics',
+            isError: false,
+            input: { sourceId: 's1' },
+          },
+          {
+            name: 'mcp__hyperdx__clickstack_describe_metric',
+            isError: false,
+            input: { name: 'process.runtime.jvm.memory.used' },
+          },
+          {
+            name: 'mcp__hyperdx__clickstack_describe_metric',
+            isError: false,
+            input: { name: 'process.runtime.jvm.gc.pause' },
+          },
+        ],
+        finalAnswer: 'JVM heap leak on recommendation-service.',
+      }),
+    );
+    const result = await gradeBatch(batchDir, { skipJudge: true });
+    const grade: GradeRecord = result.graded[0];
+    // All three transcript checks hit (used a metric tool, described the JVM
+    // memory metric, described the GC-pause metric).
+    expect(grade.adoption).toBeDefined();
+    expect(grade.adoption!.score).toBeCloseTo(1, 5);
+    expect(grade.adoption!.hits.every(h => h.satisfied)).toBe(true);
+  });
+
+  it('scores zero adoption when no metric tools were used, without touching combinedScore', async () => {
+    const batchDir = join(tmpRoot, 'not-adopted');
+    writeBatch(
+      batchDir,
+      'metric-saturation',
+      'hyperdx',
+      buildRun({
+        scenario: 'metric-saturation',
+        toolCalls: [
+          {
+            name: 'mcp__hyperdx__clickstack_sql',
+            isError: false,
+            input: { sql: 'SELECT * FROM eval_metric-saturation_otel_traces' },
+          },
+        ],
+        finalAnswer: 'JVM heap leak on recommendation-service.',
+      }),
+    );
+    const result = await gradeBatch(batchDir, { skipJudge: true });
+    const grade = result.graded[0];
+    expect(grade.adoption).toBeDefined();
+    expect(grade.adoption!.score).toBe(0);
+    // Adoption is an independent signal: combinedScore tracks the outcome
+    // (programmatic, no judge, no tool errors) and ignores adoption entirely.
+    expect(grade.combinedScore).toBeCloseTo(grade.programmatic.score, 5);
+  });
+
+  it('adoption does NOT inflate combinedScore even at full adoption', async () => {
+    const batchDir = join(tmpRoot, 'adopt-vs-combined');
+    writeBatch(
+      batchDir,
+      'metric-saturation',
+      'hyperdx',
+      buildRun({
+        scenario: 'metric-saturation',
+        toolCalls: [
+          {
+            name: 'mcp__hyperdx__clickstack_describe_metric',
+            isError: false,
+            input: { name: 'process.runtime.jvm.memory.used' },
+          },
+          {
+            name: 'mcp__hyperdx__clickstack_describe_metric',
+            isError: false,
+            input: { name: 'process.runtime.jvm.gc.pause' },
+          },
+        ],
+        // Intentionally weak answer: adoption is high but the outcome score is
+        // low, proving the two axes are decoupled.
+        finalAnswer: 'Something is wrong somewhere.',
+      }),
+    );
+    const result = await gradeBatch(batchDir, { skipJudge: true });
+    const grade = result.graded[0];
+    expect(grade.adoption!.score).toBeGreaterThan(0);
+    expect(grade.combinedScore).toBeCloseTo(grade.programmatic.score, 5);
+    expect(grade.combinedScore).toBeLessThan(grade.adoption!.score);
+  });
+
+  it('omits the adoption block for scenarios without a transcript rubric', async () => {
+    const batchDir = join(tmpRoot, 'no-transcript-rubric');
+    writeBatch(
+      batchDir,
+      'error-root-cause',
+      'hyperdx',
+      buildRun({
+        scenario: 'error-root-cause',
+        toolCalls: [{ name: 'mcp__hyperdx__hyperdx_query', isError: false }],
+        finalAnswer: 'Root cause: payment-service connection timeout.',
+      }),
+    );
+    const result = await gradeBatch(batchDir, { skipJudge: true });
+    expect(result.graded[0].adoption).toBeUndefined();
   });
 });

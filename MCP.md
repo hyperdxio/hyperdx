@@ -45,6 +45,18 @@ claude mcp add --transport http clickstack <your-hyperdx-url>/api/mcp \
   --header "Authorization: Bearer <your-personal-access-key>"
 ```
 
+### Codex CLI
+
+The Codex CLI reads the bearer token from an environment variable rather than a
+`--header` flag. Export your personal access key, then register the server with
+`--bearer-token-env-var`:
+
+```bash
+export CLICKSTACK_ACCESS_KEY="<your-personal-access-key>"
+codex mcp add clickstack --url <your-hyperdx-url>/api/mcp \
+  --bearer-token-env-var CLICKSTACK_ACCESS_KEY
+```
+
 ### OpenCode
 
 Add the following to your [OpenCode config](https://opencode.ai/docs/config):
@@ -134,7 +146,8 @@ with:
 
 `clickstack_timeseries`, `clickstack_table`, and the dashboard builder tile
 tools accept metric sources transparently. Each `select` item on a metric
-query must set `metricType` (`"gauge"`, `"sum"`, or `"histogram"`) and
+query must set `metricType` (`"gauge"`, `"sum"`, `"histogram"`, or
+`"exponential histogram"`) and
 `metricName` (the OTel metric name, e.g. `system.cpu.utilization`).
 `valueExpression` defaults to `"Value"` when omitted, so a typical metric
 series looks like:
@@ -153,9 +166,11 @@ Per-kind aggregation guidance:
   emits a neutral hint when the cap may apply.
 - **Histogram**: `"quantile"` with `level` ∈ {0.5, 0.9, 0.95, 0.99} for
   percentiles, or `"count"` for the total bucket count.
+- **Exponential histogram**: `"quantile"` with `level` ∈
+  {0.5, 0.9, 0.95, 0.99} for percentiles, or `"count"` for the total bucket
+  count.
 
-`summary` and `"exponential histogram"` metric kinds are not yet supported
-by the query renderer.
+`summary` metrics are not yet supported by the query renderer.
 
 Discovery workflow for metrics:
 
